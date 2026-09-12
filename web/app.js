@@ -28,7 +28,7 @@ const formatBytes = value => {
   return `${size>=10?size.toFixed(0):size.toFixed(1)} ${units[index]}`;
 };
 const categoryNames = {financial:'财务报表', notes:'报表附注', audit:'审计报告', credit:'征信报告', registry:'工商材料', rating:'评级报告', other:'其他材料', web:'公开网页', prospectus:'募集书底稿'};
-const S = {p:null,projects:[],token:'',runtime:{},storage:{},view:localStorage.getItem('bond-view') || 'revision',tab:'chat',selected:null,draft:'',queue:'needs_review',mobile:false,modal:null,uploading:false,uploads:[]};
+const S = {p:null,projects:[],token:'',runtime:{},storage:{},view:localStorage.getItem('bond-view') || 'revision',tab:'chat',selected:null,draft:'',queue:'needs_review',mobile:false,modal:null,uploading:false,uploads:[],blockLimit:80};
 let events, refreshing = false, refreshPending = false, editRevision = null;
 document.addEventListener('error', event=>{
   if(event.target.matches?.('img.pdf-preview')){
@@ -38,10 +38,24 @@ document.addEventListener('error', event=>{
   }
 },true);
 
-async function api(path, options={}) {
+let accessRefresh = null;
+async function refreshAccess(){
+  if(!accessRefresh)accessRefresh=fetch('/api/health',{cache:'no-store'}).then(async response=>{
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error || '访问会话刷新失败，请重新加载页面。');
+    applyHealth(data);
+    return data;
+  }).finally(()=>accessRefresh=null);
+  return accessRefresh;
+}
+async function api(path, options={}, retried=false) {
   const response = await fetch(path, {...options, headers:{...(options.body && typeof options.body === 'string' ? {'Content-Type':'application/json'} : {}), 'X-Bond-Token':S.token, ...options.headers}});
   let data;
   try { data=await response.json(); } catch { throw new Error('服务没有返回有效结果，请检查工作台是否仍在运行。'); }
+  if(response.status===403&&!retried&&path!=='/api/health'&&String(data.error || '').includes('访问校验失败')){
+    await refreshAccess();
+    return api(path,options,true);
+  }
   if(!response.ok) throw new Error(data.error || '操作未完成，请重试。');
   return data;
 }
@@ -61,7 +75,7 @@ function toast(text, error=false) {
 
 async function loadProjects(){ S.projects=await api('/api/projects'); }
 async function selectProject(id) {
-  events?.close(); S.selected=null;S.tab='chat';S.draft='';S.mobile=false;
+  events?.close(); S.selected=null;S.tab='chat';S.draft='';S.mobile=false;S.blockLimit=80;
   S.p=await api(`/api/projects/${id}`);localStorage.setItem('bond-project',id);render();
   events=new EventSource(`/api/projects/${id}/events`);
   events.onmessage=async event=>{
@@ -139,7 +153,9 @@ function renderDocument(){
 }
 function renderPlainDocument(notStarted=false,warnings=[]){
   const p=S.p;
-  return `${notStarted?`<div class="document-warning" role="status">${icon('info')}<span><strong>自动更新未能启动 · 实际修改 0 处</strong><br>当前为初步扫描标记，尚未完成来源匹配和数据替换。待 Agent 处理的事项不应交给你逐项填写。</span><button class="secondary" data-action="runtime">检查连接</button></div>`:''}${warnings.length?`<button class="document-warning" data-action="materials">${icon('info')}<span>${esc(warnings[0])}${warnings.length>1?`（共 ${warnings.length} 项文件提示）`:''}</span>${icon('chevron')}</button>`:''}<article class="paper"><div class="paper-topline"><span>募集说明书 · 审阅工作稿</span><span>${p.mode==='financial'?'FINANCIAL UPDATE':'FULL DOCUMENT UPDATE'}</span></div>${p.document.blocks.map((b,i)=>{
+  const blocks=p.document.blocks.slice(0,S.blockLimit);
+  const remaining=Math.max(0,p.document.blocks.length-blocks.length);
+  return `${notStarted?`<div class="document-warning" role="status">${icon('info')}<span><strong>自动更新未能启动 · 实际修改 0 处</strong><br>当前为初步扫描标记，尚未完成来源匹配和数据替换。待 Agent 处理的事项不应交给你逐项填写。</span><button class="secondary" data-action="runtime">检查连接</button></div>`:''}${warnings.length?`<button class="document-warning" data-action="materials">${icon('info')}<span>${esc(warnings[0])}${warnings.length>1?`（共 ${warnings.length} 项文件提示）`:''}</span>${icon('chevron')}</button>`:''}<article class="paper"><div class="paper-topline"><span>募集说明书 · 审阅工作稿</span><span>${p.mode==='financial'?'FINANCIAL UPDATE':'FULL DOCUMENT UPDATE'}</span></div>${blocks.map((b,i)=>{
     if(b.type==='table') return `<div class="table-wrap"><table class="doc-table" aria-label="募集书财务表格">${b.rows.map((row,ri)=>`<tr>${row.filter(cell=>!cell.merged).map(cell=>{
       const c=getChange(cell.id),active=c&&c.status!=='rejected'; const tag=ri===0?'th':'td';
       return `<${tag} ${ri===0?'scope="col"':''} rowspan="${cell.rowspan||1}" colspan="${cell.colspan||1}" tabindex="0" role="button" title="查看本处修改与来源" id="doc-${esc(cell.id)}" data-target="${esc(cell.id)}" class="${active?(awaitingAgent(c)?'cell-awaiting':c.needs_review?'cell-review':'cell-changed'):''} ${cell.id===S.selected?'cell-selected':''}">${renderedText(cell)||'&nbsp;'}</${tag}>`;
@@ -148,7 +164,7 @@ function renderPlainDocument(notStarted=false,warnings=[]){
     const cls=`${b.type==='heading'?(i===0?'doc-title':'doc-heading level'+b.level):'doc-paragraph'} ${active&&!awaitingAgent(c)?'has-change':''} ${active&&c.needs_review&&!awaitingAgent(c)?'needs-review':''} ${S.selected===b.id?'is-selected':''}`;
     const tag=b.type==='heading'?(i===0?'h1':'h2'):'p';
     return `<${tag} class="${cls}" id="doc-${esc(b.id)}" data-target="${esc(b.id)}" tabindex="0" role="button" title="点击查看依据或修改本处">${renderedText(b)}</${tag}>`;
-  }).join('')}<div class="paper-footnote">${S.view==='revision'?'修订模式保留原文和更新内容；点击正文或表格可查看依据。':'最终模式隐藏删改痕迹，保留全部未解决的【】。最终模式不代表已经审核通过。'}<br>原始底稿保持不变 · 所有人工操作保留审核记录</div></article>`;
+  }).join('')}${remaining?`<button class="load-more-document" data-action="load-more">继续加载后续内容（剩余 ${remaining} 个区块）</button>`:''}<div class="paper-footnote">${S.view==='revision'?'修订模式保留原文和更新内容；点击正文或表格可查看依据。':'最终模式隐藏删改痕迹，保留全部未解决的【】。最终模式不代表已经审核通过。'}<br>原始底稿保持不变 · 所有人工操作保留审核记录</div></article>`;
 }
 function renderEmpty(){return `<div class="upload-empty"><span class="pill">${icon('spark')}开始新的协作</span><h2>把募集书和材料放到这里</h2><p>上传上一版募集说明书，Agent 会核对正文和表格。<br>有依据的更新给出来源，缺少资料的地方用【】留给你。</p><button class="upload-box" data-action="upload-original"><span class="file-icon">${icon('upload')}</span><div><strong>上传待更新的募集说明书</strong><p>推荐 DOCX，也支持 PDF、TXT、Markdown</p></div></button><button class="upload-box" data-action="materials"><span class="file-icon">${icon('folder')}</span><div><strong>添加${S.p.mode==='financial'?'财务报表、附注或审计报告':'报告、征信及其他来源材料'}</strong><p>材料不足也可以开始，缺口会逐项标记</p></div></button></div>`;}
 function renderChat(){
@@ -226,7 +242,7 @@ function updateUploadIndicators(){
   if(button){button.style.display=active.length?'':'none';button.querySelector('span').textContent=active.length?`${active.length} 份材料处理中`:'';}
   renderUploadStatus();
 }
-function uploadRequest(item){
+function uploadRequest(item,retried=false){
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
     const query=new URLSearchParams({name:item.file.name,role:item.role,category:item.category});
@@ -239,7 +255,9 @@ function uploadRequest(item){
     xhr.onload=()=>{
       let data={};try{data=JSON.parse(xhr.responseText || '{}');}catch{}
       if(xhr.status>=200&&xhr.status<300)resolve(data);
-      else reject(new Error(data.error || `上传失败（HTTP ${xhr.status}）`));
+      else if(xhr.status===403&&!retried&&String(data.error || '').includes('访问校验失败')){
+        refreshAccess().then(()=>uploadRequest(item,true)).then(resolve,reject);
+      }else reject(new Error(data.error || `上传失败（HTTP ${xhr.status}）`));
     };
     xhr.send(item.file);
   });
@@ -302,7 +320,12 @@ async function sendMessage(message){
   await post(`${base()}/chat`,{message,target_id:S.selected});S.draft='';S.tab='chat';S.mobile=true;await refresh();
   const panel=document.querySelector('[data-scroll="panel"]');if(panel)panel.scrollTop=panel.scrollHeight;
 }
-function selectTarget(id,jump=false){S.selected=id;S.tab='source';S.mobile=true;render();if(jump)document.getElementById('doc-'+id)?.scrollIntoView({behavior:'smooth',block:'center'});}
+function ensureBlockVisible(id){
+  const blocks=S.p?.document?.blocks || [];
+  const index=blocks.findIndex(block=>block.id===id||(block.type==='table'&&block.rows.some(row=>row.some(cell=>cell.id===id))));
+  if(index>=S.blockLimit)S.blockLimit=Math.min(blocks.length,index+20);
+}
+function selectTarget(id,jump=false){S.selected=id;S.tab='source';S.mobile=true;ensureBlockVisible(id);render();if(jump)setTimeout(()=>document.getElementById('doc-'+id)?.scrollIntoView({behavior:'smooth',block:'center'}),0);}
 
 document.addEventListener('input',event=>{if(event.target.id==='chat-input')S.draft=event.target.value;});
 document.addEventListener('change',event=>{
@@ -336,7 +359,8 @@ document.addEventListener('click',async event=>{
     else if(action==='upload-original')uploadOriginal();
     else if(action==='choose-files'){document.getElementById('file-input')?.click();}
     else if(action==='queue'){S.queue=el.dataset.filter || 'needs_review';S.tab='queue';S.mobile=true;render();}
-    else if(action==='jump'){document.getElementById('doc-'+el.dataset.id)?.scrollIntoView({behavior:'smooth',block:'start'});document.querySelectorAll('.outline a').forEach(a=>a.classList.toggle('current',a===el));}
+    else if(action==='jump'){ensureBlockVisible(el.dataset.id);render();setTimeout(()=>document.getElementById('doc-'+el.dataset.id)?.scrollIntoView({behavior:'smooth',block:'start'}),0);}
+    else if(action==='load-more'){S.blockLimit=Math.min(S.p.document.blocks.length,S.blockLimit+80);render();}
     else if(action==='select-change')selectTarget(el.dataset.id,true);
     else if(action==='source-file'){const c=getChange(S.selected);const s=c?.sources[Number(el.dataset.index)];if(s)await showSource(s.source_id,s.segment_id,s.quote);}
     else if(action==='open-material')await showSource(el.dataset.id);
