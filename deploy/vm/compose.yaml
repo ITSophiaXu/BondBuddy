@@ -1,0 +1,36 @@
+name: bonddraftai
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: bonddraftai:latest
+    container_name: bonddraftai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18766:8000"
+    environment:
+      BOND_AUTH_USERNAME: "${BOND_AUTH_USERNAME:?BOND_AUTH_USERNAME is required}"
+      BOND_AUTH_PASSWORD: "${BOND_AUTH_PASSWORD:?BOND_AUTH_PASSWORD is required}"
+      BOND_ALLOWED_HOSTS: "${BOND_PUBLIC_HOST:?BOND_PUBLIC_HOST is required}"
+      BOND_TRUST_PROXY: "1"
+      BOND_DATA_DIR: "/data/projects"
+      BOND_CODEX_HOME: "/data/codex"
+      CODEX_HOME: "/data/codex"
+      BOND_CODEX_PATH: "/usr/local/bin/codex"
+      BOND_CODEX_LINUX_SANDBOX: "legacy_landlock"
+      BOND_OCR: "off"
+      BOND_DEMO: "0"
+      PORT: "8000"
+    volumes:
+      - bond_data:/data
+    mem_limit: 2g
+    cpus: 2
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
+volumes:
+  bond_data:
+    name: bonddraftai_data

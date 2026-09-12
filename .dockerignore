@@ -1,0 +1,9 @@
+**
+!backend/**
+!web/**
+!outputs/**
+!requirements.txt
+!Dockerfile
+!docker-entrypoint.sh
+backend/**/__pycache__/
+backend/**/*.pyc
