@@ -51,7 +51,13 @@ def working_file(p):
             if not table or not table['rows'] or not table['rows'][0]:
                 continue
             text = '【待确认：' + p['period'] + '报告期列安排。原表列数、列宽及样式已保留，请在 Word 中确认新报告期列的安排。】'
-            proposals = [changes[c['id']]['after'] for c in addition['cells'] if c['id'] in changes and changes[c['id']].get('origin') != 'scan']
+            proposals = [
+                changes[c['id']]['after']
+                for c in addition['cells']
+                if c['id'] in changes
+                and changes[c['id']].get('origin') != 'scan'
+                and (changes[c['id']].get('sources') or changes[c['id']].get('origin') == 'human')
+            ]
             if proposals:
                 text += '\n原先拟新增列的内容（尚未写入原表）：\n' + '\n'.join(proposals)
             file['layout_tasks'].append({'target_id':table['rows'][0][0]['id'], 'table_id':table['id'], 'text':text})
@@ -127,6 +133,33 @@ def placeholder(t, reason='需要核对最新报告期，尚无已验证的来�
     if len(old) < 80:
         return f'【待核对：{old}】'
     return old + f'【待核对：{reason}】'
+
+
+def safe_unsourced_after(change):
+    target = {
+        'text': change.get('before', ''),
+        'inserted': ':newperiod:' in change.get('target_id', ''),
+        'field': change.get('field', ''),
+        'period_label': change.get('period_label', '目标报告期'),
+    }
+    return placeholder(target, '未找到可核实来源，Agent 建议未应用')
+
+
+def publication_changes(changes):
+    result = copy.deepcopy(changes)
+    for c in result:
+        if c.get('origin') != 'agent' or c.get('sources') or c.get('status') == 'rejected':
+            continue
+        proposed = c.get('proposal') or c.get('after', '')
+        c['proposal'] = proposed
+        c['after'] = safe_unsourced_after(c)
+        c['needs_review'] = True
+        c['status'] = 'needs_review'
+        c['issue'] = '缺少来源，建议未应用'
+        note = '未找到可核实来源，Agent 建议未写入当前文档'
+        if note not in c.get('reason', ''):
+            c['reason'] = (c.get('reason', '').rstrip('；') + '；' + note).lstrip('；')
+    return result
 
 
 def stage_candidates(p):
@@ -251,12 +284,17 @@ def apply_model_result(p, result, allowed_ids, start_revision):
         handled.add(tid)
         refs, invalid = validate_sources(p, item.get('sources', []))
         reason = str(item.get('reason', '需要人工核对'))[:2000]
+        proposal = ''
         if refs and '【' not in after:
             missing = unsupported_numbers(p, t['text'], after, refs, reason)
             if missing:
                 invalid.append('新增数字尚无直接引文或已支持的计算依据：' + '、'.join(missing[:12]))
                 for token in sorted(missing, key=len, reverse=True):
                     after = re.sub(r'(?<![\d.,])' + re.escape(token) + r'(?![\d.,])', lambda m: '【待确认：' + m.group() + '】', after)
+        if not refs:
+            proposal = after
+            after = placeholder(t, '未找到可核实来源，Agent 建议未应用')
+            invalid.append('未找到可核实来源，Agent 建议未写入当前文档')
         needs = item.get('needs_review') is not False or bool(invalid) or not refs or '【' in after or '】' in after
         if needs and '【' not in after:
             after = f'【待确认：{after}】' if len(after) < 140 else after + '【待确认：请核对本处修改及依据】'
@@ -265,10 +303,12 @@ def apply_model_result(p, result, allowed_ids, start_revision):
             p['changes'] = [c for c in p['changes'] if not (c['target_id'] == tid and c['origin'] == 'scan')]
             continue
         c = {'id': old_change['id'] if old_change else uid('chg'), 'target_id': tid, 'before': t['text'], 'after': after,
-             'reason': reason + ('；' + '；'.join(set(invalid)) if invalid else ''), 'needs_review': needs,
-             'issue': str(item.get('issue', ''))[:120] or ('缺少依据' if not refs else '待确认' if needs else ''),
+             'reason': reason + ('；' + '；'.join(dict.fromkeys(invalid)) if invalid else ''), 'needs_review': needs,
+             'issue': ('缺少来源，建议未应用' if not refs else str(item.get('issue', ''))[:120] or ('待确认' if needs else '')),
              'sources': refs, 'status': 'needs_review' if needs else 'pending', 'origin': 'agent',
              'chapter': t['chapter'], 'created_at': now(), 'version': (old_change or {}).get('version', 0) + 1}
+        if proposal and proposal != after:
+            c['proposal'] = proposal
         p['history'].append({'id': uid('event'), 'at': now(), 'action': 'Agent 修改', 'change_id': c['id'],
                              'before': copy.deepcopy(old_change), 'after': copy.deepcopy(c)})
         p['changes'] = [x for x in p['changes'] if x['target_id'] != tid] + [c]
@@ -347,21 +387,24 @@ def project_view(p, full_history=False):
         data['document'].pop('segments', None)
     deferred_ids = set(file.get('deferred_target_ids', [])) if file else set()
     data['deferred_changes'] = [c for c in data['changes'] if c['target_id'] in deferred_ids]
-    data['changes'] = [c for c in data['changes'] if c['target_id'] not in deferred_ids]
+    data['changes'] = publication_changes([c for c in data['changes'] if c['target_id'] not in deferred_ids])
     for c in data['changes']:
         c['diff'] = text_diff(c['before'], c['after'])
         original_todo = '【' in c['before'] or '】' in c['before']
         c['review_stage'] = ('awaiting_agent' if c.get('origin') == 'scan' and not original_todo and c['status'] == 'needs_review'
                              else 'original_todo' if c.get('origin') == 'scan' and original_todo and c['status'] == 'needs_review'
+                             else 'missing_source' if c.get('origin') == 'agent' and not c.get('sources') and c['status'] == 'needs_review'
                              else c['status'])
     if not full_history:
         data['history'] = [{'id': h['id'], 'at': h['at'], 'action': h['action'], 'change_id': h.get('change_id')} for h in data['history'][-50:]]
     unresolved = [c for c in data['changes'] if c['status'] == 'needs_review' and c['review_stage'] != 'awaiting_agent']
     visible_changes = data['changes']
-    data['stats'] = {'changes': sum(c['status'] != 'rejected' and c.get('origin') != 'scan' and c['before'] != c['after'] for c in visible_changes),
+    data['stats'] = {'changes': sum(c['status'] != 'rejected' and c.get('origin') != 'scan' and c['before'] != c['after']
+                                            and bool(c.get('sources') or c.get('origin') == 'human') for c in visible_changes),
                      'scan_candidates': sum(c.get('origin') == 'scan' and c['status'] != 'rejected' for c in visible_changes), 'needs_review': len(unresolved),
                      'layout_tasks':len(file.get('layout_tasks', [])) if file else 0,
                      'awaiting_agent': sum(c['review_stage'] == 'awaiting_agent' for c in data['changes']),
+                     'missing_source': sum(c['review_stage'] == 'missing_source' for c in data['changes']),
                      'original_todos': sum(c['review_stage'] == 'original_todo' for c in data['changes']),
                      'accepted': sum(c['status'] == 'accepted' for c in visible_changes), 'pending': sum(c['status'] == 'pending' for c in visible_changes),
                      'sources': len(p['files']) - bool(p['original_id']), 'scanned': len(p['coverage']), 'total': len(data['targets'])}
@@ -429,13 +472,11 @@ def fetch_public_url(url):
     raise ValueError('网页重定向次数过多。')
 
 
-def add_file(store, p, raw, name, role, category, url=None):
+def prepare_file(raw, name, role, category, url=None):
     if role not in {'prospectus', 'source'}:
         raise ValueError('文件角色无效。')
     if category not in {'financial', 'notes', 'audit', 'credit', 'registry', 'rating', 'other', 'web', 'prospectus'}:
         raise ValueError('材料类型无效。')
-    if len(p['files']) >= 60:
-        raise ValueError('单个项目最多 60 份材料。')
     safe_name = name.replace('\\', '/').split('/')[-1][:180]
     if not safe_name or safe_name.startswith('.'):
         raise ValueError('文件名无效。')
@@ -443,16 +484,28 @@ def add_file(store, p, raw, name, role, category, url=None):
     parsed = parse_document(raw, safe_name, fid)
     if not parsed['segments']:
         raise ValueError('文件中没有可读取文字，请上传文字版或完成 OCR 的文件。')
+    return {'id': fid, 'name': safe_name, 'role': role, 'category': category, 'size': len(raw),
+            'sha256': hashlib.sha256(raw).hexdigest(), 'uploaded_at': now(), 'url': url, **parsed}
+
+
+def commit_file(store, p, raw, file):
+    if len(p['files']) >= 60:
+        raise ValueError('单个项目最多 60 份材料。')
+    role = file['role']
     if role == 'prospectus' and p['original_id']:
         raise ValueError('当前项目已有募集书底稿。请新建项目以保留审核记录。')
-    path = store.root / 'files' / p['id'] / (fid + Path(safe_name).suffix.lower())
+    path = store.root / 'files' / p['id'] / (file['id'] + Path(file['name']).suffix.lower())
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(raw)
-    f = {'id': fid, 'name': safe_name, 'role': role, 'category': category, 'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
-         'stored_path': str(path), 'uploaded_at': now(), 'url': url, **parsed}
+    f = {**file, 'stored_path': str(path)}
     p['files'].append(f)
     if role == 'prospectus':
-        p['original_id'] = fid
+        p['original_id'] = f['id']
         index_brackets(p)
-    store.log(p, '上传材料', name=safe_name)
+    store._storage_cache = None
+    store.log(p, '上传材料', name=f['name'])
     return f
+
+
+def add_file(store, p, raw, name, role, category, url=None):
+    return commit_file(store, p, raw, prepare_file(raw, name, role, category, url))

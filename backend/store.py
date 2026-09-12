@@ -1,6 +1,8 @@
 import json
 import os
+import shutil
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +22,7 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.projects = {}
+        self._storage_cache = None
         for path in self.root.glob('project_*.json'):
             try:
                 data = json.loads(path.read_text(encoding='utf-8'))
@@ -38,6 +41,7 @@ class Store:
             temp.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding='utf-8')
             os.replace(temp, path)
             self.projects[project['id']] = project
+            self._storage_cache = None
 
     def get(self, id):
         if id not in self.projects:
@@ -74,3 +78,24 @@ class Store:
 
     def snapshot(self, p):
         return json.loads(json.dumps(p))
+
+    def storage_view(self):
+        now_monotonic = time.monotonic()
+        if self._storage_cache and now_monotonic - self._storage_cache[0] < 30:
+            return dict(self._storage_cache[1])
+        used = 0
+        for path in self.root.rglob('*'):
+            try:
+                if path.is_file():
+                    used += path.stat().st_size
+            except OSError:
+                continue
+        disk = shutil.disk_usage(self.root)
+        view = {
+            'used_bytes': used,
+            'disk_total_bytes': disk.total,
+            'disk_free_bytes': disk.free,
+            'project_count': len([p for p in self.projects.values() if not p.get('archived')]),
+        }
+        self._storage_cache = (now_monotonic, view)
+        return dict(view)

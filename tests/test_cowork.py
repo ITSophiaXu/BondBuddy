@@ -16,7 +16,8 @@ from zipfile import ZipFile
 from backend.store import Store
 from backend.documents import parse_document, targets, word_export, text_diff
 from backend.engine import (add_file, apply_model_result, candidate_targets, fetch_public_url,
-                            project_view, review_change, stage_candidates, validate_sources, working_file)
+                            project_view, publication_changes, review_change, stage_candidates,
+                            validate_sources, working_file)
 from backend.runner import Runner, SCHEMA, command_for, evidence_for, targets_for_run, write_source_library
 from backend.server import create_server
 from backend.demo import seed
@@ -125,6 +126,19 @@ class ProjectCase(ProjectFixture, unittest.TestCase):
             self.assertEqual('needs_review', c['status'])
             self.assertIn('【', c['after'])
             self.assertEqual([], c['sources'])
+
+    def test_unsourced_agent_value_is_not_applied_or_counted_as_change(self):
+        c = self.apply(self.result(after='截至2026年6月末，总资产为999万元。', sources=[]))
+        self.assertEqual('截至2026年6月末，总资产为999万元。', c['proposal'])
+        self.assertNotIn('999', c['after'])
+        view = project_view(self.p)
+        shown = next(x for x in view['changes'] if x['target_id'] == self.target['id'])
+        self.assertEqual('missing_source', shown['review_stage'])
+        self.assertEqual(0, view['stats']['changes'])
+        self.assertEqual(1, view['stats']['missing_source'])
+        exported = word_export(self.original, publication_changes(self.p['changes']), 'final')
+        xml = ZipFile(io.BytesIO(exported)).read('word/document.xml').decode()
+        self.assertNotIn('999', xml)
 
     def test_cannot_accept_unresolved_and_versions_are_checked(self):
         c = self.apply(self.result(sources=[]))
@@ -537,6 +551,10 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(any('before' in h for h in audit['history']))
 
     def test_csrf_host_origin_and_path_containment(self):
+        status, health = self.request('/api/health')
+        self.assertEqual(200, status)
+        self.assertIn('storage', health)
+        self.assertGreater(health['storage']['disk_free_bytes'], 0)
         self.assertEqual(403, self.request('/api/projects', {'title': 'bad'}, {'X-Bond-Token': 'bad'})[0])
         self.assertEqual(403, self.request('/api/health', headers={'Host': 'attacker.example'})[0])
         self.assertEqual(403, self.request('/api/health', headers={'Origin': 'https://attacker.example'})[0])

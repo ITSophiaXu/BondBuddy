@@ -225,6 +225,7 @@ class Runner:
         self.store, self.repo = store, Path(repo)
         self.processes = {}
         self.cancelled = set()
+        self.job_slots = threading.Semaphore(max(1, int(os.environ.get('BOND_MAX_CONCURRENT_JOBS', '1'))))
         self.runtime_failure = None
         self.execution_verified = False
 
@@ -398,8 +399,25 @@ class Runner:
                 if segment:
                     ref['source_id'], ref['segment_id'] = f['id'], segment['id']
 
+    def _prune_runs(self, pid):
+        keep = max(1, int(os.environ.get('BOND_RUN_RETENTION', '3')))
+        root = (self.store.root / 'runs' / pid).resolve()
+        allowed = (self.store.root / 'runs').resolve()
+        if not root.is_relative_to(allowed) or not root.is_dir():
+            return
+        directories = sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime, reverse=True)
+        for directory in directories[keep:]:
+            shutil.rmtree(directory)
+
     def _work(self, pid, jid, message, target_id):
+        acquired = False
         try:
+            while jid not in self.cancelled:
+                if self.job_slots.acquire(timeout=.5):
+                    acquired = True
+                    break
+            if not acquired:
+                return
             with self.store.lock:
                 p = self.store.get(pid)
                 if jid in self.cancelled or p['job'].get('id') != jid:
@@ -468,3 +486,7 @@ class Runner:
                     p['job'].update(status='failed', error=str(exc)[:1800], step='任务暂未完成', ended_at=now())
                     self.store.add_message(p, 'assistant', '本次更新未完成：' + str(exc)[:1800] + '\n已标记的位置和之前的审核结果均已保留。')
                     self.store.save(p)
+        finally:
+            if acquired:
+                self.job_slots.release()
+            self._prune_runs(pid)

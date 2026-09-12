@@ -16,7 +16,8 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 from .store import Store, uid, now
-from .engine import add_file, fetch_public_url, project_view, review_change, working_file
+from .engine import (add_file, commit_file, prepare_file, publication_changes, fetch_public_url,
+                     project_view, review_change, working_file)
 from .documents import targets, word_export
 from .runner import Runner, cli_status, cli_path
 from .demo import seed
@@ -43,6 +44,10 @@ class App:
             if value.strip()
         }
         self.trust_proxy = os.environ.get('BOND_TRUST_PROXY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        self.shared_workspace = os.environ.get('BOND_SHARED_WORKSPACE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        self.workspace_label = os.environ.get('BOND_WORKSPACE_LABEL', '').strip() or ('Azure 共享工作区' if self.shared_workspace else '本机工作区')
+        self.project_storage_limit = int(os.environ.get('BOND_PROJECT_STORAGE_LIMIT_MB', '500')) * 1024 * 1024
+        self.min_free_storage = int(os.environ.get('BOND_MIN_FREE_STORAGE_MB', '1024')) * 1024 * 1024
         self.runtime = {'installed': bool(cli_path()), 'ready': None, 'message': '正在检测本机 Agent 状态'}
         if demo:
             seed(self.store)
@@ -60,6 +65,25 @@ class App:
         elif runtime.get('ready') and self.runner.execution_verified:
             runtime['message'] = 'Agent 已完成真实任务调用，可以继续更新。'
         return runtime
+
+    def storage_view(self):
+        result = self.store.storage_view()
+        result.update(
+            shared=self.shared_workspace,
+            label=self.workspace_label,
+            project_limit_bytes=self.project_storage_limit,
+            min_free_bytes=self.min_free_storage,
+            persistence='azure_vm_volume' if self.shared_workspace else 'local_disk',
+        )
+        return result
+
+    def check_upload_capacity(self, p, size):
+        current = sum(f.get('size', 0) for f in p.get('files', []))
+        if self.project_storage_limit and current + size > self.project_storage_limit:
+            raise ValueError('当前项目材料超过存储上限，请删除无关材料或新建项目。')
+        storage = self.store.storage_view()
+        if storage['disk_free_bytes'] - size * 2 < self.min_free_storage:
+            raise ValueError('服务器磁盘余量不足，为避免项目损坏已停止上传。请清理空间或迁移到 Azure Blob Storage。')
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -185,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(url.query)
             if parts == ['api', 'health']:
                 self.send(200, {'ok': True, 'app': 'bond-draft-cowork', 'csrf': self.app.csrf,
-                                'runtime': self.app.runtime_view(), 'version': '1.1.0',
+                                'runtime': self.app.runtime_view(), 'storage': self.app.storage_view(), 'version': '1.2.0',
                                 'instance_id': self.app.instance_id, 'started_at': self.app.started_at})
                 return
             if parts == ['api', 'runtime', 'check'] and method == 'POST':
@@ -218,9 +242,34 @@ class Handler(BaseHTTPRequestHandler):
                     p = self.app.store.get(parts[2])
                     if p['revision'] != revision or p['job']['status'] in {'queued', 'running'}:
                         raise ValueError('项目状态已变化，请重新添加该网页。')
+                    self.app.check_upload_capacity(p, len(content.encode()))
                     f = add_file(self.app.store, p, content.encode(), '网页材料_' + uid('source') + '.txt', 'source', 'web', final_url)
                     self.app.store.save(p)
                     self.send(201, {'id': f['id'], 'warnings': []})
+                return
+            if len(parts) == 4 and parts[:2] == ['api', 'projects'] and parts[3] == 'files' and method == 'POST':
+                with self.app.store.lock:
+                    p = self.app.store.get(parts[2])
+                    if p['job']['status'] in {'queued', 'running'}:
+                        raise ValueError('Agent 正在运行。请等待完成或先停止，再添加材料。')
+                raw = self.body(raw=True)
+                with self.app.store.lock:
+                    p = self.app.store.get(parts[2])
+                    self.app.check_upload_capacity(p, len(raw))
+                prepared = prepare_file(
+                    raw,
+                    query.get('name', [''])[0],
+                    query.get('role', ['source'])[0],
+                    query.get('category', ['other'])[0],
+                )
+                with self.app.store.lock:
+                    p = self.app.store.get(parts[2])
+                    if p['job']['status'] in {'queued', 'running'}:
+                        raise ValueError('项目状态已变化，请重新上传该材料。')
+                    self.app.check_upload_capacity(p, len(raw))
+                    f = commit_file(self.app.store, p, raw, prepared)
+                    self.app.store.save(p)
+                    self.send(201, {'id': f['id'], 'warnings': f['warnings']})
                 return
             if len(parts) >= 3 and parts[:2] == ['api', 'projects']:
                 with self.app.store.lock:
@@ -235,12 +284,6 @@ class Handler(BaseHTTPRequestHandler):
                     if action == 'events':
                         pass  # Stream outside the lock.
                     elif action == 'files':
-                        if method == 'POST' and len(parts) == 4:
-                            raw = self.body(raw=True)
-                            f = add_file(self.app.store, p, raw, query.get('name', [''])[0], query.get('role', ['source'])[0], query.get('category', ['other'])[0])
-                            self.app.store.save(p)
-                            self.send(201, {'id': f['id'], 'warnings': f['warnings']})
-                            return
                         if len(parts) < 5:
                             raise ValueError('缺少文件标识。')
                         f = self.app.store.file(p, parts[4])
@@ -331,7 +374,7 @@ class Handler(BaseHTTPRequestHandler):
                             out = json.dumps(project_view(p, full_history=True), ensure_ascii=False, indent=2).encode()
                             self.send(200, out, 'application/json', p['title'] + '_审核记录.json')
                         elif format == 'docx':
-                            out = word_export(f, p['changes'], view)
+                            out = word_export(f, publication_changes(p['changes']), view)
                             suffix = '修订版' if view == 'revision' else '最终视图'
                             self.send(200, out, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', p['title'] + '_' + suffix + '.docx')
                         else:
@@ -345,10 +388,11 @@ class Handler(BaseHTTPRequestHandler):
                         f = working_file(p)
                         if not f or f.get('extension') != '.docx':
                             raise ValueError('原格式预览需要历史募集书 DOCX 文件。')
-                        digest = hashlib.sha256(json.dumps(p['changes'], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+                        safe_changes = publication_changes(p['changes'])
+                        digest = hashlib.sha256(json.dumps(safe_changes, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
                         key = (p['id'], f.get('sha256'), p['period'], digest, view)
                         if key not in self.app.preview_cache:
-                            result = word_preview(f, p['changes'], view)
+                            result = word_preview(f, safe_changes, view)
                             if len(self.app.preview_cache) >= 4:
                                 self.app.preview_cache.pop(next(iter(self.app.preview_cache)))
                             self.app.preview_cache[key] = result

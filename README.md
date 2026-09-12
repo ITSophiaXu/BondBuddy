@@ -40,6 +40,15 @@ python -m backend.server --port 8765
 
 “待 Agent 处理”是系统尚未完成匹配的扫描候选，不计入“人工待办”，也不显示成已更新的修订。来源尚未匹配不等于材料缺失。原稿已有的【】及 Agent 核对后仍有疑问的内容进入“人工待办”；两种状态都保留原有标记。Agent 启动失败且没有生成修改时，文档顶部明确显示“实际修改 0 处”。
 
+## 上传、存储与多人使用
+
+- 选择多份材料后按队列逐份上传。上传过程中再次选择文件会追加到队列，不会静默丢弃；页面显示每份文件的上传百分比、服务器解析状态和失败原因。切换项目或关闭材料窗口不会中断当前上传，刷新或关闭浏览器会中断正在传输的文件。
+- Azure VM 部署将原文件、解析结果和审核记录保存在 Docker 持久化卷。原文件用于来源定位、原文下载和保持 Word 格式，不能在解析后立即删除。持久化主要占用磁盘而不是常驻内存。
+- VM 默认限制单项目原文件合计 500 MB，磁盘可用空间低于 1 GB 时拒绝新上传，并只保留最近 3 次 Agent 运行目录。可通过 `BOND_PROJECT_STORAGE_LIMIT_MB`、`BOND_MIN_FREE_STORAGE_MB` 和 `BOND_RUN_RETENTION` 调整。
+- 当前 JSON 文件存储和共享密码模式适合受信任的小团队，不是多租户架构。所有持有共享密码的人都能查看全部项目。面向独立客户时，应将原文件迁移到 Azure Blob Storage，将项目与权限迁移到数据库，并使用用户级身份认证。
+- 并发容量取决于同时运行的 Agent 数量，而不是登录人数。VM 默认 `BOND_MAX_CONCURRENT_JOBS=1`，其余任务排队，防止小内存实例同时启动多个 Codex 进程。
+- 原型规模可参考：1 个并发任务使用 2–4 vCPU、8 GB 内存；2–3 个并发任务使用 4–8 vCPU、16 GB 内存。更高并发应拆分 Web、任务队列和 Worker，并基于实际材料大小与任务耗时压测，不应只提高单机内存。
+
 ## Codex CLI
 
 先在正常的本机终端确认：
@@ -62,6 +71,11 @@ codex login status
 | `BOND_CLI_TIMEOUT` | 单组任务最长秒数 | 900 |
 | `BOND_DATA_DIR` | 本地项目与文件存放目录 | `.local/data` |
 | `BOND_OCR` | 设为 `off` 可关闭本机扫描页识别 | Windows 本机识别 |
+| `BOND_PROJECT_STORAGE_LIMIT_MB` | 单项目原文件合计上限 | 500 |
+| `BOND_MIN_FREE_STORAGE_MB` | 低于该磁盘余量时停止上传 | 1024 |
+| `BOND_RUN_RETENTION` | 每个项目保留的 Agent 运行目录数 | 3 |
+| `BOND_MAX_CONCURRENT_JOBS` | 同时运行的 Codex 任务数 | 1 |
+| `BOND_SHARED_WORKSPACE` / `BOND_WORKSPACE_LABEL` | 标记共享部署并显示工作空间名称 | 本机工作区 |
 | `BOND_HOST` | HTTP 监听地址 | `127.0.0.1` |
 | `BOND_AUTH_USERNAME` / `BOND_AUTH_PASSWORD` | 可选：为整个工作台启用 HTTP Basic 登录 | 不启用 |
 | `BOND_ALLOWED_HOSTS` | 逗号分隔的公网 Host 白名单 | 当前本机端口 |

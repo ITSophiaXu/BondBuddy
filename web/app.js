@@ -21,8 +21,14 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const bracket = value => esc(value).replace(/【[^】]*】/g, '<span class="uncertain">$&</span>');
 const dateLabel = date => { const [y,m,d] = date.split('-'); return `${y}年${Number(m)}月${Number(d)}日`; };
 const smallDate = value => new Date(value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+const formatBytes = value => {
+  const bytes=Number(value)||0;if(bytes<1024)return `${bytes} B`;
+  const units=['KB','MB','GB','TB'];let size=bytes/1024,index=0;
+  while(size>=1024&&index<units.length-1){size/=1024;index++;}
+  return `${size>=10?size.toFixed(0):size.toFixed(1)} ${units[index]}`;
+};
 const categoryNames = {financial:'财务报表', notes:'报表附注', audit:'审计报告', credit:'征信报告', registry:'工商材料', rating:'评级报告', other:'其他材料', web:'公开网页', prospectus:'募集书底稿'};
-const S = {p:null,projects:[],token:'',runtime:{},view:localStorage.getItem('bond-view') || 'revision',tab:'chat',selected:null,draft:'',queue:'needs_review',mobile:false,modal:null,uploading:false};
+const S = {p:null,projects:[],token:'',runtime:{},storage:{},view:localStorage.getItem('bond-view') || 'revision',tab:'chat',selected:null,draft:'',queue:'needs_review',mobile:false,modal:null,uploading:false,uploads:[]};
 let events, refreshing = false, refreshPending = false, editRevision = null;
 document.addEventListener('error', event=>{
   if(event.target.matches?.('img.pdf-preview')){
@@ -44,7 +50,10 @@ const base = () => `/api/projects/${S.p.id}`;
 const busy = () => ['queued','running'].includes(S.p?.job.status);
 const getChange = id => S.changeIndex?.get(id);
 const awaitingAgent = c => c?.review_stage === 'awaiting_agent';
+const missingSource = c => c?.review_stage === 'missing_source';
 const selectedTarget = () => S.targetIndex?.get(S.selected);
+const activeUploads = () => S.uploads.filter(item=>['queued','uploading','processing'].includes(item.status));
+const applyHealth = health => {S.token=health.csrf || S.token;S.runtime=health.runtime || S.runtime;S.storage=health.storage || S.storage;};
 function toast(text, error=false) {
   const el=document.createElement('div');el.className=`toast${error?' error':''}`;el.textContent=text;
   document.getElementById('toasts').append(el);setTimeout(()=>el.remove(),6000);
@@ -65,7 +74,7 @@ async function selectProject(id) {
   };
   events.onerror=()=>{};
 }
-async function refresh(){ if(!S.p)return; const id=S.p.id;const [data,health]=await Promise.all([api(`/api/projects/${id}`),api('/api/health')]);if(S.p?.id===id){S.p=data;S.runtime=health.runtime;render();} }
+async function refresh(){ if(!S.p)return; const id=S.p.id;const [data,health]=await Promise.all([api(`/api/projects/${id}`),api('/api/health')]);if(S.p?.id===id){S.p=data;applyHealth(health);render();} }
 
 function render() {
   const scrolls={}; document.querySelectorAll('[data-scroll]').forEach(el=>scrolls[el.dataset.scroll]=el.scrollTop);
@@ -80,7 +89,7 @@ function render() {
     <aside class="sidebar">
       <div class="brand"><span class="brandmark">B</span><div><div class="brand-name">募集书 Cowork</div><div class="brand-sub">让每一处更新都有依据</div></div></div>
       <button class="secondary new-project" data-action="new-project" title="新建项目">${icon('plus')}<span>新建更新任务</span></button>
-      <div class="side-label">我的工作空间 <span class="eyebrow">LOCAL</span></div>
+      <div class="side-label">${S.storage.shared?'共享工作空间':'我的工作空间'} <span class="eyebrow">${S.storage.shared?'AZURE':'LOCAL'}</span></div>
       <nav class="project-list" aria-label="项目列表">${S.projects.map(pr=>`<button class="project-item ${pr.id===p.id?'active':''}" data-action="project" data-id="${pr.id}" title="${esc(pr.title)}">${icon('folder')}<span class="project-name"><span>${esc(pr.title.split(' · ')[0])}</span><small>${esc(pr.period)} · ${pr.mode==='financial'?'财务':'全文'}</small></span>${pr.demo?'<span class="badge">示例</span>':''}</button>`).join('')}</nav>
       <div class="side-tools">
         <button class="side-tool" data-action="materials" title="项目材料">${icon('file')}<span>项目材料</span><span class="side-count">${p.files.length}</span></button>
@@ -89,16 +98,16 @@ function render() {
       </div>
       <div class="side-label">文档目录 <span>${headings.length}</span></div>
       <nav class="outline" aria-label="文档目录" data-scroll="outline">${headings.map((h,i)=>`<a href="#doc-${esc(h.id)}" class="${i===0?'current':''} ${h.level>1?'sub':''}" data-action="jump" data-id="${esc(h.id)}">${esc(h.text)}</a>`).join('') || '<span class="muted small">上传募集书后显示目录</span>'}</nav>
-      <div class="sidebar-bottom"><span class="workspace-avatar">本地</span><div class="workspace-info">项目工作空间<div class="small muted"><i class="dot ${S.runtime.ready?'':'amber'}"></i>${S.runtime.ready?(S.runtime.execution_verified?'Agent 已就绪':'CLI 已登录'):(S.runtime.authenticated?'执行权限不足':'Agent 待连接')}</div></div><button class="icon-btn" data-action="runtime" title="检查 Agent 连接">${icon('settings')}</button></div>
+      <button class="sidebar-bottom workspace-card" data-action="workspace-info" title="查看工作空间与存储"><span class="workspace-avatar">${S.storage.shared?'云':'本地'}</span><div class="workspace-info">${esc(S.storage.label || '项目工作空间')}<div class="small muted"><i class="dot ${S.runtime.ready?'':'amber'}"></i>${S.runtime.ready?(S.runtime.execution_verified?'Agent 已就绪':'CLI 已登录'):(S.runtime.authenticated?'执行权限不足':'Agent 待连接')} · ${formatBytes(S.storage.used_bytes || 0)}</div></div>${icon('chevron')}</button>
     </aside>
     <main class="main">
       <header class="topbar"><div style="min-width:0"><div class="breadcrumbs"><span>工作空间</span><span>/</span><span>${p.mode==='financial'?'财务数据更新':'全文更新'}</span></div><div class="project-title"><span>${esc(p.title)}</span>${p.demo?'<span class="badge">演示项目</span>':`<span class="badge ${p.job.status==='failed'?'amber':'green'}">${({failed:'运行受阻',idle:'待开始',running:'更新中',queued:'准备中',completed:'待审阅',cancelled:'已停止',interrupted:'已中断'})[p.job.status] || '待开始'}</span>`}</div></div>
-        <div class="top-actions"><span class="saved">${icon('circleCheck')}已自动保存</span><button class="secondary" data-action="export" ${p.document?'':'disabled'}>${icon('download')}<span>导出</span></button><button class="primary" data-action="${busy()?'cancel':'run'}" ${!p.document?'disabled':''}>${icon(busy()?'stop':'spark')}<span>${busy()?'停止任务':'开始更新'}</span></button><button class="icon-btn mobile-tools" data-action="toggle-panel" title="打开协作面板">${icon('chat')}</button><button class="icon-btn mobile-tools" data-action="new-project" title="新建项目">${icon('plus')}</button></div>
+        <div class="top-actions"><button id="global-upload-status" class="upload-global" data-action="materials" style="${activeUploads().length?'':'display:none'}">${icon('upload')}<span>${activeUploads().length?`${activeUploads().length} 份材料处理中`:''}</span></button><span class="saved">${icon('circleCheck')}已自动保存</span><button class="secondary" data-action="export" ${p.document?'':'disabled'}>${icon('download')}<span>导出</span></button><button class="primary" data-action="${busy()?'cancel':'run'}" ${!p.document?'disabled':''}>${icon(busy()?'stop':'spark')}<span>${busy()?'停止任务':'开始更新'}</span></button><button class="icon-btn mobile-tools" data-action="toggle-panel" title="打开协作面板">${icon('chat')}</button><button class="icon-btn mobile-tools" data-action="new-project" title="新建项目">${icon('plus')}</button></div>
       </header>
       <div class="work-grid">
         <section class="editor" aria-label="募集书编辑区">
           <div class="review-toolbar"><div class="toolbar-top"><div><div class="document-label">${icon('book')}募集说明书 <span class="badge green">${p.mode==='financial'?'仅财务':'全文'}</span></div><div class="document-meta">目标报告期末 · ${dateLabel(p.period)}</div></div><div class="segmented" aria-label="文档视图"><button data-action="view" data-view="revision" class="${S.view==='revision'?'active':''}" aria-pressed="${S.view==='revision'}">${icon('edit')}修订模式</button><button data-action="view" data-view="final" class="${S.view==='final'?'active':''}" aria-pressed="${S.view==='final'}">${icon('eye')}最终模式</button></div></div>
-          <div class="stats"><button class="stat" data-action="queue" data-filter="all"><b>${p.stats.changes}</b>处修改</button><button class="stat warning" data-action="queue" data-filter="needs_review"><b>${p.stats.needs_review}</b>处人工待办</button>${p.stats.awaiting_agent?`<button class="stat" data-action="queue" data-filter="awaiting_agent"><b>${p.stats.awaiting_agent}</b>处待 Agent 处理</button>`:''}${p.stats.layout_tasks?`<span class="stat" title="Word 表格保持原列宽和结构，新增报告期列需单独处理"><b>${p.stats.layout_tasks}</b>张表结构待处理</span>`:''}<button class="stat" data-action="queue" data-filter="accepted"><b>${p.stats.accepted}</b>处已确认</button><button class="stat" data-action="materials">${icon('file')}${p.stats.sources} 份来源</button></div></div>
+          <div class="stats"><button class="stat" data-action="queue" data-filter="all"><b>${p.stats.changes}</b>处有来源修改</button><button class="stat warning" data-action="queue" data-filter="needs_review"><b>${p.stats.needs_review}</b>处人工待办</button>${p.stats.missing_source?`<button class="stat warning" data-action="queue" data-filter="needs_review" title="Agent 建议因没有有效引文而未写入文档"><b>${p.stats.missing_source}</b>处缺来源</button>`:''}${p.stats.awaiting_agent?`<button class="stat" data-action="queue" data-filter="awaiting_agent"><b>${p.stats.awaiting_agent}</b>处待 Agent 处理</button>`:''}${p.stats.layout_tasks?`<button class="stat" data-action="queue" data-filter="layout" title="Word 表格保持原列宽和结构，新增报告期列需单独处理"><b>${p.stats.layout_tasks}</b>张表结构待处理</button>`:''}<button class="stat" data-action="queue" data-filter="accepted"><b>${p.stats.accepted}</b>处已确认</button><button class="stat" data-action="materials">${icon('file')}${p.stats.sources} 份来源</button></div></div>
           <div class="legend-bar"><span>黄色 <b>【】</b> 是人工待办；灰色候选仍由 Agent 处理，不需要你逐项填写</span><div class="legend">${S.view==='revision'?'<span><i class="removed"></i>原文</span>':''}<span><i class="new"></i>已更新</span><span><i class="needs"></i>需确认</span></div></div>
           <div class="doc-scroll" data-scroll="doc">${p.demo?`<div class="demo-banner">${icon('info')}这是可操作的演示，所列公司与数据均为示例。<button data-action="new-project">创建真实项目 ${icon('chevron')}</button></div>`:''}${p.document?renderDocument():renderEmpty()}</div>
         </section>
@@ -150,7 +159,7 @@ function renderChat(){
     ${p.stats.awaiting_agent?`<div class="status-card"><strong>${p.stats.awaiting_agent} 处待 Agent 处理</strong><p>系统尚未完成数据匹配。这些初步标记不表示材料缺失，也不要求你逐项填写。</p></div>`:''}
     ${p.stats.original_todos?`<div class="status-card"><strong>${p.stats.original_todos} 处原稿待办</strong><p>原募集书已含有【】，这里继续保留。它们与 Agent 尚未处理的事项分别计数。</p></div>`:''}
     ${p.messages.map(m=>`<div class="message ${m.role}"><div class="message-label">${m.role==='assistant'?icon('spark')+ ' Agent':'你'} <span>· ${smallDate(m.created_at)}</span></div><div class="message-text">${bracket(m.text)}</div></div>`).join('') || '<div class="message-text">我会根据你选择的范围更新募集书。请先上传底稿和来源材料，再点击“开始更新”。你也可以直接告诉我具体要修改的章节。</div>'}
-    ${p.stats.changes?`<div class="agent-note"><div>${icon('check')}<strong>${p.stats.changes} 处修改</strong>可在文档中逐一查看</div><div>${icon('info')}<strong>${p.stats.needs_review} 处待确认</strong>继续保留【】提示</div><div>${icon('link')}点击修改 → 引用原文 → 来源文件</div></div>`:''}
+    ${p.stats.changes||p.stats.missing_source?`<div class="agent-note"><div>${icon('check')}<strong>${p.stats.changes} 处有来源修改</strong>可在文档中逐一查看</div>${p.stats.missing_source?`<div>${icon('info')}<strong>${p.stats.missing_source} 处建议未应用</strong>因为没有可核实引文</div>`:''}<div>${icon('link')}点击修改 → 引用原文 → 来源文件</div></div>`:''}
     <div class="suggestions"><button data-action="suggest" data-prompt="请检查全文中是否还有遗漏的更新位置，特别是正文、表格和所有【】；缺少材料也请逐项标记。">检查全文遗漏 ${icon('arrow')}</button><button data-action="suggest" data-prompt="请列出当前缺少哪些资料，按要补充的字段、期间和来源说明。只回答，不修改文档。">还需要哪些材料？</button>${S.selected?'<button data-action="suggest" data-prompt="请解释选中位置为什么这样修改，并说明引用原文的主体、期间和口径。只回答，不修改。">解释选中这处修改</button>':''}</div>
     ${S.runtime.ready===false?`<div class="runtime-notice">${esc(S.runtime.message)}<button data-action="runtime">重新检测 Agent 连接</button></div>`:''}`;
 }
@@ -164,6 +173,7 @@ function renderSourceDetail(){
   const c=getChange(t.id);
   if(!c)return `<div class="source-head">原文位置 <span class="badge">未修改</span></div><div class="source-position">${esc(t.chapter)} · ${esc(t.locator)}</div><div class="compare-text">${bracket(t.text)}</div><p class="reason">${esc(S.p.coverage[t.id]?.reason || '此处尚未形成修改建议。你可以手动编辑，也可以让 Agent 核对。')}</p><div class="source-actions"><button class="secondary" data-action="edit">${icon('edit')}手动编辑</button><button class="primary" data-action="ask-selection">${icon('spark')}交给 Agent</button></div>`;
   if(awaitingAgent(c)) return `<div class="source-head">等待系统处理 <span class="badge">尚未核对</span></div><div class="source-position">${esc(t.chapter)} · ${esc(t.locator)}</div><div class="compare-label">原文（尚未更新）</div><div class="compare-text">${bracket(c.before) || '拟新增的报告期位置'}</div><div class="reason">规则扫描发现这个位置可能涉及报告期更新，但 Agent 尚未核对。已有材料是否足够、应替换成哪个数字，目前都没有结论。</div><div class="no-source"><strong>来源尚未匹配</strong>这不代表你没有提供数据。Agent 运行后应直接替换证据明确的数字，只有资料缺失或口径不确定的内容才交给你确认。</div><div class="source-actions"><button class="secondary" data-action="edit">手动编辑</button><button class="primary" data-action="runtime">检查 Agent 连接</button></div>`;
+  if(missingSource(c)) return `<div class="source-head">建议未应用 <span class="badge amber">缺少来源</span></div><div class="source-position">${esc(t.chapter)}<br>${esc(t.locator)}</div><div class="compare-label">当前仍保留的原文</div><div class="compare-text old">${esc(c.before) || '新增报告期位置'}</div><div class="compare-label">安全待办</div><div class="compare-text review">${bracket(c.after)}</div><div class="reason">${esc(c.reason)}</div><div class="no-source"><strong>没有可核实引文，因此没有写入 Agent 建议值</strong>请补充对应报表、附注或审计材料后让 Agent 重新核对，或者由你直接填写并确认。未验证的模型数值不会进入预览和导出。</div><div class="source-actions"><button class="secondary" data-action="review" data-review="reject">保留原文</button><button class="secondary" data-action="edit">${icon('edit')}人工填写</button><button class="primary" data-action="ask-selection">${icon('spark')}重新核对</button></div>`;
   const labels={needs_review:'需要确认',pending:'待审核',accepted:'已确认',rejected:'已拒绝'};
   return `<div class="source-head">修改详情 <span class="badge ${c.needs_review?'amber':'green'}">${labels[c.status]}</span></div><div class="source-position">${esc(t.chapter)}<br>${esc(t.locator)}</div><div class="compare-label">原文</div><div class="compare-text old">${esc(c.before) || '新增报告期列'}</div><div class="compare-label">${c.status==='rejected'?'已拒绝的建议':'更新后'}</div><div class="compare-text ${c.needs_review?'review':'new'}">${bracket(c.after)||'（已删除）'}</div><div class="reason">${esc(c.reason)}</div>
     <div class="evidence-label"><span>来源依据</span><span>${c.sources.length?'引文已匹配原文':''}</span></div>
@@ -172,17 +182,20 @@ function renderSourceDetail(){
 }
 function renderQueue(){
   const p=S.p;
-  const filters={needs_review:'人工待办',awaiting_agent:'待 Agent 处理',all:'修改与标记',accepted:'已确认',unscanned:'尚未核对'};
-  const list=S.queue==='unscanned'?p.targets.filter(t=>!p.coverage[t.id]).map(t=>({target_id:t.id,chapter:t.chapter,after:t.text || t.context,issue:'尚未逐项判断'})):p.changes.filter(c=>S.queue==='all'?c.status!=='rejected':S.queue==='awaiting_agent'?awaitingAgent(c):c.status===S.queue&&!awaitingAgent(c));
-  if(['needs_review','all'].includes(S.queue))list.push(...(p.document?.layout_tasks || []).map(t=>({target_id:t.target_id,chapter:'原表格式保留',after:t.text,issue:'表格列安排'})));
-  return `<div class="queue-title"><span>${filters[S.queue]} <span class="muted">${list.length}</span></span><select aria-label="修改筛选" id="queue-filter" style="border:1px solid var(--line);border-radius:5px;padding:5px;color:var(--muted);font-size:10px">${Object.entries(filters).map(([v,l])=>`<option value="${v}" ${S.queue===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="filter-note">${S.queue==='awaiting_agent'?'这些位置尚未由 Agent 处理，不是要求你逐项填写。':'点击待办，定位正文并查看依据'}</div>${list.map(c=>`<button class="queue-item ${c.target_id===S.selected?'active':''}" data-action="select-change" data-id="${esc(c.target_id)}"><span class="tag">${esc(awaitingAgent(c)?'待 Agent 处理':c.review_stage==='original_todo'?'原稿已有【】':c.issue || (c.status==='accepted'?'已确认':'待审核'))}</span><div class="queue-chapter">${esc(c.chapter)}</div><div class="queue-text">${bracket(c.after || c.before)}</div></button>`).join('') || `<div class="empty-state">${icon('circleCheck')}<strong>当前没有${filters[S.queue]}项</strong><p>${p.stats.scanned<p.stats.total?'部分位置尚未获得逐项判断，请运行 Agent 后继续核对。':'你可以继续查看其他修改或导出文档。'}</p></div>`}<div class="source-metadata" style="margin-top:20px">逐项判断 ${p.stats.scanned} / ${p.stats.total} 个正文与表格位置${p.demo?'（示例项目）':''}。此计数不代表披露已审核通过。</div>`;
+  const filters={needs_review:'人工待办',awaiting_agent:'待 Agent 处理',layout:'表格结构',all:'修改与标记',accepted:'已确认',unscanned:'尚未核对'};
+  const list=S.queue==='layout'?(p.document?.layout_tasks || []).map(t=>({target_id:t.target_id,chapter:'原表格式保留',after:t.text,issue:'表格列安排'})):S.queue==='unscanned'?p.targets.filter(t=>!p.coverage[t.id]).map(t=>({target_id:t.id,chapter:t.chapter,after:t.text || t.context,issue:'尚未逐项判断'})):p.changes.filter(c=>S.queue==='all'?c.status!=='rejected':S.queue==='awaiting_agent'?awaitingAgent(c):c.status===S.queue&&!awaitingAgent(c));
+  return `<div class="queue-title"><span>${filters[S.queue]} <span class="muted">${list.length}</span></span><select aria-label="修改筛选" id="queue-filter" style="border:1px solid var(--line);border-radius:5px;padding:5px;color:var(--muted);font-size:10px">${Object.entries(filters).map(([v,l])=>`<option value="${v}" ${S.queue===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="filter-note">${S.queue==='awaiting_agent'?'这些位置尚未由 Agent 处理，不是要求你逐项填写。':'点击待办，定位正文并查看依据'}</div>${list.map(c=>`<button class="queue-item ${c.target_id===S.selected?'active':''}" data-action="select-change" data-id="${esc(c.target_id)}"><span class="tag">${esc(awaitingAgent(c)?'待 Agent 处理':missingSource(c)?'缺少来源，建议未应用':c.review_stage==='original_todo'?'原稿已有【】':c.issue || (c.status==='accepted'?'已确认':'待审核'))}</span><div class="queue-chapter">${esc(c.chapter)}</div><div class="queue-text">${bracket(c.after || c.before)}</div></button>`).join('') || `<div class="empty-state">${icon('circleCheck')}<strong>当前没有${filters[S.queue]}项</strong><p>${p.stats.scanned<p.stats.total?'部分位置尚未获得逐项判断，请运行 Agent 后继续核对。':'你可以继续查看其他修改或导出文档。'}</p></div>`}<div class="source-metadata" style="margin-top:20px">逐项判断 ${p.stats.scanned} / ${p.stats.total} 个正文与表格位置${p.demo?'（示例项目）':''}。此计数不代表披露已审核通过。</div>`;
 }
 
 function openModal(title, subtitle, body, footer='', wide=false){
   document.getElementById('overlay').innerHTML=`<div class="modal-backdrop" data-backdrop="true"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="icon-btn" data-action="close-modal" title="关闭">${icon('close')}</button></div>${body}${footer?`<div class="modal-footer">${footer}</div>`:''}</section></div>`;
   setTimeout(()=>document.querySelector('.modal input:not([type=radio]):not([type=checkbox]), .modal textarea, .modal .primary, .modal .icon-btn')?.focus(),20);
 }
-function closeModal(){if(S.uploading){toast('材料正在上传，请稍候。');return;}document.getElementById('overlay').innerHTML='';S.modal=null;}
+function closeModal(){if(S.uploading)toast('材料会继续在后台上传，可从顶部进度或“项目材料”查看。');document.getElementById('overlay').innerHTML='';S.modal=null;}
+function openWorkspaceInfo(){
+  const s=S.storage;
+  openModal(s.label || '项目工作空间',s.shared?'这是由共享密码保护的 Azure 工作空间。':'文件保存在当前设备的本地工作空间。',`<div class="modal-body"><div class="workspace-metrics"><div><span>应用数据</span><strong>${formatBytes(s.used_bytes || 0)}</strong></div><div><span>磁盘可用</span><strong>${formatBytes(s.disk_free_bytes || 0)}</strong></div><div><span>单项目材料上限</span><strong>${formatBytes(s.project_limit_bytes || 0)}</strong></div><div><span>项目数量</span><strong>${s.project_count || 0}</strong></div></div><div class="status-card"><strong>材料保存方式</strong><p>${s.shared?'上传的原文件、解析结果和审核记录保存在 Azure VM 的 Docker 持久化卷中，不会因为容器重启而消失。它们占用磁盘空间，不会长期占用同等大小的内存。':'上传的原文件、解析结果和审核记录保存在本机磁盘。'} 原文件用于来源定位、下载核对和保持 Word 格式，因此不能在解析后立即删除。</p></div>${s.shared?`<div class="status-card error"><strong>当前是共享工作区，不是多租户系统</strong><p>所有持有共享账号密码的人都能看到这里的全部项目和材料。面向更多独立客户前，应改用用户登录、项目权限、数据库和 Azure Blob Storage。</p></div>`:''}<p class="small muted" style="line-height:1.9">服务器会保留最近 3 次 Agent 运行目录，并在磁盘剩余低于 ${formatBytes(s.min_free_bytes || 0)} 时停止接收新文件，避免写满系统盘。</p></div>`,`<button class="secondary" data-action="close-modal">完成</button>`);
+}
 function newProject(){
   S.modal='new';
   openModal('新建募集书更新任务','从一份底稿开始，把更新和审阅放在同一个工作空间。',`<form id="new-project-form"><div class="modal-body"><div class="field"><label for="project-name">项目名称</label><input id="project-name" name="title" type="text" maxlength="120" placeholder="例如：某某城投 · 2026年私募公司债" required></div><div class="field"><label>更新范围</label><div class="mode-options"><label class="mode-option"><input type="radio" name="mode" value="financial" checked><strong>只更新财务数据</strong><p>财务报表、附注、审计报告<br>同步更新正文和表格中的财务数据。</p></label><label class="mode-option"><input type="radio" name="mode" value="full"><strong>全文更新</strong><p>增加征信、工商、评级等材料<br>支持公开网页查询，覆盖更多事实。</p></label></div></div><div class="field"><label for="period">目标报告期末</label><input id="period" type="date" name="period" value="2026-06-30" required><div class="hint">请按实际材料确认。募集书编制月份不会自动决定财务报告期。</div></div><label class="checkline" id="web-check" style="display:none"><input type="checkbox" name="web_enabled"><span><strong>允许查询公开网页</strong><br>Agent 可查找公开来源。私密材料中的金额及个人信息不作为搜索词。</span></label></div><div class="modal-footer"><button class="secondary" type="button" data-action="close-modal">取消</button><button class="primary" type="submit">创建并添加材料 ${icon('chevron')}</button></div></form>`);
@@ -191,31 +204,80 @@ function uploadOriginal(){openMaterials('prospectus');}
 function openMaterials(role='source'){
   S.modal='materials';
   const p=S.p;
-  openModal('项目材料', '保留原始文件，并为正文、表格和 PDF 页码建立可定位的来源。', `<div class="modal-body"><div class="materials-list">${p.files.map(f=>`<div class="material-row"><span class="file-icon">${icon(f.category==='web'?'globe':'file')}</span><div class="grow"><div class="name">${esc(f.name)}</div><div class="meta">${categoryNames[f.category] || '来源材料'} · ${(f.size/1024).toFixed(1)} KB · ${f.page_count?f.page_count+' 页':'按段落或单元格定位'}</div>${f.warnings.length?`<div class="warn">${esc(f.warnings.join(' '))}</div>`:''}</div><button class="icon-btn" data-action="open-material" data-id="${f.id}" title="查看材料原文">${icon('eye')}</button></div>`).join('') || '<div class="muted small">还没有上传材料</div>'}</div>
+  const projectBytes=p.files.reduce((sum,f)=>sum+(f.size||0),0);
+  openModal('项目材料', '上传后保留原文件，并为正文、表格和 PDF 页码建立可定位来源。', `<div class="modal-body"><div class="material-storage-note">${icon('shield')}<div><strong>${S.storage.shared?'保存在 Azure 持久化存储':'保存在本机磁盘'}</strong><span>本项目原文件 ${formatBytes(projectBytes)}；文件用于来源核对和 Word 导出，不是长期占用内存。</span></div></div><div class="materials-list">${p.files.map(f=>`<div class="material-row"><span class="file-icon">${icon(f.category==='web'?'globe':'file')}</span><div class="grow"><div class="name">${esc(f.name)}</div><div class="meta">${categoryNames[f.category] || '来源材料'} · ${formatBytes(f.size)} · ${f.page_count?f.page_count+' 页':'按段落或单元格定位'}</div>${f.warnings.length?`<div class="warn">${esc(f.warnings.join(' '))}</div>`:''}</div><button class="icon-btn" data-action="open-material" data-id="${f.id}" title="查看材料原文">${icon('eye')}</button></div>`).join('') || '<div class="muted small">还没有上传材料</div>'}</div>
     <div class="inline-row"><div class="field"><label for="upload-role">上传到</label><select id="upload-role"><option value="source" ${role==='source'?'selected':''}>来源材料</option>${!p.original_id?`<option value="prospectus" ${role==='prospectus'?'selected':''}>待更新的募集书底稿</option>`:''}</select></div><div class="field"><label for="upload-category">材料类型</label><select id="upload-category">${Object.entries(categoryNames).filter(([k])=>!['web','prospectus'].includes(k)).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div></div>
-    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="选择或拖入文件" data-action="choose-files">${icon('upload')}<strong>点击选择文件，或拖入这里</strong>DOCX / PDF / XLSX / CSV / TXT / MD · 单份不超过 25 MB</div><input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.csv,.txt,.md" multiple hidden><div id="upload-status" class="loading-overlay" aria-live="polite"></div>
+    <div class="dropzone ${busy()?'disabled':''}" id="dropzone" tabindex="0" role="button" aria-label="选择或拖入文件" data-action="choose-files">${icon('upload')}<strong>${busy()?'Agent 运行时不能添加材料':'点击选择文件，或拖入这里'}</strong>DOCX / PDF / XLSX / CSV / TXT / MD · 单份不超过 25 MB<br>可继续选择其他文件，系统会自动加入上传队列</div><input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.csv,.txt,.md" multiple hidden><div id="upload-status" class="upload-queue" aria-live="polite"></div>
     ${p.mode==='full'&&p.web_enabled?`<div class="field" style="margin-top:24px"><label for="source-url">添加公开网页</label><div class="inline-row"><input type="url" id="source-url" placeholder="https://…"><button class="secondary" data-action="add-url">${icon('globe')}读取网页</button></div><div class="hint">保存可核实的正文快照和查询时间；登录页面请另行提供导出的材料。</div></div>`:''}
     ${p.mode==='financial'?'<p class="small muted" style="line-height:1.9">本项目仅处理财务数据。公司概况中的注册资本、实缴资本归工商查询模块，不会从财务报表自动替换。</p>':''}</div>`, `<button class="secondary" data-action="close-modal">完成</button>`);
-  document.querySelector('.modal-body')?.insertAdjacentHTML('beforeend','<p class="small muted" style="line-height:1.9">文件和审核记录保存在本机；运行 Agent 时，相关内容会发送给 Codex 当前配置的模型服务。</p>');
+  document.querySelector('.modal-body')?.insertAdjacentHTML('beforeend','<p class="small muted" style="line-height:1.9">上传完成前请保持页面打开。关闭此窗口或切换项目不会中断上传；刷新或关闭浏览器会中断当前文件。运行 Agent 时，相关内容会发送给 Codex 当前配置的模型服务。</p>');
+  renderUploadStatus();
 }
-async function uploadFiles(files){
+function uploadStatusLabel(item){
+  return {queued:'等待上传',uploading:`上传中 ${item.progress || 0}%`,processing:'服务器解析中',done:'上传完成',failed:'上传失败'}[item.status] || item.status;
+}
+function renderUploadStatus(){
+  const host=document.getElementById('upload-status');if(!host||!S.p)return;
+  const items=S.uploads.filter(item=>item.projectId===S.p.id).slice(-20);
+  host.innerHTML=items.map(item=>`<div class="upload-item ${item.status}"><div class="upload-item-head"><span class="name">${esc(item.file.name)}</span><span>${esc(uploadStatusLabel(item))}</span></div><div class="upload-progress"><i style="width:${item.status==='done'?100:item.progress || 0}%"></i></div>${item.error?`<div class="upload-error">${esc(item.error)}</div>`:''}</div>`).join('');
+}
+function updateUploadIndicators(){
+  const active=activeUploads(),button=document.getElementById('global-upload-status');
+  if(button){button.style.display=active.length?'':'none';button.querySelector('span').textContent=active.length?`${active.length} 份材料处理中`:'';}
+  renderUploadStatus();
+}
+function uploadRequest(item){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    const query=new URLSearchParams({name:item.file.name,role:item.role,category:item.category});
+    xhr.open('POST',`/api/projects/${item.projectId}/files?${query}`);
+    xhr.setRequestHeader('Content-Type','application/octet-stream');
+    xhr.setRequestHeader('X-Bond-Token',S.token);
+    xhr.upload.onprogress=event=>{if(event.lengthComputable){item.progress=Math.round(event.loaded/event.total*100);updateUploadIndicators();}};
+    xhr.upload.onload=()=>{item.progress=100;item.status='processing';updateUploadIndicators();};
+    xhr.onerror=()=>reject(new Error('网络连接中断，请重新选择该文件。'));
+    xhr.onload=()=>{
+      let data={};try{data=JSON.parse(xhr.responseText || '{}');}catch{}
+      if(xhr.status>=200&&xhr.status<300)resolve(data);
+      else reject(new Error(data.error || `上传失败（HTTP ${xhr.status}）`));
+    };
+    xhr.send(item.file);
+  });
+}
+async function drainUploadQueue(){
   if(S.uploading)return;
+  S.uploading=true;let completed=0,failed=0;
+  try{
+    for(let item;(item=S.uploads.find(entry=>entry.status==='queued'));){
+      item.status='uploading';item.progress=0;updateUploadIndicators();
+      try{await uploadRequest(item);item.status='done';item.progress=100;completed++;}
+      catch(error){item.status='failed';item.error=error.message;failed++;}
+      updateUploadIndicators();
+    }
+  }finally{
+    S.uploading=false;S.uploads=S.uploads.slice(-40);updateUploadIndicators();
+    if(S.p)await refresh();
+    if(S.modal==='materials')openMaterials(S.p.original_id?'source':'prospectus');
+    if(completed)toast(`已添加 ${completed} 份材料，原文定位已建立。`);
+    if(failed)toast(`${failed} 份材料上传失败，请查看队列中的原因。`,true);
+  }
+}
+function uploadFiles(files){
+  if(busy()){toast('Agent 正在运行，请等待完成或先停止任务。',true);return;}
   const role=document.getElementById('upload-role')?.value || 'source';
   const category=role==='prospectus'?'prospectus':document.getElementById('upload-category')?.value || 'financial';
   const list=Array.from(files);
   if(role==='prospectus'&&list.length>1){toast('请一次选择一份募集书底稿。',true);return;}
-  S.uploading=true;
-  let completed=0;
+  if(role==='prospectus'&&(S.p.original_id||S.uploads.some(item=>item.projectId===S.p.id&&item.role==='prospectus'&&item.status!=='failed'))){toast('当前项目已有或正在上传募集书底稿。',true);return;}
+  let added=0;
   for(const file of list){
-    const status=document.getElementById('upload-status');if(status)status.innerHTML=`<p><i class="spinner"></i> 正在读取 ${esc(file.name)}…</p>`;
-    try{
-      if(file.size>25*1024*1024)throw new Error(file.name+' 超过 25 MB，请拆分材料。');
-      await api(`${base()}/files?${new URLSearchParams({name:file.name,role,category})}`,{method:'POST',body:file,headers:{'Content-Type':'application/octet-stream'}});
-      completed++;
-    }catch(e){toast(e.message,true);}
+    if(file.size>25*1024*1024){toast(file.name+' 超过 25 MB，请拆分材料。',true);continue;}
+    S.uploads.push({id:`upload-${Date.now()}-${Math.random()}`,projectId:S.p.id,file,role,category,status:'queued',progress:0,error:''});added++;
   }
-  S.uploading=false;await refresh();openMaterials(S.p.original_id?'source':role);
-  if(completed)toast(`已添加 ${completed} 份材料，原文定位已建立。`);
+  if(!added)return;
+  if(S.uploading)toast(`已将 ${added} 份材料加入队列。`);
+  updateUploadIndicators();
+  drainUploadQueue().catch(error=>toast(error.message,true));
 }
 async function showSource(fileId,segmentId=null,quoteText=''){
   const f=await api(`${base()}/files/${fileId}`);S.modal='source';
@@ -246,7 +308,7 @@ document.addEventListener('input',event=>{if(event.target.id==='chat-input')S.dr
 document.addEventListener('change',event=>{
   if(event.target.name==='mode')document.getElementById('web-check').style.display=event.target.value==='full'?'flex':'none';
   if(event.target.id==='queue-filter'){S.queue=event.target.value;render();}
-  if(event.target.id==='file-input')uploadFiles(event.target.files);
+  if(event.target.id==='file-input'){uploadFiles(event.target.files);event.target.value='';}
 });
 document.addEventListener('submit',async event=>{
   event.preventDefault();const form=event.target;
@@ -292,6 +354,7 @@ document.addEventListener('click',async event=>{
     else if(action==='runtime'){el.disabled=true;S.runtime=await post('/api/runtime/check');render();toast(S.runtime.message,!S.runtime.ready);}
     else if(action==='add-url'){const url=document.getElementById('source-url').value.trim();if(!url)return;el.disabled=true;el.textContent='正在读取…';await post(`${base()}/url`,{url});await refresh();openMaterials();toast('网页正文快照已保存。');}
     else if(action==='history'){S.modal='history';openModal('操作记录','保留人工审核、直接编辑和 Agent 更新的记录。',`<div class="modal-body">${S.p.history.slice().reverse().map(h=>`<div class="history-item"><span>${esc(({accept:'接受修改',reject:'拒绝建议',edit:'人工修改',reopen:'重新审核'})[h.action] || h.action)}</span><time>${smallDate(h.at)}</time></div>`).join('') || '<div class="empty-state">暂无操作记录</div>'}</div>`);}
+    else if(action==='workspace-info')openWorkspaceInfo();
   }catch(e){toast(e.message,true);if(el.isConnected)el.disabled=false;}
 });
 document.addEventListener('keydown',event=>{
@@ -306,7 +369,7 @@ document.addEventListener('dragleave',event=>{event.target.closest('#dropzone')?
 document.addEventListener('drop',event=>{const dz=event.target.closest('#dropzone');if(dz){event.preventDefault();dz.classList.remove('dragover');uploadFiles(event.dataTransfer.files);}});
 
 async function boot(){
-  try {const health=await api('/api/health');S.token=health.csrf;S.runtime=health.runtime;await loadProjects();const previous=new URLSearchParams(location.search).get('project') || localStorage.getItem('bond-project');const id=S.projects.find(p=>p.id===previous)?.id || S.projects[0]?.id;if(id)await selectProject(id);else render();if(S.runtime.ready===null){S.runtime=await post('/api/runtime/check');render();}}
+  try {const health=await api('/api/health');applyHealth(health);await loadProjects();const previous=new URLSearchParams(location.search).get('project') || localStorage.getItem('bond-project');const id=S.projects.find(p=>p.id===previous)?.id || S.projects[0]?.id;if(id)await selectProject(id);else render();if(S.runtime.ready===null){S.runtime=await post('/api/runtime/check');render();}}
   catch(e){document.getElementById('app').innerHTML=`<div class="boot"><span class="brandmark">B</span><p>工作台暂时无法连接</p><p class="small">${esc(e.message)}</p><button class="secondary" onclick="location.reload()">重新连接</button></div>`;}
 }
 boot();
