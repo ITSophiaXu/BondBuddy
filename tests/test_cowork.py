@@ -272,7 +272,7 @@ class ParserAndBoundaryTests(unittest.TestCase):
         self.assertIn('期初余额/公司：空白', row['source_context'])
 
     def test_ocr_punctuation_stays_with_amount_and_columns_remain_separate(self):
-        from backend.ocr import spatial_lines
+        from backend.ocr import spatial_lines, tesseract_lines
         words = [
             {'text':'收入','x':10,'y':10,'width':30,'height':20},
             {'text':'123','x':100,'y':12,'width':30,'height':16},
@@ -282,6 +282,106 @@ class ParserAndBoundaryTests(unittest.TestCase):
             {'text':'成本','x':10,'y':40,'width':30,'height':20},
         ]
         self.assertEqual(['收入   123.45   678', '成本'], spatial_lines([{'words':words}]))
+        tsv = (
+            'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n'
+            '5\t1\t1\t1\t1\t1\t10\t10\t30\t20\t96\t收入\n'
+            '5\t1\t1\t1\t1\t2\t100\t12\t55\t16\t95\t123.45\n'
+            '5\t1\t1\t1\t2\t1\t10\t40\t30\t20\t94\t成本\n'
+        )
+        self.assertEqual(['收入   123.45', '成本'], spatial_lines(tesseract_lines(tsv)))
+
+    def test_linux_ocr_uses_tesseract_and_can_be_disabled(self):
+        from backend.ocr import recognize_pdf_pages, recognize_tesseract_pages
+        recognized = {1: {'text': '资产总额 120万元', 'ocr': True}}
+        with patch.dict(os.environ, {'BOND_OCR': 'tesseract'}), \
+                patch('backend.ocr.os.name', 'posix'), \
+                patch('backend.ocr.recognize_tesseract_pages', return_value=(recognized, None)) as run:
+            self.assertEqual((recognized, None), recognize_pdf_pages(b'pdf', [1]))
+            self.assertEqual((b'pdf', [1]), run.call_args.args[:2])
+        with patch.dict(os.environ, {'BOND_OCR': 'off'}), \
+                patch('backend.ocr.recognize_tesseract_pages') as run:
+            result, warning = recognize_pdf_pages(b'pdf', [1])
+            self.assertEqual({}, result)
+            self.assertIn('未启用', warning)
+            run.assert_not_called()
+        tsv = (
+            'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n'
+            '5\t1\t1\t1\t1\t1\t10\t10\t40\t20\t96\t资产总额\n'
+            '5\t1\t1\t1\t1\t2\t100\t10\t60\t20\t95\t120万元\n'
+        )
+        rendered = [{'page': 1, 'path': Path('page-1.png'), 'width': 1200, 'height': 1800}]
+        completed = __import__('subprocess').CompletedProcess([], 0, stdout=tsv, stderr='')
+        with patch.dict(os.environ, {'BOND_OCR_LANG': 'chi_sim+eng'}), \
+                patch('backend.ocr.shutil.which', return_value='/usr/bin/tesseract'), \
+                patch('backend.ocr.render_pdf_page', return_value=rendered[0]), \
+                patch('backend.ocr.subprocess.run', return_value=completed) as run:
+            result, warning = recognize_tesseract_pages(pdf_fixture(), [1])
+        self.assertIsNone(warning)
+        self.assertEqual('资产总额   120万元', result[1]['text'])
+        self.assertEqual('Tesseract OCR', result[1]['ocr_engine'])
+        self.assertEqual('chi_sim+eng', result[1]['ocr_language'])
+        self.assertIn('tsv', run.call_args.args[0])
+
+    def test_linux_ocr_keeps_successful_pages_when_one_page_cannot_render(self):
+        from backend.ocr import recognize_tesseract_pages
+        tsv = (
+            'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n'
+            '5\t1\t1\t1\t1\t1\t10\t10\t40\t20\t96\t资产总额\n'
+        )
+        rendered = {'page': 2, 'path': Path('page-2.png'), 'width': 1200, 'height': 1800}
+        completed = __import__('subprocess').CompletedProcess([], 0, stdout=tsv, stderr='')
+        with patch('backend.ocr.shutil.which', return_value='/usr/bin/tesseract'), \
+                patch('backend.ocr.render_pdf_page', side_effect=[RuntimeError('bad page'), rendered]), \
+                patch('backend.ocr.subprocess.run', return_value=completed):
+            result, warning = recognize_tesseract_pages(pdf_fixture(blank_page=True), [1, 2])
+        self.assertNotIn(1, result)
+        self.assertEqual('资产总额', result[2]['text'])
+        self.assertIn('部分扫描页识别未完成', warning)
+
+    def test_linux_ocr_stops_before_rendering_after_total_deadline(self):
+        from backend.ocr import recognize_tesseract_pages
+        with patch('backend.ocr.shutil.which', return_value='/usr/bin/tesseract'), \
+                patch('backend.ocr.render_pdf_page') as render:
+            result, warning = recognize_tesseract_pages(
+                pdf_fixture(blank_page=True),
+                [1, 2],
+                deadline=time.monotonic() - 1,
+            )
+        self.assertEqual({}, result)
+        self.assertIn('部分扫描页识别未完成', warning)
+        render.assert_not_called()
+
+    def test_pdf_page_render_runs_in_bounded_subprocess(self):
+        from backend.ocr import render_pdf_page
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'source.pdf'
+            source.write_bytes(pdf_fixture())
+            rendered = render_pdf_page(source, 1, root, 15)
+            self.assertTrue(rendered['path'].is_file())
+            self.assertGreater(rendered['width'], 0)
+            self.assertGreater(rendered['height'], 0)
+
+    def test_scanned_pdf_uses_ocr_text_with_page_provenance(self):
+        recognized = {
+            2: {
+                'text': '资产总额 120万元',
+                'ocr': True,
+                'ocr_engine': 'Tesseract OCR',
+                'ocr_language': 'chi_sim+eng',
+                'ocr_lines': [],
+                'image_width': 1200,
+                'image_height': 1800,
+            },
+        }
+        with patch('backend.ocr.recognize_pdf_pages', return_value=(recognized, None)):
+            parsed = parse_document(pdf_fixture(blank_page=True), 'scanned.pdf', 'scan')
+        segment = next(item for item in parsed['segments'] if item.get('page') == 2)
+        self.assertEqual('资产总额 120万元', segment['text'])
+        self.assertTrue(segment['ocr'])
+        self.assertIn('第 2 页 · 扫描识别', segment['locator'])
+        self.assertTrue(any('第 2 页使用本机扫描识别' in warning for warning in parsed['warnings']))
+        self.assertFalse(any('第 2 页没有可读取正文' in warning for warning in parsed['warnings']))
 
     def test_docx_toc_page_numbers_are_not_financial_candidates(self):
         from backend.engine import candidate_targets

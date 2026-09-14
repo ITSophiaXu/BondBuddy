@@ -87,7 +87,11 @@ codex login status
 | `BOND_CODEX_MODEL` | 模型名称 | CLI 当前配置 |
 | `BOND_CLI_TIMEOUT` | 单组任务最长秒数 | 900 |
 | `BOND_DATA_DIR` | 本地项目与文件存放目录 | `.local/data` |
-| `BOND_OCR` | 设为 `off` 可关闭本机扫描页识别 | Windows 本机识别 |
+| `BOND_OCR` | `auto` 自动选择 Windows OCR 或 Tesseract；`off` 关闭识别 | `auto` |
+| `BOND_OCR_LANG` | Linux/Tesseract 识别语言 | `chi_sim+eng` |
+| `BOND_OCR_MAX_PAGES` | 单份 PDF 最多自动识别的扫描页数 | 100 |
+| `BOND_OCR_PAGE_TIMEOUT` | 每个扫描页的识别超时秒数 | 45 |
+| `BOND_OCR_TOTAL_TIMEOUT` | 单次上传全部扫描页的总识别时限 | 210 |
 | `BOND_PROJECT_STORAGE_LIMIT_MB` | 单项目原文件合计上限 | 500 |
 | `BOND_MIN_FREE_STORAGE_MB` | 低于该磁盘余量时停止上传 | 1024 |
 | `BOND_RUN_RETENTION` | 每个项目保留的 Agent 运行目录数 | 3 |
@@ -121,7 +125,7 @@ CLI 使用 `exec --json --output-schema --output-last-message`，以参数列表
 ## 文件与版式限制
 
 - 支持 DOCX、PDF、XLSX、CSV、TXT、MD。单份 25 MB，一个项目最多 60 份材料。
-- Windows 使用本机 OCR 识别 PDF 中没有文字的页面，不上传给外部 OCR 服务。识别页会注明“扫描识别”，引用这些内容的修改始终保留【待确认】；小数点、数字、列名仍可能识别错误，必须对照原页。缺少本机识别环境或识别失败时会列出缺页，建议补充文字版。
+- Windows 使用系统 OCR，Linux/Azure 容器使用内置的 Tesseract 简体中文及英文语言包，识别 PDF 中没有文字层的页面；识别过程完全在当前服务器内完成，不上传给外部 OCR 服务。识别页会注明“扫描识别”，引用这些内容的修改始终保留【待确认】；小数点、数字、列名仍可能识别错误，必须对照原页。OCR 全局单并发，并逐页渲染、识别和释放临时图片；默认单份 PDF 最多自动识别 100 个扫描页、每页最长 45 秒、整次上传最长 210 秒。超限、缺少识别组件或识别失败时会明确列出未识别页。
 - PDF 来源可定位原页，复杂 PDF 表格目前按文字提取，建议用 DOCX 作为募集书底稿。XLSX 来源保留报表名称、报告日期、单位、多行表头及单元格地址。
 - 材料中的无效日期会列入提示；只有引用该异常位置的修改会保持待确认，不会因为同一文件其他位置存在异常而污染全部引文。系统不擅自改写来源原文。
 - DOCX 导出直接修改历史 Word 原文件的文字节点，保留字体、字号、标题样式、段落属性、表格列宽与合并、图片、目录域、脚注、页眉页脚及其他文件部件。最终视图保留原底色；修订视图使用 Word 原生删改记录。未修改时返回原文件原始字节。跨段落结构修改、位置不匹配或原文件校验不符会明确报错，不降级为重新排版。

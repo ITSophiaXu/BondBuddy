@@ -37,6 +37,7 @@ S.p.job={status:'failed',error:'工具无法执行 <script>'};CO.summaries.set('
 const failure=coMails()[0];assert.equal(failure.type,'attention');assert.ok(coMailDetail(failure).includes('&lt;script&gt;'));
 assert.ok(!coMailDetail(failure).includes('原文审核通过'));
 const home=coHome();assert.ok(home.includes('co-request-form'));assert.ok(!home.includes('id="chat-input"'));
+assert.ok(!coTopbar().includes('UX 预览'));
 S.tab='chat';const conversation=coProjectPanel();assert.ok(conversation.includes('co-conversation-page'));assert.ok(!conversation.includes('co-document editor'));
 S.p.document={blocks:[]};const workspace=coProjectPanel();assert.equal((workspace.match(/id="chat-input"/g)||[]).length,1);
 assert.ok(workspace.indexOf('co-document editor')<workspace.indexOf('co-cowork '),'Document precedes Cowork');

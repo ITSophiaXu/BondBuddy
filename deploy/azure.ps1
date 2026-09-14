@@ -196,7 +196,11 @@ $configuration = [ordered]@{
                         @{ name = 'BOND_CODEX_LINUX_SANDBOX'; value = 'legacy_landlock' }
                         @{ name = 'BOND_SHARED_WORKSPACE'; value = '1' }
                         @{ name = 'BOND_STANDALONE_CONVERSATIONS'; value = '0' }
-                        @{ name = 'BOND_OCR'; value = 'off' }
+                        @{ name = 'BOND_OCR'; value = 'tesseract' }
+                        @{ name = 'BOND_OCR_LANG'; value = 'chi_sim+eng' }
+                        @{ name = 'BOND_OCR_MAX_PAGES'; value = '100' }
+                        @{ name = 'BOND_OCR_PAGE_TIMEOUT'; value = '45' }
+                        @{ name = 'BOND_OCR_TOTAL_TIMEOUT'; value = '210' }
                         @{ name = 'BOND_DEMO'; value = '0' }
                         @{ name = 'PORT'; value = '8000' }
                     )
