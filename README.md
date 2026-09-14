@@ -1,6 +1,23 @@
 # 募集书 Cowork
 
-网页版募集说明书更新与审阅工作台。支持财务数据更新和全文更新，后端通过子进程直接调用 Codex CLI。默认仍按本机单用户方式运行；另提供受密码保护的 Azure Container Apps 部署。
+网页版募集说明书更新与审阅工作台。支持财务数据更新和全文更新，后端通过子进程直接调用 Codex CLI。默认仍按本机单用户方式运行；另提供受密码保护的 Azure VM 和 Azure Container Apps 部署。
+
+## Cowork OS UX 预览
+
+启动服务后打开 [新版首页](http://127.0.0.1:8766/cowork.html?screen=home)。入口分为首页、项目、收件箱、生态，沿用现有项目和成果；原入口 `/` 保留。
+
+- 首页整理待办、已准备成果和执行状态。默认可选择“不关联项目 · 直接对话”；选择具体项目后发送一次，直接进入项目 Cowork 对话，无需再次发送。首页请求不会带上原来选中的段落，也不会夹带项目中未发送的草稿。
+- 有募集书时，中间是文档，右侧是 Cowork、修改依据与待办；尚无募集书时，先显示完整项目对话和添加材料入口。募集书工作区保留左侧文档、右侧协作的布局，顶部展示有来源修改、人工待办、缺来源、待系统处理、表格结构及已确认数量，点击直接筛选；保留修订/最终视图、来源定位、人工审核和 Word 原格式导出。
+- 收件箱汇总现有 AI 成果与执行提醒，支持查看成果、返回具体修改及标记已读。已读不改变审核决定，新版本可重新提示。
+- 主动任务可配置和编辑方案，保存在本浏览器；自动调度、事件触发、外部主动查询和邮件通知尚未接入。保存方案不会执行任务。
+- 生态按业务插件、专业技能（Skills）、数据连接（MCP）分组，展示真实能力状态。自定义扩展和商业数据平台接入仍待实现。
+- 现阶段未实现个人身份与任务分派，首页按当前工作空间的非演示项目汇总；对话草稿与阅读位置在当前页面会话保留。
+
+入口为 `web/cowork.html`，新界面在 `web/cowork-os.js`、`web/cowork-os.css`，独立对话位于 `web/conversations.js` 和 `backend/conversations.py`，继续复用 `web/app.js` 和 `web/project-workspace.js` 的专业功能。`/api/knowledge` 只读展示 68 条整理规则、17 项来源差异及现有专家审阅版全文；整理结果不代表专家全部确认。
+
+选择项目时，对话属于具体项目，可在没有募集书时提问或讨论。后端按回答/更新处理结果；明确要求只回答时，拒绝文档修改结果。发送失败保留输入，重试复用消息标识，避免重复启动任务。支持不关联项目的独立会话：单独保存、最近对话、继续提问、停止回复和失败重试；不会向模型带入当前项目的材料、选中段落或历史消息。独立会话通过同一 Codex CLI 执行，只提供回答，不修改项目。后台需重启后加载新功能。
+
+新增检查：`node tests/ui_cowork_os.js`、`node tests/ui_home_conversation.js`、`python -m unittest tests.test_chat_entry tests.test_standalone_conversations`。
 
 ## 启动
 
@@ -115,7 +132,43 @@ CLI 使用 `exec --json --output-schema --output-last-message`，以参数列表
 
 ## Azure VM 部署
 
-现有 Ubuntu VM 可使用 [deploy/vm/compose.yaml](deploy/vm/compose.yaml) 构建应用容器，并通过 [deploy/vm/bonddraftai.nginx.conf](deploy/vm/bonddraftai.nginx.conf) 接入主机已有的 Nginx。Compose 只把后端映射到 `127.0.0.1:18766`，公网必须经过 Nginx 和 HTTPS；`bonddraftai_data` 卷保存项目、上传文件、运行记录和 Codex 登录目录。容器保持非 root、无额外 Linux capabilities、Docker 默认 seccomp 和 `no-new-privileges`。由于嵌套容器不能运行 Codex 当前默认 Bubblewrap 后端，VM Compose 显式启用 CLI 自带的 `use_legacy_landlock` 兼容模式，同时继续使用 `-s read-only`；不要改成 Codex `danger-full-access`。
+现有 Ubuntu VM 可使用 [deploy/vm/compose.yaml](deploy/vm/compose.yaml) 构建应用容器，并通过 [deploy/vm/bonddraftai.nginx.conf](deploy/vm/bonddraftai.nginx.conf) 接入主机已有的 Nginx。Compose 只把后端映射到 `127.0.0.1:18766`，公网必须经过 Nginx 和 HTTPS。容器保持非 root、无额外 Linux capabilities、Docker 默认 seccomp 和 `no-new-privileges`。由于嵌套容器不能运行 Codex 当前默认 Bubblewrap 后端，VM Compose 显式启用 CLI 自带的 `use_legacy_landlock` 兼容模式，同时继续使用 `-s read-only`；不要改成 Codex `danger-full-access`。
+
+VM Compose 使用两个职责分离的容器：`app` 是项目、材料和独立对话 JSON 的唯一写入者；`conversation-worker` 只运行未关联项目的 Codex 请求。Worker 不挂载项目卷，也不接收网页登录密码，只能看到当前对话的角色和文本。独立对话使用单独的干净 Codex 用户目录，并通过 CLI feature flag 禁用 shell 和图片读取工具，避免对话读取 Codex 凭据或容器文件。两个容器通过专用文件锁共用一个全局 Codex 并发名额；App 意外重启时，仍在运行的 Worker 不会与新项目任务并发。五个命名卷分别保存项目数据、两套 Codex 登录、独立对话临时运行目录和任务锁：
+
+- `bonddraftai_data` → App 的 `/data`，保存项目、上传文件、审核记录和独立对话 JSON。
+- `bonddraftai_codex` → App 的 `/data/codex`，保存项目任务使用的 Codex 登录状态和配置。
+- `bonddraftai_worker_codex` → Worker 的 `/data/worker-codex`，只保存独立对话专用的 Codex 登录状态。
+- `bonddraftai_conversation_runs` → Worker 的 `/data/conversations`，只保存独立对话临时运行文件。
+- `bonddraftai_job_lock` → 两个容器的 `/data/job-lock`，只保存跨容器并发锁。
+
+当前正式环境使用现有 Azure VM，而不是 Container Apps：
+
+- 正式入口：`https://bonddraftai-openclaw.japaneast.cloudapp.azure.com/cowork.html`
+- 兼容入口：`https://bonddraftai-openclaw.japaneast.cloudapp.azure.com/`
+- 服务器代码目录：`/opt/bonddraftai`
+- 持久化卷：`bonddraftai_data`、`bonddraftai_codex`、`bonddraftai_worker_codex`、`bonddraftai_conversation_runs` 和 `bonddraftai_job_lock`
+- Nginx 反向代理：公网 HTTPS → `127.0.0.1:18766` → 容器 `8000`
+- Compose 固定单个 App、单个独立对话 Worker 和单个项目 Codex 并发任务，继续使用当前 JSON 文件存储。更新代码不得删除或重新创建任何持久化卷。
+
+生产目录不是 Git 工作区。后续发布应先在本机完成测试并推送 Git，再从已提交的 commit 生成只含跟踪文件的发布包，复制到服务器构建。不要直接打包工作目录，否则可能把 `.local`、客户材料、凭据或忽略文件带入服务器：
+
+```powershell
+$Repo = 'C:\path\to\BondDraftAI'
+$Branch = 'feat/review-classification-optimization'
+$Vm = 'azureuser@20.243.2.34'
+$Key = 'C:\path\to\azure-vm-key.pem'
+
+git -C $Repo fetch origin
+git -C $Repo checkout $Branch
+git -C $Repo pull --ff-only origin $Branch
+git -C $Repo archive --format=tar HEAD -o "$env:TEMP\bonddraftai-release.tar"
+scp -i $Key "$env:TEMP\bonddraftai-release.tar" "${Vm}:/tmp/bonddraftai-release.tar"
+```
+
+在 VM 上将发布包解压到临时目录，复制现有 `/opt/bonddraftai/.env`，先构建镜像，再替换代码目录并启动同一个 Compose 项目。首次从旧版升级时，必须先创建 `bonddraftai_codex`，把 `bonddraftai_data` 中原有的 `/data/codex` 完整复制到新卷并核对文件数量；再创建 `bonddraftai_worker_codex`，只复制可复用的 Codex 登录文件，不复制项目配置、MCP 或 Skills。不要删除旧目录，确认两个容器的 Codex 真实调用成功后再保留其作为回滚副本。发布前须确认项目任务和独立对话均不处于 `queued` 或 `running`；发布后检查 `/api/health`、`/cowork.html`、两个容器的健康状态、Codex 真实调用和 Word 导出。整个过程保留命名卷，不迁移本机 `.local` 项目数据。
+
+镜像采用 `.dockerignore` 白名单，只复制 `backend`、`web`、运行依赖和唯一的专家审阅规则文件 `outputs/上交所私募公司债财务数据更新规则_专家审阅版.md`。`backend/data/financial_rules.json` 随后端一起进入镜像；本机 `outputs` 中的 DOCX、知识整理中间文件和其他忽略文件不会打包。
 
 容器启动后，进入容器完成一次 ChatGPT 设备登录：
 
@@ -123,11 +176,11 @@ CLI 使用 `exec --json --output-schema --output-last-message`，以参数列表
 docker compose --env-file .env -f deploy/vm/compose.yaml exec app codex login --device-auth
 ```
 
-设备登录凭据会写入持久卷中的 `/data/codex`。共享密码只保护整个入口，不等于多租户权限系统；只应分享给受信任的协作者。
+项目任务的设备登录凭据会写入 `bonddraftai_codex` 卷中的 `/data/codex`，项目数据卷不再承载新的登录状态。独立对话使用单独的 `bonddraftai_worker_codex`；如复制后的登录失效，运行 `docker compose --env-file .env -f deploy/vm/compose.yaml exec conversation-worker codex login --device-auth` 单独登录。共享密码只保护整个入口，不等于多租户权限系统；只应分享给受信任的协作者。
 
 ## Azure Container Apps 部署
 
-容器镜像内安装 Codex CLI，Python 后端仍直接启动 `codex exec` 子进程。Azure Container Apps 提供 HTTPS 公网入口，Azure Files 保存项目、上传文件、运行记录和 Codex 登录目录；实例固定为单副本，避免本地 JSON 存储被多个副本同时写入。
+容器镜像内安装 Codex CLI，Python 后端仍直接启动 `codex exec` 子进程。Azure Container Apps 提供 HTTPS 公网入口，Azure Files 保存项目、上传文件、运行记录和 Codex 登录目录；实例固定为单副本，避免本地 JSON 存储被多个副本同时写入。当前脚本没有部署独立的隔离 Worker，因此会关闭“未关联项目的独立对话”；项目内协作不受影响。需要该能力时应先增加不挂载项目 Azure Files 的独立 Worker，不能退回同容器执行。
 
 先登录 Azure CLI，再运行部署脚本。脚本会用隐藏输入提示共享密码；密码至少 16 位，不会写入脚本或提交到仓库：
 

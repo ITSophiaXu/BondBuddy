@@ -18,7 +18,8 @@ from backend.documents import parse_document, targets, word_export, text_diff
 from backend.engine import (add_file, apply_model_result, candidate_targets, fetch_public_url,
                             project_view, publication_changes, review_change, stage_candidates,
                             validate_sources, working_file)
-from backend.runner import Runner, SCHEMA, command_for, evidence_for, targets_for_run, write_source_library
+from backend.runner import (Runner, SCHEMA, command_for, conversation_context, evidence_for,
+                            targets_for_run, write_source_library)
 from backend.server import create_server
 from backend.demo import seed
 
@@ -406,10 +407,25 @@ class RunnerTests(ProjectFixture, unittest.TestCase):
     def test_default_run_only_processes_candidates(self):
         default = targets_for_run(self.p)
         self.assertEqual({t['id'] for t in candidate_targets(self.p)}, {t['id'] for t in default})
-        self.assertLess(len(default), len(targets_for_run(self.p, '检查全部位置')))
+        chat = targets_for_run(self.p, '请解释资产总额的更新依据')
+        self.assertIn(self.target['id'], {t['id'] for t in chat})
+        self.assertLessEqual(len(chat), 24)
+        self.assertEqual(
+            len(targets(working_file(self.p))),
+            len(targets_for_run(self.p, '请检查全文所有位置', request_scope='full_update')),
+        )
         self.assertEqual([self.target['id']], [t['id'] for t in targets_for_run(self.p, target_id=self.target['id'])])
         decisions = SCHEMA['properties']['assessments']['items']['properties']['decision']['enum']
         self.assertEqual(['keep', 'out_of_scope'], decisions)
+
+    def test_chat_context_summarizes_all_known_review_gaps(self):
+        stage_candidates(self.p)
+        self.apply(self.result(sources=[]))
+        context = conversation_context(self.p)
+        self.assertEqual(1, context['review_counts']['missing_source'])
+        self.assertGreater(context['review_counts']['awaiting_agent'], 0)
+        self.assertEqual(['报表.txt'], [f['name'] for f in context['files']])
+        self.assertTrue(any(item['stage'] == 'missing_source' for item in context['review_issue_groups']))
 
     def test_full_source_library_recovers_evidence_omitted_from_shortlist(self):
         # Large high-scoring bundles exhaust the shortlist before the total.
@@ -549,6 +565,80 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(export.startswith(b'PK'))
         _, audit = self.request(base + '/export?format=json')
         self.assertTrue(any('before' in h for h in audit['history']))
+
+    def test_slow_export_does_not_block_chat_and_rejects_duplicate_export(self):
+        _, p = self.request('/api/projects', {'title': '并发导出测试'})
+        base = '/api/projects/' + p['id']
+        self.assertEqual(
+            201,
+            self.request(
+                base + '/files?name=prospectus.md&role=prospectus&category=prospectus',
+                raw='# 财务信息\n资产总额【待补充】'.encode(),
+            )[0],
+        )
+        started = threading.Event()
+        release = threading.Event()
+        export_result = {}
+
+        def slow_export(*_args, **_kwargs):
+            started.set()
+            if not release.wait(5):
+                raise TimeoutError('test export was not released')
+            return b'PK-test-export'
+
+        def fake_start(project, message='', target_id=None, request_id=None, request_scope='chat'):
+            project['job'] = {'id': 'run_test', 'status': 'queued', 'progress': 0, 'step': '准备任务与材料'}
+            self.server.app.store.add_message(project, 'user', message, target_id=target_id)
+            self.server.app.store.save(project)
+            return 'run_test'
+
+        def request_export():
+            export_result['response'] = self.request(base + '/export?view=revision')
+
+        with patch('backend.server.word_export', side_effect=slow_export), patch.object(
+            self.server.app.runner, 'start', side_effect=fake_start
+        ):
+            thread = threading.Thread(target=request_export)
+            thread.start()
+            self.assertTrue(started.wait(2))
+            try:
+                before = time.monotonic()
+                status, chat = self.request(base + '/chat', {'message': '请核对资产总额'})
+                self.assertEqual(202, status)
+                self.assertEqual('run_test', chat['run_id'])
+                self.assertLess(time.monotonic() - before, 1)
+
+                before = time.monotonic()
+                status, duplicate = self.request(base + '/export?view=revision')
+                self.assertEqual(409, status)
+                self.assertIn('正在生成', duplicate['error'])
+                self.assertLess(time.monotonic() - before, 1)
+            finally:
+                release.set()
+                thread.join(timeout=5)
+                with self.server.app.store.lock:
+                    self.server.app.store.get(p['id'])['job'] = {'status': 'idle'}
+
+        self.assertEqual(200, export_result['response'][0])
+        self.assertEqual(b'PK-test-export', export_result['response'][1])
+
+    def test_busy_project_chat_retries_return_existing_run(self):
+        _, p = self.request('/api/projects', {'title': '对话幂等测试'})
+        base = '/api/projects/' + p['id']
+        payload = {'message': '请解释募集资金用途', 'scope': 'chat', 'request_id': 'retry-one'}
+        with patch.object(self.server.app.runner, '_cli_path', return_value='fixture'), patch.object(
+            self.server.app.runner, '_work'
+        ):
+            status, first = self.request(base + '/chat', payload)
+            retry_status, retry = self.request(base + '/chat', payload)
+            different_status, _ = self.request(
+                base + '/chat',
+                {'message': '另一个问题', 'scope': 'chat', 'request_id': 'retry-two'},
+            )
+        self.assertEqual(202, status)
+        self.assertEqual(202, retry_status)
+        self.assertEqual(first['run_id'], retry['run_id'])
+        self.assertEqual(409, different_status)
 
     def test_csrf_host_origin_and_path_containment(self):
         status, health = self.request('/api/health')

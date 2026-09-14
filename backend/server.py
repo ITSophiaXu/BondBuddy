@@ -20,6 +20,7 @@ from .engine import (add_file, commit_file, prepare_file, publication_changes, f
                      project_view, review_change, working_file)
 from .documents import targets, word_export
 from .runner import Runner, cli_status, cli_path
+from .conversations import ConversationStore, ConversationRunner, conversation_view
 from .demo import seed
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,10 +31,15 @@ class App:
     def __init__(self, root=None, demo=True):
         self.store = Store(root or os.environ.get('BOND_DATA_DIR', ROOT / '.local/data'))
         self.runner = Runner(self.store, ROOT)
+        self.conversations = ConversationStore(self.store.root)
+        self.conversation_runner = ConversationRunner(self.conversations, ROOT)
+        self.conversation_runner.job_slots = self.runner.job_slots
         self.instance_id = uid('server')
         self.started_at = now()
         self.csrf = secrets.token_urlsafe(32)
         self.preview_cache = {}
+        self.export_lock = threading.Lock()
+        self.active_exports = set()
         self.auth_username = os.environ.get('BOND_AUTH_USERNAME', '').strip()
         self.auth_password = os.environ.get('BOND_AUTH_PASSWORD', '')
         if bool(self.auth_username) != bool(self.auth_password):
@@ -45,6 +51,10 @@ class App:
         }
         self.trust_proxy = os.environ.get('BOND_TRUST_PROXY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
         self.shared_workspace = os.environ.get('BOND_SHARED_WORKSPACE', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        standalone_requested = os.environ.get('BOND_STANDALONE_CONVERSATIONS', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+        self.standalone_conversations = standalone_requested and (
+            not self.shared_workspace or bool(self.conversation_runner.worker_url)
+        )
         self.workspace_label = os.environ.get('BOND_WORKSPACE_LABEL', '').strip() or ('Azure 共享工作区' if self.shared_workspace else '本机工作区')
         self.project_storage_limit = int(os.environ.get('BOND_PROJECT_STORAGE_LIMIT_MB', '500')) * 1024 * 1024
         self.min_free_storage = int(os.environ.get('BOND_MIN_FREE_STORAGE_MB', '1024')) * 1024 * 1024
@@ -59,10 +69,11 @@ class App:
 
     def runtime_view(self):
         runtime = dict(self.runtime)
-        runtime['execution_verified'] = self.runner.execution_verified
-        if runtime.get('ready') and self.runner.runtime_failure:
-            runtime.update(ready=False, authenticated=True, code='execution_permission_denied', message=self.runner.runtime_failure)
-        elif runtime.get('ready') and self.runner.execution_verified:
+        runtime['execution_verified'] = self.runner.execution_verified or self.conversation_runner.execution_verified
+        failure = self.runner.runtime_failure or self.conversation_runner.runtime_failure
+        if runtime.get('ready') and failure:
+            runtime.update(ready=False, authenticated=True, code='execution_permission_denied', message=failure)
+        elif runtime.get('ready') and runtime['execution_verified']:
             runtime['message'] = 'Agent 已完成真实任务调用，可以继续更新。'
         return runtime
 
@@ -84,6 +95,17 @@ class App:
         storage = self.store.storage_view()
         if storage['disk_free_bytes'] - size * 2 < self.min_free_storage:
             raise ValueError('服务器磁盘余量不足，为避免项目损坏已停止上传。请清理空间或迁移到 Azure Blob Storage。')
+
+    def begin_export(self, project_id):
+        with self.export_lock:
+            if project_id in self.active_exports:
+                return False
+            self.active_exports.add(project_id)
+            return True
+
+    def finish_export(self, project_id):
+        with self.export_lock:
+            self.active_exports.discard(project_id)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -209,13 +231,58 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(url.query)
             if parts == ['api', 'health']:
                 self.send(200, {'ok': True, 'app': 'bond-draft-cowork', 'csrf': self.app.csrf,
-                                'runtime': self.app.runtime_view(), 'storage': self.app.storage_view(), 'version': '1.2.0',
-                                'instance_id': self.app.instance_id, 'started_at': self.app.started_at})
+                                'runtime': self.app.runtime_view(), 'storage': self.app.storage_view(), 'version': '1.3.0',
+                                'instance_id': self.app.instance_id, 'started_at': self.app.started_at,
+                                'features': {'project_chat_without_document': True, 'chat_request_deduplication': True,
+                                             'standalone_conversations': self.app.standalone_conversations}})
                 return
             if parts == ['api', 'runtime', 'check'] and method == 'POST':
                 self.body()
                 self.send(200, self.app.check_runtime())
                 return
+            if parts == ['api', 'knowledge'] and method == 'GET':
+                knowledge_path = ROOT / 'backend' / 'data' / 'financial_rules.json'
+                expert_path = ROOT / 'outputs' / '上交所私募公司债财务数据更新规则_专家审阅版.md'
+                data = json.loads(knowledge_path.read_text(encoding='utf-8'))
+                self.send(200, {
+                    'title': data['title'], 'version': data['version'],
+                    'source_names': data['source_names'],
+                    'conflict_count': data['conflict_count'],
+                    'expert_text': expert_path.read_text(encoding='utf-8'),
+                    'rules': [{key: rule.get(key, '') for key in ('id', 'title', 'chapter', 'body_markdown')}
+                              for rule in data.get('rules', [])],
+                })
+                return
+            if parts[:2] == ['api', 'conversations']:
+                if not self.app.standalone_conversations:
+                    raise KeyError('独立对话未配置隔离 Worker。')
+                with self.app.conversations.lock:
+                    if len(parts) == 2:
+                        if method == 'GET':
+                            conversations = sorted(self.app.conversations.conversations.values(), key=lambda c: c['updated_at'], reverse=True)
+                            self.send(200, [conversation_view(c, summary=True) for c in conversations])
+                        else:
+                            data = self.body()
+                            message = str(data.get('message', '')).strip()
+                            c = self.app.conversations.create(message, data.get('request_id'))
+                            jid = self.app.conversation_runner.start(c, message, data.get('request_id'))
+                            self.send(202, {'conversation': conversation_view(c), 'run_id': jid})
+                        return
+                    c = self.app.conversations.get(parts[2])
+                    if len(parts) == 3 and method == 'GET':
+                        self.send(200, conversation_view(c))
+                        return
+                    if len(parts) == 4 and method == 'POST':
+                        data = self.body()
+                        if parts[3] == 'chat':
+                            jid = self.app.conversation_runner.start(c, str(data.get('message', '')).strip(), data.get('request_id'))
+                            self.send(202, {'conversation': conversation_view(c), 'run_id': jid})
+                            return
+                        if parts[3] == 'cancel':
+                            self.app.conversation_runner.cancel(c)
+                            self.send(200, conversation_view(c))
+                            return
+                    raise KeyError('对话操作不存在')
             if parts == ['api', 'projects']:
                 with self.app.store.lock:
                     if method == 'POST':
@@ -271,6 +338,32 @@ class Handler(BaseHTTPRequestHandler):
                     self.app.store.save(p)
                     self.send(201, {'id': f['id'], 'warnings': f['warnings']})
                 return
+            if len(parts) == 4 and parts[:2] == ['api', 'projects'] and parts[3] == 'export' and method == 'GET':
+                view = query.get('view', ['final'])[0]
+                if view not in {'final', 'revision'}:
+                    raise ValueError('导出模式无效。')
+                format = query.get('format', ['docx'])[0]
+                if format not in {'docx', 'json'}:
+                    raise ValueError('导出格式无效。')
+                with self.app.store.lock:
+                    p = self.app.store.snapshot(self.app.store.get(parts[2]))
+                f = working_file(p)
+                if not f:
+                    raise ValueError('请先上传募集书。')
+                if format == 'json':
+                    out = json.dumps(project_view(p, full_history=True), ensure_ascii=False, indent=2).encode()
+                    self.send(200, out, 'application/json', p['title'] + '_审核记录.json')
+                    return
+                if not self.app.begin_export(p['id']):
+                    self.send(409, {'error': '当前项目的导出文件正在生成，请等待本次下载开始。'})
+                    return
+                try:
+                    out = word_export(f, publication_changes(p['changes']), view)
+                    suffix = '修订版' if view == 'revision' else '最终视图'
+                    self.send(200, out, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', p['title'] + '_' + suffix + '.docx')
+                finally:
+                    self.app.finish_export(p['id'])
+                return
             if len(parts) >= 3 and parts[:2] == ['api', 'projects']:
                 with self.app.store.lock:
                     p = self.app.store.get(parts[2])
@@ -278,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
                         self.send(200, project_view(p))
                         return
                     action = parts[3]
-                    if method == 'POST' and p['job']['status'] in {'queued', 'running'} and action != 'cancel':
+                    if method == 'POST' and p['job']['status'] in {'queued', 'running'} and action not in {'cancel', 'chat'}:
                         self.send(409, {'error': 'Agent 正在运行。请等待完成或先停止，再修改文档或添加材料。'})
                         return
                     if action == 'events':
@@ -331,7 +424,24 @@ class Handler(BaseHTTPRequestHandler):
                         message = str(data.get('message', '')).strip()
                         if action == 'chat' and not message:
                             raise ValueError('请先输入消息。')
-                        jid = self.app.runner.start(p, message, data.get('target_id'))
+                        if action == 'chat':
+                            target_id = data.get('target_id')
+                            scope = data.get('scope') or ('selection' if target_id else 'chat')
+                            try:
+                                jid = self.app.runner.start(
+                                    p,
+                                    message,
+                                    target_id,
+                                    request_id=data.get('request_id'),
+                                    request_scope=scope,
+                                )
+                            except ValueError as exc:
+                                if '当前任务仍在运行' in str(exc):
+                                    self.send(409, {'error': 'Agent 正在运行。请等待完成或先停止，再发送新的请求。'})
+                                    return
+                                raise
+                        else:
+                            jid = self.app.runner.start(p, message, data.get('target_id'))
                         self.send(202, {'run_id': jid})
                         return
                     elif action == 'cancel' and method == 'POST':
@@ -361,24 +471,6 @@ class Handler(BaseHTTPRequestHandler):
                         review_change(p, c['id'], 'edit', data.get('text'))
                         self.app.store.save(p)
                         self.send(200, {'ok': True})
-                        return
-                    elif action == 'export':
-                        view = query.get('view', ['final'])[0]
-                        if view not in {'final', 'revision'}:
-                            raise ValueError('导出模式无效。')
-                        f = working_file(p)
-                        if not f:
-                            raise ValueError('请先上传募集书。')
-                        format = query.get('format', ['docx'])[0]
-                        if format == 'json':
-                            out = json.dumps(project_view(p, full_history=True), ensure_ascii=False, indent=2).encode()
-                            self.send(200, out, 'application/json', p['title'] + '_审核记录.json')
-                        elif format == 'docx':
-                            out = word_export(f, publication_changes(p['changes']), view)
-                            suffix = '修订版' if view == 'revision' else '最终视图'
-                            self.send(200, out, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', p['title'] + '_' + suffix + '.docx')
-                        else:
-                            raise ValueError('导出格式无效。')
                         return
                     elif action == 'word-preview':
                         from .word_preview import word_preview
@@ -470,6 +562,9 @@ def main():
         for p in list(server.app.store.projects.values()):
             if p['job']['status'] in {'running', 'queued'}:
                 server.app.runner.cancel(p)
+        for conversation in list(server.app.conversations.conversations.values()):
+            if conversation['job']['status'] in {'running', 'queued'}:
+                server.app.conversation_runner.cancel(conversation)
         server.server_close()
 
 

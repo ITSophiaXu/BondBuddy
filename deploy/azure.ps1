@@ -194,6 +194,8 @@ $configuration = [ordered]@{
                         @{ name = 'CODEX_HOME'; value = '/data/codex' }
                         @{ name = 'BOND_CODEX_PATH'; value = '/usr/local/bin/codex' }
                         @{ name = 'BOND_CODEX_LINUX_SANDBOX'; value = 'legacy_landlock' }
+                        @{ name = 'BOND_SHARED_WORKSPACE'; value = '1' }
+                        @{ name = 'BOND_STANDALONE_CONVERSATIONS'; value = '0' }
                         @{ name = 'BOND_OCR'; value = 'off' }
                         @{ name = 'BOND_DEMO'; value = '0' }
                         @{ name = 'PORT'; value = '8000' }

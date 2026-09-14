@@ -20,6 +20,9 @@ services:
       CODEX_HOME: "/data/codex"
       BOND_CODEX_PATH: "/usr/local/bin/codex"
       BOND_CODEX_LINUX_SANDBOX: "legacy_landlock"
+      BOND_CONVERSATION_WORKER_URL: "http://conversation-worker:8090"
+      BOND_STANDALONE_CONVERSATIONS: "1"
+      BOND_JOB_LOCK_PATH: "/data/job-lock/codex.lock"
       BOND_OCR: "off"
       BOND_DEMO: "0"
       BOND_SHARED_WORKSPACE: "1"
@@ -31,12 +34,61 @@ services:
       PORT: "8000"
     volumes:
       - bond_data:/data
+      - codex_data:/data/codex
+      - job_lock:/data/job-lock
+    depends_on:
+      conversation-worker:
+        condition: service_healthy
     mem_limit: 2g
     cpus: 2
     security_opt:
       - no-new-privileges:true
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+
+  conversation-worker:
+    image: bonddraftai:latest
+    container_name: bonddraftai-conversation-worker
+    restart: unless-stopped
+    entrypoint: ["/opt/venv/bin/python", "-X", "utf8", "-m", "backend.conversation_worker"]
+    environment:
+      BOND_CODEX_HOME: "/data/worker-codex"
+      CODEX_HOME: "/data/worker-codex"
+      BOND_CODEX_PATH: "/usr/local/bin/codex"
+      BOND_CODEX_LINUX_SANDBOX: "legacy_landlock"
+      BOND_CLI_TIMEOUT: "900"
+      BOND_CONVERSATION_WORK_DIR: "/data/conversations"
+      BOND_STANDALONE_ISOLATED: "1"
+      BOND_JOB_LOCK_PATH: "/data/job-lock/codex.lock"
+      BOND_RUN_RETENTION: "3"
+      BOND_WORKER_PORT: "8090"
+    volumes:
+      - worker_codex_data:/data/worker-codex
+      - conversation_runs:/data/conversations
+      - job_lock:/data/job-lock
+    expose:
+      - "8090"
+    mem_limit: 2g
+    cpus: 2
+    security_opt:
+      - no-new-privileges:true
+    stop_signal: SIGINT
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     stop_grace_period: 30s
 
 volumes:
   bond_data:
     name: bonddraftai_data
+  codex_data:
+    name: bonddraftai_codex
+  worker_codex_data:
+    name: bonddraftai_worker_codex
+  conversation_runs:
+    name: bonddraftai_conversation_runs
+  job_lock:
+    name: bonddraftai_job_lock

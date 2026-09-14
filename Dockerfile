@@ -28,11 +28,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
 COPY web ./web
-COPY outputs ./outputs
+COPY ["outputs/上交所私募公司债财务数据更新规则_专家审阅版.md", "./outputs/上交所私募公司债财务数据更新规则_专家审阅版.md"]
 COPY docker-entrypoint.sh .
 
 RUN useradd --create-home --uid 10001 bond \
-    && mkdir -p /data/projects /data/codex \
+    && mkdir -p /data/projects /data/codex /data/worker-codex /data/conversations /data/job-lock \
     && sed -i 's/\r$//' /app/docker-entrypoint.sh \
     && chown -R bond:bond /app /data \
     && chmod 0755 /app/docker-entrypoint.sh

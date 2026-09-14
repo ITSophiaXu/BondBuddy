@@ -36,6 +36,12 @@ if ($Background) {
                 throw 'An update is still running. Wait for it to finish, then restart the workbench.'
             }
         }
+        if ($taskExisting.features.standalone_conversations) {
+            $taskConversations = Invoke-RestMethod -Uri "$taskUrl/api/conversations" -TimeoutSec 15
+            if (@($taskConversations | Where-Object { $_.job.status -in @('queued', 'running') }).Count -gt 0) {
+                throw 'A Cowork reply is still running. Wait for it to finish or stop it before restarting.'
+            }
+        }
         $taskOwners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess -Unique)
         if ($taskOwners.Count -ne 1) { throw 'Cannot identify the workbench process safely.' }
         $taskProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $($taskOwners[0])"

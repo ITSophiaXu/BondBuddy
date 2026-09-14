@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -91,6 +92,51 @@ def cli_status():
         return {'installed': True, 'ready': False, 'message': 'Codex CLI 暂时无法响应，请检查本机登录状态后重新检测。'}
 
 
+class JobSlot:
+    def __init__(self, limit):
+        self.local = threading.Semaphore(limit)
+        self.lock_path = os.environ.get('BOND_JOB_LOCK_PATH', '').strip()
+        self.handles = threading.local()
+
+    def acquire(self, timeout=None):
+        started = time.monotonic()
+        if not self.local.acquire(timeout=timeout):
+            return False
+        if not self.lock_path:
+            return True
+        handle = None
+        try:
+            import fcntl
+            path = Path(self.lock_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handle = path.open('a+b')
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self.handles.handle = handle
+                    return True
+                except BlockingIOError:
+                    if timeout is not None and time.monotonic() - started >= timeout:
+                        handle.close()
+                        self.local.release()
+                        return False
+                    time.sleep(.05)
+        except Exception:
+            if handle:
+                handle.close()
+            self.local.release()
+            raise
+
+    def release(self):
+        handle = getattr(self.handles, 'handle', None)
+        if handle:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+            del self.handles.handle
+        self.local.release()
+
+
 def command_for(path, task_dir, schema_path, out_path, web=False, platform=None):
     args = [path]
     linux_sandbox = os.environ.get('BOND_CODEX_LINUX_SANDBOX', '').strip()
@@ -125,13 +171,83 @@ def chunks(items, budget=16000):
         yield current
 
 
-def targets_for_run(p, message='', target_id=None):
+def targets_for_run(p, message='', target_id=None, request_scope='chat'):
+    if not working_file(p):
+        return []
     all_targets = targets(working_file(p))
     if target_id:
         return [t for t in all_targets if t['id'] == target_id]
-    if message:
+    if request_scope == 'full_update':
         return all_targets
+    if message:
+        runs = re.findall(r'[\u4e00-\u9fff]+|[A-Za-z][A-Za-z0-9_-]*|20\d{2}', message)
+        terms = {run.lower() for run in runs if not re.fullmatch(r'[\u4e00-\u9fff]+', run)}
+        for run in (run for run in runs if re.fullmatch(r'[\u4e00-\u9fff]+', run)):
+            for size in range(2, min(6, len(run)) + 1):
+                terms.update(run[index:index + size] for index in range(len(run) - size + 1))
+        terms.difference_update({'请问', '请你', '一下', '这个', '这些', '什么', '怎么', '如何', '是否', '可以', '需要', '帮我', '告诉', '回答'})
+        candidates = {t['id'] for t in candidate_targets(p)}
+        changed = {c['target_id'] for c in p.get('changes', [])}
+        ranked = sorted(
+            all_targets,
+            key=lambda t: (
+                sum(len(term) for term in terms if term in normalized(
+                    ' '.join([t.get('chapter', ''), t.get('locator', ''), t.get('text', ''), t.get('context', '')])
+                ).lower()),
+                t['id'] in changed,
+                t['id'] in candidates,
+            ),
+            reverse=True,
+        )
+        selected, size = [], 0
+        for target in ranked:
+            cost = len(target['text']) + len(target.get('context', '')) + 200
+            if selected and size + cost > 12000:
+                continue
+            selected.append(target)
+            size += cost
+            if len(selected) >= 24:
+                break
+        return selected
     return candidate_targets(p)
+
+
+def conversation_context(p):
+    target_index = {target['id']: target for target in targets(working_file(p) or {'blocks': []})}
+    counts = {'awaiting_agent': 0, 'missing_source': 0, 'original_todo': 0, 'needs_review': 0}
+    grouped = {}
+    for change in p.get('changes', []):
+        if change.get('status') != 'needs_review':
+            continue
+        original_todo = '【' in change.get('before', '') or '】' in change.get('before', '')
+        stage = (
+            'awaiting_agent' if change.get('origin') == 'scan' and not original_todo
+            else 'original_todo' if change.get('origin') == 'scan'
+            else 'missing_source' if change.get('origin') == 'agent' and not change.get('sources')
+            else 'needs_review'
+        )
+        counts[stage] += 1
+        if stage == 'awaiting_agent':
+            continue
+        target = target_index.get(change.get('target_id'), {})
+        issue = (change.get('issue') or change.get('reason') or '待人工确认').strip()[:240]
+        key = (stage, change.get('chapter', ''), issue)
+        item = grouped.setdefault(key, {'stage': stage, 'chapter': change.get('chapter', ''), 'issue': issue, 'count': 0, 'examples': []})
+        item['count'] += 1
+        if len(item['examples']) < 3:
+            item['examples'].append({
+                'locator': target.get('locator', ''),
+                'text': (change.get('after') or change.get('before') or '')[:400],
+            })
+    return {
+        'files': [
+            {'name': f.get('name', ''), 'category': f.get('category', ''), 'warnings': f.get('warnings', [])[:5]}
+            for f in p.get('files', []) if f.get('role') != 'prospectus'
+        ],
+        'review_counts': counts,
+        'review_issue_groups': list(grouped.values()),
+        'note': 'awaiting_agent 只是尚未处理的候选，不能据此认定缺少材料；其余分组覆盖当前已发现的全部人工待办。',
+    }
 
 
 def evidence_for(p, group):
@@ -214,20 +330,109 @@ toc_entry=true 是目录条目，保留目录页码，不能把页码当财务�
 新增报告期列的空目标需要依据行名、表头及正文确定期末或期间，填写正确表头；缺明细写【待补充】。
 历史 DOCX 的字体、字号、标题样式、段落边界、缩进、间距、表格列数列宽、合并方式及页眉页脚必须保留。只修改原位置文字，不增加或删除段落，不擅自用新报告期覆盖必须保留的历史期间；需要新增列时在说明中提示确认列安排。
 只回答提问且无修改要求时 intent=answer、changes=[]、assessments=[]，summary 回答用户问题。
+概念解释、资料查询、讨论、给出建议或起草一段短内容，都先在 summary 中直接答复；只有用户明确要求更新、修改或写入募集书时才返回 intent=update。不要把用户提及“更新”这一话题本身当作修改指令。
+answer_only=true 时只能回答，禁止修改任何文档；该约束优先于逐 target_id 核对要求。has_document=false 表示尚无募集书底稿，可以基于项目背景和已有材料回答，缺少材料时具体说明；请求更新募集书时请用户添加底稿，不声称已经生成或修改文档。
+对话任务中的 project_context 汇总了全部已发现的人工待办、尚待 Agent 处理的数量和已上传材料；回答材料缺口时必须以该汇总为准，并明确尚未处理的位置不能认定为缺少材料。
 已接受或拒绝的修改保持用户决定，不自动覆盖；用户选中某处明确要求再修改时才处理该处。
 全文模式且 allow_web=true 时可查询公开网页。不得提交表单、登录、支付或把私密报告金额及个人信息作为查询词。
 网页来源返回 source_id="web"、segment_id=""、真实 URL 和逐字 quote，服务会重新抓取并核验；失败必须留【】。
 无所需数据时，缺少资料就是结果；不能编造数据、页码或引文。'''
 
 
+def answer_only_text(message):
+    text = str(message or '')
+    if re.search(r'只回答|仅回答', text):
+        return True
+    full_target = re.search(
+        r'(?:整份(?:募集说明书|募集书)|全文|所有(?:的)?财务数据|全部(?:的)?财务数据|所有位置|全部位置|募集说明书|募集书)',
+        text,
+    )
+    for match in re.finditer(
+        r'不(?:要)?(?:修改|更新|改动|写入)(?:文档|募集书|正文)?(?=[。；，,.!?！？;\s]|$)',
+        text,
+    ):
+        prefix = text[max(0, match.start() - 16):match.start()]
+        if re.search(r'(?:其他|其它|其余)[^。；，,.!?！？;]{0,10}$|除[^。；，,.!?！？;]{0,10}外$', prefix):
+            continue
+        if full_target and full_target.end() <= match.start():
+            excluded = re.sub(
+                r'^[\s。；，,.!?！？;]*(?:(?:但|但是|不过|同时|并且|且)\s*)?',
+                '',
+                text[full_target.end():match.start()],
+            ).strip()
+            if len(re.sub(r'\W', '', excluded)) >= 2:
+                continue
+        return True
+    return False
+
+
+def answer_only_request(p, message):
+    return bool(message) and (not working_file(p) or answer_only_text(message))
+
+
+def explicit_full_update_request(message):
+    text = str(message or '')
+    action = r'(?:更新|修改|同步|替换|核对|检查)'
+    document = r'(?:募集说明书|募集书)'
+    strong_target = rf'(?:整份{document}|全文|所有(?:的)?财务数据|全部(?:的)?财务数据|所有位置|全部位置)'
+    target = rf'(?:{strong_target}|{document})'
+    directed = bool(
+        re.match(rf'\s*(?:(?:请|麻烦)\s*)?(?:帮我\s*)?{action}.{{0,40}}{target}', text)
+        or re.match(rf'\s*(?:(?:请|麻烦)\s*)?(?:根据|按照).{{0,40}}{action}.{{0,40}}{target}', text)
+        or re.match(rf'\s*(?:(?:请|麻烦)\s*)?(?:把|将).{{0,40}}{target}.{{0,20}}{action}', text)
+        or re.match(rf'\s*(?:继续|立即|现在)\s*{action}.{{0,40}}{target}', text)
+    )
+    if not directed or answer_only_text(text):
+        return False
+    if not re.search(strong_target, text) and re.search(
+        rf'{document}(?:中|里的|内|的)?(?:第[一二三四五六七八九十百\d]+[章节]|某(?:一)?章节|这(?:一)?章节|该章节|部分)',
+        text,
+    ):
+        return False
+    bare_action = bool(re.match(rf'\s*{action}', text))
+    explanatory_question = bool(re.search(
+        r'(?:是什么|什么意思|为什么|为何|如何|怎么|是否|有什么|哪些|多少|能否|可否|会不会|要不要|需要吗).{0,16}[?？]\s*$',
+        text,
+    ))
+    return not (bare_action and explanatory_question)
+
+
+def request_scope_for(message, target_id=None, requested_scope=None):
+    if requested_scope not in {None, 'chat', 'selection', 'full_update'}:
+        raise ValueError('请求范围无效，请重新发送。')
+    if target_id:
+        if requested_scope == 'full_update':
+            raise ValueError('全文更新不能同时限定单个位置。')
+        return 'selection'
+    if requested_scope == 'selection':
+        raise ValueError('请重新选择需要处理的位置。')
+    inferred = 'full_update' if explicit_full_update_request(message) else 'chat'
+    return inferred
+
+
 class Runner:
+    rules = RULES
+
     def __init__(self, store, repo):
         self.store, self.repo = store, Path(repo)
         self.processes = {}
         self.cancelled = set()
-        self.job_slots = threading.Semaphore(max(1, int(os.environ.get('BOND_MAX_CONCURRENT_JOBS', '1'))))
+        self.execution_deadlines = {}
+        self.job_slots = JobSlot(max(1, int(os.environ.get('BOND_MAX_CONCURRENT_JOBS', '1'))))
         self.runtime_failure = None
         self.execution_verified = False
+
+    def _cli_path(self):
+        return cli_path()
+
+    def _process_environment(self):
+        return cli_environment()
+
+    def _command_for(self, task_dir, schema, output, allow_web):
+        return command_for(self._cli_path(), task_dir, schema, output, allow_web)
+
+    def _prompt(self, payload):
+        return self.rules + '\n现在读取 input.json 和 knowledge.md 完成本组任务。'
 
     @staticmethod
     def _stop_process(proc):
@@ -250,26 +455,50 @@ class Runner:
             proc.kill()
             proc.wait(timeout=5)
 
-    def start(self, p, message='', target_id=None):
+    def start(self, p, message='', target_id=None, request_id=None, request_scope=None):
+        request_scope = request_scope_for(message, target_id, request_scope)
+        if request_scope == 'full_update' and answer_only_request(p, message):
+            raise ValueError('全文更新请求不能同时要求只回答，请重新说明。')
+        # A network retry must not create another user message or model run.
+        if request_id is not None:
+            if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', request_id):
+                raise ValueError('消息标识无效，请重新发送。')
+            previous = next((m for m in p['messages'] if m.get('request_id') == request_id and m['role'] == 'user'), None)
+            if previous:
+                if (previous['text'] != message or previous.get('target_id') != target_id
+                        or previous.get('request_scope', 'chat') != request_scope):
+                    raise ValueError('同一消息标识不能用于不同内容。')
+                return previous['run_id']
         if p['job']['status'] in {'running', 'queued'}:
             raise ValueError('当前任务仍在运行，请等待完成或先停止。')
-        if not working_file(p):
+        if not message and not working_file(p):
             raise ValueError('请先上传需要更新的募集说明书底稿。')
-        if target_id and not any(t['id'] == target_id for t in targets(working_file(p))):
+        if target_id and not any(t['id'] == target_id for t in targets(working_file(p) or {'blocks': []})):
             raise ValueError('选中的位置不存在。')
-        if not cli_path():
+        if not self._cli_path():
             raise ValueError('未找到 Codex CLI。请安装、登录后重试。')
         if len(message) > 12000:
             raise ValueError('消息过长，请拆分发送。')
-        if not message:
+        if not message or request_scope == 'full_update':
             stage_candidates(p)
             p['coverage'] = {c['target_id']: {'decision': 'keep', 'reason': '保留用户已确认的决定。'}
                              for c in p['changes'] if c['status'] in {'accepted', 'rejected'}}
         jid = uid('run')
-        p['job'] = {'id': jid, 'status': 'queued', 'progress': 0, 'step': '准备任务与材料', 'started_at': now(), 'events': []}
-        self.store.add_message(p, 'user', message or f'请将募集说明书更新至 {p["period"]}，范围：' + ('仅财务数据' if p['mode'] == 'financial' else '全文更新'), target_id=target_id)
+        job_kind = 'update' if not message or request_scope == 'full_update' else 'chat'
+        p['job'] = {'id': jid, 'kind': job_kind, 'status': 'queued', 'progress': 0,
+                    'step': '准备回复你的请求' if job_kind == 'chat' else '准备任务与材料',
+                    'started_at': now(), 'events': []}
+        self.store.add_message(
+            p,
+            'user',
+            message or f'请将募集说明书更新至 {p["period"]}，范围：' + ('仅财务数据' if p['mode'] == 'financial' else '全文更新'),
+            target_id=target_id,
+            request_id=request_id,
+            request_scope=request_scope,
+            run_id=jid,
+        )
         self.store.save(p)
-        threading.Thread(target=self._work, args=(p['id'], jid, message, target_id), daemon=True).start()
+        threading.Thread(target=self._work, args=(p['id'], jid, message, target_id, request_scope), daemon=True).start()
         return jid
 
     def cancel(self, p):
@@ -281,25 +510,34 @@ class Runner:
         p['job'].update(status='cancelled', step='任务已停止，已保存的修改可继续审核', ended_at=now())
         self.store.save(p)
 
-    def _invoke(self, p, jid, run_dir, group, message, target_id, group_no):
-        task_dir = run_dir / f'batch-{group_no}'
-        task_dir.mkdir(parents=True, exist_ok=True)
-        payload = {'project': p['title'], 'mode': p['mode'], 'target_period': p['period'], 'allow_web': p['mode'] == 'full' and p['web_enabled'],
+    def _input_payload(self, p, run_dir, group, message, target_id, request_scope='chat'):
+        return {'project': p['title'], 'mode': p['mode'], 'target_period': p['period'], 'allow_web': p['mode'] == 'full' and p['web_enabled'],
                    'instruction': message or '核对本组所有位置并更新，缺资料的位置必须标记。', 'selected_target': target_id,
+                   'request_scope': request_scope,
+                   'has_document': bool(working_file(p)),
+                   'answer_only': request_scope != 'full_update' and answer_only_request(p, message),
                    'targets': group, 'existing_changes': [c for c in p['changes'] if c['target_id'] in {t['id'] for t in group}],
                    'evidence': evidence_for(p, group), 'source_library':write_source_library(p, run_dir),
-                   'conversation': p['messages'][-10:]}
-        (task_dir / 'input.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+                   'conversation': p['messages'][-10:], 'project_context': conversation_context(p) if message else {}}
+
+    def _knowledge_text(self):
         knowledge = self.repo / 'outputs/上交所私募公司债财务数据更新规则_专家审阅版.md'
-        (task_dir / 'knowledge.md').write_text(knowledge.read_text(encoding='utf-8') if knowledge.exists() else RULES, encoding='utf-8')
+        return knowledge.read_text(encoding='utf-8') if knowledge.exists() else self.rules
+
+    def _invoke(self, p, jid, run_dir, group, message, target_id, group_no, request_scope='chat'):
+        task_dir = run_dir / f'batch-{group_no}'
+        task_dir.mkdir(parents=True, exist_ok=True)
+        payload = self._input_payload(p, run_dir, group, message, target_id, request_scope)
+        (task_dir / 'input.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        (task_dir / 'knowledge.md').write_text(self._knowledge_text(), encoding='utf-8')
         schema = task_dir / 'schema.json'
         schema.write_text(json.dumps(SCHEMA, ensure_ascii=False), encoding='utf-8')
         output = task_dir / 'result.json'
-        args = command_for(cli_path(), task_dir, schema, output, payload['allow_web'])
+        args = self._command_for(task_dir, schema, output, payload['allow_web'])
         flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, encoding='utf-8', errors='replace', cwd=str(task_dir), creationflags=flags,
-                                start_new_session=os.name != 'nt', env=cli_environment())
+                                start_new_session=os.name != 'nt', env=self._process_environment())
         self.processes[jid] = proc
         q = queue.Queue()
         def reader(stream, kind):
@@ -311,14 +549,17 @@ class Runner:
         try:
             input_failed = False
             try:
-                proc.stdin.write(RULES + '\n现在读取 input.json 和 knowledge.md 完成本组任务。')
+                proc.stdin.write(self._prompt(payload))
                 proc.stdin.close()
             except (BrokenPipeError, OSError):
                 # A CLI which fails before accepting input may close its pipe.
                 # Drain stderr below so the login/environment error is not hidden.
                 input_failed = True
             errors, last, ended = [], None, set()
-            deadline = time.monotonic() + int(os.environ.get('BOND_CLI_TIMEOUT', '900'))
+            deadline = self.execution_deadlines.get(
+                jid,
+                time.monotonic() + int(os.environ.get('BOND_CLI_TIMEOUT', '900')),
+            )
             with (task_dir / 'events.jsonl').open('w', encoding='utf-8') as log:
                 while len(ended) < 2:
                     if jid in self.cancelled:
@@ -409,8 +650,9 @@ class Runner:
         for directory in directories[keep:]:
             shutil.rmtree(directory)
 
-    def _work(self, pid, jid, message, target_id):
+    def _work(self, pid, jid, message, target_id, request_scope='chat'):
         acquired = False
+        chat_request = bool(message) and request_scope != 'full_update'
         try:
             while jid not in self.cancelled:
                 if self.job_slots.acquire(timeout=.5):
@@ -426,23 +668,34 @@ class Runner:
                 start_revision = p['revision']
                 snapshot = self.store.snapshot(p)
                 self.store.save(p)
-            all_targets = targets_for_run(snapshot, message, target_id)
+            all_targets = targets_for_run(snapshot, message, target_id, request_scope)
             if target_id and not all_targets:
                 raise ValueError('选中的位置不存在。')
             groups = list(chunks(all_targets))
-            summaries = []
+            if message and not groups:
+                groups = [[]]
+            summaries, intents = [], []
             run_dir = self.store.root / 'runs' / pid / jid
             for i, group in enumerate(groups, 1):
                 if jid in self.cancelled:
                     raise InterruptedError('任务已停止')
                 with self.store.lock:
                     p = self.store.get(pid)
-                    p['job'].update(step=f'正在核对第 {i} / {len(groups)} 组正文与表格', progress=round((i - 1) / len(groups) * 100))
+                    step = (
+                        ('正在处理你的问题' if len(groups) == 1 else f'正在处理你的请求（第 {i} / {len(groups)} 组）')
+                        if chat_request else f'正在核对第 {i} / {len(groups)} 组正文与表格'
+                    )
+                    p['job'].update(step=step, progress=round((i - 1) / len(groups) * 100))
                     p['job']['events'].append({'at': now(), 'text': p['job']['step']})
                     self.store.save(p)
-                result = self._invoke(snapshot, jid, run_dir, group, message, target_id, i)
+                result = self._invoke(snapshot, jid, run_dir, group, message, target_id, i, request_scope)
                 if jid in self.cancelled:
                     raise InterruptedError('任务已停止')
+                if answer_only_request(snapshot, message) and result['intent'] != 'answer':
+                    raise ValueError('本次请求只需答复，但 Agent 返回了文档修改建议，系统未采用这些修改。请重新提问。')
+                if request_scope == 'full_update' and result['intent'] != 'update':
+                    raise ValueError('本次请求要求更新整份募集书，但 Agent 只返回了答复，系统未将其视为完成。')
+                intents.append(result['intent'])
                 # Network fetches operate on a snapshot so browsing/cancelling stays responsive.
                 if result['intent'] == 'update':
                     self._capture_web_refs(snapshot, result)
@@ -466,16 +719,22 @@ class Runner:
                 p = self.store.get(pid)
                 if jid in self.cancelled or p['job'].get('id') != jid:
                     return
-                p['job'].update(status='completed', progress=100, step='核对完成，请审阅修改和待办', ended_at=now())
+                p['job'].update(
+                    status='completed',
+                    progress=100,
+                    step='Agent 已回复' if chat_request else '核对完成，请审阅修改和待办',
+                    result_intent='update' if 'update' in intents else 'answer',
+                    ended_at=now(),
+                )
                 summary = '\n\n'.join(summaries)
-                if not message:
+                if not message or request_scope == 'full_update':
                     scoped_ids = {t['id'] for t in all_targets}
                     missing = sum(tid not in p['coverage'] for tid in scoped_ids)
                     if missing:
                         p['job']['step'] = f'本轮已结束，仍有 {missing} 处未获得逐项判断'
                         summary += f'\n\n还有 {missing} 个位置未获得逐项判断，不能据此认为已完成全文核验。请继续检查遗漏。'
                 self.store.add_message(p, 'assistant', summary, target_id=target_id)
-                self.store.log(p, 'Agent 完成核对', run_id=jid)
+                self.store.log(p, 'Cowork 已回复' if chat_request and 'update' not in intents else 'Agent 完成核对', run_id=jid)
                 self.store.save(p)
         except InterruptedError:
             pass
@@ -484,7 +743,7 @@ class Runner:
                 p = self.store.get(pid)
                 if p['job'].get('id') == jid and jid not in self.cancelled:
                     p['job'].update(status='failed', error=str(exc)[:1800], step='任务暂未完成', ended_at=now())
-                    self.store.add_message(p, 'assistant', '本次更新未完成：' + str(exc)[:1800] + '\n已标记的位置和之前的审核结果均已保留。')
+                    self.store.add_message(p, 'assistant', ('本次请求未完成：' if chat_request else '本次更新未完成：') + str(exc)[:1800] + '\n已标记的位置和之前的审核结果均已保留。')
                     self.store.save(p)
         finally:
             if acquired:
