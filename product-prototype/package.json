@@ -1,0 +1,8 @@
+{
+  "name": "bondbuddy",
+  "version": "1.6.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs", "test": "node --test qa/*.test.mjs", "check": "node --check server.mjs && node --check public/app.js && node --check public/authoring.js && node --check public/project-fields.js && node --check lib/worker.mjs && node --check lib/reference-draft.mjs && node --check lib/bridge.mjs && node --check lib/prospectus-library.mjs && node --check public/library.js && node --check public/library-schema.js && node --check scripts/import-library.mjs" },
+  "engines": { "node": ">=22" }
+}

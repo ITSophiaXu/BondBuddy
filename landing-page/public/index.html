@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183e32">
+  <meta name="description" content="BondBuddy，为券商债券项目打造的 AI 工作搭档。更新募集书、复核募集书、起草材料与项目问答，让材料有依据，让交付更从容。">
+  <title>BondBuddy — 债券项目的 AI 工作搭档</title>
+  <link rel="icon" href="assets/brand.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="website.css">
+  <script src="website.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到正文</a>
+  <svg class="symbol-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-windows" viewBox="0 0 24 24"><path d="M3 4h8v7H3zm10 0h8v7h-8zM3 13h8v7H3zm10 0h8v7h-8z"/></symbol>
+    <symbol id="i-update" viewBox="0 0 24 24"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9L14 2Zm0 0v7h7M8 15h8m-4-4v8"/></symbol>
+    <symbol id="i-review" viewBox="0 0 24 24"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9L14 2Zm0 0v7h7m-13 6 3 3 6-6"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H7l-5 3V11a8 8 0 0 1 8-8h3a8 8 0 0 1 8 8Zm-14-1h10M7 14h6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9L14 2Zm0 0v7h7M7 13h10M7 17h7"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  </defs></svg>
+
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="#" aria-label="BondBuddy 首页"><img src="assets/brand.svg" width="33" height="33" alt=""><span>bondbuddy<span class="brand-dot">.</span></span></a>
+      <button class="menu-toggle" type="button" aria-label="展开导航" aria-controls="site-nav" aria-expanded="false"><svg><use href="#i-menu"/></svg></button>
+      <nav id="site-nav" class="site-nav" aria-label="官网导航">
+        <a href="#capabilities">产品功能</a><a href="#workflow">工作方式</a><a href="#pricing">套餐价格</a><a href="#faq">常见问题</a>
+      </nav>
+      <div class="nav-actions"><a class="nav-web" href="http://127.0.0.1:4320/index.html#dashboard" data-app-link="dashboard">体验网页版 <span>↗</span></a><a class="button button-small" href="#download">获取 BondBuddy <svg><use href="#i-arrow"/></svg></a></div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-orbit orbit-one" aria-hidden="true"></div><div class="hero-orbit orbit-two" aria-hidden="true"></div>
+      <div class="container hero-copy">
+        <span class="eyebrow hero-eyebrow"><span class="live-dot"></span> 为券商债券项目而生</span>
+        <h1 id="hero-title">把时间留给判断，<br>把材料交给 <span class="hero-name">BondBuddy<span class="heading-dot">.</span></span></h1>
+        <p class="hero-description">从募集书更新、复核到材料起草与问答，<br class="desktop-break">让每一份材料，向下一步交付靠近。</p>
+        <div class="hero-actions"><button class="button button-large" type="button" data-download><svg><use href="#i-windows"/></svg>获取 Windows 版<svg class="button-arrow"><use href="#i-arrow"/></svg></button><a class="text-link" href="http://127.0.0.1:4320/index.html#dashboard" data-app-link="dashboard">先体验网页版 <span>↗</span></a></div>
+        <p class="release-note"><span class="small-dot"></span><span data-release-note>Windows 桌面版即将上线，现可体验网页版</span></p>
+      </div>
+      <figure class="container hero-product">
+        <div class="preview-label"><span><span class="live-dot"></span> 你的项目，都在一个工作台</span><span>BONDBUDDY WORKSPACE</span></div>
+        <div class="desktop-frame"><div class="window-bar"><span class="window-app"><img src="assets/brand.svg" width="17" height="17" alt="">BondBuddy</span><span class="window-title">债券项目工作台</span><span class="window-controls" aria-hidden="true">－ □ ×</span></div><img class="hero-screen" src="assets/dashboard.svg" alt="BondBuddy 工作台示意：成果统计、更新募集书、复核募集书、材料生成、项目问答和最近项目" width="1280" height="780" fetchpriority="high"></div>
+        <figcaption>产品界面示意 · 展示数据仅用于说明功能</figcaption>
+      </figure>
+    </section>
+
+    <section class="market-strip container" aria-label="当前支持范围"><p>专注公司债，贴近你的业务</p><div><span>上交所 <b>私募公司债</b></span><span>上交所 <b>公募公司债</b></span><span>深交所 <b>私募公司债</b></span><span>深交所 <b>公募公司债</b></span></div></section>
+
+    <section class="section value-section container" aria-labelledby="value-title">
+      <div class="section-heading"><span class="eyebrow">留出时间，做更有价值的事</span><h2 id="value-title">少一些反复整理，<br>多一些专业判断。</h2><p>项目材料不断增加，报告期不断推进。<br>BondBuddy 帮你处理重复工作，让精力回到项目本身。</p></div>
+      <div class="value-grid">
+        <article class="value-card"><div class="value-icon"><svg><use href="#i-update"/></svg></div><span class="value-number">01</span><h3>让更新，接着原稿往下走</h3><p>以历史募集书为底稿，结合新一期材料更新内容。修订痕迹保留在 Word 中，项目组可以继续审阅与修改。</p><span class="value-outcome">减少逐段查找与来回搬运</span></article>
+        <article class="value-card"><div class="value-icon"><svg><use href="#i-link"/></svg></div><span class="value-number">02</span><h3>让问题，带着依据出现</h3><p>对照募集书、财务报表与支持材料，梳理数字勾稽、文内及跨文档一致性问题，列明依据和待核实事项。</p><span class="value-outcome">把注意力放在需要判断的地方</span></article>
+        <article class="value-card"><div class="value-icon"><svg><use href="#i-file"/></svg></div><span class="value-number">03</span><h3>让成果，融入现有工作流</h3><p>修订版、批注版、问题报告和起草文稿，都可以下载为 Word。用你熟悉的文档，继续推进项目。</p><span class="value-outcome">从材料处理，走到可审阅的交付</span></article>
+      </div>
+    </section>
+
+    <section class="capabilities section" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="container">
+        <div class="section-heading centered"><span class="eyebrow">四项核心能力，一个工作空间</span><h2 id="capabilities-title">债券项目里的日常，<br>都有一个好搭档。</h2><p>选择一个任务，看看 BondBuddy 怎么帮你。</p></div>
+        <div class="feature-tabs" role="tablist" aria-label="选择产品功能">
+          <button id="tab-update" type="button" role="tab" aria-selected="true" aria-controls="feature-update" data-feature="update"><svg><use href="#i-update"/></svg>更新募集书</button>
+          <button id="tab-review" type="button" role="tab" aria-selected="false" aria-controls="feature-review" tabindex="-1" data-feature="review"><svg><use href="#i-review"/></svg>复核募集书</button>
+          <button id="tab-generate" type="button" role="tab" aria-selected="false" aria-controls="feature-generate" tabindex="-1" data-feature="generate"><svg><use href="#i-spark"/></svg>材料生成</button>
+          <button id="tab-qa" type="button" role="tab" aria-selected="false" aria-controls="feature-qa" tabindex="-1" data-feature="qa"><svg><use href="#i-chat"/></svg>项目问答</button>
+        </div>
+        <div class="feature-panel" id="feature-update" role="tabpanel" aria-labelledby="tab-update" tabindex="0">
+          <div class="feature-copy"><span class="feature-kicker">01 / 更新募集书</span><h3>新一期数据，<br>回到熟悉的原稿里。</h3><p>上传历史募集书和最新材料，将报告期推进到下一期，保留每一处可核对的修改。</p><ul class="check-list"><li>自动展示私募两年一期、公募三年一期</li><li>结合报表、附注、审计及其他支持材料</li><li>下载修订版 Word 与更新说明</li></ul><div class="deliverable"><svg><use href="#i-file"/></svg><span>你的交付物<strong>修订版募集书 + 更新说明</strong></span></div><a class="text-link" href="http://127.0.0.1:4320/index.html#update" data-app-link="update">体验募集书更新 <svg><use href="#i-arrow"/></svg></a></div>
+          <figure class="feature-visual"><div class="feature-image-wrap"><img src="assets/update.svg" alt="更新募集书界面示意，包含发行人、交易所、报告期选择与连续报告期预览" width="1280" height="780" loading="lazy"></div><figcaption>报告期一目了然，任务要求集中填写。界面为演示示意。</figcaption></figure>
+        </div>
+        <div class="feature-panel" id="feature-review" role="tabpanel" aria-labelledby="tab-review" tabindex="0" hidden>
+          <div class="feature-copy"><span class="feature-kicker">02 / 复核募集书</span><h3>问题在报告里，<br>位置在原文里。</h3><p>从文内表述到跨文档数字核对，让发现的问题有出处，也方便回到原文逐项处理。</p><ul class="check-list"><li>只需必传一份待复核募集书 DOCX</li><li>其他材料按需补充，核验缺口单独列明</li><li>问题报告与原文批注同步交付</li></ul><div class="deliverable"><svg><use href="#i-review"/></svg><span>你的交付物<strong>复核结果报告 + 批注版募集书</strong></span></div><a class="text-link" href="http://127.0.0.1:4320/index.html#review" data-app-link="review">体验募集书复核 <svg><use href="#i-arrow"/></svg></a></div>
+          <figure class="feature-visual"><div class="feature-image-wrap"><img src="assets/review.svg" alt="募集书复核结果界面示意，展示问题清单、原文依据、修改建议以及两份 Word 成果" width="1280" height="780" loading="lazy"></div><figcaption>问题、依据与修改建议放在一起。界面与发现的问题均为演示示例。</figcaption></figure>
+        </div>
+        <div class="feature-panel" id="feature-generate" role="tabpanel" aria-labelledby="tab-generate" tabindex="0" hidden>
+          <div class="feature-copy"><span class="feature-kicker">03 / 材料生成</span><h3>说清楚需求，<br>先有一份好修改的稿。</h3><p>从项目说明书到募集资金用途说明，用对话补充背景、明确要求，完成日常材料的第一稿。</p><ul class="check-list"><li>关联已有项目，沿用项目背景与材料</li><li>添加参考文件，连续对话调整内容</li><li>缺失信息列为待补充，文稿可导出</li></ul><div class="deliverable"><svg><use href="#i-spark"/></svg><span>你的交付物<strong>可继续编辑的 Word 文稿</strong></span></div><a class="text-link" href="http://127.0.0.1:4320/index.html#generate" data-app-link="generate">开始起草材料 <svg><use href="#i-arrow"/></svg></a></div>
+          <figure class="feature-visual"><div class="feature-image-wrap"><img src="assets/generate.svg" alt="材料生成对话界面示意，展示关联项目、项目说明书起草要求、文稿内容和 Word 下载卡片" width="1280" height="780" loading="lazy"></div><figcaption>先说想做什么，再一起完善细节。界面与文稿均为演示示例。</figcaption></figure>
+        </div>
+        <div class="feature-panel" id="feature-qa" role="tabpanel" aria-labelledby="tab-qa" tabindex="0" hidden>
+          <div class="feature-copy"><span class="feature-kicker">04 / 项目问答</span><h3>从材料里找依据，<br>向项目多问一步。</h3><p>解读财务、梳理债务、理解项目材料。专业版还可结合外部查询，补充工商与债券相关信息。</p><ul class="check-list"><li>围绕项目或上传材料持续追问</li><li>专业版提供工商、股权与风险信息查询</li><li>债券查询覆盖已到期与未到期公司债</li></ul><div class="deliverable"><svg><use href="#i-chat"/></svg><span>你的工作支持<strong>项目解答 + 依据与待核实事项</strong></span></div><a class="text-link" href="http://127.0.0.1:4320/index.html#qa" data-app-link="qa">问一个项目问题 <svg><use href="#i-arrow"/></svg></a></div>
+          <figure class="feature-visual"><div class="feature-image-wrap"><img src="assets/qa.svg" alt="项目问答界面示意，展示财务分析问题、分点回答、材料来源及追问输入框" width="1280" height="780" loading="lazy"></div><figcaption>基于已有资料回答，外部查询按专业版权益与授权服务提供。界面为演示示意。</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow-section section" id="workflow" aria-labelledby="workflow-title"><div class="container">
+      <div class="workflow-heading"><div><span class="eyebrow">从材料到成果，路径很清楚</span><h2 id="workflow-title">三步，推进下一份交付。</h2></div><p>沿用熟悉的项目资料，<br>把处理过程交给 BondBuddy。</p></div>
+      <ol class="workflow-steps">
+        <li><span class="step-number">01<span>选择任务</span></span><h3>告诉我，这次要做什么。</h3><p>更新、复核、起草或提问。填写项目背景，按需选择交易所、发行方式与报告期。</p><div class="step-tags"><span>上交所 / 深交所</span><span>公募 / 私募</span></div></li>
+        <li><span class="step-number">02<span>添加材料</span></span><h3>把手头的资料带上。</h3><p>历史募集书、财务报表、附注、审计报告……按类型上传，复核时的支持材料可选。</p><div class="step-tags"><span>DOCX</span><span>PDF</span><span>XLSX</span><span>CSV / TXT</span></div></li>
+        <li><span class="step-number">03<span>接收成果</span></span><h3>下载文档，继续判断。</h3><p>查看处理结果与待补充事项，下载修订稿、批注稿或报告，继续项目组的审阅工作。</p><div class="step-tags"><span>Word 修订</span><span>原文批注</span><span>问题报告</span></div></li>
+      </ol>
+      <div class="workflow-note"><svg><use href="#i-check"/></svg>修改有痕迹，问题有依据，未覆盖的事项有说明。</div>
+    </div></section>
+
+    <section class="pricing-section section container" id="pricing" aria-labelledby="pricing-title">
+      <div class="section-heading centered"><span class="eyebrow">按工作量，选合适的搭档</span><h2 id="pricing-title">价格清楚，选择简单。</h2><p>两档均支持募集书更新、复核、材料起草与分析。<br>专业版提供更多用量，并增加外部数据查询。</p><span class="billing-period">按月订阅 · 到期手动续费</span></div>
+      <div class="pricing-grid">
+        <article class="price-card"><div class="price-card-heading"><span class="plan-label">PERSONAL</span><h3>个人版</h3><p>依据已有材料，完成日常项目工作。</p></div><div class="price"><span>¥</span>499<small>/ 月</small></div><a class="button button-outline plan-button" href="http://127.0.0.1:4320/index.html#billing" data-app-link="billing">选择个人版 <svg><use href="#i-arrow"/></svg></a><div class="points-included"><strong>4 <span>点募集书额度 / 月</span></strong><p>可更新 1 份，或复核 4 份，也可组合使用</p></div><dl class="plan-allowances"><div><dt>对话问答</dt><dd>1,000 次 / 月</dd></div><div><dt>在对话中上传文件</dt><dd>40 份 / 月</dd></div></dl><div class="plan-source"><h4><svg><use href="#i-file"/></svg>项目材料分析</h4><p>基于已有项目与上传文件解读、分析、起草。<br>不含工商、债券等外部数据库查询。</p></div></article>
+        <article class="price-card professional"><div class="pro-ribbon">更多用量 + 外部查询</div><div class="price-card-heading"><span class="plan-label">PROFESSIONAL</span><h3>专业版</h3><p>材料处理与外部信息核验，一起推进。</p></div><div class="price"><span>¥</span>999<small>/ 月</small></div><a class="button plan-button" href="http://127.0.0.1:4320/index.html#billing" data-app-link="billing">选择专业版 <svg><use href="#i-arrow"/></svg></a><div class="points-included"><strong>12 <span>点募集书额度 / 月</span></strong><p>可更新 3 份，或复核 12 份，也可组合使用</p></div><dl class="plan-allowances"><div><dt>对话问答</dt><dd>2,000 次 / 月</dd></div><div><dt>在对话中上传文件</dt><dd>80 份 / 月</dd></div></dl><div class="plan-source"><h4><svg><use href="#i-link"/></svg>包含个人版全部能力，另含外部查询</h4><div class="provider-tags"><span>企查查 / 工商</span><span>企业预警通</span><span>Wind</span></div><p>查询工商、股权、风险，以及全部公司债的兑付与存续情况（含已到期和未到期）。</p></div></article>
+      </div>
+      <div class="point-explainer"><div><span class="point-label">点数怎么用</span><span>更新 1 份 <b>4 点</b></span><span>复核 1 份 <b>1 点</b></span></div><p>两项任务共用点数；更新、复核时上传的材料已包含在任务点数内。</p></div>
+      <aside class="addon-card"><span class="addon-symbol">+</span><div><h3>项目多了？再加购 4 点。</h3><p>可再更新 1 份，或复核 4 份。随当前套餐到期，问答与对话文件额度不变。</p></div><strong>¥299 <small>/ 4 点</small></strong><a class="text-link" href="http://127.0.0.1:4320/index.html#billing" data-app-link="billing">前往加购 <svg><use href="#i-arrow"/></svg></a></aside>
+      <p class="pricing-note">当前支付为演示流程，不会实际扣款。外部数据查询按专业版权益提供，实际可用范围以已授权接入的服务为准。</p>
+    </section>
+
+    <section class="faq-section section" id="faq" aria-labelledby="faq-title"><div class="container faq-layout"><div class="section-heading"><span class="eyebrow">开始之前</span><h2 id="faq-title">你可能还想了解。</h2><p>关于版本、材料和额度，<br>这里说清楚。</p></div><div class="faq-list">
+      <details><summary>现在可以下载 Windows 桌面版吗？<span aria-hidden="true">+</span></summary><p>Windows 桌面版正在准备中，当前可以使用 BondBuddy 网页版体验工作台与任务流程。安装包发布后，会在本页提供下载入口。</p></details>
+      <details><summary>支持哪些债券类型和报告期？<span aria-hidden="true">+</span></summary><p>当前聚焦上交所、深交所的私募公司债与公募公司债。最新报告期可选 3 月末、6 月末、9 月末或年末，系统展示私募两年一期、公募三年一期的连续报告期；年末计入年度数据。</p></details>
+      <details><summary>材料不齐，也能开始复核吗？<span aria-hidden="true">+</span></summary><p>可以。复核只需必传一份待复核募集书 DOCX，财务报表、附注、审计报告、历史募集书等支持材料可选。支持材料越充分，交叉核验范围越完整；缺少依据的事项会注明，便于后续补充。</p></details>
+      <details><summary>点数、问答和文件份数，分别怎么算？<span aria-hidden="true">+</span></summary><p>更新一份募集书使用 4 点，复核一份使用 1 点；两项任务的上传材料包含在点数内。对话每完成一轮回答计 1 次，每次新上传 1 个文件计 1 份，引用已有项目材料不重复计份数。任务未成功，预占的点数会退回。</p></details>
+      <details><summary>处理完成后，可以拿到什么？<span aria-hidden="true">+</span></summary><p>更新任务交付带修订的募集书 Word 与更新说明；复核交付问题报告与原文批注版 Word；材料生成支持下载文稿。结果同时列明待补充和未覆盖的事项，方便项目组继续审阅与完善。</p></details>
+    </div></div></section>
+
+    <section class="download-section container" id="download" aria-labelledby="download-title"><div class="download-art" aria-hidden="true"><div class="download-orbit"></div><img src="assets/brand.svg" width="96" height="96" alt=""><span class="download-file file-one"><svg><use href="#i-review"/></svg></span><span class="download-file file-two"><svg><use href="#i-file"/></svg></span></div><div class="download-copy"><span class="eyebrow">下一份交付，从这里开始</span><h2 id="download-title">你的债券项目，<br>值得一个好搭档。</h2><p>Windows 桌面版即将到来。现在，从网页版开始体验。</p><div class="download-actions"><button class="button" type="button" data-download><svg><use href="#i-windows"/></svg>获取 Windows 版<svg><use href="#i-arrow"/></svg></button><a class="text-link" href="http://127.0.0.1:4320/index.html#dashboard" data-app-link="dashboard">体验网页版 <span>↗</span></a></div></div></section>
+  </main>
+
+  <footer class="site-footer container"><div class="footer-main"><a class="brand" href="#"><img src="assets/brand.svg" width="29" height="29" alt=""><span>bondbuddy<span class="brand-dot">.</span></span></a><p>为债券项目而生，为专业判断留出时间。</p><nav aria-label="页尾导航"><a href="#capabilities">产品功能</a><a href="#pricing">套餐价格</a><a href="#faq">常见问题</a></nav></div><div class="footer-bottom"><span>© <span id="copyright-year">2026</span> BondBuddy</span><span>让材料有依据，让交付更从容。</span><a href="#main">回到顶部 ↑</a></div></footer>
+
+  <dialog id="download-dialog" aria-labelledby="download-dialog-title" aria-describedby="download-dialog-description"><button class="dialog-close" type="button" data-close-dialog aria-label="关闭"><svg><use href="#i-close"/></svg></button><div class="dialog-icon"><svg><use href="#i-windows"/></svg></div><span class="eyebrow">WINDOWS DESKTOP</span><h2 id="download-dialog-title">桌面上的好搭档，<br>正在准备中。</h2><p id="download-dialog-description">Windows 安装包尚未发布。你可以先在网页版体验募集书更新、复核、材料生成与项目问答。</p><a class="button" href="http://127.0.0.1:4320/index.html#dashboard" data-app-link="dashboard">先体验网页版 <svg><use href="#i-arrow"/></svg></a><button class="dialog-return" type="button" data-close-dialog>继续了解产品</button></dialog>
+  <dialog id="preview-dialog" class="image-dialog" aria-labelledby="preview-dialog-title"><h2 id="preview-dialog-title">产品界面预览</h2><button class="dialog-close" type="button" data-close-preview aria-label="关闭界面预览"><svg><use href="#i-close"/></svg></button><img id="preview-dialog-image" alt="" width="1280" height="780"><p>产品界面示意 · 展示数据仅用于说明功能</p></dialog>
+  <noscript><p class="noscript-note">功能预览切换需要启用 JavaScript。当前可查看更新募集书预览；Windows 版尚未发布，可通过页面链接体验网页版。</p></noscript>
+  <script id="site-config" type="application/json">{"appUrl":"http://127.0.0.1:4320/index.html","windowsDownloadUrl":""}</script>
+</body>
+</html>

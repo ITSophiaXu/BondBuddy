@@ -1,0 +1,13 @@
+{
+  "name": "bondbuddy-landing-page",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/preview.mjs",
+    "check": "node --check public/website.js && node --check scripts/preview.mjs && node --check scripts/build-site-previews.mjs && node --check scripts/export-website.mjs",
+    "build:previews": "node scripts/build-site-previews.mjs",
+    "export": "node scripts/export-website.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

@@ -1,0 +1,219 @@
+{
+  "importedOn": "2026-09-18",
+  "sources": [
+    {
+      "id": "S001",
+      "path": "上交所与深交所募集说明书全文更新逻辑差异_简版专家Review稿_V2.docx",
+      "sha256": "a143db226190d4d837fc0431096b05b1f5859285969c832383de5aa9ac7e089f",
+      "status": "extracted",
+      "lines": 121,
+      "file": "S001.md"
+    },
+    {
+      "id": "S002",
+      "path": "上交所与深交所募集说明书全文更新逻辑差异对照_专家Review稿_V1.docx",
+      "sha256": "d5e8bff59e9ea3668e96eed41545b469c07a219cd197b00a55a2c68df8edbd69",
+      "status": "extracted",
+      "lines": 613,
+      "file": "S002.md"
+    },
+    {
+      "id": "S003",
+      "path": "上交所公司债券规则-通用\\上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）.docx",
+      "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+      "status": "extracted",
+      "lines": 1030,
+      "file": "S003.md"
+    },
+    {
+      "id": "S004",
+      "path": "上交所私募公司债募集书更新知识_v1.0.md",
+      "sha256": "fcce875a6fdbafc76913316a125c1a03d8fcc13cb45e36cc655acc8431eb3665",
+      "status": "extracted",
+      "lines": 220,
+      "file": "S004.md"
+    },
+    {
+      "id": "S005",
+      "path": "上交所私募公司债募集书更新规则-专家编写版\\私募债全文更新知识V6.docx",
+      "sha256": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "status": "extracted",
+      "lines": 1595,
+      "file": "S005.md"
+    },
+    {
+      "id": "S006",
+      "path": "上交所私募公司债募集书更新规则-专家编写版\\私募债募集说明书撰写模板(余总填写版)2.docx",
+      "sha256": "b27928515a349f3ed46711f6ac1a8dab0abf17f3901ef39b6bfe7c3b5c0ddcc5",
+      "status": "extracted",
+      "lines": 622,
+      "file": "S006.md"
+    },
+    {
+      "id": "S007",
+      "path": "上交所私募公司债财务数据更新规则_专家审阅版_V1.1-0905.docx",
+      "sha256": "271070461d36537ffeea2e79acdb7ca5bcf563f730d8a517997152638bfd458f",
+      "status": "extracted",
+      "lines": 301,
+      "file": "S007.md"
+    },
+    {
+      "id": "S008",
+      "path": "募集书更新指南-批注版.docx",
+      "sha256": "31829e5a00616f8e37ee6730203306997edf975c66b685e2244fea4cb863f28e",
+      "status": "extracted",
+      "lines": 10132,
+      "file": "S008.md"
+    },
+    {
+      "id": "S009",
+      "path": "审计报告科目之间的勾稽关系.docx",
+      "sha256": "0dd2a03aaca23e48b01144594b50451f17806059460ef9567aedd782f1124ecb",
+      "status": "extracted",
+      "lines": 98,
+      "file": "S009.md"
+    },
+    {
+      "id": "S010",
+      "path": "开发交接知识包\\01_产品目标与业务流程.md",
+      "sha256": "c93319441e45fc07dc2b7c38350def862faa994f8f18000e28607471c675e8d5",
+      "status": "extracted",
+      "lines": 203,
+      "file": "S010.md"
+    },
+    {
+      "id": "S011",
+      "path": "开发交接知识包\\02_募集说明书章节与材料规则.md",
+      "sha256": "8bc8fa4d8c17b5c0367eb672981cd493ba7b0382b7df6e22d5445b9e37a6555c",
+      "status": "extracted",
+      "lines": 241,
+      "file": "S011.md"
+    },
+    {
+      "id": "S012",
+      "path": "开发交接知识包\\03_财务数据程序化更新引擎.md",
+      "sha256": "694c7efb18a9ab56321780c47f12dbb9c0af14d5806be0979ab452b801446caa",
+      "status": "extracted",
+      "lines": 339,
+      "file": "S012.md"
+    },
+    {
+      "id": "S013",
+      "path": "开发交接知识包\\04_系统架构与核心数据模型.md",
+      "sha256": "f8c6e60f9f85d74ab973cfc708b2dee7ad1ca82a90848868930f991c9b87cb7a",
+      "status": "extracted",
+      "lines": 287,
+      "file": "S013.md"
+    },
+    {
+      "id": "S014",
+      "path": "开发交接知识包\\05_现有代码与实现状态.md",
+      "sha256": "a0512e13978f2f7819a83b71dfce48e31be69d073b0d969e9cad41ef9f3ef587",
+      "status": "extracted",
+      "lines": 262,
+      "file": "S014.md"
+    },
+    {
+      "id": "S015",
+      "path": "开发交接知识包\\06_开发任务拆解与验收标准.md",
+      "sha256": "5d27b2a6fa0310444ce3cf065cae103f979fd2c0635fcca6ef4e0184003e5ff0",
+      "status": "extracted",
+      "lines": 325,
+      "file": "S015.md"
+    },
+    {
+      "id": "S016",
+      "path": "开发交接知识包\\07_原始资料与样例索引.md",
+      "sha256": "ffaf4688b69fd060d8a02ab98111836a65ff389c4af810be64d1bb0f4e4a0134",
+      "status": "extracted",
+      "lines": 233,
+      "file": "S016.md"
+    },
+    {
+      "id": "S017",
+      "path": "开发交接知识包\\08_关键决策与待确认问题.md",
+      "sha256": "9597d784619f9b98b367b983758b08871b30d5b17ce4036274feb0c87d7cdfa1",
+      "status": "extracted",
+      "lines": 220,
+      "file": "S017.md"
+    },
+    {
+      "id": "S018",
+      "path": "开发交接知识包\\README.md",
+      "sha256": "a0d0cb552be4520247a1fe8c04eb4f8e64b92fdc6a431f5f6b0f80d5840046b5",
+      "status": "extracted",
+      "lines": 122,
+      "file": "S018.md"
+    },
+    {
+      "id": "S019",
+      "path": "投行专家知识填写卡 (1).xlsx",
+      "sha256": "2bc2f58928fef44eb0e957af6261e3891564fa70696788d9c3a2c46c502d9721",
+      "status": "extracted",
+      "lines": 2250,
+      "file": "S019.md"
+    },
+    {
+      "id": "S020",
+      "path": "深交所公司债券募集说明书全文更新知识Draft_V1.docx",
+      "sha256": "59ea7aac7681a52fba964f40ef737ac28229632b782380e5e399ac9acab9e017",
+      "status": "extracted",
+      "lines": 702,
+      "file": "S020.md"
+    },
+    {
+      "id": "S021",
+      "path": "深交所公司债券规则-通用\\深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）.docx",
+      "sha256": "87dd71922ab8beab39d1d4f80d4b68479f119245f47ac47d5664472ba83254bc",
+      "status": "extracted",
+      "lines": 1834,
+      "file": "S021.md"
+    },
+    {
+      "id": "S022",
+      "path": "深交所公司债券规则-通用\\深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）.docx",
+      "sha256": "fd0b21e1ab6fd0805f8ebd02381338ad2911f34ef670fb19dff82cebf9228239",
+      "status": "unreadable",
+      "reason": "ValueError: Encrypted Office package; requires an unencrypted copy"
+    },
+    {
+      "id": "S023",
+      "path": "深交所私募公司债募集书更新规则-专家编写版\\深交所公司债券募集说明书全文更新知识Draft_V1 (2).docx",
+      "sha256": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "status": "extracted",
+      "lines": 918,
+      "file": "S023.md"
+    },
+    {
+      "id": "S024",
+      "path": "私募债募集说明书全文更新说明书V5.docx",
+      "sha256": "0a0d21d5b4318e010dfa7ffab854a00bdab7016a43fe8672665f74bc2fdb4746",
+      "status": "extracted",
+      "lines": 1665,
+      "file": "S024.md"
+    },
+    {
+      "id": "S025",
+      "path": "私募债募集说明书全文更新说明书（填写知识版）-修订版.docx",
+      "sha256": "655ae00f50689e688e086f43f9defb5a111db6cc91d8b1fcca73f66ce1383c55",
+      "status": "extracted",
+      "lines": 1200,
+      "file": "S025.md"
+    },
+    {
+      "id": "S026",
+      "path": "私募债募集说明书撰写模板(余总填写版).docx",
+      "sha256": "7ee0fbb1b056064569cc178fd31b8be1a6e6b5522e1c668f1f9978586c2c0ff3",
+      "status": "unreadable",
+      "reason": "ValueError: Encrypted Office package; requires an unencrypted copy"
+    },
+    {
+      "id": "S027",
+      "path": "私募公司债券募集说明书模板·优化版V1.docx",
+      "sha256": "3cb7318ef0233560dd40a59a16f34df6e90926fddfd303ba5ad0fb6c5eab43c7",
+      "status": "extracted",
+      "lines": 400,
+      "file": "S027.md"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # 募集书 Cowork
 
+> 新产品设计交接：请查看 [设计目录导航](DESIGN.md)、[BondBuddy 新产品原型](product-prototype/HANDOFF.md) 和 [BondBuddy Landing Page](landing-page/README.md)。下文描述仓库原有的线上 Cowork 应用。
+
 网页版募集说明书更新与审阅工作台。支持财务数据更新和全文更新，后端通过子进程直接调用 Codex CLI。默认仍按本机单用户方式运行；另提供受密码保护的 Azure VM 和 Azure Container Apps 部署。
 
 ## Cowork OS UX 预览

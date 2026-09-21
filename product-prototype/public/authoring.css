@@ -1,0 +1,31 @@
+.authoring-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;border:0;padding:0;margin:20px 0 14px;min-width:0}
+.authoring-choice{display:flex;align-items:flex-start;gap:10px;padding:20px;border:1px solid var(--line);border-radius:10px;background:var(--white);cursor:pointer}
+.authoring-choice:has(input:checked){border-color:var(--green);box-shadow:0 0 0 1px var(--green);background:#f1f6e9}
+.authoring-choice input{margin-top:4px;accent-color:var(--green);flex-shrink:0}
+.authoring-choice>span{display:grid;gap:10px;min-width:0}
+.authoring-choice strong{font-size:14px;font-weight:600;color:var(--ink)}
+.authoring-choice span span,.authoring-choice small{font-size:12px;line-height:1.7;color:#60725d}
+.authoring-choice small{padding-top:10px;border-top:1px solid var(--line);color:var(--green)}
+.form-section .authoring-help{font-size:12px;line-height:1.8;color:#65735f;margin-top:15px}
+.optional-group{border-top:1px solid var(--line);padding:17px 0}
+.optional-group summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--ink);line-height:1.8}
+.optional-group summary>span{float:right;font-size:12px;font-weight:400;color:#65735f}
+.optional-group>p{font-size:12px;line-height:1.8;color:#65735f;margin:12px 0 16px}
+.optional-project .field[hidden]{display:none!important}
+.optional-project .field select{width:100%;border:1px solid var(--line);padding:11px 12px;background:#fff;color:var(--ink);border-radius:7px;font:inherit;font-size:13px;min-width:0}
+.optional-project .field-grid{margin-top:16px}
+.upload-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.primary-dropzone{padding:23px 15px}
+.reference-notes{margin-top:18px}
+.authoring-mode-label{font-size:12px;background:var(--soft);color:var(--green);padding:10px;border-radius:6px;line-height:1.8;margin-bottom:15px}
+.authoring-check{display:grid;grid-template-columns:130px minmax(0,1fr);gap:13px 18px;font-size:13px;line-height:1.8;margin:22px 0}
+.authoring-check dt{color:#65735f}
+.authoring-check dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.material-guidance{margin:18px 0;font-size:12px;line-height:1.9;color:#60725d}
+.material-guidance summary{color:var(--green);cursor:pointer}
+.material-guidance ul{padding-left:20px;margin-top:12px}
+.material-guidance li{margin-bottom:10px}
+.file-item .badge{white-space:normal;max-width:135px}
+.file-item select{max-width:215px}
+@media(max-width:900px){.authoring-choices{grid-template-columns:1fr}.authoring-choice{padding:17px}.authoring-check{grid-template-columns:105px minmax(0,1fr)}}
+@media(max-width:520px){.optional-group summary>span{float:none;display:block;font-size:11px;margin-left:18px}.authoring-check{grid-template-columns:1fr;gap:5px}.authoring-check dd{margin-bottom:10px}.optional-project .field select,.optional-project .field input,.optional-project .field textarea{font-size:16px}.form-footer{flex-wrap:wrap;gap:14px}.form-footer>span{width:100%}.file-item select{max-width:100%;width:100%}.authoring-choice input{min-width:17px;min-height:17px}.stepper .step{white-space:normal;font-size:11px}}

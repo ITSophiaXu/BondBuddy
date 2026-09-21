@@ -1,0 +1,10 @@
+runtime/
+.env
+.env.*
+!.env.example
+qa/artifacts/
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+*.log
