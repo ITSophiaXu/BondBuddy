@@ -15,6 +15,7 @@ from decimal import Decimal, InvalidOperation
 
 from .documents import parse_document, targets, text_diff
 from .store import uid, now
+from .raw_materials import prepare_original, enabled as original_files_enabled
 
 FINANCIAL = re.compile(r'资产|负债|收入|成本|利润|现金|应收|应付|存货|借款|有息债务|受限|毛利|财务|EBITDA|股本|实收资本|担保余额|偿债|净额|占比|报告期|审计')
 CAPITAL = re.compile(r'注册资本|实缴资本')
@@ -38,6 +39,9 @@ def working_file(p):
     if not original:
         return None
     file = copy.deepcopy(original)
+    if original_files_enabled(p):
+        file.update(processing_mode='original_files', format_policy='preserve_original', layout_tasks=[])
+        return file
     if original.get('extension') == '.docx':
         file['format_policy'] = 'preserve_original'
         # Earlier versions staged appended columns. Preserve those proposals in
@@ -163,6 +167,8 @@ def publication_changes(changes):
 
 
 def stage_candidates(p):
+    if original_files_enabled(p):
+        return
     ensure_period_columns(p)
     existing = {c['target_id'] for c in p['changes']}
     for t in candidate_targets(p):
@@ -309,6 +315,8 @@ def apply_model_result(p, result, allowed_ids, start_revision):
              'chapter': t['chapter'], 'created_at': now(), 'version': (old_change or {}).get('version', 0) + 1}
         if proposal and proposal != after:
             c['proposal'] = proposal
+        if original_files_enabled(p) and item.get('unverified_sources'):
+            c['unverified_sources'] = copy.deepcopy(item['unverified_sources'])
         p['history'].append({'id': uid('event'), 'at': now(), 'action': 'Agent 修改', 'change_id': c['id'],
                              'before': copy.deepcopy(old_change), 'after': copy.deepcopy(c)})
         p['changes'] = [x for x in p['changes'] if x['target_id'] != tid] + [c]
@@ -371,6 +379,7 @@ def review_change(p, cid, action, text=None, version=None):
 def project_view(p, full_history=False):
     data = copy.deepcopy(p)
     file = working_file(p)
+    data['processing_mode'] = 'original_files' if original_files_enabled(p) else 'legacy'
     data['document'] = file
     if file:
         data['targets'] = targets(file)
@@ -473,6 +482,10 @@ def fetch_public_url(url):
 
 
 def prepare_file(raw, name, role, category, url=None):
+    return prepare_original(raw, name, role, category, url)
+
+
+def prepare_legacy_file(raw, name, role, category, url=None):
     if role not in {'prospectus', 'source'}:
         raise ValueError('文件角色无效。')
     if category not in {'financial', 'notes', 'audit', 'credit', 'registry', 'rating', 'other', 'web', 'prospectus'}:
@@ -499,9 +512,14 @@ def commit_file(store, p, raw, file):
     path.write_bytes(raw)
     f = {**file, 'stored_path': str(path)}
     p['files'].append(f)
+    if p.get('direct_word'):
+        p['direct_word']['status'] = 'stale'
+    if f.get('processing_mode') == 'original_files':
+        p['processing_mode'] = 'original_files'
     if role == 'prospectus':
         p['original_id'] = f['id']
-        index_brackets(p)
+        if f.get('processing_mode') != 'original_files':
+            index_brackets(p)
     store._storage_cache = None
     store.log(p, '上传材料', name=f['name'])
     return f

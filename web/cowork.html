@@ -1,22 +1,15 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <title>券商 Cowork · 我的工作</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/project-workspace.css">
-  <link rel="stylesheet" href="/cowork-os.css">
-</head>
-<body data-layout="project">
-  <div id="app"><div class="boot"><span class="brandmark">B</span><p>正在打开项目工作区…</p></div></div>
-  <div id="overlay"></div>
-  <div id="toasts" aria-live="polite"></div>
-  <script defer src="/project-workspace.js"></script>
-  <script defer src="/conversations.js"></script>
-  <script defer src="/cowork-os.js"></script>
-  <script defer src="/app.js"></script>
-</body>
-</html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BondBuddy · 募集书更新</title><link rel="stylesheet" href="/direct-word.css?v=request-token-20260917"></head>
+<body><header><a href="/cowork.html" class="brand">BondBuddy</a><span>募集书更新</span></header>
+<main><section class="intro"><p class="eyebrow">从原材料到修订 Word</p><h1>上传材料，更新整份募集书。</h1><p>根据你提供的报表、附注等原文件完成全文更新。生成带修订和来源批注的 Word，完成后直接下载。</p></section>
+<div class="workspace"><aside><h2>项目</h2><label for="projects">选择已有项目</label><select id="projects"><option value="">选择项目</option></select>
+<form id="new-project"><h3>创建新项目</h3><label for="title">项目名称</label><input id="title" required maxlength="120" placeholder="例如：任丘募集书更新"><label for="period">更新至报告期末</label><input id="period" type="date" required><button type="submit">创建项目</button></form></aside>
+<section class="project"><div class="knowledge-setting"><label class="knowledge-option"><input id="use-reference-knowledge" type="checkbox" disabled><span>使用募集书更新知识 <small>上交所私募公司债 · v1.0</small></span></label><p class="hint">勾选后，本次更新参考知识中的取数、核对和修订方法；项目事实仍以你上传的材料为准。</p>
+</div><div id="empty"><h2>开始一次更新</h2><p>选择项目或新建项目，然后上传历史募集书与本期材料。</p></div>
+<div id="detail" hidden><h2 id="project-title"></h2><p id="project-period" class="muted"></p>
+<form id="upload"><label for="category">材料类型</label><div class="upload-controls"><select id="category"><option value="prospectus">历史募集书（DOCX）</option><option value="financial">财务报表</option><option value="notes">财务附注</option><option value="audit">审计报告</option><option value="credit">征信材料</option><option value="registry">工商材料</option><option value="rating">评级材料</option><option value="other">其他材料</option></select><input id="files" type="file" multiple accept=".docx,.xlsx,.pdf,.csv,.txt,.md"><button id="upload-button" type="submit">上传材料</button></div><p class="hint">原文件直接保存，运行时读取。历史募集书使用 DOCX，以保留原稿版式和修订。</p></form>
+<ul id="material-list"></ul><label for="instruction">补充要求（选填）</label><textarea id="instruction" rows="3" placeholder="例如：保留历史比较期间，新增本期财务数据。"></textarea>
+<div class="actions"><button id="run" class="primary">全文更新并生成修订 Word</button><button id="cancel" hidden>停止</button></div>
+<div id="status-box" aria-live="polite"><p id="status">等待上传材料</p><progress id="progress" max="100" value="0" hidden></progress><p id="delivery-note" class="muted"></p></div>
+<div class="actions"><a id="download" class="download" hidden>下载修订 Word</a><a id="usage">下载 Token 用量记录</a></div></div></section></div>
+<p id="error" role="alert"></p><footer>有材料依据的修改自动写入。缺少材料或存在冲突的内容保留原文，并在 Word 批注中说明。</footer></main><script src="/direct-word.js?v=request-token-20260917" defer></script></body></html>

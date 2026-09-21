@@ -152,13 +152,13 @@ class ConversationRunner(Runner):
         source = super()._process_environment()
         return {
             key: source[key]
-            for key in ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'CODEX_HOME', 'BOND_CODEX_HOME')
+            for key in ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'CODEX_HOME', 'BOND_CODEX_HOME', 'DEEPSEEK_API_KEY')
             if source.get(key)
         }
 
     def _command_for(self, task_dir, schema, output, allow_web):
         args = super()._command_for(task_dir, schema, output, False)
-        if 'exec' in args:
+        if 'exec' in args and 'danger-full-access' not in args:
             exec_index = args.index('exec')
             args[exec_index:exec_index] = ['--disable', 'shell_tool', '--disable', 'view_image']
         return args

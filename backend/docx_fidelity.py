@@ -78,6 +78,9 @@ def target_nodes(root, file):
             node = body[index]
             if block['type'] == 'table':
                 node = grid[entry['row']][entry['col']]._tc
+            if entry.get('native_cell') and block['type'] != 'table':
+                table = Table(node, None)
+                node = table._cells[entry['row'] * table._column_count + entry['col']]._tc
             result[entry['id']] = (node, entry)
     return result
 

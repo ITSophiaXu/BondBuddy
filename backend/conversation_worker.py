@@ -17,6 +17,7 @@ from pathlib import Path
 from .conversations import MAX_CONVERSATION_BYTES, ConversationRunner, conversation_messages
 from .server import ROOT
 from .store import Store
+from .codex_config import write_worker_config
 
 
 MAX_BODY = MAX_CONVERSATION_BYTES + 100_000
@@ -24,16 +25,8 @@ MAX_BODY = MAX_CONVERSATION_BYTES + 100_000
 
 class WorkerApp:
     def __init__(self, root):
-        codex_home = Path(os.environ.get('CODEX_HOME', '/data/worker-codex')).resolve()
-        codex_home.mkdir(parents=True, exist_ok=True)
-        (codex_home / 'config.toml').write_text(
-            'cli_auth_credentials_store = "file"\n'
-            'web_search = "disabled"\n\n'
-            '[features]\n'
-            'shell_tool = false\n'
-            'view_image = false\n',
-            encoding='utf-8',
-        )
+        codex_home = Path(os.environ.get('BOND_CODEX_HOME') or os.environ.get('CODEX_HOME', '/data/worker-codex')).resolve()
+        write_worker_config(codex_home)
         self.store = Store(root)
         self.runner = ConversationRunner(self.store, ROOT)
 

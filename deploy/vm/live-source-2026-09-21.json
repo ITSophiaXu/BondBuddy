@@ -1,0 +1,603 @@
+{
+  "captured_at": "2026-09-21T06:02:07.426948+00:00",
+  "application_url": "https://bonddraftai-openclaw.japaneast.cloudapp.azure.com/cowork.html",
+  "host_checkout": "/opt/bonddraftai",
+  "source_of_truth": "/app in running bonddraftai container; deployment files and tests from host checkout",
+  "containers": {
+    "bonddraftai": {
+      "container_id": "dbb40c5fec2786bb19b3fc207ce35c6047e4038f70fad9ac430321e4d897a066",
+      "image_id": "sha256:4e383b671280a6e829431ddedd0107139db46373487fc3c51cade5c180d1e210",
+      "started_at": "2026-09-17T02:04:48.228229552Z"
+    },
+    "bonddraftai-conversation-worker": {
+      "container_id": "1729b5013b1f26285262b39cfbf4e3723c20f438bac6b90415dd5fb9641e9119",
+      "image_id": "sha256:7fb9280d3de7b6a12221d4e6e85338f1d5c2580f5001265fb15690146adda53c",
+      "started_at": "2026-09-16T12:26:27.760518298Z"
+    }
+  },
+  "repository_base_commit": "4641ef5",
+  "excluded": [
+    ".env and credentials",
+    "customer uploads and project data",
+    "model authentication and configuration directories",
+    "logs and generated documents",
+    "backup files and Python caches"
+  ],
+  "host_app_differences": [
+    {
+      "path": "docker-entrypoint.sh",
+      "host_sha256": "9c1ced37a84d23812c928242447fb3f30d048e009c4f324af38d5fb5989a016c",
+      "app_sha256": "78f6988acf5460bf7a5e2c9c0b29d573ade5221984a68dea1e8788f09f1f058b",
+      "note": "CRLF converted to LF by Dockerfile"
+    }
+  ],
+  "worker_app_differences": [
+    {
+      "path": "backend/request_token.py",
+      "app_sha256": "06d522982940b40355cd15512655987f39f2e0a4f0c12bb3420249ee50186c55",
+      "worker_sha256": null
+    },
+    {
+      "path": "backend/server.py",
+      "app_sha256": "82c56ea0e0672ccd235f7546fb2bd875c0a631dbacbbe18b025f43bdb5636754",
+      "worker_sha256": "5ff786f80324228b181ddac596fb1fd37a0f3f9c295ec811fa9a7de8f8178edc"
+    },
+    {
+      "path": "web/app.js",
+      "app_sha256": "650a7f51fdb7d8f3af981785e617a4de45239f73287a427f6f71da0c591dcf8f",
+      "worker_sha256": "ad914e298c19dbe3f338a6dc26f863a63179d88e5648ae9a88cc992443543627"
+    },
+    {
+      "path": "web/cowork.html",
+      "app_sha256": "50c53f2fb28f3327b6a7a42a24a9aa6496059388730a77ec8e899793e3dbf7d6",
+      "worker_sha256": "3bf470c8469d099848733236a2eb13c4ce54d560f4d36291f640a7f57bee8add"
+    },
+    {
+      "path": "web/direct-word.css",
+      "app_sha256": "18faca3fd5b1234af157b37c68328d226569e9492a535feb340b93c7d695330f",
+      "worker_sha256": "1e253b70e6284fd33dadd04f3ef2cc2d12f208612c17aa0bc952413b14c87dc0"
+    },
+    {
+      "path": "web/direct-word.js",
+      "app_sha256": "04c029b29d0d3e042bb016fb9dc1f7d378f2b0d59aa872a79a87f88dc5939aba",
+      "worker_sha256": "4797d4ae3a4c8b419d59d6b1560d8953cf12c88ce707df7bb787dc4072083858"
+    },
+    {
+      "path": "web/index.html",
+      "app_sha256": "fdf7da26bea771b7694c0c632667defdbae20df21a7f921a7bb4a77d9a84daeb",
+      "worker_sha256": "99efc3fd1ca2a6b3768ca869372113c29b8cdb22377fb6115b32009fc042b065"
+    },
+    {
+      "path": "web/project-workspace.js",
+      "app_sha256": "59365868c54adaaf15077ef9695c7cdbf60ae1415ae53971779df4cbdd2ac5c5",
+      "worker_sha256": "b005a7854eddfddaa4fcf8abfac66e165977a66c2408086a08503848628c3892"
+    },
+    {
+      "path": "web/styles.css",
+      "app_sha256": "55b7b8ceceaf11b4968e4090105e870ce6e6466d195dd59fa20170dcb606371b",
+      "worker_sha256": "daffdbb1d246763bc1d55daddbae446c3a5b0c2c4dc40f3eed8ae8e65900ffd7"
+    }
+  ],
+  "reference_draft_deployed": false,
+  "hash_notes": "sha256 records remote bytes; sha256_lf normalizes CRLF to LF for Git checkout comparisons.",
+  "files": [
+    {
+      "path": ".dockerignore",
+      "source": "host_checkout",
+      "sha256": "ff2c86d02d5beeee72d80f444a43a69f6f259673d5239e4724651d15aebde88d",
+      "sha256_lf": "3908baf3d619b774fa5ba36f4a703058add9e8308a2e44fc7c3ffb24256033f0",
+      "bytes": 213
+    },
+    {
+      "path": ".gitignore",
+      "source": "host_checkout",
+      "sha256": "bb7308f5773a1963fedf24fdf7cf6a4712b0d2e80ec055082eaedf3e0a5a742b",
+      "sha256_lf": "55f61a08650f0ad59026dc6d8902777df66f8c7509f3b3e57d1737b7e6757c18",
+      "bytes": 237
+    },
+    {
+      "path": "Dockerfile",
+      "source": "host_checkout",
+      "sha256": "3cbc7e184393a283d1f8eeb61e034c8c0a7354313e2d9d523bd423c4e1d57086",
+      "sha256_lf": "0ba482f27c0b910b8aa867d7e055354a46b1d7ecbeb28806d278b2e03b30ce93",
+      "bytes": 1475
+    },
+    {
+      "path": "README.md",
+      "source": "host_checkout",
+      "sha256": "de7fffffd0943924e4030973ec549e8def372c09041a5c55851e086464e46d9f",
+      "sha256_lf": "f98edba3d3a9685b78cb5c0e9cc91f8350c5174bc6bc4ddbf2680994522f4b51",
+      "bytes": 23021
+    },
+    {
+      "path": "backend/__init__.py",
+      "source": "running_app",
+      "sha256": "10e2085d8eb3b2a39b8ed5b9f41211264d81454b623f36de9470e94ac122a909",
+      "sha256_lf": "0522fe5d020a015f052ae992dc430308647487e2476080d71b6a7c20b2aee728",
+      "bytes": 45
+    },
+    {
+      "path": "backend/cli_word.py",
+      "source": "running_app",
+      "sha256": "d54553e17afa177f4cf97c45687ec20ca20d1927c95961652a54067420858133",
+      "sha256_lf": "d54553e17afa177f4cf97c45687ec20ca20d1927c95961652a54067420858133",
+      "bytes": 9986
+    },
+    {
+      "path": "backend/cli_word_guide.md",
+      "source": "running_app",
+      "sha256": "52b1db1b189cad15f78abe63fd239ad21877389273ea93741d9fadc3a98e4255",
+      "sha256_lf": "52b1db1b189cad15f78abe63fd239ad21877389273ea93741d9fadc3a98e4255",
+      "bytes": 5913
+    },
+    {
+      "path": "backend/cli_workspace.py",
+      "source": "running_app",
+      "sha256": "3016ac92ad8f9cf63467e4263af7b1ffd700b5e8af6ff072bc0166f727ad7abe",
+      "sha256_lf": "3016ac92ad8f9cf63467e4263af7b1ffd700b5e8af6ff072bc0166f727ad7abe",
+      "bytes": 5867
+    },
+    {
+      "path": "backend/codex_config.py",
+      "source": "running_app",
+      "sha256": "c0a56839fe332fb91962a7150825121db29f96efb99dd29f09dc65d1a6c1e1db",
+      "sha256_lf": "c0a56839fe332fb91962a7150825121db29f96efb99dd29f09dc65d1a6c1e1db",
+      "bytes": 4535
+    },
+    {
+      "path": "backend/conversation_worker.py",
+      "source": "running_app",
+      "sha256": "6a09981ef597d198a7e0357d6e1e196638286de143a65b8247f98af7f3d72118",
+      "sha256_lf": "6a09981ef597d198a7e0357d6e1e196638286de143a65b8247f98af7f3d72118",
+      "bytes": 6788
+    },
+    {
+      "path": "backend/conversations.py",
+      "source": "running_app",
+      "sha256": "cb5fa085177714716b93324bfb9219a0260be13130a6051253bc8d548ed9cdf0",
+      "sha256_lf": "cb5fa085177714716b93324bfb9219a0260be13130a6051253bc8d548ed9cdf0",
+      "bytes": 12530
+    },
+    {
+      "path": "backend/data/financial_rules.json",
+      "source": "running_app",
+      "sha256": "e13c679824f823cd6c2c22aa1f7ff28912c370db2e204d1b9e344c3f51a71822",
+      "sha256_lf": "42312639c17df1315ba0fe48a8d3697b8c14c5043e9871e3608b244b8366c7d3",
+      "bytes": 57593
+    },
+    {
+      "path": "backend/data/上交所私募公司债募集书更新知识_v1.0.md",
+      "source": "running_app",
+      "sha256": "fcce875a6fdbafc76913316a125c1a03d8fcc13cb45e36cc655acc8431eb3665",
+      "sha256_lf": "d4e739bec45f2750394d9bd0f47f14ddeb484d84ca1446c41fae1cf3e45a39fb",
+      "bytes": 28061
+    },
+    {
+      "path": "backend/demo.py",
+      "source": "running_app",
+      "sha256": "e52cf9b0f00489077a7809efa6fc8434ef7b03e33a22e87cd1d560f33e2e1fc5",
+      "sha256_lf": "70ec2b697bb8f03ce294fcd6bf8db493c354ed56cba630627031b3c8ac65644d",
+      "bytes": 7518
+    },
+    {
+      "path": "backend/direct_word.py",
+      "source": "running_app",
+      "sha256": "bf052f361ae9147d02c705755ad2c6e1b2ebb4c4b325699a5f06438d09bcdda8",
+      "sha256_lf": "bf052f361ae9147d02c705755ad2c6e1b2ebb4c4b325699a5f06438d09bcdda8",
+      "bytes": 8987
+    },
+    {
+      "path": "backend/documents.py",
+      "source": "running_app",
+      "sha256": "1c6d30f70353a19da0e404c10ee31b303691d0a501c4b79fc2253b56e1af68d7",
+      "sha256_lf": "1c6d30f70353a19da0e404c10ee31b303691d0a501c4b79fc2253b56e1af68d7",
+      "bytes": 21317
+    },
+    {
+      "path": "backend/docx_fidelity.py",
+      "source": "running_app",
+      "sha256": "96331ca20245fde664637c0345cc948a2b3d83dd8ab33852d68e27455bef960a",
+      "sha256_lf": "96331ca20245fde664637c0345cc948a2b3d83dd8ab33852d68e27455bef960a",
+      "bytes": 15275
+    },
+    {
+      "path": "backend/engine.py",
+      "source": "running_app",
+      "sha256": "1ec995fdb90d33b1cb1867cc57fdbeb9bece5bd699da50d2ff291b132e51d77a",
+      "sha256_lf": "1ec995fdb90d33b1cb1867cc57fdbeb9bece5bd699da50d2ff291b132e51d77a",
+      "bytes": 27184
+    },
+    {
+      "path": "backend/evidence_math.py",
+      "source": "running_app",
+      "sha256": "089ac78801285f8f36fcc20df05289a1cc12d17211d971fb03b3141e1e040dbd",
+      "sha256_lf": "089ac78801285f8f36fcc20df05289a1cc12d17211d971fb03b3141e1e040dbd",
+      "bytes": 5549
+    },
+    {
+      "path": "backend/knowledge.py",
+      "source": "running_app",
+      "sha256": "08556f1260133224ef06a8b2b83858b29192f2032db1ee3c5503fbf3a176ad8d",
+      "sha256_lf": "08556f1260133224ef06a8b2b83858b29192f2032db1ee3c5503fbf3a176ad8d",
+      "bytes": 1768
+    },
+    {
+      "path": "backend/material_reader.py",
+      "source": "running_app",
+      "sha256": "b0c0d5eee1520f536285c9d88a4138d85379762a384c7206beb82a86adafe58c",
+      "sha256_lf": "b0c0d5eee1520f536285c9d88a4138d85379762a384c7206beb82a86adafe58c",
+      "bytes": 8401
+    },
+    {
+      "path": "backend/ocr.py",
+      "source": "running_app",
+      "sha256": "f4674241c3d9aec1bc704ce1e5a80075fd6f0e2463faa5bf74330d0a2e983569",
+      "sha256_lf": "a2c5ad1d90d9eb4b9bb9a36bff00d7f18a2e75772f83994c499dc00fe8e237a8",
+      "bytes": 13293
+    },
+    {
+      "path": "backend/raw_materials.py",
+      "source": "running_app",
+      "sha256": "51307f70bcc719faa8f27a9d223d56bf2675317ec8712be25373dbf47165c83e",
+      "sha256_lf": "51307f70bcc719faa8f27a9d223d56bf2675317ec8712be25373dbf47165c83e",
+      "bytes": 21568
+    },
+    {
+      "path": "backend/request_token.py",
+      "source": "running_app",
+      "sha256": "06d522982940b40355cd15512655987f39f2e0a4f0c12bb3420249ee50186c55",
+      "sha256_lf": "06d522982940b40355cd15512655987f39f2e0a4f0c12bb3420249ee50186c55",
+      "bytes": 899
+    },
+    {
+      "path": "backend/runner.py",
+      "source": "running_app",
+      "sha256": "cff54751dc98368ccc2fdf444c865ef691b5dbe04dc30630b2e1715f8dc5e713",
+      "sha256_lf": "cff54751dc98368ccc2fdf444c865ef691b5dbe04dc30630b2e1715f8dc5e713",
+      "bytes": 54541
+    },
+    {
+      "path": "backend/server.py",
+      "source": "running_app",
+      "sha256": "82c56ea0e0672ccd235f7546fb2bd875c0a631dbacbbe18b025f43bdb5636754",
+      "sha256_lf": "82c56ea0e0672ccd235f7546fb2bd875c0a631dbacbbe18b025f43bdb5636754",
+      "bytes": 32153
+    },
+    {
+      "path": "backend/store.py",
+      "source": "running_app",
+      "sha256": "632f56306dccb31da66010a189c6ec59321171a77734e9bfe50755be963fea15",
+      "sha256_lf": "632f56306dccb31da66010a189c6ec59321171a77734e9bfe50755be963fea15",
+      "bytes": 4064
+    },
+    {
+      "path": "backend/usage_meter.py",
+      "source": "running_app",
+      "sha256": "b261a2e43f2693a8bbe68b786259e8c42f0ac717f736af1cbc681f31ec828a17",
+      "sha256_lf": "b261a2e43f2693a8bbe68b786259e8c42f0ac717f736af1cbc681f31ec828a17",
+      "bytes": 10789
+    },
+    {
+      "path": "backend/windows_ocr.ps1",
+      "source": "running_app",
+      "sha256": "04a6f18eea0e64ae9120288053147b72acffe7ca7cbb6052a26350131b8ce42a",
+      "sha256_lf": "adf7c1ccf21c0c9afd56a42491f6e0e6e3a3ab9b6eadb5aa82bf2d6fa135d445",
+      "bytes": 3556
+    },
+    {
+      "path": "backend/word_patch_tool.py",
+      "source": "running_app",
+      "sha256": "174417079b6cde0f97524374583041adf7aa06b4349b1cd2b5e76eaf63ddf55b",
+      "sha256_lf": "174417079b6cde0f97524374583041adf7aa06b4349b1cd2b5e76eaf63ddf55b",
+      "bytes": 10112
+    },
+    {
+      "path": "backend/word_preview.py",
+      "source": "running_app",
+      "sha256": "86ecb6459f736025651a7393feb5ee6039dce2498a840e4e3dfd2aa2676114fa",
+      "sha256_lf": "e233df3159818edb8b44820956bd92d6075766a227992ab64d2430f86a80a6d6",
+      "bytes": 22186
+    },
+    {
+      "path": "deploy/azure.ps1",
+      "source": "host_checkout",
+      "sha256": "84cdcde01765fa3172fcedea1216563ff7275310eb7fb0142a9ca77cdafae1cd",
+      "sha256_lf": "7ac16420246d75941cb73bec4604a56328f357faf661142af9142a58bb7a8083",
+      "bytes": 11072
+    },
+    {
+      "path": "deploy/vm/DEEPSEEK.md",
+      "source": "host_checkout",
+      "sha256": "ce23d48ff3bc490856ad8fd3830cacfb068ca7afd89bb0e7e64fd6496ba016a9",
+      "sha256_lf": "ce23d48ff3bc490856ad8fd3830cacfb068ca7afd89bb0e7e64fd6496ba016a9",
+      "bytes": 4209
+    },
+    {
+      "path": "deploy/vm/bonddraftai.nginx.conf",
+      "source": "host_checkout",
+      "sha256": "f7e6954cc6226260f252f3951670d4759f231bd7aa50046819a7c2ad531986cc",
+      "sha256_lf": "d93a905d9facf8aa7a942530443e664fb34e2d37e6f9ad0d33b212ab4ba5852a",
+      "bytes": 513
+    },
+    {
+      "path": "deploy/vm/compose.yaml",
+      "source": "host_checkout",
+      "sha256": "b9896152b821e4870c6117030b7a647ac9ab03ee4b5a42b8d04abd70af01b662",
+      "sha256_lf": "b9896152b821e4870c6117030b7a647ac9ab03ee4b5a42b8d04abd70af01b662",
+      "bytes": 3327
+    },
+    {
+      "path": "docker-entrypoint.sh",
+      "source": "running_app",
+      "sha256": "78f6988acf5460bf7a5e2c9c0b29d573ade5221984a68dea1e8788f09f1f058b",
+      "sha256_lf": "78f6988acf5460bf7a5e2c9c0b29d573ade5221984a68dea1e8788f09f1f058b",
+      "bytes": 479
+    },
+    {
+      "path": "docs/product.md",
+      "source": "host_checkout",
+      "sha256": "ff47d9a3190c590971b613c9dded0f8d6a09b693d24067715e328cbaeb2a6f64",
+      "sha256_lf": "a21e56835f53d783c66e6501248079400872ed7110c5d5423a763ea2cd22b5ed",
+      "bytes": 8061
+    },
+    {
+      "path": "outputs/上交所私募公司债财务数据更新规则_专家审阅版.md",
+      "source": "running_app",
+      "sha256": "c857663573cc0c02c9dcf7eb869147da4848fd9f410481b9f85892b3373960cf",
+      "sha256_lf": "b79a4b52ac1ba80cda7d3c401e3d4c74c5f5a485c3379c99fda70e94359a4271",
+      "bytes": 33538
+    },
+    {
+      "path": "requirements-dev.txt",
+      "source": "host_checkout",
+      "sha256": "ec43c2e13115abad9fe429aeedd1d26eb72cd9be20b8c278bb045eac1dcb5870",
+      "sha256_lf": "b6dc8c3d290a017b04a26c6a9f730a97e860ef760deb103b73586ea32a541817",
+      "bytes": 38
+    },
+    {
+      "path": "requirements.txt",
+      "source": "running_app",
+      "sha256": "8b5b906db154a897a0e20482e779dca3ca7d92ffb4451fb61532b41233746bb0",
+      "sha256_lf": "374d6add2de9a0ac976d3916494e38a5fe6ea55b78d2516a2c4b328a42b8fba6",
+      "bytes": 77
+    },
+    {
+      "path": "start.ps1",
+      "source": "host_checkout",
+      "sha256": "ded0472bbdfe065722facd8ca5c429eb38614210dcaea38c4e0a9132b868b462",
+      "sha256_lf": "7d39a29fd91b2d137d888e20938858ceeada23b52f14e8c59c492f99d1afa934",
+      "bytes": 5238
+    },
+    {
+      "path": "tests/__init__.py",
+      "source": "host_checkout",
+      "sha256": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "sha256_lf": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "bytes": 2
+    },
+    {
+      "path": "tests/fixture_cli.py",
+      "source": "host_checkout",
+      "sha256": "c47a101fa5913947f3312df6ac4ad6a00f34f55af3de4749355d2a017a1d1a6c",
+      "sha256_lf": "495a32323ac64036571e1ba6ae73981ce6fb6e747c33aacb5732a1bdb960a4b1",
+      "bytes": 942
+    },
+    {
+      "path": "tests/live_cli_check.py",
+      "source": "host_checkout",
+      "sha256": "7aac8c743b5222f31104afdbbeeec5e414af29c0ba92cebfa55b420915e34f90",
+      "sha256_lf": "516f5098aff922d68e4157a4c56e844da54c067151b29886deb3de95c5fd482b",
+      "bytes": 1814
+    },
+    {
+      "path": "tests/test_chat_entry.py",
+      "source": "host_checkout",
+      "sha256": "e58b0db5806a1e843bc3fc21f75f108029f6cdf809a612fd14f4ebd3e3daefc8",
+      "sha256_lf": "e42b8abdfd30861beb2a4b8b1fd908c3f48129136c8d8f565ab599d3ae5b0703",
+      "bytes": 8230
+    },
+    {
+      "path": "tests/test_cli_environment.py",
+      "source": "host_checkout",
+      "sha256": "da1d4d41735a3f63b18b876a6a17b55922f302a7474fedb9cbc2838c872101c5",
+      "sha256_lf": "f0619dca8ed51c661397fc87c1af45ba9688c4e2a1b346b42baf5b766671d91c",
+      "bytes": 2871
+    },
+    {
+      "path": "tests/test_cowork.py",
+      "source": "host_checkout",
+      "sha256": "80dadc361b67b0d570b4c9b3fe4650bfe3cdd88cb1544434a058ce86d77ab509",
+      "sha256_lf": "5f933256d42d1008595e8ce80474a2bebf1343f2cb31b494152702b336f8218f",
+      "bytes": 44938
+    },
+    {
+      "path": "tests/test_esa_origin.py",
+      "source": "host_checkout",
+      "sha256": "1f8b1dc970f052f0c11eacdf2ccec3696a28a729706ada7af28191908b3259c9",
+      "sha256_lf": "1f8b1dc970f052f0c11eacdf2ccec3696a28a729706ada7af28191908b3259c9",
+      "bytes": 1431
+    },
+    {
+      "path": "tests/test_launcher.ps1",
+      "source": "host_checkout",
+      "sha256": "a7882aaf2d74526cef4dbfe77f1893d7b6b8d52b92ff4ac34b259a871b9baa46",
+      "sha256_lf": "7b37840ab7999710418eca497eedf97aef10ef6cec94624297f4a224733d4838",
+      "bytes": 2664
+    },
+    {
+      "path": "tests/test_reference_knowledge.py",
+      "source": "host_checkout",
+      "sha256": "04dccf66966338ba4b09a7a7843cc846561d333fef0bf45130c04ae6b7d17cd2",
+      "sha256_lf": "04dccf66966338ba4b09a7a7843cc846561d333fef0bf45130c04ae6b7d17cd2",
+      "bytes": 5728
+    },
+    {
+      "path": "tests/test_standalone_conversations.py",
+      "source": "host_checkout",
+      "sha256": "a41ed5b481abb767dc6e97fb8f91c90927052731fa6f2c02fff597d6702cb05b",
+      "sha256_lf": "82cd025b3143f028571ef764a56265c98ce1ce3e8057e144831e0a32d253ec2d",
+      "bytes": 14123
+    },
+    {
+      "path": "tests/test_word_fidelity.py",
+      "source": "host_checkout",
+      "sha256": "8ddbf166349981cbe927614fde284606972e991794469ef17bf39be52ca7141d",
+      "sha256_lf": "350ef3059ea3d077a555d5733489dec56976fa0c71918d8223404707b6429752",
+      "bytes": 12878
+    },
+    {
+      "path": "tests/ui_cowork_os.js",
+      "source": "host_checkout",
+      "sha256": "4e6d963e8619600bfb14ed68925a1d6bf375fc3c61029e2789e29483cbc7afdd",
+      "sha256_lf": "423847591488ffaf426fe6d9a43d1fc069c61405cb06c4b0c29ea6816ed50036",
+      "bytes": 6312
+    },
+    {
+      "path": "tests/ui_csrf_retry.js",
+      "source": "host_checkout",
+      "sha256": "5e273c152c4e843ce46e1850d02720874e25dd4396d12ddfd718d5fa274fe991",
+      "sha256_lf": "ede8038426abc55582690c38146552a7b06851ae6d3a0217d707b2bc354b8a70",
+      "bytes": 1479
+    },
+    {
+      "path": "tests/ui_export_and_chat.js",
+      "source": "host_checkout",
+      "sha256": "6d1eb3ae4c28569bafcf9203ea7e2b2ed478dd07ff57ed610e5f390050e911ec",
+      "sha256_lf": "e5425c39ba2fdc8b3fc4cad3ad53b71231e1abc61de4a0c22ced4571dbd9ae66",
+      "bytes": 3422
+    },
+    {
+      "path": "tests/ui_home_conversation.js",
+      "source": "host_checkout",
+      "sha256": "8ed493a864382ae5983f247cfdcb3641667ae98acc80929f22502ce58fedf977",
+      "sha256_lf": "eb016829189f94c83dc3bc0fdcfff308ce673c38a5163f97b89301c4a68dc8c7",
+      "bytes": 10942
+    },
+    {
+      "path": "tests/ui_plain_preview.js",
+      "source": "host_checkout",
+      "sha256": "00d147eea652587dcc7fb171d970491b8527955cfa9fa5af87d6d7dd311f385b",
+      "sha256_lf": "2300a265ece9cfb8870033cd8f74f80d797266c304340a99e792bcd964360898",
+      "bytes": 3730
+    },
+    {
+      "path": "tests/ui_reference_knowledge.js",
+      "source": "host_checkout",
+      "sha256": "95d8ba15255c95ed416120f4e7ec3a5a9ba5b810d5a7a1df60eb803e5569537f",
+      "sha256_lf": "95d8ba15255c95ed416120f4e7ec3a5a9ba5b810d5a7a1df60eb803e5569537f",
+      "bytes": 2477
+    },
+    {
+      "path": "tests/ui_review_stages.js",
+      "source": "host_checkout",
+      "sha256": "5d7faf474a70d92673b7bc57b012e018619ba2473c84a7dfb4867548de484b2c",
+      "sha256_lf": "093b76cfb8116af38929694f8ee18a10d1be08d0bf048db00abb95e919512132",
+      "bytes": 2805
+    },
+    {
+      "path": "tests/ui_upload_queue.js",
+      "source": "host_checkout",
+      "sha256": "049f2ee21622da3e5e640b12dbbe891990732b54c5b6c7d5f1d7ecd0a0e5d649",
+      "sha256_lf": "5dec174998c0b08579688f3058fa321d84df40820f1b7f284baf6d908e9d255f",
+      "bytes": 1319
+    },
+    {
+      "path": "web/app.js",
+      "source": "running_app",
+      "sha256": "650a7f51fdb7d8f3af981785e617a4de45239f73287a427f6f71da0c591dcf8f",
+      "sha256_lf": "650a7f51fdb7d8f3af981785e617a4de45239f73287a427f6f71da0c591dcf8f",
+      "bytes": 68953
+    },
+    {
+      "path": "web/conversations.js",
+      "source": "running_app",
+      "sha256": "ccfeb0349ee50f0d1491fbde9c774996472e77a542bd5178acdea4fc6cd9c659",
+      "sha256_lf": "bcd943b13ac7ea9b5c0965a036e4f098dd07b7cfb5e3d76b4ac02ed0778474e6",
+      "bytes": 8569
+    },
+    {
+      "path": "web/cowork-os.css",
+      "source": "running_app",
+      "sha256": "e94de2ce2d98183cb7af91419ab13265e7fca3e132a4e65f441ceadab275a62c",
+      "sha256_lf": "1e128b4291911a05bd48d993635e6d3d256c5add5dbd9b2c86a50831a9d8ed09",
+      "bytes": 41297
+    },
+    {
+      "path": "web/cowork-os.js",
+      "source": "running_app",
+      "sha256": "d08bdcece569336976ac43e8430437b6eec02a6fcc93b231bed64fe56690722e",
+      "sha256_lf": "1185ed378a29844ddb49b48b8a3984926196d2a0051b0435bd10d2a4dfc6d2bf",
+      "bytes": 48150
+    },
+    {
+      "path": "web/cowork.html",
+      "source": "running_app",
+      "sha256": "50c53f2fb28f3327b6a7a42a24a9aa6496059388730a77ec8e899793e3dbf7d6",
+      "sha256_lf": "50c53f2fb28f3327b6a7a42a24a9aa6496059388730a77ec8e899793e3dbf7d6",
+      "bytes": 3460
+    },
+    {
+      "path": "web/direct-word.css",
+      "source": "running_app",
+      "sha256": "18faca3fd5b1234af157b37c68328d226569e9492a535feb340b93c7d695330f",
+      "sha256_lf": "18faca3fd5b1234af157b37c68328d226569e9492a535feb340b93c7d695330f",
+      "bytes": 2944
+    },
+    {
+      "path": "web/direct-word.js",
+      "source": "running_app",
+      "sha256": "04c029b29d0d3e042bb016fb9dc1f7d378f2b0d59aa872a79a87f88dc5939aba",
+      "sha256_lf": "04c029b29d0d3e042bb016fb9dc1f7d378f2b0d59aa872a79a87f88dc5939aba",
+      "bytes": 6321
+    },
+    {
+      "path": "web/favicon.svg",
+      "source": "running_app",
+      "sha256": "5348b418d4a8752588531405f94115a0edd1f74be531f4305f22900db83f4dd3",
+      "sha256_lf": "7bd28832ee985bdb2e64c4a613c744e3de4ce3e04938cf0bd0eb98d6aa45016e",
+      "bytes": 269
+    },
+    {
+      "path": "web/index.html",
+      "source": "running_app",
+      "sha256": "fdf7da26bea771b7694c0c632667defdbae20df21a7f921a7bb4a77d9a84daeb",
+      "sha256_lf": "fdf7da26bea771b7694c0c632667defdbae20df21a7f921a7bb4a77d9a84daeb",
+      "bytes": 699
+    },
+    {
+      "path": "web/project-workspace.css",
+      "source": "running_app",
+      "sha256": "2f9f7f785652861e2c25fd3a358c1c75fde88c300648df58fc57b76e5691e9ab",
+      "sha256_lf": "bbc59f3c417ed2d49242237fb41ba458f3bd82203f7cd8c41ac650b1115267c8",
+      "bytes": 12993
+    },
+    {
+      "path": "web/project-workspace.js",
+      "source": "running_app",
+      "sha256": "59365868c54adaaf15077ef9695c7cdbf60ae1415ae53971779df4cbdd2ac5c5",
+      "sha256_lf": "59365868c54adaaf15077ef9695c7cdbf60ae1415ae53971779df4cbdd2ac5c5",
+      "bytes": 18482
+    },
+    {
+      "path": "web/styles.css",
+      "source": "running_app",
+      "sha256": "55b7b8ceceaf11b4968e4090105e870ce6e6466d195dd59fa20170dcb606371b",
+      "sha256_lf": "55b7b8ceceaf11b4968e4090105e870ce6e6466d195dd59fa20170dcb606371b",
+      "bytes": 32806
+    },
+    {
+      "path": "打开募集书工作台.cmd",
+      "source": "host_checkout",
+      "sha256": "32cb8202a76221eaf1aac862ec1cb68c6af1a91f1fdfe26bdf2f2c9943845794",
+      "sha256_lf": "6ea38062ac8c318057361d91be56a8c4dc63c90a5c069fb32eaed63b54295c19",
+      "bytes": 216
+    },
+    {
+      "path": "重启募集书工作台.cmd",
+      "source": "host_checkout",
+      "sha256": "4d294c0e5c740bb8ae235f74920b94ffb89143969f08df7bbdbe292eef9fd044",
+      "sha256_lf": "3ef6ab379916375010b84db327c8a9c4cb39ecae7726acd4864b5c758873d5fa",
+      "bytes": 233
+    }
+  ]
+}

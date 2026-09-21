@@ -29,6 +29,9 @@ class Store:
                 if data.get('job', {}).get('status') in {'running', 'queued'}:
                     data['job']['status'] = 'interrupted'
                     data['job']['error'] = '服务重新启动，任务已中断。已保存的修改可继续审核，或重新运行。'
+                    if data.get('direct_word', {}).get('workflow') == 'cli_word_v1':
+                        data['direct_word']['status'] = 'interrupted'
+                        data['job']['error'] = '服务重新启动，任务已中断。CLI 工作文件和已报告用量已保留。'
                 self.projects[data['id']] = data
             except (ValueError, OSError):
                 continue

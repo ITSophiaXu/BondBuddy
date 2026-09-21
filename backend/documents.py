@@ -307,12 +307,16 @@ def targets(file):
                     seen.add(cell['id'])
                     result.append({**cell, 'chapter': chapter, 'table': True, 'row': ri, 'col': ci, 'context': cell.get('source_context') or header + ' / ' + (row[0]['text'] if row else '')})
         else:
-            result.append({**block, 'chapter': chapter, 'table': False, 'context': chapter})
+            result.append({**block, 'chapter': block.get('chapter', chapter), 'table': bool(block.get('native_cell')), 'context': block.get('source_context') or block.get('locator', chapter)})
     return result
 
 
 def word_export(file, changes, view='final', original_bytes=None):
     """Create a DOCX with true w:ins/w:del revisions; never strip review brackets."""
+    if file.get('processing_mode') == 'original_files':
+        from .raw_materials import export_projection
+        changes = [c for c in changes if c['status'] == 'accepted']
+        file = export_projection(file)
     if file.get('extension') == '.docx' or Path(file.get('name', '')).suffix.lower() == '.docx':
         from .docx_fidelity import patch_docx
         return patch_docx(file, changes, view, original_bytes)

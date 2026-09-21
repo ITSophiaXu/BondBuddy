@@ -15,10 +15,11 @@ function restoreProjectWorkspace(id){
 function pwStatus(p){if(chatJob(p)&&p.job.status==='running')return '正在回复';if(chatJob(p)&&p.job.status==='completed')return '已回复';return ({idle:'待开始',queued:'排队中',running:'正在更新',completed:'本轮结束',failed:'运行受阻',cancelled:'已停止',interrupted:'已中断'})[p.job.status] || '待开始';}
 function pwChat(){
   const p=S.p;
-  const progress=busy()?p.job.step:p.job.status==='failed'?'本轮执行受阻，已保存的修改保留':p.stats.scanned<p.stats.total?'全文仍有未核对位置，请继续更新':'请审阅修改并处理人工待办';
+  const native=p.processing_mode==='original_files';
+  const progress=native&&!busy()?'原文件由 Agent 读取，建议在网页逐条审阅；导出仅写入已接受修改。':busy()?p.job.step:p.job.status==='failed'?'本轮执行受阻，已保存的修改保留':p.stats.scanned<p.stats.total?'全文仍有未核对位置，请继续更新':'请审阅修改并处理人工待办';
   return `<section class="pw-chat" aria-label="当前项目的 Cowork 对话">
     <div class="pw-pane-label">${icon('spark')}<strong>Cowork</strong><span>当前项目</span></div>
-    ${p.document?`<div class="pw-deliverable"><div class="pw-deliverable-title">${icon('file')}<strong>募集说明书 · 当前工作稿</strong></div><p>${esc(progress)}</p><div class="pw-inline-actions"><button class="secondary" data-action="queue" data-filter="verified">查看 ${p.stats.changes} 处修改 ${icon('chevron')}</button><button class="ghost" data-action="queue" data-filter="needs_review">【】${p.stats.needs_review} 处待办</button></div><details class="pw-progress"><summary>处理进展 · 已核对 ${p.stats.scanned} / ${p.stats.total} 处</summary><p>${p.stats.awaiting_agent||0} 处待系统匹配；${p.stats.original_todos||0} 处原稿已有【】；${p.stats.layout_tasks||0} 张表需确认列安排。待系统匹配不表示材料缺失。</p>${p.job.error?`<p>${esc(p.job.error)}</p>`:''}<button class="ghost" data-pw="task-details">查看任务详情</button></details></div>`:''}
+    ${p.document?`<div class="pw-deliverable"><div class="pw-deliverable-title">${icon('file')}<strong>募集说明书 · 当前工作稿</strong></div><p>${esc(progress)}</p><div class="pw-inline-actions"><button class="secondary" data-action="queue" data-filter="verified">查看 ${p.stats.changes} 处修改 ${icon('chevron')}</button><button class="ghost" data-action="queue" data-filter="needs_review">【】${p.stats.needs_review} 处待办</button></div><details class="pw-progress"><summary>${native?'已返回 '+p.stats.total+' 个审阅位置':'处理进展 · 已核对 '+p.stats.scanned+' / '+p.stats.total+' 处'}</summary><p>${p.stats.awaiting_agent||0} 处待系统匹配；${p.stats.original_todos||0} 处原稿已有【】；${p.stats.layout_tasks||0} 张表需确认列安排。待系统匹配不表示材料缺失。</p>${p.job.error?`<p>${esc(p.job.error)}</p>`:''}<button class="ghost" data-pw="task-details">查看任务详情</button></details></div>`:''}
     <div class="pw-chat-scroll pw-chat-history" data-scroll="chat">${renderChat(true)}</div>${renderComposer()}</section>`;
 }
 function pwDocument(){

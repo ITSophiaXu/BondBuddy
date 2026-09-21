@@ -16,12 +16,14 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 from .store import Store, uid, now
+from .request_token import persistent_token
 from .engine import (add_file, commit_file, prepare_file, publication_changes, fetch_public_url,
                      project_view, review_change, working_file)
 from .documents import targets, word_export
 from .runner import Runner, cli_status, cli_path
 from .conversations import ConversationStore, ConversationRunner, conversation_view
 from .demo import seed
+from .usage_meter import report as usage_report
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_UPLOAD = 25 * 1024 * 1024
@@ -31,12 +33,13 @@ class App:
     def __init__(self, root=None, demo=True):
         self.store = Store(root or os.environ.get('BOND_DATA_DIR', ROOT / '.local/data'))
         self.runner = Runner(self.store, ROOT)
+        self.runner.original_files = True
         self.conversations = ConversationStore(self.store.root)
         self.conversation_runner = ConversationRunner(self.conversations, ROOT)
         self.conversation_runner.job_slots = self.runner.job_slots
         self.instance_id = uid('server')
         self.started_at = now()
-        self.csrf = secrets.token_urlsafe(32)
+        self.csrf = persistent_token(self.store.root)
         self.preview_cache = {}
         self.export_lock = threading.Lock()
         self.active_exports = set()
@@ -196,7 +199,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(origin)
         return (
             parsed.scheme == self.request_scheme()
-            and parsed.netloc.lower() == host
+            # A trusted CDN may use the origin hostname for its upstream Host.
+            and parsed.netloc.lower() in hosts
             and not parsed.username
             and not parsed.password
             and not parsed.path
@@ -220,11 +224,8 @@ class Handler(BaseHTTPRequestHandler):
                     headers={'WWW-Authenticate': 'Basic realm="BondDraftAI", charset="UTF-8"'},
                 )
                 return
-            if not self.valid_origin():
-                self.send(403, {'error': '访问来源不在允许范围内。'})
-                return
             if method == 'POST' and not secrets.compare_digest(self.headers.get('X-Bond-Token', ''), self.app.csrf):
-                self.send(403, {'error': '访问校验失败，请刷新页面后重试。'})
+                self.send(403, {'error': '访问校验失败，请刷新页面后重试。', 'code': 'request_token_invalid'})
                 return
             url = urlparse(self.path)
             parts = [unquote(x) for x in url.path.strip('/').split('/')]
@@ -234,7 +235,8 @@ class Handler(BaseHTTPRequestHandler):
                                 'runtime': self.app.runtime_view(), 'storage': self.app.storage_view(), 'version': '1.3.0',
                                 'instance_id': self.app.instance_id, 'started_at': self.app.started_at,
                                 'features': {'project_chat_without_document': True, 'chat_request_deduplication': True,
-                                             'standalone_conversations': self.app.standalone_conversations}})
+                                             'standalone_conversations': self.app.standalone_conversations, 'direct_tracked_word': True,
+                                             'cli_word_artifact': True}})
                 return
             if parts == ['api', 'runtime', 'check'] and method == 'POST':
                 self.body()
@@ -358,7 +360,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(409, {'error': '当前项目的导出文件正在生成，请等待本次下载开始。'})
                     return
                 try:
-                    out = word_export(f, publication_changes(p['changes']), view)
+                    if p.get('direct_word'):
+                        from .direct_word import read_delivery
+                        out = read_delivery(self.app.store, p)
+                        view = 'revision'
+                    else:
+                        out = word_export(f, publication_changes(p['changes']), view)
                     suffix = '修订版' if view == 'revision' else '最终视图'
                     self.send(200, out, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', p['title'] + '_' + suffix + '.docx')
                 finally:
@@ -376,6 +383,9 @@ class Handler(BaseHTTPRequestHandler):
                         return
                     if action == 'events':
                         pass  # Stream outside the lock.
+                    elif action == 'usage' and method == 'GET':
+                        self.send(200, usage_report(self.app.store.root, p))
+                        return
                     elif action == 'files':
                         if len(parts) < 5:
                             raise ValueError('缺少文件标识。')
@@ -398,12 +408,14 @@ class Handler(BaseHTTPRequestHandler):
                             if f['extension'] != '.pdf':
                                 raise ValueError('该文件没有 PDF 页码。')
                             page = int(parts[6])
-                            if page < 1 or page > (f['page_count'] or 0):
+                            if page < 1 or (f['page_count'] is not None and page > f['page_count']):
                                 raise ValueError('页码超出范围。')
                             import pypdfium2 as pdfium
                             from .docx_fidelity import source_bytes
                             pdf = pdfium.PdfDocument(source_bytes(f))
                             try:
+                                if page > len(pdf):
+                                    raise ValueError('页码超出范围。')
                                 page_obj = pdf[page - 1]
                                 bitmap = page_obj.render(scale=1.5)
                                 try:
@@ -418,6 +430,11 @@ class Handler(BaseHTTPRequestHandler):
                                 pdf.close()
                         else:
                             raise KeyError('文件操作不存在')
+                        return
+                    elif action == 'direct-word' and method == 'POST':
+                        data = self.body()
+                        jid = self.app.runner.start(p, str(data.get('message') or '请根据上传原材料完成全文更新，直接生成带修订的 Word。'), request_id=data.get('request_id'), request_scope='direct_word', use_reference_knowledge=data.get('use_reference_knowledge', False))
+                        self.send(202, {'run_id': jid})
                         return
                     elif action in {'run', 'chat'} and method == 'POST':
                         data = self.body()
@@ -434,6 +451,7 @@ class Handler(BaseHTTPRequestHandler):
                                     target_id,
                                     request_id=data.get('request_id'),
                                     request_scope=scope,
+                                    use_reference_knowledge=data.get('use_reference_knowledge', False),
                                 )
                             except ValueError as exc:
                                 if '当前任务仍在运行' in str(exc):
@@ -441,7 +459,7 @@ class Handler(BaseHTTPRequestHandler):
                                     return
                                 raise
                         else:
-                            jid = self.app.runner.start(p, message, data.get('target_id'))
+                            jid = self.app.runner.start(p, message, data.get('target_id'), use_reference_knowledge=data.get('use_reference_knowledge', False))
                         self.send(202, {'run_id': jid})
                         return
                     elif action == 'cancel' and method == 'POST':
