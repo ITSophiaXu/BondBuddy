@@ -19,7 +19,7 @@
 | M1-03 实现账号设置、找回、会话管理和注销 | [#9](https://github.com/ITSophiaXu/BondBuddy/issues/9) |
 | M1-04 建立项目、材料、任务、成果版本与账号隔离 API | [#8](https://github.com/ITSophiaXu/BondBuddy/issues/8) |
 | M1-05 交付首页、项目列表、搜索与草稿恢复 | [#10](https://github.com/ITSophiaXu/BondBuddy/issues/10) |
-| M1-06 完成更新项目表单、市场联动和 DFI 体验 | [#11](https://github.com/ITSophiaXu/BondBuddy/issues/11) |
+| M1-06 完成更新项目表单与发行市场／发行方式联动 | [#11](https://github.com/ITSophiaXu/BondBuddy/issues/11) |
 | M1-07 实现材料固定分区、真实上传进度和失败重试 | [#12](https://github.com/ITSophiaXu/BondBuddy/issues/12) |
 | M1-08 实现 Word/PDF/表格解析与可追溯原文锚点 | [#13](https://github.com/ITSophiaXu/BondBuddy/issues/13) |
 | M1-09 接入扫描 PDF/图片 OCR 与不确定数字确认 | [#14](https://github.com/ITSophiaXu/BondBuddy/issues/14) |

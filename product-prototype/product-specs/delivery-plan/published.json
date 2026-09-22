@@ -33,7 +33,7 @@
       "number": 1,
       "id": 5537361536,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/1",
-      "bodyHash": "1aa7efe74c625e94d021511337dbd89d60169ba6faf38a48c7d10b4b17c25889"
+      "bodyHash": "4b5d4ab8e38fe159f439c5dabdbbe9c02ad4d1c37fcd2a3c9993cae75d1bc015"
     },
     "M2": {
       "number": 2,
@@ -98,7 +98,7 @@
       "number": 11,
       "id": 5537365254,
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/11",
-      "bodyHash": "611f5f7de417f5fb4d9284052b6d972e93cea87cf6013a0a8531fe20cc908257",
+      "bodyHash": "b24ff758a368ae301e65b5fddc768c79ce1188e655d224d96148fe5b8a02c925",
       "parent": 1
     },
     "M1-07": {
@@ -551,12 +551,8 @@
     }
   },
   "verified": true,
-  "verifiedAt": "2026-09-22T09:00:02.928Z",
+  "verifiedAt": "2026-09-22T12:26:10.563Z",
   "verifiedMilestones": [
-    "M1",
-    "M2",
-    "M3",
-    "M4",
-    "M5"
+    "M1"
   ]
 }

@@ -127,10 +127,13 @@ async function ensureIssue(item, body) {
     // Recover only a byte-exact generated body; never overwrite unknown edits.
     const known = state.issues[item.id].bodyHash;
     if (!known && issue.body !== body) throw Error('Unrecorded existing body differs; review before update: ' + issue.html_url);
-    if (issue.body !== body) {
+    const desiredTitle = title(item);
+    const previousGeneratedTitle = (issue.body || '').match(/^# (.+)$/m)?.[1];
+    if (issue.title !== desiredTitle && issue.title !== previousGeneratedTitle) throw Error('Existing title has a manual edit; reconcile before renaming: ' + issue.html_url);
+    if (issue.body !== body || issue.title !== desiredTitle) {
       const latest = api(`${repoPath}/issues/${issue.number}`);
-      if (hash(latest.body || '') !== known) throw Error('Body changed during publication; preserve the edit and reconcile manually: ' + latest.html_url);
-      issue = await mutate(`${repoPath}/issues/${issue.number}`, 'PATCH', {body}); issues.set(item.id,issue);
+      if (hash(latest.body || '') !== known || latest.title !== issue.title) throw Error('Issue changed during publication; preserve the edit and reconcile manually: ' + latest.html_url);
+      issue = await mutate(`${repoPath}/issues/${issue.number}`, 'PATCH', {title:desiredTitle,body}); issues.set(item.id,issue);
     }
     state.issues[item.id].bodyHash=hash(body); save();
   }

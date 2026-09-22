@@ -1,14 +1,14 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-22T09:00:18.498Z",
+  "assembled_at": "2026-09-22T12:23:05.835Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
     {
       "file": "00-产品边界与需求决策.md",
       "title": "00 产品边界与需求决策",
-      "sha256": "687a80c96dcd26e92bb08f8073bc6b2800ae6bd117b2b04d27e6d8571a301c5a"
+      "sha256": "7bc0ef4844a13f5eb8fff055f3a0698d0040bc29d6c130b5b000b7628ace8b79"
     },
     {
       "file": "01-Windows客户端与运行架构.md",
@@ -33,7 +33,7 @@
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "782bc5564bd3cf50e377091790d4143e3545cae403dae65504ffb7d34f5272e3"
+      "sha256": "07a43afce96c364bc7ab7c154c64b5b909df228c75c791ba321c5ab385f0576a"
     },
     {
       "file": "06-复核募集书.md",
@@ -295,9 +295,9 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 41625,
+    "han_characters": 41886,
     "local_links_checked": 114,
-    "tables_checked": 111,
+    "tables_checked": 113,
     "json_examples_checked": 4,
     "errors": []
   },
