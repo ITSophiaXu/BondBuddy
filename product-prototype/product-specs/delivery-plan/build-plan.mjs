@@ -239,7 +239,8 @@ const refs=ids=>ids.length?ids.map(id=>`{{${id}}}`).join('、'):'无硬依赖，
 const specURL=file=>`https://github.com/${plan.repository}/blob/${branch}/product-prototype/product-specs/${encodeURIComponent(file)}`;
 for(const t of plan.tasks){
  const body=[`<!-- ${namespace}:${t.id} -->`,`# [${t.id}] ${t.title}`,'',`里程碑：${t.milestone} · 建议角色：${t.role} · 优先级：${t.priority}`,'',`前置任务：${refs(t.dependsOn)}。依赖是交付验收前提；资料研究、方案和单元开发可先并行。`,'','## 目标与范围','',...t.scope.map(s=>'- '+s),'','## 验收标准','',...t.acceptance.map(s=>'- [ ] '+s),'','## 交付物与验证','', '- 对应实现或规则/模板版本，以及能复现上述边界用例的测试/样本记录。', '- PR 关联本 issue；标明当前原型复用项、新增能力、配置迁移与尚未关闭的阻碍。', '- 涉及生产短信、模型、支付、供应商或专业规则时，提供真实接入/审核证据；模拟通过不能替代上线验收。','', '## 规格与认领','',...t.specFiles.map(f=>`- [${f.replace(/\.md$/,'')}](${specURL(f)})`),'- 认领时设置 assignee（权限不足请评论认领并请维护者分配），写明方案及依赖；完成后附 PR 与验收证据。','- 本 issue 不预设个人负责人或截止日期；多个成员可按组件协作，避免重复实现。',t.milestone==='M3'?'- 第三里程碑名称待用户确认，确认前此组仅为本地草案。':'',''].filter(x=>x!==undefined).join('\n');
- fs.writeFileSync(path.join(out,'issues',t.id+'.md'),milestone3Confirmed?body.replace('- 第三里程碑名称待用户确认，确认前此组仅为本地草案。\n',''):body);
+ const finalBody=milestone3Confirmed?body.replace('- 第三里程碑名称待用户确认，确认前此组仅为本地草案。\n',''):body;
+ fs.writeFileSync(path.join(out,'issues',t.id+'.md'),finalBody.trimEnd()+'\n');
 }
 for(const m of milestones){const children=plan.tasks.filter(t=>t.milestone===m.id);fs.writeFileSync(path.join(out,'issues',m.id+'.md'),[`<!-- ${namespace}:${m.id} -->`,`# [${m.id}] ${m.title.replace(/^M\d · /,'')}`,'',m.goal,'','## 上线门槛','',m.gate,'',`发布验收任务：{{${m.release}}}`,'','## 可认领子任务','',...children.map(t=>`- [ ] {{${t.id}}} ${t.title}`),'','## 协作规则','','- 子任务归入同一 GitHub milestone，并关联本跟踪 issue；优先认领依赖已满足的任务。','- 认领通过 assignee 或评论完成；PR 引用子任务，验收通过后关闭。','- 跟踪 issue 仅在全部必要子任务和发布门槛通过后关闭；不使用演示成功代替真实接入。','- 不设置未经团队确认的日期或个人负责人。',''].join('\n'));}
 const counts=milestones.map(m=>({milestone:m.id,tasks:plan.tasks.filter(t=>t.milestone===m.id).length}));
