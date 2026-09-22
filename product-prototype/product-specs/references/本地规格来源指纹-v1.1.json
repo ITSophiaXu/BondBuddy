@@ -1,0 +1,314 @@
+{
+  "spec_version": "1.1",
+  "requirements_date": "2026-09-22",
+  "assembled_at": "2026-09-22T06:41:27.589Z",
+  "scope": "Current BondBuddy plus commercial launch requirements",
+  "pricing_version": "proposal-2026-09-22-v1.1",
+  "modules": [
+    {
+      "file": "00-产品边界与需求决策.md",
+      "title": "00 产品边界与需求决策",
+      "sha256": "532d4c1db090de59bf2168b36bcbb3b17d950e4078567c74febfe7117f30616d"
+    },
+    {
+      "file": "01-Windows客户端与运行架构.md",
+      "title": "01 Windows 客户端与运行架构",
+      "sha256": "c3f7b43e8b5c23e93589cb5722672f788d40c5af0d114b48c318f3b83015cb22"
+    },
+    {
+      "file": "02-注册登录与账号.md",
+      "title": "02 注册登录与账号",
+      "sha256": "f4fc1ac4244f29e30e35d58f242c10c2567728f3c59e43b01b05f4c42cbe764b"
+    },
+    {
+      "file": "03-首页与项目管理.md",
+      "title": "03 首页与项目管理",
+      "sha256": "34d8d0bea255e4bcace4cc76ab53b1f172e126eecf5d845721763de5cc81e0c1"
+    },
+    {
+      "file": "04-材料导入与证据处理.md",
+      "title": "04 材料导入与证据处理",
+      "sha256": "100743bb48b3ed07185f334833e471c1458bcf00b9e6ec323c4b1aaf73a4acbc"
+    },
+    {
+      "file": "05-更新募集书.md",
+      "title": "05 更新募集书",
+      "sha256": "782bc5564bd3cf50e377091790d4143e3545cae403dae65504ffb7d34f5272e3"
+    },
+    {
+      "file": "06-复核募集书.md",
+      "title": "06 复核募集书",
+      "sha256": "a431b9dbef4c431271ba8a485633a4bd4bc08c6bbdd39feb169f70446a5ad7ed"
+    },
+    {
+      "file": "07-材料生成通用流程.md",
+      "title": "07 材料生成通用流程",
+      "sha256": "9e2654ac8a1c8cc8593a4773f4e81f7ba283aaf6be5be1dd462173c90e23cced"
+    },
+    {
+      "file": "08-模板-立项报告.md",
+      "title": "08 模板规格：立项报告",
+      "sha256": "1c64854fb1b0cb6818c2460705544e5788142dd15b53749c792256455539273e"
+    },
+    {
+      "file": "09-模板-主承销商核查意见.md",
+      "title": "09 模板规格：主承销商核查意见",
+      "sha256": "358febd3e19d544dd25e225abe2c6b7577ae346e31d52aad911b1a61e0edeb45"
+    },
+    {
+      "file": "10-模板-法律意见书.md",
+      "title": "10 模板规格：法律意见书",
+      "sha256": "d436ce6381319cb901fc318e2ae123a0f19063688f74e7705b97ee25165229c6"
+    },
+    {
+      "file": "11-模板-推荐函.md",
+      "title": "11 模板规格：推荐函",
+      "sha256": "0b6fc07511443da6501bd9bc1a9c9359695055098bb39edfcc76acd10becc152"
+    },
+    {
+      "file": "12-模板-募集说明书摘要.md",
+      "title": "12 模板规格：募集说明书摘要",
+      "sha256": "8ada4e87ca71c478b8c1347ff15877e4be21365adcc39bb3ad02b6429aa91ffa"
+    },
+    {
+      "file": "13-QA与项目对话.md",
+      "title": "13 QA 问答与项目对话",
+      "sha256": "a780010b35820c78bd096cfb4acce9797b97f0f92db5a6876a7b20420b739d8b"
+    },
+    {
+      "file": "14-积分充值与结算.md",
+      "title": "14 积分充值与结算",
+      "sha256": "60b9693ef9c69d0ded4cafbee588d08cad18a87e3eb7dc7e969bab608aba9f38"
+    },
+    {
+      "file": "15-后台规则模板及数据接入.md",
+      "title": "15 后台规则、模板及数据接入",
+      "sha256": "4e76252561424901a4344fd4266fd697b452514854769603825d3b0bcac730f5"
+    },
+    {
+      "file": "16-数据模型接口与状态机.md",
+      "title": "16 数据模型、接口与状态机",
+      "sha256": "2dc81dceea85266d8339473577826a4dfb99cee728ce40b0205f2c4096d0102d"
+    },
+    {
+      "file": "17-验收测试与实施路线.md",
+      "title": "17 验收测试与实施路线",
+      "sha256": "848fbcb8c5cbed5f32f67a0c2feccbc0d4eebdf1e749a21ec114feec15fbc7af"
+    },
+    {
+      "file": "18-当前实现与来源索引.md",
+      "title": "18 当前实现与来源索引",
+      "sha256": "bfc5c4185ca5a4995493d5c2e42d9c15dd8d6591fb56e834d9d557f85593f9fa"
+    }
+  ],
+  "sources": [
+    {
+      "relative_path": "outputs/bondbuddy-pricing-v1/BondBuddy详细积分方案.md",
+      "sha256": "2d7a628ac6cedc866accd77b277898398dd7491d853650c61dfbad66ff5f656d",
+      "observed_mtime": "2026-09-22T05:15:50.330Z"
+    },
+    {
+      "relative_path": "outputs/bondbuddy-pricing-v1/积分规则参数.json",
+      "sha256": "9f35037c549e85aea8d610b0231ff7f0c918007709cc8513eaff51451001d1c9",
+      "observed_mtime": "2026-09-22T05:15:50.263Z"
+    },
+    {
+      "relative_path": "bondbuddy/package.json",
+      "sha256": "153e23cfba07ac617415e509029667fdba58895785567958868ae51d78c906dc",
+      "observed_mtime": "2026-09-22T06:32:35.217Z"
+    },
+    {
+      "relative_path": "bondbuddy/server.mjs",
+      "sha256": "be63308d49de645458491314aa3b98f380041acb88edda668f48c79371a25a50",
+      "observed_mtime": "2026-09-22T06:10:56.169Z"
+    },
+    {
+      "relative_path": "bondbuddy/docs/PROJECT-WORKSPACE.md",
+      "sha256": "d3adabec1395d39d2ad9218d08fb86484b48d23170e05e9487fd4f439a780461",
+      "observed_mtime": "2026-09-22T06:37:44.034Z"
+    },
+    {
+      "relative_path": "bondbuddy/lib/credit-pricing.mjs",
+      "sha256": "ea0f0d1e42f8d345accc48d4e8834e084301fb5600c1c5874170944fcdc4f9d2",
+      "observed_mtime": "2026-09-22T06:32:39.285Z"
+    },
+    {
+      "relative_path": "bondbuddy/public/markets.js",
+      "sha256": "b917ad0923633abef3fc6f23ce380d456ac3e622ef28d181fbe2f080ec1244ce",
+      "observed_mtime": "2026-09-22T06:31:30.532Z"
+    },
+    {
+      "relative_path": "bondbuddy/lib/issuance-scope.mjs",
+      "sha256": "1e2e0dd387927e9c79d5f0967337b52f1404cf4abb869508d22938a9fa9a6b81",
+      "observed_mtime": "2026-09-22T06:31:33.686Z"
+    },
+    {
+      "relative_path": "bondbuddy/lib/credit-wallet.mjs",
+      "sha256": "140dea632a64f20c15746ee4ec087b4d8cf81bb63b45533eef7f5e59743f7080",
+      "observed_mtime": "2026-09-22T06:14:53.122Z"
+    },
+    {
+      "relative_path": "bondbuddy/public/credit-account.js",
+      "sha256": "293745ecddacd57ae3e9969bb00fde6c65114a92e6cc5f2ef7cfc8fc98010499",
+      "observed_mtime": "2026-09-22T06:32:26.826Z"
+    },
+    {
+      "relative_path": "outputs/sse-private-review-knowledge-v1/03_来源与冲突.md",
+      "sha256": "1c6c1c7b747515a327176df6b3cbd2467eaeffb2346a55f6fff5eb3af335f7a4",
+      "observed_mtime": "2026-09-17T02:48:19.644Z"
+    }
+  ],
+  "acceptance_ids": [
+    "WIN-A01",
+    "WIN-A02",
+    "WIN-A03",
+    "WIN-A04",
+    "WIN-A05",
+    "WIN-A06",
+    "WIN-A07",
+    "AUTH-A01",
+    "AUTH-A02",
+    "AUTH-A03",
+    "AUTH-A04",
+    "AUTH-A05",
+    "AUTH-A06",
+    "AUTH-A07",
+    "HOME-A01",
+    "HOME-A02",
+    "PRJ-A01",
+    "PRJ-A02",
+    "PRJ-A03",
+    "MAT-A01",
+    "MAT-A02",
+    "MAT-A03",
+    "OCR-A01",
+    "OCR-A02",
+    "OCR-A03",
+    "MAT-A04",
+    "MAT-A05",
+    "UPD-A01",
+    "UPD-A02",
+    "UPD-A03",
+    "UPD-A04",
+    "UPD-A05",
+    "UPD-A06",
+    "UPD-A07",
+    "UPD-A08",
+    "UPD-A09",
+    "UPD-A10",
+    "UPD-A11",
+    "REV-A01",
+    "REV-A02",
+    "REV-A03",
+    "REV-A04",
+    "REV-A05",
+    "REV-A06",
+    "REV-A07",
+    "REV-A08",
+    "REV-A09",
+    "REV-A10",
+    "GEN-A01",
+    "GEN-A02",
+    "GEN-A03",
+    "GEN-A04",
+    "GEN-A05",
+    "GEN-A06",
+    "TPL-INIT-A01",
+    "TPL-INIT-A02",
+    "TPL-INIT-A03",
+    "TPL-INIT-A04",
+    "TPL-INIT-A05",
+    "TPL-UW-A01",
+    "TPL-UW-A02",
+    "TPL-UW-A03",
+    "TPL-UW-A04",
+    "TPL-UW-A05",
+    "TPL-LEGAL-A01",
+    "TPL-LEGAL-A02",
+    "TPL-LEGAL-A03",
+    "TPL-LEGAL-A04",
+    "TPL-LEGAL-A05",
+    "TPL-REC-A01",
+    "TPL-REC-A02",
+    "TPL-REC-A03",
+    "TPL-REC-A04",
+    "TPL-REC-A05",
+    "TPL-SUM-A01",
+    "TPL-SUM-A02",
+    "TPL-SUM-A03",
+    "TPL-SUM-A04",
+    "TPL-SUM-A05",
+    "CHAT-A01",
+    "CHAT-A02",
+    "CHAT-A03",
+    "CHAT-A04",
+    "CHAT-A05",
+    "CHAT-A06",
+    "CHAT-A07",
+    "CHAT-A08",
+    "CREDIT-DFI-A01",
+    "CREDIT-DFI-A02",
+    "BILL-A01",
+    "BILL-A02",
+    "BILL-A03",
+    "BILL-A04",
+    "BILL-A05",
+    "BILL-A06",
+    "BILL-A07",
+    "BILL-A08",
+    "BILL-A09",
+    "BILL-A10",
+    "DATA-A01",
+    "DATA-A02",
+    "DATA-A03",
+    "DATA-A04",
+    "LIB-A01",
+    "RULE-A01",
+    "E2E-01",
+    "E2E-02",
+    "E2E-03",
+    "E2E-04",
+    "E2E-05",
+    "E2E-06",
+    "E2E-07",
+    "E2E-08",
+    "E2E-09",
+    "E2E-10",
+    "E2E-11",
+    "E2E-12",
+    "E2E-13",
+    "E2E-14",
+    "E2E-15",
+    "E2E-16",
+    "E2E-17",
+    "E2E-18",
+    "E2E-19",
+    "E2E-20",
+    "E2E-21",
+    "E2E-22",
+    "E2E-23",
+    "E2E-24",
+    "E2E-25",
+    "E2E-26",
+    "E2E-27",
+    "E2E-28",
+    "E2E-29",
+    "E2E-30",
+    "E2E-31",
+    "E2E-32",
+    "E2E-33"
+  ],
+  "validation": {
+    "module_count": 19,
+    "han_characters": 39404,
+    "local_links_checked": 117,
+    "tables_checked": 109,
+    "json_examples_checked": 4,
+    "errors": []
+  },
+  "limitations": [
+    "Document builder checks structure and links only; targeted DFI regressions are recorded in chapter 18, with no production or professional acceptance implied.",
+    "Regulatory rules and supplier access require the release evidence specified in chapters 15 and 17.",
+    "Combined document is generated from numbered modules; edit modules first and regenerate."
+  ]
+}

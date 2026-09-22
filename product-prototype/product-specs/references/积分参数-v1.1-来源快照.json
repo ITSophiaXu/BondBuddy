@@ -1,0 +1,788 @@
+{
+  "version": "proposal-2026-09-22-v1.1",
+  "status": "点击即执行方案；未部署、未以真实成本校准",
+  "credit_reference_cny": 0.01,
+  "standard_token_reference_cny_per_million": 10,
+  "rounding": "一个点击触发的任务汇总实际计量后向上取整到1积分，并适用冻结上限；内部高精度记录，不按内部里程碑分别结算",
+  "products": [
+    {
+      "id": "SH-P",
+      "label": "上交所私募",
+      "venue": "SH",
+      "family": "corporate",
+      "audience": "private",
+      "target_factor": 1
+    },
+    {
+      "id": "SH-Q",
+      "label": "上交所小公募",
+      "venue": "SH",
+      "family": "corporate",
+      "audience": "qualified",
+      "target_factor": 1
+    },
+    {
+      "id": "SH-R",
+      "label": "上交所大公募",
+      "venue": "SH",
+      "family": "corporate",
+      "audience": "retail",
+      "target_factor": 1.15
+    },
+    {
+      "id": "SZ-P",
+      "label": "深交所私募",
+      "venue": "SZ",
+      "family": "corporate",
+      "audience": "private",
+      "target_factor": 1
+    },
+    {
+      "id": "SZ-Q",
+      "label": "深交所小公募",
+      "venue": "SZ",
+      "family": "corporate",
+      "audience": "qualified",
+      "target_factor": 1
+    },
+    {
+      "id": "SZ-R",
+      "label": "深交所大公募",
+      "venue": "SZ",
+      "family": "corporate",
+      "audience": "retail",
+      "target_factor": 1.15
+    },
+    {
+      "id": "PPN",
+      "label": "协会PPN",
+      "venue": "NAF",
+      "family": "corporate",
+      "audience": "private",
+      "target_factor": 1
+    },
+    {
+      "id": "MTN",
+      "label": "协会MTN",
+      "venue": "NAF",
+      "family": "corporate",
+      "audience": "qualified",
+      "target_factor": 1
+    },
+    {
+      "id": "CP",
+      "label": "协会CP",
+      "venue": "NAF",
+      "family": "short",
+      "audience": "qualified",
+      "target_factor": 1
+    },
+    {
+      "id": "SCP",
+      "label": "协会SCP",
+      "venue": "NAF",
+      "family": "short",
+      "audience": "qualified",
+      "target_factor": 1
+    },
+    {
+      "id": "ABN",
+      "label": "协会ABN",
+      "venue": "NAF",
+      "family": "asset",
+      "audience": "qualified",
+      "target_factor": 1.5
+    },
+    {
+      "id": "ABCP",
+      "label": "协会ABCP",
+      "venue": "NAF",
+      "family": "asset",
+      "audience": "qualified",
+      "target_factor": 1.6
+    },
+    {
+      "id": "PRN",
+      "label": "项目收益票据",
+      "venue": "NAF",
+      "family": "project",
+      "audience": "qualified",
+      "target_factor": 1.3
+    },
+    {
+      "id": "PN",
+      "label": "永续类票据",
+      "venue": "NAF",
+      "family": "perpetual",
+      "audience": "qualified",
+      "target_factor": 1.2
+    }
+  ],
+  "migration_matrix": {
+    "SH-P": {
+      "SH-P": 1,
+      "SH-Q": 1.2,
+      "SH-R": 1.4,
+      "SZ-P": 1.15,
+      "SZ-Q": 1.35,
+      "SZ-R": 1.55,
+      "PPN": 1.5,
+      "MTN": 1.7,
+      "CP": 1.85,
+      "SCP": 1.85,
+      "ABN": 2.3,
+      "ABCP": 2.3,
+      "PRN": 2.05,
+      "PN": 1.95
+    },
+    "SH-Q": {
+      "SH-P": 1.1,
+      "SH-Q": 1,
+      "SH-R": 1.25,
+      "SZ-P": 1.25,
+      "SZ-Q": 1.15,
+      "SZ-R": 1.4,
+      "PPN": 1.6,
+      "MTN": 1.5,
+      "CP": 1.65,
+      "SCP": 1.65,
+      "ABN": 2.1,
+      "ABCP": 2.1,
+      "PRN": 1.85,
+      "PN": 1.75
+    },
+    "SH-R": {
+      "SH-P": 1.15,
+      "SH-Q": 1.1,
+      "SH-R": 1,
+      "SZ-P": 1.3,
+      "SZ-Q": 1.25,
+      "SZ-R": 1.15,
+      "PPN": 1.65,
+      "MTN": 1.6,
+      "CP": 1.75,
+      "SCP": 1.75,
+      "ABN": 2.2,
+      "ABCP": 2.2,
+      "PRN": 1.95,
+      "PN": 1.85
+    },
+    "SZ-P": {
+      "SH-P": 1.15,
+      "SH-Q": 1.35,
+      "SH-R": 1.55,
+      "SZ-P": 1,
+      "SZ-Q": 1.2,
+      "SZ-R": 1.4,
+      "PPN": 1.5,
+      "MTN": 1.7,
+      "CP": 1.85,
+      "SCP": 1.85,
+      "ABN": 2.3,
+      "ABCP": 2.3,
+      "PRN": 2.05,
+      "PN": 1.95
+    },
+    "SZ-Q": {
+      "SH-P": 1.25,
+      "SH-Q": 1.15,
+      "SH-R": 1.4,
+      "SZ-P": 1.1,
+      "SZ-Q": 1,
+      "SZ-R": 1.25,
+      "PPN": 1.6,
+      "MTN": 1.5,
+      "CP": 1.65,
+      "SCP": 1.65,
+      "ABN": 2.1,
+      "ABCP": 2.1,
+      "PRN": 1.85,
+      "PN": 1.75
+    },
+    "SZ-R": {
+      "SH-P": 1.3,
+      "SH-Q": 1.25,
+      "SH-R": 1.15,
+      "SZ-P": 1.15,
+      "SZ-Q": 1.1,
+      "SZ-R": 1,
+      "PPN": 1.65,
+      "MTN": 1.6,
+      "CP": 1.75,
+      "SCP": 1.75,
+      "ABN": 2.2,
+      "ABCP": 2.2,
+      "PRN": 1.95,
+      "PN": 1.85
+    },
+    "PPN": {
+      "SH-P": 1.5,
+      "SH-Q": 1.7,
+      "SH-R": 1.9,
+      "SZ-P": 1.5,
+      "SZ-Q": 1.7,
+      "SZ-R": 1.9,
+      "PPN": 1,
+      "MTN": 1.2,
+      "CP": 1.35,
+      "SCP": 1.35,
+      "ABN": 1.8,
+      "ABCP": 1.8,
+      "PRN": 1.55,
+      "PN": 1.45
+    },
+    "MTN": {
+      "SH-P": 1.6,
+      "SH-Q": 1.5,
+      "SH-R": 1.75,
+      "SZ-P": 1.6,
+      "SZ-Q": 1.5,
+      "SZ-R": 1.75,
+      "PPN": 1.1,
+      "MTN": 1,
+      "CP": 1.15,
+      "SCP": 1.15,
+      "ABN": 1.6,
+      "ABCP": 1.6,
+      "PRN": 1.35,
+      "PN": 1.25
+    },
+    "CP": {
+      "SH-P": 1.75,
+      "SH-Q": 1.65,
+      "SH-R": 1.9,
+      "SZ-P": 1.75,
+      "SZ-Q": 1.65,
+      "SZ-R": 1.9,
+      "PPN": 1.25,
+      "MTN": 1.15,
+      "CP": 1,
+      "SCP": 1.1,
+      "ABN": 1.65,
+      "ABCP": 1.65,
+      "PRN": 1.4,
+      "PN": 1.3
+    },
+    "SCP": {
+      "SH-P": 1.75,
+      "SH-Q": 1.65,
+      "SH-R": 1.9,
+      "SZ-P": 1.75,
+      "SZ-Q": 1.65,
+      "SZ-R": 1.9,
+      "PPN": 1.25,
+      "MTN": 1.15,
+      "CP": 1.1,
+      "SCP": 1,
+      "ABN": 1.65,
+      "ABCP": 1.65,
+      "PRN": 1.4,
+      "PN": 1.3
+    },
+    "ABN": {
+      "SH-P": 2.2,
+      "SH-Q": 2.1,
+      "SH-R": 2.35,
+      "SZ-P": 2.2,
+      "SZ-Q": 2.1,
+      "SZ-R": 2.35,
+      "PPN": 1.7,
+      "MTN": 1.6,
+      "CP": 1.65,
+      "SCP": 1.65,
+      "ABN": 1,
+      "ABCP": 1.2,
+      "PRN": 1.45,
+      "PN": 1.6
+    },
+    "ABCP": {
+      "SH-P": 2.2,
+      "SH-Q": 2.1,
+      "SH-R": 2.35,
+      "SZ-P": 2.2,
+      "SZ-Q": 2.1,
+      "SZ-R": 2.35,
+      "PPN": 1.7,
+      "MTN": 1.6,
+      "CP": 1.65,
+      "SCP": 1.65,
+      "ABN": 1.2,
+      "ABCP": 1,
+      "PRN": 1.45,
+      "PN": 1.6
+    },
+    "PRN": {
+      "SH-P": 1.95,
+      "SH-Q": 1.85,
+      "SH-R": 2.1,
+      "SZ-P": 1.95,
+      "SZ-Q": 1.85,
+      "SZ-R": 2.1,
+      "PPN": 1.45,
+      "MTN": 1.35,
+      "CP": 1.4,
+      "SCP": 1.4,
+      "ABN": 1.45,
+      "ABCP": 1.45,
+      "PRN": 1,
+      "PN": 1.35
+    },
+    "PN": {
+      "SH-P": 1.85,
+      "SH-Q": 1.75,
+      "SH-R": 2,
+      "SZ-P": 1.85,
+      "SZ-Q": 1.75,
+      "SZ-R": 2,
+      "PPN": 1.35,
+      "MTN": 1.25,
+      "CP": 1.3,
+      "SCP": 1.3,
+      "ABN": 1.6,
+      "ABCP": 1.6,
+      "PRN": 1.35,
+      "PN": 1
+    }
+  },
+  "history_bases_1_to_4": {
+    "own_complete": [
+      5,
+      10,
+      15,
+      20
+    ],
+    "own_partial": [
+      8,
+      13,
+      19,
+      25
+    ],
+    "peer": [
+      25,
+      30,
+      45,
+      60
+    ],
+    "none": [
+      35,
+      40,
+      55,
+      70
+    ]
+  },
+  "history_formulas": {
+    "own_complete": "5*N",
+    "own_partial": "max(8,ceil(6.25*N))",
+    "peer": "max(25,15*N)",
+    "none": "max(35,15*N+10)"
+  },
+  "update_scope": {
+    "financial": 1,
+    "full_facts": 1.2,
+    "restructure": 1.35
+  },
+  "update_cap": 200,
+  "high_cost_monitoring_threshold": 100,
+  "requires_internal_capability_enablement": [
+    "ABCP",
+    "ABN",
+    "PN",
+    "PRN",
+    "SH-R",
+    "SZ-R"
+  ],
+  "requires_rule_pack_verification_before_launch": [
+    "SH-P",
+    "SH-Q",
+    "SH-R",
+    "SZ-P",
+    "SZ-Q",
+    "SZ-R",
+    "PPN",
+    "MTN",
+    "CP",
+    "SCP",
+    "ABN",
+    "ABCP",
+    "PRN",
+    "PN"
+  ],
+  "parse_base_k": 2,
+  "format_factors": [
+    {
+      "id": "F01",
+      "label": "可读取 DOCX 正文、规范 XLSX/CSV 表格",
+      "factor": 1.0
+    },
+    {
+      "id": "F02",
+      "label": "DOCX 内复杂财务表、合并单元格较多的 Excel",
+      "factor": 1.1
+    },
+    {
+      "id": "F03",
+      "label": "可复制文字的原生 PDF，顺序及表格清晰",
+      "factor": 1.2
+    },
+    {
+      "id": "F04",
+      "label": "原生审计 PDF，复杂附注与跨页财务表",
+      "factor": 1.3
+    },
+    {
+      "id": "F05",
+      "label": "清晰扫描 PDF，OCR 能稳定识别",
+      "factor": 1.6
+    },
+    {
+      "id": "F06",
+      "label": "图文混合 PDF、扫描表格或横纵混排",
+      "factor": 1.8
+    },
+    {
+      "id": "F07",
+      "label": "清晰照片/截图，可校正且可识别",
+      "factor": 2.0
+    },
+    {
+      "id": "F08",
+      "label": "低清但人工抽样确认可识别的扫描/照片",
+      "factor": 2.5
+    },
+    {
+      "id": "F09",
+      "label": "可验证的文本/结构化数据接口结果",
+      "factor": 1.0
+    }
+  ],
+  "parse_quality_factors": {
+    "normal": 1,
+    "minor_repairable": 1.1,
+    "significant_repairable": 1.25
+  },
+  "parse_cap": 6,
+  "review_types": [
+    {
+      "id": "R01",
+      "label": "语言、格式与目录表面检查",
+      "base": 2
+    },
+    {
+      "id": "R02",
+      "label": "文内数字、日期、单位与勾稽一致性",
+      "base": 4
+    },
+    {
+      "id": "R03",
+      "label": "募集书对照财务证据核验",
+      "base": 6
+    },
+    {
+      "id": "R04",
+      "label": "规则与发行条款专项复核",
+      "base": 6
+    },
+    {
+      "id": "R05",
+      "label": "完整复核：文内、证据、规则与公开信息",
+      "base": 10
+    },
+    {
+      "id": "R06",
+      "label": "历史稿与更新稿差异复核",
+      "base": 5
+    },
+    {
+      "id": "R07",
+      "label": "明确问题清单的局部复核",
+      "base": 3
+    },
+    {
+      "id": "R08",
+      "label": "完整复核加独立第二轮质检",
+      "base": 15
+    }
+  ],
+  "review_period_factors": [
+    1,
+    1.15,
+    1.3,
+    1.45
+  ],
+  "review_period_cap": 1.75,
+  "review_cap": 80,
+  "generation_types": [
+    {
+      "id": "G01",
+      "label": "立项报告",
+      "base": 8
+    },
+    {
+      "id": "G02",
+      "label": "主承销商核查意见草稿",
+      "base": 12
+    },
+    {
+      "id": "G03",
+      "label": "法律意见书草稿",
+      "base": 15
+    },
+    {
+      "id": "G04",
+      "label": "推荐函",
+      "base": 5
+    },
+    {
+      "id": "G05",
+      "label": "私募募集说明书摘要",
+      "base": 6
+    },
+    {
+      "id": "G06",
+      "label": "公募募集说明书摘要",
+      "base": 7
+    },
+    {
+      "id": "G07",
+      "label": "资料清单、信息整理、简单函件",
+      "base": 2.5
+    },
+    {
+      "id": "G08",
+      "label": "项目介绍、普通会议材料",
+      "base": 3
+    },
+    {
+      "id": "G09",
+      "label": "财务数据表与指标说明",
+      "base": 5
+    },
+    {
+      "id": "G10",
+      "label": "财务分析专题",
+      "base": 8
+    },
+    {
+      "id": "G11",
+      "label": "行业研究专题",
+      "base": 10
+    },
+    {
+      "id": "G12",
+      "label": "尽调或风险专题",
+      "base": 12
+    },
+    {
+      "id": "G13",
+      "label": "问询回复草稿",
+      "base": 10
+    }
+  ],
+  "template_factors": {
+    "matching": 1,
+    "standard": 1.2,
+    "other_institution": 1.4,
+    "build_new": 1.7
+  },
+  "generation_evidence_factors": {
+    "verified_project": 1,
+    "source_materials": 1.15,
+    "multi_source_reconciliation": 1.3
+  },
+  "generation_cap": 60,
+  "qa_types": [
+    {
+      "id": "Q00",
+      "label": "导航、余额、上传状态、规则说明（无模型调用）",
+      "base": 0
+    },
+    {
+      "id": "Q01",
+      "label": "通用解释、单点摘录、简短改写",
+      "base": 2
+    },
+    {
+      "id": "Q02",
+      "label": "项目事实查询、单材料定位",
+      "base": 2.5
+    },
+    {
+      "id": "Q03",
+      "label": "数据计算、单表分析",
+      "base": 3
+    },
+    {
+      "id": "Q04",
+      "label": "多文档对照与证据综合",
+      "base": 4
+    },
+    {
+      "id": "Q05",
+      "label": "财务分析、会计或发行规则判断",
+      "base": 5
+    },
+    {
+      "id": "Q06",
+      "label": "联网或授权数据查询后的综合回答",
+      "base": 6
+    },
+    {
+      "id": "Q07",
+      "label": "跨市场方案或多步骤深度研究",
+      "base": 8
+    }
+  ],
+  "qa_cap": 20,
+  "special_additions": [
+    {
+      "id": "green",
+      "label": "绿色/科创等单项专题披露",
+      "addition": 0.1
+    },
+    {
+      "id": "sll",
+      "label": "可持续发展挂钩目标与条款",
+      "addition": 0.2
+    },
+    {
+      "id": "guarantee",
+      "label": "新增保证/抵质押/差额补足事实核对",
+      "addition": 0.1
+    },
+    {
+      "id": "project",
+      "label": "项目建设/基金/股权用途专题",
+      "addition": 0.15
+    },
+    {
+      "id": "reorg",
+      "label": "有证据的重组/备考口径专题",
+      "addition": 0.25
+    },
+    {
+      "id": "cross_border",
+      "label": "跨境会计口径/双语实质对照",
+      "addition": 0.25
+    },
+    {
+      "id": "nonstandard_audit",
+      "label": "非标准审计意见及其影响分析",
+      "addition": 0.15
+    },
+    {
+      "id": "restatement",
+      "label": "经确认的追溯重述/口径桥接",
+      "addition": 0.15
+    },
+    {
+      "id": "conflict",
+      "label": "可解决且须核对的实质材料冲突",
+      "addition": 0.1
+    },
+    {
+      "id": "rule_change",
+      "label": "明确适用的新旧规则实质调整",
+      "addition": 0.1
+    },
+    {
+      "id": "multiple_tranches",
+      "label": "多档品种条款联动",
+      "addition": 0.1
+    }
+  ],
+  "special_factor_cap": 1.75,
+  "extra_subject_addition": {
+    "per_subject": 0.1,
+    "cap": 0.3,
+    "applies_to": "实际受影响工作项；普通合并子公司列表不逐家加成"
+  },
+  "anti_double_counting": [
+    "special.sll与同一主题special.green互斥",
+    "target.project与同一工作special.project不重复",
+    "target结构已覆盖的永续和资产支持特征不再加special",
+    "generation证据1.3与同一工作special.conflict不重复",
+    "format与quality不能因同一缺陷重复加成",
+    "完整复核包含子专项，不额外累加R01至R04",
+    "peer和none的migration固定为1",
+    "每个API或外部成本事件只分配给一个计费阶段"
+  ],
+  "external_fee_multiplier": 1.2,
+  "acquisition": {
+    "welcome": {
+      "credits": 2000,
+      "expiry_days": 30
+    },
+    "invite_activation": {
+      "inviter": 1000,
+      "invitee": 500,
+      "min_invitee_spend": 500,
+      "monthly_count_cap": 10,
+      "expiry_days": 30
+    },
+    "invite_paid": {
+      "inviter": 2000,
+      "invitee": 1000,
+      "min_net_paid_cny": 100,
+      "min_paid_credit_spend": 1000,
+      "pending_days": 14,
+      "monthly_count_cap": 5,
+      "expiry_days": 90
+    },
+    "daily": {
+      "credits": 20,
+      "min_settled_spend": 100,
+      "monthly_cap": 400,
+      "expiry_days": 30,
+      "timezone": "Asia/Shanghai"
+    }
+  },
+  "recharge": [
+    {
+      "cny": 50,
+      "paid_credits": 5000
+    },
+    {
+      "cny": 500,
+      "paid_credits": 52500
+    },
+    {
+      "cny": 2000,
+      "paid_credits": 220000
+    },
+    {
+      "cny": 10000,
+      "paid_credits": 1150000
+    }
+  ],
+  "paid_credit_expiry": "不设使用有效期；销户时按规则处理未使用购买积分",
+  "auto_renewal": false,
+  "automatic_topup": false,
+  "execution": {
+    "mode": "one_click_internal_reservation",
+    "user_quote_screen": false,
+    "user_price_confirmation": false,
+    "show_pre_execution_breakdown": false,
+    "credit_gate": "available_unexpired_credits >= internally_reserved_credits",
+    "reserve_formula": "ceil(estimated_actual_credit_cost * internal_risk_factor)",
+    "initial_risk_factors": {
+      "ordinary": 1.2,
+      "complex": 1.5
+    },
+    "risk_factors_affect": "reservation_only_not_actual_charge",
+    "settlement_formula": "min(ceil(actual_billable_credit_cost), reservation)",
+    "unused_reservation": "release",
+    "overrun_payer": "platform",
+    "automatic_additional_debit": false,
+    "runtime_topup_prompt": false,
+    "insufficient_balance": "do_not_start_show_recharge_entry",
+    "estimate_cache_ttl_seconds": 300,
+    "lock_material_and_price_snapshot_on_start": true,
+    "new_user_scope_changes": "new_task_on_explicit_run_only",
+    "reward_and_paid_credits_same_task_spending_scope": true,
+    "normal_task_success": "deliver_then_settle",
+    "normal_task_failure": "release_all_reservation",
+    "normal_task_cancellation": "release_all_reservation",
+    "background_auto_resume_after_recharge": false
+  },
+  "scenario_dimensions_note": "5040个基础业务组合不含连续变量token用量、混合文件、特殊事项。peer/none无源品种迁移系数。"
+}
