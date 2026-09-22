@@ -2,7 +2,7 @@
 
 产品与研发完整规格见 [产品说明书](product-specs/README.md)：包含 19 个功能模块、首发范围（含 DFI 储架发行）、接口、积分规则和验收要求。
 
-开发按 **Web 注册/登录与更新 → 积分付费 → 付费复核 → 材料生成与 QA → Windows app** 五个里程碑推进。团队可从 [开发任务清单](product-specs/delivery-plan/README.md) 查看 71 个子任务的范围、依赖和验收，或在 [GitHub Issues](https://github.com/ITSophiaXu/BondBuddy/issues) 认领。下文版本记录描述原型现状，不代表五阶段能力已上线。
+开发按 **Web 注册/登录与更新 → 积分付费 → 付费复核 → 材料生成与 QA → Windows app** 五个里程碑推进。团队可从 [开发任务清单](product-specs/delivery-plan/README.md) 查看 73 个子任务的范围、依赖和验收，或在 [GitHub Issues](https://github.com/ITSophiaXu/BondBuddy/issues) 认领。当前需求包含历史原文修订、后台募集书库与三业务索引、持续扩库及无历史稿自动编制；普通用户没有募集书库入口。下文版本记录描述原型现状，不代表五阶段能力已上线。
 
 当前版本 **1.9.0** 已切换为统一积分钱包及点击即执行流程。注册赠2,000积分，邀请、每日活跃、充值与退款统一记账；更新/复核不再展示报价确认页。旧有效套餐保留原权益，新售服务按积分计量。详情及配置见 [积分实现说明](docs/CREDITS.md)。
 
