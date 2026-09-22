@@ -1,34 +1,34 @@
 {
-  "spec_version": "1.1",
+  "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-22T06:50:40.357Z",
-  "scope": "Current BondBuddy plus commercial launch requirements",
+  "assembled_at": "2026-09-22T08:41:32.632Z",
+  "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
     {
       "file": "00-产品边界与需求决策.md",
       "title": "00 产品边界与需求决策",
-      "sha256": "532d4c1db090de59bf2168b36bcbb3b17d950e4078567c74febfe7117f30616d"
+      "sha256": "687a80c96dcd26e92bb08f8073bc6b2800ae6bd117b2b04d27e6d8571a301c5a"
     },
     {
       "file": "01-Windows客户端与运行架构.md",
-      "title": "01 Windows 客户端与运行架构",
-      "sha256": "c3f7b43e8b5c23e93589cb5722672f788d40c5af0d114b48c318f3b83015cb22"
+      "title": "01 Web 优先架构与 Windows 客户端",
+      "sha256": "7a567076be76f673b4502a5eb89d9ef82d4f65174047d2e8512501a339076824"
     },
     {
       "file": "02-注册登录与账号.md",
       "title": "02 注册登录与账号",
-      "sha256": "f4fc1ac4244f29e30e35d58f242c10c2567728f3c59e43b01b05f4c42cbe764b"
+      "sha256": "bfcb6bf5c73a69441e32c5c5a17507f4d82569a621b72d9b9d587901a8eabab9"
     },
     {
       "file": "03-首页与项目管理.md",
       "title": "03 首页与项目管理",
-      "sha256": "34d8d0bea255e4bcace4cc76ab53b1f172e126eecf5d845721763de5cc81e0c1"
+      "sha256": "9b4ad2d85e9b5d52ba12041b77ca9aa76e41071407310facf25ffb9a6dd0b7ba"
     },
     {
       "file": "04-材料导入与证据处理.md",
       "title": "04 材料导入与证据处理",
-      "sha256": "100743bb48b3ed07185f334833e471c1458bcf00b9e6ec323c4b1aaf73a4acbc"
+      "sha256": "5604142b84831f7c3ea6b23443c048de10b4c3f84a0d6a01ae50862a3771d99d"
     },
     {
       "file": "05-更新募集书.md",
@@ -88,12 +88,12 @@
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "2dc81dceea85266d8339473577826a4dfb99cee728ce40b0205f2c4096d0102d"
+      "sha256": "1d446d4c0608788b307b3527019e8f76ba3f52a907058cdd72ba04538a5f8f72"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "848fbcb8c5cbed5f32f67a0c2feccbc0d4eebdf1e749a21ec114feec15fbc7af"
+      "sha256": "b9b1092db9185e7142559b3a5b9c73490b125337be99f810a3487f4698b94833"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -295,9 +295,9 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 39597,
-    "local_links_checked": 108,
-    "tables_checked": 109,
+    "han_characters": 41476,
+    "local_links_checked": 114,
+    "tables_checked": 111,
     "json_examples_checked": 4,
     "errors": []
   },
