@@ -40,10 +40,12 @@
 | M1-24 补齐并验收SCP 超短期融资券规则与章节模板 | [#29](https://github.com/ITSophiaXu/BondBuddy/issues/29) |
 | M1-25 补齐并验收DFI 储架发行规则与章节模板 | [#30](https://github.com/ITSophiaXu/BondBuddy/issues/30) |
 | M1-31 上传后识别历史募集书的市场、发行方式和报告期，形成更新难度依据 | [#76](https://github.com/ITSophiaXu/BondBuddy/issues/76) |
-| M1-26 实现有历史稿的全文事实与财务更新 | [#31](https://github.com/ITSophiaXu/BondBuddy/issues/31) |
+| M1-26 基于本发行人历史原文更新全文并形成可追溯修订 | [#31](https://github.com/ITSophiaXu/BondBuddy/issues/31) |
 | M1-27 实现跨市场/品种和多档安排的全文联动更新 | [#32](https://github.com/ITSophiaXu/BondBuddy/issues/32) |
-| M1-28 实现无历史稿的前三大业务匹配与全文编制 | [#33](https://github.com/ITSophiaXu/BondBuddy/issues/33) |
-| M1-29 交付 Word 成果、编制说明与质量检查 | [#34](https://github.com/ITSophiaXu/BondBuddy/issues/34) |
+| M1-32 建设后台募集书库、分类索引与首批可用参考数据 | [#77](https://github.com/ITSophiaXu/BondBuddy/issues/77) |
+| M1-33 实现后台募集书库的持续增量更新、审核与版本退役 | [#78](https://github.com/ITSophiaXu/BondBuddy/issues/78) |
+| M1-28 无历史稿时按前三大业务自动匹配参考稿并编制新稿 | [#33](https://github.com/ITSophiaXu/BondBuddy/issues/33) |
+| M1-29 交付基于历史原文的 Word 修订版或无历史稿新稿 | [#34](https://github.com/ITSophiaXu/BondBuddy/issues/34) |
 | M1-30 完成 Web 更新功能上线验收、部署与运行保障 | [#35](https://github.com/ITSophiaXu/BondBuddy/issues/35) |
 | M2-01 实现平台积分账本、批次和并发冻结 | [#36](https://github.com/ITSophiaXu/BondBuddy/issues/36) |
 | M2-02 实现按真实工作量的分类、系数与冻结估算 | [#37](https://github.com/ITSophiaXu/BondBuddy/issues/37) |

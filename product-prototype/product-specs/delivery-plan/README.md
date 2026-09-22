@@ -1,6 +1,6 @@
 # BondBuddy 开发任务拆解：先 Web，后 Windows
 
-需求基线：2026-09-22。完整计划包含 **5 个 milestone、5 个跟踪 issue、73 个可认领子任务**。最近核对发布 5 个 milestone、76 个 issue，见 [GitHub 发布索引](GitHub发布索引.md)。
+需求基线：2026-09-22。完整计划包含 **5 个 milestone、5 个跟踪 issue、73 个可认领子任务**。最近核对发布 5 个 milestone、78 个 issue，见 [GitHub 发布索引](GitHub发布索引.md)。
 
 第三里程碑已确认指募集书复核，复用第二阶段的积分和付费能力。
 
