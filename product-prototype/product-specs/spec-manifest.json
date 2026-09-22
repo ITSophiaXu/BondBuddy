@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-22T08:41:32.632Z",
+  "assembled_at": "2026-09-22T09:00:18.498Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -73,12 +73,12 @@
     {
       "file": "13-QA与项目对话.md",
       "title": "13 QA 问答与项目对话",
-      "sha256": "a780010b35820c78bd096cfb4acce9797b97f0f92db5a6876a7b20420b739d8b"
+      "sha256": "2297cd38d2deeeafa8ec21ae8013b30ad5be97b3de96771b6000c774ca7b5162"
     },
     {
       "file": "14-积分充值与结算.md",
       "title": "14 积分充值与结算",
-      "sha256": "612ab6182865852f8c8be67cdae7ffffe7275322325d02ddf0d01d293c127748"
+      "sha256": "0174a4017aed4e01417b85f8be677cd151e0e86a2f8720f36fe72989cab4805d"
     },
     {
       "file": "15-后台规则模板及数据接入.md",
@@ -295,7 +295,7 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 41476,
+    "han_characters": 41625,
     "local_links_checked": 114,
     "tables_checked": 111,
     "json_examples_checked": 4,

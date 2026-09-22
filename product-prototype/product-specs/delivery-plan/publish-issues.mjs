@@ -128,6 +128,8 @@ async function ensureIssue(item, body) {
     const known = state.issues[item.id].bodyHash;
     if (!known && issue.body !== body) throw Error('Unrecorded existing body differs; review before update: ' + issue.html_url);
     if (issue.body !== body) {
+      const latest = api(`${repoPath}/issues/${issue.number}`);
+      if (hash(latest.body || '') !== known) throw Error('Body changed during publication; preserve the edit and reconcile manually: ' + latest.html_url);
       issue = await mutate(`${repoPath}/issues/${issue.number}`, 'PATCH', {body}); issues.set(item.id,issue);
     }
     state.issues[item.id].bodyHash=hash(body); save();
@@ -168,5 +170,5 @@ fs.writeFileSync(path.join(dir,'GitHub发布索引.md'),[
   '| 阶段 | 里程碑 | 跟踪 issue |','|---|---|---|',
   ...plan.milestones.filter(m=>state.milestones[m.id]).map(m=>`| ${m.id} | [${m.title}](${state.milestones[m.id].url}) | [#${state.issues[m.id].number}](${state.issues[m.id].url}) |`),'',
   '| 任务 | Issue |','|---|---|',...plan.tasks.filter(t=>state.issues[t.id]).map(t=>`| ${t.id} ${t.title} | [#${state.issues[t.id].number}](${state.issues[t.id].url}) |`),'',
-  ...plan.milestones.filter(m=>!state.milestones[m.id]).map(m=>`${m.id} 尚未发布：${m.pendingConfirmation?'范围待用户确认':'不在本次发布范围'}。`),''].join('\n'));
+  ...plan.milestones.filter(m=>!state.milestones[m.id]).map(m=>`${m.id} 尚未发布：${m.pendingConfirmation?'范围待用户确认':'不在本次发布范围'}。`),''].join('\n').trimEnd()+'\n');
 console.log(JSON.stringify({verified:true,publishedMilestones:Object.keys(state.milestones).length,publishedIssues:Object.keys(state.issues).length},null,2));
