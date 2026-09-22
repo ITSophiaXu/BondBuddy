@@ -48,7 +48,10 @@ async function fixtureJob(kind){
 }
 test('update pipeline writes real Word revisions and an update report',async()=>{
   const {job,folder}=await fixtureJob('update');
-  await runTask({job,folder,save:async()=>{},settings:{apiKey:'mock-key'},signal:new AbortController().signal,ask:async()=>({value:{summary:'测试模拟',edits:[{locator:'P0002',quote:'100',replacement:'120',reason:'按财务报表更新',evidence:[{documentId:'D02',locator:'L00001',quote:'发行人总资产120万元'}]},{locator:'T001R002C002P0001',quote:'100',replacement:'120',reason:'表格同口径更新',evidence:[{documentId:'D02',locator:'L00001',quote:'发行人总资产120万元'}]}],gaps:['模型响应为测试模拟，不代表业务结果']},usage:{}})});
+  job.context.updateMode='full';job.context.projectMessages=[{text:'截至2026年6月末，银行授信总额50亿元，已使用30亿元，未使用20亿元。'}];
+  const prompts=[];
+  await runTask({job,folder,save:async()=>{},settings:{apiKey:'mock-key'},signal:new AbortController().signal,ask:async({prompt})=>{prompts.push(prompt);return ({value:{summary:'测试模拟',edits:[{locator:'P0002',quote:'100',replacement:'120',reason:'按财务报表更新',evidence:[{documentId:'D02',locator:'L00001',quote:'发行人总资产120万元'}]},{locator:'T001R002C002P0001',quote:'100',replacement:'120',reason:'表格同口径更新',evidence:[{documentId:'D02',locator:'L00001',quote:'发行人总资产120万元'}]}],gaps:['模型响应为测试模拟，不代表业务结果']},usage:{}});}});
+  assert(prompts.length);for(const prompt of prompts){assert(prompt.includes('本项目为全文更新'));assert(prompt.includes('银行授信总额50亿元'));assert(prompt.includes('重大资产重组由系统根据审计报告'));assert(prompt.includes('由发行人提供'));}
   assert.equal(job.status,'complete',job.progress);assert.equal(job.editCount,2);assert(job.downloads.includes('募集说明书_更新修订版.docx'));
   await processRun(PYTHON,['-c',`import zipfile,sys; from lxml import etree; z=zipfile.ZipFile(sys.argv[1]); r=etree.fromstring(z.read('word/document.xml')); ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}; assert len(r.xpath('//w:ins',namespaces=ns))==2; assert len(r.xpath('//w:del',namespaces=ns))==2; assert r.xpath('//w:ins//w:t/text()',namespaces=ns)==['120','120']; assert r.xpath('//w:del//w:delText/text()',namespaces=ns)==['100','100']; assert len(r.xpath('//w:tbl',namespaces=ns))==1`,join(folder,'募集说明书_更新修订版.docx')]);
 });
@@ -72,11 +75,11 @@ test('reference authoring exports new draft tables and gap markers, never copies
   await writeFile(join(folder,'manifest.json'),JSON.stringify({files:job.files}));
   let calls=0;
   await runTask({job,folder,save:async()=>{},settings:{apiKey:'mock-key'},signal:new AbortController().signal,ask:async({prompt})=>{
-    calls++;assert(!prompt.includes('PEER_PROVENANCE_ONLY'));assert(prompt.includes('referenceBlueprint只能说明结构'));assert(prompt.includes('projectEvidence'));
+    calls++;assert(!prompt.includes('PEER_PROVENANCE_ONLY'));assert(prompt.includes('referenceBlueprint只能说明结构'));assert(prompt.includes('projectEvidence'));assert(prompt.includes('本项目为全文更新'));assert(prompt.includes('重大资产重组由系统根据审计报告'));
     const financial=prompt.includes('起草“财务会计信息”');
     const evidence=[{documentId:'D02',locator:'L00001',quote:'发行人总资产120万元'}];
     return {value:{paragraphs:financial?[{text:'测试发行人总资产120万元。',evidence}]:[],tables:financial?[{title:'资产情况',columns:['项目','金额（万元）'],rows:[['总资产','120']],evidence}]:[],gaps:financial?[]:['请补充本节项目资料（模拟结果）']},usage:{}};
   }});
-  assert.equal(job.status,'complete',job.progress);assert.equal(calls,15);assert((await readFile(join(folder,'编制说明.md'),'utf8')).includes('PEER_PROVENANCE_ONLY'));assert(job.downloads.includes('募集说明书_初稿.docx'));assert(!job.downloads.includes('募集说明书_更新修订版.docx'));assert.equal(job.result.sections.find(s=>s.title==='财务会计信息').tableCount,1);
+  assert.equal(job.status,'complete',job.progress);assert.equal(calls,15);assert(!(await readFile(join(folder,'编制说明.md'),'utf8')).includes('PEER_PROVENANCE_ONLY'));assert.equal(job.context.blueprint.issuer,'PEER_PROVENANCE_ONLY');assert(job.downloads.includes('募集说明书_初稿.docx'));assert(!job.downloads.includes('募集说明书_更新修订版.docx'));assert.equal(job.result.sections.find(s=>s.title==='财务会计信息').tableCount,1);
   await processRun(PYTHON,['-c',`from docx import Document; import sys; d=Document(sys.argv[1]); text=chr(10).join(p.text for p in d.paragraphs); assert '总资产120万元' in text; assert '【待补充】' in text; assert len(d.tables)==1; assert d.tables[0].cell(1,1).text=='120'; assert '100' not in text`,join(folder,'募集说明书_初稿.docx')]);
 });

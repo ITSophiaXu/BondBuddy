@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { optionalDefaults, normaliseOptional, updateFilesForMode, validateUpdateFiles } from '../public/project-fields.js';
+import { optionalDefaults, normaliseOptional, FUNDING_PURPOSES, updateFilesForMode, validateUpdateFiles } from '../public/project-fields.js';
 import { validateDraftSection } from '../lib/reference-draft.mjs';
 
 test('unknown optional answers stay blank and hidden stale dependent values never become task facts',()=>{
   const blank=normaliseOptional({});assert(Object.values(blank).every(v=>v===''));assert.equal(optionalDefaults().hasRating,'');
   const values=normaliseOptional({hasRating:'否',issuerRating:'AAA',ratingAgency:'旧评级公司',hasEnhancement:'',guarantor:'旧担保人',investorProtection:'否',protectionTerms:'旧条款',purpose:'项目建设',size:' 10亿元 '});
-  assert.equal(values.issuerRating,'');assert.equal(values.ratingAgency,'');assert.equal(values.guarantor,'');assert.equal(values.protectionTerms,'');assert.equal(values.purpose,'项目建设');assert.equal(values.size,'10亿元');
+  assert.equal(values.issuerRating,'');assert.equal(values.ratingAgency,'');assert.equal(values.guarantor,'');assert(!('protectionTerms' in values));assert(!('investorProtection' in values));assert(!('majorRestructuring' in values));assert.equal(values.purpose,'项目建设');assert.equal(values.size,'10亿元');
   assert.throws(()=>normaliseOptional({hasRating:'not sure'}),/是否评级/);
   assert.equal(normaliseOptional({hasRating:'是',issuerRating:'AA+'}).issuerRating,'AA+');
+  for(const purposeCategory of FUNDING_PURPOSES)assert.equal(normaliseOptional({purposeCategory}).purposeCategory,purposeCategory);
+  const legacy='6亿元偿还债务、4亿元补流';assert.equal(normaliseOptional({purpose:legacy,purposeCategory:'偿还有息负债'}).purpose,legacy);
+  assert.throws(()=>normaliseOptional({purposeCategory:'invalid'}),/资金用途/);
 });
 
 test('switching modes isolates primary files and retains project evidence without relabelling it',()=>{

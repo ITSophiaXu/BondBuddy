@@ -10,7 +10,7 @@ export const object = properties => ({ type: 'object', properties, required: Obj
 export const evidenceSchema = object({ documentId: string, locator: string, quote: string });
 export const REVIEW_SCHEMA = object({ summary: string, findings: array(object({ status: { type: 'string', enum: ['明确错误','来源冲突','待补证','待人工判断','未覆盖'] }, priority: { type: 'string', enum: ['P1','P2','P3'] }, category: string, title: string, locator: string, quote: string, issue: string, evidence: array(evidenceSchema), suggestion: string, rule_ids: array(string), calculation: string })), checks: array(object({ rule_id: string, status: { type: 'string', enum: ['通过','明确错误','来源冲突','待补证','待人工判断','不适用','未覆盖'] }, reason: string })), limitations: array(string) });
 export const UPDATE_SCHEMA = object({ summary: string, edits: array(object({ locator: string, quote: string, replacement: string, reason: string, evidence: array(evidenceSchema) })), gaps: array(string) });
-export const CHAT_SCHEMA = object({ title: string, answer: string, document: string, sources: array(string), limitations: array(string) });
+export const CHAT_SCHEMA = object({ billingOutcome:{type:'string',enum:['delivered','needs_input','refused']}, title: string, answer: string, document: string, sources: array(string), limitations: array(string) });
 
 export function validate(value, schema) {
   if (schema.type === 'string') return typeof value === 'string' && (!schema.enum || schema.enum.includes(value));
@@ -66,6 +66,9 @@ export async function askCodex({ prompt, schema, folder, key, signal, settings, 
     const value = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''));
     if (!validate(value, schema)) throw new Error('模型输出格式不完整，本段未计为完成，请重试。');
     const usage = events.filter(e => e.type === 'turn.completed').reduce((a,e) => ({ inputTokens: a.inputTokens + (e.usage?.input_tokens || 0), outputTokens: a.outputTokens + (e.usage?.output_tokens || 0), cachedInputTokens: a.cachedInputTokens + (e.usage?.cached_input_tokens || 0) }), { inputTokens:0, outputTokens:0, cachedInputTokens:0 });
-    return { value, usage };
+    // The gateway is the billing authority; CLI usage is only a display fallback.
+    // Failed/retried model responses are platform costs, not additional customer charges.
+    const metering=bridge.usageEvents?.at(-1);
+    return { value, usage:metering?.verified?metering.usage:usage, metering:metering||{id:key,type:'model',usage,verified:false} };
   } finally { bridge.close(); }
 }

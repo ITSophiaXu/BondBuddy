@@ -38,7 +38,7 @@ export function buildTasks(documents, knowledge) {
   const ruleCandidates = knowledge.rules.map(rule => ({ documentId: rule.rule_id, text: `${rule.title} ${rule.locations} ${rule.trigger} ${rule.check_logic}`, rule }));
   const tasks = updateChunks.map((chunk, index) => ({
     phase: 'forward', label: `更新稿逐段复核 ${index + 1}/${updateChunks.length}`,
-    instruction: '逐项核对本段数字、期间、主体、单位、公式、文字结论、条款和披露。查旧稿误改、该更新而未更新及文内矛盾。只从本段选取发现锚点。',
+    instruction: '逐项核对本段数字、期间、主体、单位、公式、文字结论、条款和披露。对照审计材料核对财务数据；对照适用规则核对格式及必需披露；对照取得的公开资料核对事实。formatting是Word字体、半点字号和样式证据，主题字体或实际分页未解析时列未覆盖；没有明确适用规则时不能凭偏好认定字体违规。只从本段选取发现锚点。',
     targets: [chunk], evidence: retrieve(chunk.text, supports, 6),
     relatedUpdated: retrieve(chunk.text, updateChunks.filter(c => c !== chunk), 2),
     rules: retrieve(chunk.text, ruleCandidates, 6).map(x => x.rule)
@@ -122,7 +122,7 @@ export function coverageSummary(tasks, responses, documents, knowledge) {
 }
 
 export function reportMarkdown(job, findings, coverage) {
-  return `# ${job.title} 复核结果清单\n\n模型：${job.modelLabel} · ${job.modelName}\n\n知识手册：${coverage.knowledgeVersion}\n\n共 ${findings.length} 项发现，${job.annotationCount || 0} 项已写入 Word 批注。\n\n${coverage.note}\n\n` + findings.map(f => `## ${f.id} ${f.priority} ${f.status} ${f.title}\n\n位置：${f.locator || '待人工定位'} · ${f.annotationStatus}\n\n原文：${f.quote || '未定位'}\n\n问题：${f.issue}\n\n证据：\n${f.evidence.map(e => `- ${e.source} ${e.locator}（${e.verified ? '原文已验证' : '未验证'}）：${e.quote}`).join('\n')}\n\n计算：${f.calculation || '不涉及或未返回'}\n\n建议：${f.suggestion}\n\n规则：${f.ruleIds.join('、')}\n\n定位及证据提示：${f.validationWarnings.join('；') || '无'}\n`).join('\n') + '\n## 材料解析覆盖\n\n' + coverage.documents.map(d => `- ${d.filename}：${d.parseStatus}，${d.records} 处文本。${d.warnings.join('；')}`).join('\n') + '\n\n## 检查限制\n\n' + coverage.limitations.map(x => `- ${x}`).join('\n');
+  return `# ${job.title} 复核结果清单\n\n模型：${job.modelLabel} · ${job.modelName}\n\n知识手册：${coverage.knowledgeVersion}\n\n共 ${findings.length} 项发现，${job.annotationCount || 0} 项已写入 Word 批注。\n\n${coverage.note}\n\n## 三类复核覆盖\n\n${(coverage.dimensions||[]).map(d=>`- ${d.title}：${d.status}。${d.detail}`).join('\n')}\n\n` + findings.map(f => `## ${f.id} ${f.priority} ${f.status} ${f.title}\n\n位置：${f.locator || '待人工定位'} · ${f.annotationStatus}\n\n原文：${f.quote || '未定位'}\n\n问题：${f.issue}\n\n证据：\n${f.evidence.map(e => `- ${e.source} ${e.locator}（${e.verified ? '原文已验证' : '未验证'}）：${e.quote}`).join('\n')}\n\n计算：${f.calculation || '不涉及或未返回'}\n\n建议：${f.suggestion}\n\n规则：${f.ruleIds.join('、')}\n\n定位及证据提示：${f.validationWarnings.join('；') || '无'}\n`).join('\n') + '\n## 材料解析覆盖\n\n' + coverage.documents.map(d => `- ${d.filename}：${d.parseStatus}，${d.records} 处文本。${d.warnings.join('；')}`).join('\n') + '\n\n## 检查限制\n\n' + coverage.limitations.map(x => `- ${x}`).join('\n');
 }
 
 export function csvReport(findings) {

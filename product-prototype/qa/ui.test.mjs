@@ -1,3 +1,6 @@
+import { materialStudio } from '../public/material-studio.js';
+import { projectWorkspace } from '../public/project-workspace.js';
+import { SCOPE_NAMES } from '../public/markets.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -15,19 +18,19 @@ import { blueprintEligibility } from '../public/library-schema.js';
 import { authoringUI } from '../public/authoring.js';
 import * as projectFields from '../public/project-fields.js';
 // Pure template and event-handler tests. No browser or UI automation is used.
-const code=(await readFile(join(ROOT,'public','app.js'),'utf8')).replace(/^import[^\n]+\n/gm,'').replace('void init();','')+'\nglobalThis.ui={state,sidebar,dashboard,workflow,chat,features,authUI,navigate,library,addFiles};';
+const code=(await readFile(join(ROOT,'public','app.js'),'utf8')).replace(/^import[^\n]+\n/gm,'').replace('void init();','')+'\nglobalThis.ui={state,sidebar,dashboard,workflow,chat,features,authUI,navigate,workspace,addFiles};';
 const nodes=new Map(),listeners={};
 const document={body:{classList:{toggle(){}}},querySelectorAll:()=>[],querySelector:s=>{if(!nodes.has(s))nodes.set(s,{innerHTML:'',value:'',dataset:{},focus(){this.focused=true;},showModal(){this.open=true;},close(){this.open=false;},classList:{remove(){},toggle(){}}});return nodes.get(s);},addEventListener:(type,fn)=>listeners[type]=fn};
-const requests=[],order={id:randomUUID(),type:'subscription',status:'pending',amount:49900,mode:'sandbox',createdAt:new Date().toISOString(),lines:[{plan:'personal'}]};
-const context={...projectFields,blueprintEligibility,libraryUI:options=>libraryUI({...options,document,location:context.location}),authoringUI,pointCapacity,reportingPeriods,querySourcesUI:options=>querySourcesUI({...options,document}),accountUI:options=>accountUI({...options,document,location:context.location}),phoneAuthUI:options=>phoneAuthUI({...options,document}),document,location:{hash:'#dashboard'},localStorage:{getItem(){return null},setItem(){}},window:{addEventListener(){},scrollTo(){}},setTimeout,clearTimeout,crypto:{randomUUID},URL,URLSearchParams,Date,FormData,fetch:async(path,options)=>{requests.push({path,options});return {ok:true,json:async()=>path==='/api/billing'?context.ui.state.billing:{order}};}};vm.createContext(context);vm.runInContext(code,context);
-const {ui}=context;
-ui.state.billing={seat:{id:'primary',name:'测试',email:'test@example.com',quota:{active:false,plan:null,limit:{qa:0,documents:0,points:0},available:{qa:0,documents:0,points:0},used:{qa:0,documents:0,points:0},reserved:{qa:0,documents:0,points:0}}},plans:[{id:'personal',name:'个人版',price:49900,qa:1000,documents:40,points:4},{id:'professional',name:'专业版',price:99900,qa:2000,documents:80,points:12}],seats:[{id:'primary',name:'测试',email:'test@example.com',plan:null}],orders:[],rules:{cycle:'按月重置',documents:'每文件一个单元'}};
+const requests=[],order={id:randomUUID(),type:'recharge',credits:5000,status:'pending',amount:5000,mode:'sandbox',createdAt:new Date().toISOString(),lines:[{credits:5000}]};
+const context={materialStudio:options=>materialStudio({...options,document,location:context.location}),uploadMultipart:async(path,body,{onProgress=()=>{}}={})=>{onProgress({percent:100,transferred:true});const response=await context.fetch(path,{method:'POST',body});return response.json();},SCOPE_NAMES,projectWorkspace:options=>projectWorkspace({...options,document,location:context.location}),...projectFields,blueprintEligibility,libraryUI:options=>libraryUI({...options,document,location:context.location}),authoringUI,pointCapacity,reportingPeriods,querySourcesUI:options=>querySourcesUI({...options,document}),accountUI:options=>accountUI({...options,document,location:context.location}),phoneAuthUI:options=>phoneAuthUI({...options,document}),document,location:{hash:'#dashboard'},localStorage:{getItem(){return null},setItem(){}},window:{addEventListener(){},scrollTo(){}},setTimeout,clearTimeout,crypto:{randomUUID},URL,URLSearchParams,Date,FormData,fetch:async(path,options)=>{requests.push({path,options});return {ok:true,json:async()=>path==='/api/billing'?context.ui.state.billing:{order}};}};vm.createContext(context);vm.runInContext(code,context);
+const {ui}=context;ui.state.health={authoringVersion:2,projectInputVersion:3,materialStudioVersion:1};
+ui.state.billing={creditVersion:'2026-09-22-v1.1',mode:'sandbox',seat:{id:'primary',quota:{active:true,plan:'credits',externalData:true,legacy:{active:false}}},wallet:{available:2000,paid:0,reward:2000,frozen:0,spent:0,expiring:0,lots:[]},packs:[{cny:50,paid_credits:5000},{cny:500,paid_credits:52500},{cny:2000,paid_credits:220000},{cny:10000,paid_credits:1150000}],invitation:{code:'ABC123',invited:0,pending:0},activity:{today:0,monthlyReward:0},ledger:[],orders:[]};ui.state.health.oneClickExecution=true;
 ui.state.user={id:'primary',phoneMasked:'138****8000'};
 test('home focuses on results and four task entries, with Q&A beside material generation',()=>{
   const home=ui.dashboard();assert(!home.includes('id="chat-form"'));assert(!home.includes('id="chat-prompt"'));assert(!home.includes('home-dialogue'));assert(!home.includes('task-starters'));assert(!home.includes('新建项目'));assert(!home.includes('新建募集书项目'));assert(home.includes('已更新募集书'));assert(home.includes('已复核募集书'));assert(home.includes('已完成对话'));assert(home.includes('最近项目'));assert.equal((home.match(/class="workflow-card"/g)||[]).length,4);assert(home.includes('href="#qa"'));assert(home.indexOf('href="#generate"')<home.indexOf('href="#qa"'));ui.sidebar();const nav=nodes.get('#sidebar').innerHTML;assert(!nav.includes('#knowledge'));assert(nav.includes('#generate'));assert(nav.includes('#qa'));assert(nav.includes('材料生成'));assert(nav.includes('项目问答'));assert(nav.includes('#billing'));assert(!nav.includes('#connectors'));assert(!nav.includes('#settings'));assert(!nodes.get('#topbar').innerHTML.includes('#settings'));
 });
-test('workflow previews task cost, includes external sources, and keeps required Word rules',()=>{
-  for(const kind of ['update','review']){ui.state.route=kind;ui.state.step=2;const html=ui.workflow(kind);assert(html.includes(kind==='update'?'4 点':'1 点'));assert(html.includes('直接上传材料即可'));assert(!html.includes('data-action="query-sources"'));assert(!html.includes('read-knowledge'));assert(html.includes('DOCX'));assert(!html.includes('type="date"'));}
+test('workflow starts directly, includes external sources, and keeps required Word rules',()=>{
+  for(const kind of ['update','review']){ui.state.route=kind;ui.state.step=2;const html=ui.workflow(kind);assert(html.includes(kind==='update'?'开始更新':'开始复核'));assert(html.includes('上传材料免费'));assert(!html.includes('确认点数'));assert(!html.includes('data-action="query-sources"'));assert(!html.includes('read-knowledge'));assert(html.includes('DOCX'));assert(!html.includes('type="date"'));}
 });
 test('both workflows show the full rolling window when offering or latest period changes',()=>{
   for(const kind of ['update','review']){
@@ -62,7 +65,7 @@ test('conversation starters fill an editable prompt; active conversations retain
   ui.state.jobs=[{id:'message1',kind:'generate',conversationId:'chat-one',projectId:'project1',prompt:'整理项目资料',title:'整理项目资料',status:'generating',progress:'正在处理'}];
   const active=ui.chat();assert(active.includes('has-conversation'));assert(!active.includes('chat-suggestion'));assert(active.includes('整理项目资料'));assert(active.includes('说明.txt'));assert(active.includes('停止生成'));assert(active.includes('required disabled'));assert.equal((active.match(/data-action="new-conversation"/g)||[]).length,1);
   context.location.hash='#generate';await listeners.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'new-conversation'}}:null}});
-  assert.equal(ui.state.queryIssuer,'');assert.equal(ui.state.projectId,'');assert.equal(ui.state.chatDraft,'');assert.equal(ui.state.files.generate.length,0);assert(nodes.get('#main').innerHTML.includes('is-start'));
+  assert.equal(ui.state.queryIssuer,'');assert.equal(ui.state.projectId,'');assert.equal(ui.state.chatDraft,'');assert.equal(ui.state.files.generate.length,0);assert(nodes.get('#main').innerHTML.includes('material-studio-form'));
   ui.state.jobs=[];ui.state.route='dashboard';
 });
 test('Q&A opens directly, submits and continues a conversation, and starts a new one within Q&A',async()=>{
@@ -91,22 +94,20 @@ test('Q&A opens directly, submits and continues a conversation, and starts a new
     ui.state.chatDraft='再解释一下现金流';await listeners.submit({preventDefault(){},target:form});assert.equal(sent[1].get('conversationId'),'qa-thread');assert.equal(ui.state.route,'qa');
     context.location.hash='#qa/qa-thread';await listeners.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'new-conversation'}}:null}});
     assert.equal(context.location.hash,'qa');assert.equal(ui.state.conversationId,'');assert.equal(ui.state.chatDraft,'');
-    context.location.hash='#generate';await ui.navigate();assert(nodes.get('#main').innerHTML.includes('<h1>材料生成</h1>'));assert(nodes.get('#main').innerHTML.includes('描述要生成的材料'));
+    context.location.hash='#generate';await ui.navigate();assert(nodes.get('#main').innerHTML.includes('<h1>材料生成</h1>'));assert(nodes.get('#main').innerHTML.includes('要生成哪份材料'));
   }finally{context.fetch=previousFetch;ui.state.jobs=[];ui.state.details={};ui.state.conversationId='';ui.state.chatDraft='';ui.state.route='dashboard';}
 });
-test('plans and add-ons explain different allowances and show what points can buy',()=>{
-  let html=ui.features.billingPage();for(const text of ['¥499','¥999','1,000','2,000','40','80','4 点募集书额度','12','¥299','不会收取费用','更新 1 份','复核 1 份','4 + 1 = 5 点','在对话中上传文件','专业版专享 · 外部数据查询','企查查 / 工商','企业预警通','Wind'])assert(html.includes(text),text);
-  assert(!html.includes('type="email"'));assert(!html.includes('seat-name'));assert(!html.includes('add-seat'));assert(!html.includes('实名'));assert(!html.includes('对话附件处理'));assert(!html.includes('音频转写'));assert(!html.includes('OCR'));assert(!html.includes('两档功能相同'));assert(!html.includes('配置'));assert(html.includes('两档均支持募集书更新、复核、材料起草与分析'));assert(html.includes('不含工商、债券等外部数据库查询'));assert(html.includes('包含个人版全部能力'));
-  assert(html.indexOf('id="plan-options"')<html.indexOf('class="addon-banner"'));assert(!ui.dashboard().includes('data-action="buy-addon"'));ui.sidebar();assert(nodes.get('#topbar').innerHTML.includes('开通套餐'));assert(!nodes.get('#topbar').innerHTML.includes('data-action="buy-addon"'));
-  const original=ui.state.billing.seat.quota;ui.state.billing.seat.quota={...original,active:true,plan:'personal',endsAt:'2026-10-18T00:00:00.000Z',available:{qa:900,documents:30,points:4}};
-  html=ui.features.billingPage();assert(html.includes('可更新 1 次，或复核 4 次'));assert(html.includes('加购 4 点'));assert(html.includes('与本期套餐一起到期'));
-  assert(html.indexOf('id="plan-options"')<html.indexOf('class="addon-banner"'));assert(html.indexOf('id="plan-options"')<html.indexOf('<details'));assert(!html.includes('<summary>查看套餐对比</summary>'));assert(!ui.dashboard().includes('data-action="buy-addon"'));assert(!ui.dashboard().includes('purchase-bar'));ui.sidebar();const topbar=nodes.get('#topbar').innerHTML,topbarText=topbar.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ');assert(topbarText.includes('剩余额度 4 点'));assert(!topbarText.includes('点/份'));assert(topbar.includes('套餐与用量'));assert(topbar.includes('¥299 / 4 点'));assert.equal((topbar.match(/data-action="buy-addon"/g)||[]).length,1);assert(!nodes.get('#sidebar').innerHTML.includes('sidebar-plan'));
-  ui.state.billing.seat.quota=original;
+test('wallet shows unified credits, four packs, rewards and no subscription gates',()=>{
+ const html=ui.features.billingPage();for(const text of ['5,000','52,500','220,000','1,150,000','积分流水','每日','邀请','演示充值','不设有效期'])assert(html.includes(text),text);
+ assert(!html.includes('开通套餐'));assert(!html.includes('确认点数'));ui.sidebar();assert(nodes.get('#topbar').innerHTML.includes('2,000'));assert(nodes.get('#topbar').innerHTML.includes('充值积分'));
 });
-test('choosing a plan goes straight to one confirmation button without checkboxes',async()=>{
-  await ui.features.click('choose-plan','personal',{disabled:false});assert(context.location.hash.includes('payment/'));const sent=JSON.parse(requests.find(r=>r.path==='/api/billing/orders').options.body);assert.equal(sent.plan,'personal');assert(!sent.seats);assert(!sent.name);assert(!sent.email);
-  const html=await ui.features.paymentPage(order.id);assert(html.includes('确认演示支付 · ¥499'));assert.equal((html.match(/type="submit"/g)||[]).length,1);assert(!html.includes('type="checkbox"'));assert(!html.includes('type="email"'));
+
+test('recharge creates one server-priced order and retains a payment confirmation',async()=>{
+ await ui.features.click('recharge','50',{disabled:false});assert(context.location.hash.includes('payment/'));
+ const sent=JSON.parse(requests.find(r=>r.path==='/api/billing/orders').options.body);assert.equal(sent.type,'recharge');assert.equal(sent.amountCny,50);assert(!sent.credits);
+ const html=await ui.features.paymentPage(order.id);assert(html.includes('确认演示支付'));assert(!html.includes('checkbox'));
 });
+
 test('phone registration has just a phone and demo code; guest routes open the login form',async()=>{
   const html=ui.authUI.page();assert(html.includes('id="auth-phone"'));assert(html.includes('id="auth-code"'));assert(html.includes('新手机号自动注册'));assert(html.includes('不会发送短信'));assert(!html.includes('type="password"'));assert(!html.includes('type="email"'));
   ui.state.user=null;context.location.hash='#billing';await ui.navigate();assert.equal(ui.state.route,'login');assert.equal(ui.state.returnTo,'billing');assert(nodes.get('#main').innerHTML.includes('phone-auth-form'));ui.state.user={id:'primary',phoneMasked:'138****8000'};
@@ -115,79 +116,64 @@ test('task and project text are escaped in templates',()=>{
   ui.state.jobs=[{id:'project-safe',kind:'review',title:'<script>alert(1)</script>'}];assert(ui.dashboard().includes('&lt;script&gt;'));ui.state.jobs=[];ui.state.route='qa';ui.state.chatDraft='<img src=x>';assert(ui.chat().includes('&lt;img src=x&gt;'));
 });
 
-test('authoring fields are optional, submission waits for the third step, and inactive primary files are not sent',async()=>{
-  const previousFetch=context.fetch,previousDrafts=ui.state.drafts,previousFiles=ui.state.files.update;
-  let submitted;
+test('update restores expanded optional fields while review stays focused on its three checks',async()=>{
+  ui.state.route='update';ui.state.step=1;ui.state.drafts={};
+  let html=ui.workflow('update');
+  assert(html.includes('是否有本发行人的历史募集书'));assert(html.includes('>有</label>'));assert(html.includes('>没有</label>'));
+  for(const text of ['蓝图','相似企业','发行人补充资料','品种一 ·','品种二 ·','这次希望更新什么','更新范围','name="dataUpdate"','name="updateYears"','name="sourceScope"','name="majorRestructuring"','name="investorProtection"','name="protectionTerms"'])assert(!html.includes(text),text);
+  assert.equal((html.match(/data-optional-group="\d+" open/g)||[]).length,projectFields.OPTIONAL_GROUPS.length);assert(html.includes('name="purposeCategory"'));assert(!html.includes('data-action="project-topic"'));assert(!html.includes('更多信息，边聊边补充'));assert(html.includes('授信总额50亿元'));assert(html.includes('更新整份募集书'));
+  for(const name of projectFields.FUNDING_PURPOSES)assert(html.includes(name));assert(html.includes('土地证书'));assert(html.includes('相关许可证'));
+  assert(html.includes('普通私募公司债'));assert(html.includes('小公募'));assert(html.includes('大公募'));
+  await listeners.change({target:{name:'exchange',value:'nafmii',id:'exchange',closest:()=>true,dataset:{}}});
+  html=ui.workflow('update');for(const name of ['PPN','MTN','CP','SCP','ABN','ABCP','PRN'])assert(html.includes(name));assert(!html.includes('SPN'));assert(!html.includes('注册模式'));assert(!html.includes('DFI'));assert.equal(ui.state.drafts.update.offering,'ppn');
+  ui.sidebar();assert(!nodes.get('#sidebar').innerHTML.includes('募集书库'));assert(!nodes.get('#sidebar').innerHTML.includes('href="#library"'));
+  ui.state.route='review';ui.state.step=1;const review=ui.workflow('review');assert(review.includes('project-message-form'));for(const value of ['data-optional-group','name="purposeCategory"','name="trancheTerms"','name="underwritingArrangements"','更多信息，边聊边补充','data-action="project-topic"'])assert(!review.includes(value),value);for(const value of ['财务数据核对','合规与格式检查','公开信息核验','补充核验线索或特别关注事项'])assert(review.includes(value),value);
+  ui.state.route='dashboard';
+});
+
+test('project form creates before uploading then executes once without a price confirmation',async()=>{
+  const previous=context.fetch,sent=[];
+  const job={id:'project-estimate',kind:'update',context:{},files:[{key:'saved-file',filename:'原稿.docx',role:'historical',size:20}],quote:{id:'quote-one',points:7,expiresAt:'2026-12-31T00:00:00Z',reasons:[{label:'跨品种调整',points:7,detail:'测试评估'}],warnings:[]}};
   context.fetch=async(path,options)=>{
-    if(path==='/api/tasks'&&options?.method==='POST'){submitted=options.body;return {ok:true,json:async()=>({job:{id:'new-reference'}})};}
-    if(path==='/api/tasks')return {ok:true,json:async()=>({jobs:[]})};
-    if(path==='/api/health')return {ok:true,json:async()=>({authoringVersion:1,libraryVersion:1})};
-    return previousFetch(path,options);
+    if(path==='/api/projects'||path.startsWith('/api/projects/')){sent.push({path,options});return {ok:true,json:async()=>({job})};}
+    if(path==='/api/tasks')return {ok:true,json:async()=>({jobs:[]})};return previous(path,options);
   };
   try{
-    ui.state.drafts={};ui.state.route='update';ui.state.step=1;
-    const initial=ui.workflow('update');assert(!initial.includes('value="reference" checked'));assert(!initial.includes('value="historical" checked'));
-    for(const name of ['title','issuer','exchange','offering','year','quarter'])assert(new RegExp('name="'+name+'"[^>]*required').test(initial),name);
-    for(const f of projectFields.OPTIONAL_FIELDS)assert(!new RegExp('name="'+f.key+'"[^>]*required').test(initial),f.key);
-    Object.assign(ui.state.drafts.update,{title:'新项目',issuer:'本企业',authoringMode:'reference',hasRating:'否',issuerRating:'旧评级',bookrunner:'簿记管理人'});
-    ui.state.files.update=[{role:'historical',file:new File(['own'],'本企业.docx')},{role:'reference',file:new File(['peer'],'同业.docx')},{role:'issuancePlan',file:new File(['plan'],'方案.txt')}];
-    const form={id:'workflow-form',reportValidity:()=>true,querySelectorAll:()=>[]};
-    await listeners.submit({preventDefault(){},target:form});assert.equal(ui.state.step,2);assert.equal(submitted,undefined);
-    let html=nodes.get('#main').innerHTML;assert(html.includes('相似企业参考募集书'));assert(html.includes('本项目材料'));assert(html.includes('银行授信情况表'));assert(html.includes('章程、治理制度与组织架构'));
-    await listeners.submit({preventDefault(){},target:form});assert.equal(ui.state.step,3);assert.equal(submitted,undefined);assert(nodes.get('#main').innerHTML.includes('尚未核验'));
-    await listeners.submit({preventDefault(){},target:form});assert.equal(submitted.get('authoringMode'),'reference');assert.equal(submitted.get('bookrunner'),'簿记管理人');assert.equal(submitted.get('issuerRating'),'');assert.equal(submitted.has('historical'),false);assert.equal(submitted.has('reference'),true);assert.equal(submitted.has('issuancePlan'),true);assert.equal(ui.state.files.update.length,1);assert.equal(ui.state.files.update[0].role,'historical');
-  }finally{context.fetch=previousFetch;ui.state.drafts=previousDrafts;ui.state.files.update=previousFiles;ui.state.route='dashboard';ui.state.step=1;}
+    ui.state.route='update';ui.state.step=1;ui.state.drafts={};ui.workflow('update');Object.assign(ui.state.drafts.update,{title:'测试项目',issuer:'本次发行人',authoringMode:'historical',exchange:'sse',offering:'private',dataUpdate:'none',updateYears:'10',sourceScope:'nafmii-mtn',registrationMode:'dfi'});
+    ui.state.files.update=[{role:'historical',file:new File(['原稿'],'原稿.docx')},{role:'audit',file:new File(['财务报表及附注'],'审计报告.txt')}];
+    const form={id:'workflow-form',reportValidity:()=>true};
+    await ui.workspace.submit(form);assert.equal(stateStep(),2);assert.equal(sent[0].path,'/api/projects');assert.equal(sent.length,1);for(const key of ['dataUpdate','updateYears','sourceScope','registrationMode','conversationDrafts','conversationTopic'])assert(!(key in JSON.parse(sent[0].options.body)));
+    ui.workspace.input({id:'project-message',value:'截至2026年6月末，银行授信总额50亿元，已使用30亿元，未使用20亿元。'});
+    await ui.workspace.submit(form);assert.equal(stateStep(),2);assert.equal(sent[1].path,'/api/projects/project-estimate/execute');assert.equal(JSON.parse(sent[1].options.body.get('projectMessages'))[0].text,'截至2026年6月末，银行授信总额50亿元，已使用30亿元，未使用20亿元。');assert(sent[1].options.body.has('historical'));
+    assert.equal(sent.length,2);assert.equal(ui.state.files.update.length,0);assert.equal(context.location.hash,'task/project-estimate');assert(!sent.some(r=>r.path.endsWith('/start')));
+  }finally{context.fetch=previous;ui.state.route='dashboard';ui.state.drafts={};ui.state.files.update=[];}
+  function stateStep(){return ui.state.step;}
 });
 
-test('an old running service cannot silently discard optional fields or misroute reference tasks',async()=>{
-  const previousFetch=context.fetch,previousDrafts=ui.state.drafts,previousFiles=ui.state.files.update;let submitted=false;
-  context.fetch=async(path,options)=>{if(path==='/api/health')return {ok:true,json:async()=>({version:'1.4.0'})};if(path==='/api/tasks'&&options?.method==='POST')submitted=true;return previousFetch(path,options);};
-  try{
-    ui.state.route='update';ui.state.drafts={};ui.state.step=1;ui.workflow('update');Object.assign(ui.state.drafts.update,{title:'项目',issuer:'发行人',authoringMode:'historical'});
-    ui.state.files.update=[{role:'historical',file:new File(['old'],'历史稿.docx')}];ui.state.step=3;
-    await listeners.submit({preventDefault(){},target:{id:'workflow-form',querySelectorAll:()=>[]}});
-    assert.equal(submitted,false);assert.equal(ui.state.files.update.length,1);assert(nodes.get('#toast').textContent.includes('请先重启'));assert(ui.workflow('update').includes('重启前可填写信息和选择材料'));
-  }finally{context.fetch=previousFetch;ui.state.drafts=previousDrafts;ui.state.files.update=previousFiles;ui.state.route='dashboard';ui.state.step=1;}
+test('a conversational requirement after assessment invalidates the displayed quote and returns to material review',async()=>{
+  ui.state.route='review';ui.state.step=3;ui.state.drafts={};ui.workflow('review');ui.state.drafts.review.assessment={quote:{id:'old',points:4}};
+  document.querySelector('#project-message').value='请重点核对有息债务';
+  await ui.workspace.submit({id:'project-message-form'});
+  assert.equal(ui.state.drafts.review.assessment,undefined);assert.equal(ui.state.step,2);assert.equal(ui.state.drafts.review.projectMessages[0].text,'请重点核对有息债务');
+  ui.state.route='dashboard';ui.state.drafts={};
 });
 
-test('library browse renders real counts, official sources and escaped searchable entries',async()=>{
-  const previousFetch=context.fetch,previousDrafts=ui.state.drafts;
-  const entry={id:'a'.repeat(64),title:'<script>unsafe</script>募集书',issuer:'测试企业',market:'sse',instrument:'公司债券',offering:'public',projectStatus:'审核通过',sourceUrl:'https://bond.sse.com.cn/example',documentUrl:'https://static.sse.com.cn/example.pdf',file:{name:'稿.pdf',size:100},textReady:true,confirmedAt:'2026-07-01',publishedAt:'2026-06-30',version:'申报稿',verification:'个人已核对官方来源',visibility:'personal',warnings:[],chapters:[],match:{reasons:['行业相同'],differences:[],unknown:[]}};
-  context.fetch=async path=>path.startsWith('/api/library')?{ok:true,json:async()=>({items:[entry],total:1,page:1,pages:1,stats:{total:1,ready:1,issuers:1,public:0},facets:{issuer:[entry.issuer],region:[]},sources:[{id:'sse',name:'上交所',url:entry.sourceUrl,count:1}]})}:previousFetch(path);
-  try{ui.state.drafts={};ui.state.libraryId='';let html=await ui.library.page();assert(html.includes('募集书库'));assert(html.includes('library-search-form'));assert(html.includes('企业性质'));assert(html.includes('发行企业'));assert(html.includes('&lt;script&gt;unsafe'));assert(!html.includes('<script>unsafe'));assert(html.includes('本库已收录 1 份'));assert(html.includes('仅自己可见'));assert(html.includes('推荐相似募集书'));assert(!html.includes('library-project-context'));assert(!html.includes('library-target-form'));assert(!html.includes('未选择推荐项目'));assert(!html.includes('与本项目发行方式不同'));await ui.library.click('library-select-project');assert(nodes.get('#modal-content').innerHTML.includes('先填写项目信息'));nodes.get('#modal').close();ui.sidebar();assert(nodes.get('#sidebar').innerHTML.includes('href="#library"'));}
-  finally{context.fetch=previousFetch;ui.state.drafts=previousDrafts;ui.library.reset();}
+test('old backend cannot submit the new fields without full-document support',async()=>{
+  const prior=ui.state.health;ui.state.health={authoringVersion:2};ui.state.route='update';ui.state.step=1;
+  const html=ui.workflow('update');assert(html.includes('等待服务重启'));assert(html.includes('id="start-task" disabled'));
+  const requestCount=requests.length;await assert.rejects(ui.workspace.submit({id:'workflow-form',reportValidity:()=>true}),/重启/);assert.equal(requests.length,requestCount);
+  ui.state.health=prior;ui.state.route='dashboard';
 });
 
-test('choosing a library blueprint retains target facts and support files and submits only its ID',async()=>{
-  const previousFetch=context.fetch,previousDrafts=ui.state.drafts,previousFiles=ui.state.files.update;let submitted;
-  const entry={id:'b'.repeat(64),title:'参考企业募集书',issuer:'另一个发行人',market:'sse',instrument:'公司债券',offering:'private',projectStatus:'审核通过',file:{name:'库内蓝图.pdf',size:100},textReady:true,confirmedAt:'2026-07-01',publishedAt:'2026-06-30',version:'申报稿'};
-  context.fetch=async(path,options)=>{if(path==='/api/library/'+entry.id)return {ok:true,json:async()=>({item:entry})};if(path==='/api/health')return {ok:true,json:async()=>({authoringVersion:1,libraryVersion:1})};if(path==='/api/tasks'&&options?.method==='POST'){submitted=options.body;return {ok:true,json:async()=>({job:{id:'library-task'}})};}if(path==='/api/tasks')return {ok:true,json:async()=>({jobs:[]})};return previousFetch(path,options);};
-  try{
-    ui.state.drafts={};ui.state.route='update';ui.state.step=1;ui.workflow('update');Object.assign(ui.state.drafts.update,{title:'本企业项目',issuer:'本次发行人',size:'10亿元',authoringMode:'historical'});
-    ui.state.files.update=[{role:'historical',file:new File(['own'],'本企业.docx')},{role:'reference',file:new File(['old'],'原参考.docx')},{role:'financial',file:new File(['own facts'],'财务.txt')}];
-    await ui.library.click('library-use-draft');await ui.library.click('library-confirm-pick',entry.id);assert.equal(ui.state.drafts.update.issuer,'本次发行人');assert.equal(ui.state.drafts.update.size,'10亿元');assert.equal(ui.state.drafts.update.authoringMode,'reference');assert.equal(ui.state.files.update.length,2);
-    context.location.hash='#update';await ui.navigate();assert.equal(ui.state.step,2);assert(ui.workflow('update').includes('库内蓝图.pdf'));assert(ui.workflow('update').includes('从募集书库选择'));
-    const form={id:'workflow-form',querySelectorAll:()=>[],reportValidity:()=>true};await listeners.submit({preventDefault(){},target:form});assert.equal(ui.state.step,3);await listeners.submit({preventDefault(){},target:form});assert.equal(submitted.get('blueprintId'),entry.id);assert.equal(submitted.get('issuer'),'本次发行人');assert.equal(submitted.has('reference'),false);assert.equal(submitted.has('historical'),false);assert.equal(submitted.has('libraryBlueprint'),false);assert.equal(submitted.has('financial'),true);assert.equal(ui.state.drafts.update.libraryBlueprint,undefined);
-  }finally{context.fetch=previousFetch;ui.state.drafts=previousDrafts;ui.state.files.update=previousFiles;ui.state.route='dashboard';ui.state.step=1;ui.library.reset();}
-});
-
-test('library opens on documents and recommendations use an explicit draft picker with a compact project summary',async()=>{
-  const previousFetch=context.fetch,previousDrafts=ui.state.drafts;let libraryRequest='';
-  const item={id:'c'.repeat(64),title:'蓝图',issuer:'参考企业',warnings:[],chapters:[],market:'sse',instrument:'公司债券',offering:'public',projectStatus:'审核通过',file:{name:'蓝图.pdf',size:100},textReady:true,confirmedAt:'2026-07-01'};
-  context.fetch=async path=>{if(path==='/api/library/'+item.id)return {ok:true,json:async()=>({item})};if(path.startsWith('/api/library?')){libraryRequest=path;return {ok:true,json:async()=>({items:[],total:0,page:1,pages:0,stats:{total:0,ready:0,issuers:0,public:0},facets:{issuer:[],region:[]},sources:[]})};}return previousFetch(path);};
-  try{
-    ui.library.reset();ui.state.libraryReturn=false;ui.state.drafts={};ui.state.route='update';ui.workflow('update');Object.assign(ui.state.drafts.update,{title:'明确的项目名称',issuer:'明确的发行人',exchange:'sse',offering:'public'});ui.state.route='library';ui.state.libraryId='';context.location.hash='#library';
-    let html=await ui.library.page();assert(html.includes('全部募集书'));assert(html.includes('推荐相似募集书'));assert(!html.includes('明确的项目名称'));assert(!html.includes('为这份草稿推荐'));assert(!html.includes('library-project-context'));assert(!html.includes('library-target-form'));assert(!html.includes('data-value="recommended"'));assert(!libraryRequest.includes('target_'));
-    await ui.library.click('library-select-project');assert(nodes.get('#modal').open);assert(nodes.get('#modal-content').innerHTML.includes('为这份草稿推荐'));assert(nodes.get('#modal-content').innerHTML.includes('明确的项目名称'));assert.equal(ui.state.libraryReturn,false);assert(!libraryRequest.includes('target_'));
-    await assert.rejects(ui.library.click('library-confirm-pick',item.id),/尚未选择推荐项目/);
-    await ui.library.click('library-use-draft');html=await ui.library.page();assert(!nodes.get('#modal').open);assert(html.includes('library-project-summary'));assert(!html.includes('library-project-context'));assert(!html.includes('library-target-form'));assert(html.includes('推荐项目'));assert(html.includes('明确的项目名称'));assert(html.includes('发行人：明确的发行人'));assert(html.includes('待创建 · 尚未提交'));assert(libraryRequest.includes('target_exchange=sse'));assert(libraryRequest.includes('target_offering=public'));
-    await ui.library.click('library-select-project');assert(nodes.get('#modal-content').innerHTML.includes('library-target-form'));nodes.get('#modal').close();
-    await ui.library.click('library-sort','');html=await ui.library.page();assert(!libraryRequest.includes('sort=recommended'));assert(html.includes('明确的项目名称'));
-    await ui.library.click('library-sort','recommended');html=await ui.library.page();assert(libraryRequest.includes('sort=recommended'));
-    await ui.library.click('library-pick',item.id);assert(nodes.get('#modal-content').innerHTML.includes('应用到项目：明确的项目名称'));nodes.get('#modal').close();
-    ui.state.drafts.update.issuer='另一发行人';html=await ui.library.page();assert(!html.includes('library-project-summary'));assert(html.includes('推荐相似募集书'));assert(!libraryRequest.includes('target_'));await assert.rejects(ui.library.click('library-confirm-pick',item.id),/尚未选择推荐项目/);
-    await ui.library.click('library-use-draft');await ui.library.click('library-select-project');await ui.library.click('library-unlink');assert(!nodes.get('#modal').open);html=await ui.library.page();assert(!html.includes('library-project-summary'));assert(!libraryRequest.includes('target_'));
-    await ui.library.click('library-use-draft');await ui.library.click('library-open');html=await ui.library.page();assert(!html.includes('library-project-summary'));assert(html.includes('推荐相似募集书'));assert(!libraryRequest.includes('target_'));
-    ui.state.libraryId=item.id;html=await ui.library.page();assert(html.includes('library-detail'));assert(!html.includes('library-project-context'));assert(!html.includes('明确的项目名称'));
-  }finally{context.fetch=previousFetch;ui.state.drafts=previousDrafts;ui.state.route='dashboard';ui.state.libraryId='';ui.library.reset();}
+test('legacy scope controls cannot survive a resumed draft, and conversation shortcuts preserve typed input',async()=>{
+  ui.state.route='update';ui.state.step=1;ui.state.drafts={};ui.workflow('update');
+  Object.assign(ui.state.drafts.update,{updateMode:undefined,dataUpdate:'none',updateYears:'1',sourceScope:'sse-private',assessment:{quote:{id:'old',points:2}},purpose:'项目建设',protectionTerms:'按已签协议落实保护安排'});
+  ui.state.step=3;const html=ui.workflow('update');
+  assert.equal(ui.state.step,2);assert.equal(ui.state.drafts.update.assessment,undefined);assert.equal(ui.state.drafts.update.updateMode,'full');
+  assert.equal(ui.state.drafts.update.purpose,'项目建设');assert.equal(ui.state.drafts.update.purposeCategory,'项目建设');assert(ui.state.drafts.update.reviewNotes.includes('按已签协议落实保护安排'));
+  for(const key of ['dataUpdate','updateYears','sourceScope','protectionTerms'])assert(!(key in ui.state.drafts.update));
+  assert(html.includes('开始更新'));
+  ui.workspace.input({id:'project-message',value:'已经填写的发行安排'});await ui.workspace.click('project-prompt','授信情况');
+  assert(document.querySelector('#project-message').value.startsWith('已经填写的发行安排'));assert(document.querySelector('#project-message').value.includes('未使用'));
+  ui.state.route='dashboard';ui.state.drafts={};
 });

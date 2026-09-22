@@ -1,11 +1,21 @@
 import { mcpSession, templateArgs, unwrap } from './mcp.mjs';
+import { randomUUID } from 'node:crypto';
 export const BOND_QUERY_RULES='公司债券兑付存续情况须覆盖发行人发行过的全部公司债券，包括已到期与未到期，以及提前兑付、回售、展期、违约等。须核对发行人主体、债券代码、发行额、余额、到期日、兑息兑本记录、违约/展期及查询时点。使用 Wind 或企业预警通等授权数据来源，不能把存续券列表视为全部发行历史。查无结果、分页未完成、主体不确定或状态不全时列待补证，不得据此声称从未违约或全部按期兑付。';
 const cleanUrl=value=>{try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)?u.href:'';}catch{return '';}};
-export async function gatherExternal({query,issuer='',web,registry,connectorIds=[],bondQuery=false,settings,signal,sessionFactory=mcpSession}) {
-  const results=[],limitations=[],coverage=[];let totalBytes=0;
+export async function gatherExternal({query,queries=[],issuer='',web,registry,connectorIds=[],bondQuery=false,settings,signal,sessionFactory=mcpSession}) {
+  const results=[],limitations=[],coverage=[],costEvents=[];let totalBytes=0;
+  const recordCost=service=>{const costCny=Number(settings.externalPrices?.[service]||0);if(costCny>0&&Number.isFinite(costCny))costEvents.push({id:randomUUID(),type:'external',service,costCny,verified:true});};
   function add(items,provider,tool='') {for(const item of items){const v=typeof item==='object'&&item?item:{content:String(item)},raw=String(v.content||JSON.stringify(v));totalBytes+=Buffer.byteLength(JSON.stringify(v));if(totalBytes>12*1024*1024)throw new Error('查询数据累计超过 12 MB，本次未取得全量记录。');if(raw.length>12000)limitations.push(`${provider} 单条记录过长，仅向模型提供前 12,000 字。`);results.push({title:String(v.title||v.bondName||v.name||'查询结果').slice(0,300),url:cleanUrl(v.url),source:`${provider}${tool?' / '+tool:''}`,content:raw.slice(0,12000),raw:v,accessedAt:new Date().toISOString()});}}
-  async function request(url,headers,body,provider){const timeout=AbortSignal.timeout(30000);const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:signal?AbortSignal.any([signal,timeout]):timeout,redirect:'error'});if(!r.ok)throw new Error('查询失败');const d=await r.json();add((d.results||[]).slice(0,20),provider);}
-  if(web){if(!settings.tavilyKey)limitations.push('联网检索未配置，本次未执行网页查询。');else try{const before=results.length;await request('https://api.tavily.com/search',{Authorization:`Bearer ${settings.tavilyKey}`},{query,search_depth:'basic',max_results:5,include_answer:false},'联网搜索');if(results.length===before)limitations.push('联网检索未返回可用来源，不能据此判断事项不存在。');}catch{limitations.push('联网检索失败，本次无法核验最新网页信息。');}}
+  async function request(url,headers,body,provider){const timeout=AbortSignal.timeout(30000);const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:signal?AbortSignal.any([signal,timeout]):timeout,redirect:'error'});if(!r.ok)throw new Error('查询失败');const d=await r.json();add((d.results||[]).slice(0,20),provider);if(d.results?.length)recordCost(provider==='联网搜索'?'web':'registry');}
+  if(web){
+    if(!settings.tavilyKey)limitations.push('联网检索未配置，本次未执行网页查询。');
+    else for(const searchQuery of [...new Set(queries.length?queries:[query])].slice(0,4)){
+      const before=results.length;let reason='仅覆盖本次检索返回的来源，不代表全网穷尽核验。';
+      try{await request('https://api.tavily.com/search',{Authorization:'Bearer '+settings.tavilyKey},{query:searchQuery,search_depth:'basic',max_results:5,include_answer:false},'联网搜索');if(results.length===before){reason='未返回可用来源，不能据此判断事项不存在。';limitations.push('公开检索 '+searchQuery+'：'+reason);}}
+      catch{reason='检索失败，此项公开信息未覆盖。';limitations.push(searchQuery+'：'+reason);}
+      coverage.push({provider:'联网搜索',purpose:'search',query:searchQuery,rows:results.length-before,pages:1,complete:false,reason,accessedAt:new Date().toISOString()});
+    }
+  }
   if(registry){if(!settings.registryUrl||!settings.registryKey)limitations.push('工商查询尚未连接，本次未获得工商查询结果。');else try{const before=results.length;await request(settings.registryUrl,{Authorization:`Bearer ${settings.registryKey}`},{query},'工商查询');if(results.length===before)limitations.push('工商查询未返回可用来源，不能据此判断企业不存在。');}catch{limitations.push('工商查询服务暂时不可用，本次相关事项未完成外部核验。');}}
   const connectors=settings.connectors||[],selected=new Set(connectorIds);
   for(const id of selected){
@@ -19,12 +29,13 @@ export async function gatherExternal({query,issuer='',web,registry,connectorIds=
       if(tool.annotations?.destructiveHint===true||!(tool.annotations?.readOnlyHint===true||c.readOnlyConfirmed))throw new Error('仅可调用已确认只读的查询工具。');
       let cursor='',seen=new Set(),rowCount=0;
       for(let i=0;i<50;i++){
-        const args=templateArgs(c.args,{query:bondQuery?`${query}\n${BOND_QUERY_RULES}`:query,issuer,cursor});
+        const connectorQuery=c.purpose==='bonds'&&bondQuery?`${query}\n${BOND_QUERY_RULES}`:c.purpose==='search'&&queries.length?queries.join('\n'):c.purpose==='registry'?`${issuer} 工商登记、股权、实际控制人、注册资本与变更信息。${query}`:query;
+        const args=templateArgs(c.args,{query:connectorQuery,issuer,cursor});
         for(const key of tool.inputSchema?.required||[])if(!(key in args))throw new Error(`参数模板缺少字段 ${key}`);
         const data=unwrap(await session.rpc('tools/call',{name:c.tool,arguments:args}));pages++;
         const rows=data.bonds||data.results||data.items||[];if(!Array.isArray(rows))throw new Error('查询数据须包含 bonds、results 或 items 数组。');
         rowCount+=rows.length;if(rowCount>10000)throw new Error('超过 10,000 条查询上限，结果未全部获取。');
-        add(rows,c.name,c.tool);total=Number.isInteger(data.total)?data.total:total;
+        add(rows,c.name,c.tool);if(rows.length)recordCost(c.id);total=Number.isInteger(data.total)?data.total:total;
         scopeVerified=scopeVerified&&data.scope?.includeMatured===true&&data.scope?.includeOutstanding===true;
         issuerMatched=issuerMatched&&!!issuer&&[data.issuer?.name,data.issuer?.matchedName,data.issuer].includes(issuer.trim());
         const next=data.nextCursor;
@@ -42,7 +53,7 @@ export async function gatherExternal({query,issuer='',web,registry,connectorIds=
     coverage.push({connectorId:c.id,provider:c.name,purpose:c.purpose,issuer,pages,rows:results.length-start,total,complete,scopeVerified,issuerMatched,reason,accessedAt:new Date().toISOString()});
   }
   if(bondQuery&&!coverage.some(c=>c.purpose==='bonds'&&c.complete))limitations.push('全部公司债券兑付存续情况尚未完成外部核验；尚未从 Wind 或企业预警通取得匹配主体的全部历史发行记录。');
-  return {results,limitations:[...new Set(limitations)],coverage};
+  return {results,limitations:[...new Set(limitations)],coverage,costEvents};
 }
 export function externalDocuments(external){return external.results.map((r,i)=>({id:`EXT${String(i+1).padStart(5,'0')}`,role:'external',filename:`${r.source} · ${r.title}`,parseStatus:'parsed',warnings:[],records:[{locator:'QUERY',text:`来源：${r.source}\n链接：${r.url||'授权 MCP 数据（无公开链接）'}\n查询时间：${r.accessedAt}\n${r.content}`}]}));}
 export function externalCsv(external){const cell=v=>'"'+String(typeof v==='object'?JSON.stringify(v):v??'').replaceAll('"','""').replace(/^[\t\r\n ]*[=+@-]/,"'$&")+'"';return '\uFEFF'+[['来源','债券名称或标题','债券代码','市场','发行日期','发行金额（原单位）','余额（原单位）','到期日','状态','兑息兑付记录','违约及展期','链接','查询时间','原始记录'],...external.results.map(r=>[r.source,r.title,r.raw.bondCode||r.raw.code,r.raw.market,r.raw.issueDate,r.raw.issueAmount,r.raw.balance,r.raw.maturityDate,r.raw.status,r.raw.payments||r.raw.repayment,r.raw.creditEvents||r.raw.defaultStatus,r.url,r.accessedAt,JSON.stringify(r.raw)])].map(row=>row.map(cell).join(',')).join('\r\n');}

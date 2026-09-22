@@ -18,7 +18,7 @@ test('automatic queries match purposes and exclude disabled services',()=>{
   assert.deepEqual(planQueries({prompt:'请查询司法案件库',connectors}).connectorIds,['other']);
 });
 test('workflow queries run without a source picker and missing services stay unverified',()=>{
-  const connected=planQueries({kind:'review',connectors});assert.deepEqual(connected.connectorIds,['wind','registry']);
+  const connected=planQueries({kind:'review',connectors});assert.deepEqual(connected.connectorIds,['wind','registry','news']);
   const missing=planQueries({kind:'update'});assert.deepEqual(missing.connectorIds,[]);assert(missing.limitations.some(t=>t.includes('尚未完成外部核验')));
   const search=planQueries({prompt:'查询最新公告'});assert.equal(search.web,false);assert(search.limitations.some(t=>t.includes('未执行联网搜索')));
 });
@@ -41,8 +41,4 @@ test('external access requires an active professional plan; personal workflows s
   const material=planQueries({prompt:'仅依据上传材料核对公司债兑付情况',connectors,externalDataAllowed:false});
   assert.equal(material.requiresProfessional,false);assert.deepEqual(material.connectorIds,[]);
 });
-test('point balances show feasible alternatives without rounding up or double-counting',()=>{
-  assert.equal(pointCapacity(0),'暂无可用点数');assert.equal(pointCapacity(1),'可复核 1 次，更新还差 3 点');
-  assert.equal(pointCapacity(3),'可复核 3 次，更新还差 1 点');assert.equal(pointCapacity(4),'可更新 1 次，或复核 4 次');
-  assert.equal(pointCapacity(5),'可更新 1 次，或复核 5 次');assert.equal(pointCapacity(12),'可更新 3 次，或复核 12 次');
-});
+test('credit balance copy does not imply fixed task counts or confirmation',()=>{for(const n of [0,1,2000]){assert(pointCapacity(n).includes('点击即可执行'));assert(!pointCapacity(n).includes('评估'));}});

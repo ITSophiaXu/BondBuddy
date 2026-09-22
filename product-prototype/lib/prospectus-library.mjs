@@ -1,3 +1,4 @@
+import { businessProfile, sameTopBusinesses } from './business-profile.mjs';
 import { mkdir, readFile, writeFile, readdir, rename, rm } from 'node:fs/promises';
 import { join, extname, basename } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -86,6 +87,21 @@ export class ProspectusLibrary {
     if(!eligibility.eligible)fail('此募集书暂不能用作本项目蓝图：'+eligibility.reasons.join('；'));
     const content=await readFile(join(this.path(id),item.file.diskName));if(sha(content)!==item.file.sha256)fail('收录文件校验失败，请联系资料库维护人员。');
     return {file:{role:'reference',filename:item.file.name,content},snapshot:{id:item.id,title:item.title,issuer:item.issuer,market:item.market,instrument:item.instrument,offering:item.offering,sourceUrl:item.sourceUrl,documentUrl:item.documentUrl,publishedAt:item.publishedAt,version:item.version,sha256:item.file.sha256,confirmedAt:item.confirmedAt,verification:item.verification,selectedAt:new Date().toISOString()}};
+  }
+  async automaticBlueprint(owner,profile,{scope,folder,settings}){
+    const [market,offering]=scope.split('-');
+    const candidates=(await this.all(owner)).filter(item=>item.confirmedAt&&item.file&&item.textReady&&!item.supersededBy&&['审核通过','注册生效','已发行'].includes(item.projectStatus));
+    candidates.sort((a,b)=>Number(b.market===market)-Number(a.market===market)||Number(b.offering===offering)-Number(a.offering===offering)||(b.publishedAt||'').localeCompare(a.publishedAt||''));
+    for(const item of candidates){
+      const documents=(await readJson(join(this.path(item.id),'text.json'))).documents;
+      const years=documents.flatMap(d=>d.records.flatMap(r=>[...r.text.matchAll(/(20\d{2})年/g)].map(m=>Number(m[1])))).filter(y=>y<=Number(profile.year));
+      const year=Math.max(...years);if(!Number.isFinite(year))continue;
+      const reference=await businessProfile(documents,{year,issuer:item.issuer,folder,settings});
+      if(!sameTopBusinesses(profile,reference))continue;
+      const content=await readFile(join(this.path(item.id),item.file.diskName));if(sha(content)!==item.file.sha256)continue;
+      return {file:{role:'reference',filename:item.file.name,content},snapshot:{id:item.id,title:item.title,issuer:item.issuer,sourceUrl:item.sourceUrl,documentUrl:item.documentUrl,version:item.version,publishedAt:item.publishedAt,sha256:item.file.sha256,confirmedAt:item.confirmedAt,verification:item.verification,selectedAt:new Date().toISOString(),businessProfile:reference,targetProfile:profile}};
+    }
+    return null;
   }
   async document(id,owner){const item=await this.get(id,owner);if(!item.file)fail('此条目暂未收录正文。',404);return join(this.path(id),item.file.diskName);}
 }

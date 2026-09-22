@@ -20,7 +20,7 @@ const upstream=createServer(async(req,res)=>{
   let value;
   if(prompt.includes('"edits"'))value={summary:'测试模拟',edits:[{locator:'P0002',quote:'100',replacement:'120',reason:'测试同口径更新',evidence:[{documentId:'D02',locator:'L00001',quote:'发行人总资产120万元'}]}],gaps:['端到端测试数据']};
   else if(prompt.includes('"findings"'))value={summary:'测试模拟',findings:[],checks:[],limitations:['端到端测试数据，并未验证业务准确率']};
-  else value={title:'测试项目说明书',answer:'这是本地端到端测试回复。',document:'## 项目背景\n本地端到端测试材料。',sources:[],limitations:['测试响应']};
+  else value={billingOutcome:'delivered',title:'测试项目说明书',answer:'这是本地端到端测试回复。',document:'## 项目背景\n本地端到端测试材料。',sources:[],limitations:['测试响应']};
   res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(value)}}],usage:{prompt_tokens:100,completion_tokens:20}}));
 });
 await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
@@ -30,28 +30,28 @@ await new Promise((r,j)=>{app.stdout.once('data',r);app.once('error',j);});
 const reports=[];
 try{
   await signIn(fetch,base);
-  const checkout=await fetch(base+'/api/billing/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:'professional',idempotencyKey:randomUUID()})});assert.equal(checkout.status,201);
+  const checkout=await fetch(base+'/api/billing/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'recharge',amountCny:500,idempotencyKey:randomUUID()})});assert.equal(checkout.status,201);
   const {order}=await checkout.json();assert.equal((await fetch(base+'/api/billing/orders/'+order.id+'/sandbox-pay',{method:'POST'})).status,200);
   for(const kind of ['generate','update','review']){
-    const form=new FormData();form.set('kind',kind);form.set('title','E2E '+kind);form.set('issuer','测试发行人');form.set('scope','sse-private');form.set('periods','2026-06-30');form.set('prompt','生成测试说明书');
+    const form=new FormData();form.set('kind',kind);form.set('authoringMode','historical');form.set('requestId',randomUUID());form.set('title','E2E '+kind);form.set('issuer','测试发行人');form.set('scope','sse-private');form.set('periods','2026-06-30');form.set('prompt','生成测试说明书');
     if(kind!=='generate'){
       form.append(kind==='review'?'updated':'historical',new Blob([await readFile(join(runtime,'source.docx'))]),'source.docx');
-      if(kind==='update')form.append('financial',new Blob([await readFile(join(runtime,'财务材料.txt'))]),'财务材料.txt');
+      form.append('financial',new Blob([await readFile(join(runtime,'财务材料.txt'))]),'财务材料.txt');
     }
     const response=await fetch(base+'/api/tasks',{method:'POST',body:form});assert.equal(response.status,202);
     const created=(await response.json()).job;let job;
     for(let i=0;i<150;i++){
       job=(await(await fetch(base+'/api/tasks/'+created.id)).json()).job;
-      if(['complete','failed','needs_setup'].includes(job.status))break;
+      if(['failed','needs_setup'].includes(job.status)||(job.status==='complete'&&job.billing?.state==='consumed'))break;
       await new Promise(r=>setTimeout(r,500));
     }
     assert.equal(job.status,'complete',job.progress);
     const docx=job.downloads.find(n=>n.endsWith('.docx'));assert(docx);
     const download=await fetch(base+`/api/tasks/${job.id}/download/${encodeURIComponent(docx)}`);
     assert.equal(download.status,200);const bytes=Buffer.from(await download.arrayBuffer());assert.equal(bytes.subarray(0,2).toString(),'PK');
-    reports.push({kind,status:job.status,download:docx,bytes:bytes.length});
+    assert.equal(job.billing.state,'consumed');assert(job.billing.charged>0);reports.push({kind,status:job.status,charged:job.billing.charged,download:docx,bytes:bytes.length});
   }
   await writeFile(join(runtime,'acceptance.json'),JSON.stringify({calls,codex:'real',deepseek:'local mocked response',reports},null,2));
-  const balance=await(await fetch(base+'/api/billing')).json();assert.equal(balance.seat.quota.used.points,5);assert.equal(balance.seat.quota.used.qa,1);
+  const balance=await(await fetch(base+'/api/billing')).json();assert.equal(balance.wallet.spent,reports.reduce((n,r)=>n+r.charged,0));assert.equal(balance.wallet.frozen,0);assert.equal(balance.wallet.available,54500-balance.wallet.spent);
   console.log(JSON.stringify({calls,reports,upstream:'local-only',runtime},null,2));
 }finally{app.kill();upstream.closeAllConnections();upstream.close();}

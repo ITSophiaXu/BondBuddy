@@ -3,6 +3,11 @@ runtime/
 .env.*
 !.env.example
 qa/artifacts/
+qa/snapshots-*/
+qa/*results*.txt
+qa/*targeted*.txt
+exports/
+library-sources/
 __pycache__/
 *.pyc
 node_modules/

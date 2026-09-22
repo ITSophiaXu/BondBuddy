@@ -1,9 +1,10 @@
+import { EXCHANGE_OFFERINGS, BANK_OFFERINGS, annualCountFor } from './markets.js';
 // Shared by the form and the server so the displayed and processed periods agree.
 export function reportingPeriods(latest, offering) {
   const match = /^(20\d{2})-(03-31|06-30|09-30|12-31)$/.exec(latest || '');
-  if (!match || !['private', 'public'].includes(offering)) throw new Error('请选择有效的报告期和发行方式。');
+  if (!match || ![...EXCHANGE_OFFERINGS,...BANK_OFFERINGS].some(([id])=>id===offering)) throw new Error('请选择有效的报告期和发行方式。');
   const year = Number(match[1]), month = Number(match[2].slice(0, 2));
-  const annualCount = offering === 'private' ? 2 : 3;
+  const annualCount = annualCountFor(offering);
   const lastAnnualYear = month === 12 ? year : year - 1;
   const periods = Array.from({length: annualCount}, (_, index) => {
     const y = lastAnnualYear - annualCount + index + 1;

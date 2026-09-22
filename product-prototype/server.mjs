@@ -1,3 +1,6 @@
+import { GenerationTemplates } from './lib/generation-templates.mjs';
+import { generationService } from './lib/generation-service.mjs';
+import { projectService } from './lib/projects.mjs';
 import { createServer } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, writeFile, readdir, stat } from 'node:fs/promises';
@@ -8,6 +11,8 @@ import { manifest, SCOPES } from './lib/knowledge.mjs';
 import { launch, askCodex, object, string } from './lib/codex.mjs';
 import { runTask } from './lib/worker.mjs';
 import { Billing, taskCost } from './lib/billing.mjs';
+import { estimateCredits,priceSnapshot,materialRequest } from './lib/credit-pricing.mjs';
+import { python } from './lib/platform.mjs';
 import { endpoint, mcpSession } from './lib/mcp.mjs';
 import { DemoAuth } from './lib/auth.mjs';
 import { reportingPeriods } from './public/reporting-periods.js';
@@ -22,6 +27,7 @@ for(const line of (await readFile(join(ROOT,'.env'),'utf8').catch(()=>'')).split
 const PORT=Number(process.env.PORT||4320), PUBLIC=join(ROOT,'public');
 const RUNTIME=resolve(process.env.BOND_BUDDY_RUNTIME||join(ROOT,'runtime')), JOBS=join(RUNTIME,'jobs');
 const CONFIG=join(RUNTIME,'settings.json');
+const generationTemplates=new GenerationTemplates(join(RUNTIME,'generation-templates'));
 const library=new ProspectusLibrary(join(RUNTIME,'library'));
 const billing=new Billing(join(RUNTIME,'billing.json'),{mode:process.env.BILLING_MODE||'sandbox'});
 const auth=new DemoAuth(join(RUNTIME,'accounts.json')),cookieName=`bondbuddy_session_${PORT}`;
@@ -32,22 +38,22 @@ const owns=(req,job)=>{if((job.seatId||'primary')!==seatId(req))throw Object.ass
 const MIME={'.pdf':'application/pdf','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.md':'text/markdown; charset=utf-8','.csv':'text/csv; charset=utf-8'};
 const ROLES=Object.keys(ROLE_NAMES);
 const ACTIVE=['queued','extracting','reviewing','updating','generating','exporting'];
-const controllers=new Map(), queue=[];let busy=false;
+const controllers=new Map(),submissions=new Map(), queue=[];let busy=false;
 const idCheck=id=>{if(!/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(id))throw new Error('项目编号无效。');return id;};
 const folder=id=>join(JOBS,idCheck(id));
 const load=id=>readJson(join(folder(id),'job.json'));
 const save=async job=>{job.updatedAt=new Date().toISOString();await atomicJson(join(folder(job.id),'job.json'),job);};
-const publicJob=(job,detail=false)=>{const {files,result,knowledgeId,knowledgeVersion,knowledgeHash,...rest}=job;return {...rest,downloads:(rest.downloads||[]).filter(n=>n!=='任务知识.md'),files:files.map(({path,...f})=>f),...(detail?{result}:{} )};};
+const publicJob=(job,detail=false)=>{const {files,result,knowledgeId,knowledgeVersion,knowledgeHash,context,materials,cost,quote,metering,acceptedQuoteId,...rest}=job;const {blueprint,...publicContext}=context||{};return {...rest,context:publicContext,...(materials?{materials:materials.filter(m=>m.role!=='reference')}:{}),downloads:(rest.downloads||[]).filter(n=>n!=='任务知识.md'),files:files.filter(f=>f.role!=='reference').map(({path,...f})=>f),...(detail?{result}:{} )};};
 const json=(res,status,payload)=>{res.writeHead(status,{'Content-Type':MIME['.json'],'Cache-Control':'no-store'});res.end(JSON.stringify(payload));};
 async function settings() {
   const s=await readJson(CONFIG).catch(()=>({}));
-  return {apiKey:s.apiKey??process.env.DEEPSEEK_API_KEY??'',model:s.model||process.env.DEEPSEEK_MODEL||'deepseek-chat',baseUrl:process.env.DEEPSEEK_BASE_URL||'https://api.deepseek.com',tavilyKey:s.tavilyKey??process.env.TAVILY_API_KEY??'',registryUrl:s.registryUrl??process.env.REGISTRY_URL??'',registryKey:s.registryKey??process.env.REGISTRY_API_KEY??'',connectors:s.connectors||[]};
+  return {apiKey:s.apiKey??process.env.DEEPSEEK_API_KEY??'',model:s.model||process.env.DEEPSEEK_MODEL||'deepseek-chat',baseUrl:process.env.DEEPSEEK_BASE_URL||'https://api.deepseek.com',tavilyKey:s.tavilyKey??process.env.TAVILY_API_KEY??'',registryUrl:s.registryUrl??process.env.REGISTRY_URL??'',registryKey:s.registryKey??process.env.REGISTRY_API_KEY??'',connectors:s.connectors||[],modelPrices:s.modelPrices||{},modelPriceVersion:s.modelPriceVersion,externalPrices:s.externalPrices||{}};
 }
 async function configPublic() {const s=await settings();return {configured:Boolean(s.apiKey),model:s.model,webConfigured:Boolean(s.tavilyKey),registryConfigured:Boolean(s.registryUrl&&s.registryKey)};}
 function operator(req){const token=process.env.BOND_BUDDY_ADMIN_TOKEN;return !!token&&req.headers['x-bondbuddy-admin']===token;}
 function taskQueryPlan(job,s,quota){
-  const route=planQueries({kind:job.kind,prompt:job.prompt||job.context?.reviewNotes||'',connectors:s.connectors,webAvailable:!!s.tavilyKey,registryAvailable:!!(s.registryKey&&s.registryUrl),externalDataAllowed:hasExternalData(quota)});
-  if(quota.active&&job.kind==='generate'&&route.requiresProfessional)throw Object.assign(new Error('工商、企业预警通、Wind 等外部数据查询为专业版权益。升级后即可直接提问，也可以上传已有资料让我分析。'),{status:402,code:'PROFESSIONAL_REQUIRED'});
+  if(job.generation)return {web:false,registry:false,connectorIds:[],bondQuery:false,queryMode:'materials',queryLimitations:[]};
+  const route=planQueries({kind:job.kind,prompt:[job.prompt,job.context?.reviewNotes,...(job.context?.projectMessages||[]).map(m=>m.text)].filter(Boolean).join('\n'),connectors:s.connectors,webAvailable:!!s.tavilyKey,registryAvailable:!!(s.registryKey&&s.registryUrl),externalDataAllowed:hasExternalData(quota)});
   return {web:route.web,registry:route.registry,connectorIds:route.connectorIds,bondQuery:route.bondQuery,queryMode:route.mode,queryLimitations:route.limitations};
 }
 async function listJobs() {return (await Promise.all((await readdir(JOBS)).filter(n=>/^[a-f\d-]{36}$/.test(n)).map(id=>load(id).catch(()=>null)))).filter(Boolean).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
@@ -55,7 +61,7 @@ async function readBody(req,max=10000) {let buffer=Buffer.alloc(0);for await(con
 async function multipart(req) {
   const match=String(req.headers['content-type']||'').match(/^multipart\/form-data;\s*boundary=(?:"([^"]+)"|([^;\s]+))/i);
   if(!match || (match[1]||match[2]).length>200)throw new Error('上传格式不正确。');
-  const boundary=match[1]||match[2], buffer=await readBody(req,80*1024*1024), marker=Buffer.from(`\r\n--${boundary}`);
+  const boundary=match[1]||match[2], buffer=await readBody(req,82*1024*1024), marker=Buffer.from(`\r\n--${boundary}`);
   if(!buffer.subarray(0,boundary.length+4).equals(Buffer.from(`--${boundary}\r\n`)))throw new Error('上传内容损坏。');
   const fields={},files=[];let start=Buffer.byteLength(`--${boundary}\r\n`),closed=false;
   while(start<buffer.length) {
@@ -64,7 +70,7 @@ async function multipart(req) {
     const header=buffer.subarray(start,divider).toString('utf8'),body=buffer.subarray(divider+4,end);
     const name=header.match(/\bname="([^"]+)"/i)?.[1], filename=header.match(/\bfilename="([^"]*)"/i)?.[1];
     if(filename) files.push({role:name,filename:basename(filename).replace(/[^\w.()\-\u4e00-\u9fff]/g,'_').slice(-150),content:body});
-    else if(name) fields[name]=body.toString('utf8').slice(0,12000);
+    else if(name){const value=body.toString('utf8'),limit=name==='projectMessages'?160000:12000;if(value.length>limit)throw new Error('上传的文字说明过长，请精简后重试。');fields[name]=value;}
     const suffix=buffer.subarray(end+marker.length,end+marker.length+2).toString();
     if(suffix==='--'){closed=true;break;}
     if(suffix!=='\r\n')throw new Error('上传分隔符无效。');
@@ -79,10 +85,10 @@ async function pump() {
   while(queue.length) {
     const id=queue.shift();
     try {
-      const job=await load(id), all=job.kind==='generate'?await listJobs():[];
+      const job=await load(id), all=job.kind==='generate'&&!job.generation?await listJobs():[];
       const history=all.filter(j=>j.conversationId===job.conversationId&&j.status==='complete').reverse().map(j=>({user:j.prompt,assistant:j.result?.answer||''}));
-      const projectDocuments=job.projectId?(await readJson(join(folder(job.projectId),'evidence.json')).catch(()=>({documents:[]}))).documents.map(d=>({...d,id:'P'+d.id})):[];
-      if(job.projectId) {
+      const projectDocuments=job.projectId&&!job.generation?(await readJson(join(folder(job.projectId),'evidence.json')).catch(()=>({documents:[]}))).documents.map(d=>({...d,id:'P'+d.id})):[];
+      if(job.projectId&&!job.generation) {
         const project=await load(job.projectId);
         projectDocuments.push({id:'P-PROJECT',role:'project',filename:'关联项目的用户填写信息',parseStatus:'parsed',warnings:[],records:Object.entries(project.context).filter(([,v])=>v).map(([locator,text])=>({locator,text:String(text)}))});
       }
@@ -92,13 +98,31 @@ async function pump() {
       }
       await runTask({job,folder:folder(id),save,settings:await settings(),signal:controllers.get(id).signal,history,projectDocuments});
     } catch {try {const j=await load(id);j.status='failed';j.progress='任务处理异常，已保存材料，请重试。';await save(j);}catch{}}
-    finally{await billing.settle(id,(await load(id).catch(()=>({}))).status==='complete');controllers.delete(id);}
+    finally{try{const finished=await load(id);const receipt=await billing.settle(id,finished.status==='complete',finished);finished.billing=receipt?.creditVersion?{state:receipt.state,charged:receipt.charged??0,released:receipt.released??0}:receipt?{state:receipt.state,legacy:true}:null;await save(finished);}catch(error){console.error('任务结算待核对:',id,error.code||error.message);}finally{controllers.delete(id);}}
   }
   busy=false;
 }
-async function createTask(req,res) {
-  const {fields:f,files}=await multipart(req),kind=f.kind;
+const projects=projectService({folder,load,save,owns,billing,library,settings,enqueue,queryPlan:taskQueryPlan});
+const generation=generationService({folder,load,save,owns,billing,templates:generationTemplates,settings,enqueue});
+async function submitOnce(req,requestId,run){
+  if(!requestId)return run();idCheck(requestId);
+  const key=req.user.id+':'+requestId;if(submissions.has(key))return submissions.get(key);
+  const pending=(async()=>{const prior=(await listJobs()).find(j=>j.seatId===req.user.id&&j.requestId===requestId);return prior||run();})();
+  submissions.set(key,pending);try{return await pending;}finally{submissions.delete(key);}
+}
+async function createTask(req,f,files) {
+  const kind=f.kind;
   if(!['update','review','generate'].includes(kind))throw new Error('请选择任务类型。');
+  if(kind!=='generate'){const draft=await projects.create(req,f);const job=await projects.execute(req,draft.id,f,files);return job;}
+  const requestedMaterial=materialRequest(f.prompt);
+  if(requestedMaterial){
+    const project=f.projectId?await load(f.projectId):null;if(project)owns(req,project);
+    const candidates=files.filter(x=>/\.(docx|pdf)$/i.test(x.filename)&&!/模板|立项报告/.test(x.filename));
+    const prospectus=candidates.find(x=>/募集/.test(x.filename))||(candidates.length===1?candidates[0]:null);
+    if(!project&&!prospectus)throw new Error('请先关联募集书项目，或上传最新版募集书后生成这份材料。');
+    const uploads=files.map(x=>({...x,role:!project&&x===prospectus?'prospectus':requestedMaterial==='initiation'&&/模板|立项报告/.test(x.filename)?'generationTemplate':'other'}));
+    return generation.create(req,{...f,materialType:requestedMaterial,summaryKind:project?.context?.scope?.includes('private')?'private':'public',broker:project?.context?.leadUnderwriter||'',instructions:f.prompt},uploads);
+  }
   let blueprintSnapshot;
   if(f.blueprintId){
     if(kind!=='update'||f.authoringMode!=='reference'||files.some(x=>['reference','historical'].includes(x.role)))throw new Error('资料库蓝图仅用于参考起草，请勿同时提交另一份底稿。');
@@ -136,9 +160,8 @@ async function createTask(req,res) {
   const connectorIds=JSON.parse(f.connectorIds||'[]');if(!Array.isArray(connectorIds)||connectorIds.length>20||connectorIds.some(v=>typeof v!=='string'))throw new Error('数据连接选择无效。');
   const id=randomUUID(),dir=folder(id),owner=seatId(req),cost=taskCost(kind,files.length);
   const s=await settings(),quota=(await billing.view(owner)).seat.quota;
-  if(quota.active&&!hasExternalData(quota)&&(connectorIds.length||f.web==='true'||f.registry==='true'))throw Object.assign(new Error('外部数据查询为专业版权益，请升级专业版后使用。'),{status:402,code:'PROFESSIONAL_REQUIRED'});
   const queryPlan=taskQueryPlan({kind,prompt:f.prompt,context:{reviewNotes:f.reviewNotes}},s,quota);
-  await billing.reserve(id,owner,cost);
+
   try {
   await mkdir(join(dir,'uploads'),{recursive:true});
   const saved=[];
@@ -148,10 +171,24 @@ async function createTask(req,res) {
   context.optionalInputBasis='选填项空白表示未提供，不表示否或不存在。用户填写的安排需与项目材料核对，不替代工商、评级、担保、财务等外部证据。';
   if(kind!=='generate')context.reportingWindow=reportingPeriods(context.periods,context.scope.split('-')[1]);
   if(kind!=='generate')context.investorBasis='投资者范围以募集书原文和适用规则为准；原文未明确时列待核实，不预设为普通或专业投资者。';
-  const job={id,kind,title:String(f.title?.trim()||f.prompt?.trim().slice(0,32)||'新项目').slice(0,150),context,files:saved,status:'queued',progress:'材料已保存，任务等待开始',createdAt:new Date().toISOString(),downloads:[],modelName:s.model,modelLabel:'Codex · DeepSeek',...(kind==='generate'?{conversationId,prompt:f.prompt.slice(0,12000),projectId:f.projectId||'',web:f.web==='true',registry:f.registry==='true'}:{})};
+  const job={id,requestId:f.requestId||null,kind,title:String(f.title?.trim()||f.prompt?.trim().slice(0,32)||'新项目').slice(0,150),context,files:saved,status:'queued',progress:'材料已保存，任务等待开始',createdAt:new Date().toISOString(),downloads:[],modelName:s.model,modelLabel:'Codex · DeepSeek',...(kind==='generate'?{conversationId,prompt:f.prompt.slice(0,12000),projectId:f.projectId||'',web:f.web==='true',registry:f.registry==='true'}:{})};
   Object.assign(job,{seatId:owner,cost,connectorIds,queryIssuer:String(f.queryIssuer||context.issuer||linkedProject?.context?.issuer||'').trim().slice(0,200),bondQuery:kind!=='generate'||f.bondQuery==='true'||/兑付|存续|到期|发行过.*公司债/.test(f.prompt||'')});
   Object.assign(job,queryPlan);
-  await atomicJson(join(dir,'manifest.json'),{files:saved});await save(job);enqueue(id);json(res,202,{job:publicJob(job,true)});
+  await atomicJson(join(dir,'manifest.json'),{files:saved});
+  await python('extract_materials.py',['manifest.json','evidence.json'],dir);
+  const documents=(await readJson(join(dir,'evidence.json'))).documents;
+  if(documents.some(d=>!d.records.length))throw new Error('部分材料无法提取文字，请替换后重试。');
+  const history=(await listJobs()).filter(j=>j.conversationId===conversationId&&j.status==='complete').slice(0,12);
+  job.historyCharacters=history.reduce((n,j)=>n+(j.prompt?.length||0)+(j.result?.answer?.length||0),0);
+  job.cost=estimateCredits(job,documents,s);if(job.cost.snapshot.classification.coefficient>0)job.cost.legacyCost=cost;
+  await billing.reserve(id,owner,job.cost);
+  if(job.cost.snapshot.classification.qaType==='Q00'){
+    const wallet=(await billing.view(owner)).wallet;
+    job.status='complete';job.progress='回复已完成';job.metering={complete:true,events:[]};
+    job.result={answer:/余额|剩余积分/.test(job.prompt)?`当前可用积分 ${wallet.available.toLocaleString('zh-CN')}，冻结积分 ${wallet.frozen.toLocaleString('zh-CN')}。`:'上传与创建项目免费。任务点击即执行，余额不足时提示充值。新用户赠送2,000积分，有效30天；充值积分不设有效期。可在「积分与充值」查看明细及规则。',sources:[],limitations:[]};
+    await save(job);const receipt=await billing.settle(id,true,job);job.billing={state:receipt.state,charged:0};await save(job);
+  }else {await save(job);enqueue(id);}
+  return job;
   }catch(e){await billing.settle(id,false);throw e;}
 }
 async function file(res,path,download=false) {
@@ -170,13 +207,24 @@ async function handler(req,res) {
     if(url.pathname==='/api/auth/code'&&req.method==='POST'){const v=JSON.parse((await readBody(req)).toString());return json(res,200,await auth.requestCode(v.phone));}
     if(url.pathname==='/api/auth/verify'&&req.method==='POST'){
       const v=JSON.parse((await readBody(req)).toString()),result=await auth.verify(v.phone,v.code,v.challengeId);
-      await billing.ensureAccount(result.user.id);res.setHeader('Set-Cookie',sessionCookie(result.token,result.maxAge));return json(res,200,{user:result.user,created:result.created,mode:'demo'});
+      await billing.ensureAccount(result.user.id,{created:result.created,createdAt:result.user.createdAt,inviteCode:v.inviteCode});res.setHeader('Set-Cookie',sessionCookie(result.token,result.maxAge));return json(res,200,{user:result.user,created:result.created,mode:'demo'});
     }
     if(url.pathname==='/api/auth/logout'&&req.method==='POST'){await auth.logout(sessionToken(req));res.setHeader('Set-Cookie',sessionCookie('',0));return json(res,200,{ok:true});}
     if(url.pathname.startsWith('/api/')&&url.pathname!=='/api/health'){
       req.user=await auth.session(sessionToken(req));if(!req.user)return json(res,401,{error:'请先使用手机号登录。',code:'LOGIN_REQUIRED'});
     }
-    if(url.pathname==='/api/billing'&&req.method==='GET')return json(res,200,await billing.view(seatId(req)));
+    if(url.pathname==='/api/billing'&&req.method==='GET')return json(res,200,{...await billing.view(seatId(req)),modelPricing:priceSnapshot(await settings())});
+    if(url.pathname.startsWith('/api/library')&&!operator(req))return json(res,404,{error:'未找到接口。'});
+    if(url.pathname==='/api/generation/templates'&&req.method==='GET')return json(res,200,{templates:await generationTemplates.list(seatId(req),url.searchParams.get('broker')||'')});
+    if(url.pathname==='/api/generation/tasks'&&req.method==='POST'){const {fields,files}=await multipart(req);return json(res,202,{job:publicJob(await submitOnce(req,fields.requestId,()=>generation.create(req,fields,files)),true)});}
+    if(url.pathname==='/api/projects'&&req.method==='POST'){const f=JSON.parse((await readBody(req,200000)).toString());return json(res,201,{job:publicJob(await projects.create(req,f),true)});}
+    if(parts[1]==='projects'&&parts.length===5&&parts[3]==='materials'&&req.method==='DELETE')return json(res,200,await projects.removeMaterial(req,parts[2],parts[4]));
+    if(parts[1]==='projects'&&parts.length===4&&req.method==='POST'){
+      if(parts[3]==='materials'){const {fields,files}=await multipart(req);return json(res,201,{file:await projects.upload(req,parts[2],fields,files)});}
+      if(parts[3]==='execute'){const {fields,files}=await multipart(req);return json(res,202,{job:publicJob(await projects.execute(req,parts[2],fields,files),true)});}
+      if(parts[3]==='assessment'){const {fields,files}=await multipart(req);return json(res,200,{job:publicJob(await projects.assess(req,parts[2],fields,files),true)});}
+      if(parts[3]==='start'){const data=JSON.parse((await readBody(req)).toString());return json(res,202,{job:publicJob(await projects.start(req,parts[2],data.quoteId),true)});}
+    }
     if(url.pathname==='/api/library'&&req.method==='GET')return json(res,200,await library.search(seatId(req),Object.fromEntries(url.searchParams)));
     if(url.pathname==='/api/library'&&req.method==='POST'){
       const {fields,files}=await multipart(req);
@@ -189,6 +237,7 @@ async function handler(req,res) {
     if(url.pathname==='/api/billing/orders'&&req.method==='POST')return json(res,201,{order:await billing.createOrder(seatId(req),JSON.parse((await readBody(req,20000)).toString()))});
     if(parts[0]==='api'&&parts[1]==='billing'&&parts[2]==='orders'&&parts[3]){
       if(req.method==='GET'&&parts.length===4)return json(res,200,{order:await billing.order(seatId(req),parts[3])});
+      if(req.method==='POST'&&parts[4]==='refund')return json(res,200,{refund:await billing.refund(seatId(req),parts[3],JSON.parse((await readBody(req)).toString()))});
       if(req.method==='POST'&&['cancel','sandbox-pay'].includes(parts[4]))return json(res,200,{order:await billing.order(seatId(req),parts[3],parts[4])});
     }
     if((url.pathname.startsWith('/api/settings')||url.pathname.startsWith('/api/connectors')&&!(url.pathname==='/api/connectors'&&req.method==='GET'))&&!operator(req))return json(res,403,{error:'服务配置由平台统一管理。',code:'PLATFORM_MANAGED'});
@@ -223,7 +272,7 @@ async function handler(req,res) {
     }
     if(url.pathname==='/api/health'&&req.method==='GET') {
       const [cli,python]=await Promise.all([launch(['--version'],{timeoutMs:10000}).then(r=>r.code===0).catch(()=>false),processRun(PYTHON,['-c','import docx,openpyxl,pypdf'],{timeout:10000}).then(()=>true).catch(()=>false)]);
-      return json(res,200,{...await configPublic(),codex:cli,python,knowledgePacks:(await manifest()).length,version:'1.6.0',authoringVersion:1,libraryVersion:1,authMode:'phone-demo',automaticQueries:true,managedServices:true,professionalData:true});
+      return json(res,200,{...await configPublic(),codex:cli,python,knowledgePacks:(await manifest()).length,version:'1.9.0',creditsVersion:'2026-09-22-v1.1',oneClickExecution:true,authoringVersion:2,projectInputVersion:3,materialStudioVersion:1,libraryVersion:1,authMode:'phone-demo',automaticQueries:true,managedServices:true,professionalData:false,creditDataAccess:true});
     }
     if(url.pathname==='/api/settings/test'&&req.method==='POST') {
       const dir=join(RUNTIME,'connection-test',randomUUID());await mkdir(dir,{recursive:true});
@@ -236,7 +285,7 @@ async function handler(req,res) {
       return parts[3]==='download'?file(res,join(ROOT,'knowledge',pack.filename),true):json(res,200,{...pack,content:await readFile(join(ROOT,'knowledge',pack.filename),'utf8')});
     }
     if(url.pathname==='/api/tasks'&&req.method==='GET')return json(res,200,{jobs:(await listJobs()).filter(j=>(j.seatId||'primary')===seatId(req)).map(j=>publicJob(j))});
-    if(url.pathname==='/api/tasks'&&req.method==='POST')return await createTask(req,res);
+    if(url.pathname==='/api/tasks'&&req.method==='POST'){const {fields,files}=await multipart(req);return json(res,202,{job:publicJob(await submitOnce(req,fields.requestId,()=>createTask(req,fields,files)),true)});}
     if(parts[0]==='api'&&parts[1]==='tasks'&&parts[2]) {
       const job=await load(parts[2]),action=parts[3];
       owns(req,job);
@@ -246,7 +295,10 @@ async function handler(req,res) {
       if(req.method==='POST'&&action==='retry') {
         if(!['failed','cancelled','interrupted','needs_setup'].includes(job.status)||controllers.has(job.id))throw new Error('该任务当前不能继续。');
         Object.assign(job,taskQueryPlan(job,await settings(),(await billing.view(seatId(req))).seat.quota));
-        await billing.reserve(job.id,job.seatId||'primary',job.cost||taskCost(job.kind,job.files.length));
+        const docs=(await readJson(join(folder(job.id),'evidence.json')).catch(()=>({documents:[]}))).documents;
+        if(!job.cost?.snapshot)job.cost=estimateCredits(job,docs,await settings());
+        const reserved=await billing.reserve(job.id,job.seatId||'primary',job.cost);
+        if(reserved.state!=='reserved')throw new Error('本次任务账单正在核对，暂不可重试。');
         job.status='queued';job.progress='将从已保存的片段继续';await save(job);enqueue(job.id);return json(res,202,{job:publicJob(job,true)});
       }
     }
@@ -259,6 +311,7 @@ async function handler(req,res) {
 await mkdir(JOBS,{recursive:true});
 for(const job of await listJobs())if(ACTIVE.includes(job.status)){job.status='interrupted';job.progress='服务已重启，可继续已保存的任务。';await save(job);}
 await billing.reconcile(await listJobs());
+const rewardsTimer=setInterval(()=>billing.transact(()=>({ok:true})).catch(e=>console.error('积分奖励处理失败:',e.code||e.message)),60000);rewardsTimer.unref();
 const server=createServer((req,res)=>{void handler(req,res).catch(()=>{if(!res.headersSent)json(res,500,{error:'请求处理异常。'});else res.destroy();});});
 server.requestTimeout=300000;
 server.listen(PORT,'127.0.0.1',async()=>{await writeFile(join(RUNTIME,'server.pid'),String(process.pid));console.log(`BondBuddy ready at http://127.0.0.1:${PORT}`);});

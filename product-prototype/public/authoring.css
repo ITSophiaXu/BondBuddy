@@ -11,7 +11,7 @@
 .optional-group summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--ink);line-height:1.8}
 .optional-group summary>span{float:right;font-size:12px;font-weight:400;color:#65735f}
 .optional-group>p{font-size:12px;line-height:1.8;color:#65735f;margin:12px 0 16px}
-.optional-project .field[hidden]{display:none!important}
+.optional-project [data-dependent][hidden]{display:none!important}
 .optional-project .field select{width:100%;border:1px solid var(--line);padding:11px 12px;background:#fff;color:var(--ink);border-radius:7px;font:inherit;font-size:13px;min-width:0}
 .optional-project .field-grid{margin-top:16px}
 .upload-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}

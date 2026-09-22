@@ -22,11 +22,56 @@ def check_archive(path):
             raise ValueError('解压后超过 300MB，未解析。请拆分文件。')
 
 
-def docx_records(path):
+def paragraph_formatting(paragraph, document):
+    """Expose stored/effective font evidence without guessing Word's theme rendering."""
+    def style_chain(style):
+        seen = set()
+        while style is not None and style.style_id not in seen:
+            seen.add(style.style_id)
+            yield style.element.find(qn('w:rPr'))
+            style = style.base_style
+
+    defaults = document.styles.element.find(qn('w:docDefaults'))
+    default_rpr = defaults.find('.//' + qn('w:rPr')) if defaults is not None else None
+    runs = {}
+    for run in paragraph.runs:
+        if not run.text.strip():
+            continue
+        layers = [run._r.find(qn('w:rPr')), *style_chain(run.style), *style_chain(paragraph.style), default_rpr]
+        values = {}
+        for prop, tag, attr in [('latinFont', 'w:rFonts', 'w:ascii'), ('eastAsiaFont', 'w:rFonts', 'w:eastAsia'), ('latinTheme', 'w:rFonts', 'w:asciiTheme'), ('eastAsiaTheme', 'w:rFonts', 'w:eastAsiaTheme'), ('halfPoints', 'w:sz', 'w:val')]:
+            for layer in layers:
+                node = layer.find(qn(tag)) if layer is not None else None
+                value = node.get(qn(attr)) if node is not None else None
+                if value is not None:
+                    values[prop] = value
+                    break
+        key = json.dumps(values, sort_keys=True)
+        if key not in runs:
+            runs[key] = {**values, 'sample': run.text[:100], 'characters': 0}
+        runs[key]['characters'] += len(run.text)
+    ppr = paragraph._p.find(qn('w:pPr'))
+    layout = {}
+    for tag in ['w:jc', 'w:spacing', 'w:ind', 'w:keepNext', 'w:pageBreakBefore']:
+        node = ppr.find(qn(tag)) if ppr is not None else None
+        if node is not None:
+            layout[tag.split(':')[1]] = {key.split('}')[-1]: value for key, value in node.attrib.items()}
+    return {'style': paragraph.style.name if paragraph.style else '', 'runs': list(runs.values()), 'paragraphOverrides': layout}
+
+
+def docx_records(path, final_revisions=False):
     check_archive(path)
     document = Document(path)
     records = []
     warnings = []
+    if final_revisions:
+        for node in list(document.element.iter(qn('w:del'))):
+            node.getparent().remove(node)
+        for node in list(document.element.iter(qn('w:ins'))):
+            parent = node.getparent()
+            for child in list(node):
+                node.addprevious(child)
+            parent.remove(node)
     heading = ''
     table_context = {}
     for locator, paragraph in walk_blocks(document):
@@ -43,13 +88,14 @@ def docx_records(path):
             if int(match[2][1:]) <= 2:
                 first_rows.append(value)
             context += ' | 表头/前两行：' + ' | '.join(first_rows)[:1200]
-        records.append({'locator': locator, 'text': value, 'context': context})
+        records.append({'locator': locator, 'text': value, 'context': context, 'formatting': paragraph_formatting(paragraph, document)})
     for tag, label in [('w:sdt', '内容控件'), ('w:txbxContent', '文本框'), ('w:ins', '未接受的插入修订'), ('w:del', '未接受的删除修订'), ('w:drawing', '图形或图片')]:
         count = len(list(document.element.iter(qn(tag))))
         if count:
             warnings.append(f'含 {count} 处{label}，其文字或图示未保证完整提取，应人工核对。')
     if any(name.startswith(('word/header', 'word/footer', 'word/footnotes', 'word/endnotes')) and name.endswith('.xml') for name in zipfile.ZipFile(path).namelist()):
         warnings.append('页眉、页脚及脚注/尾注未纳入本版自动复核。')
+    warnings.append('已读取段落及表格文字的字体、字号和样式信息；主题字体、分页及实际渲染效果仍需核对，不能据此声称已完成版面视觉检查。')
     return records, warnings
 
 
@@ -126,7 +172,7 @@ def extract_document(item, index):
     result = {'id': f'D{index:02d}', 'role': item['role'], 'filename': item['filename'], 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
     try:
         handlers = {'.docx': docx_records, '.xlsx': workbook_records, '.pdf': pdf_records, '.csv': plain_records, '.txt': plain_records}
-        records, warnings = handlers[path.suffix.lower()](path)
+        records, warnings = docx_records(path, final_revisions=True) if item['role'] == 'prospectus' and path.suffix.lower() == '.docx' else handlers[path.suffix.lower()](path)
         result.update(records=records, warnings=warnings, parseStatus='partial' if warnings else 'parsed')
         if not records:
             result.update(parseStatus='unreadable', warnings=warnings + ['未提取到可复核文本。'])

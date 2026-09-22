@@ -19,7 +19,7 @@ export function toMessages(body) {
 }
 
 export async function startBridge({ apiKey, baseUrl = 'https://api.deepseek.com', model = 'deepseek-chat', fetcher = fetch }) {
-  const token = randomUUID();
+  const token = randomUUID(), usageEvents=[];
   const server = createServer(async (req, res) => {
     const provided = Buffer.from(String(req.headers.authorization || ''));
     const expected = Buffer.from(`Bearer ${token}`);
@@ -42,6 +42,9 @@ export async function startBridge({ apiKey, baseUrl = 'https://api.deepseek.com'
         res.writeHead(response.status, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: { message, type: 'upstream_error', code: String(response.status) } }));
       }
       const data = await response.json();
+      const u=data.usage;
+      const usage={inputTokens:u?.prompt_tokens,cachedInputTokens:u?.prompt_cache_hit_tokens??0,outputTokens:u?.completion_tokens};
+      usageEvents.push({id:String(data.id||randomUUID()),type:'model',usage,verified:!!u&&['inputTokens','cachedInputTokens','outputTokens'].every(k=>Number.isSafeInteger(usage[k])&&usage[k]>=0)&&usage.cachedInputTokens<=usage.inputTokens});
       const choice = data.choices?.[0];
       if (choice?.finish_reason !== 'stop' || !choice.message?.content) throw new Error('DeepSeek 返回被截断或为空，本段未完成。');
       const id = 'resp_' + randomUUID().replaceAll('-', '');
@@ -65,5 +68,5 @@ export async function startBridge({ apiKey, baseUrl = 'https://api.deepseek.com'
     } finally { clearTimeout(timeout); }
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-  return { token, url: `http://127.0.0.1:${server.address().port}/v1`, close: () => { server.closeAllConnections(); server.close(); } };
+  return { token, usageEvents, url: `http://127.0.0.1:${server.address().port}/v1`, close: () => { server.closeAllConnections(); server.close(); } };
 }

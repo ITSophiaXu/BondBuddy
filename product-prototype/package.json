@@ -1,8 +1,14 @@
 {
   "name": "bondbuddy",
-  "version": "1.6.0",
+  "version": "1.9.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node server.mjs", "test": "node --test qa/*.test.mjs", "check": "node --check server.mjs && node --check public/app.js && node --check public/authoring.js && node --check public/project-fields.js && node --check lib/worker.mjs && node --check lib/reference-draft.mjs && node --check lib/bridge.mjs && node --check lib/prospectus-library.mjs && node --check public/library.js && node --check public/library-schema.js && node --check scripts/import-library.mjs" },
-  "engines": { "node": ">=22" }
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test qa/*.test.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/authoring.js && node --check public/project-fields.js && node --check lib/worker.mjs && node --check lib/reference-draft.mjs && node --check lib/bridge.mjs && node --check lib/prospectus-library.mjs && node --check public/library.js && node --check public/library-schema.js && node --check scripts/import-library.mjs && node --check public/project-workspace.js && node --check public/markets.js && node --check public/reporting-periods.js && node --check lib/projects.mjs && node --check lib/work-estimate.mjs && node --check lib/project-guidance.mjs && node --check lib/business-profile.mjs && node --check lib/knowledge.mjs && node --check public/upload.js && node --check public/review-scope.js && node --check public/material-studio.js && node --check public/generation-catalog.js && node --check lib/generation-templates.mjs && node --check lib/generation-service.mjs && node --check lib/material-generation.mjs && node --check public/project-conversation.js && node --check lib/credit-pricing.mjs && node --check lib/credit-wallet.mjs && node --check public/credit-account.js && node --check public/phone-auth.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }
