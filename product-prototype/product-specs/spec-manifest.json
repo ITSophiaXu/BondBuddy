@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-22T12:23:05.835Z",
+  "assembled_at": "2026-09-22T12:52:47.414Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -28,12 +28,12 @@
     {
       "file": "04-材料导入与证据处理.md",
       "title": "04 材料导入与证据处理",
-      "sha256": "5604142b84831f7c3ea6b23443c048de10b4c3f84a0d6a01ae50862a3771d99d"
+      "sha256": "5b91383327b519e0c8025884fa91b61eb7a3031538a919fcab04efee546c2598"
     },
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "07a43afce96c364bc7ab7c154c64b5b909df228c75c791ba321c5ab385f0576a"
+      "sha256": "7c5d5584cc603708cb5de1c1068065e5fce27187b2470b1b2c76c9b808df8471"
     },
     {
       "file": "06-复核募集书.md",
@@ -78,7 +78,7 @@
     {
       "file": "14-积分充值与结算.md",
       "title": "14 积分充值与结算",
-      "sha256": "0174a4017aed4e01417b85f8be677cd151e0e86a2f8720f36fe72989cab4805d"
+      "sha256": "980d061a10f7c7eb0a196a959d1154cba2d2b8af030ac30735e4be240fda87c4"
     },
     {
       "file": "15-后台规则模板及数据接入.md",
@@ -88,12 +88,12 @@
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "1d446d4c0608788b307b3527019e8f76ba3f52a907058cdd72ba04538a5f8f72"
+      "sha256": "308fb0dc7c2963ab253b361b09806c14390072745f43c810971568a60f79a0dc"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "b9b1092db9185e7142559b3a5b9c73490b125337be99f810a3487f4698b94833"
+      "sha256": "3f68bfba10824cf8847adec231222c6b48a21b4422731b68c2c4cb53031d5e7c"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -192,6 +192,9 @@
     "UPD-A09",
     "UPD-A10",
     "UPD-A11",
+    "UPD-A12",
+    "UPD-A13",
+    "UPD-A14",
     "REV-A01",
     "REV-A02",
     "REV-A03",
@@ -241,6 +244,8 @@
     "CHAT-A06",
     "CHAT-A07",
     "CHAT-A08",
+    "CREDIT-SOURCE-A01",
+    "CREDIT-SOURCE-A02",
     "CREDIT-DFI-A01",
     "CREDIT-DFI-A02",
     "BILL-A01",
@@ -291,13 +296,15 @@
     "E2E-30",
     "E2E-31",
     "E2E-32",
-    "E2E-33"
+    "E2E-33",
+    "E2E-34",
+    "E2E-35"
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 41886,
+    "han_characters": 44341,
     "local_links_checked": 114,
-    "tables_checked": 113,
+    "tables_checked": 117,
     "json_examples_checked": 4,
     "errors": []
   },
