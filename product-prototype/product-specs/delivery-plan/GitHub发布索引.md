@@ -46,10 +46,11 @@
 | M1-33 实现后台募集书库的持续增量更新、审核与版本退役 | [#78](https://github.com/ITSophiaXu/BondBuddy/issues/78) |
 | M1-28 无历史稿时按前三大业务自动匹配参考稿并编制新稿 | [#33](https://github.com/ITSophiaXu/BondBuddy/issues/33) |
 | M1-29 交付基于历史原文的 Word 修订版或无历史稿新稿 | [#34](https://github.com/ITSophiaXu/BondBuddy/issues/34) |
+| M1-34 上线前交付统一用户行为、Prompt、Job、Token 与错误日志 | [#79](https://github.com/ITSophiaXu/BondBuddy/issues/79) |
 | M1-30 完成 Web 更新功能上线验收、部署与运行保障 | [#35](https://github.com/ITSophiaXu/BondBuddy/issues/35) |
 | M2-01 实现平台积分账本、批次和并发冻结 | [#36](https://github.com/ITSophiaXu/BondBuddy/issues/36) |
 | M2-02 实现按真实工作量的分类、系数与冻结估算 | [#37](https://github.com/ITSophiaXu/BondBuddy/issues/37) |
-| M2-03 打通真实模型 usage、解析与外部服务成本计量 | [#38](https://github.com/ITSophiaXu/BondBuddy/issues/38) |
+| M2-03 将 M1 真实调用日志接入计费归因与外部服务成本计量 | [#38](https://github.com/ITSophiaXu/BondBuddy/issues/38) |
 | M2-04 将更新任务接入一键冻结、结算与失败释放 | [#39](https://github.com/ITSophiaXu/BondBuddy/issues/39) |
 | M2-05 接入真实充值订单与支付渠道 | [#40](https://github.com/ITSophiaXu/BondBuddy/issues/40) |
 | M2-06 交付钱包、充值、流水、余额不足和费用结果页面 | [#41](https://github.com/ITSophiaXu/BondBuddy/issues/41) |
