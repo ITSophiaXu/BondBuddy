@@ -43,6 +43,14 @@ These are the review baseline in the architecture draft. Record a deliberate cha
 - Use stable schema examples and authorized sample documents for cross-module integration. Mark synthetic data as synthetic. Do not claim a model response or demo flow satisfies a real-provider or professional acceptance requirement.
 - Do not commit credentials, customer materials, local runtime directories, or generated artifacts. Keep deployment secrets in the target environment.
 
+## Starting an assigned issue with Codex
+
+1. Fetch the latest `develop`, create an issue-specific branch and isolated worktree from it, then read this file, the full issue (including its prerequisites and acceptance criteria), and the linked product specs. Some issue links still point to the old default branch; read the corresponding files from your checked-out `develop` instead.
+2. Write down the issue's deliverable, affected modules, shared contracts, prerequisites, and acceptance evidence before editing. The GitHub assignee owns delivery even when another person owns a touched module; request that module owner's review for cross-boundary changes. One assignee should coordinate each issue's PRs so parallel Codex sessions do not implement competing contracts.
+3. The layout in `docs/M1-TECH-ARCHITECTURE.md` is a target, not a completed scaffold. Until #6 lands the first shared contracts and project skeleton, independent UI, parsing, rules, and provider research may proceed, but integration code must agree on schemas with the affected owners first. Do not invent a second API, copy shared enums, or present a mock integration as complete. An issue's prerequisites govern when its acceptance can be claimed, even if isolated work can start earlier.
+4. Use the scripts and setup instructions that actually exist in the touched package. There is no repository-wide M1 build command yet. Keep each PR scoped to one issue or an explicitly agreed integration slice; update contract/schema examples and the architecture document in the same PR when a shared decision changes.
+5. Open the PR with `develop` as the explicit base. Include the issue number, acceptance criteria addressed, contract/migration changes, evidence, and remaining dependencies. Ask affected owners to review before merge. An assigned issue is done only when its acceptance criteria and prerequisites are satisfied; record unresolved items in the PR or issue rather than marking a demo or stub as complete.
+
 ## First integration target
 
 Real sign-in → create project → upload and verify DOCX/PDF → save material version → submit a durable run → reopen the browser and recover its state → obtain a validated Word artifact. Include prompt, job, call attempt, token, error, and terminal-result evidence in this path.
