@@ -23,6 +23,10 @@
     "./provider-results": {
       "types": "./dist/provider-results.d.ts",
       "default": "./dist/provider-results.js"
+    },
+    "./ocr": {
+      "types": "./dist/ocr.d.ts",
+      "default": "./dist/ocr.js"
     }
   },
   "scripts": {

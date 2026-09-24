@@ -1,3 +1,5 @@
+import { OcrReviewSchema, OcrCorrectionRequestSchema, OcrCorrectionSchema } from './ocr.js';
+export * from './ocr.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
@@ -82,6 +84,7 @@ const ObservabilityErrorSchema = obj({ error_id: id, code: errorCode, category: 
 const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), kind: observabilityEventKind, occurred_at: utc, operation_id: id, request_id: id, trace_id: id, span_id: id, parent_span_id: nullable(id), actor_type: enumOf(['user', 'system', 'operator'] as const), user_id: nullable(id), project_id: nullable(id), conversation_id: nullable(id), message_id: nullable(id), job_id: nullable(id), parent_job_id: nullable(id), run_id: nullable(id), work_item_id: nullable(id), logical_call_id: nullable(id), call_id: nullable(id), attempt_no: nullable(revision), job_kind: nullable(jobKind), stage: nullable(Type.String()), status: nullable(jobStatus), prompt_snapshot_ref: nullable(id), error: nullable(ObservabilityErrorSchema), usage: nullable(UsageObservationSchema) });
 
 export const schemas = {
+  OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
   RegisterRequest: obj({ username: Type.String({ minLength: 3, maxLength: 32, pattern: '^[A-Za-z][A-Za-z0-9_]{2,31}$', description: 'Normalized to lowercase ASCII; unique.' }), password: Type.String({ minLength: 12, maxLength: 128, description: 'Sent only in JSON over TLS; never persisted except as an Argon2id hash.' }), accepted_terms_version: Type.String({ minLength: 1, description: 'Exact current required agreement version.' }) }),
@@ -168,6 +171,8 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get', '/projects/{project_id}/materials/{material_id}/ocr', 'Read latest owned OCR review, not audited facts', 'OcrReview', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/materials/{material_id}/ocr/corrections', 'Append a versioned user correction without verifying the source', 'OcrCorrection', 201, 'OcrCorrectionRequest', [404,409]),
   op('post', '/auth/register', 'Register username and password; accept current agreement and issue cookie session', 'SessionResponse', 201, 'RegisterRequest', [409,422]),
   op('post', '/auth/login', 'Verify username and password; issue cookie session', 'SessionResponse', 200, 'LoginRequest', [429]),
   op('post', '/auth/refresh', 'Rotate access and refresh cookies', 'SessionResponse'),
@@ -236,10 +241,15 @@ export function openApiDocument() {
     const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
     const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/projects/{project_id}/events','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
-    const status = ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
+    const status = operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
     const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!['/auth/register','/auth/login'].includes(operation.path) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: ['/auth/register','/auth/login'].includes(operation.path) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
+  paths['/api/v1/projects/{project_id}/materials/{material_id}/ocr/pages/{snapshot_id}/{page}'] = {
+    get: { summary: 'Read an owner-authorized OCR page image', security: [{ sessionCookie: [] }],
+      parameters: parameters('/projects/{project_id}/materials/{material_id}/ocr/pages/{snapshot_id}/{page}'),
+      responses: { 200: { description: 'Verified private PNG', content: { 'image/png': { schema: { type: 'string', format: 'binary' } } } }, 404: { description: 'Owner-safe not found' } } }
+  };
   paths['/api/v1/projects/{project_id}/materials/uploads/{upload_id}/bytes'] = { put: {
     summary: 'Stream declared bytes to a private owner-scoped upload session',
     'x-implementation-status': 'implemented; requires-valid-session',
