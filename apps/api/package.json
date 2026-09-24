@@ -3,7 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": { "types": "./dist/server.d.ts", "default": "./dist/server.js" }, "./queue": { "types": "./dist/queue.d.ts", "default": "./dist/queue.js" }, "./data": { "types": "./dist/data.d.ts", "default": "./dist/data.js" }, "./observability": { "types": "./dist/observability.d.ts", "default": "./dist/observability.js" }, "./provider-results": { "types": "./dist/provider-results.d.ts", "default": "./dist/provider-results.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./queue": {
+      "types": "./dist/queue.d.ts",
+      "default": "./dist/queue.js"
+    },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "default": "./dist/data.js"
+    },
+    "./observability": {
+      "types": "./dist/observability.d.ts",
+      "default": "./dist/observability.js"
+    },
+    "./provider-results": {
+      "types": "./dist/provider-results.d.ts",
+      "default": "./dist/provider-results.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
@@ -15,6 +36,7 @@
     "@bondbuddy/contracts": "0.1.0",
     "@sinclair/typebox": "^0.34.41",
     "argon2": "^0.44.0",
+    "fast-xml-parser": "^5.11.1",
     "fastify": "^5.6.1",
     "file-type": "^22.1.1",
     "pg": "^8.23.0"

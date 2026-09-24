@@ -43,6 +43,7 @@ export interface PrivateBlobs {
   put(key: string, bytes: Buffer, mediaType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
   getIfExists(key: string): Promise<Buffer | null>;
+  getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
   delete(key: string): Promise<void>;
 }
 export function azureBlobs(connectionString: string, containerName = 'bondbuddy-private'): PrivateBlobs {
@@ -62,6 +63,30 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       await ensure();
       try { return await read(key); }
       catch (error) {
+        if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound')) return null;
+        throw error;
+      }
+    },
+    async getIfExistsBounded(key, maxBytes) {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Problem(422,'VALIDATION_FAILED','Invalid Blob read limit');
+      await ensure();
+      const blob = container.getBlockBlobClient(key);
+      try {
+        const properties = await blob.getProperties();
+        if (properties.contentLength !== undefined && properties.contentLength > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+        const response = await blob.download();
+        const chunks: Buffer[] = [];
+        let total = 0;
+        if (response.readableStreamBody) for await (const chunk of response.readableStreamBody) {
+          const value = Buffer.from(chunk);
+          total += value.length;
+          if (total > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+          chunks.push(value);
+        }
+        if (properties.contentLength !== undefined && total !== properties.contentLength) throw new Problem(503,'DATA_UNAVAILABLE','Stored object size changed during bounded read');
+        return Buffer.concat(chunks,total);
+      } catch (error) {
+        if (error instanceof Problem) throw error;
         if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound')) return null;
         throw error;
       }

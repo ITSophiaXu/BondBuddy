@@ -10,6 +10,8 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
 import { azureBlobs, digest, type PrivateBlobs } from './data.js';
 import { createServer } from './server.js';
+import { claim, finish, promoteWordArtifact } from './queue.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv } from './storage-lifecycle.js';
 
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -100,7 +102,7 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
       `users/${activeOwner}/projects/${projectId}/snapshots/${snapshotRef}`, digest(pdf), input.input_revision, input.input_hash]);
     await pool.query(`INSERT INTO bb_artifact_versions
       (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status)
-      VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','available')`,
+      VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'pending','pending')`,
     [`artifact-${randomUUID()}`, activeOwner, staged.json().run_id, digest(Buffer.from('synthetic artifact')), `users/${activeOwner}/artifacts/${randomUUID()}`]);
 
     const deleteUrl = `/api/v1/projects/${projectId}/materials/${pinned.material_id}`;
@@ -313,7 +315,7 @@ test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve 
   const sourceContainer = `bb-restore-${randomUUID().replaceAll('-', '')}`;
   const restoredContainer = `bb-isolated-${randomUUID().replaceAll('-', '')}`;
   const sourceBlobs = azureBlobs(blobConnection!, sourceContainer);
-  const app = createServer({ pool, blobs: sourceBlobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin, enableRunStaging: true });
+  const app = createServer({ pool, blobs: sourceBlobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin, enableSyntheticQueue: true });
   const send = (method: string, url: string, payload?: unknown, extra: Record<string, string> = {}) => app.inject({ method: method as any, url, headers: { origin, ...extra }, payload: payload as any });
   const tempDir = await mkdtemp(join(tmpdir(), 'bondbuddy-storage-restore-'));
   const dumpPath = join(tempDir, 'bondbuddy.dump');
@@ -341,6 +343,20 @@ test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve 
     const referenced = await addMaterial('restore-referenced.pdf');
     const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [{ material_id: referenced.materialId, material_version: 1 }], requirement_message_ids: [] });
     assert.equal(input.statusCode, 201, input.body);
+    const inputDto = input.json();
+    const queued = await send('POST', '/api/v1/runs/execute', {
+      execution_request_id: `synthetic-word-restore-${randomUUID()}`, project_id: projectId,
+      input_revision: inputDto.input_revision, input_hash: inputDto.input_hash, task_kind: 'update',
+      input_manifest_ref: 'synthetic-restore-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-restore-worker'
+    });
+    assert.equal(queued.statusCode, 202, queued.body);
+    const wordLease = await claim(pool, 60);
+    assert.ok(wordLease);assert.equal(wordLease.runId, queued.json().run_id);
+    const wordBytes = makeSyntheticDocxFixture();
+    const wordPromotion = await promoteWordArtifact(pool, wordLease, wordBytes, sourceBlobs);
+    assert.equal(wordPromotion.status, 'available');
+    await finish(pool, wordLease, 'succeeded', { artifactId: wordPromotion.artifactId, artifactVersion: wordPromotion.artifactVersion, blobs: sourceBlobs });
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_word_delivery_evidence WHERE owner_user_id=$1 AND run_id=$2', [ownerId, wordLease.runId])).rows[0].n, 1);
     const deleted = await addMaterial('restore-deleted.pdf');
     assert.equal((await send('DELETE', `/api/v1/projects/${projectId}/materials/${deleted.materialId}`)).statusCode, 204);
     const marker = await pool.query("SELECT id,object_key,state FROM bb_storage_tombstones WHERE owner_user_id=$1 AND material_id=$2", [ownerId, deleted.materialId]);
@@ -375,15 +391,35 @@ test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve 
 
     const restored = new Pool({ connectionString: restoreUrl.toString() });
     try {
+      const restoredEvidence = await restored.query(`SELECT e.*,a.object_key,a.sha256 AS artifact_sha256,a.delivery_status AS artifact_delivery_status
+        FROM bb_word_delivery_evidence e JOIN bb_artifact_versions a
+          ON a.owner_user_id=e.owner_user_id AND a.run_id=e.run_id AND a.id=e.artifact_id AND a.version=e.artifact_version AND a.word_delivery_evidence_id=e.id
+        WHERE e.owner_user_id=$1 AND e.run_id=$2`, [ownerId, wordLease.runId]);
+      assert.equal(restoredEvidence.rowCount, 1, 'Word delivery evidence survives PostgreSQL restore');
+      const restoredBlobs = azureBlobs(blobConnection!, restoredContainer);
+      const restoredWord = await restoredBlobs.getIfExistsBounded(restoredEvidence.rows[0].object_key, 64 * 1024 * 1024);
+      assert.ok(restoredWord, 'the copied private Word Blob survives storage restore');
+      assert.equal(restoredWord.length, Number(restoredEvidence.rows[0].byte_size));
+      assert.equal(digest(restoredWord), restoredEvidence.rows[0].candidate_sha256.trim());
+      assert.equal(restoredEvidence.rows[0].readback_sha256.trim(), restoredEvidence.rows[0].candidate_sha256.trim());
+      assert.equal(restoredEvidence.rows[0].artifact_sha256.trim(), restoredEvidence.rows[0].candidate_sha256.trim());
+      assert.equal(restoredEvidence.rows[0].artifact_delivery_status, 'available');
+      await assert.rejects(restored.query('UPDATE bb_word_delivery_evidence SET byte_size=byte_size+1 WHERE id=$1', [restoredEvidence.rows[0].id]), isConstraintViolation);
+      await assert.rejects(restored.query('DELETE FROM bb_word_delivery_evidence WHERE id=$1', [restoredEvidence.rows[0].id]), isConstraintViolation);
       const markerAfterReplay = await restored.query('SELECT state,purged_at FROM bb_storage_tombstones WHERE id=$1', [marker.rows[0].id]);
       assert.equal(markerAfterReplay.rows[0].state, 'purged');
       assert.ok(markerAfterReplay.rows[0].purged_at);
-      assert.equal(await azureBlobs(blobConnection!, restoredContainer).getIfExists(marker.rows[0].object_key), null);
-      const restoredApp = createServer({ pool: restored, blobs: azureBlobs(blobConnection!, restoredContainer), principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin });
+      assert.equal(await restoredBlobs.getIfExists(marker.rows[0].object_key), null);
+      const restoredApp = createServer({ pool: restored, blobs: restoredBlobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin });
       try {
         assert.equal((await restoredApp.inject(`/api/v1/projects/${projectId}/materials/${deleted.materialId}`)).statusCode, 404);
         assert.equal((await restoredApp.inject(`/api/v1/projects/${projectId}/materials/${deleted.materialId}/download`)).statusCode, 404);
         assert.equal((await restoredApp.inject(`/api/v1/projects/${projectId}/materials/${referenced.materialId}/download`)).statusCode, 200);
+        const wordMeta = await restoredApp.inject(`/api/v1/artifacts/${wordPromotion.artifactId}`);
+        assert.equal(wordMeta.statusCode, 200, wordMeta.body);
+        const wordDownload = await restoredApp.inject(wordMeta.json().download_url);
+        assert.equal(wordDownload.statusCode, 200, wordDownload.body);
+        assert.equal(digest(wordDownload.rawPayload), wordPromotion.sha256);
       } finally {
         await restoredApp.close();
       }

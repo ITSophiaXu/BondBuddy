@@ -1,6 +1,7 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 
 const terminal = new Set(['succeeded','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -141,21 +142,207 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
   });
 }
 
+type WordDeliveryCode='not_attempted'|'readback_verified'|'blob_write_failed'|'blob_missing'|'blob_too_large'|'blob_read_failed'|'blob_hash_mismatch';
+export type WordPromotionResult={
+  status:'available'|'rejected'|'unavailable';
+  artifactId:string;
+  artifactVersion:number;
+  objectKey:string;
+  evidenceId:string;
+  sha256:string;
+  byteSize:number;
+  deliveryCode:WordDeliveryCode;
+  failureCode?:'WORD_QUALITY_REJECTED'|'WORD_DELIVERY_UNAVAILABLE';
+  inspection:DocxInspection;
+};
+
+async function recordWordEvidence(client:PoolClient,lease:Lease,artifactId:string,artifactVersion:number,inspection:DocxInspection,qualityStatus:'passed'|'failed',deliveryStatus:'not_attempted'|'unavailable'|'available',deliveryCode:WordDeliveryCode,readback?:{sha256:string;byteSize:number}) {
+  const q=await client.query(`INSERT INTO bb_word_delivery_evidence
+    (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    ON CONFLICT(owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,validator_version,quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size) DO NOTHING
+    RETURNING id`,[uid(),lease.owner,lease.runId,artifactId,artifactVersion,inspection.sha256,inspection.byte_size,inspection.validator_version,qualityStatus,deliveryStatus,deliveryCode,readback?.sha256??null,readback?.byteSize??null,inspection]);
+  if(q.rows[0])return q.rows[0].id as string;
+  const existing=await client.query(`SELECT id FROM bb_word_delivery_evidence
+    WHERE owner_user_id=$1 AND run_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND candidate_sha256=$5
+      AND validator_version=$6 AND quality_status=$7 AND delivery_status=$8 AND delivery_code=$9
+      AND readback_sha256 IS NOT DISTINCT FROM $10 AND readback_byte_size IS NOT DISTINCT FROM $11`,
+  [lease.owner,lease.runId,artifactId,artifactVersion,inspection.sha256,inspection.validator_version,qualityStatus,deliveryStatus,deliveryCode,readback?.sha256??null,readback?.byteSize??null]);
+  if(!existing.rows[0])throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word delivery evidence identity conflicted');
+  return existing.rows[0].id as string;
+}
+
+function wordArtifactIdentity(lease:Lease,inspection:DocxInspection) {
+  const artifactId=`word-${digest(`${lease.owner}\n${lease.runId}\n${inspection.validator_version}\n${inspection.sha256}`)}`;
+  const objectKey=`users/${lease.owner}/runs/${lease.runId}/artifacts/${artifactId}/v1.docx`;
+  return {artifactId,artifactVersion:1,objectKey};
+}
+
+async function ensureWordArtifact(client:PoolClient,lease:Lease,inspection:DocxInspection,identity:ReturnType<typeof wordArtifactIdentity>) {
+  const q=await client.query('SELECT * FROM bb_artifact_versions WHERE id=$1 AND version=$2 FOR UPDATE',[identity.artifactId,identity.artifactVersion]);
+  const artifact=q.rows[0];
+  if(!artifact || artifact.owner_user_id!==lease.owner || artifact.run_id!==lease.runId || artifact.media_type!==WORD_MEDIA_TYPE || artifact.sha256.trim()!==inspection.sha256 || artifact.object_key!==identity.objectKey)
+    throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact identity changed');
+  return artifact;
+}
+
+async function persistRejectedWord(pool:Pool,lease:Lease,inspection:DocxInspection,identity:ReturnType<typeof wordArtifactIdentity>):Promise<WordPromotionResult> {
+  const evidenceId=await transaction(pool,async client=>{
+    await assertLockedWordLease(client,lease);
+    const id=await recordWordEvidence(client,lease,identity.artifactId,identity.artifactVersion,inspection,'failed','not_attempted','not_attempted');
+    await client.query(`INSERT INTO bb_artifact_versions
+      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'failed','revoked',$8) ON CONFLICT(id,version) DO NOTHING`,
+    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey,id]);
+    const artifact=await ensureWordArtifact(client,lease,inspection,identity);
+    if(artifact.quality_status!=='failed' || artifact.delivery_status!=='revoked')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Rejected Word artifact changed');
+    await client.query('UPDATE bb_artifact_versions SET word_delivery_evidence_id=$3 WHERE id=$1 AND version=$2',[identity.artifactId,identity.artifactVersion,id]);
+    return id;
+  });
+  return {status:'rejected',...identity,evidenceId,sha256:inspection.sha256,byteSize:inspection.byte_size,deliveryCode:'not_attempted',failureCode:'WORD_QUALITY_REJECTED',inspection};
+}
+
+async function assertLockedWordLease(client:PoolClient,lease:Lease) {
+  const {r}=await lockedLease(client,lease);
+  if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
+  return r;
+}
+
+async function persistUnavailableWord(pool:Pool,lease:Lease,inspection:DocxInspection,identity:ReturnType<typeof wordArtifactIdentity>,deliveryCode:Exclude<WordDeliveryCode,'not_attempted'|'readback_verified'>,readback?:{sha256:string;byteSize:number}):Promise<WordPromotionResult> {
+  const evidenceId=await transaction(pool,async client=>{
+    await assertLockedWordLease(client,lease);
+    const artifact=await ensureWordArtifact(client,lease,inspection,identity);
+    if(artifact.quality_status!=='passed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact quality state changed');
+    const id=await recordWordEvidence(client,lease,identity.artifactId,identity.artifactVersion,inspection,'passed','unavailable',deliveryCode,readback);
+    await client.query(`UPDATE bb_artifact_versions SET delivery_status='revoked',word_delivery_evidence_id=$3
+      WHERE id=$1 AND version=$2 AND owner_user_id=$4 AND run_id=$5`,[identity.artifactId,identity.artifactVersion,id,lease.owner,lease.runId]);
+    return id;
+  });
+  return {status:'unavailable',...identity,evidenceId,sha256:inspection.sha256,byteSize:inspection.byte_size,deliveryCode,failureCode:'WORD_DELIVERY_UNAVAILABLE',inspection};
+}
+
+async function persistAvailableWord(pool:Pool,lease:Lease,inspection:DocxInspection,identity:ReturnType<typeof wordArtifactIdentity>):Promise<WordPromotionResult> {
+  const evidenceId=await transaction(pool,async client=>{
+    await assertLockedWordLease(client,lease);
+    const artifact=await ensureWordArtifact(client,lease,inspection,identity);
+    if(artifact.quality_status!=='passed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact quality state changed');
+    const id=await recordWordEvidence(client,lease,identity.artifactId,identity.artifactVersion,inspection,'passed','available','readback_verified',{sha256:inspection.sha256,byteSize:inspection.byte_size});
+    await client.query(`UPDATE bb_artifact_versions SET delivery_status='available',word_delivery_evidence_id=$3
+      WHERE id=$1 AND version=$2 AND owner_user_id=$4 AND run_id=$5`,[identity.artifactId,identity.artifactVersion,id,lease.owner,lease.runId]);
+    return id;
+  });
+  return {status:'available',...identity,evidenceId,sha256:inspection.sha256,byteSize:inspection.byte_size,deliveryCode:'readback_verified',inspection};
+}
+
+// This seam accepts bytes from a trusted processor. It never writes an invalid DOCX and
+// marks an artifact available only after a bounded Blob readback matches the candidate.
+export async function promoteWordArtifact(pool:Pool,lease:Lease,candidate:Buffer,blobs:PrivateBlobs):Promise<WordPromotionResult> {
+  const inspection=inspectDocx(candidate);
+  const identity=wordArtifactIdentity(lease,inspection);
+  if(inspection.quality_status!=='passed')return persistRejectedWord(pool,lease,inspection,identity);
+  await transaction(pool,async client=>{
+    await assertLockedWordLease(client,lease);
+    await client.query(`INSERT INTO bb_artifact_versions
+      (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'passed','pending') ON CONFLICT(id,version) DO NOTHING`,
+    [identity.artifactId,identity.artifactVersion,lease.owner,lease.runId,WORD_MEDIA_TYPE,inspection.sha256,identity.objectKey]);
+    const artifact=await ensureWordArtifact(client,lease,inspection,identity);
+    if(artifact.quality_status==='failed')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Word artifact has a prior quality rejection');
+  });
+  try { await blobs.put(identity.objectKey,candidate,WORD_MEDIA_TYPE); }
+  catch { return persistUnavailableWord(pool,lease,inspection,identity,'blob_write_failed'); }
+  let readback:Buffer|null;
+  try { readback=await blobs.getIfExistsBounded(identity.objectKey,DOCX_LIMITS.archiveBytes); }
+  catch(error) {
+    const code=error instanceof Problem && error.status===413?'blob_too_large':'blob_read_failed';
+    return persistUnavailableWord(pool,lease,inspection,identity,code);
+  }
+  if(!readback)return persistUnavailableWord(pool,lease,inspection,identity,'blob_missing');
+  if(readback.length>DOCX_LIMITS.archiveBytes)return persistUnavailableWord(pool,lease,inspection,identity,'blob_too_large');
+  const readbackSha256=digest(readback);
+  if(readback.length!==inspection.byte_size || readbackSha256!==inspection.sha256)
+    return persistUnavailableWord(pool,lease,inspection,identity,'blob_hash_mismatch',{sha256:readbackSha256,byteSize:readback.length});
+  return persistAvailableWord(pool,lease,inspection,identity);
+}
+
+async function revokeWordArtifactAfterReadbackFailure(pool:Pool,lease:Lease,artifact:any,deliveryCode:'blob_missing'|'blob_too_large'|'blob_read_failed'|'blob_hash_mismatch',readback?:{sha256:string;byteSize:number}) {
+  await transaction(pool,async client=>{
+    await lockedLease(client,lease);
+    const q=await client.query(`SELECT e.validator_version,e.byte_size AS evidence_byte_size,e.quality_evidence
+      FROM bb_artifact_versions a JOIN bb_word_delivery_evidence e
+        ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      WHERE a.owner_user_id=$1 AND a.run_id=$2 AND a.id=$3 AND a.version=$4
+        AND a.word_delivery_evidence_id=$5 AND a.sha256=$6
+        AND a.quality_status='passed' AND a.delivery_status='available'
+        AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
+      FOR UPDATE OF a`,[lease.owner,lease.runId,artifact.id,artifact.version,artifact.word_delivery_evidence_id,artifact.sha256]);
+    const existing=q.rows[0];
+    if(!existing)return;
+    const inspection=existing.quality_evidence as DocxInspection;
+    if(inspection?.quality_status!=='passed'||inspection.validator_version!==existing.validator_version
+      ||inspection.sha256!==artifact.sha256.trim()||inspection.byte_size!==Number(existing.evidence_byte_size))
+      throw new Problem(422,'DELIVERY_FAILED','Word artifact quality evidence mismatch');
+    const evidenceId=await recordWordEvidence(client,lease,artifact.id,artifact.version,inspection,'passed','unavailable',deliveryCode,readback);
+    await client.query(`UPDATE bb_artifact_versions SET delivery_status='revoked',word_delivery_evidence_id=$3
+      WHERE id=$1 AND version=$2 AND owner_user_id=$4 AND run_id=$5 AND word_delivery_evidence_id=$6`,
+    [artifact.id,artifact.version,evidenceId,lease.owner,lease.runId,artifact.word_delivery_evidence_id]);
+  });
+}
+
 export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',options:{errorCode?:string;artifactId?:string;artifactVersion?:number;blobs?:PrivateBlobs}={}) {
   // Verify bytes before the terminal transaction; re-check immutable metadata inside it.
   let artifact:any;
   if(outcome==='succeeded'){
     if(!options.artifactId || !options.artifactVersion || !options.blobs)throw new Problem(422,'DELIVERY_FAILED','Verified Word artifact required');
-    const q=await pool.query("SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3 AND version=$4 AND media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document' AND quality_status='passed' AND delivery_status='available'",[lease.owner,lease.runId,options.artifactId,options.artifactVersion]);
+    const q=await pool.query(`SELECT a.*,e.validator_version,e.byte_size AS evidence_byte_size,e.quality_evidence
+      FROM bb_artifact_versions a JOIN bb_word_delivery_evidence e
+        ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      WHERE a.owner_user_id=$1 AND a.run_id=$2 AND a.id=$3 AND a.version=$4
+        AND a.media_type=$5 AND a.quality_status='passed' AND a.delivery_status='available'
+        AND e.artifact_id=a.id AND e.artifact_version=a.version AND e.candidate_sha256=a.sha256
+        AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
+        AND e.readback_sha256=e.candidate_sha256 AND e.readback_byte_size=e.byte_size`,
+    [lease.owner,lease.runId,options.artifactId,options.artifactVersion,WORD_MEDIA_TYPE]);
     artifact=q.rows[0];if(!artifact)throw new Problem(422,'DELIVERY_FAILED','Passed Word artifact unavailable');
-    const bytes=await options.blobs.get(artifact.object_key);
-    if(digest(bytes)!==artifact.sha256.trim())throw new Problem(422,'DELIVERY_FAILED','Word artifact hash mismatch');
+    let bytes:Buffer|null;
+    try { bytes=await options.blobs.getIfExistsBounded(artifact.object_key,DOCX_LIMITS.archiveBytes); }
+    catch(error) {
+      const code=error instanceof Problem && error.status===413?'blob_too_large':'blob_read_failed';
+      await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,code);
+      throw new Problem(422,'DELIVERY_FAILED','Word artifact readback failed');
+    }
+    if(!bytes) {
+      await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,'blob_missing');
+      throw new Problem(422,'DELIVERY_FAILED','Word artifact is missing');
+    }
+    if(bytes.length>DOCX_LIMITS.archiveBytes) {
+      await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,'blob_too_large');
+      throw new Problem(422,'DELIVERY_FAILED','Word artifact exceeds the bounded read limit');
+    }
+    if(bytes.length!==Number(artifact.evidence_byte_size) || digest(bytes)!==artifact.sha256.trim()) {
+      await revokeWordArtifactAfterReadbackFailure(pool,lease,artifact,'blob_hash_mismatch',{sha256:digest(bytes),byteSize:bytes.length});
+      throw new Problem(422,'DELIVERY_FAILED','Word artifact hash mismatch');
+    }
+    const inspection=inspectDocx(bytes);
+    const evidence=artifact.quality_evidence as DocxInspection;
+    if(inspection.quality_status!=='passed' || inspection.validator_version!==WORD_DELIVERY_VALIDATOR_VERSION
+      || inspection.sha256!==artifact.sha256.trim() || inspection.byte_size!==Number(artifact.evidence_byte_size)
+      || evidence?.quality_status!=='passed' || evidence.validator_version!==inspection.validator_version
+      || evidence.sha256!==inspection.sha256 || evidence.byte_size!==inspection.byte_size)
+      throw new Problem(422,'DELIVERY_FAILED','Word artifact quality evidence mismatch');
   }
   return transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
     if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
     if(outcome==='succeeded'){
-      const q=await client.query("SELECT 1 FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3 AND version=$4 AND object_key=$5 AND sha256=$6 AND quality_status='passed' AND delivery_status='available' FOR UPDATE",[lease.owner,lease.runId,artifact.id,artifact.version,artifact.object_key,artifact.sha256]);
+      const q=await client.query(`SELECT 1 FROM bb_artifact_versions a JOIN bb_word_delivery_evidence e
+        ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+        WHERE a.owner_user_id=$1 AND a.run_id=$2 AND a.id=$3 AND a.version=$4 AND a.object_key=$5 AND a.sha256=$6
+          AND a.media_type=$7 AND a.quality_status='passed' AND a.delivery_status='available'
+          AND e.artifact_id=a.id AND e.artifact_version=a.version AND e.candidate_sha256=a.sha256
+          AND e.quality_status='passed' AND e.delivery_status='available' AND e.delivery_code='readback_verified'
+          AND e.readback_sha256=e.candidate_sha256 AND e.readback_byte_size=e.byte_size
+        FOR UPDATE OF a`,[lease.owner,lease.runId,artifact.id,artifact.version,artifact.object_key,artifact.sha256,WORD_MEDIA_TYPE]);
       if(!q.rowCount)throw new Problem(422,'DELIVERY_FAILED','Word artifact changed');
       await client.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[r.id,artifact.id,artifact.version]);
     }
