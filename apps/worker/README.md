@@ -22,6 +22,17 @@ emit events, perform OCR/model fallback, record platform precheck cost or
 expose the source-profile API. A stored upload role is not independent proof
 that a document belongs to this issuer; that still needs evidence review.
 
+`historical-profile-repository.ts` is the internal append-only #76 storage
+seam. Migration `0013_m1_historical_profiles.sql` binds snapshots to an
+owner/project/historical material version. Trusted recognition requests are
+idempotent; corrections append a new version with actor, reason and evidence
+references, and an outbox event commits in the same transaction. A late
+recognition request cannot replace a correction. Without a trusted lookup for
+user-supplied evidence references, corrections remain `needs_confirmation`,
+not `ready`. The current public PATCH contract cannot correct reporting
+periods; that contract and the upload-triggered job, API/UI, OCR/cost logging
+and authorized real-material acceptance remain open.
+
 `material-parser.ts` adds an internal #13 bridge from an owner/project-scoped,
 immutable material version to the versioned Python parser. It verifies private
 Blob bytes against the database size and SHA-256, stages them with restricted
