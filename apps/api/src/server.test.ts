@@ -62,7 +62,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     active='synthetic-bob';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}/events`)).statusCode,404);
     active='synthetic-alice';const artifactMeta=await send('GET',`/api/v1/artifacts/${artifactId}`);assert.equal(artifactMeta.statusCode,200);assert.equal((await send('GET',artifactMeta.json().download_url)).statusCode,200);const events=await send('GET',`/api/v1/runs/${run1.json().run_id}/events`);assert.equal(events.json().items.length,1);
-    const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice'");assert.equal(outbox.rows[0].n,8);
+    const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,8);
     await pool.query("CREATE FUNCTION bb_fail_test_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='material.persisted' THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END $$");
     await pool.query('CREATE TRIGGER bb_fail_test_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_fail_test_outbox()');
     const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'});

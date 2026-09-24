@@ -4,6 +4,7 @@ import { openApiDocument, schemas, type Market, type Offering } from '@bondbuddy
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { action as queueAction, enqueue } from './queue.js';
+import { recordOperation, rejectOperation } from './observability.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean };
@@ -154,19 +155,26 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/projects/:project_id/events',async request=>{await project(db(),await owner(request),param(request,'project_id'));throw unavailable();});
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
-    const user=await owner(request);if(!settings.enableRunStaging && !settings.enableSyntheticQueue)throw unavailable();
+    const user=await owner(request);
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);
-    const result=await transaction(db(),async client=>{
+    const traceId=uid();
+    if(!settings.enableRunStaging && !settings.enableSyntheticQueue){
+      await rejectOperation(db(),{owner:user,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});
+      throw unavailable();
+    }
+    let result;
+    try {result=await transaction(db(),async client=>{
       const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
       const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
-      if(old.rows[0]){if(old.rows[0].request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Request key is bound to another input');return runDto(old.rows[0]);}
+      if(old.rows[0]){if(old.rows[0].request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Request key is bound to another input');await recordOperation(client,{owner:user,projectId:b.project_id,runId:old.rows[0].id,requestId:request.id,traceId:old.rows[0].id,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});return runDto(old.rows[0]);}
       await project(client,user,b.project_id);
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,b.execution_request_id,b.task_kind,requestHash,settings.enableSyntheticQueue?'queued':'paused']);
+      await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(settings.enableSyntheticQueue) {
         await enqueue(client,q.rows[0]);
         return runDto({...q.rows[0],state:'queued',stage:'queued',event_cursor:1,updated_at:new Date()});
@@ -175,7 +183,13 @@ export function createServer(settings: Settings = {}) {
       await client.query("INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,payload) VALUES($1,$2,$3,1,$4,'run.state_changed','paused',$5)",[eventId,user,runId,trace,{reason:'capability_not_ready'}]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'run',runId,'run.staged',{run_id:runId,event_id:eventId}]);
       return runDto({...q.rows[0],event_cursor:1});
-    });
+    });} catch(error) {
+      if(error instanceof Problem){
+        const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2',[user,b.project_id]);
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code,inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
+      }
+      throw error;
+    }
     return reply.code(202).send(result);
   });
   app.get('/api/v1/runs/:run_id',async request=>runDto(await run(db(),await owner(request),param(request,'run_id'))));
