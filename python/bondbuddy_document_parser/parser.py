@@ -22,7 +22,7 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.1"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.2"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -379,6 +379,7 @@ def _parse_xlsx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     records: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
     missing_formula_results = 0
+    cached_formula_results = 0
     try:
         for sheet in formulas.worksheets:
             if sheet.max_row * sheet.max_column > MAX_WORKSHEET_CELLS:
@@ -398,10 +399,17 @@ def _parse_xlsx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
                     if raw_value is None:
                         continue
                     uncertainty: list[str] = []
+                    formatting = {"number_format": cell.number_format, "data_type": cell.data_type, "sheet_state": sheet.sheet_state}
                     if isinstance(raw_value, str) and raw_value.startswith("="):
                         if cached_value is None:
                             missing_formula_results += 1
                             uncertainty.append("formula_result_not_cached")
+                        else:
+                            cached_formula_results += 1
+                            # Preserve the workbook's cached value as source evidence only. The
+                            # parser cannot establish when or by which calculation engine it was produced.
+                            formatting["cached_formula_result"] = _cell_text(cached_value)
+                            uncertainty.append("formula_cached_result_unverified")
                         literal = raw_value
                     else:
                         literal = _cell_text(raw_value)
@@ -411,7 +419,6 @@ def _parse_xlsx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
                         "merged_range": merged_by_cell.get(cell.coordinate),
                         "stable_ref": f"xlsx:{quote(sheet.title, safe='')}:cell:{cell.coordinate}",
                     }
-                    formatting = {"number_format": cell.number_format, "data_type": cell.data_type, "sheet_state": sheet.sheet_state}
                     records.append(_record(len(records) + 1, "xlsx_cell", locator, literal, context=f"Worksheet {sheet.title}", formatting=formatting, uncertainty=uncertainty))
             if sheet.sheet_state != "visible":
                 warnings.append({"code": "XLSX_HIDDEN_SHEET", "message": f"Hidden worksheet {sheet.title!r} was parsed and must not be silently omitted."})
@@ -420,9 +427,19 @@ def _parse_xlsx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
         values.close()
     if missing_formula_results:
         warnings.append({"code": "XLSX_FORMULA_RESULT_MISSING", "message": f"{missing_formula_results} formula cell(s) have no cached result; they are not treated as zero."})
+    if cached_formula_results:
+        warnings.append({
+            "code": "XLSX_FORMULA_CACHE_UNVERIFIED",
+            "message": f"{cached_formula_results} formula cell(s) include cached results from the source workbook; freshness and calculation correctness are unverified.",
+        })
     if not records:
         raise ParseFailure("MATERIAL_UNREADABLE", "XLSX contains no non-empty cells")
-    return records, warnings, {"page_count": None, "worksheet_count": len(formulas.sheetnames), "missing_formula_results": missing_formula_results}
+    return records, warnings, {
+        "page_count": None,
+        "worksheet_count": len(formulas.sheetnames),
+        "missing_formula_results": missing_formula_results,
+        "cached_formula_results": cached_formula_results,
+    }
 
 
 def _decode_text(path: Path) -> tuple[str, str]:

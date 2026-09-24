@@ -208,6 +208,25 @@ test('target rule applicability is mandatory; a cross-market candidate also need
   assert.equal(wrongRules.decisions[0]?.reason, 'target_rule_scope_not_applicable');
 });
 
+test('a same-market public reference needs accepted mapping before private use', () => {
+  const publicSource = candidate('public-ref', { offering: 'public' });
+  const blocked = matchBusinessReferences(input({ candidates: [publicSource] }));
+  assert.equal(blocked.status, 'no_match');
+  assert.equal(blocked.decisions[0]?.reason, 'cross_offering_chapter_mapping_not_accepted');
+
+  const mapped = candidate('public-ref', {
+    offering: 'public',
+    chapterMappings: [{
+      status: 'accepted', version: 'same-market-offering-v1',
+      sourceMarket: 'sse', targetMarket: 'sse', sourceOffering: 'public', targetOffering: 'private',
+      instrument: 'corporate_bond', documentStage: 'issuance', ruleVersion: 'rules-v4',
+    }],
+  });
+  const accepted = matchBusinessReferences(input({ candidates: [mapped] }));
+  assert.equal(accepted.status, 'exact');
+  assert.equal(accepted.snapshot.chapterMappingVersion, 'same-market-offering-v1');
+});
+
 test('a target rule scope cannot relabel a different source instrument or document stage', () => {
   const wrongInstrument = candidate('cp-source', { instrument: 'cp' });
   const wrongStage = candidate('registration-source', { documentStage: 'registration' });
