@@ -176,6 +176,9 @@ function exclusionReason(
   }
   if (!material.instrument.trim() || !match.target.instrument.trim()
     || !isMarketOffering(material.market, material.offering)) return 'material_scope_invalid';
+  if (material.instrument !== match.target.instrument || material.documentStage !== match.target.documentStage) {
+    return 'material_instrument_or_stage_mismatch';
+  }
   if (!applicableToTarget(material, match.target, match.ruleVersion)) return 'target_rule_scope_not_applicable';
   if (material.market !== match.target.market || material.offering !== match.target.offering) {
     if (!acceptedUserMapping(material, match.target, match.ruleVersion)) return 'cross_market_or_offering_mapping_not_accepted';

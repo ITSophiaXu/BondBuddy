@@ -208,6 +208,18 @@ test('target rule applicability is mandatory; a cross-market candidate also need
   assert.equal(wrongRules.decisions[0]?.reason, 'target_rule_scope_not_applicable');
 });
 
+test('a target rule scope cannot relabel a different source instrument or document stage', () => {
+  const wrongInstrument = candidate('cp-source', { instrument: 'cp' });
+  const wrongStage = candidate('registration-source', { documentStage: 'registration' });
+  const result = matchBusinessReferences(input({ candidates: [wrongInstrument, wrongStage] }));
+  assert.equal(result.status, 'no_match');
+  assert.equal(result.selectedReferenceId, null);
+  assert.deepEqual(result.decisions.map((decision) => decision.reason), [
+    'reference_instrument_or_stage_mismatch',
+    'reference_instrument_or_stage_mismatch',
+  ]);
+});
+
 test('prefers exact scope, then newest disclosure, then stable reference ID', () => {
   const lessExact = candidate('aaa', { market: 'szse', chapterMappings: [{ status: 'accepted', version: 'mapping-v1', sourceMarket: 'szse', targetMarket: 'sse', sourceOffering: 'private', targetOffering: 'private', instrument: 'corporate_bond', documentStage: 'issuance', ruleVersion: 'rules-v4' }] });
   const newer = candidate('bbb', { disclosedAt: '2025-09-01' });
