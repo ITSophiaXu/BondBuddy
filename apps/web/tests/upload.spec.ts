@@ -48,12 +48,13 @@ async function installApi(page: Page, state: FixtureState) {
     if (path === `/api/v1/projects/${projectId}/events` && request.method() === 'GET') {
       if (state.owner !== 'user-owner_a') return json(route, 404, { code: 'NOT_FOUND' });
       const after = Number(url.searchParams.get('after') ?? 0);
-      const items = [...state.materials.values()].map((material, index) => ({
+      const available = [...state.materials.values()].map((material, index) => ({
         event_id: `event-${material.material_id}`, schema_version: 1, trace_id: 'trace-synthetic', project_id: projectId,
         seq: index + 1, occurred_at: material.persisted_at, type: 'material.upload_progress',
         payload: { material_id: material.material_id, uploaded_bytes: material.byte_size, total_bytes: material.byte_size }
       })).filter(item => item.seq > after);
-      return json(route, 200, { items, next_cursor: items.length ? items.at(-1)!.seq : after });
+      const items = available.slice(0, 50);
+      return json(route, 200, { items, next_cursor: available.length > 50 ? items.at(-1)!.seq : null });
     }
     const materialMatch = path.match(new RegExp(`/api/v1/projects/${projectId}/materials/([^/]+)$`));
     if (materialMatch && request.method() === 'GET') {

@@ -430,6 +430,7 @@ async function refreshProjectMaterials(projectId: string, token: number) {
   if (!identity) return;
   const owner = identity;
   const controller = new AbortController(); recoveryControllers.add(controller);
+  recoveredMaterials.delete(projectId);
   recoveryStates.set(projectId, { state: 'loading' }); updateMaterialWorkspace(projectId);
   try {
     const ids = new Set<string>();
@@ -437,22 +438,36 @@ async function refreshProjectMaterials(projectId: string, token: number) {
     while (!controller.signal.aborted) {
       const page = await api.projectEvents(projectId, cursor, controller.signal);
       for (const event of page.items) if (event.type === 'material.upload_progress' && event.payload.material_id) ids.add(event.payload.material_id);
-      if (!page.items.length) break;
-      const next = page.next_cursor ?? Math.max(...page.items.map(event => event.seq));
-      if (next <= cursor) break;
-      cursor = next;
+      if (!page.items.length || page.next_cursor === null || page.next_cursor <= cursor) break;
+      cursor = page.next_cursor;
     }
-    const fetched = await Promise.all([...ids].map(async id => {
-      try { return await api.material(projectId, id, controller.signal); }
-      catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error; }
-    }));
+    const fetched: Dto<'MaterialResponse'>[] = [];
+    const checkedIds = new Set<string>();
+    while (!controller.signal.aborted) {
+      for (const upload of localUploads.get(projectId) ?? []) {
+        if (upload.phase === 'persisted' && upload.material) ids.add(upload.material.material_id);
+      }
+      const batch = [...ids].filter(id => !checkedIds.has(id));
+      if (!batch.length) break;
+      for (const id of batch) checkedIds.add(id);
+      const records = await Promise.all(batch.map(async id => {
+        try { return await api.material(projectId, id, controller.signal); }
+        catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error; }
+      }));
+      fetched.push(...records.filter((item): item is Dto<'MaterialResponse'> => item !== undefined));
+    }
     if (controller.signal.aborted || token !== epoch || owner !== identity) return;
-    recoveredMaterials.set(projectId, fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined));
+    const current = fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined);
+    recoveredMaterials.set(projectId, current);
+    const currentIds = new Set(current.map(item => item.material_id));
+    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted' || !!upload.material && currentIds.has(upload.material.material_id)));
     recoveryStates.set(projectId, { state: 'ready' });
   } catch (error) {
     if (controller.signal.aborted || token !== epoch || owner !== identity) return;
+    recoveredMaterials.delete(projectId);
+    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted'));
     const message = error instanceof ApiError && error.status === 501
-      ? '材料事件恢复接口尚未开放。当前会话中服务器已确认保存的文件仍显示在本页；重新登录后不会把本地选择误报为已保存。'
+      ? '材料事件恢复接口暂不可用；当前项目的服务器材料记录尚未确认。本地选择不会显示为已保存。'
       : `无法读取服务器材料记录。${friendlyError(error)}`;
     recoveryStates.set(projectId, { state: 'unavailable', message });
   } finally {

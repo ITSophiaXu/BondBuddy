@@ -35,21 +35,20 @@ npm run check:contracts
 npm run test:web
 ```
 
-默认运行草稿状态测试和拦截 `/api/v1` 的合成浏览器上传测试。上传测试验证三个文件中一个失败时另外两个仍保存、100% 后延迟保存状态、单文件重试/取消、合成项目事件恢复和账号隔离；这些测试不访问真实 API，也不构成 live acceptance。真实 API 浏览器测试明确跳过。完整浏览器测试需要**专用合成测试数据库**，会通过真实注册 API 创建随机测试账号和项目。不可指向生产环境。
+默认运行草稿状态测试和拦截 `/api/v1` 的合成浏览器上传测试。上传测试验证三个文件中一个失败时另外两个仍保存、100% 后延迟保存状态、单文件重试/取消、合成项目事件恢复和账号隔离；这些测试不访问真实 API。另一个真实 API 测试默认跳过。它需要**专用合成测试数据库**和 Azurite，并会通过真实注册 API 创建随机测试账号和项目；不可指向生产环境。
 
 ```sh
 npx playwright install chromium
-BB_E2E_LIVE=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
-  BB_E2E_TERMS_VERSION=synthetic-web-test-v1 npm run test:web
+BB_E2E_REAL_API=1 BB_E2E_TERMS_VERSION=synthetic-web-test-v1 npm run test:web
 ```
 
-`BB_E2E_TERMS_VERSION` 必须匹配专用 API 的 `BB_TERMS_VERSION`。现有 live 项目测试使用真实 PostgreSQL、认证和项目 API；仅网络失败案例人为阻断 PATCH。浏览器在本地合成环境接受自签名证书，不代表生产 TLS 已验收。截图和失败上下文写入系统临时目录，不进入仓库。真实上传字节/Blob 尚未加入该 live browser suite。
+`BB_E2E_TERMS_VERSION` 必须匹配端口 3000 专用 API 的 `BB_TERMS_VERSION`。Vite 代理 `/api/v1` 到该 API；project-events 测试使用真实 PostgreSQL、真实登录/上传接口和 Azurite Blob，关闭整个浏览器上下文后重新登录，并检查删除后不会恢复为已保存材料。既有 `BB_E2E_LIVE=1 BB_E2E_BASE_URL=...` 草稿项目测试独立覆盖 Cookie/API 流程。浏览器的本地 TLS 验证不代表生产 TLS 已验收。截图和失败上下文写入系统临时目录，不进入仓库。
 
 ## 尚待交付的 #10 范围
 
 - 列表接口当前只返回名称、ID、草稿修订号和更新时间。本切片不把它们伪装成任务状态；搜索/排序仅作用于已加载项目，页面明确显示范围，提供继续加载。
 - 全局名称/发行人搜索、类型/状态筛选、最近成果和归档/恢复，需要 Felix 扩展正式查询与变更契约。不能用本地缓存模拟云端归档。
-- 表单只保存现有 API 支持的名称和发行人；#11 负责完整业务表单。当前上传页面使用 `/projects/{id}/events` 中的材料事件发现已保存版本，再通过 owner-scoped material read 读取明细。现有 API 对 project events 返回 501，因此生产环境刷新/重新登录后的材料恢复仍未打通；页面明确显示此限制，不把本地选择冒充服务器保存。合成 browser fixture 验证的是预期契约路径，不是 API 已实现的证明。
+- 表单只保存现有 API 支持的名称和发行人；#11 负责完整业务表单。上传页面使用 `/projects/{id}/events` 的项目游标发现当前材料，再通过 owner-scoped material read 读取明细。服务端只在材料字节校验并持久化后写入终态 `material.upload_progress`；分页最多 100 条，已删除材料不出现在恢复结果中，缺失 Blob 的材料读取返回 404。若恢复失败，页面清除恢复列表而不保留过期的“已保存”状态。默认 browser fixture 拦截 API，是合成 UI 验证；`project-events.integration.spec.ts` 在本地 PostgreSQL/Azurite API 下关闭浏览器上下文并重新登录，验证真实 API/Blob 恢复与删除隐藏。
 - 服务端上传会话、原始字节 PUT 和完成登记已有 API 路由。相同内容去重、按内容/签名伪扩展名、加密/超限/缺页的完整用户提示、扫描件 OCR 和材料识别尚未由本 UI 端到端验收；该切片不宣称杀毒或扫描认证，也不启动全文更新。
 - 识别、对话和真实执行尚未开放，页面没有可执行的占位按钮。用户端不出现募集书库、相似稿推荐、充值或演示账务。
 - 登录页使用已有账号，不提供未经验证的找回流程；#9 负责账号管理。会话彻底失效后清除页面内个人数据，只有已保存内容能够恢复。

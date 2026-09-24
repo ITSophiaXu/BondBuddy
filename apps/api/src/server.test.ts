@@ -27,7 +27,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
   const send=async(method:string,url:string,payload?:unknown,extra:Record<string,string>={})=>await app.inject({method:method as any,url,headers:{origin,...extra},payload:payload as any});
   const create=async(name:string)=>send('POST','/api/v1/projects',{name,kind:'update',issuer_name:null,market:'nafmii',offering:'mtn'});
   try{
-    await pool.query('TRUNCATE bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE bb_project_events,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const a=await create('Synthetic Alice');assert.equal(a.statusCode,201,a.body);const project=a.json().project_id;
     const patch=await send('PATCH',`/api/v1/projects/${project}`,{name:'Synthetic Updated'}, {'if-match':'1'});assert.equal(patch.statusCode,200,patch.body);
     const stale=await send('PATCH',`/api/v1/projects/${project}`,{name:'Stale'},{'if-match':'1'});assert.equal(stale.statusCode,409);assert.equal(stale.json().code,'INPUT_REVISION_CONFLICT');
@@ -37,8 +37,28 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     const completeUrl=`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`;
     const complete=await send('POST',completeUrl,{byte_size:bytes.length,sha256:sha});assert.equal(complete.statusCode,200,complete.body);
     const mat=complete.json().material_id;
+    const firstPage=await send('GET',`/api/v1/projects/${project}/events?limit=1`);assert.equal(firstPage.statusCode,200,firstPage.body);
+    assert.equal(firstPage.json().items.length,1);assert.equal(firstPage.json().items[0].type,'material.upload_progress');
+    assert.equal(firstPage.json().items[0].seq,1);assert.equal(firstPage.json().next_cursor,null);
+    assert.deepEqual(firstPage.json().items[0].payload,{material_id:mat,uploaded_bytes:bytes.length,total_bytes:bytes.length});
+    assert.deepEqual(Object.keys(firstPage.json().items[0]).sort(),['event_id','occurred_at','payload','project_id','schema_version','seq','trace_id','type']);
     const retry=await send('POST',completeUrl,{byte_size:bytes.length,sha256:sha});assert.equal(retry.json().material_id,mat);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_project_events WHERE project_id=$1',[project])).rows[0].n,1,'completion replay does not duplicate the project event');
     const changedComplete=await send('POST',completeUrl,{byte_size:bytes.length,sha256:'a'.repeat(64)});assert.equal(changedComplete.statusCode,409);assert.equal(changedComplete.json().code,'IDEMPOTENCY_CONFLICT');
+    const savePdf=async(filename:string)=>{
+      const created=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename,media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});assert.equal(created.statusCode,201,created.body);
+      assert.equal((await send('PUT',created.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
+      const saved=await send('POST',`/api/v1/projects/${project}/materials/uploads/${created.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha});assert.equal(saved.statusCode,200,saved.body);
+      return saved.json().material_id as string;
+    };
+    const secondMaterial=await savePdf('second.pdf');
+    const thirdMaterial=await savePdf('third.pdf');
+    const page1=await send('GET',`/api/v1/projects/${project}/events?after=0&limit=2`);
+    assert.deepEqual(page1.json().items.map((event:any)=>event.seq),[1,2]);assert.equal(page1.json().next_cursor,2);
+    const page2=await send('GET',`/api/v1/projects/${project}/events?after=${page1.json().next_cursor}&limit=2`);
+    assert.deepEqual(page2.json().items.map((event:any)=>event.seq),[3]);assert.equal(page2.json().next_cursor,null);
+    assert.equal((await send('GET',`/api/v1/projects/${project}/events?limit=101`)).statusCode,422);
+    assert.equal((await send('GET',`/api/v1/projects/${project}/events?after=not-a-cursor`)).statusCode,422);
     const snapshot=await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:2,material_versions:[{material_id:mat,material_version:1}],requirement_message_ids:[]});assert.equal(snapshot.statusCode,201,snapshot.body);
     const input=snapshot.json();
     active='synthetic-bob';const b=await create('Synthetic Bob');assert.equal(b.statusCode,201);
@@ -46,6 +66,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${mat}`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${mat}/download`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${mat}/source-profile`)).statusCode,404);
+    const foreignEvents=await send('GET',`/api/v1/projects/${project}/events?after=not-a-cursor`);assert.equal(foreignEvents.statusCode,404);assert.equal(foreignEvents.body.includes(mat),false);
     assert.equal((await send('DELETE',`/api/v1/projects/${project}/materials/${mat}`)).statusCode,404);
     assert.equal((await send('POST',`/api/v1/projects/${b.json().project_id}/input-revisions`,{draft_revision:1,material_versions:[{material_id:mat,material_version:1}],requirement_message_ids:[]})).statusCode,404);
     assert.equal((await send('GET','/api/v1/projects')).json().items.length,1);
@@ -62,19 +83,29 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     active='synthetic-bob';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}/events`)).statusCode,404);
     active='synthetic-alice';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404,'pending artifacts cannot receive download grants');assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);const events=await send('GET',`/api/v1/runs/${run1.json().run_id}/events`);assert.equal(events.json().items.length,1);
-    const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,8);
-    await pool.query("CREATE FUNCTION bb_fail_test_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='material.persisted' THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END $$");
-    await pool.query('CREATE TRIGGER bb_fail_test_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_fail_test_outbox()');
+    const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,14);
+    await pool.query("CREATE FUNCTION bb_fail_test_project_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic project event failure'; END $$");
+    await pool.query('CREATE TRIGGER bb_fail_test_project_event BEFORE INSERT ON bb_project_events FOR EACH ROW EXECUTE FUNCTION bb_fail_test_project_event()');
     const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});
     assert.equal((await send('PUT',upload2.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
+    const outboxBeforeFailedCompletion=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");
     assert.equal((await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload2.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha})).statusCode,500);
     const rolled=await pool.query('SELECT count(*)::int AS n FROM bb_material_versions WHERE upload_id=$1',[upload2.json().upload_id]);assert.equal(rolled.rows[0].n,0);
-    await pool.query('DROP TRIGGER bb_fail_test_outbox ON bb_outbox');await pool.query('DROP FUNCTION bb_fail_test_outbox()');
+    assert.equal((await pool.query('SELECT state FROM bb_uploads WHERE id=$1',[upload2.json().upload_id])).rows[0].state,'received');
+    assert.equal((await pool.query('SELECT event_cursor FROM bb_projects WHERE id=$1',[project])).rows[0].event_cursor,3,'failed event insert rolls back cursor allocation');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_project_events WHERE project_id=$1',[project])).rows[0].n,3);
+    const outboxAfterRollback=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");
+    assert.equal(outboxAfterRollback.rows[0].n,outboxBeforeFailedCompletion.rows[0].n,'failed event insert rolls back the material outbox row');
+    await pool.query('DROP TRIGGER bb_fail_test_project_event ON bb_project_events');await pool.query('DROP FUNCTION bb_fail_test_project_event()');
     const recovered=await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload2.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha});assert.equal(recovered.statusCode,200,recovered.body);
+    assert.equal((await send('GET',`/api/v1/projects/${project}/events?after=3`)).json().items[0].seq,4);
     assert.equal((await send('DELETE',`/api/v1/projects/${project}/materials/${mat}`)).statusCode,204);
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${mat}/download`)).statusCode,404);
+    const afterDelete=await send('GET',`/api/v1/projects/${project}/events?limit=100`);assert.equal(afterDelete.json().items.some((event:any)=>event.payload.material_id===mat),false,'deleted material event is not returned as current material');
+    const unavailableObject=await pool.query('SELECT object_key FROM bb_material_versions WHERE owner_user_id=$1 AND id=$2',[active,secondMaterial]);await blobs.delete(unavailableObject.rows[0].object_key);
+    assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${secondMaterial}`)).statusCode,404,'missing private object cannot be resolved as a current saved material');
     assert.equal((await send('GET',`/api/v1/projects/${project}/input-revisions/${input.input_revision}`)).json().input_hash,input.input_hash);
-  }finally{await pool.query('DROP TRIGGER IF EXISTS bb_fail_test_outbox ON bb_outbox');await pool.query('DROP FUNCTION IF EXISTS bb_fail_test_outbox()');await app.close();await pool.end();}
+  }finally{await pool.query('DROP TRIGGER IF EXISTS bb_fail_test_project_event ON bb_project_events');await pool.query('DROP FUNCTION IF EXISTS bb_fail_test_project_event()');await app.close();await pool.end();}
 });
 
 test('username/password sessions preserve owner resources across relogin', {skip:!connection||!blobConnection},async()=>{
@@ -86,7 +117,7 @@ test('username/password sessions preserve owner resources across relogin', {skip
   const register=(username:string,password:string)=>send('POST','/api/v1/auth/register',{username,password,accepted_terms_version:'synthetic-v1'});
   const login=(username:string,password:string)=>send('POST','/api/v1/auth/login',{username,password});
   try{
-    await pool.query('TRUNCATE bb_password_login_limits,bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_users,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE bb_password_login_limits,bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_users,bb_project_events,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const pwd='synthetic password for Alice 123';
     assert.equal((await send('POST','/api/v1/auth/register',{username:'Alice_One',password:pwd,accepted_terms_version:'synthetic-v1'},{},{origin:'https://evil.test'})).statusCode,403);
     assert.equal((await register('alice_one','short')).statusCode,422);
