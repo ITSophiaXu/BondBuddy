@@ -6,7 +6,8 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check:examples": "node dist/check-examples.js"
+    "check:examples": "node dist/check-examples.js",
+    "test": "npm run build && npm run check:examples"
   },
   "dependencies": { "@sinclair/typebox": "^0.34.41" },
   "devDependencies": { "ajv": "^8.17.1", "typescript": "^5.9.3", "@types/node": "^22.18.6" }

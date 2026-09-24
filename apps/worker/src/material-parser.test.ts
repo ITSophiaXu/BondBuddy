@@ -26,6 +26,7 @@ const row: Record<string, unknown> = {
   byte_size: bytes.byteLength,
   sha256: hash,
   object_key: 'private/users/owner-alice/project-synthetic/material-synthetic/v2',
+  role: 'historical',
 };
 const input = {
   ownerUserId: 'owner-alice',
@@ -87,10 +88,12 @@ function dependencies(options: {
       assert.match(sql, /project_id\s*=\s*\$2/);
       assert.match(sql, /id\s*=\s*\$3/);
       assert.match(sql, /version\s*=\s*\$4/);
+      assert.match(sql, /role\s*=\s*\$5/);
       assert.match(sql, /deleted_at\s+IS\s+NULL/);
       const material = options.material ?? row;
       const matches = values[0] === material.owner_user_id && values[1] === material.project_id &&
-        values[2] === material.id && values[3] === material.version;
+        values[2] === material.id && values[3] === material.version &&
+        (values[4] === null || values[4] === material.role);
       return { rows: matches && options.material !== null ? [material] : [] };
     },
   };
@@ -409,6 +412,7 @@ test('failed and page-limited parser results are not cached', async (t) => {
     failedParserCalls += 1;
     return {
       ...responseFor(request), status: 'failed', records: [],
+      document: { page_count: null },
       error: { code: 'SYNTHETIC_PARSE_FAILURE', message: 'synthetic failure' },
     };
   };
@@ -489,7 +493,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
       return runDocumentParser(request, { pythonExecutable: localPython, repoRoot: repositoryRoot });
     },
     parseCache: { dependencies: { pool: db, blobs: privateBlobs }, versions: {
-      parserVersion: 'bondbuddy-document-parser-1.0.0',
+      parserVersion: 'bondbuddy-document-parser-1.0.1',
       ocrVersion: 'native-text-1',
       basisVersion: 'evidence-basis-1',
     } },
@@ -515,6 +519,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
     const first = await parseAuthorizedMaterial(deps, {
       ownerUserId: ownerA, projectId: projectA1, materialId: materialA1, version: 1, requestId: 'live-first',
     });
+    assert.equal(first.parser_version, deps.parseCache!.versions.parserVersion);
     const renamed = await parseAuthorizedMaterial(deps, {
       ownerUserId: ownerA, projectId: projectA2, materialId: materialA2, version: 1, requestId: 'live-renamed',
     });

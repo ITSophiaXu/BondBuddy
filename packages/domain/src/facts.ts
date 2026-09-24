@@ -193,6 +193,81 @@ export type CreditFacilityCheck =
   | { readonly status: 'needs_confirmation'; readonly reason: 'missing_amount' | 'context_mismatch' }
   | { readonly status: 'consistent' | 'conflicted'; readonly statedTotal: string; readonly calculatedTotal: string };
 
+/** One user-provided credit amount with its own traceable statement provenance. */
+export interface CreditFacilitySupplementAmount extends CreditFacilityAmount {
+  readonly sourceId: string;
+  /** Calendar date on which this user statement was recorded (YYYY-MM-DD). */
+  readonly statementDate: string;
+}
+
+export interface CreditFacilitySupplementResult {
+  readonly status: 'user_asserted' | 'needs_confirmation' | 'conflicted';
+  /** User assertions are never promoted to verified/insertion-ready facts here. */
+  readonly eligibleForManuscript: false;
+  readonly amounts: {
+    readonly total: CreditFacilitySupplementAmount;
+    readonly used: CreditFacilitySupplementAmount;
+    readonly unused: CreditFacilitySupplementAmount;
+  };
+  readonly reason?: 'missing_source' | 'invalid_statement_date' | 'invalid_as_of' | 'missing_context' | 'missing_amount' | 'invalid_amount' | 'context_mismatch';
+  readonly statedTotal?: string;
+  readonly calculatedTotal?: string;
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Validates user-supplied credit values while preserving each value's source and
+ * statement date. Consistent arithmetic still yields only a user assertion; the
+ * caller must not treat this result as a verified or manuscript-ready fact.
+ */
+export function validateCreditFacilitySupplement(
+  total: CreditFacilitySupplementAmount,
+  used: CreditFacilitySupplementAmount,
+  unused: CreditFacilitySupplementAmount,
+): CreditFacilitySupplementResult {
+  const amounts = { total, used, unused } as const;
+  const result = (status: CreditFacilitySupplementResult['status'], reason?: CreditFacilitySupplementResult['reason']) => ({
+    status,
+    eligibleForManuscript: false as const,
+    amounts,
+    ...(reason ? { reason } : {}),
+  });
+
+  for (const amount of Object.values(amounts)) {
+    if (amount.sourceId.trim() === '') return result('needs_confirmation', 'missing_source');
+    if (!isCalendarDate(amount.statementDate)) return result('needs_confirmation', 'invalid_statement_date');
+    if ([amount.bank, amount.asOf, amount.currency, amount.unit, amount.basis, amount.scope]
+      .some((field) => field.trim() === '')) return result('needs_confirmation', 'missing_context');
+    if (!isCalendarDate(amount.asOf)) return result('needs_confirmation', 'invalid_as_of');
+  }
+
+  let check: CreditFacilityCheck;
+  try {
+    check = checkCreditFacilityAmounts(total, used, unused);
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'INVALID_DECIMAL' || error.message === 'NEGATIVE_CREDIT_FACILITY_AMOUNT')) {
+      return result('needs_confirmation', 'invalid_amount');
+    }
+    throw error;
+  }
+  if (check.status === 'needs_confirmation') return result('needs_confirmation', check.reason);
+  if (check.status === 'conflicted') return {
+    ...result('conflicted'),
+    statedTotal: check.statedTotal,
+    calculatedTotal: check.calculatedTotal,
+  };
+  return {
+    ...result('user_asserted'),
+    statedTotal: check.statedTotal,
+    calculatedTotal: check.calculatedTotal,
+  };
+}
+
 /** Checks total = used + unused only when all three amounts share the same complete context. */
 export function checkCreditFacilityAmounts(
   total: CreditFacilityAmount,

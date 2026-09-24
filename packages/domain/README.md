@@ -53,11 +53,16 @@ cannot become verified, and template/reference issuer facts are excluded.
 Bank-facility totals use exact decimal arithmetic only when bank, date, scope,
 currency, unit, and basis match. The private parse-cache key includes account,
 content SHA-256, parser/OCR/basis versions but not filename or project.
+`validateCreditFacilitySupplement` keeps a separate user-statement source and
+date for each total/used/unused amount. Missing provenance or context remains
+pending; contradictory same-context amounts remain conflicted. Even arithmetic
+consistency is only `user_asserted`, never manuscript-ready or audit-verified.
 
 Migration `0010_m1_facts_parse_cache.sql` adds owner-scoped candidate metadata
 and private Blob cache references. The worker package now has a unit-tested
-internal cache read/write seam, but this does not install a production fact
-extractor, active worker processor, public DTO, or conflict-resolution log.
+internal cache read/write seam and append-only conflict-decision audit, but
+this does not install a production fact extractor, active worker processor or
+public DTO. No production flow yet persists the credit supplement result.
 The trusted processor must still authorize the material version and record
 source/date/anchor when creating facts. #13
 native parsing and #14 OCR are still open; PostgreSQL integration and authorized

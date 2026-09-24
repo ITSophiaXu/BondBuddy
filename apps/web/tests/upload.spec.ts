@@ -194,3 +194,27 @@ test('refreshes the existing cookie session after upload authorization expires',
   expect(fixture.putNames).toEqual(['session-refresh.pdf']);
   expect(fixture.materials.size).toBe(1);
 });
+
+
+test('a late material refresh cannot restore a row removed by a newer refresh', async ({ page }) => {
+  const current = state();
+  const material: Material = { material_id: 'late-material', material_version: 1, upload_id: 'upload-late', role: 'audit', filename: 'late-result.pdf', media_type: 'application/pdf', byte_size: 20, sha256: 'a'.repeat(64), state: 'persisted', persisted_at: now, error: null };
+  current.materials.set(material.material_id, material);
+  await installApi(page, current);
+  await login(page, 'owner_a');
+  await expect(page.locator('.persisted-material')).toHaveCount(1);
+  let release!: () => void;
+  let held = false;
+  await page.route(`**/api/v1/projects/${projectId}/materials/${material.material_id}`, async route => {
+    held = true;
+    await new Promise<void>(resolve => { release = resolve; });
+    await json(route, 200, material).catch(() => {});
+  });
+  await page.getByRole('button', { name: '刷新已保存材料' }).click();
+  await expect.poll(() => held).toBe(true);
+  current.materials.clear();
+  await page.getByRole('button', { name: '刷新已保存材料' }).click();
+  await expect(page.getByText('材料事件中没有可恢复记录；重新选择本地文件不会代替服务器保存记录。')).toBeVisible();
+  release();
+  await expect(page.locator('.persisted-material')).toHaveCount(0);
+});

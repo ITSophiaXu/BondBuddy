@@ -47,7 +47,7 @@ function response(req: DocumentParseRequest, status: 'parsed' | 'needs_confirmat
       material_version: req.material.material_version,
       content_hash: req.material.sha256,
       locator_type: 'text_line',
-      locator: { line: 1 },
+      locator: { line: 1, stable_ref: 'text:l000001' },
       literal_quote: 'synthetic content',
       context: '',
       extraction_method: 'native_text',
@@ -57,7 +57,7 @@ function response(req: DocumentParseRequest, status: 'parsed' | 'needs_confirmat
       formatting: {},
     }],
     warnings: [],
-    document: { page_count: null },
+    document: status === 'failed' ? { page_count: null } : { page_count: null, encoding: 'utf-8' },
     error: status === 'failed' ? { code: 'PARSE_FAILED', message: 'synthetic' } : null,
   };
 }

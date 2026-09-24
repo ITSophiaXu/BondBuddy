@@ -315,6 +315,29 @@
       "schema": "AccountClosureResponse",
       "valid": false,
       "value": { "closure_id": "closure-synthetic-1", "status": "closed", "closed_at": "2026-09-24T09:00:00Z", "projects_deleted": 1, "material_versions_deleted": 2, "artifacts_revoked": 1, "sessions_revoked": 2, "cloud_content": "access_removed_purge_scheduled", "balance_status": "not_applicable_m1", "retained_records": ["account_identifier", "agreement_acceptances", "registration_event", "closure_record", "operation_logs", "model_usage_records", "audit_outbox"], "local_exports": "deleted" }
+    },
+    {
+      "name": "historical-correction-legacy-market-offering",
+      "schema": "RecognitionPatchRequest",
+      "valid": true,
+      "value": { "profile_version": 1, "source_market": "szse", "source_offering": "public", "reason": "synthetic legacy caller", "evidence_refs": ["evidence-market"] }
+    },
+    {
+      "name": "historical-correction-periods-only-2022-through-2025q1",
+      "schema": "RecognitionPatchRequest",
+      "valid": true,
+      "value": { "profile_version": 2, "reporting_periods": [
+        { "start": "2022-01-01", "end": "2022-12-31", "period_kind": "annual", "scope": "consolidated", "evidence_refs": ["period-2022"] },
+        { "start": "2023-01-01", "end": "2023-12-31", "period_kind": "annual", "scope": "consolidated", "evidence_refs": ["period-2023"] },
+        { "start": "2024-01-01", "end": "2024-12-31", "period_kind": "annual", "scope": "consolidated", "evidence_refs": ["period-2024"] },
+        { "start": "2025-01-01", "end": "2025-03-31", "period_kind": "interim", "scope": "consolidated", "evidence_refs": ["period-2025q1"] }
+      ], "reason": "synthetic period correction", "evidence_refs": [] }
+    },
+    {
+      "name": "historical-correction-without-target",
+      "schema": "RecognitionPatchRequest",
+      "valid": false,
+      "value": { "profile_version": 2, "reason": "synthetic missing target", "evidence_refs": [] }
     }
   ]
 }

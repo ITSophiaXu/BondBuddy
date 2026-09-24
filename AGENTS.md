@@ -39,6 +39,7 @@
 - 紧急生产修复从 `master` 建分支，评审后合入 `master`，再把同一修复合入或 cherry-pick 回 `develop`。
 - PR 保持可审阅的范围，写明 Issue 编号、契约或迁移变化、样本证据及剩余阻碍。仓库默认分支目前可能仍指向别处，创建 PR 时明确指定 `develop`。
 - Chris 负责浏览器 UI 和 API client；Felix 负责 API、任务基础设施、数据库迁移、部署和可观测性；Maxy 负责债券业务规则、市场/品种适用性与参考库验收；Xuefeng 负责抽取、OCR、事实处理、匹配和生成算法。详细边界见架构文档。
+- 所有 PR 都不需要 Felix review，不要在 PR 中请求或等待 Felix review。下文的“受影响负责人 review”只指 Chris、Maxy、Xuefeng 中受影响的人；只涉及 Felix 负责模块的 PR 无需额外 review。
 - 修改 `packages/contracts/`、`db/migrations/`、run 状态机或公共市场/规则枚举时，请受影响负责人 review。迁移只能新增，不能修改已部署的迁移。
 - 跨模块联调使用稳定 schema 样例和已获授权的样本材料，并标明合成数据。模拟模型响应或演示流程不能冒充真实供应商联调或专业验收。
 - 不提交凭证、客户材料、本地运行目录或生成成果；部署密钥留在目标环境。

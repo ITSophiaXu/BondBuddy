@@ -5,6 +5,8 @@ import {
   nafmiiMtnChapterTemplate,
   nafmiiMtnCoverageManifest,
   nafmiiMtnDraftRulePack,
+  nafmiiCpDraftRulePack,
+  nafmiiScpDraftRulePack,
   publishRulePack,
   publishRulePackBundle,
   validateRulePackCompanions,
@@ -32,6 +34,14 @@ test('official binary sources retain reproducible SHA-256 fingerprints',()=>{
   } as const;
   for(const [sourceId,hash] of Object.entries(expected)){
     assert.equal(nafmiiMtnDraftRulePack.sources.find(item=>item.source_id===sourceId)?.document_hash,hash);
+  }
+});
+
+test('shared 2026 notice source cites one contiguous official clause, not stitched policy text',()=>{
+  for(const pack of [nafmiiMtnDraftRulePack,nafmiiCpDraftRulePack,nafmiiScpDraftRulePack]){
+    const source=pack.sources.find(item=>item.source_id==='nafmii-basic-tier-notice-2026');
+    assert.equal(source?.clause_locator,'第一项：优化基础层企业分类');
+    assert.equal(source?.exact_quote,'原第四类企业并入第三类企业实施注册发行管理，统称为基础层企业。');
   }
 });
 

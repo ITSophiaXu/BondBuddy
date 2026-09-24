@@ -23,7 +23,7 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
   await page.goto('/#/new');
   const projectName = `真实 API 材料恢复 ${username}`;
-  await page.getByLabel('项目名称').fill(projectName);
+  await page.getByLabel('项目名称 必填', { exact: true }).fill(projectName);
   await page.getByRole('button', { name: '创建并保存项目' }).click();
   await expect(page).toHaveURL(/#\/projects\//);
   const projectId = new URL(page.url()).hash.split('/').at(-1)!;
@@ -40,7 +40,7 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   const browser = page.context().browser();
   if (!browser) throw new Error('Playwright browser is unavailable');
   await page.context().close();
-  const reopenedContext = await browser.newContext();
+  const reopenedContext = await browser.newContext({ baseURL: origin, ignoreHTTPSErrors: true });
   try {
     const reopened = await reopenedContext.newPage();
     await reopened.goto('/');
