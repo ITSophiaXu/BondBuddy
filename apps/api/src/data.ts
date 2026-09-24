@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { fileTypeFromBuffer } from 'file-type';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
+import { inspectMaterialUpload } from './upload-safety.js';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -95,16 +95,14 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
   };
 }
 export async function verifiedMedia(bytes: Buffer, declared: string): Promise<string> {
-  const magic = await fileTypeFromBuffer(bytes);
-  let actual = magic?.mime;
-  if (declared === 'text/plain' || declared === 'text/csv') {
-    if (magic || bytes.includes(0)) throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Binary content declared as text');
-    try { new TextDecoder('utf-8',{fatal:true}).decode(bytes); } catch { throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Text must be UTF-8'); }
-    actual = declared;
+  try {
+    return await inspectMaterialUpload(bytes, declared);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'status' in error && 'code' in error && error instanceof Error) {
+      throw new Problem(error.status as number, String(error.code), error.message);
+    }
+    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected');
   }
-  if (actual === 'application/zip') throw new Problem(415,'MATERIAL_FORMAT_UNSUPPORTED','Unsupported or unreadable Office container');
-  if (actual !== declared) throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Declared media type does not match content');
-  return actual;
 }
 export function checkedPair(market: Market | null, offering: Offering | null) {
   if (market && offering && !isMarketOffering(market,offering)) throw new Problem(422,'VALIDATION_FAILED','Market and offering do not match');
