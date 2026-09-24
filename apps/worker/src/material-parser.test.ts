@@ -493,7 +493,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
       return runDocumentParser(request, { pythonExecutable: localPython, repoRoot: repositoryRoot });
     },
     parseCache: { dependencies: { pool: db, blobs: privateBlobs }, versions: {
-      parserVersion: 'bondbuddy-document-parser-1.0.0',
+      parserVersion: 'bondbuddy-document-parser-1.0.1',
       ocrVersion: 'native-text-1',
       basisVersion: 'evidence-basis-1',
     } },
@@ -519,6 +519,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
     const first = await parseAuthorizedMaterial(deps, {
       ownerUserId: ownerA, projectId: projectA1, materialId: materialA1, version: 1, requestId: 'live-first',
     });
+    assert.equal(first.parser_version, deps.parseCache!.versions.parserVersion);
     const renamed = await parseAuthorizedMaterial(deps, {
       ownerUserId: ownerA, projectId: projectA2, materialId: materialA2, version: 1, requestId: 'live-renamed',
     });
