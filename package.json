@@ -9,10 +9,13 @@
     "packages/contracts",
     "packages/domain",
     "apps/api",
-    "apps/worker"
+    "apps/worker",
+    "apps/web"
   ],
   "scripts": {
-    "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker",
+    "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web",
+    "dev:web": "npm run dev -w @bondbuddy/web",
+    "test:web": "npm test -w @bondbuddy/web",
     "check:contracts": "npm run check:examples -w @bondbuddy/contracts",
     "test:api": "npm test -w @bondbuddy/api",
     "test:domain": "npm test -w @bondbuddy/domain",
