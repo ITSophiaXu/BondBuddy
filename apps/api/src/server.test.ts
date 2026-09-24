@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
+import { PDF, pdfSample } from './upload-safety.samples.js';
 
 const origin='http://bondbuddy.test';
 test('production seam rejects arbitrary client identity and reports honest capabilities',async()=>{
@@ -30,8 +31,8 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     const a=await create('Synthetic Alice');assert.equal(a.statusCode,201,a.body);const project=a.json().project_id;
     const patch=await send('PATCH',`/api/v1/projects/${project}`,{name:'Synthetic Updated'}, {'if-match':'1'});assert.equal(patch.statusCode,200,patch.body);
     const stale=await send('PATCH',`/api/v1/projects/${project}`,{name:'Stale'},{'if-match':'1'});assert.equal(stale.statusCode,409);assert.equal(stale.json().code,'INPUT_REVISION_CONFLICT');
-    const bytes=Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');const sha=digest(bytes);
-    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'});assert.equal(upload.statusCode,201,upload.body);
+    const bytes=pdfSample();const sha=digest(bytes);
+    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});assert.equal(upload.statusCode,201,upload.body);
     const uploaded=await send('PUT',upload.json().upload_url,bytes,{'content-type':'application/octet-stream'});assert.equal(uploaded.statusCode,204,uploaded.body);
     const completeUrl=`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`;
     const complete=await send('POST',completeUrl,{byte_size:bytes.length,sha256:sha});assert.equal(complete.statusCode,200,complete.body);
@@ -65,7 +66,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,8);
     await pool.query("CREATE FUNCTION bb_fail_test_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='material.persisted' THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END $$");
     await pool.query('CREATE TRIGGER bb_fail_test_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_fail_test_outbox()');
-    const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'});
+    const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});
     assert.equal((await send('PUT',upload2.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
     assert.equal((await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload2.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha})).statusCode,500);
     const rolled=await pool.query('SELECT count(*)::int AS n FROM bb_material_versions WHERE upload_id=$1',[upload2.json().upload_id]);assert.equal(rolled.rows[0].n,0);
@@ -103,8 +104,8 @@ test('PostgreSQL sessions, SMS challenge lifecycle and real cookie ownership', {
     assert.equal((await send('POST','/api/v1/projects',{name:'Denied',kind:'update',issuer_name:null,market:null,offering:null},c1,{origin:'https://evil.test'})).statusCode,403);
     const created=await send('POST','/api/v1/projects',{name:'Synthetic Session Project',kind:'update',issuer_name:null,market:null,offering:null},c1);assert.equal(created.statusCode,201,created.body);
     const project=created.json().project_id;
-    const bytes=Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n'),sha=digest(bytes);
-    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'},c1);assert.equal(upload.statusCode,201,upload.body);
+    const bytes=pdfSample(),sha=digest(bytes);
+    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'},c1);assert.equal(upload.statusCode,201,upload.body);
     assert.equal((await send('PUT',upload.json().upload_url,bytes,c1,{'content-type':'application/octet-stream'})).statusCode,204);
     const done=await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha},c1);assert.equal(done.statusCode,200,done.body);
     const materialUrl=`/api/v1/projects/${project}/materials/${done.json().material_id}/download`;

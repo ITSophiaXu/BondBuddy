@@ -11,11 +11,12 @@ import { Pool } from 'pg';
 import { azureBlobs, digest, type PrivateBlobs } from './data.js';
 import { createServer } from './server.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv } from './storage-lifecycle.js';
+import { PDF, pdfSample } from './upload-safety.samples.js';
 
 const connection = process.env.BB_TEST_DATABASE_URL;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
-const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');
+const pdf = pdfSample();
 const isConstraintViolation = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === '23514';
 
 test('storage purge configuration fails closed without explicitly set policy', () => {
@@ -49,7 +50,7 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
   };
   const startUpload = async (projectId: string, filename: string, complete: boolean) => {
     const upload = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-      filename, media_type: 'application/pdf', byte_size: pdf.length, sha256: digest(pdf), role: 'audit'
+      filename, media_type: PDF, byte_size: pdf.length, sha256: digest(pdf), role: 'audit'
     });
     assert.equal(upload.statusCode, 201, upload.body);
     const uploadId = upload.json().upload_id as string;
@@ -211,14 +212,14 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
     const mismatchedKey = `users/${activeOwner}/projects/${projectId}/uploads/${mismatched.uploadId}`;
     assert.equal((await send('DELETE', `/api/v1/projects/${projectId}/materials/${mismatchedMaterial.material_id}`)).statusCode, 204);
     const corrupt = Buffer.from('synthetic-corrupt-bytes');
-    await blobs.put(mismatchedKey, corrupt, 'application/pdf');
+    await blobs.put(mismatchedKey, corrupt, PDF);
     const mismatchRun = await runStorageLifecycle(pool, blobs, oneDayPolicy);
     assert.equal(mismatchRun.failed, 1);
     const mismatchMarker = await pool.query('SELECT id,last_error_code FROM bb_storage_tombstones WHERE material_id=$1', [mismatchedMaterial.material_id]);
     assert.equal(mismatchMarker.rows[0].last_error_code, 'blob_hash_mismatch');
     assert.equal(digest((await blobs.getIfExists(mismatchedKey))!), digest(corrupt), 'a hash mismatch leaves bytes untouched');
     currentTime = new Date((await pool.query('SELECT retry_after FROM bb_storage_tombstones WHERE id=$1', [mismatchMarker.rows[0].id])).rows[0].retry_after).getTime() + 1;
-    await blobs.put(mismatchedKey, pdf, 'application/pdf');
+    await blobs.put(mismatchedKey, pdf, PDF);
     const repairedReplay = await runStorageLifecycle(pool, blobs, oneDayPolicy);
     assert.equal(repairedReplay.purged, 1, 'a verified object can be purged after a transient mismatch is corrected');
     assert.equal(await blobs.getIfExists(mismatchedKey), null);
@@ -331,7 +332,7 @@ test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve 
     const projectId = created.json().project_id as string;
 
     const addMaterial = async (name: string) => {
-      const upload = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: name, media_type: 'application/pdf', byte_size: pdf.length, sha256: digest(pdf), role: 'audit' });
+      const upload = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: name, media_type: PDF, byte_size: pdf.length, sha256: digest(pdf), role: 'audit' });
       assert.equal(upload.statusCode, 201, upload.body);
       assert.equal((await send('PUT', upload.json().upload_url, pdf, { 'content-type': 'application/octet-stream' })).statusCode, 204);
       const completed = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${upload.json().upload_id}/complete`, { byte_size: pdf.length, sha256: digest(pdf) });
