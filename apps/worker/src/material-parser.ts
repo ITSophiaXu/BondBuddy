@@ -32,6 +32,8 @@ export interface AuthorizedMaterialParseInput {
   materialId: string;
   version: number;
   requestId: string;
+  /** Optional server-selected material partition, checked in the same owner-scoped lookup. */
+  requiredRole?: 'historical';
   options?: { max_pages?: number };
 }
 
@@ -59,6 +61,7 @@ type MaterialRow = {
   byte_size: number;
   sha256: string;
   object_key: string;
+  role?: string;
 };
 
 function bridgeError(code: string): Error {
@@ -78,6 +81,7 @@ function supportedMediaType(value: string): value is typeof DOCUMENT_PARSER_MEDI
 function validateInput(input: AuthorizedMaterialParseInput): void {
   if (!safeIdentifier(input.ownerUserId) || !safeIdentifier(input.projectId) || !safeIdentifier(input.materialId) ||
       !safeIdentifier(input.requestId) || !Number.isSafeInteger(input.version) || input.version < 1 ||
+      (input.requiredRole !== undefined && input.requiredRole !== 'historical') ||
       (input.options?.max_pages !== undefined && (!Number.isSafeInteger(input.options.max_pages) ||
         input.options.max_pages < 1 || input.options.max_pages > 1500))) {
     throw bridgeError('INVALID_MATERIAL_PARSE_REQUEST');
@@ -121,11 +125,14 @@ export async function parseAuthorizedMaterial(
   let result: { rows: Record<string, unknown>[] };
   try {
     result = await dependencies.pool.query(
-      `SELECT owner_user_id, project_id, id, version, media_type, byte_size, sha256, object_key
+      `SELECT owner_user_id, project_id, id, version, media_type, byte_size, sha256, object_key, role
          FROM bb_material_versions
         WHERE owner_user_id = $1 AND project_id = $2 AND id = $3 AND version = $4
+          AND ($5::text IS NULL OR (role = $5 AND media_type IN (
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf'
+          )))
           AND deleted_at IS NULL`,
-      [input.ownerUserId, input.projectId, input.materialId, input.version],
+      [input.ownerUserId, input.projectId, input.materialId, input.version, input.requiredRole ?? null],
     );
   } catch {
     throw bridgeError('MATERIAL_LOOKUP_FAILED');
@@ -134,6 +141,9 @@ export async function parseAuthorizedMaterial(
   if (result.rows.length !== 1) throw bridgeError('INVALID_MATERIAL_METADATA');
 
   const row = parseRow(result.rows[0]!, input);
+  if (input.requiredRole !== undefined && row.role !== input.requiredRole) throw bridgeError('MATERIAL_ROLE_MISMATCH');
+  if (input.requiredRole === 'historical' && row.media_type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
+      row.media_type !== 'application/pdf') throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
   if (!supportedMediaType(row.media_type)) throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
 
   let storedBytes: Uint8Array | null;
