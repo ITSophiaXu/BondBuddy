@@ -160,6 +160,47 @@ function identityHash(identityKey: string): string {
   return createHash('sha256').update(identityKey, 'utf8').digest('hex');
 }
 
+/**
+ * A material ID and evidence ID supplied by a fact extractor are references, not
+ * proof of provenance. Resolve material-derived sources against the immutable
+ * parser snapshot before allowing them into the fact ledger.
+ */
+async function verifyPersistedEvidence(
+  pool: FactRepositoryPool,
+  context: FactRepositoryContext,
+  material: { readonly id: string; readonly version: number },
+  evidence: readonly FactEvidenceAnchor[],
+): Promise<void> {
+  for (const anchor of evidence) {
+    const result = await pool.query(
+      `SELECT count(*)::integer AS match_count
+         FROM bb_parse_evidence e
+         JOIN bb_parse_snapshots s
+           ON s.owner_user_id = e.owner_user_id AND s.project_id = e.project_id
+          AND s.material_id = e.material_id AND s.material_version = e.material_version
+          AND s.id = e.snapshot_id AND s.content_sha256 = e.content_sha256
+         JOIN bb_material_versions m
+           ON m.owner_user_id = s.owner_user_id AND m.project_id = s.project_id
+          AND m.id = s.material_id AND m.version = s.material_version
+          AND m.sha256 = s.content_sha256
+        WHERE e.owner_user_id = $1 AND e.project_id = $2 AND e.material_id = $3 AND e.material_version = $4
+          AND s.owner_user_id = $1 AND s.project_id = $2 AND s.material_id = $3 AND s.material_version = $4
+          AND s.response_status IN ('parsed', 'needs_confirmation') AND e.extractor_version = s.parser_version
+          AND m.deleted_at IS NULL AND m.role <> 'reference'
+          AND e.record_id = $5 AND e.content_sha256 = $6
+          AND e.locator_type = $7 AND e.locator = $8::jsonb AND e.literal_quote = $9
+          AND e.extraction_method = $10 AND e.extractor_version = $11
+          AND e.confidence IS NOT DISTINCT FROM $12::numeric AND e.uncertainty = $13::jsonb`,
+      [context.ownerUserId, context.projectId, material.id, material.version, anchor.evidence_id, anchor.content_hash,
+        anchor.locator_type, JSON.stringify(anchor.locator), anchor.literal_quote, anchor.extraction_method,
+        anchor.extraction_version, anchor.confidence, JSON.stringify(anchor.uncertainty)],
+    );
+    const count = Number(result.rows[0]?.match_count);
+    if (count === 0) throw factError('FACT_SOURCE_EVIDENCE_NOT_FOUND');
+    if (count !== 1) throw factError('FACT_SOURCE_EVIDENCE_AMBIGUOUS');
+  }
+}
+
 function mapStatus(value: unknown): FactStatus {
   if (value === 'extracted' || value === 'verified' || value === 'user_asserted' || value === 'conflicted' ||
     value === 'needs_confirmation' || value === 'superseded') return value;
@@ -256,6 +297,11 @@ export async function insertFactCandidate(
   evidence: readonly FactEvidenceAnchor[],
 ): Promise<StoredFactCandidate> {
   const validated = validateCandidate(context, candidate, material.id, material.version, evidence);
+  // User statements may be supported by chat evidence, which has no parser
+  // snapshot. Material-derived audited/external evidence must resolve exactly.
+  if (candidate.source.kind === 'audited' || candidate.source.kind === 'external') {
+    await verifyPersistedEvidence(dependencies.pool, context, material, evidence);
+  }
   const id = dependencies.newId?.() ?? randomUUID();
   const now = dependencies.now?.() ?? new Date();
   const verification = validated.status === 'verified' ? candidate.auditCheck : null;

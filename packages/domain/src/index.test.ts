@@ -88,6 +88,31 @@ test('published public-all pack never covers public, bank or unknown-stage conte
   assert.equal(evaluateRulePackCapability(pack,{market:'sse',offering:'public_all',document_stage:'unknown',issuer_scope:'synthetic_issuer',as_of:'2026-09-24'}).decision,'needs_evidence');
 });
 
+test('production instrument-scoped pack requires instrument evidence and rejects mismatches',async()=>{
+  const draft=await validProductionDraft();
+  draft.scope.instruments=['synthetic-corporate-bond'];
+  const pack=publishRulePack(draft,{channel:'production',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T01:30:00Z',reason:'Synthetic unit-test release; not professional evidence.'});
+  const context={market:'sse' as const,offering:'public_all' as const,document_stage:'registration' as const,issuer_scope:'synthetic_issuer',as_of:'2026-09-24'};
+
+  for(const instrument of [undefined,null,'','   ']){
+    const result=evaluateRulePackCapability(pack,{...context,instrument});
+    assert.equal(result.decision,'needs_evidence');
+    assert.deepEqual(result.reason_codes,['instrument_unknown']);
+  }
+  const mismatch=evaluateRulePackCapability(pack,{...context,instrument:'synthetic-private-placement'});
+  assert.equal(mismatch.decision,'not_applicable');
+  assert.deepEqual(mismatch.reason_codes,['instrument_mismatch']);
+  const matching=evaluateRulePackCapability(pack,{...context,instrument:'synthetic-corporate-bond'});
+  assert.equal(matching.decision,'eligible_for_evaluation');
+});
+
+test('impossible as-of calendar dates remain needs-evidence',async()=>{
+  const pack=await release();
+  const result=evaluateRulePackCapability(pack,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-02-30'});
+  assert.equal(result.decision,'needs_evidence');
+  assert.deepEqual(result.reason_codes,['as_of_date_invalid']);
+});
+
 test('draft, test release, expired and withdrawn packs cannot advertise capability',async()=>{
   const draft=await validProductionDraft();
   assert.equal(evaluateRulePackCapability(draft,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-24'}).decision,'capability_not_ready');

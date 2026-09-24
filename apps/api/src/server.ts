@@ -1,5 +1,5 @@
 import Fastify, { type FastifyRequest } from 'fastify';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
@@ -13,7 +13,33 @@ const param = (request: FastifyRequest, name: string) => (request.params as Reco
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
 const MAX_BYTES = 104857600;
+const DEFAULT_PROJECT_EVENT_PAGE_SIZE = 50;
+const MAX_PROJECT_EVENT_PAGE_SIZE = 100;
 const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
+
+async function appendProjectMaterialEvent(client: PoolClient, ownerId: string, projectId: string, materialId: string, byteSize: number) {
+  const allocated = await client.query('UPDATE bb_projects SET event_cursor=event_cursor+1 WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING event_cursor', [ownerId, projectId]);
+  if (!allocated.rows[0]) throw missing();
+  const payload = { material_id: materialId, uploaded_bytes: byteSize, total_bytes: byteSize };
+  await client.query('INSERT INTO bb_project_events(id,owner_user_id,project_id,seq,trace_id,type,payload) VALUES($1,$2,$3,$4,$5,$6,$7)',
+    [uid(), ownerId, projectId, allocated.rows[0].event_cursor, uid(), 'material.upload_progress', payload]);
+}
+
+function projectEventCursor(value: string | undefined) {
+  if (value === undefined) return 0;
+  if (!/^(0|[1-9][0-9]{0,9})$/.test(value)) throw new Problem(422, 'VALIDATION_FAILED', 'Invalid project event cursor');
+  const cursor = Number(value);
+  if (!Number.isSafeInteger(cursor) || cursor > 2147483647) throw new Problem(422, 'VALIDATION_FAILED', 'Invalid project event cursor');
+  return cursor;
+}
+
+function projectEventPageSize(value: string | undefined) {
+  if (value === undefined) return DEFAULT_PROJECT_EVENT_PAGE_SIZE;
+  if (!/^[1-9][0-9]{0,2}$/.test(value)) throw new Problem(422, 'VALIDATION_FAILED', 'Invalid project event page size');
+  const limit = Number(value);
+  if (limit > MAX_PROJECT_EVENT_PAGE_SIZE) throw new Problem(422, 'VALIDATION_FAILED', 'Project event page size exceeds limit');
+  return limit;
+}
 
 export function createServer(settings: Settings = {}) {
   // Trust only an explicitly configured reverse proxy for client source addresses.
@@ -176,10 +202,19 @@ export function createServer(settings: Settings = {}) {
       const inserted=await client.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'persisted') RETURNING *",[materialId,user,id,uploadId,u.role,u.filename,media,b.byte_size,b.sha256,u.object_key]);
       await client.query("UPDATE bb_uploads SET state='completed' WHERE owner_user_id=$1 AND id=$2",[user,uploadId]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.persisted',{material_id:materialId,material_version:1,project_id:id}]);
+      await appendProjectMaterialEvent(client, user, id, materialId, Number(inserted.rows[0].byte_size));
       return materialDto(inserted.rows[0]);
     });
   });
-  app.get('/api/v1/projects/:project_id/materials/:material_id',async request=>materialDto(await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'))));
+  app.get('/api/v1/projects/:project_id/materials/:material_id',async request=>{
+    const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
+    try { if(!await blob().exists(m.object_key)) throw missing(); }
+    catch(error) {
+      if(error instanceof Problem) throw error;
+      throw new Problem(503,'DATA_UNAVAILABLE','Material storage is temporarily unavailable');
+    }
+    return materialDto(m);
+  });
   app.get('/api/v1/projects/:project_id/materials/:material_id/download',async (request,reply)=>{
     const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
     const bytes=await blob().get(m.object_key);if(digest(bytes)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Stored material failed integrity check');
@@ -199,7 +234,27 @@ export function createServer(settings: Settings = {}) {
     });
     return reply.code(204).send();
   });
-  app.get('/api/v1/projects/:project_id/events',async request=>{await project(db(),await owner(request),param(request,'project_id'));throw unavailable();});
+  app.get('/api/v1/projects/:project_id/events',{schema:{response:{200:schemas.ProjectEventsResponse}}},async request=>{
+    const user=await owner(request),id=param(request,'project_id');
+    // Check ownership before parsing attacker-controlled cursor/limit values.
+    await project(db(),user,id);
+    const query=request.query as {after?:string;limit?:string};
+    const after=projectEventCursor(query.after),limit=projectEventPageSize(query.limit);
+    const result=await db().query(`
+      SELECT e.id,e.trace_id,e.project_id,e.seq,e.occurred_at,e.type,e.payload
+        FROM bb_project_events e
+       WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.seq>$3
+         AND EXISTS (
+           SELECT 1 FROM bb_material_versions m
+           JOIN bb_uploads u ON u.owner_user_id=m.owner_user_id AND u.id=m.upload_id AND u.state='completed'
+            WHERE m.owner_user_id=e.owner_user_id AND m.project_id=e.project_id
+              AND m.id=e.payload->>'material_id' AND m.deleted_at IS NULL
+         )
+       ORDER BY e.seq ASC LIMIT $4`,[user,id,after,limit+1]);
+    const hasMore=result.rows.length>limit,rows=result.rows.slice(0,limit);
+    const items=rows.map(event=>({event_id:event.id,schema_version:1 as const,trace_id:event.trace_id,project_id:event.project_id,seq:Number(event.seq),occurred_at:date(event.occurred_at),type:event.type,payload:{material_id:event.payload.material_id,uploaded_bytes:event.payload.uploaded_bytes,total_bytes:event.payload.total_bytes}}));
+    return {items,next_cursor:hasMore?items.at(-1)!.seq:null};
+  });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);

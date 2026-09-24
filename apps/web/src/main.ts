@@ -2,16 +2,16 @@ import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
 import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
+import { renderAccount, renderClosed, type AccountContext } from './account';
+import { date, esc, icon } from './ui';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
-const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
-const date = (value: string) => new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-const icon = (path: string) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
 const plus = icon('M12 5v14M5 12h14');
+const person = icon('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0');
 let identity: string | undefined;
 let epoch = 0;
 let currentRoute = '/';
@@ -28,7 +28,7 @@ type MaterialRecovery = { state: 'loading' | 'ready' | 'unavailable'; message?: 
 const localUploads = new Map<string, LocalUpload[]>();
 const recoveredMaterials = new Map<string, Dto<'MaterialResponse'>[]>();
 const recoveryStates = new Map<string, MaterialRecovery>();
-const recoveryControllers = new Set<AbortController>();
+const recoveryControllers = new Map<string, AbortController>();
 const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
   docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2],
   csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5],
@@ -36,10 +36,19 @@ const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
 };
 const sessionChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('bondbuddy-session') : undefined;
 const api = new ApiClient(() => signedOut(identity ? '登录已失效。已保存的项目会在重新登录后恢复。' : ''));
+const accountPage: AccountContext = {
+  api, shell, epoch: () => epoch, reload: () => { void renderRoute(); },
+  closed: result => {
+    clearPrivateState();
+    history.replaceState(null, '', `${location.pathname}${location.search}#/`);
+    currentRoute = '/'; sessionChannel?.postMessage('changed');
+    renderClosed(root, result, () => renderLogin());
+  }
+};
 
 function clearPrivateState() {
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
-  for (const controller of recoveryControllers) controller.abort();
+  for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
   epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
   identity = undefined; items = []; nextCursor = null; listBusy = false;
@@ -88,8 +97,8 @@ function shell(content: string, section: string) {
     <div class="workspace-tag"><span class="workspace-symbol">B</span><div><strong>我的工作区</strong><small>募集书项目管理</small></div></div>
     <p class="nav-label">工作空间</p><nav aria-label="主导航"><a class="nav-item ${section === 'projects' ? 'active' : ''}" href="#/" ${section === 'projects' ? 'aria-current="page"' : ''}>${folder}我的项目</a>
     <a class="nav-item ${section === 'new' ? 'active' : ''}" href="#/new" ${section === 'new' ? 'aria-current="page"' : ''}>${plus}新建更新项目</a></nav>
-    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : '我的项目'}</span><span class="trial">受控试用</span></header>
+    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><nav aria-label="账号"><a class="nav-item ${section === 'account' ? 'active' : ''}" href="#/account" ${section === 'account' ? 'aria-current="page"' : ''}>${person}账号设置</a></nav><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : section === 'account' ? '账号设置' : '我的项目'}</span><span class="trial">受控试用</span></header>
     <main id="main" tabindex="-1">${content}</main></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
 }
@@ -138,6 +147,7 @@ async function renderRoute() {
   items = []; nextCursor = null; listBusy = false;
   currentRoute = requested;
   if (requested === '/new') { renderNew(); return; }
+  if (requested === '/account') { await renderAccount(accountPage); return; }
   if (requested === '/') { renderProjects(); await loadProjects(token); return; }
   const match = requested.match(/^\/projects\/([^/]+)$/);
   if (!match) { location.hash = '/'; return; }
@@ -438,7 +448,9 @@ async function performUpload(upload: LocalUpload) {
 async function refreshProjectMaterials(projectId: string, token: number) {
   if (!identity) return;
   const owner = identity;
-  const controller = new AbortController(); recoveryControllers.add(controller);
+  recoveryControllers.get(projectId)?.abort();
+  const controller = new AbortController(); recoveryControllers.set(projectId, controller);
+  recoveredMaterials.delete(projectId);
   recoveryStates.set(projectId, { state: 'loading' }); updateMaterialWorkspace(projectId);
   try {
     const ids = new Set<string>();
@@ -446,26 +458,40 @@ async function refreshProjectMaterials(projectId: string, token: number) {
     while (!controller.signal.aborted) {
       const page = await api.projectEvents(projectId, cursor, controller.signal);
       for (const event of page.items) if (event.type === 'material.upload_progress' && event.payload.material_id) ids.add(event.payload.material_id);
-      if (!page.items.length) break;
-      const next = page.next_cursor ?? Math.max(...page.items.map(event => event.seq));
-      if (next <= cursor) break;
-      cursor = next;
+      if (!page.items.length || page.next_cursor === null || page.next_cursor <= cursor) break;
+      cursor = page.next_cursor;
     }
-    const fetched = await Promise.all([...ids].map(async id => {
-      try { return await api.material(projectId, id, controller.signal); }
-      catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error; }
-    }));
+    const fetched: Dto<'MaterialResponse'>[] = [];
+    const checkedIds = new Set<string>();
+    while (!controller.signal.aborted) {
+      for (const upload of localUploads.get(projectId) ?? []) {
+        if (upload.phase === 'persisted' && upload.material) ids.add(upload.material.material_id);
+      }
+      const batch = [...ids].filter(id => !checkedIds.has(id));
+      if (!batch.length) break;
+      for (const id of batch) checkedIds.add(id);
+      const records = await Promise.all(batch.map(async id => {
+        try { return await api.material(projectId, id, controller.signal); }
+        catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error; }
+      }));
+      fetched.push(...records.filter((item): item is Dto<'MaterialResponse'> => item !== undefined));
+    }
     if (controller.signal.aborted || token !== epoch || owner !== identity) return;
-    recoveredMaterials.set(projectId, fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined));
+    const current = fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined);
+    recoveredMaterials.set(projectId, current);
+    const currentIds = new Set(current.map(item => item.material_id));
+    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted' || !!upload.material && currentIds.has(upload.material.material_id)));
     recoveryStates.set(projectId, { state: 'ready' });
   } catch (error) {
     if (controller.signal.aborted || token !== epoch || owner !== identity) return;
+    recoveredMaterials.delete(projectId);
+    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted'));
     const message = error instanceof ApiError && error.status === 501
-      ? '材料事件恢复接口尚未开放。当前会话中服务器已确认保存的文件仍显示在本页；重新登录后不会把本地选择误报为已保存。'
+      ? '材料事件恢复接口暂不可用；当前项目的服务器材料记录尚未确认。本地选择不会显示为已保存。'
       : `无法读取服务器材料记录。${friendlyError(error)}`;
     recoveryStates.set(projectId, { state: 'unavailable', message });
   } finally {
-    recoveryControllers.delete(controller);
+    if (recoveryControllers.get(projectId) === controller) recoveryControllers.delete(projectId);
     if (token === epoch && owner === identity) updateMaterialWorkspace(projectId);
   }
 }

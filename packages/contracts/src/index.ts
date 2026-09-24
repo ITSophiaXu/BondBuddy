@@ -73,6 +73,7 @@ const recognitionStatus = enumOf(['recognized', 'needs_confirmation', 'user_asse
 const ProvenanceSchema = obj({ material_id: id, material_version: revision, method: nullable(provenanceMethod), extractor_version: nullable(Type.String()), evidence_refs: Type.Array(id) });
 const recognizedField = <T extends TSchema>(value: T) => obj({ value: nullable(value), raw_value: nullable(Type.String()), provenance: ProvenanceSchema, uncertainty: Type.Array(Type.String()), status: recognitionStatus });
 const ReportingPeriodSchema = obj({ start: nullable(date), end: nullable(date), period_kind: nullable(enumOf(['annual', 'interim'] as const)), scope: nullable(enumOf(['consolidated', 'parent'] as const)), raw_value: nullable(Type.String()), provenance: ProvenanceSchema, uncertainty: Type.Array(Type.String()), status: recognitionStatus });
+const ReportingPeriodCorrectionSchema = obj({ start: nullable(date), end: nullable(date), period_kind: nullable(enumOf(['annual', 'interim'] as const)), scope: nullable(enumOf(['consolidated', 'parent'] as const)), evidence_refs: Type.Array(id) });
 const SafeEventPayloadSchema = obj({ reason: Type.Optional(safeCode), previous_state: Type.Optional(runState), completed_items: Type.Optional(Type.Integer({ minimum: 0 })), total_items: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), uploaded_bytes: Type.Optional(Type.Integer({ minimum: 0 })), total_bytes: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), processed_pages: Type.Optional(Type.Integer({ minimum: 0 })), total_pages: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), material_id: Type.Optional(id), artifact_id: Type.Optional(id), profile_version: Type.Optional(revision), clarification_ref: Type.Optional(id), required_fields: Type.Optional(Type.Array(safeCode)), evidence_refs: Type.Optional(Type.Array(id)), error_code: Type.Optional(errorCode) });
 const RunEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, run_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, stage: nullable(Type.String()), type: runEventType, state: runState, payload: SafeEventPayloadSchema });
 const ProjectEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, project_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, type: projectEventType, payload: SafeEventPayloadSchema });
@@ -111,7 +112,18 @@ export const schemas = {
   UploadCompleteRequest: obj({ byte_size: Type.Integer({ minimum: 1 }), sha256: hash }),
   MaterialResponse: obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()) }),
   RecognitionResponse: obj({ material_id: id, material_version: revision, profile_version: revision, state: profileState, source_market: recognizedField(market), source_offering: recognizedField(offering), reporting_periods: Type.Array(ReportingPeriodSchema), latest_reporting_cutoff: recognizedField(date) }),
-  RecognitionPatchRequest: obj({ profile_version: revision, source_market: nullable(market), source_offering: nullable(offering), reason: Type.String({ minLength: 1 }), evidence_refs: Type.Array(id) }),
+  RecognitionPatchRequest: Type.Object({
+    profile_version: revision,
+    source_market: Type.Optional(nullable(market)),
+    source_offering: Type.Optional(nullable(offering)),
+    reporting_periods: Type.Optional(Type.Array(ReportingPeriodCorrectionSchema)),
+    reason: Type.String({ minLength: 1 }),
+    evidence_refs: Type.Array(id),
+  }, { additionalProperties: false, anyOf: [
+    { properties: { source_market: Type.Any() }, required: ['source_market'] },
+    { properties: { source_offering: Type.Any() }, required: ['source_offering'] },
+    { properties: { reporting_periods: Type.Any() }, required: ['reporting_periods'] },
+  ] }),
   PreflightRequest: obj({ input_revision: revision, input_hash: hash }),
   PreflightResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation'), Type.Literal('blocked')]), missing_inputs: Type.Array(Type.String()), uncertainty: Type.Array(Type.String()), billing_mode: Type.Literal('platform_trial') }),
   ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id }),
@@ -139,6 +151,7 @@ export type Material = Static<typeof schemas.MaterialResponse>;
 export type ModelCallAttempt = Static<typeof schemas.ModelCallAttempt>;
 export type Recognition = Static<typeof schemas.RecognitionResponse>;
 export type ReportingPeriod = Static<typeof ReportingPeriodSchema>;
+export type RecognitionPatchRequest = Static<typeof schemas.RecognitionPatchRequest>;
 export type InternalObservabilityEvent = Static<typeof schemas.InternalObservabilityEvent>;
 export type MaterialRole = typeof M1_UPLOAD_MATERIAL_ROLES[number];
 export type UploadMediaType = typeof M1_UPLOAD_MIME_TYPES[number];
@@ -176,10 +189,10 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}/input-revisions/{input_revision}', 'Read immutable input snapshot (contract only)', 'InputRevisionResponse', 200, undefined, [404]),
   op('post', '/projects/{project_id}/materials/uploads', 'Create scoped upload (contract only)', 'UploadSessionResponse', 201, 'UploadCreateRequest', [404, 415, 422]),
   op('post', '/projects/{project_id}/materials/uploads/{upload_id}/complete', 'Verify object bytes/hash and register material idempotently (contract only)', 'MaterialResponse', 200, 'UploadCompleteRequest', [404, 409, 415, 422, 503]),
-  op('get', '/projects/{project_id}/materials/{material_id}', 'Read owner material save/parse state', 'MaterialResponse', 200, undefined, [404]),
+  op('get', '/projects/{project_id}/materials/{material_id}', 'Read current owner material metadata after checking private object availability', 'MaterialResponse', 200, undefined, [404, 503]),
   op('get', '/projects/{project_id}/materials/{material_id}/download', 'Download verified owner material bytes', 'MaterialResponse', 200, undefined, [404]),
   op('delete', '/projects/{project_id}/materials/{material_id}', 'Remove current material access while preserving pinned snapshots', 'MaterialResponse', 204, undefined, [404]),
-  op('get', '/projects/{project_id}/events', 'Read owner project material events after cursor (contract only)', 'ProjectEventsResponse', 200, undefined, [404]),
+  op('get', '/projects/{project_id}/events', 'Read current owner material events after the project-local sequence (50 by default, at most 100)', 'ProjectEventsResponse', 200, undefined, [404, 422]),
   op('get', '/projects/{project_id}/materials/{material_id}/source-profile', 'Read asynchronous recognition (contract only)', 'RecognitionResponse', 200, undefined, [404]),
   op('patch', '/projects/{project_id}/materials/{material_id}/source-profile', 'Correct source recognition with revision (contract only)', 'RecognitionResponse', 200, 'RecognitionPatchRequest', [404, 409]),
   op('post', '/projects/{project_id}/preflight', 'Validate material, capability and input snapshot (contract only)', 'PreflightResponse', 200, 'PreflightRequest', [404, 409]),
@@ -205,11 +218,24 @@ export function openApiDocument() {
     paths[path] ??= {};
     const binary = operation.path.endsWith('/download');
     const responses: Record<string, unknown> = { [operation.status]: { description: 'Response for this operation', ...(operation.status === 204 ? {} : { content: binary ? { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } : { 'application/json': { schema: ref(operation.response) } } }) } };
-    for (const status of operation.errors ?? []) responses[status] = { description: ({ 404: 'Owner-safe not found', 409: 'Revision, idempotency or precondition conflict', 415: 'Unsupported material format', 422: 'Encrypted or mismatched material content', 503: 'Temporary upload inspection capacity unavailable; retryable' } as Record<number, string>)[status] ?? 'Contract error', content: { 'application/json': { schema: ref('Error') } } };
+    for (const status of operation.errors ?? []) {
+      const description = status === 404
+        ? 'Owner-safe not found'
+        : status === 409
+          ? 'Revision, idempotency or precondition conflict'
+          : status === 415
+            ? 'Unsupported material format'
+            : status === 422
+              ? operation.path === '/projects/{project_id}/events' ? 'Invalid project cursor or page size' : 'Contract validation error'
+              : status === 503
+                ? operation.path === '/projects/{project_id}/materials/{material_id}' ? 'Private object storage is temporarily unavailable; retryable' : 'Upload inspection capacity is temporarily unavailable; retryable'
+                : 'Contract error';
+      responses[status] = { description, content: { 'application/json': { schema: ref('Error') } } };
+    }
     for (const code of [401,403,501]) responses[code] = { description: code === 501 ? 'Capability not connected' : 'Session or CSRF/Origin check failed', content: { 'application/json': { schema: ref('Error') } } };
-    const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
+    const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
-    const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
+    const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/projects/{project_id}/events','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
     const status = ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
     const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!['/auth/register','/auth/login'].includes(operation.path) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: ['/auth/register','/auth/login'].includes(operation.path) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
