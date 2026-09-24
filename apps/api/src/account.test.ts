@@ -32,7 +32,7 @@ test('password change, session revocation and closure keep accounts isolated', {
     const b1=await register('bob_acct',bobPwd);assert.equal(b1.statusCode,201,b1.body);const cb1=jar(b1);
 
     const account=await send('GET','/api/v1/account',undefined,ca1);assert.equal(account.statusCode,200,account.body);
-    assert.deepEqual({...account.json(),created_at:null,password_updated_at:null},{user_id:alice,username:'alice_acct',phone_masked:null,status:'active',created_at:null,accepted_terms_version:'synthetic-v1',current_terms_version:'synthetic-v1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:'synthetic-support'});
+    assert.deepEqual({...account.json() as Record<string,unknown>,created_at:null,password_updated_at:null},{user_id:alice,username:'alice_acct',phone_masked:null,status:'active',created_at:null,accepted_terms_version:'synthetic-v1',current_terms_version:'synthetic-v1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:'synthetic-support'});
     await pool.query("INSERT INTO bb_users(id,phone_e164) VALUES('synthetic-legacy-phone','+8613800000009')");
     await pool.query("INSERT INTO bb_auth_sessions(id,user_id,access_hash,refresh_hash,csrf_hash,access_expires_at,refresh_expires_at) VALUES('synthetic-legacy-session','synthetic-legacy-phone',$1,$2,$3,now()+interval '15 minutes',now()+interval '1 day')",['1'.repeat(64),'2'.repeat(64),'3'.repeat(64)]);
 
@@ -72,7 +72,10 @@ test('password change, session revocation and closure keep accounts isolated', {
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE owner_user_id=$1 AND event_type=$2',[alice,'user.password_changed'])).rows[0].n,1);
     // Re-authentication failures count toward the login limiter for that account.
     for(let i=0;i<2;i++)assert.equal((await send('POST','/api/v1/account/password',{current_password:'not the password 1',new_password:aliceNew},a3)).statusCode,403);
-    assert.equal((await pool.query('SELECT max(failures)::int n FROM bb_password_login_limits')).rows[0].n,2);
+    assert.equal((await pool.query('SELECT max(failures)::int n FROM bb_password_login_limits')).rows[0].n,3,'old-password login and re-auth failures share one counter');
+    for(let i=0;i<2;i++)assert.equal((await login('alice_acct','not the password 1')).statusCode,401);
+    assert.equal((await login('alice_acct',aliceNew)).statusCode,429,'refactored login limiter still blocks the account/source pair');
+    assert.equal((await login('bob_acct',bobPwd)).statusCode,200,'shared source remains usable for another account');
     await pool.query('TRUNCATE bb_password_login_limits');
 
     // Closure: preview blockers, refuse while a run is active, then close and retain required records.
