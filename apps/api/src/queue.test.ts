@@ -2,19 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
-import { checkpoint, claim, finish, jobSnapshot, reconcilePausedCall, recordPotentialCall } from './queue.js';
-import { azureBlobs, digest } from './data.js';
+import { checkpoint, claim, finish, jobSnapshot, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
+import { azureBlobs, type PrivateBlobs } from './data.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor', {skip:!connection||!blobConnection},async()=>{
   const pool=new Pool({connectionString:connection});
   let owner='synthetic-queue-a';
-  const settings={pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
+  const blobs=azureBlobs(blobConnection!);
+  const settings={pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
   const app=createServer(settings);
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   try {
-    await pool.query('TRUNCATE bb_outbox,bb_run_events,bb_model_call_attempts,bb_jobs,bb_artifact_download_grants,bb_artifact_versions,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE bb_outbox,bb_run_events,bb_model_call_attempts,bb_jobs,bb_artifact_download_grants,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const p=await send('POST','/api/v1/projects',{name:'Synthetic queue',kind:'update',issuer_name:null,market:null,offering:null});
     assert.equal(p.statusCode,201,p.body);
     const projectId=p.json().project_id;
@@ -73,14 +75,90 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     const retried=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-rollback'});assert.equal(retried.statusCode,202);
     lease=await claim(pool,30);assert.ok(lease);
     await assert.rejects(finish(pool,lease,'succeeded'),/Verified Word artifact required/);
-    const blobs=azureBlobs(blobConnection!);
-    const artifactId='synthetic-queue-bad-word',key=`users/${owner}/artifacts/${artifactId}`;
-    await blobs.put(key,Buffer.from('synthetic actual bytes'),'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    await pool.query("INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status) VALUES($1,1,$2,$3,$4,$5,$6,'passed','available')",[artifactId,owner,lease.runId,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',digest('different synthetic bytes'),key]);
-    await assert.rejects(finish(pool,lease,'succeeded',{artifactId,artifactVersion:1,blobs}),/Word artifact hash mismatch/);
+    let invalidBlobPuts=0;
+    const invalidCandidateBlobs:PrivateBlobs={...blobs,put:async(key,bytes,mediaType)=>{invalidBlobPuts++;await blobs.put(key,bytes,mediaType);}};
+    const rejected=await promoteWordArtifact(pool,lease,Buffer.from('not a DOCX ZIP package'),invalidCandidateBlobs);
+    assert.equal(rejected.status,'rejected');assert.equal(rejected.failureCode,'WORD_QUALITY_REJECTED');assert.equal(rejected.deliveryCode,'not_attempted');
+    assert.equal(invalidBlobPuts,0,'invalid DOCX bytes are never written to private Blob storage');
+    assert.equal(await blobs.getIfExists(rejected.objectKey),null);
+    assert.equal((await pool.query('SELECT quality_status,delivery_status FROM bb_artifact_versions WHERE id=$1',[rejected.artifactId])).rows[0].quality_status,'failed');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE owner_user_id=$1 AND run_id=$2 AND artifact_id=$3',[owner,lease.runId,rejected.artifactId])).rows[0].n,1,'quality rejection evidence is durable and owner/run bound');
+    await assert.rejects(pool.query("UPDATE bb_artifact_versions SET quality_status='passed',delivery_status='available' WHERE id=$1 AND version=1",[rejected.artifactId]),(error:any)=>error.code==='23514','database refuses availability without passed readback evidence');
+    await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1",[lease.runId,rejected.artifactId]),(error:any)=>error.code==='23514','database refuses success without a matching verified Word artifact');
+    await assert.rejects(finish(pool,lease,'succeeded',{artifactId:rejected.artifactId,artifactVersion:rejected.artifactVersion,blobs}),/Passed Word artifact unavailable/);
     assert.equal((await send('GET',`/api/v1/runs/${lease.runId}`)).json().state,'running');
-    await finish(pool,lease,'failed',{errorCode:'CAPABILITY_NOT_READY'});
+    await finish(pool,lease,'failed',{errorCode:'WORD_QUALITY_REJECTED'});
     assert.equal((await send('GET',`/api/v1/runs/${lease.runId}`)).json().state,'failed');
+
+    const wordCandidate=makeSyntheticDocxFixture();
+    const wordRun=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-word-success'});assert.equal(wordRun.statusCode,202,wordRun.body);
+    const wordLease=await claim(pool,30);assert.ok(wordLease);assert.equal(wordLease.runId,wordRun.json().run_id);
+    const firstPromotion=await promoteWordArtifact(pool,wordLease,wordCandidate,blobs);
+    assert.equal(firstPromotion.status,'available');assert.equal(firstPromotion.deliveryCode,'readback_verified');
+    const firstEvidenceCount=(await pool.query('SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE owner_user_id=$1 AND run_id=$2',[owner,wordLease.runId])).rows[0].n;
+    assert.equal(firstEvidenceCount,1);
+    const duplicatePromotion=await promoteWordArtifact(pool,wordLease,wordCandidate,blobs);
+    assert.equal(duplicatePromotion.artifactId,firstPromotion.artifactId);assert.equal(duplicatePromotion.evidenceId,firstPromotion.evidenceId);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE owner_user_id=$1 AND run_id=$2',[owner,wordLease.runId])).rows[0].n,firstEvidenceCount,'duplicate promotion is idempotent');
+    await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",[wordLease.jobId]);
+    const wordRestart=await claim(pool,30);assert.ok(wordRestart);assert.equal(wordRestart.runId,wordLease.runId);assert.deepEqual(wordRestart.checkpoint,wordLease.checkpoint);
+    const restartPromotion=await promoteWordArtifact(pool,wordRestart,wordCandidate,blobs);
+    assert.equal(restartPromotion.evidenceId,firstPromotion.evidenceId,'evidence survives worker lease recovery');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE owner_user_id=$1 AND run_id=$2',[owner,wordLease.runId])).rows[0].n,firstEvidenceCount);
+    await assert.rejects(finish(pool,{...wordRestart,owner:'synthetic-queue-b'},'succeeded',{artifactId:firstPromotion.artifactId,artifactVersion:firstPromotion.artifactVersion,blobs}),/Passed Word artifact unavailable/);
+    const wordSuccess=await finish(pool,wordRestart,'succeeded',{artifactId:firstPromotion.artifactId,artifactVersion:firstPromotion.artifactVersion,blobs});
+    assert.equal(wordSuccess.state,'succeeded');assert.equal(wordSuccess.artifact_id,firstPromotion.artifactId);
+    let boundedArtifactReads=0;
+    const boundedOnlyBlobs:PrivateBlobs={...blobs,get:async()=>{throw new Error('Word artifact retrieval must use a bounded Blob read');},getIfExistsBounded:async(key,maxBytes)=>{boundedArtifactReads++;return blobs.getIfExistsBounded(key,maxBytes);}};
+    const deliveryApp=createServer({...settings,blobs:boundedOnlyBlobs});
+    const deliverySend=(url:string)=>deliveryApp.inject({method:'GET',url,headers:{origin:'http://bondbuddy.test'}});
+    let meta:any,download:any;
+    try{
+      meta=await deliverySend(`/api/v1/artifacts/${firstPromotion.artifactId}`);assert.equal(meta.statusCode,200,meta.body);
+      download=await deliverySend(meta.json().download_url);assert.equal(download.statusCode,200,download.body);
+    }finally{await deliveryApp.close();}
+    assert.equal(boundedArtifactReads,2,'metadata and download use evidence-sized Blob reads');
+    assert.deepEqual(download.rawPayload,wordCandidate,'owned artifact download returns the hash-verified Word bytes');
+    owner='synthetic-queue-b';assert.equal((await send('GET',`/api/v1/artifacts/${firstPromotion.artifactId}`)).statusCode,404);assert.equal((await send('GET',meta.json().download_url)).statusCode,404);
+    owner='synthetic-queue-a';
+
+    const missingReadbackRun=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-word-missing-readback'});assert.equal(missingReadbackRun.statusCode,202,missingReadbackRun.body);
+    const missingReadbackLease=await claim(pool,30);assert.ok(missingReadbackLease);assert.equal(missingReadbackLease.runId,missingReadbackRun.json().run_id);
+    const missingReadbackBlobs:PrivateBlobs={...blobs,getIfExistsBounded:async()=>null};
+    const missingReadback=await promoteWordArtifact(pool,missingReadbackLease,wordCandidate,missingReadbackBlobs);
+    assert.equal(missingReadback.status,'unavailable');assert.equal(missingReadback.deliveryCode,'blob_missing');
+    await assert.rejects(finish(pool,missingReadbackLease,'succeeded',{artifactId:missingReadback.artifactId,artifactVersion:1,blobs}),/Passed Word artifact unavailable/);
+    assert.equal((await pool.query("SELECT delivery_status FROM bb_artifact_versions WHERE id=$1",[missingReadback.artifactId])).rows[0].delivery_status,'revoked');
+    await finish(pool,missingReadbackLease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE'});
+    await blobs.delete(missingReadback.objectKey);
+
+    const mismatchedReadbackRun=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-word-mismatched-readback'});assert.equal(mismatchedReadbackRun.statusCode,202,mismatchedReadbackRun.body);
+    const mismatchedReadbackLease=await claim(pool,30);assert.ok(mismatchedReadbackLease);assert.equal(mismatchedReadbackLease.runId,mismatchedReadbackRun.json().run_id);
+    const mismatchedReadbackBlobs:PrivateBlobs={...blobs,getIfExistsBounded:async(key,maxBytes)=>{
+      const bytes=await blobs.getIfExistsBounded(key,maxBytes);
+      return bytes&&Buffer.concat([bytes,Buffer.from('synthetic readback mutation')]);
+    }};
+    const mismatchedReadback=await promoteWordArtifact(pool,mismatchedReadbackLease,wordCandidate,mismatchedReadbackBlobs);
+    assert.equal(mismatchedReadback.status,'unavailable');assert.equal(mismatchedReadback.deliveryCode,'blob_hash_mismatch');
+    const mismatchEvidence=(await pool.query('SELECT readback_sha256,readback_byte_size,delivery_status FROM bb_word_delivery_evidence WHERE id=$1',[mismatchedReadback.evidenceId])).rows[0];
+    assert.equal(mismatchEvidence.delivery_status,'unavailable');assert.notEqual(mismatchEvidence.readback_sha256.trim(),mismatchedReadback.sha256);
+    await assert.rejects(finish(pool,mismatchedReadbackLease,'succeeded',{artifactId:mismatchedReadback.artifactId,artifactVersion:1,blobs}),/Passed Word artifact unavailable/);
+    assert.equal((await send('GET',`/api/v1/runs/${mismatchedReadbackLease.runId}`)).json().state,'running','a mismatched initial Blob readback cannot produce run success');
+    await finish(pool,mismatchedReadbackLease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE'});
+    await blobs.delete(mismatchedReadback.objectKey);
+
+    const tamperedRun=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-word-tampered'});assert.equal(tamperedRun.statusCode,202,tamperedRun.body);
+    const tamperedLease=await claim(pool,30);assert.ok(tamperedLease);assert.equal(tamperedLease.runId,tamperedRun.json().run_id);
+    const tampered=await promoteWordArtifact(pool,tamperedLease,wordCandidate,blobs);assert.equal(tampered.status,'available');
+    await blobs.put(tampered.objectKey,Buffer.from('corrupt after validated readback'),'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    assert.equal((await send('GET',`/api/v1/artifacts/${tampered.artifactId}`)).statusCode,503,'a changed Blob cannot receive a fresh download grant');
+    await assert.rejects(finish(pool,tamperedLease,'succeeded',{artifactId:tampered.artifactId,artifactVersion:1,blobs}),/Word artifact hash mismatch/);
+    assert.equal((await send('GET',`/api/v1/runs/${tamperedLease.runId}`)).json().state,'running','a changed Blob cannot produce run success');
+    assert.equal((await pool.query('SELECT delivery_status FROM bb_artifact_versions WHERE id=$1',[tampered.artifactId])).rows[0].delivery_status,'revoked','a finish-time mismatch revokes the previously available row');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE artifact_id=$1 AND delivery_code='blob_hash_mismatch' AND delivery_status='unavailable'",[tampered.artifactId])).rows[0].n,1,'finish-time mismatch adds immutable unavailable evidence');
+    assert.equal((await send('GET',`/api/v1/artifacts/${tampered.artifactId}`)).statusCode,404,'a revoked artifact cannot receive a new download grant');
+    await finish(pool,tamperedLease,'failed',{errorCode:'WORD_DELIVERY_UNAVAILABLE'});
+
     const raceRun=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-terminal-race'});assert.equal(raceRun.statusCode,202);
     const raceLease=await claim(pool,30);assert.ok(raceLease);
     const race=await Promise.allSettled([send('POST',`/api/v1/runs/${raceLease.runId}/cancel`,{reason:'synthetic race'}),finish(pool,raceLease,'failed',{errorCode:'DATA_UNAVAILABLE'})]);

@@ -5,6 +5,7 @@ import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, m
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { action as queueAction, enqueue } from './queue.js';
 import { recordOperation, rejectOperation } from './observability.js';
+import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean };
@@ -38,6 +39,21 @@ export function createServer(settings: Settings = {}) {
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
+  async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
+    let bytes:Buffer|null;
+    if(artifact.media_type===WORD_MEDIA_TYPE){
+      const expectedSize=Number(artifact.delivery_evidence_byte_size);
+      if(!Number.isSafeInteger(expectedSize)||expectedSize<0||expectedSize>DOCX_LIMITS.archiveBytes)
+        throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+      try { bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize); }
+      catch { throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed'); }
+      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    }else{
+      bytes=await blob().get(artifact.object_key);
+    }
+    if(digest(bytes)!==artifact.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    return bytes;
+  }
   app.get('/health', { schema: { response: { 200: schemas.HealthResponse } } }, async () => ({ status: 'ok' as const, service: 'bondbuddy-m1-api-skeleton' as const, implementation: 'health-and-contract-only' as const }));
   app.get('/openapi.json', async () => openApiDocument());
   app.get('/api/v1/projects', async request => {
@@ -233,18 +249,22 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query("SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND quality_status='passed' AND delivery_status='available' ORDER BY version DESC LIMIT 1",[user,id]);
-    if(!q.rows[0])throw missing();const a=q.rows[0];const bytes=await blob().get(a.object_key);if(digest(bytes)!==a.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+      LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
+    if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
     await db().query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
     return {artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString()};
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query("SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND quality_status='passed' AND delivery_status='available' ORDER BY version DESC LIMIT 1",[user,id]);
+    const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+      LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
-    const bytes=await blob().get(a.object_key);if(digest(bytes)!==a.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    const bytes=await verifiedArtifactBytes(a);
     return reply.header('content-type',a.media_type).header('cache-control','private, no-store').send(bytes);
   });
   const sourceProfile='/api/v1/projects/:project_id/materials/:material_id/source-profile';

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 import { createServer } from '../apps/api/dist/server.js';
 import { azureBlobs, digest } from '../apps/api/dist/data.js';
+import { inspectDocx } from '../apps/api/dist/docx-inspector.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv } from '../apps/api/dist/storage-lifecycle.js';
 
 let stage = 'configuration';
@@ -51,6 +52,30 @@ async function verifyHashes(blobs, materials) {
   }
 }
 
+async function verifyWordDelivery(pool, blobs, owner) {
+  const rows=await pool.query(`SELECT e.*,a.object_key,a.sha256 AS artifact_sha256,a.delivery_status AS artifact_delivery_status
+    FROM bb_word_delivery_evidence e JOIN bb_artifact_versions a
+      ON a.owner_user_id=e.owner_user_id AND a.run_id=e.run_id AND a.id=e.artifact_id AND a.version=e.artifact_version AND a.word_delivery_evidence_id=e.id
+    WHERE e.owner_user_id=$1 AND e.delivery_status='available' ORDER BY e.created_at,e.id`,[owner]);
+  assert.ok(rows.rowCount>0,'the restore fixture includes available Word delivery evidence');
+  for(const evidence of rows.rows){
+    const bytes=await blobs.getIfExistsBounded(evidence.object_key,64*1024*1024);
+    assert.ok(bytes,'a verified Word Blob is present after restore');
+    assert.equal(bytes.length,Number(evidence.byte_size),'restored Word byte size');
+    assert.equal(digest(bytes),evidence.candidate_sha256.trim(),'restored Word candidate hash');
+    assert.equal(evidence.readback_sha256.trim(),evidence.candidate_sha256.trim(),'restored Word readback hash');
+    assert.equal(evidence.artifact_sha256.trim(),evidence.candidate_sha256.trim(),'restored artifact hash');
+    const inspection=inspectDocx(bytes);
+    assert.equal(inspection.quality_status,'passed','restored Word bytes pass the pinned validator');
+    assert.equal(inspection.validator_version,evidence.validator_version);
+    assert.equal(inspection.sha256,evidence.candidate_sha256.trim());
+    assert.equal(evidence.quality_evidence.quality_status,'passed');
+    await assert.rejects(pool.query('UPDATE bb_word_delivery_evidence SET byte_size=byte_size+1 WHERE id=$1',[evidence.id]),error=>error.code==='23514');
+    await assert.rejects(pool.query('DELETE FROM bb_word_delivery_evidence WHERE id=$1',[evidence.id]),error=>error.code==='23514');
+  }
+  return rows.rows;
+}
+
 async function run() {
   const sourceUrl = required('DATABASE_URL');
   const restoredUrl = required('RESTORE_DATABASE_URL');
@@ -82,6 +107,11 @@ async function run() {
     assert.equal(restoredReferences.length, sourceReferences.length);
     await verifyHashes(sourceBlobs, sourceReferences);
     await verifyHashes(restoredBlobs, restoredReferences);
+
+    stage = 'immutable Word delivery evidence and Blob restore';
+    const sourceWordEvidence=await verifyWordDelivery(source,sourceBlobs,owner);
+    const restoredWordEvidence=await verifyWordDelivery(restored,restoredBlobs,owner);
+    assert.deepEqual(restoredWordEvidence.map(row=>[row.id,row.artifact_id,row.candidate_sha256.trim()]),sourceWordEvidence.map(row=>[row.id,row.artifact_id,row.candidate_sha256.trim()]));
 
     stage = 'pre-replay tombstone and Blob verification';
     const markerBefore = await restored.query(`SELECT * FROM bb_storage_tombstones
@@ -124,10 +154,17 @@ async function run() {
       const download = await app.inject(`/api/v1/projects/${activeReference.project_id}/materials/${activeReference.id}/download`);
       assert.equal(download.statusCode, 200);
       assert.equal(digest(download.rawPayload), activeReference.sha256.trim());
+      for(const word of restoredWordEvidence){
+        const metadata=await app.inject(`/api/v1/artifacts/${word.artifact_id}`);
+        assert.equal(metadata.statusCode,200,'restored owner can resolve its available Word artifact');
+        const artifactDownload=await app.inject(metadata.json().download_url);
+        assert.equal(artifactDownload.statusCode,200,'restored owner can retrieve its Word artifact');
+        assert.equal(digest(artifactDownload.rawPayload),word.candidate_sha256.trim());
+      }
     } finally {
       await app.close();
     }
-    process.stdout.write(`Storage restore verified: referenced hashes=${restoredReferences.length}, tombstone replayed=1, purge count=${runResult.purged}\n`);
+    process.stdout.write(`Storage restore verified: referenced hashes=${restoredReferences.length}, Word delivery evidence=${restoredWordEvidence.length}, tombstone replayed=1, purge count=${runResult.purged}\n`);
   } finally {
     await source.end();
     await restored.end();
