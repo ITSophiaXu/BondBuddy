@@ -50,6 +50,20 @@ validation so a leak remains a distinct fail-closed error. Synthetic boundary
 tests and a real Python subprocess contract test cover this seam; they do not
 replace authorized customer-material acceptance for #13.
 
+`parse-evidence-repository.ts` adds an internal #13 persistence seam. It
+revalidates the parser response, rechecks the active owner/project/material
+version and SHA inside the transaction, and stores response metadata plus
+bounded per-record quote/locator/uncertainty rows. Immutable snapshots dedupe
+by owner/project/material/version/parser version; request aliases with changed
+options or changed parser output fail closed. Snapshot/evidence/request alias
+and outbox event commit atomically. Reads require the exact owner, project,
+material version and snapshot ID, and hide soft-deleted material. The
+`parseAndPersistAuthorizedMaterial` composition still is not attached to an
+upload queue or production job. PostgreSQL 16 integration uses synthetic
+fixtures in an outer transaction and rolls them back. Migration 0014 was tested
+after current `develop` migrations 0001–0010 and 0012–0013; after PR #116 adds
+0011, repeat fresh and existing-upgrade migration validation.
+
 `parse-cache.ts` is an internal #15 cache repository seam, not a production
 processor or HTTP endpoint. Its caller must supply an owner ID from an
 authenticated, trusted job and a material version already authorized for that
