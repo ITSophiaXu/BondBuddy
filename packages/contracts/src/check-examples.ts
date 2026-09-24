@@ -7,6 +7,9 @@ import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
 const data = JSON.parse(readFileSync(file, 'utf8')) as { synthetic: boolean; cases: Example[] };
+const updateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/update-project.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(updateExamples.synthetic, true);
+data.cases.push(...updateExamples.cases);
 assert.equal(data.synthetic, true);
 const ajv = new Ajv({ allErrors: true, strict: true });
 const byName = new Map<string, Example>();
@@ -86,7 +89,7 @@ assert.equal(internalEvent.call_id, unknown.call_id);
 assert.equal(internalEvent.prompt_snapshot_ref, unknown.prompt_snapshot_ref);
 assert.equal((internalEvent.usage as Record<string, unknown>).input_tokens, null);
 assert.equal((value('internal-error-event').error as Record<string, unknown>).category, 'model_provider');
-const prototype = await import(fileURLToPath(new URL('../../../product-prototype/public/project-fields.js', import.meta.url))) as { MATERIAL_GROUPS: Array<{ label: string; items: Array<[string, string]> }>; SUPPORT_ROLES: string[] };
+const prototype = await import(new URL('../../../product-prototype/public/project-fields.js', import.meta.url).href) as { MATERIAL_GROUPS: Array<{ label: string; items: Array<[string, string]> }>; SUPPORT_ROLES: string[] };
 const expectedRoles = ['historical', 'reference', ...prototype.SUPPORT_ROLES];
 assert.deepEqual([...M1_UPLOAD_MATERIAL_ROLES].sort(), expectedRoles.sort(), 'M1 upload roles must follow current prototype partitions');
 for (const partition of M1_MATERIAL_PARTITIONS) {

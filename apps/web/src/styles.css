@@ -1,0 +1,54 @@
+@import '../../../product-prototype/public/styles.css';
+@import '../../../product-prototype/public/project-workspace.css';
+
+.bb-form-app .bb-header { display: flex; align-items: center; gap: 30px; padding: 22px 5%; border-bottom: 1px solid var(--line); background: #fff; }
+.bb-form-app .bb-header .brand { padding: 0; }
+.bb-form-app .bb-header > span:not(.brand) { font-size: 13px; color: var(--muted); }
+.bb-form-app .bb-header button { margin-left: auto; }
+.bb-form-app .bb-main { max-width: 1400px; padding: 32px 5% 60px; margin: 0 auto; }
+.bb-form-app .page-heading { display: flex; align-items: center; gap: 20px; justify-content: space-between; margin-bottom: 24px; }
+.bb-form-app .page-heading h1 { margin: 8px 0 12px; font-size: 28px; }
+.bb-form-app .page-heading p, .bb-form-app .field-help { color: var(--muted); font-size: 12px; line-height: 1.8; }
+.bb-form-app .eyebrow { font-size: 11px; color: var(--green); }
+.bb-form-app .comparison-scroll { overflow-x: auto; max-height: 450px; }
+.bb-form-app #saved-comparison { width: 100%; font-size: 12px; border-collapse: collapse; }
+.bb-form-app #saved-comparison th, .bb-form-app #saved-comparison td { padding: 12px; border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; }
+.bb-form-app #saved-comparison th { min-width: 100px; }
+.bb-form-app #saved-comparison td { min-width: 180px; max-width: 500px; }
+.bb-form-app button:disabled { opacity: .55; cursor: wait; }
+.bb-form-app .field input[type=radio] { width: auto; }
+
+.bb-form-app .brand { padding-bottom: 26px; }
+.bb-form-app .workspace-layout { grid-template-columns: minmax(0, 1fr) 310px; }
+.bb-form-app .field.full { grid-column: 1 / -1; }
+.bb-form-app textarea { width: 100%; min-height: 96px; }
+.bb-form-app .form-section + .form-section { border-top: 1px solid var(--line); padding-top: 24px; margin-top: 26px; }
+.bb-form-app .form-section > p { font-size: 12px; color: var(--muted); margin: 8px 0 18px; }
+.bb-form-app .optional-label { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+.bb-form-app .money-input { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: 8px; }
+.bb-form-app .funding-row { border: 1px solid var(--line); border-radius: 9px; padding: 16px; margin: 12px 0; }
+.bb-form-app .funding-row h3 { font-size: 14px; margin-bottom: 14px; }
+.bb-form-app .funding-row .text-btn { margin-top: 12px; }
+.bb-form-app .material-hints { padding-left: 20px; font-size: 12px; line-height: 2; margin: 10px 0 20px; }
+.bb-form-app .project-cowork label { display: block; font-size: 13px; margin-bottom: 10px; }
+.bb-form-app .project-cowork textarea { border: 1px solid #cbd7c3; border-radius: 8px; padding: 12px; }
+.bb-form-app .project-cowork h3 { margin-top: 22px; font-size: 14px; }
+.bb-form-app .project-picker { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 24px; }
+.bb-form-app .project-picker select { max-width: 420px; min-width: 180px; flex: 1; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: white; }
+.bb-form-app .status-message { margin: 12px 0; line-height: 1.8; font-size: 13px; overflow-wrap: anywhere; }
+.bb-form-app .status-message.error { color: #943c31; }
+.bb-form-app .save-status { color: var(--green); font-size: 12px; }
+.bb-form-app .notice { display: block; margin-bottom: 20px; }
+.bb-form-app .conflict-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.bb-login { max-width: 440px; margin: 12vh auto; padding: 30px; }
+.bb-login h1 { font-size: 25px; margin-bottom: 12px; }
+.bb-login .field { margin: 20px 0; }
+.bb-login .btn { width: 100%; }
+.bb-form-app .form-footer { align-items: flex-start; }
+.bb-form-app .form-footer .btn { white-space: normal; }
+.bb-form-app [hidden] { display: none !important; }
+.bb-form-app #saved-comparison { margin: 14px 0; }
+.bb-form-app #saved-comparison dt { font-weight: 600; margin-top: 12px; }
+.bb-form-app #saved-comparison dd { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .bb-form-app .workspace-layout { grid-template-columns: minmax(0, 1fr); } .bb-form-app .project-cowork { position: static; } }
+@media (max-width: 600px) { .bb-form-app .field-grid { grid-template-columns: 1fr; } .bb-form-app .history-answer { flex-wrap: wrap; } .bb-form-app .project-picker { align-items: stretch; } .bb-form-app .project-picker select { max-width: 100%; } }

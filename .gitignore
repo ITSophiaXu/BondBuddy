@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 node_modules/
 dist/
+dist-test/
 work/
 docs/*
 !docs/product.md

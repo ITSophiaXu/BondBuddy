@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fileTypeFromBuffer } from 'file-type';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
-import { isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
+import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -20,7 +20,7 @@ export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Pro
   finally { client.release(); }
 }
 export const date = (value: Date | string) => new Date(value).toISOString();
-export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, updated_at: date(p.updated_at) });
+export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at) });
 export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error });
 export const inputDto = (i: any) => ({ project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), material_versions: i.material_versions, rule_pack_version: i.rule_pack_version, template_version: i.template_version, reference_release: i.reference_release, created_at: date(i.created_at) });
 export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: r.execution_request_id, project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: 'platform_trial', reservation_id: null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
