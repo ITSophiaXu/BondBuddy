@@ -10,6 +10,7 @@ export const DOCUMENT_STAGES = ['registration','issuance'] as const;
 export const RULE_PACK_STATUSES = ['draft','published','withdrawn'] as const;
 export const RELEASE_CHANNELS = ['test','production'] as const;
 export const CAPABILITY_DECISIONS = ['eligible_for_evaluation','not_applicable','needs_evidence','capability_not_ready'] as const;
+export const COVERAGE_DISPOSITIONS = ['covered','not_applicable','uncovered'] as const;
 
 const strict = <T extends Record<string, TSchema>>(properties:T) => Type.Object(properties,{additionalProperties:false});
 const enumOf = <T extends readonly string[]>(values:T) => Type.Union(values.map(value=>Type.Literal(value)));
@@ -141,10 +142,51 @@ export const RulePackSchema = strict({
   })),
 });
 
+export const ChapterTemplateSchema = strict({
+  schema_version:Type.Literal('chapter-template-v1'),
+  template_id:safeId,
+  version,
+  rule_pack_id:safeId,
+  market:enumOf(MARKETS),
+  offering:enumOf(OFFERINGS),
+  document_stages:Type.Array(enumOf(DOCUMENT_STAGES),{minItems:1,uniqueItems:true}),
+  chapters:Type.Array(strict({
+    chapter_id:safeId,
+    title:nonEmpty,
+    form_refs:Type.Array(Type.String({minLength:1,maxLength:64}),{minItems:1,uniqueItems:true}),
+    source_ref_ids:Type.Array(safeId,{minItems:1,uniqueItems:true}),
+    required_fields:stringList,
+    applicability:nonEmpty,
+  }),{minItems:1}),
+});
+
+export const CoverageManifestSchema = strict({
+  schema_version:Type.Literal('capability-coverage-v1'),
+  manifest_id:safeId,
+  version,
+  rule_pack_id:safeId,
+  assessed_at:utc,
+  items:Type.Array(strict({
+    item_id:safeId,
+    area:nonEmpty,
+    disposition:enumOf(COVERAGE_DISPOSITIONS),
+    document_stages:Type.Array(enumOf(DOCUMENT_STAGES),{minItems:1,uniqueItems:true}),
+    source_ref_ids:Type.Array(safeId,{uniqueItems:true}),
+    rationale:nonEmpty,
+  }),{minItems:1}),
+  open_blockers:Type.Array(strict({
+    blocker_id:safeId,
+    description:nonEmpty,
+    required_evidence:nonEmpty,
+  })),
+});
+
 export type RuleSource=Static<typeof RuleSourceSchema>;
 export type RuleDefinition=Static<typeof RuleDefinitionSchema>;
 export type RulePack=Static<typeof RulePackSchema>;
 export type ReviewAttestation=Static<typeof ReviewAttestationSchema>;
+export type ChapterTemplate=Static<typeof ChapterTemplateSchema>;
+export type CoverageManifest=Static<typeof CoverageManifestSchema>;
 
 export type ValidationProblem={path:string;code:string;message:string};
 
@@ -209,6 +251,35 @@ export function validateRulePack(value:unknown):{ok:true;value:RulePack}|{ok:fal
   return problems.length?{ok:false,problems}:{ok:true,value:pack};
 }
 
+export function validateRulePackCompanions(packValue:unknown,templateValue:unknown,coverageValue:unknown):{ok:true;pack:RulePack;template:ChapterTemplate;coverage:CoverageManifest}|{ok:false;problems:ValidationProblem[]} {
+  const validatedPack=validateRulePack(packValue);
+  if(!validatedPack.ok)return validatedPack;
+  const problems:ValidationProblem[]=[];
+  if(!Value.Check(ChapterTemplateSchema,templateValue))problems.push(...[...Value.Errors(ChapterTemplateSchema,templateValue)].map(error=>problem(`/template${error.path||'/'}`,'SCHEMA_INVALID',error.message)));
+  if(!Value.Check(CoverageManifestSchema,coverageValue))problems.push(...[...Value.Errors(CoverageManifestSchema,coverageValue)].map(error=>problem(`/coverage${error.path||'/'}`,'SCHEMA_INVALID',error.message)));
+  if(problems.length)return {ok:false,problems};
+  const pack=validatedPack.value,template=templateValue as ChapterTemplate,coverage=coverageValue as CoverageManifest;
+  const sourceIds=new Set(pack.sources.map(source=>source.source_id));
+  if(template.rule_pack_id!==pack.pack_id)problems.push(problem('/template/rule_pack_id','PACK_REFERENCE_MISMATCH','Template must reference the same rule pack'));
+  if(coverage.rule_pack_id!==pack.pack_id)problems.push(problem('/coverage/rule_pack_id','PACK_REFERENCE_MISMATCH','Coverage manifest must reference the same rule pack'));
+  if(template.market!==pack.scope.market || template.offering!==pack.scope.offering)problems.push(problem('/template','TEMPLATE_SCOPE_MISMATCH','Template market and offering must match the rule pack'));
+  if(template.document_stages.some(stage=>!pack.scope.document_stages.includes(stage)))problems.push(problem('/template/document_stages','TEMPLATE_STAGE_MISMATCH','Template stages must be within the rule pack scope'));
+  const chapterIds=new Set<string>();
+  template.chapters.forEach((chapter,index)=>{
+    if(chapterIds.has(chapter.chapter_id))problems.push(problem(`/template/chapters/${index}/chapter_id`,'DUPLICATE_CHAPTER_ID','chapter_id must be unique'));
+    chapterIds.add(chapter.chapter_id);
+    chapter.source_ref_ids.forEach(sourceId=>{if(!sourceIds.has(sourceId))problems.push(problem(`/template/chapters/${index}/source_ref_ids`,'SOURCE_REFERENCE_MISSING',`Unknown source ${sourceId}`));});
+  });
+  const itemIds=new Set<string>();
+  coverage.items.forEach((item,index)=>{
+    if(itemIds.has(item.item_id))problems.push(problem(`/coverage/items/${index}/item_id`,'DUPLICATE_COVERAGE_ID','item_id must be unique'));
+    itemIds.add(item.item_id);
+    item.source_ref_ids.forEach(sourceId=>{if(!sourceIds.has(sourceId))problems.push(problem(`/coverage/items/${index}/source_ref_ids`,'SOURCE_REFERENCE_MISSING',`Unknown source ${sourceId}`));});
+    if(item.disposition==='covered' && item.source_ref_ids.length===0)problems.push(problem(`/coverage/items/${index}/source_ref_ids`,'COVERED_SOURCE_MISSING','Covered items require at least one pack source'));
+  });
+  return problems.length?{ok:false,problems}:{ok:true,pack,template,coverage};
+}
+
 function requireValid(pack:unknown):RulePack {
   const validated=validateRulePack(pack);
   if(!validated.ok){const error=new Error(validated.problems.map(item=>`${item.code}:${item.path}`).join(','));error.name='RulePackValidationError';throw error;}
@@ -237,6 +308,13 @@ export function publishRulePack(draft:RulePack,input:{channel:'test'|'production
   const published:RulePack={...valid,status:'published',validity:{...valid.validity,published_on:releaseDate},reviews:input.reviews,release:{channel:input.channel,content_hash:'0'.repeat(64),released_by:input.released_by,released_at:input.released_at,reason:input.reason},withdrawal:null};
   published.release!.content_hash=rulePackContentHash(published);
   return requireValid(published);
+}
+
+export function publishRulePackBundle(draft:RulePack,template:ChapterTemplate,coverage:CoverageManifest,input:{channel:'test'|'production';reviews:ReviewAttestation[];released_by:string;released_at:string;reason:string}):RulePack {
+  const validated=validateRulePackCompanions(draft,template,coverage);
+  if(!validated.ok){const error=new Error(validated.problems.map(item=>`${item.code}:${item.path}`).join(','));error.name='RulePackCompanionValidationError';throw error;}
+  if(coverage.open_blockers.length || coverage.items.some(item=>item.disposition==='uncovered'))throw new Error('RULE_PACK_COVERAGE_INCOMPLETE');
+  return publishRulePack(draft,input);
 }
 
 export function withdrawRulePack(pack:RulePack,input:{withdrawn_by:string;withdrawn_at:string;reason:string}):RulePack {
@@ -292,3 +370,5 @@ export function createRulePackRollbackEvent(current:RulePack,target:RulePack,inp
   if(input.occurred_at<to.validity.effective_from+'T00:00:00Z' || (to.validity.effective_to && input.occurred_at>to.validity.effective_to+'T23:59:59Z'))throw new Error('ROLLBACK_TARGET_NOT_EFFECTIVE');
   return {schema_version:1,action:'rule_pack.rollback',pack_id:from.pack_id,from_version:from.version,from_content_hash:from.release.content_hash,to_version:to.version,to_content_hash:to.release.content_hash,actor_id:input.actor_id,occurred_at:input.occurred_at,reason:input.reason};
 }
+
+export { nafmiiMtnChapterTemplate, nafmiiMtnCoverageManifest, nafmiiMtnDraftRulePack } from './nafmii-mtn.js';

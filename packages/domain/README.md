@@ -22,6 +22,21 @@ Rule and source text is data, not an execution instruction. The strict schema ha
 
 The checked-in example is explicitly synthetic, draft, disabled and unverified. It validates schema behavior only and must never appear in a production capability table. Actual MTN/CP/SCP and other product packs belong to their individual Issues and require authorized official sources and professional acceptance.
 
+## MTN engineering draft (#27)
+
+`nafmiiMtnDraftRulePack`, `nafmiiMtnChapterTemplate` and `nafmiiMtnCoverageManifest` form the first MTN-specific engineering bundle. It is deliberately a draft and therefore cannot advertise capability. The bundle:
+
+- is scoped only to `nafmii` + `mtn` + standard domestic public issuance;
+- fingerprints the official 2020 M-table, 2021 MTN and disclosure rules, and 2023 registration rule originals;
+- records the official 2026 basic-tier change without silently applying superseded fourth-category assumptions;
+- maps M-0 through M-17 to semantic input fields;
+- explicitly marks PPN/CP/SCP/DFI as other packs and specialist/industry overlays as uncovered;
+- contains synthetic engineering cases only.
+
+Production release remains blocked until an industry reviewer confirms source effectivity and scope, authorized real positive/negative/boundary MTN samples pass, and the uncovered specialist and industry overlays are either completed or excluded by an approved launch scope. The repository's older `S019` excerpts are not sources for this bundle.
+
+Product-specific releases must use `publishRulePackBundle`; it validates the pack, chapter template and coverage manifest together and rejects any remaining `uncovered` item or open blocker before the lower-level publication checks run.
+
 Run:
 
 ```bash
