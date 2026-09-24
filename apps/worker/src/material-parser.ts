@@ -9,6 +9,12 @@ import {
   type DocumentParseRequest,
   type DocumentParseResponse,
 } from './document-parser.js';
+import {
+  lookupParseCache,
+  saveParseCache,
+  type ParseCacheDependencies,
+  type ParseCacheVersions,
+} from './parse-cache.js';
 
 export interface MaterialParserPool {
   query(sql: string, values: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -38,6 +44,8 @@ export interface MaterialParserDependencies {
   blobs: MaterialParserBlobStore;
   /** Defaults to the worker's versioned Python parser bridge. */
   parser?: AuthorizedMaterialParser;
+  /** Optional private cache. Callers must supply deployment-controlled parser/OCR/basis versions. */
+  parseCache?: { dependencies: ParseCacheDependencies; versions: ParseCacheVersions };
   /** Test seam only; production uses the OS private temporary directory. */
   tempRoot?: string;
 }
@@ -140,23 +148,47 @@ export async function parseAuthorizedMaterial(
     throw bridgeError('MATERIAL_INTEGRITY_MISMATCH');
   }
 
+  const request: DocumentParseRequest = {
+    schema_version: 'document-parse-request-v1',
+    request_id: input.requestId,
+    material: {
+      material_id: row.id,
+      material_version: row.version,
+      media_type: row.media_type,
+      sha256: row.sha256,
+      // Only used as an internal cache identity; replaced with the staged path before invoking Python.
+      authorized_local_path: '/private/bondbuddy-cache-lookup',
+    },
+    options: input.options ?? {},
+  };
+  const cacheLookupPath = request.material.authorized_local_path;
+  const cacheable = dependencies.parseCache !== undefined && input.options?.max_pages === undefined;
+  const cacheContext = cacheable ? {
+    ownerUserId: input.ownerUserId,
+    request,
+    versions: dependencies.parseCache!.versions,
+  } : undefined;
+  if (cacheContext !== undefined) {
+    try {
+      const cached = await lookupParseCache(dependencies.parseCache!.dependencies, cacheContext);
+      if (cached !== null) {
+        if (containsPrivateReference(cached, [row.object_key, cacheLookupPath])) {
+          throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
+        }
+        return cached;
+      }
+    } catch {
+      // Cache metadata and object integrity failures are not cache misses. Keep private cache details hidden.
+      throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
+    }
+  }
+
   let directory: string | undefined;
   try {
     directory = await mkdtemp(join(dependencies.tempRoot ?? tmpdir(), 'bb-material-'));
     const authorizedPath = join(directory, 'source');
     await writeFile(authorizedPath, bytes, { flag: 'wx', mode: 0o600 });
-    const request: DocumentParseRequest = {
-      schema_version: 'document-parse-request-v1',
-      request_id: input.requestId,
-      material: {
-        material_id: row.id,
-        material_version: row.version,
-        media_type: row.media_type,
-        sha256: row.sha256,
-        authorized_local_path: authorizedPath,
-      },
-      options: input.options ?? {},
-    };
+    request.material.authorized_local_path = authorizedPath;
     let response: DocumentParseResponse;
     try {
       response = validateDocumentParseResponse(await (dependencies.parser ?? runDocumentParser)(request), request);
@@ -165,6 +197,13 @@ export async function parseAuthorizedMaterial(
     }
     if (containsPrivateReference(response, [row.object_key, authorizedPath, directory])) {
       throw bridgeError('PARSER_RESULT_CONTAINS_PRIVATE_REFERENCE');
+    }
+    if (cacheContext !== undefined && response.status !== 'failed') {
+      try {
+        await saveParseCache(dependencies.parseCache!.dependencies, cacheContext, response);
+      } catch {
+        throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
+      }
     }
     return response;
   } catch (error) {
