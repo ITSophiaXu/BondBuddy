@@ -41,8 +41,8 @@ export class ApiClient {
     });
   }
 
-  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
-    const signal = this.controller.signal;
+  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
+    const signal = signalOverride ?? this.controller.signal;
     let response = await this.send(method, path, body, headers, signal);
     const authenticated = !['/auth/login', '/auth/register'].includes(path);
     if (response.status === 401 && authenticated && document.cookie.includes('bb_csrf=')) {
@@ -75,6 +75,63 @@ export class ApiClient {
   logout() { return this.request<void>('POST', '/auth/logout'); }
   projects(cursor?: string) { return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
   project(id: string) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`); }
+  material(id: string, materialId: string, signal?: AbortSignal) {
+    return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, signal);
+  }
+  projectEvents(id: string, after: number, signal?: AbortSignal) {
+    return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
+  }
+  createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
+  }
+  completeUpload(id: string, uploadId: string, input: Dto<'UploadCompleteRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'MaterialResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`, input, {}, signal);
+  }
+  uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal) {
+    const target = new URL(uploadUrl, window.location.href);
+    if (!['http:', 'https:'].includes(target.protocol)) return Promise.reject(new ApiError(0, 'DATA_UNAVAILABLE'));
+    const sameOrigin = target.origin === window.location.origin;
+    const send = () => new Promise<XMLHttpRequest>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', target.href);
+      xhr.withCredentials = sameOrigin;
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      if (sameOrigin) {
+        const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length);
+        if (csrf) xhr.setRequestHeader('X-BB-CSRF', csrf);
+      }
+      xhr.upload.addEventListener('progress', event => {
+        onProgress(event.loaded, event.lengthComputable ? event.total : file.size);
+      });
+      const abort = () => xhr.abort();
+      signal.addEventListener('abort', abort, { once: true });
+      xhr.addEventListener('load', () => { signal.removeEventListener('abort', abort); resolve(xhr); }, { once: true });
+      xhr.addEventListener('error', () => { signal.removeEventListener('abort', abort); reject(new ApiError(0, 'DATA_UNAVAILABLE')); }, { once: true });
+      xhr.addEventListener('abort', () => {
+        signal.removeEventListener('abort', abort);
+        reject(new DOMException('Upload aborted', 'AbortError'));
+      }, { once: true });
+      if (signal.aborted) { abort(); return; }
+      xhr.send(file);
+    });
+    return (async () => {
+      let refreshed = false;
+      for (;;) {
+        const xhr = await send();
+        if (xhr.status === 204) return;
+        if (xhr.status === 401 && sameOrigin && !refreshed && document.cookie.includes('bb_csrf=')) {
+          refreshed = true;
+          await this.request<void>('POST', '/auth/refresh', undefined, {}, signal);
+          signal.throwIfAborted();
+          onProgress(0, file.size); // The next progress events describe the fresh, real retry attempt.
+          continue;
+        }
+      let code = 'DATA_UNAVAILABLE';
+      try { code = JSON.parse(xhr.responseText).code ?? code; } catch { /* response may be empty */ }
+      throw new ApiError(xhr.status, code);
+      }
+    })();
+  }
   create(input: Dto<'ProjectCreateRequest'>) { return this.request<Dto<'ProjectResponse'>>('POST', '/projects', input); }
   patch(id: string, revision: number, input: Dto<'ProjectPatchRequest'>) {
     return this.request<Dto<'ProjectResponse'>>('PATCH', `/projects/${encodeURIComponent(id)}`, input, { 'If-Match': String(revision) });
