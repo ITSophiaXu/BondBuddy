@@ -1,5 +1,19 @@
 # BondBuddy domain rules (#19)
 
+## Historical-period difficulty estimator (#76)
+
+`update-difficulty.ts` is an internal, deterministic estimator for a historical
+prospectus update. It compares evidenced reporting-period cutoffs with the
+target set, counts retained/new/replaced/substantially restated cutoffs once,
+and records source-to-target market/offering migration separately from N.
+Unknown source classifications or unresolved cutoff evidence block an N
+estimate; no filename, cover year, or signing date can fill that gap. The
+estimate is not an actual execution count or a price.
+
+This slice does not recognize historical documents, persist profiles, expose a
+public API, run OCR, or charge credits. Those capabilities remain #76 work and
+depend on the existing material/worker pipeline and #14 OCR.
+
 ## Fact and cache foundation (#15)
 
 `facts.ts` is an internal, HTTP/database-independent foundation, covered by
