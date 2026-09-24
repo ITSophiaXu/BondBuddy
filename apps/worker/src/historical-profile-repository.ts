@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
 import { isMarketOffering, schemas, type Market, type Offering, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
-import { HISTORICAL_NATIVE_RECOGNITION_VERSION } from './historical-native-recognition.js';
+import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 
 export interface HistoricalProfileClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -128,19 +128,21 @@ function validateContext(context: TrustedHistoricalProfileContext): void {
 }
 
 function parserVersionFromRecognition(recognition: Recognition): string {
-  const prefix = `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/`;
   const versions = [recognition.source_market, recognition.source_offering, recognition.latest_reporting_cutoff]
     .map(field => field.provenance.extractor_version);
-  if (versions.some(version => typeof version !== 'string' || !version.startsWith(prefix))) throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
-  const parsed = versions.map(version => (version as string).slice(prefix.length));
-  if (parsed.some(version => !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(version) || version === 'unknown-parser') ||
-      parsed.some(version => version !== parsed[0])) throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+  const parsed = versions.map(parseHistoricalNativeExtractorVersion);
+  if (parsed.some(version => version === null) || parsed.some(version =>
+    version!.algorithmVersion !== parsed[0]!.algorithmVersion || version!.parserVersion !== parsed[0]!.parserVersion)) {
+    throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+  }
   for (const period of recognition.reporting_periods) {
-    if (period.provenance.extractor_version !== `${prefix}${parsed[0]}`) {
+    const version = parseHistoricalNativeExtractorVersion(period.provenance.extractor_version);
+    if (version === null || version.algorithmVersion !== parsed[0]!.algorithmVersion ||
+        version.parserVersion !== parsed[0]!.parserVersion) {
       throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
     }
   }
-  return parsed[0]!;
+  return parsed[0]!.parserVersion;
 }
 
 async function validateParseEvidenceReferences(
@@ -149,7 +151,9 @@ async function validateParseEvidenceReferences(
   recognition: Recognition,
   parserVersion: string,
 ): Promise<void> {
-  const nativePrefix = `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/${parserVersion}`;
+  const algorithm = parseHistoricalNativeExtractorVersion(recognition.source_market.provenance.extractor_version);
+  if (algorithm === null || algorithm.parserVersion !== parserVersion) throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+  const nativePrefix = `${algorithm.algorithmVersion}/${parserVersion}`;
   const references = new Map<string, string | null>();
   const addRefs = (refs: readonly string[], extractorVersion: string | null) => {
     for (const ref of refs) {
@@ -383,7 +387,7 @@ export async function appendHistoricalRecognition(
           AND write_kind='recognition' AND recognition #>> '{source_market,provenance,extractor_version}'=$5
         ORDER BY profile_version ASC`,
       [context.ownerUserId, context.projectId, context.materialId, context.materialVersion,
-        `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/${parserVersion}`],
+        recognition.source_market.provenance.extractor_version],
     );
     if (sameExtractor.rows.length > 1) throw fail('HISTORICAL_PROFILE_EXTRACTOR_RESULT_CONFLICT');
     if (sameExtractor.rows.length === 1) {

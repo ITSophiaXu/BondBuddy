@@ -188,7 +188,7 @@ test('recognizes explicit half-year labels from financial section evidence and d
     raw_value: '2025年半年度；2025年上半年；2025年1-6月',
     provenance: {
       material_id: material.material_id, material_version: material.material_version, method: 'native_text',
-      extractor_version: 'historical-native-recognition-v1/synthetic-native-1',
+      extractor_version: 'historical-native-recognition-v2/synthetic-native-1',
       evidence_refs: ['half-year-label', 'first-half-label', 'half-year-range'],
     },
     uncertainty: [], status: 'recognized',
