@@ -67,7 +67,8 @@ class ProfileMock implements HistoricalProfileClient {
       if (values[4] === 'parser-failed-1') return { rows: [{ parser_version: 'parser-failed-1',
         response_status: 'failed', record_count: 0, record_id: null, extractor_version: null, extraction_method: null }] };
       if (values[4] !== 'parser-synthetic-1') return { rows: [] };
-      const evidenceRefs = ['evidence-market', 'evidence-offering', 'evidence-period'];
+      const evidenceRefs = ['evidence-market', 'evidence-offering', 'evidence-period',
+        'period-2022', 'period-2023', 'period-2024', 'period-2025q1'];
       const selected = values[5] as string[];
       const filtered = selected.length ? evidenceRefs.filter(ref => selected.includes(ref)) : [];
       if (selected.length && filtered.length !== selected.length) return { rows: [] };
@@ -76,7 +77,8 @@ class ProfileMock implements HistoricalProfileClient {
         extractor_version: 'parser-synthetic-1', extraction_method: 'native_text' })) };
     }
     if (sql.includes('SELECT DISTINCT e.record_id FROM bb_parse_evidence')) {
-      const available = new Set(['evidence-market', 'evidence-offering', 'evidence-period']);
+      const available = new Set(['evidence-market', 'evidence-offering', 'evidence-period',
+        'period-2022', 'period-2023', 'period-2024', 'period-2025q1']);
       return { rows: (values[5] as string[]).filter(ref => available.has(ref)).map(record_id => ({ record_id })) };
     }
     if (sql.includes('FROM bb_material_versions')) {
@@ -236,6 +238,77 @@ test('correction requires latest profile version and empty refs cannot create re
   }), /HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND/);
 });
 
+test('period-only correction replaces 2022-2024 with 2022-2025 Q1 and keeps source recognition unchanged', async () => {
+  const client = new ProfileMock();
+  const deps = dependencies(client);
+  const original = await appendHistoricalRecognition(deps, context, makeRecognition({
+    reporting_periods: [2022, 2023, 2024].map(year => ({
+      start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual' as const, scope: 'consolidated' as const,
+      raw_value: `${year} 年度`, provenance: { ...makeRecognition().reporting_periods[0]!.provenance,
+        evidence_refs: [`period-${year}`] }, uncertainty: [], status: 'recognized' as const,
+    })),
+    latest_reporting_cutoff: { ...makeRecognition().latest_reporting_cutoff, value: '2024-12-31' },
+  }));
+  const oldMarket = structuredClone(original.recognition.source_market);
+  const oldOffering = structuredClone(original.recognition.source_offering);
+  const patch = {
+    profile_version: original.profileVersion,
+    reporting_periods: [
+      { start: '2022-01-01', end: '2022-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: ['period-2022'] },
+      { start: '2023-01-01', end: '2023-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: ['period-2023'] },
+      { start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: ['period-2024'] },
+      { start: '2025-01-01', end: '2025-03-31', period_kind: 'interim', scope: 'consolidated', evidence_refs: ['period-2025q1'] },
+    ],
+    reason: 'synthetic correction: latest financial statement is 2025 Q1', evidence_refs: [],
+  };
+  const correctionContext = { ...context, requestId: 'correction-period-only-2025q1' };
+  const corrected = await correctHistoricalRecognition(deps, correctionContext, patch);
+  const replay = await correctHistoricalRecognition(deps, correctionContext, patch);
+  assert.equal(corrected.profileVersion, 2);
+  assert.equal(corrected.recognition.source_market.value, 'sse');
+  assert.deepEqual(corrected.recognition.source_market, oldMarket);
+  assert.deepEqual(corrected.recognition.source_offering, oldOffering);
+  assert.deepEqual(corrected.recognition.reporting_periods.map(period => period.end),
+    ['2022-12-31', '2023-12-31', '2024-12-31', '2025-03-31']);
+  assert.equal(corrected.recognition.latest_reporting_cutoff.value, '2025-03-31');
+  assert.equal(corrected.recognition.latest_reporting_cutoff.status, 'user_asserted');
+  assert.deepEqual(corrected.recognition.latest_reporting_cutoff.provenance.evidence_refs.sort(),
+    ['period-2022', 'period-2023', 'period-2024', 'period-2025q1']);
+  assert.ok(corrected.recognition.reporting_periods.every(period => period.status === 'user_asserted' &&
+    period.uncertainty.length > 0 && period.provenance.method === 'user_correction'));
+  assert.ok(corrected.recognition.latest_reporting_cutoff.uncertainty.length > 0);
+  assert.equal(corrected.recognition.state, 'needs_confirmation');
+  assert.equal(replay.replayed, true);
+  assert.equal(client.rows.length, 2);
+  assert.equal(client.outbox.length, 2);
+  await assert.rejects(correctHistoricalRecognition(deps, { ...context, requestId: 'correction-forged-period-ref' }, {
+    ...patch, profile_version: 2, reporting_periods: [{ ...patch.reporting_periods[0]!, evidence_refs: ['forged-period-anchor'] }],
+  }), /HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND/);
+  await assert.rejects(correctHistoricalRecognition(deps, { ...context, requestId: 'correction-stale-period' }, {
+    ...patch, profile_version: 1,
+  }), /HISTORICAL_PROFILE_VERSION_CONFLICT/);
+});
+
+test('period correction with an incomplete period leaves latest cutoff unknown and marks uncertainty per period', async () => {
+  const client = new ProfileMock();
+  const deps = dependencies(client);
+  await appendHistoricalRecognition(deps, context, makeRecognition());
+  const corrected = await correctHistoricalRecognition(deps, { ...context, requestId: 'correction-incomplete-period' }, {
+    profile_version: 1,
+    reporting_periods: [
+      { start: '2022-01-01', end: '2022-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: [] },
+      { start: '2025-01-01', end: null, period_kind: 'interim', scope: 'consolidated', evidence_refs: ['evidence-period'] },
+    ],
+    reason: 'synthetic incomplete period correction', evidence_refs: [],
+  });
+  assert.equal(corrected.recognition.latest_reporting_cutoff.value, null);
+  assert.equal(corrected.recognition.latest_reporting_cutoff.status, 'user_asserted');
+  assert.match(corrected.recognition.reporting_periods[0]!.uncertainty.join(' '), /缺少来源锚点/);
+  assert.match(corrected.recognition.reporting_periods[1]!.uncertainty.join(' '), /尚未人工核验/);
+  assert.doesNotMatch(corrected.recognition.reporting_periods[1]!.uncertainty.join(' '), /缺少来源锚点/);
+  assert.equal(corrected.recognition.state, 'needs_confirmation');
+});
+
 test('writes profile and outbox atomically', async () => {
   const client = new ProfileMock();
   client.failOutbox = true;
@@ -303,13 +376,14 @@ test('live PostgreSQL enforces immutable versioned snapshots and owner-scoped re
     await connection.query(`INSERT INTO bb_parse_snapshots
       (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,request_options,
        response_status,response_schema_version,response_sha256,record_count,response_meta)
-      VALUES($1,$2,$3,$4,2,$5,$6,$7,'{}'::jsonb,'parsed','document-parse-response-v1',$8,3,$9::jsonb)`,
+      VALUES($1,$2,$3,$4,2,$5,$6,$7,'{}'::jsonb,'parsed','document-parse-response-v1',$8,7,$9::jsonb)`,
     [snapshotId, liveOwner, liveProject, liveMaterial, hash, parserVersion, 'd'.repeat(64), 'e'.repeat(64), JSON.stringify({
       schema_version: 'document-parse-response-v1', request_id: `parse-${suffix}`, parser_version: parserVersion, status: 'parsed',
       material: { material_id: liveMaterial, material_version: 2, media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256: hash },
       warnings: [], document: { page_count: null, revision_summary: { insertions: 0, deletions: 0 } }, error: null,
     })]);
-    for (const [ordinal, recordId] of ['evidence-market', 'evidence-offering', 'evidence-period'].entries()) {
+    for (const [ordinal, recordId] of ['evidence-market', 'evidence-offering', 'evidence-period',
+      'period-2022', 'period-2023', 'period-2024', 'period-2025q1'].entries()) {
       await connection.query(`INSERT INTO bb_parse_evidence
         (owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,
          literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
@@ -328,7 +402,33 @@ test('live PostgreSQL enforces immutable versioned snapshots and owner-scoped re
     });
     assert.equal(first.profileVersion, 1);
     assert.equal(second.profileVersion, 2);
-    assert.equal((await listHistoricalProfileHistory(deps, liveContext)).length, 2);
+    const periodCorrectionContext = { ...liveContext, requestId: `period-correction-${suffix}` };
+    const periodCorrectionPatch = {
+      profile_version: 2,
+      reporting_periods: [
+        { start: '2022-01-01', end: '2022-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: ['period-2022'] },
+        { start: '2023-01-01', end: '2023-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: ['period-2023'] },
+        { start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: 'consolidated', evidence_refs: ['period-2024'] },
+        { start: '2025-01-01', end: '2025-03-31', period_kind: 'interim', scope: 'consolidated', evidence_refs: ['period-2025q1'] },
+      ],
+      reason: 'synthetic live period correction', evidence_refs: [],
+    };
+    const periodCorrection = await correctHistoricalRecognition(deps, periodCorrectionContext, periodCorrectionPatch);
+    const periodReplay = await correctHistoricalRecognition(deps, periodCorrectionContext, periodCorrectionPatch);
+    assert.equal(periodCorrection.profileVersion, 3);
+    assert.equal(periodReplay.replayed, true);
+    assert.equal(periodCorrection.recognition.latest_reporting_cutoff.value, '2025-03-31');
+    assert.equal(periodCorrection.recognition.source_market.value, 'szse');
+    assert.equal(periodCorrection.recognition.source_offering.value, 'public');
+    assert.ok(periodCorrection.recognition.reporting_periods.every(period => period.status === 'user_asserted'));
+    await assert.rejects(correctHistoricalRecognition(deps, { ...liveContext, requestId: `forged-period-${suffix}` }, {
+      ...periodCorrectionPatch, profile_version: 3,
+      reporting_periods: [{ ...periodCorrectionPatch.reporting_periods[0]!, evidence_refs: [`forged-${suffix}`] }],
+    }), /HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND/);
+    await assert.rejects(correctHistoricalRecognition(deps, { ...liveContext, requestId: `stale-period-${suffix}` }, {
+      ...periodCorrectionPatch, profile_version: 2,
+    }), /HISTORICAL_PROFILE_VERSION_CONFLICT/);
+    assert.equal((await listHistoricalProfileHistory(deps, liveContext)).length, 3);
     await connection.query('SAVEPOINT expected_immutable_failure');
     await assert.rejects(connection.query(`UPDATE bb_historical_profiles SET recognition = recognition
       WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3`, [liveOwner, liveProject, liveMaterial]), /immutable snapshots/);

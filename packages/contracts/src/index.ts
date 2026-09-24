@@ -69,6 +69,7 @@ const recognitionStatus = enumOf(['recognized', 'needs_confirmation', 'user_asse
 const ProvenanceSchema = obj({ material_id: id, material_version: revision, method: nullable(provenanceMethod), extractor_version: nullable(Type.String()), evidence_refs: Type.Array(id) });
 const recognizedField = <T extends TSchema>(value: T) => obj({ value: nullable(value), raw_value: nullable(Type.String()), provenance: ProvenanceSchema, uncertainty: Type.Array(Type.String()), status: recognitionStatus });
 const ReportingPeriodSchema = obj({ start: nullable(date), end: nullable(date), period_kind: nullable(enumOf(['annual', 'interim'] as const)), scope: nullable(enumOf(['consolidated', 'parent'] as const)), raw_value: nullable(Type.String()), provenance: ProvenanceSchema, uncertainty: Type.Array(Type.String()), status: recognitionStatus });
+const ReportingPeriodCorrectionSchema = obj({ start: nullable(date), end: nullable(date), period_kind: nullable(enumOf(['annual', 'interim'] as const)), scope: nullable(enumOf(['consolidated', 'parent'] as const)), evidence_refs: Type.Array(id) });
 const SafeEventPayloadSchema = obj({ reason: Type.Optional(safeCode), previous_state: Type.Optional(runState), completed_items: Type.Optional(Type.Integer({ minimum: 0 })), total_items: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), uploaded_bytes: Type.Optional(Type.Integer({ minimum: 0 })), total_bytes: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), processed_pages: Type.Optional(Type.Integer({ minimum: 0 })), total_pages: Type.Optional(nullable(Type.Integer({ minimum: 0 }))), material_id: Type.Optional(id), artifact_id: Type.Optional(id), profile_version: Type.Optional(revision), clarification_ref: Type.Optional(id), required_fields: Type.Optional(Type.Array(safeCode)), evidence_refs: Type.Optional(Type.Array(id)), error_code: Type.Optional(errorCode) });
 const RunEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, run_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, stage: nullable(Type.String()), type: runEventType, state: runState, payload: SafeEventPayloadSchema });
 const ProjectEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), trace_id: id, project_id: id, seq: Type.Integer({ minimum: 1 }), occurred_at: utc, type: projectEventType, payload: SafeEventPayloadSchema });
@@ -107,7 +108,18 @@ export const schemas = {
   UploadCompleteRequest: obj({ byte_size: Type.Integer({ minimum: 1 }), sha256: hash }),
   MaterialResponse: obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()) }),
   RecognitionResponse: obj({ material_id: id, material_version: revision, profile_version: revision, state: profileState, source_market: recognizedField(market), source_offering: recognizedField(offering), reporting_periods: Type.Array(ReportingPeriodSchema), latest_reporting_cutoff: recognizedField(date) }),
-  RecognitionPatchRequest: obj({ profile_version: revision, source_market: nullable(market), source_offering: nullable(offering), reason: Type.String({ minLength: 1 }), evidence_refs: Type.Array(id) }),
+  RecognitionPatchRequest: Type.Object({
+    profile_version: revision,
+    source_market: Type.Optional(nullable(market)),
+    source_offering: Type.Optional(nullable(offering)),
+    reporting_periods: Type.Optional(Type.Array(ReportingPeriodCorrectionSchema)),
+    reason: Type.String({ minLength: 1 }),
+    evidence_refs: Type.Array(id),
+  }, { additionalProperties: false, anyOf: [
+    { properties: { source_market: Type.Any() }, required: ['source_market'] },
+    { properties: { source_offering: Type.Any() }, required: ['source_offering'] },
+    { properties: { reporting_periods: Type.Any() }, required: ['reporting_periods'] },
+  ] }),
   PreflightRequest: obj({ input_revision: revision, input_hash: hash }),
   PreflightResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation'), Type.Literal('blocked')]), missing_inputs: Type.Array(Type.String()), uncertainty: Type.Array(Type.String()), billing_mode: Type.Literal('platform_trial') }),
   ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id }),
@@ -135,6 +147,7 @@ export type Material = Static<typeof schemas.MaterialResponse>;
 export type ModelCallAttempt = Static<typeof schemas.ModelCallAttempt>;
 export type Recognition = Static<typeof schemas.RecognitionResponse>;
 export type ReportingPeriod = Static<typeof ReportingPeriodSchema>;
+export type RecognitionPatchRequest = Static<typeof schemas.RecognitionPatchRequest>;
 export type InternalObservabilityEvent = Static<typeof schemas.InternalObservabilityEvent>;
 export type MaterialRole = typeof M1_UPLOAD_MATERIAL_ROLES[number];
 export type UploadMediaType = typeof M1_UPLOAD_MIME_TYPES[number];
