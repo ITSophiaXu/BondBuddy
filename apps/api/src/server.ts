@@ -112,14 +112,28 @@ export function createServer(settings: Settings = {}) {
   });
   app.put('/api/v1/projects/:project_id/materials/uploads/:upload_id/bytes',async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');await project(db(),user,id);
-    const q=await db().query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
-    if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
-    if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
     const bytes=request.body;if(!Buffer.isBuffer(bytes))throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
-    if(bytes.length!==Number(u.byte_size)||digest(bytes)!==u.sha256.trim())throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Bytes or hash mismatch');
-    await verifiedMedia(bytes,u.declared_media_type);await blob().put(u.object_key,bytes,u.declared_media_type);
     await transaction(db(),async client=>{
-      await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state<>'completed'",[user,id,uploadId,digest(bytes),bytes.length]);
+      const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
+      if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
+      if(u.state!=='uploading'&&u.state!=='received')throw missing();
+      if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
+      if(bytes.length!==Number(u.byte_size)||digest(bytes)!==u.sha256.trim())throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Bytes or hash mismatch');
+      await verifiedMedia(bytes,u.declared_media_type);
+      if(u.state==='received'){
+        if(u.received_sha256?.trim()!==digest(bytes)||Number(u.received_bytes)!==bytes.length)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload receipt is inconsistent');
+        const stored=await blob().getIfExists(u.object_key);
+        if(stored===null||stored.length!==bytes.length||digest(stored)!==u.sha256.trim()){
+          await blob().put(u.object_key,bytes,u.declared_media_type);
+          const restored=await blob().get(u.object_key);
+          if(restored.length!==bytes.length||digest(restored)!==u.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Upload bytes could not be restored');
+        }
+        return;
+      }
+      // The upload row lock is shared with completion and orphan cleanup. Keep it until Blob and DB state agree.
+      await blob().put(u.object_key,bytes,u.declared_media_type);
+      const updated=await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,digest(bytes),bytes.length]);
+      if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.length}]);
     });
     return reply.code(204).send();
@@ -131,6 +145,7 @@ export function createServer(settings: Settings = {}) {
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
       if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);if(!existing.rows[0])throw missing();return materialDto(existing.rows[0]);}
+      if(u.state==='deleting'||u.state==='purged')throw missing();
       if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
       const bytes=await blob().get(u.object_key);
       if(bytes.length!==b.byte_size||digest(bytes)!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
@@ -149,8 +164,17 @@ export function createServer(settings: Settings = {}) {
     return reply.header('content-type',m.media_type).header('cache-control','private, no-store').send(bytes);
   });
   app.delete('/api/v1/projects/:project_id/materials/:material_id',async (request,reply)=>{
-    const user=await owner(request),id=param(request,'project_id'),m=await material(db(),user,id,param(request,'material_id'));
-    await transaction(db(),async client=>{await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL',[user,id,m.id]);await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',m.id,'material.deleted',{project_id:id}]);});
+    const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id');
+    await transaction(db(),async client=>{
+      // Snapshot creation takes this same project lock, so a new immutable reference cannot race deletion.
+      await project(client,user,id,true);
+      const found=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ORDER BY version DESC FOR UPDATE',[user,id,materialId]);
+      if(!found.rows.length)throw missing();
+      const live=found.rows.filter(row=>row.deleted_at===null);
+      if(!live.length)return; // Owned repeat deletion is idempotent and emits no duplicate side effects.
+      const deleted=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL RETURNING *',[user,id,materialId]);
+      await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.deleted',{project_id:id,versions:deleted.rows.length}]);
+    });
     return reply.code(204).send();
   });
   app.get('/api/v1/projects/:project_id/events',async request=>{await project(db(),await owner(request),param(request,'project_id'));throw unavailable();});

@@ -39,14 +39,33 @@ export async function material(pool: Pool | PoolClient, owner: string, projectId
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
-export interface PrivateBlobs { put(key: string, bytes: Buffer, mediaType: string): Promise<void>; get(key: string): Promise<Buffer>; delete(key: string): Promise<void>; }
+export interface PrivateBlobs {
+  put(key: string, bytes: Buffer, mediaType: string): Promise<void>;
+  get(key: string): Promise<Buffer>;
+  getIfExists(key: string): Promise<Buffer | null>;
+  delete(key: string): Promise<void>;
+}
 export function azureBlobs(connectionString: string, containerName = 'bondbuddy-private'): PrivateBlobs {
   const container = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
   let ready: Promise<unknown> | undefined;
   const ensure = () => ready ??= container.createIfNotExists();
+  const read = async (key: string) => {
+    const response = await container.getBlockBlobClient(key).download();
+    const chunks: Buffer[] = [];
+    if (response.readableStreamBody) for await (const chunk of response.readableStreamBody) chunks.push(Buffer.from(chunk));
+    return Buffer.concat(chunks);
+  };
   return {
     async put(key, bytes, mediaType) { await ensure(); await container.getBlockBlobClient(key).uploadData(bytes,{ blobHTTPHeaders: { blobContentType: mediaType } }); },
-    async get(key) { await ensure(); const response = await container.getBlockBlobClient(key).download(); const chunks: Buffer[] = []; for await (const chunk of response.readableStreamBody!) chunks.push(Buffer.from(chunk)); return Buffer.concat(chunks); },
+    async get(key) { await ensure(); return read(key); },
+    async getIfExists(key) {
+      await ensure();
+      try { return await read(key); }
+      catch (error) {
+        if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound')) return null;
+        throw error;
+      }
+    },
     async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); }
   };
 }

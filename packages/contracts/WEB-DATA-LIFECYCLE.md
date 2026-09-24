@@ -1,6 +1,6 @@
 # Web material data lifecycle: product copy template and release decisions
 
-**Template status:** review draft for product/security and affected maintainers. It is not a currently deployed policy. Replace every `[release decision]` with an approved value and implementation evidence before publishing to users. The M1 API skeleton has no upload or deletion behavior.
+**Template status:** review draft for product/security and affected maintainers. It is not a currently deployed policy. Replace every `[release decision]` with an approved value and implementation evidence before publishing to users. M1 now has owner-scoped upload and soft-delete routes plus a separately gated Blob cleanup slice; this does not establish production encryption, approved retention, backup expiry/replay operations, or a live deletion deadline.
 
 ## Suggested user-facing copy
 

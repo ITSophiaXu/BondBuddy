@@ -127,6 +127,12 @@ deploy/              # Compose、Nginx、部署与回滚
 
 `db/migrations/0001_m1_owner_data.sql` 和 `0002_artifact_download_grants.sql` 建立个人项目、上传会话、材料版本、不可变输入版本、run、事件、outbox、成果元数据及限时下载授权。`apps/api/` 在可信会话 seam 下实现 owner 限定的项目、材料、输入快照、run 查询与成果读取；Blob 存材料字节。`deploy/local/compose.yaml` 用 PostgreSQL 16 与 Azurite 做合成数据集成验证。实际身份由 #7 注入可信 principal 前，公开个人路由拒绝请求；真实 run 执行由 #17 队列和 #79 日志能力接入前返回 `CAPABILITY_NOT_READY`。测试专用 run staging 只保存 `paused` run/事件/outbox，不发起模型调用。尚未连接的识别、预检、对话、项目事件等能力明确返回 501。生产保存期限、物理清理、备份删除重放和供应商处理证据仍待发布决策，详见 `apps/api/README.md`。
 
+### #8 私有存储生命周期跟进（2026-09-24）
+
+追加迁移 `0006_m1_storage_lifecycle.sql` 在 #79 的 `0005` 后登记不可变材料删除墓碑和孤立上传清理状态。材料软删除、墓碑和 `material.deleted` outbox 事件在同一事务内提交；独立单批 CLI 先持久化租约，再校验 Blob hash 并清理，丢失删除响应时可按墓碑安全重放。所有不可变输入修订中的材料引用都会阻止物理清理；run、成果和已绑定观测快照通过输入修订被保守固定。输入修订目前没有引用释放生命周期，因此已有快照引用的材料会无限期保留。过期 `uploading`/`received` 上传以有界批次和 `SKIP LOCKED` 清理，并与 PUT/complete 使用同一上传行锁。
+
+清理 CLI 默认不执行；只有显式开启且提供材料保留天数与孤立上传宽限小时数才可运行，代码不设业务期限。生产政策值、调度、备份周期/隔离、保留和供应商侧删除证明仍待决定。合成 PostgreSQL/Azurite 验证覆盖独立 dump/restore、Blob 拷贝/hash 核对及删除墓碑重放，不代表生产恢复演练。运行步骤见 `apps/api/STORAGE-LIFECYCLE-RUNBOOK.md`。生产执行保持 501；此跟进不构成 #8 完整验收。
+
 ### #7 服务端身份与会话切片（2026-09-24）
 
 在 #8 owner API 基线上，`0003_m1_auth_sessions.sql` 保存 +86 规范化号码、挑战 HMAC、协议版本接受记录、注册幂等事件和可撤销会话；对 `0001`/`0002` 仅追加迁移。生产入口使用数据库中的已验证会话解析 `user_id`，不信任浏览器提交的 owner 标识。15 分钟访问令牌与最多 30 天的轮换刷新令牌仅以哈希入库，分别放在 `Secure/HttpOnly/SameSite=Strict` Cookie；另用可读 CSRF Cookie、请求头回传及严格 Origin 校验保护变更请求。登出撤销后，#8 材料/成果读取也不能沿用旧会话。
