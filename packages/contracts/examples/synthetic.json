@@ -297,6 +297,24 @@
       "schema": "ModelCallAttempt",
       "valid": false,
       "value": { "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "provider_request_id": null, "model_id": "unverified-synthetic-model", "prompt_snapshot_ref": "prompt-synthetic-1", "usage_status": "unknown", "input_tokens": 0, "output_tokens": 0, "cached_input_tokens": 0, "reasoning_tokens": 0, "usage_evidence_ref": null, "billable": false, "cost_payer": "platform" }
+    },
+    {
+      "name": "account-closure-blocked-preview",
+      "schema": "AccountClosurePreviewResponse",
+      "valid": true,
+      "value": { "can_close": false, "active_runs": [{ "run_id": "run-synthetic-active", "project_id": "project-synthetic-1", "state": "paused" }], "projects": 1, "material_versions": 2, "available_artifacts": 0, "balance_status": "not_applicable_m1", "retained_records": ["account_identifier", "agreement_acceptances", "registration_event", "closure_record", "operation_logs", "model_usage_records", "audit_outbox"], "local_exports": "not_affected" }
+    },
+    {
+      "name": "account-closure-completed",
+      "schema": "AccountClosureResponse",
+      "valid": true,
+      "value": { "closure_id": "closure-synthetic-1", "status": "closed", "closed_at": "2026-09-24T09:00:00Z", "projects_deleted": 1, "material_versions_deleted": 2, "artifacts_revoked": 1, "sessions_revoked": 2, "cloud_content": "access_removed_purge_scheduled", "balance_status": "not_applicable_m1", "retained_records": ["account_identifier", "agreement_acceptances", "registration_event", "closure_record", "operation_logs", "model_usage_records", "audit_outbox"], "local_exports": "not_affected" }
+    },
+    {
+      "name": "invalid-closure-claims-local-export-deleted",
+      "schema": "AccountClosureResponse",
+      "valid": false,
+      "value": { "closure_id": "closure-synthetic-1", "status": "closed", "closed_at": "2026-09-24T09:00:00Z", "projects_deleted": 1, "material_versions_deleted": 2, "artifacts_revoked": 1, "sessions_revoked": 2, "cloud_content": "access_removed_purge_scheduled", "balance_status": "not_applicable_m1", "retained_records": ["account_identifier", "agreement_acceptances", "registration_event", "closure_record", "operation_logs", "model_usage_records", "audit_outbox"], "local_exports": "deleted" }
     }
   ]
 }
