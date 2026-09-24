@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {evaluateRulePackCapability,nafmiiCpChapterTemplate,nafmiiCpCoverageManifest,nafmiiCpDraftRulePack,publishRulePackBundle,validateRulePackCompanions} from './index.js';
+
+test('CP bundle is valid, independent and preserves the M-table chapter coverage',()=>{
+  const result=validateRulePackCompanions(nafmiiCpDraftRulePack,nafmiiCpChapterTemplate,nafmiiCpCoverageManifest);
+  assert.equal(result.ok,true,result.ok?'':JSON.stringify(result.problems));
+  assert.equal(nafmiiCpDraftRulePack.scope.offering,'cp');
+  assert.equal(nafmiiCpDraftRulePack.sources.some(source=>source.source_id==='nafmii-mtn-guide-2021'),false);
+  assert.equal(nafmiiCpDraftRulePack.sources.find(source=>source.source_id==='nafmii-cp-guide-2021')?.document_hash,'20995cb88877bd53e81bfc9190898fa21433c544ad2fb35fcd75737ac84ad5b1');
+  assert.deepEqual(nafmiiCpChapterTemplate.chapters.map(item=>item.form_refs[0]),Array.from({length:18},(_,index)=>`M-${index}`));
+});
+
+test('CP product cases keep the one-year boundary distinct from SCP',()=>{
+  const identity=nafmiiCpDraftRulePack.rules.find(rule=>rule.rule_id==='cp-instrument-identity');
+  assert.ok(identity?.required_inputs.includes('interest_start_date'));
+  assert.ok(identity?.required_inputs.includes('maturity_date'));
+  assert.ok(identity?.required_inputs.includes('stated_tenor'));
+  assert.match(identity?.boundaries.join('')??'',/365天/);
+  assert.match(identity?.boundaries.join('')??'',/SCP.*270/);
+  assert.equal(nafmiiCpCoverageManifest.items.find(item=>item.item_id==='mtn-ppn-scp-dfi')?.disposition,'not_applicable');
+});
+
+test('CP draft cannot advertise capability or bypass unresolved coverage',()=>{
+  const capability=evaluateRulePackCapability(nafmiiCpDraftRulePack,{market:'nafmii',offering:'cp',document_stage:'issuance',issuer_scope:'domestic-nonfinancial-enterprise-public',instrument:'standard-cp',investor_scope:'interbank-institutional',special_features:[],as_of:'2026-09-24'});
+  assert.equal(capability.decision,'capability_not_ready');
+  assert.throws(()=>publishRulePackBundle(nafmiiCpDraftRulePack,nafmiiCpChapterTemplate,nafmiiCpCoverageManifest,{channel:'test',reviews:[],released_by:'test-release-operator',released_at:'2026-09-24T10:00:00Z',reason:'negative coverage gate test'}),/RULE_PACK_COVERAGE_INCOMPLETE/);
+});
