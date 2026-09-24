@@ -372,3 +372,4 @@ export function createRulePackRollbackEvent(current:RulePack,target:RulePack,inp
 }
 
 export { nafmiiMtnChapterTemplate, nafmiiMtnCoverageManifest, nafmiiMtnDraftRulePack } from './nafmii-mtn.js';
+export { nafmiiCpChapterTemplate, nafmiiCpCoverageManifest, nafmiiCpDraftRulePack } from './nafmii-cp.js';
