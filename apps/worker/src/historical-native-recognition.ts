@@ -191,7 +191,12 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
   const explicitPeriod = /报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(compact);
   const periodTableHeader = Array.isArray(record.locator.path) && record.locator.path.some(part => typeof part === 'object' && part !== null && 'table' in part);
   const annualHeaderInContext = periodTableHeader && inFinancialContext(record);
-  if (hasSigningOrIssueDate || (!explicitPeriod && !annualHeaderInContext)) return [];
+  const halfYearLabel = /20\d{2}\s*年\s*(?:半年度|上半年)/.test(text);
+  // Native parsers can put a financial heading in the record context and the
+  // period label alone in the quote. Accept that label only under a financial
+  // heading; a date or a similarly worded nonfinancial reference is not enough.
+  const halfYearLabelInFinancialSection = halfYearLabel && inFinancialContext(record);
+  if (hasSigningOrIssueDate || (!explicitPeriod && !annualHeaderInContext && !halfYearLabelInFinancialSection)) return [];
   const periodRecords: ReportingPeriod[] = [];
   const scopeText = normalize(allText(record));
   const hasParentScope = /母公司|公司本部/.test(scopeText);
@@ -236,6 +241,15 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
     });
   }
 
+  for (const match of text.matchAll(/(20\d{2})\s*年\s*(?:半年度|上半年)/g)) {
+    const year = Number(match[1]);
+    periodRecords.push({
+      start: `${year}-01-01`, end: `${year}-06-30`, period_kind: 'interim', scope,
+      raw_value: match[0], provenance, uncertainty: [...uncertainty],
+      status: uncertainty.length || scope === null ? 'needs_confirmation' : 'recognized',
+    });
+  }
+
   const threeMonthCutoffs = [...text.matchAll(/截至\s*(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日[^。；\n]{0,12}三个月/g)];
   for (const match of threeMonthCutoffs) {
     const year = Number(match[1]);
@@ -258,6 +272,7 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
   if (/年度|年报|报告期/.test(compact) || annualHeaderInContext) {
     for (const match of text.matchAll(/(20\d{2})\s*年(?:度)?/g)) {
       const year = Number(match[1]);
+      if (new RegExp(`${year}\\s*年\\s*(?:半年度|上半年)`).test(text)) continue;
       if (new RegExp(`${year}\\s*年.{0,5}(?:第\\s*)?[一二三四1-4]\\s*季`).test(text)) continue;
       if (new RegExp(`${year}\\s*年\\s*\\d{1,2}\\s*[-—–至到]`).test(text)) continue;
       if (new RegExp(`截至?\\s*${year}\\s*年\\s*\\d{1,2}月\\s*\\d{1,2}日`).test(text)) continue;
