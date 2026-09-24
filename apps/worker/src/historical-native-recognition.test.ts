@@ -198,6 +198,14 @@ test('recognizes explicit half-year labels from financial section evidence and d
     ['half-year-label', 'first-half-label', 'half-year-range']);
 });
 
+test('a half-year label does not hide a separate annual period for the same year', () => {
+  const value = recognizeHistoricalNativeText(response([
+    record('mixed-periods', '报告期：2025年半年度、2025年一季度、2025年度', '合并财务报表'),
+  ]), { profileVersion: 1 });
+  assert.deepEqual(value.reporting_periods.map(period => period.end), ['2025-03-31', '2025-06-30', '2025-12-31']);
+  assert.equal(value.latest_reporting_cutoff.value, '2025-12-31');
+});
+
 test('does not treat cover and signing or issuance dates, or nonfinancial half-year references, as reporting periods', () => {
   const value = recognizeHistoricalNativeText(response([
     record('cover-issue-date', '发行日期：2025年6月30日。', '财务会计信息'),

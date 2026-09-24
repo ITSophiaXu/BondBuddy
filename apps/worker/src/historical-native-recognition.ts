@@ -287,10 +287,11 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
   if (/年度|年报|报告期/.test(compact) || annualHeaderInContext) {
     for (const match of text.matchAll(/(20\d{2})\s*年(?:度)?/g)) {
       const year = Number(match[1]);
-      if (new RegExp(`${year}\\s*年\\s*(?:半年度|上半年)`).test(text)) continue;
-      if (new RegExp(`${year}\\s*年.{0,5}(?:第\\s*)?[一二三四1-4]\\s*季`).test(text)) continue;
-      if (new RegExp(`${year}\\s*年\\s*\\d{1,2}\\s*[-—–至到]`).test(text)) continue;
-      if (new RegExp(`截至?\\s*${year}\\s*年\\s*\\d{1,2}月\\s*\\d{1,2}日`).test(text)) continue;
+      const atYear = text.slice(match.index);
+      if (/^20\d{2}\s*年\s*(?:半年度|上半年)/.test(atYear)) continue;
+      if (/^20\d{2}\s*年.{0,5}(?:第\s*)?[一二三四1-4]\s*季/.test(atYear)) continue;
+      if (/^20\d{2}\s*年\s*\d{1,2}\s*[-—–至到]/.test(atYear)) continue;
+      if (/^20\d{2}\s*年\s*\d{1,2}月\s*\d{1,2}日/.test(atYear)) continue;
       if (periodRecords.some(period => period.start === `${year}-01-01` && period.end === `${year}-12-31`)) continue;
       periodRecords.push({
         start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual', scope,
