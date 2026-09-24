@@ -25,9 +25,22 @@ an error, not a successful miss. Staging paths are never stored.
 Blob insertion precedes the idempotent database insert. A crash or concurrent
 winner can leave an unreferenced private object; storage-lifecycle cleanup
 must cover those objects before the seam is wired into a production worker.
-There is no live PostgreSQL/Azurite integration test in this slice, and the
-current worker entry point still has no production processor. These unit tests
-use synthetic adapters and do not establish #15 acceptance.
+`fact-repository.ts` is another internal #15 seam. It stores each fact source
+as a separate immutable candidate, with an exact account/entity/scope/period/
+currency/unit/basis/version key. Inserts require a material version in the
+trusted owner/project scope whose SHA-256 matches the cited evidence; listing
+is owner/project-scoped. Template and reference sources cannot become issuer
+facts. Source-anchor review metadata and OCR uncertainty remain explicit.
+The existing migration has no dedicated confidence column, so candidate
+confidence is round-tripped in the per-anchor evidence JSON; a future schema
+change should make it first-class before adding generic fact queries.
+
+The fact repository has an optional live PostgreSQL 16 test. After applying
+the repository migrations to a disposable database, set
+`FACT_REPOSITORY_TEST_DATABASE_URL` when running the worker tests. Fixtures are
+synthetic and rolled back. The current worker entry point still has no
+production parse/fact processor, and #14 OCR plus authorized sample validation
+remain outside this slice; it does not establish #15 acceptance.
 
 Build dependencies first, then run `npm test -w @bondbuddy/worker` from the
 repository root.
