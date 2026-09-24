@@ -7,31 +7,39 @@ periods in the existing `@bondbuddy/contracts` Recognition shape. It requires
 two distinct source passages in different sections/pages for market and
 offering, keeps ambiguous or conflicting values pending, and never uses a
 filename, cover/issuance date or rule citation as a financial cutoff. Its
-provenance includes both the recognition and parser versions. This is not a
-queued precheck: OCR/model assistance, persistence/correction history, API/UI,
-free-precheck cost logging and authorized real-material acceptance remain #76
-work.
+provenance includes both the recognition and parser versions. OCR/model
+assistance, API/UI, free-precheck cost logging and authorized real-material
+acceptance remain #76 work.
 
-`historical-material-precheck.ts` now composes the authorized immutable-material
-parser with that native recognizer. Its owner/project/version lookup also
-requires the persisted `historical` role and DOCX/PDF media type before private
-bytes are read; an invalid profile version is rejected before lookup. Parser
-failure, OCR gaps and ambiguous native evidence remain non-ready. This is an
-internal function, not an upload-triggered job: it does not persist a profile,
-emit events, perform OCR/model fallback, record platform precheck cost or
-expose the source-profile API. A stored upload role is not independent proof
-that a document belongs to this issuer; that still needs evidence review.
+`historical-material-precheck.ts` composes the authorized historical-role
+parser, #13 parse-snapshot persistence and native recognition append. The
+recognition write checks every cited field/period anchor against evidence rows
+from the exact owner, project, material version and parser snapshot; period
+extractor versions must also match the snapshot parser version and evidence
+rows. Mixed-version snapshots fail closed. Non-empty correction
+references are checked against the same material version and source parser
+snapshot, while remaining `user_asserted` and `needs_confirmation`. Recognition
+retries deduplicate by the trusted native-recognition/parser version, and the
+composition reuses a profile only when its deployment parser version and parse
+options match the stored snapshot. Failed parser snapshots with zero anchors
+remain failed. Parser failure, OCR gaps and ambiguous native evidence remain
+non-ready. This is still an internal function, not an upload-triggered job: it
+does not perform OCR/model fallback, record platform precheck cost or expose
+the source-profile API. A stored upload role is not independent proof that a
+document belongs to this issuer; that still needs evidence review.
 
 `historical-profile-repository.ts` is the internal append-only #76 storage
 seam. Migration `0013_m1_historical_profiles.sql` binds snapshots to an
-owner/project/historical material version. Trusted recognition requests are
-idempotent; corrections append a new version with actor, reason and evidence
-references, and an outbox event commits in the same transaction. A late
-recognition request cannot replace a correction. Without a trusted lookup for
-user-supplied evidence references, corrections remain `needs_confirmation`,
-not `ready`. The current public PATCH contract cannot correct reporting
-periods; that contract and the upload-triggered job, API/UI, OCR/cost logging
-and authorized real-material acceptance remain open.
+owner/project/historical material version. Recognition retries are idempotent
+by request and by native parser version; changed results for the same parser
+version fail closed. Corrections append a new version with actor, reason and
+evidence references, and an outbox event commits in the same transaction. A
+late recognition request cannot replace a correction. Correction references
+must exist in the original material version's parse snapshot, but remain
+`user_asserted` and `needs_confirmation` because that lookup does not verify
+their meaning. The current public PATCH contract cannot correct reporting
+periods; upload-triggered job activation, API/UI, OCR/cost logging and
+authorized real-material acceptance remain open.
 
 `material-parser.ts` adds an internal #13 bridge from an owner/project-scoped,
 immutable material version to the versioned Python parser. It verifies private
@@ -39,8 +47,9 @@ Blob bytes against the database size and SHA-256, stages them with restricted
 permissions, rejects unsupported media and mismatched parser output, and removes
 staged bytes even on failure. It is not a public upload/parse endpoint. Its
 owner and material IDs must come from a trusted job context, not an HTTP body.
-The bridge does not yet turn uploaded materials into queued parse jobs or store
-evidence records; scanned images and PDF OCR remain #14 work.
+The bridge alone does not queue uploaded materials. The separate evidence
+repository below persists parsed records; scanned images and PDF OCR remain
+#14 work.
 
 The parser response validator now rejects malformed version/status fields,
 duplicate evidence IDs, unlocatable or wrong-media anchors, fabricated DOCX

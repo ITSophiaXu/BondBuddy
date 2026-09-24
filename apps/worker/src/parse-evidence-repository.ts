@@ -411,6 +411,38 @@ export async function getParseSnapshot(
   }
 }
 
+/** Reads the immutable snapshot for one trusted parser version and material version. */
+export async function getParseSnapshotByParserVersion(
+  dependencies: ParseEvidenceDependencies,
+  context: Omit<TrustedParseEvidenceContext, 'requestId' | 'options'>,
+  parserVersion: string,
+): Promise<StoredParseSnapshot | null> {
+  if (![context.ownerUserId, context.projectId, context.materialId].every(value => identifier.test(value)) ||
+      !Number.isSafeInteger(context.materialVersion) || context.materialVersion < 1 ||
+      !identifier.test(parserVersion)) throw fail('INVALID_PARSE_EVIDENCE_CONTEXT');
+  const client = await dependencies.pool.connect();
+  try {
+    const row = await client.query(
+      `SELECT ${SNAPSHOT_COLUMNS} FROM bb_parse_snapshots s
+        JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id
+         AND m.id=s.material_id AND m.version=s.material_version AND lower(btrim(m.sha256::text))=lower(btrim(s.content_sha256::text))
+        WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4
+          AND s.parser_version=$5 AND m.deleted_at IS NULL AND m.role='historical'
+          AND m.media_type IN ('application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf')`,
+      [context.ownerUserId, context.projectId, context.materialId, context.materialVersion, parserVersion],
+    );
+    if (row.rows.length === 0) return null;
+    if (row.rows.length !== 1) throw fail('INVALID_PARSE_EVIDENCE_ROW');
+    const snapshot = await findSnapshot(client, { ...context, requestId: 'stored-snapshot-read' }, String(row.rows[0]!.id));
+    if (snapshot === null) throw fail('INVALID_PARSE_EVIDENCE_ROW');
+    return snapshot;
+  } catch (error) {
+    throw error instanceof Error && error.name === 'ParseEvidenceRepositoryError' ? error : fail('PARSE_SNAPSHOT_READ_FAILED');
+  } finally {
+    client.release();
+  }
+}
+
 /** Worker-only composition; does not create or claim a queue job. */
 export async function parseAndPersistAuthorizedMaterial(
   materialDependencies: MaterialParserDependencies,

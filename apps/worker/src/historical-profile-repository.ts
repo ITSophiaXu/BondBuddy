@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
 import { isMarketOffering, schemas, type Market, type Offering, type Recognition } from '@bondbuddy/contracts';
+import { HISTORICAL_NATIVE_RECOGNITION_VERSION } from './historical-native-recognition.js';
 
 type RecognitionPatchRequest = {
   profile_version: number;
@@ -134,6 +135,107 @@ function validateContext(context: TrustedHistoricalProfileContext): void {
   }
 }
 
+function parserVersionFromRecognition(recognition: Recognition): string {
+  const prefix = `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/`;
+  const versions = [recognition.source_market, recognition.source_offering, recognition.latest_reporting_cutoff]
+    .map(field => field.provenance.extractor_version);
+  if (versions.some(version => typeof version !== 'string' || !version.startsWith(prefix))) throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+  const parsed = versions.map(version => (version as string).slice(prefix.length));
+  if (parsed.some(version => !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(version) || version === 'unknown-parser') ||
+      parsed.some(version => version !== parsed[0])) throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+  for (const period of recognition.reporting_periods) {
+    if (period.provenance.extractor_version !== `${prefix}${parsed[0]}`) {
+      throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+    }
+  }
+  return parsed[0]!;
+}
+
+async function validateParseEvidenceReferences(
+  client: HistoricalProfileClient,
+  context: TrustedHistoricalProfileContext,
+  recognition: Recognition,
+  parserVersion: string,
+): Promise<void> {
+  const nativePrefix = `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/${parserVersion}`;
+  const references = new Map<string, string | null>();
+  const addRefs = (refs: readonly string[], extractorVersion: string | null) => {
+    for (const ref of refs) {
+      const previous = references.get(ref);
+      if (previous !== undefined && previous !== null && extractorVersion !== null && previous !== extractorVersion) {
+        throw fail('HISTORICAL_PROFILE_EVIDENCE_VERSION_MISMATCH');
+      }
+      references.set(ref, previous === undefined || previous === null ? extractorVersion : previous);
+    }
+  };
+  for (const field of [recognition.source_market, recognition.source_offering, recognition.latest_reporting_cutoff]) {
+    if (field.provenance.extractor_version !== nativePrefix) throw fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+    addRefs(field.provenance.evidence_refs, null);
+  }
+  for (const period of recognition.reporting_periods) {
+    addRefs(period.provenance.evidence_refs, parserVersion);
+  }
+  const result = await client.query(
+    `SELECT s.parser_version, s.response_status, s.record_count, e.record_id, e.extractor_version, e.extraction_method
+       FROM bb_parse_snapshots s
+       LEFT JOIN bb_parse_evidence e ON e.owner_user_id=s.owner_user_id AND e.project_id=s.project_id
+        AND e.material_id=s.material_id AND e.material_version=s.material_version AND e.snapshot_id=s.id
+        AND e.record_id=ANY($6::text[])
+      WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4
+        AND s.parser_version=$5`,
+    [context.ownerUserId, context.projectId, context.materialId, context.materialVersion, parserVersion, [...references.keys()]],
+  );
+  if (result.rows.length === 0 || result.rows.some(row => row.parser_version !== parserVersion)) {
+    throw fail('HISTORICAL_PROFILE_PARSE_SNAPSHOT_NOT_FOUND');
+  }
+  const snapshotStatus = result.rows[0]!.response_status;
+  const recordCount = Number(result.rows[0]!.record_count);
+  if (recognition.state === 'failed') {
+    if (snapshotStatus !== 'failed' || recordCount !== 0 || references.size !== 0 || result.rows.length !== 1) {
+      throw fail('HISTORICAL_PROFILE_PARSE_SNAPSHOT_MISMATCH');
+    }
+    return;
+  }
+  if (snapshotStatus === 'failed' || (recognition.state === 'ready' && snapshotStatus !== 'parsed')) {
+    throw fail('HISTORICAL_PROFILE_PARSE_SNAPSHOT_MISMATCH');
+  }
+  const found = new Map<string, string>();
+  for (const row of result.rows) {
+    if (row.record_id === null) continue;
+    if (row.extraction_method !== 'native_text' || typeof row.extractor_version !== 'string' || found.has(String(row.record_id))) {
+      throw fail('HISTORICAL_PROFILE_EVIDENCE_NOT_FOUND');
+    }
+    found.set(String(row.record_id), row.extractor_version);
+  }
+  for (const [ref, extractorVersion] of references) {
+    const actual = found.get(ref);
+    if (actual === undefined) throw fail('HISTORICAL_PROFILE_EVIDENCE_NOT_FOUND');
+    if (actual !== parserVersion || (extractorVersion !== null && actual !== extractorVersion)) {
+      throw fail('HISTORICAL_PROFILE_EVIDENCE_VERSION_MISMATCH');
+    }
+  }
+}
+
+async function validateCorrectionEvidenceReferences(
+  client: HistoricalProfileClient,
+  context: TrustedHistoricalProfileContext,
+  parserVersion: string,
+  refs: readonly string[],
+): Promise<void> {
+  if (refs.length === 0) return;
+  const result = await client.query(
+    `SELECT DISTINCT e.record_id FROM bb_parse_evidence e
+       JOIN bb_parse_snapshots s ON s.owner_user_id=e.owner_user_id AND s.project_id=e.project_id
+        AND s.material_id=e.material_id AND s.material_version=e.material_version AND s.id=e.snapshot_id
+      WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.material_id=$3 AND e.material_version=$4
+        AND s.parser_version=$5 AND e.extractor_version=$5 AND e.record_id=ANY($6::text[])`,
+    [context.ownerUserId, context.projectId, context.materialId, context.materialVersion, parserVersion, [...new Set(refs)]],
+  );
+  if (new Set(result.rows.map(row => row.record_id)).size !== new Set(refs).size) {
+    throw fail('HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND');
+  }
+}
+
 function dateString(value: unknown): string {
   const date = value instanceof Date ? value : new Date(String(value));
   if (!Number.isFinite(date.getTime())) throw fail('INVALID_HISTORICAL_PROFILE_ROW');
@@ -260,6 +362,7 @@ export async function appendHistoricalRecognition(
   const requestHash = hashRequest({ kind: 'recognition', owner: context.ownerUserId, project: context.projectId,
     material: context.materialId, materialVersion: context.materialVersion,
     recognition: { ...recognition, profile_version: 1 } });
+  const parserVersion = parserVersionFromRecognition(recognition);
   const client = await dependencies.pool.connect();
   let transactionOpen = false;
   try {
@@ -268,6 +371,7 @@ export async function appendHistoricalRecognition(
       `historical-profile:${context.ownerUserId}:${context.projectId}:${context.materialId}:${context.materialVersion}`,
     ]);
     await lockHistoricalMaterial(client, context);
+    await validateParseEvidenceReferences(client, context, recognition, parserVersion);
     const existing = await priorRequest(client, context, requestHash);
     if (existing) {
       await client.query('COMMIT'); transactionOpen = false;
@@ -281,6 +385,23 @@ export async function appendHistoricalRecognition(
       [context.ownerUserId, context.projectId, context.materialId, context.materialVersion],
     );
     if (latestResult.rows[0]?.has_correction === true) throw fail('HISTORICAL_PROFILE_ALREADY_CORRECTED');
+    const sameExtractor = await client.query(
+      `SELECT ${PROFILE_COLUMNS} FROM bb_historical_profiles
+        WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+          AND write_kind='recognition' AND recognition #>> '{source_market,provenance,extractor_version}'=$5
+        ORDER BY profile_version ASC`,
+      [context.ownerUserId, context.projectId, context.materialId, context.materialVersion,
+        `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/${parserVersion}`],
+    );
+    if (sameExtractor.rows.length > 1) throw fail('HISTORICAL_PROFILE_EXTRACTOR_RESULT_CONFLICT');
+    if (sameExtractor.rows.length === 1) {
+      const existingProfile = mapProfile(sameExtractor.rows[0]!, true);
+      const priorRecognition = { ...existingProfile.recognition, profile_version: 1 };
+      const incomingRecognition = { ...recognition, profile_version: 1 };
+      if (canonical(priorRecognition) !== canonical(incomingRecognition)) throw fail('HISTORICAL_PROFILE_EXTRACTOR_RESULT_CONFLICT');
+      await client.query('COMMIT'); transactionOpen = false;
+      return existingProfile;
+    }
     recognition.profile_version = Number(latestResult.rows[0]?.profile_version ?? 0) + 1;
     validateProfile(recognition);
     const profile = await appendSnapshot(dependencies, client, context, requestHash, 'recognition', recognition);
@@ -326,6 +447,8 @@ export async function correctHistoricalRecognition(
     );
     if (latestResult.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
     const latest = mapProfile(latestResult.rows[0]!, false);
+    await validateCorrectionEvidenceReferences(client, context,
+      parserVersionFromRecognition(latest.recognition), patch.evidence_refs);
     if (latest.profileVersion !== patch.profile_version) throw fail('HISTORICAL_PROFILE_VERSION_CONFLICT');
     const prior = latest.recognition;
     const resultingMarket = patch.source_market;
@@ -349,7 +472,7 @@ export async function correctHistoricalRecognition(
       },
       uncertainty: patch.evidence_refs.length === 0
         ? ['用户校正缺少来源锚点']
-        : ['用户校正来源锚点尚未经过受信材料解析器验证'],
+        : ['锚点存在但不证明所校正值，需人工核对原文语义'],
       status: 'user_asserted',
     });
     corrected.source_market = correctionField(prior.source_market, patch.source_market) as Recognition['source_market'];
