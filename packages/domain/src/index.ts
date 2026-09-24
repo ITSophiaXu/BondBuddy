@@ -192,6 +192,16 @@ export type ValidationProblem={path:string;code:string;message:string};
 
 function problem(path:string,code:string,message:string):ValidationProblem{return {path,code,message};}
 
+function isValidCalendarDate(value:string):boolean {
+  if(!Value.Check(date,value))return false;
+  const [yearText,monthText,dayText]=value.split('-');
+  const year=Number(yearText),month=Number(monthText),day=Number(dayText);
+  if(month<1 || month>12)return false;
+  const leapYear=year%4===0 && (year%100!==0 || year%400===0);
+  const daysInMonth=[31,leapYear?29:28,31,30,31,30,31,31,30,31,30,31][month-1]!;
+  return day>=1 && day<=daysInMonth;
+}
+
 function canonical(value:unknown):string {
   if(value===null || typeof value!=='object')return JSON.stringify(value);
   if(Array.isArray(value))return `[${value.map(canonical).join(',')}]`;
@@ -330,7 +340,7 @@ export type CapabilityDecision={decision:typeof CAPABILITY_DECISIONS[number];pac
 export function evaluateRulePackCapability(pack:RulePack,context:RuleContext):CapabilityDecision {
   const valid=requireValid(pack);
   const base={pack_id:valid.pack_id,pack_version:valid.version,content_hash:valid.release?.content_hash??null,applicable_rule_ids:[] as string[],reason_codes:[] as string[]};
-  if(!Value.Check(date,context.as_of))return {...base,decision:'needs_evidence',reason_codes:['as_of_date_invalid']};
+  if(!isValidCalendarDate(context.as_of))return {...base,decision:'needs_evidence',reason_codes:['as_of_date_invalid']};
   if(!isMarketOffering(context.market,context.offering))return {...base,decision:'not_applicable',reason_codes:['market_or_offering_invalid']};
   if(valid.status!=='published' || valid.release?.channel!=='production')return {...base,decision:'capability_not_ready',reason_codes:['pack_not_production_published']};
   if(context.as_of<valid.validity.effective_from || (valid.validity.effective_to!==null && context.as_of>valid.validity.effective_to))return {...base,decision:'capability_not_ready',reason_codes:['pack_not_effective_on_date']};
@@ -338,7 +348,11 @@ export function evaluateRulePackCapability(pack:RulePack,context:RuleContext):Ca
   if(context.document_stage==='unknown')return {...base,decision:'needs_evidence',reason_codes:['document_stage_unknown']};
   if(!valid.scope.document_stages.includes(context.document_stage))return {...base,decision:'not_applicable',reason_codes:['document_stage_mismatch']};
   if(!valid.scope.issuer_scopes.includes(context.issuer_scope))return {...base,decision:'not_applicable',reason_codes:['issuer_scope_mismatch']};
-  if(context.instrument && valid.scope.instruments.length && !valid.scope.instruments.includes(context.instrument))return {...base,decision:'not_applicable',reason_codes:['instrument_mismatch']};
+  if(valid.scope.instruments.length){
+    const instrument=context.instrument?.trim();
+    if(!instrument)return {...base,decision:'needs_evidence',reason_codes:['instrument_unknown']};
+    if(!valid.scope.instruments.includes(instrument))return {...base,decision:'not_applicable',reason_codes:['instrument_mismatch']};
+  }
   const sourceById=new Map(valid.sources.map(source=>[source.source_id,source]));
   const inactiveSource=valid.rules.some(rule=>rule.enabled && rule.source_ref_ids.some(id=>{
     const source=sourceById.get(id);
