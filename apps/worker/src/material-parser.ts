@@ -191,8 +191,13 @@ export async function parseAuthorizedMaterial(
     request.material.authorized_local_path = authorizedPath;
     let response: DocumentParseResponse;
     try {
-      response = validateDocumentParseResponse(await (dependencies.parser ?? runDocumentParser)(request), request);
-    } catch {
+      const raw = await (dependencies.parser ?? runDocumentParser)(request);
+      if (containsPrivateReference(raw, [row.object_key, authorizedPath, directory])) {
+        throw bridgeError('PARSER_RESULT_CONTAINS_PRIVATE_REFERENCE');
+      }
+      response = validateDocumentParseResponse(raw, request);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'MaterialParserError') throw error;
       throw bridgeError('MATERIAL_PARSE_FAILED');
     }
     if (containsPrivateReference(response, [row.object_key, authorizedPath, directory])) {

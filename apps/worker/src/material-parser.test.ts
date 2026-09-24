@@ -409,6 +409,7 @@ test('failed and page-limited parser results are not cached', async (t) => {
     failedParserCalls += 1;
     return {
       ...responseFor(request), status: 'failed', records: [],
+      document: { page_count: null },
       error: { code: 'SYNTHETIC_PARSE_FAILURE', message: 'synthetic failure' },
     };
   };

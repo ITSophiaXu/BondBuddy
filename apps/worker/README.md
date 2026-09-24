@@ -21,6 +21,14 @@ owner and material IDs must come from a trusted job context, not an HTTP body.
 The bridge does not yet turn uploaded materials into queued parse jobs or store
 evidence records; scanned images and PDF OCR remain #14 work.
 
+The parser response validator now rejects malformed version/status fields,
+duplicate evidence IDs, unlocatable or wrong-media anchors, fabricated DOCX
+pages, out-of-range PDF pages, and incomplete warnings or uncertainty. The
+bridge checks raw results for private Blob/staging references before schema
+validation so a leak remains a distinct fail-closed error. Synthetic boundary
+tests and a real Python subprocess contract test cover this seam; they do not
+replace authorized customer-material acceptance for #13.
+
 `parse-cache.ts` is an internal #15 cache repository seam, not a production
 processor or HTTP endpoint. Its caller must supply an owner ID from an
 authenticated, trusted job and a material version already authorized for that
