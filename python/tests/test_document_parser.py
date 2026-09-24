@@ -15,6 +15,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from openpyxl import Workbook
+import pdfplumber
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
@@ -87,6 +88,11 @@ class DocumentParserTests(unittest.TestCase):
         self.assertLess(body.index("单位"), body.index("营业收入"))
         self.assertTrue(any(":t001:r001:c001:" in record["locator"]["stable_ref"] for record in result["records"]))
         self.assertTrue(all("page" not in record["locator"] for record in result["records"]))
+        amount = next(record for record in result["records"] if record["literal_quote"] == "88")
+        self.assertEqual(amount["locator"]["path"], [
+            {"table": 1, "row": 2, "column": 2}, {"paragraph": 1},
+        ])
+        self.assertEqual(Document(path).tables[0].cell(1, 1).text, amount["literal_quote"])
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
 
@@ -121,6 +127,60 @@ class DocumentParserTests(unittest.TestCase):
         self.assertLess(quote.index("120万元"), quote.index("核验完毕"))
         self.assertEqual(result["status"], "needs_confirmation")
         self.assertTrue(any(warning["code"] == "DOCX_REVISIONS_RESOLVED" for warning in result["warnings"]))
+
+    def test_docx_revision_formatting_uses_only_effective_runs_in_order(self):
+        path = self.root / "revision-formatting.docx"
+        document = Document()
+        paragraph = document.add_paragraph("金额：")
+
+        def revision_run(container, text, font_name, half_points):
+            run = OxmlElement("w:r")
+            properties = OxmlElement("w:rPr")
+            fonts = OxmlElement("w:rFonts")
+            fonts.set(qn("w:ascii"), font_name)
+            fonts.set(qn("w:eastAsia"), font_name)
+            size = OxmlElement("w:sz")
+            size.set(qn("w:val"), str(half_points))
+            properties.extend([fonts, size])
+            run.append(properties)
+            value = OxmlElement("w:t")
+            value.text = text
+            run.append(value)
+            container.append(run)
+
+        deleted = OxmlElement("w:del")
+        revision_run(deleted, "旧删除数字999", "DeletedFont", 44)
+        paragraph._p.append(deleted)
+        inserted = OxmlElement("w:ins")
+        revision_run(inserted, "新插入数字120", "InsertedFont", 26)
+        paragraph._p.append(inserted)
+
+        move_from = OxmlElement("w:moveFrom")
+        revision_run(move_from, "旧移动数字888", "MovedFromFont", 48)
+        paragraph._p.append(move_from)
+        move_to = OxmlElement("w:moveTo")
+        revision_run(move_to, "新移动数字130", "MovedToFont", 30)
+        paragraph._p.append(move_to)
+        paragraph.add_run("，有效正文")
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        record = result["records"][0]
+        formats = record["formatting"]["runs"]
+
+        self.assertEqual(record["literal_quote"], "金额：新插入数字120新移动数字130，有效正文")
+        self.assertEqual([item["sample"] for item in formats], [
+            "金额：", "新插入数字120", "新移动数字130", "，有效正文",
+        ])
+        self.assertEqual(formats[1]["latin_font"], "InsertedFont")
+        self.assertEqual(formats[1]["east_asia_font"], "InsertedFont")
+        self.assertEqual(formats[1]["half_points"], "26")
+        self.assertEqual(formats[2]["latin_font"], "MovedToFont")
+        self.assertEqual(formats[2]["east_asia_font"], "MovedToFont")
+        self.assertEqual(formats[2]["half_points"], "30")
+        for excluded in ("DeletedFont", "MovedFromFont", "旧删除数字999", "旧移动数字888"):
+            self.assertNotIn(excluded, json.dumps(record["formatting"], ensure_ascii=False))
+        self.assertEqual(result["status"], "needs_confirmation")
 
     def test_docx_unresolved_revision_markers_require_confirmation(self):
         path = self.root / "revision-range.docx"
@@ -162,6 +222,24 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(set(record["locator"]["bbox"]), {"x0", "top", "x1", "bottom"})
         self.assertTrue(record["formatting"]["fonts"])
         self.assertTrue(record["formatting"]["word_boxes"])
+        with pdfplumber.open(path) as source:
+            page = source.pages[record["locator"]["page"] - 1]
+            bbox = record["locator"]["bbox"]
+            recovered = page.crop((bbox["x0"], bbox["top"], bbox["x1"], bbox["bottom"])).extract_text()
+        self.assertEqual(recovered, record["literal_quote"])
+
+    def test_pdf_with_unreadable_page_requires_confirmation(self):
+        path = self.root / "text-and-blank.pdf"
+        pdf = canvas.Canvas(str(path), pagesize=(300, 300))
+        pdf.drawString(50, 250, "Synthetic first page")
+        pdf.showPage()
+        pdf.showPage()
+        pdf.save()
+        result = self.request(path, MEDIA_PDF)
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertEqual(result["document"]["page_count"], 2)
+        self.assertEqual(result["document"]["pages_without_native_text"], [2])
+        self.assertTrue(any(warning["code"] == "PDF_PAGES_WITHOUT_TEXT" for warning in result["warnings"]))
 
     def test_pdf_page_limit_fails_without_partial_success(self):
         path = self.root / "two-pages.pdf"
@@ -198,6 +276,14 @@ class DocumentParserTests(unittest.TestCase):
         path = self.root / "damaged.docx"
         path.write_bytes(b"PK synthetic but not a valid Office archive")
         result = self.request(path, MEDIA_DOCX)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["error"]["code"], "MATERIAL_UNREADABLE")
+
+    def test_damaged_pdf_fails_without_partial_success(self):
+        path = self.root / "damaged.pdf"
+        path.write_bytes(b"%PDF-1.4\ntruncated synthetic body")
+        result = self.request(path, MEDIA_PDF)
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["records"], [])
         self.assertEqual(result["error"]["code"], "MATERIAL_UNREADABLE")
