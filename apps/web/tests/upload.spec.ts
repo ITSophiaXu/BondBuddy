@@ -129,7 +129,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   for (const partition of ['募集说明书', '财务与审计', '发行安排与资金用途', '工商、信用与评级', '债务、授信与担保', '经营、治理与行业']) {
     await expect(page.getByRole('heading', { name: partition, exact: true })).toBeVisible();
   }
-  await expect(page.locator('select')).toHaveCount(0);
+  await expect(page.locator('#material-partitions select')).toHaveCount(0);
   const auditInput = page.getByLabel('为审计报告（可含报表及附注）选择文件');
   await auditInput.setInputFiles([
     { name: 'slow-save.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic slow') },

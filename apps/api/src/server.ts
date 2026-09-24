@@ -1,6 +1,6 @@
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
-import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, type Market, type Offering } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { action as queueAction, enqueue } from './queue.js';
@@ -43,7 +43,7 @@ function projectEventPageSize(value: string | undefined) {
 
 export function createServer(settings: Settings = {}) {
   // Trust only an explicitly configured reverse proxy for client source addresses.
-  const app = Fastify({ logger: false, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024 });
+  const app = Fastify({ logger: false, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
@@ -90,10 +90,12 @@ export function createServer(settings: Settings = {}) {
     return { items, page:{has_more:rows.rows.length>50,next_cursor:rows.rows.length>50 ? items.at(-1)?.project_id : null} };
   });
   app.post('/api/v1/projects',{schema:{body:schemas.ProjectCreateRequest}},async (request,reply) => {
-    const user=await owner(request), b=body<{name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null}>(request);
+    const user=await owner(request), b=body<{name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);
+    const details={...emptyUpdateDetails(),...b.update_details};
+    const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
     const id=uid(), value=await transaction(db(),async client=>{
-      const row=await client.query('INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[id,user,b.name,b.kind,b.issuer_name,b.market,b.offering]);
+      const row=await client.query('INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,user,b.name,b.kind,b.issuer_name,b.market,b.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.created',{project_id:id}]);
       return projectDto(row.rows[0]);
     });
@@ -109,7 +111,9 @@ export function createServer(settings: Settings = {}) {
       const b=body<Record<string,unknown>>(request);
       const next={name:b.name ?? old.name,issuer_name:'issuer_name' in b?b.issuer_name:old.issuer_name,market:'market' in b?b.market:old.market,offering:'offering' in b?b.offering:old.offering};
       checkedPair(next.market as Market|null,next.offering as Offering|null);
-      const result=await client.query('UPDATE bb_projects SET name=$3,issuer_name=$4,market=$5,offering=$6,draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING *',[user,id,next.name,next.issuer_name,next.market,next.offering]);
+      const details={...emptyUpdateDetails(),...('update_details' in b ? b.update_details as UpdateDetails : old.update_details)};
+      const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
+      const result=await client.query('UPDATE bb_projects SET name=$3,issuer_name=$4,market=$5,offering=$6,update_details=$7,draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING *',[user,id,next.name,next.issuer_name,next.market,next.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.draft_updated',{project_id:id,draft_revision:result.rows[0].draft_revision}]);
       return projectDto(result.rows[0]);
     });
@@ -126,7 +130,7 @@ export function createServer(settings: Settings = {}) {
       const resolved=[];
       for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
       const revision=(p.latest_input_revision??0)+1;
-      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.issuer_name,market:p.market,offering:p.offering,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
       const hash=digest(canonical(manifest));
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]']);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);

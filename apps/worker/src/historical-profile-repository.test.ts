@@ -183,7 +183,7 @@ test('cannot store a forged ready profile with unresolved or missing evidence', 
 test('a failed parser snapshot with zero references remains a persisted failed profile', async () => {
   const client = new ProfileMock();
   const base = makeRecognition();
-  const failedField = <T extends string>(field: Recognition['source_market']) => ({ ...field, value: null as T | null,
+  const failedField = <T extends string>(field: Recognition['source_market' | 'source_offering' | 'latest_reporting_cutoff']) => ({ ...field, value: null as T | null,
     provenance: { ...field.provenance, extractor_version: 'historical-native-recognition-v1/parser-failed-1', evidence_refs: [] },
     uncertainty: ['解析失败'], status: 'unknown' as const });
   const failed = { ...base, state: 'failed' as const, source_market: failedField(base.source_market),

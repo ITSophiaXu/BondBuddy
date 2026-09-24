@@ -79,7 +79,7 @@ function parseJson(value: unknown): unknown {
   try { return JSON.parse(value) as unknown; } catch { throw fail('INVALID_HISTORICAL_PROFILE_ROW'); }
 }
 
-function fieldReady(field: Recognition['source_market']): boolean {
+function fieldReady(field: Recognition['source_market' | 'source_offering' | 'latest_reporting_cutoff']): boolean {
   return field.value !== null && field.status === 'recognized' &&
     field.uncertainty.length === 0 && field.provenance.evidence_refs.length > 0;
 }

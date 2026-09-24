@@ -99,7 +99,7 @@ function activeRecognition(value: unknown, materialId: string, materialVersion: 
   return typed;
 }
 function hasAnchoredRecognizedFields(recognition: Recognition): boolean {
-  const supported = (field: Recognition['source_market']) => field.value !== null && field.status === 'recognized' &&
+  const supported = (field: Recognition['source_market' | 'source_offering' | 'latest_reporting_cutoff']) => field.value !== null && field.status === 'recognized' &&
     field.uncertainty.length === 0 && field.provenance.evidence_refs.length > 0;
   return supported(recognition.source_market) && supported(recognition.source_offering) &&
     supported(recognition.latest_reporting_cutoff) && recognition.reporting_periods.length > 0 &&

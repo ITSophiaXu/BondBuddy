@@ -1,9 +1,12 @@
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { Draft } from './draft';
+import { blankDraft, validateDraft } from './form-model';
+import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
 import { renderAccount, renderClosed, type AccountContext } from './account';
 import { date, esc, icon } from './ui';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES } from '@bondbuddy/contracts';
 import './style.css';
+import './update-form.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
@@ -13,6 +16,8 @@ let identity: string | undefined;
 let epoch = 0;
 let currentRoute = '/';
 let draft: Draft | undefined;
+let newDirty = false;
+let creating = false;
 let items: Dto<'ProjectListResponse'>['items'] = [];
 let nextCursor: string | null = null;
 let listBusy = false;
@@ -45,7 +50,7 @@ function clearPrivateState() {
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
-  epoch++; api.reset(); draft?.dispose(); draft = undefined;
+  epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
   identity = undefined; items = []; nextCursor = null; listBusy = false;
 }
 
@@ -106,6 +111,8 @@ function showError(error: unknown) {
 async function logout() {
   const button = document.querySelector<HTMLButtonElement>('#logout');
   if (!button) return;
+  if (creating) return;
+  if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
   button.disabled = true;
   if (draft && (draft.dirty || draft.state === 'saving') && !await draft.save()) {
     if (!identity) return;
@@ -123,6 +130,10 @@ async function logout() {
 async function renderRoute() {
   if (!identity) return;
   const requested = location.hash.slice(1) || '/';
+  if (creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？'))) {
+    history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
+  }
+  newDirty = false;
   const token = ++epoch;
   if (draft && (draft.dirty || draft.state === 'saving')) {
     const saved = await draft.save();
@@ -194,46 +205,44 @@ function renderItems() {
 }
 
 function renderNew() {
-  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">募集书更新</p><h1>新建项目</h1><p class="muted">先保存基本资料，之后可以随时回来继续。</p></div></div>
-    <div class="detail-layout"><section class="panel form-panel"><h2>项目基本信息</h2><form id="create-form"><label for="name">项目名称 <span class="required">必填</span></label><input id="name" name="name" required maxlength="120" placeholder="例如：发行人 2026 年募集书更新"/>
-    <label for="issuer">发行人全称 <span class="optional">选填</span></label><input id="issuer" name="issuer" maxlength="500" placeholder="填写发行人完整名称"/>
-    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建并保存项目</button><a class="button secondary" href="#/">取消</a></div></form></section>
-    <aside class="context-panel"><h2>从资料准备开始</h2><p>项目按账号保存，重新登录后仍可访问。</p><p>创建项目只保存资料，不会启动全文更新。</p></aside></div>`, 'new');
-  document.querySelector<HTMLFormElement>('#create-form')!.addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget as HTMLFormElement;
-    const button = form.querySelector<HTMLButtonElement>('button')!;
-    const name = (form.elements.namedItem('name') as HTMLInputElement).value.trim();
-    if (!name) { showError(new ApiError(422, 'INPUT_REQUIRED')); return; }
-    button.disabled = true; button.textContent = '正在保存…';
+  const value = blankDraft();
+  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">募集书更新</p><h1>新建项目</h1><p class="muted">先填写已知信息，未确定的内容可以保存后再补充。</p></div></div>
+    <form id="create-form" class="update-form"><div class="detail-layout"><section class="panel form-panel">${updateFormFields(value)}
+    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建并保存项目</button><a class="button secondary" href="#/">取消</a></div></section>${supplementaryPanel(value)}</div></form>`, 'new');
+  const form = document.querySelector<HTMLFormElement>('#create-form')!;
+  bindUpdateForm(form, () => { newDirty = true; });
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); if (creating) return;
+    const value = readUpdateForm(form); value.name = value.name.trim();
+    const errors = validateDraft(value);
+    if (errors.length) { const target = document.querySelector<HTMLElement>('#page-error')!; target.textContent = errors.join(' '); target.hidden = false; return; }
+    creating = true;
+    const controls = [...form.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement>('input,button,select,textarea')].map(control => ({ control, disabled: control.disabled }));
+    controls.forEach(({ control }) => { control.disabled = true; });
+    const button = form.querySelector<HTMLButtonElement>('button[type=submit]')!;
+    button.textContent = '正在保存…';
     const token = epoch;
     try {
-      const project = await api.create({ name, kind: 'update', issuer_name: (form.elements.namedItem('issuer') as HTMLInputElement).value.trim() || null, market: null, offering: null });
+      const project = await api.create(value);
       if (token !== epoch) return;
-      location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
+      newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
-    finally { button.disabled = false; button.textContent = '创建并保存项目'; }
+    finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建并保存项目'; }
   });
 }
 
 function renderProject(project: Dto<'ProjectResponse'>) {
-  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">管理本次更新的基本资料。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></div>
-    <div class="detail-layout"><section class="panel form-panel"><div class="panel-heading"><h2>项目基本信息</h2><span class="muted">修改后自动保存</span></div><form id="draft-form">
-    <label for="name">项目名称 <span class="required">必填</span></label><input id="name" name="name" value="${esc(project.name)}" required maxlength="120"/>
-    <label for="issuer">发行人全称 <span class="optional">选填</span></label><input id="issuer" name="issuer" value="${esc(project.issuer_name)}" maxlength="500"/>
+  draft = new Draft(project, api, updateSaveState);
+  const value = { ...draft.fields, kind: 'update' as const, issuer_name: draft.fields.issuer_name || null };
+  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">填写本次更新的目标，已保存的资料可以随时回来继续。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></div>
+    <form id="draft-form" class="update-form"><div class="detail-layout"><section class="panel form-panel"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
-    <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></form></section>
-    <aside class="context-panel"><h2>资料已留在这里</h2><p>刷新页面或重新登录，可以继续编辑已保存的资料。</p><p>这里的修改用于后续工作，不会改变已经开始的任务或已有成果。</p><div class="context-divider"></div><h3>材料保存说明</h3><p>上传会将文件发送到账号隔离的平台工作区。只有服务器确认保存后，文件才会显示为已保存；添加材料不会启动全文更新。</p></aside></div>
+    <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section>${supplementaryPanel(value)}</div></form>
     <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按固定分区添加 DOCX、PDF、XLSX、CSV、TXT、PNG 或 JPEG。文件内容与哈希由服务器核验。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
     <p class="material-footnote">上传进度按文件字节显示。传输到 100% 后，仍需等待服务端保存和校验；文件准备完成不代表财务数据已核验。</p></section>`, 'projects');
-  draft = new Draft(project, api, updateSaveState);
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
-  const updateFields = () => {
-    draft?.edit({ name: (form.elements.namedItem('name') as HTMLInputElement).value, issuer_name: (form.elements.namedItem('issuer') as HTMLInputElement).value });
-  };
-  form.addEventListener('input', event => { if (!(event as InputEvent).isComposing) updateFields(); });
-  form.addEventListener('compositionend', updateFields);
+  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); });
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的输入，是否继续？')) return;
@@ -254,8 +263,8 @@ function updateSaveState() {
   button.textContent = draft.state === 'error' ? '重试保存' : '保存修改';
   document.querySelector<HTMLElement>('#conflict-panel')!.hidden = draft.state !== 'conflict';
   const error = document.querySelector<HTMLElement>('#page-error')!;
-  error.hidden = !draft.error;
-  error.textContent = draft.error ? friendlyError(draft.error) : '';
+  error.hidden = !draft.error && (!draft.dirty || draft.valid);
+  error.textContent = draft.error ? friendlyError(draft.error) : draft.dirty ? draft.validationErrors.join(' ') : '';
   if (draft.state === 'saved') {
     document.querySelector('#project-heading')!.textContent = draft.project.name;
     document.querySelector('#saved-time')!.textContent = `${date(draft.project.updated_at)} 保存`;
@@ -271,8 +280,8 @@ function roleLabel(role: UploadRole) {
 }
 
 function roleGuidance(role: UploadRole) {
-  if (role === 'historical') return '有历史稿时必需，作为本发行人基线';
-  if (role === 'reference') return '无历史稿时可选，仅作结构参考';
+  if (role === 'historical') return '有历史稿时请提供本发行人的历史募集书';
+  if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
   if (['audit', 'financial', 'interimFinancial', 'notes'].includes(role)) return '更新所需财务材料；可上传多份覆盖所需期间';
   if (['fundUse', 'feasibility', 'priorFundUse', 'resolutions'].includes(role)) return '按本期用途与项目情况提供相关材料';
   return '选填，按项目核验需要添加';
@@ -530,7 +539,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['hashing', 'uploading', 'saving'].includes(upload.phase)));
-  if (draft?.dirty || draft?.state === 'saving' || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !identity) return;

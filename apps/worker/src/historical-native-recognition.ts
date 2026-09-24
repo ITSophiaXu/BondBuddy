@@ -33,7 +33,7 @@ function recognizedField<T extends string>(input: {
   materialId: string;
   materialVersion: number;
   parserVersion: string;
-}): Recognition['source_market'] {
+}): Omit<Recognition['source_market'], 'value'> & { value: T | null } {
   const records = uniqueRecords(input.records);
   return {
     value: input.value,
@@ -50,7 +50,7 @@ function recognizedField<T extends string>(input: {
   };
 }
 
-function field<T extends string>(input: Parameters<typeof recognizedField<T>>[0]): Recognition['source_market'] {
+function field<T extends string>(input: Parameters<typeof recognizedField<T>>[0]): Omit<Recognition['source_market'], 'value'> & { value: T | null } {
   return recognizedField(input);
 }
 

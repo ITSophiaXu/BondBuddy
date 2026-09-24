@@ -1,0 +1,45 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "dfi-draft-unknown-amounts-and-single-underwriter",
+      "schema": "ProjectCreateRequest",
+      "valid": true,
+      "value": {
+        "name": "合成 DFI 注册文件",
+        "kind": "update",
+        "issuer_name": "合成发行人",
+        "market": "nafmii",
+        "offering": "dfi",
+        "update_details": {
+          "has_historical": false,
+          "reporting_cutoff": "2026-06-30",
+          "registration_amount": null,
+          "issuance_amount": null,
+          "bond_terms": "统一注册覆盖 MTN、CP、SCP；各期金额和期限待定。",
+          "underwriting": "合成证券",
+          "other_agencies": null,
+          "rating_enhancement": null,
+          "funding_uses": [
+            { "purpose": "construction", "amount": { "value": "1.000001", "unit": "hundred_million" }, "details": "合成安排，许可材料待补充", "target": "合成建设项目" },
+            { "purpose": "working_capital", "amount": null, "details": null, "target": null }
+          ],
+          "other_information": null,
+          "supplementary_notes": "这是合成契约样本，不是真实发行人资料。"
+        }
+      }
+    },
+    {
+      "name": "update-details-replacement-cannot-be-partial",
+      "schema": "ProjectPatchRequest",
+      "valid": false,
+      "value": { "update_details": { "underwriting": "合成证券" } }
+    },
+    {
+      "name": "no-separate-registration-mode",
+      "schema": "ProjectPatchRequest",
+      "valid": false,
+      "value": { "registration_mode": "dfi" }
+    }
+  ]
+}

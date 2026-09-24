@@ -1,6 +1,14 @@
-import { ApiError, type ApiClient, type Dto } from './api';
+import { ApiError, type ApiClient, type Dto } from './api.js';
+import { Value } from '@sinclair/typebox/value';
+import { draftFromProject, validateDraft, type ProjectCreate } from './form-model.js';
+import type { UpdateDetails, Market, Offering } from '@bondbuddy/contracts';
 
-export type DraftFields = { name: string; issuer_name: string };
+export type DraftFields = { name: string; issuer_name: string; market: Market | null; offering: Offering | null; update_details: UpdateDetails };
+export function fieldsFromProject(project: Dto<'ProjectResponse'>): DraftFields {
+  const value = draftFromProject(project);
+  return { name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! };
+}
+export function createFromFields(fields: DraftFields): ProjectCreate { return { ...structuredClone(fields), kind: 'update', issuer_name: fields.issuer_name || null }; }
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error';
 
 /** One serialized writer per open project. No background retries after conflict/network failure. */
@@ -12,12 +20,13 @@ export class Draft {
   private pending?: Promise<boolean>;
   private disposed = false;
   constructor(public project: Dto<'ProjectResponse'>, private api: ApiClient, private changed: () => void) {
-    this.fields = { name: project.name, issuer_name: project.issuer_name ?? '' };
+    this.fields = fieldsFromProject(project);
   }
-  get dirty() { return this.fields.name !== this.project.name || this.fields.issuer_name !== (this.project.issuer_name ?? ''); }
-  get valid() { return this.fields.name.trim().length > 0 && this.fields.name.length <= 120; }
-  edit(fields: DraftFields) {
-    this.fields = fields;
+  get dirty() { return !Value.Equal(this.fields, fieldsFromProject(this.project)); }
+  get validationErrors() { return this.fields.name.trim() ? validateDraft(createFromFields(this.fields)) : ['请填写项目名称。']; }
+  get valid() { return this.validationErrors.length === 0; }
+  edit(fields: Partial<DraftFields>) {
+    this.fields = { ...this.fields, ...structuredClone(fields) };
     clearTimeout(this.timer);
     if (!['conflict', 'error', 'saving'].includes(this.state)) this.state = this.dirty ? 'dirty' : 'saved';
     this.changed();
@@ -38,10 +47,10 @@ export class Draft {
     while (this.dirty && !this.disposed) {
       if (!this.valid) { this.state = 'dirty'; this.changed(); return false; }
       this.state = 'saving'; this.error = undefined; this.changed();
-      const sent = { ...this.fields };
+      const sent = structuredClone(this.fields);
       try {
         const result = await this.api.patch(this.project.project_id, this.project.draft_revision, {
-          name: sent.name, issuer_name: sent.issuer_name || null
+          ...sent, issuer_name: sent.issuer_name || null
         });
         if (this.disposed) return false;
         this.project = result;

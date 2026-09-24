@@ -1,9 +1,13 @@
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
+export * from './update-project.js';
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
 export const OFFERINGS = ['private', 'public', 'public_all', 'ppn', 'mtn', 'cp', 'scp', 'dfi'] as const;
 export const MARKET_OFFERINGS = { sse: ['private', 'public', 'public_all'], szse: ['private', 'public', 'public_all'], nafmii: ['ppn', 'mtn', 'cp', 'scp', 'dfi'] } as const;
+export const MARKET_LABELS = { sse: '上交所', szse: '深交所', nafmii: '交易商协会' } as const;
+export const OFFERING_LABELS = { private: '普通私募公司债', public: '小公募', public_all: '大公募', ppn: 'PPN · 定向债务融资工具', mtn: 'MTN · 中期票据', cp: 'CP · 短期融资券', scp: 'SCP · 超短期融资券', dfi: 'DFI · 储架发行' } as const;
 // M1 update upload roles are the current project-fields.js partitions, excluding later review/generation roles.
 export const M1_MATERIAL_PARTITIONS = [
   { label: '募集说明书', roles: [{ code: 'historical', label: '本企业历史募集书' }, { code: 'reference', label: '相似企业参考募集书' }] },
@@ -36,7 +40,7 @@ export const JOB_STATUSES = ['created', 'queued', 'running', 'awaiting_input', '
 export const ERROR_CATEGORIES = ['validation', 'auth', 'material_parse', 'ocr', 'model_provider', 'tool', 'queue', 'export', 'delivery', 'metering', 'internal'] as const;
 export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered'] as const;
 
-const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal(value)));
+const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal<T[number]>(value)));
 const obj = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
 const id = Type.String({ minLength: 1, maxLength: 128, description: 'Opaque, non-guessable identifier; never an authorization grant.' });
 const utc = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', description: 'UTC ISO-8601 timestamp ending in Z.' });
@@ -93,13 +97,13 @@ export const schemas = {
   AccountClosureRequest: obj({ password: Type.String({ minLength: 1, maxLength: 512 }), confirm_username: Type.String({ minLength: 3, maxLength: 32 }) }),
   AccountClosureResponse: obj({ closure_id: id, status: Type.Literal('closed'), closed_at: utc, projects_deleted: Type.Integer({ minimum: 0 }), material_versions_deleted: Type.Integer({ minimum: 0 }), artifacts_revoked: Type.Integer({ minimum: 0 }), sessions_revoked: Type.Integer({ minimum: 0 }), cloud_content: Type.Literal('access_removed_purge_scheduled', { description: 'Access ends now; private bytes are purged by the storage lifecycle, and snapshot-pinned material stays until a release lifecycle exists.' }), balance_status: Type.Literal('not_applicable_m1'), retained_records: Type.Array(enumOf(CLOSURE_RETAINED_RECORDS)), local_exports: Type.Literal('not_affected') }),
   CapabilityResponse: obj({ scopes: Type.Array(Type.String()), version: Type.String(), status: Type.Union([Type.Literal('available'), Type.Literal('limited')]) }),
-  ProjectCreateRequest: Type.Object({ name: Type.String({ minLength: 1 }), kind: taskKind, issuer_name: nullable(Type.String()), market: nullable(market), offering: nullable(offering) }, { additionalProperties: false, allOf: [
+  ProjectCreateRequest: Type.Object({ name: Type.String({ minLength: 1, maxLength: PROJECT_FIELD_LIMITS.name }), kind: taskKind, issuer_name: nullable(Type.String({ maxLength: PROJECT_FIELD_LIMITS.issuer })), market: nullable(market), offering: nullable(offering), update_details: Type.Optional(UpdateDetailsSchema) }, { additionalProperties: false, allOf: [
     { if: { properties: { market: { const: 'sse' } } }, then: { properties: { offering: { enum: [...MARKET_OFFERINGS.sse, null] } } } },
     { if: { properties: { market: { const: 'szse' } } }, then: { properties: { offering: { enum: [...MARKET_OFFERINGS.szse, null] } } } },
     { if: { properties: { market: { const: 'nafmii' } } }, then: { properties: { offering: { enum: [...MARKET_OFFERINGS.nafmii, null] } } } }
   ] }),
-  ProjectPatchRequest: Type.Object({ name: Type.Optional(Type.String({ minLength: 1 })), issuer_name: Type.Optional(nullable(Type.String())), market: Type.Optional(nullable(market)), offering: Type.Optional(nullable(offering)) }, { additionalProperties: false, minProperties: 1 }),
-  ProjectResponse: obj({ project_id: id, draft_revision: revision, input_revision: nullable(revision), input_hash: nullable(hash), name: Type.String(), kind: taskKind, issuer_name: nullable(Type.String()), market: nullable(market), offering: nullable(offering), updated_at: utc }),
+  ProjectPatchRequest: Type.Object({ name: Type.Optional(Type.String({ minLength: 1, maxLength: PROJECT_FIELD_LIMITS.name })), issuer_name: Type.Optional(nullable(Type.String({ maxLength: PROJECT_FIELD_LIMITS.issuer }))), market: Type.Optional(nullable(market)), offering: Type.Optional(nullable(offering)), update_details: Type.Optional(UpdateDetailsSchema) }, { additionalProperties: false, minProperties: 1 }),
+  ProjectResponse: obj({ project_id: id, draft_revision: revision, input_revision: nullable(revision), input_hash: nullable(hash), name: Type.String(), kind: taskKind, issuer_name: nullable(Type.String()), market: nullable(market), offering: nullable(offering), update_details: Type.Optional(UpdateDetailsSchema), updated_at: utc }),
   ProjectListResponse: obj({ items: Type.Array(obj({ project_id: id, name: Type.String(), draft_revision: revision, updated_at: utc })), page: PageSchema }),
   InputRevisionCreateRequest: obj({ draft_revision: revision, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), requirement_message_ids: Type.Array(id) }),
   InputRevisionResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), rule_pack_version: nullable(Type.String()), template_version: nullable(Type.String()), reference_release: nullable(Type.String()), created_at: utc }),

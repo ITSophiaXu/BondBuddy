@@ -79,6 +79,12 @@ deploy/              # Compose、Nginx、部署与回滚
 
 #6 契约修订采用规格 04 的七类普通材料格式及现有 `project-fields.js` 的 M1 更新材料分区；声明 MIME 不可信，服务端核对真实内容。历史稿识别响应逐字段保留来源、不确定性和报告期集合；公开的项目材料 `ProjectEvent`、运行 `RunEvent` 与仅供受信服务使用的 `InternalObservabilityEvent` 分开。草稿 PATCH 在服务端合并旧值后校验市场/发行方式组合，不能只校验局部 JSON。具体值、错误码与交接说明仍以 `packages/contracts/` 为唯一公共定义；#79 的日志持久化不因本次 DTO 定义而视为完成。
 
+### #11 更新项目表单与草稿持久化切片（2026-09-24）
+
+在 #10/#12 已有的 `apps/web/` 中扩展新建及编辑表单，保留同源 API client、登录/会话隔离、项目列表、串行自动保存和材料上传。新增历史稿有/没有、展开的选填信息、市场/发行方式联动、灵活债券与机构描述、多项资金用途和右侧补充说明。DFI 仅属于交易商协会下的发行方式，未定金额为 null；不增加注册模式问卷。409 保留本页输入，用户可自行复制后明确放弃并加载服务器新版；不自动覆盖。嵌套值比较忽略 JSONB 对象键顺序，资金用途数组顺序仍影响草稿变化。运行与测试说明见 `apps/web/README.md`。
+
+`packages/contracts/src/update-project.ts` 补充规格 05 已确认的草稿输入，POST/PATCH/GET 的 `update_details` 为兼容旧客户端而可省略；PATCH 省略时保留，出现时完整替换，null 表示未知。`0013_m1_update_project_details.sql` 仅新增项目 JSONB 列，服务端合并默认值并校验真实日期和不同单位的金额比较。项目改动及 outbox 同事务；新 input manifest 包含完整用户输入，旧快照不重写。目标字段独立于原稿识别；补充输入未经模型处理/证据确认。表单数据与真实 PostgreSQL 16 联调，不代表材料事件恢复、真实多轮对话、模型调用或 Word 交付已打通。公共契约、迁移和 UI 随集成验证；本切片不解除 #8/#16/#18/#79 的剩余联调与上线门槛。
+
 ### #76 source-profile correction contract extension
 
 `RecognitionPatchRequest` remains compatible with market/offering correction callers, while allowing either field to be omitted and adding an optional complete replacement `reporting_periods` list. Each corrected period carries its own `evidence_refs`; the top-level list retains its existing source-market/offering meaning. The schema requires at least one correction target. The worker checks all cited anchors against the exact owned material-version/parser snapshot, appends an immutable profile, and derives the latest cutoff only from valid period spans. Periods and the derived cutoff remain `user_asserted` with uncertainty even when anchors exist, so a correction cannot make the profile ready. No API route or UI is added by this contract/repository slice.
@@ -124,7 +130,7 @@ Production publication requires verified sources, source/pack validity, enabled 
 
 `apps/web/` 以 Vite、原生 TypeScript 和原型的视觉样式接入现有 `/api/v1`，复用 `packages/contracts` 类型。当前覆盖已有账号登录、会话刷新/退出、本人项目分页列表、已加载名称搜索、新建项目、名称/发行人自动保存，以及按公共固定分区上传文件。每个文件有独立上传会话、XHR 字节进度、服务端保存/核验阶段、失败重试和取消；只有 `complete` 返回材料版本才显示服务端确认成功。刷新恢复读取项目材料事件并按 owner-scoped material ID 拉取当前状态，不从浏览器存储恢复个人数据；#12 的初始 UI 切片缺少服务端事件读取，后续 #8 项目事件切片现已提供此恢复路径。409 保留输入且不覆盖服务端新版本；跨页账号切换清除旧页面内容。
 
-项目材料恢复使用 0011 持久化的 owner-scoped `ProjectEvent` 项目序列；只有 Blob 内容核验并保存成功后才写终态 `material.upload_progress`，事件和材料/outbox 在同一事务提交。分页默认 50 条、上限 100 条；恢复时再通过 owner-scoped 当前材料读取排除已删除或 Blob 缺失记录。该切片不宣称完成 #10/#12：同内容去重、历史稿重复识别抑制、扫描/加密/缺页提示的完整验收仍待完成。默认 upload tests 使用合成 API fixture；独立的 project-events browser integration 运行本地 PostgreSQL/Azurite API 与 Blob，但不构成目标环境/TLS验收。全局搜索、类型/状态筛选、归档和完整业务字段也仍依赖后续接口；#11、#18、#34 的完整工作区后续接入。不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
+项目材料恢复使用 0011 持久化的 owner-scoped `ProjectEvent` 项目序列；只有 Blob 内容核验并保存成功后才写终态 `material.upload_progress`，事件和材料/outbox 在同一事务提交。分页默认 50 条、上限 100 条；恢复时再通过 owner-scoped 当前材料读取排除已删除或 Blob 缺失记录。该切片不宣称完成 #10/#12：同内容去重、历史稿重复识别抑制、扫描/加密/缺页提示的完整验收仍待完成。默认 upload tests 使用合成 API fixture；独立的 project-events browser integration 运行本地 PostgreSQL/Azurite API 与 Blob，但不构成目标环境/TLS验收。全局搜索、类型/状态筛选、归档仍依赖后续接口；#11 已补齐业务字段，#18、#34 的完整工作区后续接入。不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
 
 | 负责人 | 主改动面 | 必须与谁对齐 |
 | --- | --- | --- |
