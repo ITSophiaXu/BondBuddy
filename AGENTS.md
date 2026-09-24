@@ -11,6 +11,16 @@
 
 若上述依据冲突，先在 Issue 或 PR 中说明，并与受影响负责人确定公共契约，再开发依赖该契约的代码。不要自行改变业务规则或接口格式。
 
+## 产品说明与交互索引
+
+- [产品说明书总索引](product-prototype/product-specs/README.md)：各功能模块、上线范围与开发任务入口；[合并版说明书](product-prototype/product-specs/BondBuddy产品开发说明书.md)用于完整阅读。
+- [原型启动与交接](product-prototype/HANDOFF.md)：本地启动、接口联调与演示入口。
+- [更新募集书连续工作区演示及实现约束](product-prototype/design-previews/README.md)：开始、进度、待补充、成果和后续修改始终保留同一项目上下文及右侧对话。静态演示位于 `product-prototype/public/previews/update-workspace.html`，启动原型后访问 `/previews/update-workspace.html`。
+- 对应目标要求见[第 5 章第 5.1.1 节](product-prototype/product-specs/05-更新募集书.md)，多轮对话见[第 13 章](product-prototype/product-specs/13-QA与项目对话.md)，输入版本和运行语义见[第 16 章](product-prototype/product-specs/16-数据模型接口与状态机.md)，验收见[第 17 章 E2E-46—49](product-prototype/product-specs/17-验收测试与实施路线.md)。
+- [当前实现与目标差异](product-prototype/product-specs/18-当前实现与来源索引.md)：演示使用模拟状态，尚未替换真实 `/#update` 的任务详情跳转，不构成模型、Word 交付、恢复或计费验收，不能据此关闭开发 Issue。
+
+修改连续工作区演示时，编辑 `product-prototype/design-previews/update-workspace.fragment.html`，在 `product-prototype` 运行 `node scripts/build-update-workspace-preview.mjs` 及其 `--check` 校验，同步可编辑源与独立页面。修改产品要求时同步对应模块和验收章节，再运行 `node product-specs/build-spec.mjs` 生成合并版与校验记录。
+
 ## M1 技术基线
 
 - 浏览器：保留 `product-prototype/public/` 现有体验，渐进迁移至 Vite 和公共 API 类型；新模块使用 TypeScript。M1 不整体重写 UI 框架。
