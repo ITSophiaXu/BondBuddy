@@ -14,6 +14,7 @@
     "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker",
     "check:contracts": "npm run check:examples -w @bondbuddy/contracts",
     "test:api": "npm test -w @bondbuddy/api",
+    "test:documents": "PYTHONPATH=python python3 -m unittest discover -s python/tests -v",
     "start:api": "npm start -w @bondbuddy/api",
     "migrate:api": "node db/migrate.mjs",
     "storage:lifecycle": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api && npm run storage:lifecycle -w @bondbuddy/api"
