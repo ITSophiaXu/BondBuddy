@@ -6,6 +6,9 @@ import {
   type FactIdentity,
   type FactStatus,
 } from '@bondbuddy/domain/facts';
+import { readOcrFactSource } from '@bondbuddy/api/ocr';
+import type { PrivateBlobs } from '@bondbuddy/api/data';
+import type { Pool, PoolClient } from 'pg';
 
 export interface FactRepositoryPool {
   query(sql: string, values: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -26,6 +29,18 @@ export interface FactEvidenceAnchor {
   /** Repository metadata needed to round-trip candidate-level domain fields. */
   readonly candidate_confidence?: number;
   readonly source_anchor_review?: { readonly verifier_id: string; readonly verified_at: string };
+  /** OCR provenance is resolved from the immutable #139 result by the trusted reader. */
+  readonly ocr_source?: {
+    readonly snapshot_id: string; readonly result_sha256: string; readonly record_id: string;
+    readonly page: number; readonly bbox: readonly [number, number, number, number];
+    readonly page_image_sha256: string; readonly coordinate_system: string;
+  };
+  /** Kept separate from literal_quote so a correction cannot masquerade as source text. */
+  readonly ocr_correction?: {
+    readonly correction_id: string; readonly revision: number; readonly corrected_text: string;
+    readonly reason: string; readonly actor_user_id: string; readonly created_at: string;
+    readonly period: string | null; readonly scope: string | null; readonly unit: string | null;
+  };
 }
 
 export interface FactProvenance {
@@ -57,6 +72,8 @@ export interface FactRepositoryContext {
 
 export interface FactRepositoryDependencies {
   readonly pool: FactRepositoryPool;
+  /** Required only by the OCR-specific insertion path. */
+  readonly blobs?: PrivateBlobs;
   readonly newId?: () => string;
   readonly now?: () => Date;
 }
@@ -289,17 +306,18 @@ const RETURNING_COLUMNS = `id, owner_user_id, project_id, fact_key_hash, fact_ke
  verification_actor_id, verification_at, material_id, material_version, evidence, uncertainty, created_at`;
 
 /** Inserts one immutable source candidate. A later source is always another row. */
-export async function insertFactCandidate(
+async function insertFactCandidateInternal(
   dependencies: FactRepositoryDependencies,
   context: FactRepositoryContext,
   candidate: FactCandidate,
   material: { readonly id: string; readonly version: number },
   evidence: readonly FactEvidenceAnchor[],
+  evidenceAuthority: 'native_parser' | 'verified_ocr_reader',
 ): Promise<StoredFactCandidate> {
   const validated = validateCandidate(context, candidate, material.id, material.version, evidence);
   // User statements may be supported by chat evidence, which has no parser
   // snapshot. Material-derived audited/external evidence must resolve exactly.
-  if (candidate.source.kind === 'audited' || candidate.source.kind === 'external') {
+  if (evidenceAuthority === 'native_parser' && (candidate.source.kind === 'audited' || candidate.source.kind === 'external')) {
     await verifyPersistedEvidence(dependencies.pool, context, material, evidence);
   }
   const id = dependencies.newId?.() ?? randomUUID();
@@ -315,7 +333,8 @@ export async function insertFactCandidate(
       WHERE EXISTS (
         SELECT 1 FROM bb_material_versions m
          WHERE m.owner_user_id = $2 AND m.project_id = $3 AND m.id = $18 AND m.version = $19
-           AND m.deleted_at IS NULL AND m.role <> 'reference' AND m.sha256 = $22
+           AND m.deleted_at IS NULL AND ${evidenceAuthority === 'verified_ocr_reader' ? "m.role NOT IN ('reference','template')" : "m.role <> 'reference'"}
+           AND m.sha256 = $22
       )
      RETURNING ${RETURNING_COLUMNS}`,
     [id, context.ownerUserId, context.projectId, candidate.identity.entityId, identityHash(validated.key),
@@ -336,6 +355,97 @@ export async function insertFactCandidate(
     throw factError('FACT_SCOPE_MISMATCH');
   }
   return mapRow(result.rows[0]!);
+}
+
+/** Inserts a fact from a hash-verified OCR result. OCR is always held for
+ * confirmation; corrections become user assertions with the OCR literal kept
+ * separately as their original evidence. Caller-supplied anchors are not accepted. */
+export async function insertOcrFactCandidate(
+  dependencies: FactRepositoryDependencies,
+  context: FactRepositoryContext,
+  candidate: FactCandidate,
+  source: { readonly materialId: string; readonly materialVersion: number; readonly snapshotId: string;
+    readonly resultSha256: string; readonly recordId: string; readonly correctionId?: string },
+): Promise<StoredFactCandidate> {
+  if (!dependencies.blobs) throw factError('OCR_FACT_BLOB_READER_REQUIRED');
+  if (candidate.auditCheck != null || (candidate as FactCandidate & { status?: string }).status === 'verified') {
+    throw factError('OCR_FACT_CANNOT_BE_VERIFIED');
+  }
+  const resolved = await readOcrFactSource(dependencies.pool as unknown as Pool|PoolClient, dependencies.blobs, {
+    owner: context.ownerUserId, projectId: context.projectId, materialId: source.materialId,
+    version: source.materialVersion, snapshotId: source.snapshotId, resultSha256: source.resultSha256,
+    recordId: source.recordId, ...(source.correctionId ? { correctionId: source.correctionId } : {}),
+  });
+  if (resolved.materialRole === 'reference' || resolved.materialRole === 'template') {
+    throw factError('NON_ISSUER_FACT_SOURCE');
+  }
+  if (!resolved.record.text.trim()) throw factError('OCR_FACT_LITERAL_REQUIRED');
+  if (resolved.correction) {
+    if (candidate.source.kind !== 'user_statement' || candidate.value.kind !== 'known' ||
+      candidate.value.decimalOrText !== resolved.correction.corrected_text) {
+      throw factError('OCR_CORRECTION_VALUE_MISMATCH');
+    }
+  } else if (source.correctionId !== undefined || candidate.source.kind === 'user_statement') {
+    throw factError('OCR_CORRECTION_REQUIRED');
+  } else if (resolved.record.numeric.kind === 'number') {
+    if (candidate.value.kind !== 'known' || candidate.value.decimalOrText !== resolved.record.numeric.decimal) {
+      throw factError('OCR_FACT_VALUE_MISMATCH');
+    }
+    if (resolved.record.numeric.unit !== null && candidate.identity.unit !== resolved.record.numeric.unit) {
+      throw factError('OCR_FACT_UNIT_MISMATCH');
+    }
+  } else if (candidate.value.kind !== 'known' || candidate.value.decimalOrText !== resolved.record.text) {
+    throw factError('OCR_FACT_VALUE_MISMATCH');
+  }
+  if (candidate.source.kind === 'template' || candidate.source.kind === 'reference') {
+    throw factError('NON_ISSUER_FACT_SOURCE');
+  }
+
+  const evidence: FactEvidenceAnchor[] = [{
+    evidence_id: resolved.record.record_id,
+    material_id: resolved.materialId,
+    material_version: resolved.materialVersion,
+    content_hash: resolved.materialSha256,
+    locator_type: 'ocr_page_bbox',
+    locator: { page: resolved.record.page, bbox: resolved.record.bbox, coordinate_system: resolved.page.coordinate_system,
+      snapshot_id: resolved.snapshotId, result_sha256: resolved.resultSha256,
+      page_image_sha256: resolved.page.image_sha256, record_id: resolved.record.record_id },
+    literal_quote: resolved.record.text,
+    extraction_method: 'ocr',
+    extraction_version: resolved.processorVersion,
+    confidence: resolved.record.confidence,
+    uncertainty: [...new Set([...resolved.record.uncertainty, 'OCR_REVIEW_REQUIRED'])],
+    ocr_source: { snapshot_id: resolved.snapshotId, result_sha256: resolved.resultSha256,
+      record_id: resolved.record.record_id, page: resolved.record.page, bbox: resolved.record.bbox,
+      page_image_sha256: resolved.page.image_sha256, coordinate_system: resolved.page.coordinate_system },
+    ...(resolved.correction ? { ocr_correction: { correction_id: resolved.correction.correction_id,
+      revision: resolved.correction.revision, corrected_text: resolved.correction.corrected_text,
+      reason: resolved.correction.reason, actor_user_id: resolved.correction.actor_user_id,
+      created_at: resolved.correction.created_at, period: resolved.correction.period,
+      scope: resolved.correction.scope, unit: resolved.correction.unit } } : {}),
+  }];
+  const observedCandidate: FactCandidate = resolved.correction
+    ? { ...candidate, confidence: resolved.record.confidence ?? 0,
+      source: { kind: 'user_statement', sourceId: resolved.correction.correction_id,
+        observedAt: resolved.correction.created_at, ...(candidate.source.validAsOf ? { validAsOf: candidate.source.validAsOf } : {}) },
+      auditCheck: null }
+    : { ...candidate, confidence: resolved.record.confidence ?? 0,
+      source: { kind: candidate.source.kind, sourceId: resolved.materialId, observedAt: resolved.snapshotCreatedAt,
+        ...(candidate.source.validAsOf ? { validAsOf: candidate.source.validAsOf } : {}) },
+      uncertainty: [candidate.uncertainty, 'OCR_REVIEW_REQUIRED'].filter(Boolean).join('; '), auditCheck: null };
+  return insertFactCandidateInternal(dependencies, context, observedCandidate,
+    { id: resolved.materialId, version: resolved.materialVersion }, evidence, 'verified_ocr_reader');
+}
+
+/** Existing native parser path. Its evidence verification and status rules are unchanged. */
+export async function insertFactCandidate(
+  dependencies: FactRepositoryDependencies,
+  context: FactRepositoryContext,
+  candidate: FactCandidate,
+  material: { readonly id: string; readonly version: number },
+  evidence: readonly FactEvidenceAnchor[],
+): Promise<StoredFactCandidate> {
+  return insertFactCandidateInternal(dependencies, context, candidate, material, evidence, 'native_parser');
 }
 
 /** Lists all source candidates in an owner/project scope; an identity narrows the query without hiding conflicts. */
