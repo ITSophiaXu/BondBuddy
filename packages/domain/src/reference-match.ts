@@ -201,7 +201,7 @@ function validDate(value: string): boolean {
 }
 
 function acceptedMapping(candidate: ReferenceCandidate, target: ReferenceTarget, ruleVersion: string): AcceptedChapterMapping | null {
-  if (candidate.market === target.market) return null;
+  if (candidate.market === target.market && candidate.offering === target.offering) return null;
   return candidate.chapterMappings.find((mapping) => mapping.status === 'accepted' && mapping.version.trim() !== ''
     && mapping.sourceMarket === candidate.market && mapping.targetMarket === target.market
     && mapping.sourceOffering === candidate.offering && mapping.targetOffering === target.offering
@@ -224,7 +224,8 @@ function eligibilityReason(candidate: ReferenceCandidate, target: ReferenceTarge
   if (!Number.isFinite(candidate.reviewQuality) || candidate.reviewQuality < 0
     || (candidate.disclosedAt !== null && !validDate(candidate.disclosedAt))) return 'reference_metadata_invalid';
   const mapping = acceptedMapping(candidate, target, ruleVersion);
-  if (candidate.market !== target.market && !mapping) return 'cross_market_chapter_mapping_not_accepted';
+  if (!mapping && candidate.market !== target.market) return 'cross_market_chapter_mapping_not_accepted';
+  if (!mapping && candidate.offering !== target.offering) return 'cross_offering_chapter_mapping_not_accepted';
   const targetRuleApplies = candidate.applicableScopes.some((scope) => scope.market === target.market
     && scope.offering === target.offering && scope.instrument === target.instrument
     && scope.documentStage === target.documentStage && scope.ruleVersion === ruleVersion);
