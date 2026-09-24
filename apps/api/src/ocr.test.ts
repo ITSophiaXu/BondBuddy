@@ -30,7 +30,7 @@ test('OCR validator rejects wrong identities, coordinates, edited pixels and cer
 test('owned OCR snapshots and user corrections are immutable, replay-safe and private', {skip:!process.env.BB_TEST_DATABASE_URL||!process.env.BB_TEST_AZURITE_CONNECTION_STRING},async()=>{
   const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL});const blobs=azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!);
   const owner=uid();let active=owner;const origin='http://ocr.synthetic.test';
-  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:active,csrfVerified:true})});
+  const app=createServer({pool,blobs,allowedOrigin:origin,enableRunStaging:true,principal:async()=>({userId:active,csrfVerified:true})});
   const send=(method:any,url:string,payload?:any,extra={})=>app.inject({method,url,headers:{origin,...extra},payload});
   try {
     const created=await send('POST','/api/v1/projects',{name:'Synthetic OCR',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(created.statusCode,201,created.body);
@@ -58,6 +58,22 @@ test('owned OCR snapshots and user corrections are immutable, replay-safe and pr
     assert.equal((await send('GET',review.pages[0].image_url)).statusCode,404);
     assert.equal((await send('POST',`${route}/corrections`,input)).statusCode,404);
     active=owner;assert.equal((await send('GET',review.pages[0].image_url)).statusCode,200);
+    const locked=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:[{material_id:materialId,material_version:1}],requirement_message_ids:[]});
+    assert.equal(locked.statusCode,201,locked.body);
+    const snapshot=locked.json();
+    const execution=await send('POST','/api/v1/runs/execute',{execution_request_id:uid(),project_id:projectId,input_revision:snapshot.input_revision,input_hash:snapshot.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'});
+    assert.equal(execution.statusCode,202,execution.body);
+    const runId=execution.json().run_id;
+    await assert.rejects(authorizeOcrMaterial(pool,{...context,purpose:'full_ocr',runId}),/requires an active/);
+    await pool.query("UPDATE bb_runs SET state='queued' WHERE id=$1",[runId]);
+    const fullContext={...context,requestId:uid(),purpose:'full_ocr' as const,runId};
+    assert.equal((await authorizeOcrMaterial(pool,fullContext)).id,materialId);
+    const fullResponse={...raw,request_id:fullContext.requestId,purpose:'full_ocr' as const};
+    await storeOcr(pool,blobs,fullContext,fullResponse);
+    await assert.rejects(correctOcr(pool,blobs,owner,projectId,materialId,{...input,request_id:uid(),expected_revision:2}),/changed/);
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[runId]);
+    await assert.rejects(authorizeOcrMaterial(pool,fullContext),/requires an active/);
+
     assert.equal((await send('DELETE',`/api/v1/projects/${projectId}/materials/${materialId}`)).statusCode,204);
     assert.equal((await send('GET',route)).statusCode,404);assert.equal((await send('GET',review.pages[0].image_url)).statusCode,404);
     assert.equal((await pool.query('SELECT count(*) n FROM bb_ocr_corrections WHERE snapshot_id=$1',[snapshotId])).rows[0].n,'2');
