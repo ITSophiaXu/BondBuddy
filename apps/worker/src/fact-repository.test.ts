@@ -398,7 +398,7 @@ test('live PostgreSQL and private Blob bind OCR facts to immutable snapshots and
       [correction.correction_id, owner, project, snapshotId, correction.record_id, `ocr-correction-request-${suffix}`,
         'e'.repeat(64), JSON.stringify(correction)]);
 
-      const deps = { ...dependencies(db.pool as unknown as MockPool), blobs };
+      const deps = { ...dependencies(db.pool as unknown as MockPool), blobs, newId: randomUUID };
       await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate({
         value: { kind: 'known', decimalOrText: '999' },
       }), { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1' }),
