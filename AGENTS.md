@@ -54,3 +54,9 @@
 ## 首个集成目标
 
 真实登录 → 创建项目 → 上传并核验 DOCX/PDF → 保存材料版本 → 提交持久化 run → 关闭并重开浏览器后恢复状态 → 获取通过检查的 Word 成果。这条链路必须留存 prompt、任务、模型调用尝试、token、错误和终态证据。
+
+## vm1 授权测试主机连接
+
+- 用户指定的 DeepSeek 授权测试主机为 `azureuser@20.243.2.34`。在 vm1 的本仓库根目录使用 `ssh -i ./openclaw-vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes azureuser@20.243.2.34`；其 ED25519 主机指纹经用户于 2026-09-24 核对为 `SHA256:WJkDE47NVg04vfrPTj5xNRM2+p1jkqAvwyjD7jFVGHY`。
+- `openclaw-vm_key.pem` 仅作为 vm1 本地文件保存，权限为 `0600`，已被根目录 `.gitignore` 排除。新工作区缺少该文件时，须由用户在该主机单独提供；不得提交、回显或复制私钥到 Worker 主机。
+- 主机获授权与真实 DeepSeek 协议、用量验收是两件事；执行 #16 联调后仍需在 Issue 留下脱敏请求与 usage 证据。
