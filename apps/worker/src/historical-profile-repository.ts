@@ -1,15 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
-import { isMarketOffering, schemas, type Market, type Offering, type Recognition } from '@bondbuddy/contracts';
+import { isMarketOffering, schemas, type Market, type Offering, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
 import { HISTORICAL_NATIVE_RECOGNITION_VERSION } from './historical-native-recognition.js';
-
-type RecognitionPatchRequest = {
-  profile_version: number;
-  source_market: Market | null;
-  source_offering: Offering | null;
-  reason: string;
-  evidence_refs: string[];
-};
 
 export interface HistoricalProfileClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -413,7 +405,7 @@ export async function appendHistoricalRecognition(
   } finally { client.release(); }
 }
 
-/** Appends a source-market/offering correction. Previous snapshots remain intact. */
+/** Appends source-market/offering and/or reporting-period corrections. Previous snapshots remain intact. */
 export async function correctHistoricalRecognition(
   dependencies: HistoricalProfileDependencies,
   context: TrustedHistoricalCorrectionContext,
@@ -447,13 +439,16 @@ export async function correctHistoricalRecognition(
     );
     if (latestResult.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
     const latest = mapProfile(latestResult.rows[0]!, false);
+    const periodEvidenceRefs = patch.reporting_periods?.flatMap(period => period.evidence_refs) ?? [];
+    const citedEvidenceRefs = [...new Set([...patch.evidence_refs, ...periodEvidenceRefs])];
     await validateCorrectionEvidenceReferences(client, context,
-      parserVersionFromRecognition(latest.recognition), patch.evidence_refs);
+      parserVersionFromRecognition(latest.recognition), citedEvidenceRefs);
     if (latest.profileVersion !== patch.profile_version) throw fail('HISTORICAL_PROFILE_VERSION_CONFLICT');
     const prior = latest.recognition;
-    const resultingMarket = patch.source_market;
-    const resultingOffering = patch.source_offering;
-    if (resultingMarket !== null && resultingOffering !== null && !isMarketOffering(resultingMarket, resultingOffering)) {
+    const resultingMarket = patch.source_market === undefined ? prior.source_market.value : patch.source_market;
+    const resultingOffering = patch.source_offering === undefined ? prior.source_offering.value : patch.source_offering;
+    if (resultingMarket !== null && resultingOffering !== null &&
+        !isMarketOffering(resultingMarket as Market, resultingOffering as Offering)) {
       throw fail('INVALID_SOURCE_MARKET_OFFERING');
     }
     const corrected = structuredClone(prior) as Recognition;
@@ -475,12 +470,60 @@ export async function correctHistoricalRecognition(
         : ['锚点存在但不证明所校正值，需人工核对原文语义'],
       status: 'user_asserted',
     });
-    corrected.source_market = correctionField(prior.source_market, patch.source_market) as Recognition['source_market'];
-    corrected.source_offering = correctionField(prior.source_offering, patch.source_offering) as Recognition['source_offering'];
-    corrected.state = isReadySupported(corrected) ? 'ready' : 'needs_confirmation';
+    if (patch.source_market !== undefined) {
+      corrected.source_market = correctionField(prior.source_market, patch.source_market as Market | null) as Recognition['source_market'];
+    }
+    if (patch.source_offering !== undefined) {
+      corrected.source_offering = correctionField(prior.source_offering, patch.source_offering as Offering | null) as Recognition['source_offering'];
+    }
+    if (patch.reporting_periods !== undefined) {
+      corrected.reporting_periods = patch.reporting_periods.map((period, index) => {
+        const current = prior.reporting_periods[index];
+        return {
+          start: period.start,
+          end: period.end,
+          period_kind: period.period_kind,
+          scope: period.scope,
+          raw_value: null,
+          provenance: {
+            material_id: context.materialId,
+            material_version: context.materialVersion,
+            method: 'user_correction',
+            extractor_version: current?.provenance.extractor_version ?? prior.latest_reporting_cutoff.provenance.extractor_version,
+            evidence_refs: [...new Set(period.evidence_refs)],
+          },
+          uncertainty: period.evidence_refs.length === 0
+            ? ['用户校正的报告期间缺少来源锚点，需人工核对']
+            : ['用户校正的报告期间尚未人工核验'],
+          status: 'user_asserted',
+        };
+      });
+      const allPeriodsValid = corrected.reporting_periods.length > 0 && corrected.reporting_periods.every(period =>
+        validDate(period.start) && validDate(period.end) && period.start <= period.end);
+      const validEnds = allPeriodsValid ? corrected.reporting_periods.map(period => period.end!) : [];
+      const latestEnd = validEnds.length ? validEnds.reduce((latestEnd, end) => end > latestEnd ? end : latestEnd) : null;
+      const cutoffRefs = [...new Set(corrected.reporting_periods.flatMap(period => period.provenance.evidence_refs))];
+      corrected.latest_reporting_cutoff = {
+        value: latestEnd,
+        raw_value: null,
+        provenance: {
+          material_id: context.materialId,
+          material_version: context.materialVersion,
+          method: 'user_correction',
+          extractor_version: prior.latest_reporting_cutoff.provenance.extractor_version,
+          evidence_refs: cutoffRefs,
+        },
+        uncertainty: latestEnd === null
+          ? ['用户校正期间没有有效截止日，需人工核对']
+          : ['最新截止日由用户校正期间推导，尚未人工核验'],
+        status: 'user_asserted',
+      };
+    }
+    // A user assertion is never sufficient confirmation, even when it cites valid anchors.
+    corrected.state = 'needs_confirmation';
     validateProfile(corrected);
     const profile = await appendSnapshot(dependencies, client, context, requestHash, 'correction', corrected, {
-      actorId: context.actorId, reason: patch.reason, evidenceRefs: patch.evidence_refs,
+      actorId: context.actorId, reason: patch.reason, evidenceRefs: citedEvidenceRefs,
     });
     await client.query('COMMIT'); transactionOpen = false;
     return profile;

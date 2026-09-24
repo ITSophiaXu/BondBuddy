@@ -33,13 +33,17 @@ seam. Migration `0013_m1_historical_profiles.sql` binds snapshots to an
 owner/project/historical material version. Recognition retries are idempotent
 by request and by native parser version; changed results for the same parser
 version fail closed. Corrections append a new version with actor, reason and
-evidence references, and an outbox event commits in the same transaction. A
-late recognition request cannot replace a correction. Correction references
-must exist in the original material version's parse snapshot, but remain
-`user_asserted` and `needs_confirmation` because that lookup does not verify
-their meaning. The current public PATCH contract cannot correct reporting
-periods; upload-triggered job activation, API/UI, OCR/cost logging and
-authorized real-material acceptance remain open.
+evidence references, and an outbox event commits in the same transaction.
+Existing market/offering callers remain valid; callers can omit either source
+field and may instead provide a full replacement `reporting_periods` list with
+per-period evidence references. Every cited reference is checked against the
+exact owner's original material-version/parser snapshot. A period correction
+also replaces the derived latest cutoff, taking the maximum valid period end
+only; corrected periods and cutoff remain `user_asserted` with uncertainty even
+when anchors exist, and the profile remains `needs_confirmation`. Same-request
+replay, stale profile versions and late-recognition protection remain in force.
+No API route or UI is included; upload-triggered job activation, OCR/cost
+logging and authorized real-material acceptance remain open.
 
 `material-parser.ts` adds an internal #13 bridge from an owner/project-scoped,
 immutable material version to the versioned Python parser. It verifies private
