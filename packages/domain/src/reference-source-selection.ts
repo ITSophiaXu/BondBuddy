@@ -84,6 +84,8 @@ export type ReferenceSourceSelectionStatus =
 
 export interface ReferenceSourceSelectionResult {
   readonly schemaVersion: 'reference-source-selection-v1';
+  /** Binds this decision to the issuer profile and target rule without disclosing issuer facts. */
+  readonly targetContextHash: string;
   readonly status: ReferenceSourceSelectionStatus;
   /** This only identifies a structure source; it says nothing about new-draft delivery readiness. */
   readonly selected: null | {
@@ -197,8 +199,12 @@ function libraryDecision(match: ReturnType<typeof matchBusinessReferences>): Lib
   };
 }
 
-function result(fields: Omit<ReferenceSourceSelectionResult, 'selectionHash'>): ReferenceSourceSelectionResult {
-  return { ...fields, selectionHash: hash(fields) };
+function result(input: ReferenceSourceSelectionInput,
+  fields: Omit<ReferenceSourceSelectionResult, 'selectionHash' | 'targetContextHash'>): ReferenceSourceSelectionResult {
+  const targetContextHash = hash({ targetProfile: input.automaticMatch.targetProfile,
+    target: input.automaticMatch.target, ruleVersion: input.automaticMatch.ruleVersion });
+  const record = { ...fields, targetContextHash };
+  return { ...record, selectionHash: hash(record) };
 }
 
 /** Select a usable user supplied structure first, then conservatively fall back to the existing library matcher. */
@@ -237,14 +243,14 @@ export function selectReferenceSource(input: ReferenceSourceSelectionInput): Ref
       const material = requestedMaterial;
       if (issuerEvidenceStatus !== 'ready') {
         userReferenceDecisions[0] = { ...userReferenceDecisions[0]!, disposition: 'excluded', reason: `issuer_profile_${issuerEvidenceStatus}` };
-        return result({
+        return result(input, {
           schemaVersion: 'reference-source-selection-v1', status: issuerEvidenceStatus, selected: null,
           deliverableStatus: 'not_determined', issuerEvidenceStatus, userReferenceDecisions, libraryDecision: null,
           guidance: issuerEvidenceStatus === 'needs_evidence' ? 'issuer_evidence_missing' : 'review_required',
         });
       }
       const mapping = acceptedUserMapping(material, input.automaticMatch.target, input.automaticMatch.ruleVersion);
-      return result({
+      return result(input, {
         schemaVersion: 'reference-source-selection-v1',
         status: issuerEvidenceStatus === 'ready' ? 'selected_user_reference' : issuerEvidenceStatus,
         selected: {
@@ -261,7 +267,7 @@ export function selectReferenceSource(input: ReferenceSourceSelectionInput): Ref
   const matched = matchBusinessReferences(input.automaticMatch);
   const decision = libraryDecision(matched);
   if (matched.status === 'exact') {
-    return result({
+    return result(input, {
       schemaVersion: 'reference-source-selection-v1', status: 'selected_library_reference',
       selected: {
         source: 'business_library', use: 'structure_only',
@@ -276,7 +282,7 @@ export function selectReferenceSource(input: ReferenceSourceSelectionInput): Ref
     : matched.status === 'needs_review' ? 'review_required' : 'internal_reference_capability_insufficient';
   const issuerEvidenceStatus = matched.status === 'needs_evidence' ? 'needs_evidence'
     : matched.status === 'needs_review' && matched.snapshot.targetTop3SetKey === null ? 'needs_review' : 'ready';
-  return result({
+  return result(input, {
     schemaVersion: 'reference-source-selection-v1', status: matched.status, selected: null,
     deliverableStatus: 'not_determined', issuerEvidenceStatus, userReferenceDecisions, libraryDecision: decision, guidance,
   });

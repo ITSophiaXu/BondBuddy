@@ -65,6 +65,21 @@ test('a usable project reference wins over the library and is marked structure o
   assert.equal(JSON.stringify(result).includes('reference body'), false);
 });
 
+test('user reference selection hash binds issuer profile and target rule without exposing facts', () => {
+  const preferredUserReference = { materialId: 'material-a', materialVersion: 'v3' };
+  const baseline = selectReferenceSource({ project, userReferences: [material()], preferredUserReference, automaticMatch: matchInput() });
+  const repeated = selectReferenceSource({ project, userReferences: [material()], preferredUserReference, automaticMatch: matchInput() });
+  const changedProfile = selectReferenceSource({ project, userReferences: [material()], preferredUserReference,
+    automaticMatch: matchInput({ targetProfile: { ...profile('synthetic-target-issuer'), profileVersion: 'profile-v2' } }) });
+  const changedRule = selectReferenceSource({ project,
+    userReferences: [material({ applicableScopes: [{ ...scope, ruleVersion: 'rules-v5' }] })], preferredUserReference,
+    automaticMatch: matchInput({ target: { ...target, ruleVersion: 'rules-v5' }, ruleVersion: 'rules-v5' }) });
+  assert.equal(baseline.selectionHash, repeated.selectionHash);
+  assert.notEqual(baseline.selectionHash, changedProfile.selectionHash);
+  assert.notEqual(baseline.selectionHash, changedRule.selectionHash);
+  assert.equal(JSON.stringify(baseline).includes('Synthetic chemicals'), false);
+});
+
 test('a user reference remains eligible while the library is unavailable or has no index version', () => {
   const result = selectReferenceSource({
     project, userReferences: [material()],
