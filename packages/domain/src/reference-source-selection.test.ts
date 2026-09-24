@@ -146,6 +146,19 @@ test('rule inapplicability and an unreviewed cross-market or offering mapping fa
   assert.equal(offeringResult.status, 'selected_library_reference');
 });
 
+test('a user-uploaded source with a different instrument or stage falls back to the library', () => {
+  for (const mismatched of [material({ instrument: 'cp' }), material({ documentStage: 'registration' })]) {
+    const result = selectReferenceSource({
+      project,
+      userReferences: [mismatched],
+      preferredUserReference: { materialId: 'material-a', materialVersion: 'v3' },
+      automaticMatch: matchInput(),
+    });
+    assert.equal(result.status, 'selected_library_reference');
+    assert.equal(result.userReferenceDecisions[0]?.reason, 'material_instrument_or_stage_mismatch');
+  }
+});
+
 test('a correctly accepted cross-market and cross-offering mapping permits structure-only use', () => {
   const cross = material({
     market: 'szse', offering: 'public', applicableScopes: [scope],

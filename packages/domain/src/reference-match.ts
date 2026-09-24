@@ -216,6 +216,11 @@ function eligibilityReason(candidate: ReferenceCandidate, target: ReferenceTarge
   if (candidate.sourceValidity !== 'valid') return `reference_source_${candidate.sourceValidity}`;
   if (!validScope(candidate.market, candidate.offering) || !validScope(target.market, target.offering)) return 'market_offering_invalid';
   if (!candidate.referenceId.trim() || !candidate.instrument.trim() || !candidate.documentVersion.trim()) return 'reference_scope_or_version_missing';
+  // Applicable scopes describe approved rules, not a conversion of the source
+  // document into a different debt instrument or registration/issuance stage.
+  if (candidate.instrument !== target.instrument || candidate.documentStage !== target.documentStage) {
+    return 'reference_instrument_or_stage_mismatch';
+  }
   if (!Number.isFinite(candidate.reviewQuality) || candidate.reviewQuality < 0
     || (candidate.disclosedAt !== null && !validDate(candidate.disclosedAt))) return 'reference_metadata_invalid';
   const mapping = acceptedMapping(candidate, target, ruleVersion);
