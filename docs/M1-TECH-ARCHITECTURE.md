@@ -15,7 +15,7 @@
 | AI 接入 | 隔离的 Codex 执行进程、DeepSeek 适配器 | 以 #16 的真实协议联调结果确定 Codex CLI / app-server 接口和准确模型 ID。适配器统一记录请求、重试、usage 与结构化输出；凭证只在服务端。联调未通过不启用真实更新。 |
 | 部署 | Docker Compose、Nginx + TLS、Azure VM | 基于现有 `deploy/vm/` 演进为 web/api/worker/PostgreSQL/Azurite(仅开发) 的独立进程。生产 Blob 使用 Azure 服务；密钥由部署环境注入。先保持单区域部署，后续再按负载拆分。 |
 
-版本号为兼容基线；具体补丁版本由 lockfile、容器镜像 digest 和部署清单锁定。短信供应商、DeepSeek 实际模型 ID、存储地域与保留期限必须在真实接入时记录，不在代码中猜测。
+版本号为兼容基线；具体补丁版本由 lockfile、容器镜像 digest 和部署清单锁定。DeepSeek 实际模型 ID、存储地域与保留期限必须在真实接入时记录，不在代码中猜测。
 
 ## 2. 一张图看边界
 
@@ -91,7 +91,7 @@ deploy/              # Compose、Nginx、部署与回滚
 
 `0007_m1_provider_result_reconciliation.sql` appends immutable owner/project/job/run/call/attempt bindings for provider result candidates and observations; it is independent of the concurrent #8 `0006` storage migration. A result is stored as JSON in the private Blob container by content hash; a single candidate with measured, non-conflicting #79 usage is added to the job checkpoint in the same transaction as its observation and outbox event. The worker must read and revalidate that checkpoint result before calling a provider, so a completed attempt is reused after restart. Missing/unknown/conflicting evidence remains paused; a second result hash is retained as a conflict rather than selected. A measured supplier failure ends the run as failed with no automatic retry. A verified `confirmed_not_sent` observation requires an explicit resume and a new attempt number before sending. These seams remain synthetic/internal only and do not enable the production routes or replace Word delivery checks.
 
-1. 用户完成真实短信登录，API 建立会话；前端创建项目草稿并按 revision 保存。
+1. 用户完成用户名密码登录，API 建立会话；前端创建项目草稿并按 revision 保存。
 2. 上传经 API 创建受限会话，Blob 接收字节；API 核对 hash 后登记不可变材料版本，worker 解析/OCR 并登记证据锚点。
 3. 用户预检和执行时，API 校验 owner、材料、目标市场/品种、规则能力与输入版本；事务内写 run、首次 job event 和 outbox。M1 标记 `billing_mode=platform_trial`。
 4. worker 领取任务，保存每阶段检查点；读取锁定的材料、规则、参考库版本；执行 Codex/DeepSeek；每次模型尝试写可追溯 usage 或 `unknown`。
@@ -119,7 +119,7 @@ deploy/              # Compose、Nginx、部署与回滚
 
 ## 7. 仍需在真实接入时落定
 
-- 短信供应商与生产回执/限流策略；DeepSeek 准确模型 ID、Codex 接口能力和 usage 口径。
+- 用户名密码注册/登录的发布验证与找回流程；DeepSeek 准确模型 ID、Codex 接口能力和 usage 口径。
 - Azure Blob 容器、部署地域、加密密钥、材料与 prompt 保存期限、备份和删除流程。
 - 首批授权的募集书来源与行业审核人，以及大公募、PPN/MTN/CP/SCP、DFI 的真实规则版本和样本。
 
@@ -139,4 +139,8 @@ deploy/              # Compose、Nginx、部署与回滚
 
 在 #8 owner API 基线上，`0003_m1_auth_sessions.sql` 保存 +86 规范化号码、挑战 HMAC、协议版本接受记录、注册幂等事件和可撤销会话；对 `0001`/`0002` 仅追加迁移。生产入口使用数据库中的已验证会话解析 `user_id`，不信任浏览器提交的 owner 标识。15 分钟访问令牌与最多 30 天的轮换刷新令牌仅以哈希入库，分别放在 `Secure/HttpOnly/SameSite=Strict` Cookie；另用可读 CSRF Cookie、请求头回传及严格 Origin 校验保护变更请求。登出撤销后，#8 材料/成果读取也不能沿用旧会话。
 
-短信传输是明确的服务端接口；目前仅本地进程内合成测试实现。生产入口没有供应商适配器，发送与验证保持关闭。供应商身份、审核、地域、凭据注入和真实发送/回执证据具备后，才能配置上线；合成测试不表示 #7 实际短信验收。原型仅复用交互语义和 5 分钟/60 秒默认值，不沿用 JSON 账号、演示码或模拟积分。具体配置与升级说明见 `apps/api/README.md`。#17/#79/#16 与完整 Word 交付仍是 #6/#8 的独立验收依赖。
+短信传输是明确的服务端接口；目前仅本地进程内合成测试实现。生产入口没有供应商适配器，发送与验证保持关闭。历史方案要求供应商身份、审核、地域、凭据注入和真实发送/回执证据；合成测试不表示 #7 实际短信验收。原型仅复用交互语义和 5 分钟/60 秒默认值，不沿用 JSON 账号、演示码或模拟积分。具体配置与升级说明见 `apps/api/README.md`。#17/#79/#16 与完整 Word 交付仍是 #6/#8 的独立验收依赖。
+
+### #7 用户名密码决策（2026-09-24）
+
+用户选择 M1 使用用户名密码，短信供应商接入不需要。以上 #7 短信切片仅为历史实现记录；公开 `/api/v1` 契约现使用 `auth/register` 和 `auth/login`。`0008_m1_username_password.sql` 追加唯一小写 ASCII 用户名与 Argon2id 凭据；旧手机账号保留，但没有自动用户名、密码或账号接管入口。旧短信路由从 API 和 OpenAPI 移除。登录使用账号及账号/来源组合的 15 分钟失败窗口（分别 10、5 次）；不按共享 IP 单独封禁。密码找回与账号迁移需 #9 单独设计。正式浏览器、TLS 和部署验收仍未完成。

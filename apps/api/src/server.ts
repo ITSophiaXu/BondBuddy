@@ -15,10 +15,11 @@ const MAX_BYTES = 104857600;
 const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
 
 export function createServer(settings: Settings = {}) {
-  const app = Fastify({ logger: false, bodyLimit: MAX_BYTES + 1024 });
+  // Trust only an explicitly configured reverse proxy for client source addresses.
+  const app = Fastify({ logger: false, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024 });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
-  const auth:AuthConfig={pool,allowedOrigin,otpKey:settings.auth?.otpKey ?? process.env.BB_AUTH_OTP_KEY,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,sms:settings.auth?.sms};
+  const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION};
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_BYTES }, (_request, value, done) => done(null, value));
   app.setErrorHandler((error, request, reply) => {
