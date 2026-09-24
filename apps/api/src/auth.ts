@@ -1,11 +1,23 @@
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import * as argon2 from 'argon2';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { Pool } from 'pg';
 import { schemas } from '@bondbuddy/contracts';
 import { digest, Problem, transaction, uid, unavailable } from './data.js';
 
-export interface SmsTransport { send(phoneE164: string, code: string): Promise<void> }
-export type AuthConfig = { pool: Pool; allowedOrigin?: string; otpKey?: string; termsVersion?: string; sms?: SmsTransport };
+export type AuthConfig = { pool: Pool; allowedOrigin?: string; termsVersion?: string };
+const passwordOptions = { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 };
+const dummyHash = argon2.hash(randomBytes(32), passwordOptions);
+const loginError = () => new Problem(401,'UNAUTHENTICATED','Invalid username or password');
+function username(raw: string) {
+  const value=raw.toLowerCase();
+  if(!/^[a-z][a-z0-9_]{2,31}$/.test(value)) throw new Problem(422,'VALIDATION_FAILED','Username must be 3–32 ASCII letters, digits or underscores and start with a letter');
+  return value;
+}
+function passwordValid(value: string) {
+  return typeof value==='string' && value.length>=12 && value.length<=128 && Buffer.byteLength(value,'utf8')<=512 && !/[\u0000-\u001f\u007f]/.test(value);
+}
+const limitKey=(value:string)=>createHash('sha256').update(value).digest('hex');
 const randomToken = () => randomBytes(32).toString('base64url');
 const accessMinutes = 15, refreshDays = 30;
 const cookie = (name: string, value: string, age: number, httpOnly = true) => `${name}=${value}; Path=/; Secure; SameSite=Strict; ${httpOnly ? 'HttpOnly; ' : ''}Max-Age=${age}`;
@@ -20,12 +32,6 @@ function cookies(request: FastifyRequest): Record<string,string> {
 function same(a: string, b: string) {
   const x=Buffer.from(a), y=Buffer.from(b);
   return x.length===y.length && timingSafeEqual(x,y);
-}
-function phone(raw: string): string {
-  const compact=raw.trim().replace(/[\s()-]/g,'');
-  const value=/^1[3-9][0-9]{9}$/.test(compact) ? `+86${compact}` : compact;
-  if(!/^\+861[3-9][0-9]{9}$/.test(value)) throw new Problem(422,'VALIDATION_FAILED','Unsupported phone format');
-  return value;
 }
 function origin(request: FastifyRequest, allowed?: string) {
   if(!allowed || request.headers.origin!==allowed) throw new Problem(403,'CSRF_DENIED','Origin check failed');
@@ -56,54 +62,58 @@ export async function principal(request: FastifyRequest, config: AuthConfig) {
 }
 export function installAuth(app: FastifyInstance, config: AuthConfig) {
   const db=config.pool;
-  app.post('/api/v1/auth/sms/challenges',{schema:{body:schemas.SmsChallengeRequest}},async(request,reply)=>{
+  async function newSession(client: import('pg').PoolClient, userId: string) {
+    const access=randomToken(),refresh=randomToken(),csrfToken=randomToken();
+    const accessExpiry=new Date(Date.now()+accessMinutes*60_000),refreshExpiry=new Date(Date.now()+refreshDays*86_400_000);
+    await client.query('INSERT INTO bb_auth_sessions(id,user_id,access_hash,refresh_hash,csrf_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[uid(),userId,digest(access),digest(refresh),digest(csrfToken),accessExpiry,refreshExpiry]);
+    return {userId,access,refresh,csrfToken,accessExpiry,refreshExpiry};
+  }
+  app.post('/api/v1/auth/register',{schema:{body:schemas.RegisterRequest}},async(request,reply)=>{
     origin(request,config.allowedOrigin);json(request);
-    if(!config.sms || !config.otpKey || !config.termsVersion)throw unavailable();
-    const p=phone((request.body as {phone:string}).phone);
-    const result=await transaction(db,async client=>{
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`sms:${p}`]);
-      const q=await client.query('SELECT issued_at FROM bb_auth_challenges WHERE phone_e164=$1 ORDER BY issued_at DESC LIMIT 5',[p]);
-      const now=Date.now(), latest=q.rows[0]?.issued_at ? new Date(q.rows[0].issued_at).getTime() : 0;
-      if(now-latest<60_000 || q.rows.filter(r=>now-new Date(r.issued_at).getTime()<3_600_000).length>=5) throw new Problem(429,'RATE_LIMITED','Please wait before requesting another code');
-      await client.query('UPDATE bb_auth_challenges SET invalidated_at=now() WHERE phone_e164=$1 AND consumed_at IS NULL AND invalidated_at IS NULL',[p]);
-      const id=uid(), code=String(randomInt(1_000_000)).padStart(6,'0');
-      const codeHash=createHmac('sha256',config.otpKey!).update(`${id}:${code}`).digest('hex');
-      const expires=new Date(now+300_000),retry=new Date(now+60_000);
-      await client.query('INSERT INTO bb_auth_challenges(id,phone_e164,code_hash,expires_at) VALUES($1,$2,$3,$4)',[id,p,codeHash,expires]);
-      try { await config.sms!.send(p,code); }
-      catch { throw new Problem(503,'DATA_UNAVAILABLE','SMS delivery unavailable'); }
-      return {challenge_id:id,expires_at:expires.toISOString(),retry_at:retry.toISOString()};
-    });
-    return reply.code(202).header('cache-control','no-store').send(result);
-  });
-  app.post('/api/v1/auth/sms/verify',{schema:{body:schemas.SmsVerifyRequest}},async(request,reply)=>{
-    origin(request,config.allowedOrigin);json(request);
-    if(!config.sms || !config.otpKey || !config.termsVersion)throw unavailable();
-    const b=request.body as {challenge_id:string;code:string;accepted_terms_version:string};
+    if(!config.termsVersion)throw unavailable();
+    const b=request.body as {username:string;password:string;accepted_terms_version:string};
+    const name=username(b.username);
+    if(!passwordValid(b.password))throw new Problem(422,'VALIDATION_FAILED','Password must be 12–128 characters without control characters');
     if(b.accepted_terms_version!==config.termsVersion)throw new Problem(422,'AGREEMENT_REQUIRED','Current agreement version required');
-    if(!/^[0-9]{6}$/.test(b.code))throw new Problem(422,'VALIDATION_FAILED','Invalid code format');
+    const hash=await argon2.hash(b.password,passwordOptions);
     const result=await transaction(db,async client=>{
-      const q=await client.query('SELECT * FROM bb_auth_challenges WHERE id=$1 FOR UPDATE',[b.challenge_id]);const ch=q.rows[0];
-      if(!ch || ch.consumed_at || ch.invalidated_at || ch.attempts>=5 || new Date(ch.expires_at).getTime()<=Date.now())throw new Problem(401,'CHALLENGE_INVALID','Code invalid or expired');
-      const expected=createHmac('sha256',config.otpKey!).update(`${b.challenge_id}:${b.code}`).digest('hex');
-      if(!same(expected,ch.code_hash.trim())) {
-        await client.query('UPDATE bb_auth_challenges SET attempts=attempts+1,invalidated_at=CASE WHEN attempts+1>=5 THEN now() ELSE NULL END WHERE id=$1',[b.challenge_id]);
+      const userId=uid(), eventId=uid();
+      const inserted=await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2) ON CONFLICT(username) DO NOTHING RETURNING id',[userId,name]);
+      if(!inserted.rowCount)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Username unavailable');
+      await client.query('INSERT INTO bb_password_credentials(user_id,password_hash) VALUES($1,$2)',[userId,hash]);
+      await client.query('INSERT INTO bb_registration_events(user_id,event_id) VALUES($1,$2)',[userId,eventId]);
+      await client.query('INSERT INTO bb_agreement_acceptances(user_id,terms_version,registration_event_id) VALUES($1,$2,$3)',[userId,b.accepted_terms_version,eventId]);
+      await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[eventId,userId,'user',userId,'user.registered',{user_id:userId,registration_event_id:eventId}]);
+      return newSession(client,userId);
+    });
+    issueCookies(reply,result.access,result.refresh,result.csrfToken,result.refreshExpiry);
+    return reply.code(201).send({user_id:result.userId,expires_at:result.accessExpiry.toISOString(),session_status:'active'});
+  });
+  app.post('/api/v1/auth/login',{schema:{body:schemas.LoginRequest}},async(request,reply)=>{
+    origin(request,config.allowedOrigin);json(request);
+    const b=request.body as {username:string;password:string};
+    const name=username(b.username);
+    if(Buffer.byteLength(b.password,'utf8')>512)throw loginError();
+    const source=request.ip; // Fastify's trusted remote address; never trust an arbitrary forwarded header.
+    const accountKey=limitKey(`account:${name}`), pairKey=limitKey(`pair:${name}:${source}`);
+    const result=await transaction(db,async client=>{
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`login:${name}`]);
+      const keys=[['account',accountKey,10],['account_source',pairKey,5]] as const;
+      for(const [scope,key,maximum] of keys) {
+        const limit=await client.query('SELECT failures,window_started_at FROM bb_password_login_limits WHERE scope=$1 AND key_hash=$2',[scope,key]);
+        if(limit.rows[0] && Date.now()-new Date(limit.rows[0].window_started_at).getTime()<15*60_000 && limit.rows[0].failures>=maximum)
+          throw new Problem(429,'RATE_LIMITED','Please wait before trying again');
+      }
+      const q=await client.query("SELECT u.id,c.password_hash FROM bb_users u JOIN bb_password_credentials c ON c.user_id=u.id WHERE u.username=$1 AND u.status='active'",[name]);
+      const valid=await argon2.verify(q.rows[0]?.password_hash ?? await dummyHash,b.password);
+      if(!valid || !q.rows[0]) {
+        for(const [scope,key] of keys)await client.query(`INSERT INTO bb_password_login_limits(scope,key_hash,failures) VALUES($1,$2,1) ON CONFLICT(scope,key_hash) DO UPDATE SET failures=CASE WHEN bb_password_login_limits.window_started_at < now()-interval '15 minutes' THEN 1 ELSE bb_password_login_limits.failures+1 END,window_started_at=CASE WHEN bb_password_login_limits.window_started_at < now()-interval '15 minutes' THEN now() ELSE bb_password_login_limits.window_started_at END`,[scope,key]);
         return null;
       }
-      await client.query('UPDATE bb_auth_challenges SET consumed_at=now() WHERE id=$1',[b.challenge_id]);
-      const user=await client.query("INSERT INTO bb_users(id,phone_e164) VALUES($1,$2) ON CONFLICT(phone_e164) DO UPDATE SET phone_e164=EXCLUDED.phone_e164 RETURNING id,status",[uid(),ch.phone_e164]);
-      if(user.rows[0].status!=='active')throw new Problem(401,'UNAUTHENTICATED','Account unavailable');
-      const userId=user.rows[0].id as string;
-      await client.query('INSERT INTO bb_agreement_acceptances(user_id,terms_version,challenge_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[userId,b.accepted_terms_version,b.challenge_id]);
-      const eventId=uid();
-      const registered=await client.query('INSERT INTO bb_registration_events(user_id,event_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING event_id',[userId,eventId]);
-      if(registered.rows[0])await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[eventId,userId,'user',userId,'user.registered',{user_id:userId,registration_event_id:eventId}]);
-      const access=randomToken(),refresh=randomToken(),csrfToken=randomToken();
-      const accessExpiry=new Date(Date.now()+accessMinutes*60_000),refreshExpiry=new Date(Date.now()+refreshDays*86_400_000);
-      await client.query('INSERT INTO bb_auth_sessions(id,user_id,access_hash,refresh_hash,csrf_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[uid(),userId,digest(access),digest(refresh),digest(csrfToken),accessExpiry,refreshExpiry]);
-      return {userId,access,refresh,csrfToken,accessExpiry,refreshExpiry};
+      for(const [scope,key] of keys)await client.query('DELETE FROM bb_password_login_limits WHERE scope=$1 AND key_hash=$2',[scope,key]);
+      return newSession(client,q.rows[0].id as string);
     });
-    if(!result)throw new Problem(401,'CHALLENGE_INVALID','Code invalid or expired');
+    if(!result)throw loginError();
     issueCookies(reply,result.access,result.refresh,result.csrfToken,result.refreshExpiry);
     return {user_id:result.userId,expires_at:result.accessExpiry.toISOString(),session_status:'active'};
   });

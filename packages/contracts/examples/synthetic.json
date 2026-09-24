@@ -2,28 +2,22 @@
   "synthetic": true,
   "cases": [
     {
-      "name": "auth-challenge-request-synthetic",
-      "schema": "SmsChallengeRequest",
+      "name": "register-valid-synthetic",
+      "schema": "RegisterRequest",
       "valid": true,
-      "value": { "phone": "+8613800000001", "purpose": "login" }
+      "value": { "username": "Synthetic_Alice", "password": "synthetic-password-123", "accepted_terms_version": "synthetic-v1" }
     },
     {
-      "name": "auth-challenge-response-synthetic",
-      "schema": "SmsChallengeResponse",
-      "valid": true,
-      "value": { "challenge_id": "synthetic-challenge", "expires_at": "2026-09-24T04:00:00Z", "retry_at": "2026-09-24T03:56:00Z" }
-    },
-    {
-      "name": "auth-verify-request-synthetic",
-      "schema": "SmsVerifyRequest",
-      "valid": true,
-      "value": { "challenge_id": "synthetic-challenge", "code": "123456", "accepted_terms_version": "synthetic-v1" }
-    },
-    {
-      "name": "auth-verify-code-invalid",
-      "schema": "SmsVerifyRequest",
+      "name": "register-short-password",
+      "schema": "RegisterRequest",
       "valid": false,
-      "value": { "challenge_id": "synthetic-challenge", "code": "12345", "accepted_terms_version": "synthetic-v1" }
+      "value": { "username": "synthetic_alice", "password": "short", "accepted_terms_version": "synthetic-v1" }
+    },
+    {
+      "name": "login-valid-synthetic",
+      "schema": "LoginRequest",
+      "valid": true,
+      "value": { "username": "synthetic_alice", "password": "synthetic-password-123" }
     },
     {
       "name": "auth-session-response-synthetic",
