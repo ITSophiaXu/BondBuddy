@@ -14,6 +14,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 import pdfplumber
@@ -22,7 +23,7 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.2"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.3"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -121,12 +122,31 @@ def _style_chain(style: Any) -> Iterator[Any]:
         style = style.base_style
 
 
+def _effective_runs(paragraph: Paragraph) -> Iterator[Any]:
+    """Yield visible runs in XML order, including runs inside accepted revisions."""
+    excluded_tags = {qn("w:del"), qn("w:moveFrom")}
+
+    def visit(node: Any, excluded: bool = False) -> Iterator[Any]:
+        excluded = excluded or node.tag in excluded_tags
+        if excluded:
+            return
+        if node.tag == qn("w:r"):
+            yield Run(node, paragraph)
+            return
+        for child in node:
+            yield from visit(child, excluded)
+
+    yield from visit(paragraph._p)
+
+
 def _paragraph_formatting(paragraph: Paragraph, document: Any) -> dict[str, Any]:
     defaults = document.styles.element.find(qn("w:docDefaults"))
     default_rpr = defaults.find(".//" + qn("w:rPr")) if defaults is not None else None
-    summaries: dict[str, dict[str, Any]] = {}
-    for run in paragraph.runs:
-        if not run.text.strip():
+    summaries: list[dict[str, Any]] = []
+    previous_key: str | None = None
+    for run in _effective_runs(paragraph):
+        text = _final_text(run._r)
+        if not text.strip():
             continue
         layers = [run._r.find(qn("w:rPr")), *_style_chain(run.style), *_style_chain(paragraph.style), default_rpr]
         values: dict[str, str] = {}
@@ -144,8 +164,11 @@ def _paragraph_formatting(paragraph: Paragraph, document: Any) -> dict[str, Any]
                     values[prop] = value
                     break
         key = json.dumps(values, sort_keys=True)
-        summary = summaries.setdefault(key, {**values, "sample": run.text[:100], "characters": 0})
-        summary["characters"] += len(run.text)
+        if key != previous_key:
+            summaries.append({**values, "sample": text[:100], "characters": 0})
+            previous_key = key
+        summary = summaries[-1]
+        summary["characters"] += len(text)
     ppr = paragraph._p.find(qn("w:pPr"))
     layout: dict[str, dict[str, str]] = {}
     for tag in ("w:jc", "w:spacing", "w:ind", "w:keepNext", "w:pageBreakBefore"):
@@ -154,7 +177,7 @@ def _paragraph_formatting(paragraph: Paragraph, document: Any) -> dict[str, Any]
             layout[tag.split(":", 1)[1]] = {key.split("}")[-1]: value for key, value in node.attrib.items()}
     return {
         "style": paragraph.style.name if paragraph.style else "",
-        "runs": list(summaries.values()),
+        "runs": summaries,
         "paragraph_overrides": layout,
     }
 

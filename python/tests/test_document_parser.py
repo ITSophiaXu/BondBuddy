@@ -128,6 +128,60 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_confirmation")
         self.assertTrue(any(warning["code"] == "DOCX_REVISIONS_RESOLVED" for warning in result["warnings"]))
 
+    def test_docx_revision_formatting_uses_only_effective_runs_in_order(self):
+        path = self.root / "revision-formatting.docx"
+        document = Document()
+        paragraph = document.add_paragraph("金额：")
+
+        def revision_run(container, text, font_name, half_points):
+            run = OxmlElement("w:r")
+            properties = OxmlElement("w:rPr")
+            fonts = OxmlElement("w:rFonts")
+            fonts.set(qn("w:ascii"), font_name)
+            fonts.set(qn("w:eastAsia"), font_name)
+            size = OxmlElement("w:sz")
+            size.set(qn("w:val"), str(half_points))
+            properties.extend([fonts, size])
+            run.append(properties)
+            value = OxmlElement("w:t")
+            value.text = text
+            run.append(value)
+            container.append(run)
+
+        deleted = OxmlElement("w:del")
+        revision_run(deleted, "旧删除数字999", "DeletedFont", 44)
+        paragraph._p.append(deleted)
+        inserted = OxmlElement("w:ins")
+        revision_run(inserted, "新插入数字120", "InsertedFont", 26)
+        paragraph._p.append(inserted)
+
+        move_from = OxmlElement("w:moveFrom")
+        revision_run(move_from, "旧移动数字888", "MovedFromFont", 48)
+        paragraph._p.append(move_from)
+        move_to = OxmlElement("w:moveTo")
+        revision_run(move_to, "新移动数字130", "MovedToFont", 30)
+        paragraph._p.append(move_to)
+        paragraph.add_run("，有效正文")
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        record = result["records"][0]
+        formats = record["formatting"]["runs"]
+
+        self.assertEqual(record["literal_quote"], "金额：新插入数字120新移动数字130，有效正文")
+        self.assertEqual([item["sample"] for item in formats], [
+            "金额：", "新插入数字120", "新移动数字130", "，有效正文",
+        ])
+        self.assertEqual(formats[1]["latin_font"], "InsertedFont")
+        self.assertEqual(formats[1]["east_asia_font"], "InsertedFont")
+        self.assertEqual(formats[1]["half_points"], "26")
+        self.assertEqual(formats[2]["latin_font"], "MovedToFont")
+        self.assertEqual(formats[2]["east_asia_font"], "MovedToFont")
+        self.assertEqual(formats[2]["half_points"], "30")
+        for excluded in ("DeletedFont", "MovedFromFont", "旧删除数字999", "旧移动数字888"):
+            self.assertNotIn(excluded, json.dumps(record["formatting"], ensure_ascii=False))
+        self.assertEqual(result["status"], "needs_confirmation")
+
     def test_docx_unresolved_revision_markers_require_confirmation(self):
         path = self.root / "revision-range.docx"
         document = Document()
