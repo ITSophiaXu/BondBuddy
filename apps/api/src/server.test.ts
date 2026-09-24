@@ -17,6 +17,7 @@ test('health is live and contract paths are not silently advertised as implement
     const spec = await app.inject('/openapi.json');
     assert.equal(spec.statusCode, 200);
     assert.equal(spec.json().paths['/api/v1/runs/execute'].post['x-implementation-status'], 'contract-only');
+    assert.equal(spec.json().components.schemas.InternalObservabilityEvent, undefined);
     const run = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', payload: {} });
     assert.equal(run.statusCode, 404);
   } finally { await app.close(); }
