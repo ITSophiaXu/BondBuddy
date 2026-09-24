@@ -97,6 +97,12 @@ deploy/              # Compose、Nginx、部署与回滚
 
 This slice does not add public HTTP DTOs, database persistence or production queue activation. OCR/image parsing remains #14, durable evidence/fact/cache persistence remains #15, and #8/#17 must connect private Blob staging, parse jobs, events/outbox and recovery before production use. The old Cowork service and prototype JSON storage remain untouched. Reproducible synthetic tests and the internal protocol are documented in `python/README.md`.
 
+### #19 rule-pack domain and release gate (2026-09-24)
+
+`packages/domain/` owns the HTTP/database-independent `rule-pack-v1` schema, validation, immutable content hashing, exact applicability gate, production publication, withdrawal and append-only rollback event. It imports market/offering values and combination validation from `packages/contracts/`; pages, workers and individual rule packs must not copy those enums. A pack is scoped to one exact market/offering pair, so `public_all` cannot cover `public` and an NAFMII pack cannot cover an exchange context. Runtime capability selection returns only eligibility/reason codes and applicable rule IDs, never a compliance conclusion or prompt text.
+
+Production publication requires verified sources, source/pack validity, enabled non-research rules, authorized real positive/negative/boundary sample results, and separate industry/technical attestations completed before release. Draft, test-channel, withdrawn, expired, source-expired, mismatched or evidence-incomplete packs cannot advertise capability. Rule/source text remains data under a strict schema with no prompt/system/tool fields; any future model rendering is a separate versioned boundary. The checked-in example is explicitly synthetic, unverified, disabled and draft-only, and does not claim coverage for any product. #20–#30 must supply their own authorized sources, samples and professional acceptance; persistence, operator authorization, signed artifact storage and transactional outbox publication remain Felix integration work before production use.
+
 1. 用户完成用户名密码登录，API 建立会话；前端创建项目草稿并按 revision 保存。
 2. 上传经 API 创建受限会话，Blob 接收字节；API 核对 hash 后登记不可变材料版本，worker 解析/OCR 并登记证据锚点。
 3. 用户预检和执行时，API 校验 owner、材料、目标市场/品种、规则能力与输入版本；事务内写 run、首次 job event 和 outbox。M1 标记 `billing_mode=platform_trial`。
