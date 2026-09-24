@@ -112,6 +112,12 @@ Production publication requires verified sources, source/pack validity, enabled 
 
 ## 5. 四人工作面与交接
 
+### #10 浏览器项目工作台切片（2026-09-24）
+
+`apps/web/` 以 Vite、原生 TypeScript 和原型的视觉样式接入现有 `/api/v1`，复用 `packages/contracts` 类型。当前覆盖已有账号登录、会话刷新/退出、本人项目分页列表、已加载名称搜索、新建项目、名称/发行人自动保存和重新登录恢复；409 保留输入且不覆盖服务端新版本。客户端不持久化个人数据；跨页账号切换清除旧页面内容。没有新增公开契约或数据库迁移。
+
+该切片不宣称完成 #10：全局搜索、类型/状态筛选、归档、完整业务字段及材料恢复仍依赖正式接口。#11、#18、#34 的完整工作区后续接入；不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
+
 | 负责人 | 主改动面 | 必须与谁对齐 |
 | --- | --- | --- |
 | Chris | `apps/web/`，上传/项目/对话/成果 UI；现有 `product-prototype/public/` 迁移 | Felix 提供 API/OpenAPI，Xuefeng 提供 OCR/解析状态，Maxy 确认业务表单枚举与文案 |
