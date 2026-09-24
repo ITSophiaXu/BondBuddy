@@ -1,5 +1,17 @@
 # M1 worker boundaries
 
+`historical-native-recognition.ts` is a conservative #76 native-text
+recognition seam. Given a trusted, immutable parser response and explicit
+profile version, it derives source market/offering and evidenced financial
+periods in the existing `@bondbuddy/contracts` Recognition shape. It requires
+two distinct source passages in different sections/pages for market and
+offering, keeps ambiguous or conflicting values pending, and never uses a
+filename, cover/issuance date or rule citation as a financial cutoff. Its
+provenance includes both the recognition and parser versions. This is not a
+queued precheck: OCR/model assistance, persistence/correction history, API/UI,
+free-precheck cost logging and authorized real-material acceptance remain #76
+work.
+
 `material-parser.ts` adds an internal #13 bridge from an owner/project-scoped,
 immutable material version to the versioned Python parser. It verifies private
 Blob bytes against the database size and SHA-256, stages them with restricted
