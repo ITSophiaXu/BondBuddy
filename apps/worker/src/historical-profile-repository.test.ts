@@ -25,7 +25,8 @@ const context: TrustedHistoricalCorrectionContext = {
 
 function makeRecognition(overrides: Partial<Recognition> = {}): Recognition {
   const provenance = { material_id: overrides.material_id ?? material, material_version: overrides.material_version ?? 2, method: 'native_text' as const,
-    extractor_version: 'synthetic-1', evidence_refs: ['evidence-market', 'evidence-offering', 'evidence-period'] };
+    extractor_version: 'historical-native-recognition-v1/parser-synthetic-1', evidence_refs: ['evidence-market', 'evidence-offering', 'evidence-period'] };
+  const periodProvenance = { ...provenance, extractor_version: 'historical-native-recognition-v1/parser-synthetic-1', evidence_refs: ['evidence-period'] };
   const recognized = <T extends string>(value: T) => ({ value, raw_value: value, provenance,
     uncertainty: [], status: 'recognized' as const });
   return {
@@ -36,7 +37,7 @@ function makeRecognition(overrides: Partial<Recognition> = {}): Recognition {
     source_market: recognized('sse'),
     source_offering: recognized('private'),
     reporting_periods: [{ start: '2022-01-01', end: '2022-12-31', period_kind: 'annual', scope: 'consolidated',
-      raw_value: '2022 年度', provenance, uncertainty: [], status: 'recognized' }],
+      raw_value: '2022 年度', provenance: periodProvenance, uncertainty: [], status: 'recognized' }],
     latest_reporting_cutoff: recognized('2022-12-31'),
     ...overrides,
   } as Recognition;
@@ -62,12 +63,33 @@ class ProfileMock implements HistoricalProfileClient {
       this.before = null; return { rows: [] };
     }
     if (sql.startsWith('SELECT pg_advisory_xact_lock')) return { rows: [] };
+    if (sql.includes('FROM bb_parse_snapshots')) {
+      if (values[4] === 'parser-failed-1') return { rows: [{ parser_version: 'parser-failed-1',
+        response_status: 'failed', record_count: 0, record_id: null, extractor_version: null, extraction_method: null }] };
+      if (values[4] !== 'parser-synthetic-1') return { rows: [] };
+      const evidenceRefs = ['evidence-market', 'evidence-offering', 'evidence-period'];
+      const selected = values[5] as string[];
+      const filtered = selected.length ? evidenceRefs.filter(ref => selected.includes(ref)) : [];
+      if (selected.length && filtered.length !== selected.length) return { rows: [] };
+      return { rows: (filtered.length ? filtered : [null]).map(record_id => ({ parser_version: 'parser-synthetic-1',
+        response_status: 'parsed', record_count: 3, record_id,
+        extractor_version: 'parser-synthetic-1', extraction_method: 'native_text' })) };
+    }
+    if (sql.includes('SELECT DISTINCT e.record_id FROM bb_parse_evidence')) {
+      const available = new Set(['evidence-market', 'evidence-offering', 'evidence-period']);
+      return { rows: (values[5] as string[]).filter(ref => available.has(ref)).map(record_id => ({ record_id })) };
+    }
     if (sql.includes('FROM bb_material_versions')) {
       return { rows: values[0] === owner && values[1] === project && values[2] === material && values[3] === 2 ? [{ ok: 1 }] : [] };
     }
     if (sql.includes('FROM bb_historical_profiles') && sql.includes('request_id = $5')) {
       return { rows: this.rows.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] &&
         row.material_id === values[2] && row.material_version === values[3] && row.request_id === values[4]) };
+    }
+    if (sql.includes("write_kind='recognition'")) {
+      return { rows: this.rows.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] &&
+        row.material_id === values[2] && row.material_version === values[3] && row.write_kind === 'recognition' &&
+        (row.recognition as Recognition).source_market.provenance.extractor_version === values[4]) };
     }
     if (sql.includes('FROM bb_historical_profiles') && sql.includes('COALESCE(max(profile_version)')) {
       const matching = this.rows.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] &&
@@ -111,7 +133,7 @@ function dependencies(client: ProfileMock): HistoricalProfileDependencies {
     newId: () => `outbox-synthetic-${++id}` };
 }
 
-test('recognition is contracts-validated, material-bound, sequenced and idempotent by request', async () => {
+test('recognition is contracts-validated, evidence-bound, sequenced and idempotent by extractor version', async () => {
   const client = new ProfileMock();
   const deps = dependencies(client);
   const input = makeRecognition();
@@ -126,7 +148,11 @@ test('recognition is contracts-validated, material-bound, sequenced and idempote
     /owner_user_id = \$1 AND project_id = \$2 AND id = \$3 AND version = \$4[\s\S]*role = 'historical'[\s\S]*deleted_at IS NULL/);
 
   const next = await appendHistoricalRecognition(deps, { ...context, requestId: 'recognition-retry-new-job' }, makeRecognition());
-  assert.equal(next.profileVersion, 2);
+  assert.equal(next.profileVersion, 1);
+  assert.equal(next.replayed, true);
+  assert.equal(client.rows.length, 1);
+  await assert.rejects(appendHistoricalRecognition(deps, { ...context, requestId: 'recognition-conflict-new-job' },
+    makeRecognition({ source_market: { ...makeRecognition().source_market, raw_value: 'different' } })), /HISTORICAL_PROFILE_EXTRACTOR_RESULT_CONFLICT/);
 });
 
 test('cannot store a forged ready profile with unresolved or missing evidence', async () => {
@@ -146,6 +172,24 @@ test('cannot store a forged ready profile with unresolved or missing evidence', 
   const crossMaterialEvidence = makeRecognition({ source_market: { ...makeRecognition().source_market,
     provenance: { ...makeRecognition().source_market.provenance, material_id: 'foreign-material' } } });
   await assert.rejects(appendHistoricalRecognition(dependencies(client), context, crossMaterialEvidence), /HISTORICAL_PROFILE_EVIDENCE_MATERIAL_MISMATCH/);
+  const mixedParser = makeRecognition({ reporting_periods: [{ ...makeRecognition().reporting_periods[0]!,
+    provenance: { ...makeRecognition().reporting_periods[0]!.provenance,
+      extractor_version: 'historical-native-recognition-v1/different-parser' } }] });
+  await assert.rejects(appendHistoricalRecognition(dependencies(client), context, mixedParser), /HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE/);
+});
+
+test('a failed parser snapshot with zero references remains a persisted failed profile', async () => {
+  const client = new ProfileMock();
+  const base = makeRecognition();
+  const failedField = <T extends string>(field: Recognition['source_market']) => ({ ...field, value: null as T | null,
+    provenance: { ...field.provenance, extractor_version: 'historical-native-recognition-v1/parser-failed-1', evidence_refs: [] },
+    uncertainty: ['解析失败'], status: 'unknown' as const });
+  const failed = { ...base, state: 'failed' as const, source_market: failedField(base.source_market),
+    source_offering: failedField(base.source_offering), reporting_periods: [],
+    latest_reporting_cutoff: failedField(base.latest_reporting_cutoff) } as Recognition;
+  const stored = await appendHistoricalRecognition(dependencies(client), context, failed);
+  assert.equal(stored.recognition.state, 'failed');
+  assert.equal(stored.profileVersion, 1);
 });
 
 test('source correction appends a user-asserted version and preserves the original snapshot', async () => {
@@ -187,6 +231,9 @@ test('correction requires latest profile version and empty refs cannot create re
   await assert.rejects(correctHistoricalRecognition(deps, { ...context, requestId: 'correction-stale' }, {
     profile_version: 1, source_market: 'sse', source_offering: 'private', reason: '过期版本', evidence_refs: ['evidence-market'],
   }), /HISTORICAL_PROFILE_VERSION_CONFLICT/);
+  await assert.rejects(correctHistoricalRecognition(deps, { ...context, requestId: 'correction-forged-ref' }, {
+    profile_version: 1, source_market: 'sse', source_offering: 'private', reason: '伪造引用', evidence_refs: ['arbitrary-id'],
+  }), /HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND/);
 });
 
 test('writes profile and outbox atomically', async () => {
@@ -251,6 +298,25 @@ test('live PostgreSQL enforces immutable versioned snapshots and owner-scoped re
     await connection.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
       VALUES ($1,2,$2,$3,$4,'historical','synthetic.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',10,$5,$6,'parsed')`,
     [liveMaterial, liveOwner, liveProject, liveUpload, hash, `users/${liveOwner}/projects/${liveProject}/materials/${liveMaterial}/2`]);
+    const parserVersion = 'parser-synthetic-1';
+    const snapshotId = `parse-snapshot-${suffix}`;
+    await connection.query(`INSERT INTO bb_parse_snapshots
+      (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,request_options,
+       response_status,response_schema_version,response_sha256,record_count,response_meta)
+      VALUES($1,$2,$3,$4,2,$5,$6,$7,'{}'::jsonb,'parsed','document-parse-response-v1',$8,3,$9::jsonb)`,
+    [snapshotId, liveOwner, liveProject, liveMaterial, hash, parserVersion, 'd'.repeat(64), 'e'.repeat(64), JSON.stringify({
+      schema_version: 'document-parse-response-v1', request_id: `parse-${suffix}`, parser_version: parserVersion, status: 'parsed',
+      material: { material_id: liveMaterial, material_version: 2, media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256: hash },
+      warnings: [], document: { page_count: null, revision_summary: { insertions: 0, deletions: 0 } }, error: null,
+    })]);
+    for (const [ordinal, recordId] of ['evidence-market', 'evidence-offering', 'evidence-period'].entries()) {
+      await connection.query(`INSERT INTO bb_parse_evidence
+        (owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,
+         literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,2,$4,$5,$6,'docx_block',$7::jsonb,$8,'synthetic context','native_text','parser-synthetic-1',1,'[]'::jsonb,'{}'::jsonb,$9,$10)`,
+      [liveOwner, liveProject, liveMaterial, snapshotId, recordId, hash,
+        JSON.stringify({ path: [{ paragraph: ordinal + 1 }], stable_ref: `docx:p${ordinal + 1}` }), `synthetic ${recordId}`, 'f'.repeat(64), ordinal]);
+    }
     const deps: HistoricalProfileDependencies = { pool: scopedPool };
     const liveContext = { ownerUserId: liveOwner, projectId: liveProject, materialId: liveMaterial,
       materialVersion: 2, requestId: `recognition-${suffix}`, actorId: `actor-${suffix}` };
