@@ -1,0 +1,68 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { fileTypeFromBuffer } from 'file-type';
+import { Pool, type PoolClient } from 'pg';
+import { BlobServiceClient } from '@azure/storage-blob';
+import { isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
+
+export const uid = () => randomUUID();
+export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+export const canonical = (value: unknown): string => JSON.stringify(value);
+export class Problem extends Error {
+  constructor(public status: number, public code: string, message: string) { super(message); }
+}
+export const missing = () => new Problem(404, 'NOT_FOUND', 'Resource does not exist');
+export const conflict = (code: string, message: string) => new Problem(409, code, message);
+export const unavailable = () => new Problem(501, 'CAPABILITY_NOT_READY', 'Capability is not connected');
+export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try { await client.query('BEGIN'); const result = await fn(client); await client.query('COMMIT'); return result; }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+export const date = (value: Date | string) => new Date(value).toISOString();
+export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, updated_at: date(p.updated_at) });
+export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error });
+export const inputDto = (i: any) => ({ project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), material_versions: i.material_versions, rule_pack_version: i.rule_pack_version, template_version: i.template_version, reference_release: i.reference_release, created_at: date(i.created_at) });
+export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: r.execution_request_id, project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: 'platform_trial', reservation_id: null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
+export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
+  const result = await pool.query(`SELECT p.*,i.input_hash FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
+  if (!result.rows[0]) throw missing();
+  return result.rows[0];
+}
+export async function run(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
+  const result = await pool.query(`SELECT * FROM bb_runs WHERE owner_user_id=$1 AND id=$2 ${lock ? 'FOR UPDATE' : ''}`, [owner,id]);
+  if (!result.rows[0]) throw missing();
+  return result.rows[0];
+}
+export async function material(pool: Pool | PoolClient, owner: string, projectId: string, id: string) {
+  const result = await pool.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL ORDER BY version DESC LIMIT 1', [owner,projectId,id]);
+  if (!result.rows[0]) throw missing();
+  return result.rows[0];
+}
+export interface PrivateBlobs { put(key: string, bytes: Buffer, mediaType: string): Promise<void>; get(key: string): Promise<Buffer>; delete(key: string): Promise<void>; }
+export function azureBlobs(connectionString: string, containerName = 'bondbuddy-private'): PrivateBlobs {
+  const container = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
+  let ready: Promise<unknown> | undefined;
+  const ensure = () => ready ??= container.createIfNotExists();
+  return {
+    async put(key, bytes, mediaType) { await ensure(); await container.getBlockBlobClient(key).uploadData(bytes,{ blobHTTPHeaders: { blobContentType: mediaType } }); },
+    async get(key) { await ensure(); const response = await container.getBlockBlobClient(key).download(); const chunks: Buffer[] = []; for await (const chunk of response.readableStreamBody!) chunks.push(Buffer.from(chunk)); return Buffer.concat(chunks); },
+    async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); }
+  };
+}
+export async function verifiedMedia(bytes: Buffer, declared: string): Promise<string> {
+  const magic = await fileTypeFromBuffer(bytes);
+  let actual = magic?.mime;
+  if (declared === 'text/plain' || declared === 'text/csv') {
+    if (magic || bytes.includes(0)) throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Binary content declared as text');
+    try { new TextDecoder('utf-8',{fatal:true}).decode(bytes); } catch { throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Text must be UTF-8'); }
+    actual = declared;
+  }
+  if (actual === 'application/zip') throw new Problem(415,'MATERIAL_FORMAT_UNSUPPORTED','Unsupported or unreadable Office container');
+  if (actual !== declared) throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Declared media type does not match content');
+  return actual;
+}
+export function checkedPair(market: Market | null, offering: Offering | null) {
+  if (market && offering && !isMarketOffering(market,offering)) throw new Problem(422,'VALIDATION_FAILED','Market and offering do not match');
+  if (!market && offering) throw new Problem(422,'VALIDATION_FAILED','Market is required for an offering');
+}

@@ -156,7 +156,9 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}/input-revisions/{input_revision}', 'Read immutable input snapshot (contract only)', 'InputRevisionResponse', 200, undefined, [404]),
   op('post', '/projects/{project_id}/materials/uploads', 'Create scoped upload (contract only)', 'UploadSessionResponse', 201, 'UploadCreateRequest', [404, 415, 422]),
   op('post', '/projects/{project_id}/materials/uploads/{upload_id}/complete', 'Verify object bytes/hash and register material idempotently (contract only)', 'MaterialResponse', 200, 'UploadCompleteRequest', [404, 409, 415, 422]),
-  op('get', '/projects/{project_id}/materials/{material_id}', 'Read owner material save/parse state (contract only)', 'MaterialResponse', 200, undefined, [404]),
+  op('get', '/projects/{project_id}/materials/{material_id}', 'Read owner material save/parse state', 'MaterialResponse', 200, undefined, [404]),
+  op('get', '/projects/{project_id}/materials/{material_id}/download', 'Download verified owner material bytes', 'MaterialResponse', 200, undefined, [404]),
+  op('delete', '/projects/{project_id}/materials/{material_id}', 'Remove current material access while preserving pinned snapshots', 'MaterialResponse', 204, undefined, [404]),
   op('get', '/projects/{project_id}/events', 'Read owner project material events after cursor (contract only)', 'ProjectEventsResponse', 200, undefined, [404]),
   op('get', '/projects/{project_id}/materials/{material_id}/source-profile', 'Read asynchronous recognition (contract only)', 'RecognitionResponse', 200, undefined, [404]),
   op('patch', '/projects/{project_id}/materials/{material_id}/source-profile', 'Correct source recognition with revision (contract only)', 'RecognitionResponse', 200, 'RecognitionPatchRequest', [404, 409]),
@@ -166,7 +168,8 @@ export const operations: readonly Operation[] = [
   op('get', '/runs/{run_id}/events', 'Read events after cursor (contract only)', 'RunEventsResponse', 200, undefined, [404]),
   op('post', '/runs/{run_id}/cancel', 'Cancel server run explicitly (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
   op('post', '/runs/{run_id}/resume', 'Resume paused run after provider reconciliation (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
-  op('get', '/artifacts/{artifact_id}', 'Get authorized checked Word artifact (contract only)', 'ArtifactResponse', 200, undefined, [404]),
+  op('get', '/artifacts/{artifact_id}', 'Get authorized checked Word artifact', 'ArtifactResponse', 200, undefined, [404]),
+  op('get', '/artifacts/{artifact_id}/download', 'Download checked owner Word artifact bytes', 'ArtifactResponse', 200, undefined, [404]),
   op('post', '/conversations/{conversation_id}/messages', 'Submit and snapshot user message (contract only)', 'ConversationMessageResponse', 202, 'ConversationMessageRequest', [404, 409])
 ];
 
@@ -180,11 +183,22 @@ export function openApiDocument() {
   for (const operation of operations) {
     const path = `/api/v1${operation.path}`;
     paths[path] ??= {};
-    const responses: Record<string, unknown> = { [operation.status]: { description: 'Contract response; route is not implemented', content: { 'application/json': { schema: ref(operation.response) } } } };
+    const binary = operation.path.endsWith('/download');
+    const responses: Record<string, unknown> = { [operation.status]: { description: 'Response for this operation', ...(operation.status === 204 ? {} : { content: binary ? { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } : { 'application/json': { schema: ref(operation.response) } } }) } };
     for (const status of operation.errors ?? []) responses[status] = { description: ({ 404: 'Owner-safe not found', 409: 'Revision or idempotency conflict', 415: 'Unsupported material format', 422: 'Encrypted or mismatched material content' } as Record<number, string>)[status] ?? 'Contract error', content: { 'application/json': { schema: ref('Error') } } };
+    if (!operation.path.startsWith('/auth/sms/')) for (const code of [401,403,501]) responses[code] = { description: code === 501 ? 'Capability not connected' : 'Session or CSRF/Origin check failed', content: { 'application/json': { schema: ref('Error') } } };
     const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
-    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': 'contract-only', security: operation.path.startsWith('/auth/sms/') ? [] : [{ sessionCookie: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
+    const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
+    const status = operation.path === '/runs/execute' ? 'test-only-staging; production-501-until-queue-and-logging' : ready ? 'implemented; requires-trusted-session-adapter' : 'contract-only-or-501';
+    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: operation.path.startsWith('/auth/sms/') ? [] : [{ sessionCookie: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
-  return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.1.0', description: 'Only /health is live. /api/v1 paths describe future behavior and are not registered by the skeleton. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Sessions use HttpOnly Secure SameSite cookies; mutations require CSRF/Origin checks when implemented.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite cookie; never expose supplier credentials to browser.' } } }, paths };
+  paths['/api/v1/projects/{project_id}/materials/uploads/{upload_id}/bytes'] = { put: {
+    summary: 'Stream declared bytes to a private owner-scoped upload session',
+    'x-implementation-status': 'implemented; requires-trusted-session-adapter',
+    security: [{ sessionCookie: [] }], parameters: parameters('/projects/{project_id}/materials/uploads/{upload_id}/bytes'),
+    requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+    responses: { '204': { description: 'Bytes verified and received; call complete to register material' }, '404': { description: 'Unknown or foreign upload' }, '422': { description: 'Content mismatch or expired upload', content: { 'application/json': { schema: ref('Error') } } } }
+  } };
+  return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.2.0', description: 'Persistence routes require a trusted session adapter; without #7 all personal routes reject. Run execution is disabled in production until #17/#79. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Sessions use HttpOnly Secure SameSite cookies; mutations require CSRF/Origin checks when implemented.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite cookie; never expose supplier credentials to browser.' } } }, paths };
 }
