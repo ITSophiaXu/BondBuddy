@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 from docx import Document
@@ -217,6 +219,42 @@ class DocumentParserTests(unittest.TestCase):
         formula = next(record for record in result["records"] if record["literal_quote"] == "=C2")
         self.assertIn("formula_result_not_cached", formula["uncertainty"])
         self.assertEqual(next(record for record in result["records"] if record["literal_quote"] == "附注")["locator"]["merged_range"], "A4:B4")
+        self.assertEqual(result["status"], "needs_confirmation")
+
+    def test_xlsx_preserves_cached_formula_result_as_unverified_evidence(self):
+        source = self.root / "formula-source.xlsx"
+        path = self.root / "formula-with-cache.xlsx"
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["项目", "单位", "2025年"])
+        sheet.append(["营业收入", "万元", 123.45])
+        sheet.append(["合计", "万元", "=C2"])
+        book.save(source)
+
+        # openpyxl intentionally does not calculate formulas. Add a cached value
+        # to the synthetic OOXML fixture to exercise reading an existing cache.
+        spreadsheet_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        with zipfile.ZipFile(source) as source_archive, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as target_archive:
+            for info in source_archive.infolist():
+                payload = source_archive.read(info.filename)
+                if info.filename == "xl/worksheets/sheet1.xml":
+                    root = ET.fromstring(payload)
+                    cell = root.find(f".//{{{spreadsheet_ns}}}c[@r='C3']")
+                    self.assertIsNotNone(cell)
+                    value = cell.find(f"{{{spreadsheet_ns}}}v")
+                    if value is None:
+                        value = ET.SubElement(cell, f"{{{spreadsheet_ns}}}v")
+                    value.text = "123.45"
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                target_archive.writestr(info, payload)
+
+        result = self.request(path, MEDIA_XLSX)
+        formula = next(record for record in result["records"] if record["literal_quote"] == "=C2")
+        self.assertEqual(formula["formatting"]["cached_formula_result"], "123.45")
+        self.assertIn("formula_cached_result_unverified", formula["uncertainty"])
+        self.assertNotIn("formula_result_not_cached", formula["uncertainty"])
+        self.assertEqual(result["document"]["cached_formula_results"], 1)
+        self.assertTrue(any(warning["code"] == "XLSX_FORMULA_CACHE_UNVERIFIED" for warning in result["warnings"]))
         self.assertEqual(result["status"], "needs_confirmation")
 
     def test_csv_and_text_have_native_positions(self):
