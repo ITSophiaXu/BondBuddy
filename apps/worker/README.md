@@ -122,6 +122,21 @@ candidate once selected. A decision is not audit verification or permission to
 generate; no public fact-resolution API or production processor uses it yet.
 Its live PostgreSQL test uses synthetic candidates and a disposable database.
 
+`credit-facility-supplement-repository.ts` is a separate internal #15 seam for
+user-supplied total/used/unused credit assertions. It calls the existing domain
+validator, preserves each opaque source statement ID and date (including
+incomplete values needing confirmation), and records only `user_asserted`,
+`needs_confirmation`, or `conflicted`; even arithmetic agreement is never
+verified or manuscript-ready here. The trusted caller must resolve and verify
+that each source ID belongs to the authenticated owner/project and represents
+the stated user message before invoking this repository. This storage layer
+does not invent material evidence anchors or expose a public read API. Same
+request retries are idempotent only for the same payload, and the append plus
+outbox event is atomic. Migration `0015_m1_credit_facility_supplements.sql`
+keeps these snapshots immutable. Its optional live PostgreSQL 16 test uses
+synthetic owner/project fixtures and a disposable database; set
+`CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL` after applying migrations.
+
 The fact repository has an optional live PostgreSQL 16 test. After applying
 the repository migrations to a disposable database, set
 `FACT_REPOSITORY_TEST_DATABASE_URL` when running the worker tests. Fixtures are
