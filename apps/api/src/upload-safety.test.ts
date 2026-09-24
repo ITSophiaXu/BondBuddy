@@ -8,7 +8,7 @@ import { createServer } from './server.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, JPEG, jpegSample, CSV,
-  macroDefaultDocxSample, macroDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
+  macroDefaultDocxSample, macroDocxSample, neutralExtensionDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
   XLSX, xlsxSample
 } from './upload-safety.samples.js';
 
@@ -29,6 +29,7 @@ test('bounded upload inspection accepts valid synthetic samples for the seven sh
   const valid = [
     { name: 'synthetic.pdf', mediaType: PDF, bytes: pdfSample() },
     { name: 'synthetic.docx', mediaType: DOCX, bytes: await docxSample() },
+    { name: 'synthetic.docx-with-neutral-binary-image', mediaType: DOCX, bytes: await neutralExtensionDocxSample('application/octet-stream', pngSample) },
     { name: 'synthetic.xlsx', mediaType: XLSX, bytes: await xlsxSample() },
     { name: 'synthetic.txt', mediaType: TEXT, bytes: textSample },
     { name: 'synthetic.csv', mediaType: CSV, bytes: csvSample },
@@ -45,6 +46,15 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   const corruptPdf = pdfSample({ corrupt: true });
   const corruptDocx = (await docxSample()).subarray(0, -10);
   const corruptXlsx = (await xlsxSample()).subarray(0, -10);
+  const neutralSvgPart = await neutralExtensionDocxSample('image/svg+xml', Buffer.from('<svg><script>alert(1)</script></svg>'));
+  const neutralParameterizedSvgPart = await neutralExtensionDocxSample('Image/SVG+XML ; charset=utf-8', Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
+  const neutralHtmlPart = await neutralExtensionDocxSample('Text/HTML; charset=utf-8', Buffer.from('<!DOCTYPE html><html><body><script>alert(1)</script></body></html>'));
+  const neutralMhtmlPart = await neutralExtensionDocxSample('multipart/related; boundary=synthetic', Buffer.from('MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=synthetic\r\n\r\n--synthetic\r\nContent-Type: text/html\r\n\r\n<script>alert(1)</script>'));
+  const neutralTypedSvgPart = await neutralExtensionDocxSample('application/octet-stream', Buffer.from('<?xml version="1.0"?><!-- synthetic active image --><svg><script>alert(1)</script></svg>'));
+  const neutralUtf16SvgPart = await neutralExtensionDocxSample('application/octet-stream', Buffer.from('<svg><script>alert(1)</script></svg>', 'utf16le'));
+  const paddedNeutralSvgPart = await neutralExtensionDocxSample('application/octet-stream', Buffer.concat([Buffer.from('<!-- synthetic prefix -->'), Buffer.alloc(9 * 1024, 0x20), Buffer.from('<svg><script>alert(1)</script></svg>')]));
+  const neutralTypedHtmlPart = await neutralExtensionDocxSample('application/octet-stream', Buffer.from('<!doctype html><html><script>alert(1)</script></html>'));
+  const neutralTypedMhtmlPart = await neutralExtensionDocxSample('application/octet-stream', Buffer.from('MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=synthetic\r\n\r\n--synthetic\r\nContent-Type: text/html\r\n\r\n<script>alert(1)</script>'));
   const activeXlsx = await xlsxSample(Buffer.from('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row><c r="A1"><f>WEBSERVICE("https://example.invalid")</f></c></row></sheetData></worksheet>'));
   const imageFormulaXlsx = await xlsxSample(Buffer.from('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row><c r="A1"><f>IMAGE("https://example.invalid/image.png")</f></c></row></sheetData></worksheet>'));
   const nestedDocx = await docxSample([{ name: 'word/embeddings/inner.zip', contents: Buffer.from([0x50, 0x4b, 0x03, 0x04]) }]);
@@ -65,6 +75,15 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   await expectInspectionFailure(await pptxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await activeDocxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await activeSvgDocxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralSvgPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralParameterizedSvgPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralHtmlPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralMhtmlPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralTypedSvgPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralUtf16SvgPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(paddedNeutralSvgPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralTypedHtmlPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(neutralTypedMhtmlPart, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await macroDocxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await macroDefaultDocxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(activeXlsx, XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');

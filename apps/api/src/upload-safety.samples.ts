@@ -180,6 +180,26 @@ export function activeSvgDocxSample(): Promise<Buffer> {
   return docxSample([{ name: 'word/drawings/image.svg', contents: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.invalid/image.png"/></svg>') }]);
 }
 
+export function neutralExtensionDocxSample(contentType: string, payload: Buffer): Promise<Buffer> {
+  const contentTypes = Buffer.from(wordContentTypes.toString().replace(
+    '</Types>',
+    `<Default Extension="bin" ContentType="${contentType}"/></Types>`
+  ));
+  const imageDocument = Buffer.from(
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><w:body><w:p><w:r><w:drawing><a:blip r:embed="rIdImage"/></w:drawing></w:r></w:p></w:body></w:document>'
+  );
+  const imageRelationships = Buffer.from(
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/payload.bin"/></Relationships>'
+  );
+  return createZip([
+    { name: '[Content_Types].xml', contents: contentTypes },
+    { name: '_rels/.rels', contents: wordRelationships },
+    { name: 'word/document.xml', contents: imageDocument },
+    { name: 'word/_rels/document.xml.rels', contents: imageRelationships },
+    { name: 'word/media/payload.bin', contents: payload }
+  ]);
+}
+
 export function macroDocxSample(): Promise<Buffer> {
   return docxSample([{ name: 'word/vbaProject.bin', contents: Buffer.from('synthetic macro marker') }]);
 }

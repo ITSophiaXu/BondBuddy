@@ -37,10 +37,31 @@ const MAX_ARCHIVE_EXPANDED_BYTES = 128 * 1024 * 1024;
 const MAX_ARCHIVE_RATIO = 100;
 const MAX_ARCHIVE_PATH_DEPTH = 32;
 const MAX_XML_PART_BYTES = 8 * 1024 * 1024;
+const MAX_ACTIVE_PART_PREFIX_BYTES = 8 * 1024;
 const MAX_IMAGE_DIMENSION = 16_384;
 const MAX_IMAGE_PIXELS = 16_000_000;
 const MAX_PNG_DECODED_BYTES = 64 * 1024 * 1024;
 const [DOCX_MIME, PDF_MIME, XLSX_MIME, CSV_MIME, TEXT_MIME, PNG_MIME, JPEG_MIME] = M1_UPLOAD_MIME_TYPES;
+const UNSAFE_OFFICE_MEDIA_TYPES = new Set([
+  'image/svg+xml',
+  'text/html',
+  'application/xhtml+xml',
+  'text/javascript',
+  'application/javascript',
+  'application/x-javascript',
+  'text/ecmascript',
+  'application/ecmascript',
+  'application/mhtml',
+  'application/x-mhtml',
+  'application/mht',
+  'application/x-mht',
+  'application/x-mimearchive',
+  'message/rfc822',
+  'multipart/related',
+  'application/x-shockwave-flash',
+  'application/x-msdownload',
+  'application/x-msdos-program'
+]);
 
 class MaterialInspectionError extends Error {
   constructor(public readonly status: 415 | 422, public readonly code: ContentSafetyCode, message: string) {
@@ -408,6 +429,7 @@ type OfficeState = {
   files: Set<string>;
   contentTypes: ContentTypes | null;
   relationships: Map<string, Relationship[]>;
+  payloadHazards: Map<string, 'active' | 'markup'>;
   rootDocumentTarget: string | null;
   mainPartRoot: string | null;
 };
@@ -461,7 +483,74 @@ function unsafeWordInstruction(value: string): boolean {
 }
 
 function unsafeOfficeContentType(type: string): boolean {
-  return /(?:macro(?:enabled|sheet|project)|vbaproject|activex|oleobject|embedded\.package)/i.test(type);
+  const mediaType = type.split(';', 1)[0]!.trim().toLowerCase();
+  return UNSAFE_OFFICE_MEDIA_TYPES.has(mediaType) ||
+    /(?:macro(?:enabled|sheet|project)|vbaproject|activex|oleobject|embedded\.package)/i.test(mediaType);
+}
+
+function officePayloadTextPrefix(bytes: Buffer): string {
+  const limit = Math.min(bytes.length, MAX_ACTIVE_PART_PREFIX_BYTES);
+  let end = limit;
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    end -= (end - 2) % 2;
+    try { return new TextDecoder('utf-16le', { fatal: false }).decode(bytes.subarray(2, end)); }
+    catch { return ''; }
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    end -= (end - 2) % 2;
+    try { return new TextDecoder('utf-16be', { fatal: false }).decode(bytes.subarray(2, end)); }
+    catch { return ''; }
+  }
+  if (bytes.length >= 4 && bytes[0] === 0 && bytes[1] === 0x3c && bytes[2] === 0 && bytes[3] !== 0) {
+    end -= end % 2;
+    try { return new TextDecoder('utf-16be', { fatal: false }).decode(bytes.subarray(0, end)); }
+    catch { return ''; }
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x3c && bytes[1] === 0 && bytes[2] !== 0 && bytes[3] === 0) {
+    end -= end % 2;
+    try { return new TextDecoder('utf-16le', { fatal: false }).decode(bytes.subarray(0, end)); }
+    catch { return ''; }
+  }
+  return bytes.subarray(0, end).toString('utf8');
+}
+
+function officePayloadHazard(bytes: Buffer): 'active' | 'markup' | undefined {
+  const text = officePayloadTextPrefix(bytes);
+  const header = text.replace(/^\uFEFF/, '');
+  const headerStart = header.trimStart();
+  if (/^(?:MIME-Version\s*:|From\s*:|Content-Type\s*:\s*(?:multipart\/related|text\/html|application\/x-mimearchive)\b)/i.test(headerStart) &&
+      /(?:^|\r?\n)Content-Type\s*:\s*(?:multipart\/related|text\/html|application\/x-mimearchive)\b/i.test(headerStart)) {
+    return 'active';
+  }
+
+  let cursor = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let preambleCount = 0;
+  while (preambleCount++ < 32) {
+    while (/[\t\n\r ]/.test(text[cursor] ?? '')) cursor++;
+    if (text.startsWith('<!--', cursor)) {
+      const end = text.indexOf('-->', cursor + 4);
+      if (end < 0) return 'markup';
+      cursor = end + 3;
+      continue;
+    }
+    if (text.startsWith('<?', cursor)) {
+      const end = text.indexOf('?>', cursor + 2);
+      if (end < 0) return 'markup';
+      cursor = end + 2;
+      continue;
+    }
+    break;
+  }
+
+  const prefix = text.slice(cursor).trimStart();
+  if (!prefix) {
+    if (bytes.length > MAX_ACTIVE_PART_PREFIX_BYTES) return 'markup';
+    return undefined;
+  }
+  if (/^<!doctype\s+(?:html|(?:[\w.-]+:)?svg)\b/i.test(prefix)) return 'active';
+  if (/^<(?:(?:[\w.-]+):)?(?:svg|html|script|iframe|object|embed|frameset|foreignobject)\b/i.test(prefix)) return 'active';
+  if (prefix.startsWith('<')) return 'markup';
+  return undefined;
 }
 
 function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void {
@@ -607,7 +696,19 @@ function verifyOfficeRelationships(state: OfficeState): void {
     for (const relationship of relationships) {
       if (relationship.external) unsupported('Office relationships contain external content');
       const target = resolveRelationshipTarget(source, relationship.target);
-      if (target && !state.files.has(target)) unreadable();
+      if (target) {
+        if (!state.files.has(target)) unreadable();
+        const contentType = officePartContentType(state, target);
+        if (contentType && unsafeOfficeContentType(contentType)) {
+          unsupported('Office relationship references an active or unsafe content type');
+        }
+        const hazard = state.payloadHazards.get(target);
+        if (hazard === 'active' || (hazard === 'markup' &&
+            (/\/image$/i.test(relationship.type) ||
+             contentType?.split(';', 1)[0]?.trim().toLowerCase() === 'application/octet-stream'))) {
+          unsupported('Office relationship references active or markup content under a non-active package type');
+        }
+      }
     }
   }
 }
@@ -627,7 +728,7 @@ function inspectOffice(bytes: Buffer, declared: string): void {
   if (!startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) mismatch();
 
   const entries = parseZip(bytes);
-  const state: OfficeState = { files: new Set(), contentTypes: null, relationships: new Map(), rootDocumentTarget: null, mainPartRoot: null };
+  const state: OfficeState = { files: new Set(), contentTypes: null, relationships: new Map(), payloadHazards: new Map(), rootDocumentTarget: null, mainPartRoot: null };
   for (const entry of entries) if (!entry.directory) state.files.add(entry.name);
   for (const name of state.files) {
     if (/(?:^|\/)(?:embeddings?|activex|customui|externallinks)(?:\/|$)/i.test(name) ||
@@ -654,6 +755,8 @@ function inspectOffice(bytes: Buffer, declared: string): void {
     if (hasNestedContainerHeader(expanded)) {
       unsupported('Nested archive or compound-file content is not accepted');
     }
+    const payloadHazard = officePayloadHazard(expanded);
+    if (payloadHazard) state.payloadHazards.set(entry.name, payloadHazard);
     if (/\.(?:xml|rels|vml)$/i.test(entry.name)) {
       parsePackageXml(entry.name, expanded, state);
     }
