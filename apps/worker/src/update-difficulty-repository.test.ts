@@ -87,10 +87,12 @@ function dependencies(client: TxMock): UpdateDifficultyDependencies {
   return { pool: { connect: async () => client, query: (sql, values = []) => client.query(sql, values) }, newId: () => `difficulty-id-${++nextId}` };
 }
 
-test('durable adapter composes exact source and target evidence into one immutable comparison', async () => {
+test('durable adapter composes legacy v1 source and target evidence into one immutable comparison', async () => {
   const client = new TxMock();
   const deps = dependencies(client);
   const first = await createUpdateDifficultySnapshot(deps, input());
+  assert.equal(client.profile.source_market.provenance.extractor_version,
+    'historical-native-recognition-v1/parser-synthetic-1', 'legacy profiles remain evidence-verifiable');
   assert.equal(first.estimate.status, 'ready');
   assert.equal(first.estimate.estimatedN, 1);
   assert.equal(first.oldProfileCompleteness, 'undetermined');

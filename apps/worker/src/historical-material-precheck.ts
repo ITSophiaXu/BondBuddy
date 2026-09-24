@@ -4,7 +4,11 @@ import {
   type AuthorizedMaterialParseInput,
   type MaterialParserDependencies,
 } from './material-parser.js';
-import { HISTORICAL_NATIVE_RECOGNITION_VERSION, recognizeHistoricalNativeText } from './historical-native-recognition.js';
+import {
+  HISTORICAL_NATIVE_RECOGNITION_VERSION,
+  parseHistoricalNativeExtractorVersion,
+  recognizeHistoricalNativeText,
+} from './historical-native-recognition.js';
 import {
   parseAndPersistAuthorizedMaterial,
   getParseSnapshotByParserVersion,
@@ -74,12 +78,25 @@ export async function parsePersistAndRecognizeHistoricalMaterial(
     materialVersion: input.version,
   };
   const existingProfile = await getLatestHistoricalProfile(dependencies.profiles, profileContext);
-  const nativePrefix = `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/`;
-  const storedExtractorVersion = existingProfile?.recognition.source_market.provenance.extractor_version;
-  if (existingProfile !== null && storedExtractorVersion === `${nativePrefix}${dependencies.parserVersion}`) {
-    const parseSnapshot = await getParseSnapshotByParserVersion(dependencies.evidence, profileContext, dependencies.parserVersion);
+  const storedIdentity = parseHistoricalNativeExtractorVersion(
+    existingProfile?.recognition.source_market.provenance.extractor_version);
+  if (existingProfile?.writeKind === 'correction') {
+    if (storedIdentity === null) throw new Error('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
+    const parseSnapshot = await getParseSnapshotByParserVersion(dependencies.evidence, profileContext, storedIdentity.parserVersion);
+    if (parseSnapshot === null) throw new Error('HISTORICAL_PROFILE_PARSE_SNAPSHOT_NOT_FOUND');
+    // A corrected profile is authoritative for this material version. Recover
+    // its original parse evidence and never append a new recognition over it.
+    return { parseSnapshot, profile: existingProfile };
+  }
+  if (existingProfile !== null && storedIdentity?.parserVersion === dependencies.parserVersion) {
+    const parseSnapshot = await getParseSnapshotByParserVersion(dependencies.evidence, profileContext, storedIdentity.parserVersion);
     const optionsMatch = parseSnapshot !== null && (parseSnapshot.requestOptions.max_pages ?? null) === (input.options?.max_pages ?? null);
-    if (parseSnapshot !== null && optionsMatch) return { parseSnapshot, profile: existingProfile };
+    if (parseSnapshot !== null && optionsMatch) {
+      if (storedIdentity.algorithmVersion === HISTORICAL_NATIVE_RECOGNITION_VERSION) return { parseSnapshot, profile: existingProfile };
+      const recognition = recognizeHistoricalNativeText(parseSnapshot.response, { profileVersion: input.profileVersion });
+      const profile = await appendHistoricalRecognition(dependencies.profiles, { ...profileContext, requestId: input.requestId }, recognition);
+      return { parseSnapshot, profile };
+    }
   }
   const parseSnapshot = await parseAndPersistAuthorizedMaterial(dependencies.material, dependencies.evidence, {
     ownerUserId: input.ownerUserId,

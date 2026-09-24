@@ -4,11 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import type { Recognition } from '@bondbuddy/contracts';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { parsePersistAndRecognizeHistoricalMaterial, precheckHistoricalMaterial } from './historical-material-precheck.js';
+import { recognizeHistoricalNativeText } from './historical-native-recognition.js';
 import type { MaterialParserDependencies } from './material-parser.js';
 import type { HistoricalProfileDependencies, HistoricalProfileClient } from './historical-profile-repository.js';
-import type { ParseEvidenceClient, ParseEvidenceDependencies } from './parse-evidence-repository.js';
+import { parseAndPersistAuthorizedMaterial, type ParseEvidenceClient, type ParseEvidenceDependencies } from './parse-evidence-repository.js';
 
 const bytes = Buffer.from('synthetic historical prospectus text\n', 'utf8');
 const row = {
@@ -291,6 +293,110 @@ class CompositionDatabase implements ParseEvidenceClient, HistoricalProfileClien
   }
   release(): void {}
 }
+
+function parseWithHalfYear(request: DocumentParseRequest): DocumentParseResponse {
+  const parsed = recognizedParse(request);
+  const financial = parsed.records.find(record => record.record_id === 'financial-period')!;
+  return { ...parsed, records: [...parsed.records, {
+    ...financial, record_id: 'financial-half-year', literal_quote: '2025年半年度', context: '合并财务报表',
+    locator: { path: [{ paragraph: 6 }], stable_ref: 'docx:p0006' },
+  }] };
+}
+
+function legacyV1Recognition(response: DocumentParseResponse): Recognition {
+  const current = recognizeHistoricalNativeText(response, { profileVersion: 1 });
+  const periods = current.reporting_periods.filter(period => period.end !== '2025-06-30');
+  const latestPeriod = periods.reduce((latest, period) => period.end! > latest.end! ? period : latest);
+  const legacyVersion = (value: string | null) => {
+    if (value === null) throw new Error('synthetic recognition must have native parser provenance');
+    return value.replace(/^historical-native-recognition-v2\//, 'historical-native-recognition-v1/');
+  };
+  return {
+    ...current,
+    profile_version: 1,
+    source_market: { ...current.source_market, provenance: { ...current.source_market.provenance,
+      extractor_version: legacyVersion(current.source_market.provenance.extractor_version) } },
+    source_offering: { ...current.source_offering, provenance: { ...current.source_offering.provenance,
+      extractor_version: legacyVersion(current.source_offering.provenance.extractor_version) } },
+    reporting_periods: periods.map(period => ({ ...period,
+      provenance: { ...period.provenance, extractor_version: legacyVersion(period.provenance.extractor_version) } })),
+    latest_reporting_cutoff: { ...current.latest_reporting_cutoff, value: latestPeriod.end, raw_value: latestPeriod.raw_value,
+      provenance: { ...latestPeriod.provenance,
+        extractor_version: legacyVersion(latestPeriod.provenance.extractor_version) } },
+  } as Recognition;
+}
+
+function seedProfile(db: CompositionDatabase, recognition: Recognition, writeKind: 'recognition' | 'correction'): void {
+  db.profiles.push({ owner_user_id: row.owner_user_id, project_id: row.project_id, material_id: row.id,
+    material_version: row.version, profile_version: recognition.profile_version, request_id: `legacy-${writeKind}`,
+    write_kind: writeKind, recognition, actor_id: writeKind === 'correction' ? 'user-synthetic' : null,
+    correction_reason: writeKind === 'correction' ? 'synthetic legacy correction' : null,
+    correction_evidence_refs: [], created_at: new Date('2026-09-24T00:00:00Z') });
+}
+
+test('reruns a v1 recognition under v2 and adds the newly recognized half-year period', async () => {
+  const db = new CompositionDatabase();
+  const tempRoot = await mkdtemp(join(tmpdir(), 'bb-history-v2-rerun-'));
+  let parserCalls = 0;
+  const deps: MaterialParserDependencies = {
+    ...dependencies({ parser: async request => { parserCalls += 1; return parseWithHalfYear(request); } }),
+    pool: { query: (sql, values) => db.query(sql, values) },
+    blobs: { async getPrivate() { return bytes; } }, tempRoot,
+  };
+  const evidence: ParseEvidenceDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'legacy-snapshot' };
+  const profiles: HistoricalProfileDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'v2-profile-event' };
+  try {
+    const oldSnapshot = await parseAndPersistAuthorizedMaterial(deps, evidence, { ...input, requestId: 'legacy-parse', requiredRole: 'historical' });
+    seedProfile(db, legacyV1Recognition(oldSnapshot.response), 'recognition');
+    assert.deepEqual((db.profiles[0]!.recognition as Recognition).reporting_periods.map(period => period.end),
+      ['2022-12-31', '2023-12-31', '2024-12-31']);
+
+    const upgraded = await parsePersistAndRecognizeHistoricalMaterial({ material: deps, evidence, profiles, parserVersion: 'synthetic-parser-1' },
+      { ...input, requestId: 'v2-recognition-rerun' });
+    assert.equal(upgraded.parseSnapshot.snapshotId, oldSnapshot.snapshotId);
+    assert.equal(upgraded.profile.profileVersion, 2);
+    assert.deepEqual(upgraded.profile.recognition.reporting_periods.map(period => period.end),
+      ['2022-12-31', '2023-12-31', '2024-12-31', '2025-06-30']);
+    assert.equal(upgraded.profile.recognition.latest_reporting_cutoff.value, '2025-06-30');
+    assert.match(upgraded.profile.recognition.source_market.provenance.extractor_version!,
+      /^historical-native-recognition-v2\//);
+    assert.equal(parserCalls, 1, 'v2 can recognize the immutable parser snapshot without reparsing the same bytes');
+  } finally { await rm(tempRoot, { recursive: true, force: true }); }
+});
+
+test('precheck recovers a corrected v1 profile without rerunning recognition or replacing the correction', async () => {
+  const db = new CompositionDatabase();
+  const tempRoot = await mkdtemp(join(tmpdir(), 'bb-history-v1-correction-'));
+  let parserCalls = 0;
+  const deps: MaterialParserDependencies = {
+    ...dependencies({ parser: async request => { parserCalls += 1; return recognizedParse(request); } }),
+    pool: { query: (sql, values) => db.query(sql, values) },
+    blobs: { async getPrivate() { return bytes; } }, tempRoot,
+  };
+  const evidence: ParseEvidenceDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'corrected-legacy-snapshot' };
+  const profiles: HistoricalProfileDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'legacy-correction-event' };
+  try {
+    const oldSnapshot = await parseAndPersistAuthorizedMaterial(deps, evidence, { ...input, requestId: 'corrected-legacy-parse', requiredRole: 'historical' });
+    const recognition = legacyV1Recognition(oldSnapshot.response);
+    recognition.state = 'needs_confirmation';
+    recognition.source_market = { ...recognition.source_market, value: 'szse', status: 'user_asserted',
+      provenance: { ...recognition.source_market.provenance, method: 'user_correction' },
+      uncertainty: ['synthetic user correction'] };
+    seedProfile(db, recognition, 'correction');
+
+    const recovered = await parsePersistAndRecognizeHistoricalMaterial({ material: deps, evidence, profiles, parserVersion: 'synthetic-parser-1' },
+      { ...input, requestId: 'corrected-profile-recovery', options: { max_pages: 2 } });
+    assert.equal(recovered.parseSnapshot.snapshotId, oldSnapshot.snapshotId);
+    assert.equal(recovered.profile.writeKind, 'correction');
+    assert.equal(recovered.profile.profileVersion, 1);
+    assert.equal(recovered.profile.recognition.source_market.value, 'szse');
+    assert.equal(recovered.profile.recognition.source_market.status, 'user_asserted');
+    assert.match(recovered.profile.recognition.source_market.provenance.extractor_version!,
+      /^historical-native-recognition-v1\//);
+    assert.equal(db.profiles.length, 1);
+    assert.equal(parserCalls, 1, 'recovery reads original evidence and does not run recognition again');
+  } finally { await rm(tempRoot, { recursive: true, force: true }); }
+});
 
 test('trusted composition persists the parse snapshot before profile, reuses exact-version snapshots and fails closed on version changes', async () => {
   const db = new CompositionDatabase();
