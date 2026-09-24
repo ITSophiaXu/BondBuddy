@@ -16,6 +16,26 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
   r.state=state;r.stage=stage;r.event_cursor=seq;
 }
 
+async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+  const q=await client.query(`SELECT 1
+    FROM bb_model_call_attempts a
+    LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
+    WHERE a.job_id=$1 AND (
+      a.status IN ('pending_reconcile','failed')
+      OR (a.status='completed' AND (
+        COALESCE(u.usage_status,'unknown')<>'measured'
+        OR COALESCE(u.conflicting_measurements,0)>0
+        OR (SELECT count(*) FROM bb_provider_result_refs p WHERE p.attempt_id=a.id)<>1
+        OR NOT EXISTS (
+          SELECT 1 FROM bb_provider_call_observations o
+          JOIN bb_provider_result_refs p ON p.id=o.result_id AND p.attempt_id=o.attempt_id
+          WHERE o.attempt_id=a.id AND o.outcome='completed' AND o.usage_status='measured'
+        )
+      ))
+    ) LIMIT 1`,[jobId]);
+  return !!q.rowCount;
+}
+
 export async function enqueue(client:PoolClient, r:any) {
   await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage) VALUES($1,$2,$3,$4,$5,'queued','queued')",[uid(),r.owner_user_id,r.id,r.task_kind,'default']);
   await event(client,{...r,event_cursor:0},'queued','queued','submitted');
@@ -28,10 +48,9 @@ export async function claim(pool:Pool, leaseSeconds=30):Promise<Lease|null> {
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
-    const pending=await client.query("SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND status IN ('pending_reconcile','completed','failed') LIMIT 1",[j.id]);
-    if(pending.rowCount){
+    if(await providerCallNeedsReconciliation(client,j.id)){
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
-      await event(client,r,'paused','provider_reconcile','unknown_provider_call');
+      await event(client,r,'paused','provider_reconcile','provider_reconciliation_required');
       return null;
     }
     const token=uid();
@@ -61,21 +80,28 @@ export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Rec
 }
 
 // Persist intent before any supplier request. An unknown attempt is never silently resent.
-export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, metadata:{modelId?:string;promptSnapshotId?:string}={}) {
+export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, metadata:{callId?:string;modelId?:string;promptSnapshotId?:string}={}) {
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(logicalCallId)||!Number.isSafeInteger(attemptNo)||attemptNo<1)throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
+  const attemptId=metadata.callId??uid();
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(attemptId))throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
     if(metadata.promptSnapshotId){
       const ref=await client.query('SELECT 1 FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4',[metadata.promptSnapshotId,lease.owner,r.project_id,r.id]);
       if(!ref.rowCount)throw missing();
     }
-    await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7)",[uid(),lease.owner,lease.jobId,logicalCallId,attemptNo,metadata.modelId??null,metadata.promptSnapshotId??null]);
+    const sequence=await client.query('SELECT COALESCE(max(attempt_no),0)::int AS last_attempt FROM bb_model_call_attempts WHERE job_id=$1 AND logical_call_id=$2',[lease.jobId,logicalCallId]);
+    if(attemptNo!==Number(sequence.rows[0].last_attempt)+1)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider attempt numbers must increase monotonically');
+    await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7)",[attemptId,lease.owner,lease.jobId,logicalCallId,attemptNo,metadata.modelId??null,metadata.promptSnapshotId??null]);
     await emitInternal(client,internalEvent({kind:'model.call_started',owner:lease.owner,projectId:r.project_id,runId:r.id,jobId:lease.jobId,traceId:r.id,logicalCallId,attemptNo,promptSnapshotRef:metadata.promptSnapshotId}));
     await event(client,r,'running','provider_call','provider_call_may_be_sent');
   });
+  return attemptId;
 }
 
 export async function resolvePotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, status:'confirmed_not_sent'|'completed'|'failed', providerRequestId?:string) {
   if(status!=='confirmed_not_sent')throw new Problem(409,'CAPABILITY_NOT_READY','Completed or failed supplier calls need a durable result before reconciliation');
+  if(providerRequestId)throw new Problem(409,'IDEMPOTENCY_CONFLICT','A confirmed not-sent attempt cannot have a provider request ID');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
     const q=await client.query("UPDATE bb_model_call_attempts SET status=$5,provider_request_id=$6,updated_at=now() WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 AND status='pending_reconcile' RETURNING id",[lease.owner,lease.jobId,logicalCallId,attemptNo,status,providerRequestId??null]);
@@ -88,6 +114,7 @@ export async function resolvePotentialCall(pool:Pool, lease:Lease, logicalCallId
 // It cannot be invoked through the public API or by a client-supplied claim.
 export async function reconcilePausedCall(pool:Pool, owner:string, runId:string, logicalCallId:string, attemptNo:number, status:'confirmed_not_sent'|'completed'|'failed', providerRequestId?:string) {
   if(status!=='confirmed_not_sent')throw new Problem(409,'CAPABILITY_NOT_READY','Completed or failed supplier calls need a durable result before reconciliation');
+  if(providerRequestId)throw new Problem(409,'IDEMPOTENCY_CONFLICT','A confirmed not-sent attempt cannot have a provider request ID');
   await transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
@@ -106,8 +133,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     if(terminal.has(r.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
     if(kind==='resume'){
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
-      const p=await client.query("SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND status IN ('pending_reconcile','completed','failed') LIMIT 1",[j.id]);
-      if(p.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
+      if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs a durable result and verified usage before resume');
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');
@@ -127,8 +153,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',
   }
   return transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
-    const pending=await client.query("SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND status IN ('pending_reconcile','completed','failed') LIMIT 1",[lease.jobId]);
-    if(pending.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
+    if(await providerCallNeedsReconciliation(client,lease.jobId))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
     if(outcome==='succeeded'){
       const q=await client.query("SELECT 1 FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 AND id=$3 AND version=$4 AND object_key=$5 AND sha256=$6 AND quality_status='passed' AND delivery_status='available' FOR UPDATE",[lease.owner,lease.runId,artifact.id,artifact.version,artifact.object_key,artifact.sha256]);
       if(!q.rowCount)throw new Problem(422,'DELIVERY_FAILED','Word artifact changed');
