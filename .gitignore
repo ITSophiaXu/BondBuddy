@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+dist/
 work/
 docs/*
 !docs/product.md

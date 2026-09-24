@@ -1,0 +1,278 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "create-project-request",
+      "schema": "ProjectCreateRequest",
+      "valid": true,
+      "value": { "name": "虚构发行人更新", "kind": "update", "issuer_name": null, "market": "nafmii", "offering": "dfi" }
+    },
+    {
+      "name": "invalid-market-offering-value",
+      "schema": "ProjectCreateRequest",
+      "valid": false,
+      "value": { "name": "虚构发行人更新", "kind": "update", "issuer_name": null, "market": "exchange", "offering": "dfi" }
+    },
+    {
+      "name": "invalid-market-offering-combination",
+      "schema": "ProjectCreateRequest",
+      "valid": false,
+      "value": { "name": "虚构发行人更新", "kind": "update", "issuer_name": null, "market": "sse", "offering": "dfi" }
+    },
+    {
+      "name": "project-revision-7",
+      "schema": "ProjectResponse",
+      "valid": true,
+      "value": { "project_id": "project-synthetic", "draft_revision": 7, "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "name": "虚构发行人更新", "kind": "update", "issuer_name": null, "market": "nafmii", "offering": "dfi", "updated_at": "2026-09-24T03:00:00Z" }
+    },
+    {
+      "name": "upload-create",
+      "schema": "UploadCreateRequest",
+      "valid": true,
+      "value": { "filename": "synthetic-baseline.pdf", "media_type": "application/pdf", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "role": "historical" }
+    },
+    {
+      "name": "upload-spreadsheet-request",
+      "schema": "UploadCreateRequest",
+      "valid": true,
+      "value": { "filename": "synthetic-audit.xlsx", "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "byte_size": 2048, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "role": "audit" }
+    },
+    {
+      "name": "upload-image-request",
+      "schema": "UploadCreateRequest",
+      "valid": true,
+      "value": { "filename": "synthetic-scan.jpeg", "media_type": "image/jpeg", "byte_size": 1024, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "role": "notes" }
+    },
+    {
+      "name": "invalid-unsupported-doc-request",
+      "schema": "UploadCreateRequest",
+      "valid": false,
+      "value": { "filename": "legacy.doc", "media_type": "application/msword", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "role": "historical" }
+    },
+    {
+      "name": "invalid-unsupported-xls-request",
+      "schema": "UploadCreateRequest",
+      "valid": false,
+      "value": { "filename": "legacy.xls", "media_type": "application/vnd.ms-excel", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "role": "audit" }
+    },
+    {
+      "name": "invalid-macro-document-request",
+      "schema": "UploadCreateRequest",
+      "valid": false,
+      "value": { "filename": "macro.docm", "media_type": "application/vnd.ms-word.document.macroEnabled.12", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "role": "historical" }
+    },
+    {
+      "name": "invalid-internal-library-role",
+      "schema": "UploadCreateRequest",
+      "valid": false,
+      "value": { "filename": "synthetic-baseline.pdf", "media_type": "application/pdf", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "role": "internal_library" }
+    },
+    {
+      "name": "invalid-image-as-historical-baseline",
+      "schema": "UploadCreateRequest",
+      "valid": false,
+      "value": { "filename": "synthetic-baseline.png", "media_type": "image/png", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "role": "historical" }
+    },
+    {
+      "name": "upload-session",
+      "schema": "UploadSessionResponse",
+      "valid": true,
+      "value": { "upload_id": "upload-synthetic", "state": "uploading", "upload_url": "https://example.invalid/scoped-synthetic-upload", "expires_at": "2026-09-24T03:10:00Z", "max_bytes": 104857600 }
+    },
+    {
+      "name": "upload-complete-request",
+      "schema": "UploadCompleteRequest",
+      "valid": true,
+      "value": { "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+    },
+    {
+      "name": "material-persisted",
+      "schema": "MaterialResponse",
+      "valid": true,
+      "value": { "material_id": "material-synthetic", "material_version": 1, "upload_id": "upload-synthetic", "role": "historical", "filename": "synthetic-baseline.pdf", "media_type": "application/pdf", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "state": "persisted", "persisted_at": "2026-09-24T03:02:00Z", "error": null }
+    },
+    {
+      "name": "project-upload-progress-event",
+      "schema": "ProjectEvent",
+      "valid": true,
+      "value": { "event_id": "project-event-synthetic-1", "schema_version": 1, "trace_id": "trace-upload-synthetic-1", "project_id": "project-synthetic", "seq": 1, "occurred_at": "2026-09-24T03:01:00Z", "type": "material.upload_progress", "payload": { "material_id": "material-synthetic", "uploaded_bytes": 1200, "total_bytes": 1200 } }
+    },
+    {
+      "name": "invalid-run-event-with-project-only-type",
+      "schema": "RunEvent",
+      "valid": false,
+      "value": { "event_id": "event-synthetic-project-only", "schema_version": 1, "trace_id": "trace-upload-synthetic-1", "run_id": "run-synthetic-1", "seq": 1, "occurred_at": "2026-09-24T03:01:00Z", "stage": null, "type": "material.upload_progress", "state": "queued", "payload": { "material_id": "material-synthetic", "uploaded_bytes": 1200, "total_bytes": 1200 } }
+    },
+    {
+      "name": "lock-input-revision-request",
+      "schema": "InputRevisionCreateRequest",
+      "valid": true,
+      "value": { "draft_revision": 7, "material_versions": [{ "material_id": "material-synthetic", "material_version": 1 }], "requirement_message_ids": [] }
+    },
+    {
+      "name": "locked-input-revision",
+      "schema": "InputRevisionResponse",
+      "valid": true,
+      "value": { "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "material_versions": [{ "material_id": "material-synthetic", "material_version": 1 }], "rule_pack_version": null, "template_version": null, "reference_release": null, "created_at": "2026-09-24T03:02:30Z" }
+    },
+    {
+      "name": "recognition-needs-confirmation",
+      "schema": "RecognitionResponse",
+      "valid": true,
+      "value": {
+        "material_id": "material-synthetic", "material_version": 1, "profile_version": 1, "state": "needs_confirmation",
+        "source_market": { "value": null, "raw_value": "交易所字样模糊", "provenance": { "material_id": "material-synthetic", "material_version": 1, "method": "ocr", "extractor_version": "synthetic-ocr-1", "evidence_refs": ["page-1-region-2"] }, "uncertainty": ["无法区分上交所与深交所"], "status": "needs_confirmation" },
+        "source_offering": { "value": null, "raw_value": "公开发行", "provenance": { "material_id": "material-synthetic", "material_version": 1, "method": "ocr", "extractor_version": "synthetic-ocr-1", "evidence_refs": ["page-3-region-7"] }, "uncertainty": ["无法仅凭公募字样区分小公募与大公募"], "status": "needs_confirmation" },
+        "reporting_periods": [
+          { "start": "2024-01-01", "end": "2024-12-31", "period_kind": "annual", "scope": "consolidated", "raw_value": "2024年度合并财务报表", "provenance": { "material_id": "material-synthetic", "material_version": 1, "method": "native_text", "extractor_version": "synthetic-parser-1", "evidence_refs": ["page-28-table-1"] }, "uncertainty": [], "status": "recognized" },
+          { "start": "2025-01-01", "end": null, "period_kind": "interim", "scope": null, "raw_value": "2025年一季度?", "provenance": { "material_id": "material-synthetic", "material_version": 1, "method": "ocr", "extractor_version": "synthetic-ocr-1", "evidence_refs": ["page-29-table-1"] }, "uncertainty": ["截止日数字模糊，合并/母公司口径不明"], "status": "needs_confirmation" }
+        ],
+        "latest_reporting_cutoff": { "value": null, "raw_value": "2025年一季度?", "provenance": { "material_id": "material-synthetic", "material_version": 1, "method": "derived", "extractor_version": "synthetic-profile-1", "evidence_refs": ["page-29-table-1"] }, "uncertainty": ["最新期间未确认，不能将签署日或发行日作为财务截止日"], "status": "needs_confirmation" }
+      }
+    },
+    {
+      "name": "invalid-ocr-false-certainty",
+      "schema": "RecognitionResponse",
+      "valid": false,
+      "value": { "material_id": "material-synthetic", "material_version": 1, "profile_version": 1, "state": "confirmed", "source_market": "sse", "source_offering": "private", "raw_value": null, "uncertainty": [], "evidence_refs": [], "latest_reporting_cutoff": null }
+    },
+    {
+      "name": "revision-conflict-409",
+      "schema": "Error",
+      "valid": true,
+      "http_status": 409,
+      "value": { "code": "INPUT_REVISION_CONFLICT", "message": "草稿已变化，请保留编辑并刷新。", "retryable": false, "field_errors": [{ "field": "If-Match", "code": "STALE_REVISION", "message": "期望 7，当前为 8" }], "correlation_id": "corr-revision" }
+    },
+    {
+      "name": "idempotency-conflict-409",
+      "schema": "Error",
+      "valid": true,
+      "http_status": 409,
+      "value": { "code": "IDEMPOTENCY_CONFLICT", "message": "相同请求键对应不同输入。", "retryable": false, "field_errors": [{ "field": "execution_request_id", "code": "INPUT_HASH_CHANGED", "message": "请使用新请求键。" }], "correlation_id": "corr-idempotency" }
+    },
+    {
+      "name": "unsupported-legacy-or-macro-format-415",
+      "schema": "Error",
+      "valid": true,
+      "http_status": 415,
+      "value": { "code": "MATERIAL_FORMAT_UNSUPPORTED", "message": "请转换旧版 DOC/XLS 或宏文档并提供可读副本。", "retryable": false, "field_errors": [{ "field": "media_type", "code": "UNSUPPORTED_FORMAT", "message": "当前只接受列出的普通材料格式。" }], "correlation_id": "corr-format" }
+    },
+    {
+      "name": "encrypted-material-422",
+      "schema": "Error",
+      "valid": true,
+      "http_status": 422,
+      "value": { "code": "MATERIAL_ENCRYPTED", "message": "材料已加密，请提供可读取副本。", "retryable": false, "field_errors": [], "correlation_id": "corr-encrypted" }
+    },
+    {
+      "name": "content-mismatch-422",
+      "schema": "Error",
+      "valid": true,
+      "http_status": 422,
+      "value": { "code": "MATERIAL_CONTENT_MISMATCH", "message": "文件实际内容与声明格式不一致。", "retryable": false, "field_errors": [{ "field": "media_type", "code": "SIGNATURE_MISMATCH", "message": "请重新选择正确文件。" }], "correlation_id": "corr-content" }
+    },
+    {
+      "name": "owner-safe-404",
+      "schema": "Error",
+      "valid": true,
+      "http_status": 404,
+      "value": { "code": "NOT_FOUND", "message": "资源不存在。", "retryable": false, "field_errors": [], "correlation_id": "corr-private" }
+    },
+    {
+      "name": "execute-request",
+      "schema": "ExecuteRequest",
+      "valid": true,
+      "value": { "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "task_kind": "update", "input_manifest_ref": "manifest-synthetic-7", "storage_origin": "cloud", "workspace_id": "workspace-synthetic" }
+    },
+    {
+      "name": "invalid-browser-claims-owner",
+      "schema": "ExecuteRequest",
+      "valid": false,
+      "value": { "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "task_kind": "update", "input_manifest_ref": "manifest-synthetic-7", "storage_origin": "cloud", "workspace_id": "workspace-synthetic", "user_id": "victim" }
+    },
+    {
+      "name": "invalid-browser-sends-provider-secret",
+      "schema": "ExecuteRequest",
+      "valid": false,
+      "value": { "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "task_kind": "update", "input_manifest_ref": "manifest-synthetic-7", "storage_origin": "cloud", "workspace_id": "workspace-synthetic", "provider_api_key": "synthetic-should-never-be-here" }
+    },
+    {
+      "name": "run-before-tab-close",
+      "schema": "RunResponse",
+      "valid": true,
+      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "queued", "stage": null, "event_cursor": 1, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:03:00Z" }
+    },
+    {
+      "name": "run-after-relogin",
+      "schema": "RunResponse",
+      "valid": true,
+      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "running", "stage": "model", "event_cursor": 3, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:04:00Z" }
+    },
+    {
+      "name": "invalid-succeeded-without-artifact",
+      "schema": "RunResponse",
+      "valid": false,
+      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "succeeded", "stage": "delivery", "event_cursor": 4, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:10:00Z" }
+    },
+    {
+      "name": "run-recovery-events",
+      "schema": "RunEventsResponse",
+      "valid": true,
+      "value": { "items": [{ "event_id": "event-synthetic-2", "schema_version": 1, "trace_id": "trace-synthetic-1", "run_id": "run-synthetic-1", "seq": 2, "occurred_at": "2026-09-24T03:03:30Z", "stage": "parse", "type": "run.progress", "state": "running", "payload": { "completed_items": 1, "total_items": null } }, { "event_id": "event-synthetic-3", "schema_version": 1, "trace_id": "trace-synthetic-1", "run_id": "run-synthetic-1", "seq": 3, "occurred_at": "2026-09-24T03:04:00Z", "stage": "model", "type": "run.state_changed", "state": "running", "payload": { "reason": "checkpoint_resumed_after_worker_reconcile" } }], "next_cursor": 3 }
+    },
+    {
+      "name": "model-attempt-unknown-usage",
+      "schema": "ModelCallAttempt",
+      "valid": true,
+      "value": { "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "provider_request_id": null, "model_id": "unverified-synthetic-model", "prompt_snapshot_ref": "prompt-synthetic-1", "usage_status": "pending", "input_tokens": null, "output_tokens": null, "cached_input_tokens": null, "reasoning_tokens": null, "usage_evidence_ref": null, "billable": false, "cost_payer": "platform" }
+    },
+    {
+      "name": "internal-model-attempt-event-unknown-usage",
+      "schema": "InternalObservabilityEvent",
+      "valid": true,
+      "value": { "event_id": "internal-event-synthetic-1", "schema_version": 1, "kind": "model.call_finished", "occurred_at": "2026-09-24T03:04:20Z", "operation_id": "action-synthetic-1", "request_id": "http-synthetic-1", "trace_id": "trace-synthetic-1", "span_id": "span-model-1", "parent_span_id": "span-job-1", "actor_type": "system", "user_id": "user-synthetic-1", "project_id": "project-synthetic", "conversation_id": null, "message_id": null, "job_id": "job-synthetic-1", "parent_job_id": null, "run_id": "run-synthetic-1", "work_item_id": "work-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "job_kind": "update", "stage": "model", "status": "running", "prompt_snapshot_ref": "prompt-synthetic-1", "error": null, "usage": { "status": "pending", "input_tokens": null, "output_tokens": null, "cached_input_tokens": null, "reasoning_tokens": null, "evidence_ref": null } }
+    },
+    {
+      "name": "internal-error-event",
+      "schema": "InternalObservabilityEvent",
+      "valid": true,
+      "value": { "event_id": "internal-event-synthetic-2", "schema_version": 1, "kind": "error.recorded", "occurred_at": "2026-09-24T03:04:21Z", "operation_id": "action-synthetic-1", "request_id": "http-synthetic-1", "trace_id": "trace-synthetic-1", "span_id": "span-model-1", "parent_span_id": "span-job-1", "actor_type": "system", "user_id": "user-synthetic-1", "project_id": "project-synthetic", "conversation_id": null, "message_id": null, "job_id": "job-synthetic-1", "parent_job_id": null, "run_id": "run-synthetic-1", "work_item_id": "work-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "job_kind": "update", "stage": "model", "status": "failed", "prompt_snapshot_ref": "prompt-synthetic-1", "error": { "error_id": "error-synthetic-1", "code": "DATA_UNAVAILABLE", "category": "model_provider", "retryable": true }, "usage": null }
+    },
+    {
+      "name": "invalid-internal-event-with-prompt-body",
+      "schema": "InternalObservabilityEvent",
+      "valid": false,
+      "value": { "event_id": "internal-event-synthetic-3", "schema_version": 1, "kind": "model.call_finished", "occurred_at": "2026-09-24T03:04:22Z", "operation_id": "action-synthetic-1", "request_id": "http-synthetic-1", "trace_id": "trace-synthetic-1", "span_id": "span-model-1", "parent_span_id": "span-job-1", "actor_type": "system", "user_id": "user-synthetic-1", "project_id": "project-synthetic", "conversation_id": null, "message_id": null, "job_id": "job-synthetic-1", "parent_job_id": null, "run_id": "run-synthetic-1", "work_item_id": "work-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "job_kind": "update", "stage": "model", "status": "running", "prompt_snapshot_ref": "prompt-synthetic-1", "error": null, "usage": null, "prompt_body": "synthetic forbidden body" }
+    },
+    {
+      "name": "invalid-event-without-trace",
+      "schema": "RunEvent",
+      "valid": false,
+      "value": { "event_id": "event-synthetic-4", "schema_version": 1, "run_id": "run-synthetic-1", "seq": 4, "occurred_at": "2026-09-24T03:05:00Z", "stage": "model", "type": "run.progress", "state": "running", "payload": {} }
+    },
+    {
+      "name": "invalid-public-event-with-secret-payload",
+      "schema": "RunEvent",
+      "valid": false,
+      "value": { "event_id": "event-synthetic-5", "schema_version": 1, "trace_id": "trace-synthetic-1", "run_id": "run-synthetic-1", "seq": 5, "occurred_at": "2026-09-24T03:05:01Z", "stage": "model", "type": "run.progress", "state": "running", "payload": { "provider_api_key": "synthetic forbidden value" } }
+    },
+    {
+      "name": "artifact-ready-after-quality-check",
+      "schema": "ArtifactResponse",
+      "valid": true,
+      "value": { "artifact_id": "artifact-synthetic-1", "run_id": "run-synthetic-1", "version": 1, "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "quality_status": "passed", "delivery_status": "available", "download_url": "https://example.invalid/scoped-synthetic-download", "expires_at": "2026-09-24T03:20:00Z" }
+    },
+    {
+      "name": "invalid-artifact-unchecked",
+      "schema": "ArtifactResponse",
+      "valid": false,
+      "value": { "artifact_id": "artifact-synthetic-1", "run_id": "run-synthetic-1", "version": 1, "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "quality_status": "pending", "delivery_status": "available", "download_url": "https://example.invalid/scoped-synthetic-download", "expires_at": "2026-09-24T03:20:00Z" }
+    },
+    {
+      "name": "invalid-unknown-usage-as-zero",
+      "schema": "ModelCallAttempt",
+      "valid": false,
+      "value": { "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "provider_request_id": null, "model_id": "unverified-synthetic-model", "prompt_snapshot_ref": "prompt-synthetic-1", "usage_status": "unknown", "input_tokens": 0, "output_tokens": 0, "cached_input_tokens": 0, "reasoning_tokens": 0, "usage_evidence_ref": null, "billable": false, "cost_payer": "platform" }
+    }
+  ]
+}

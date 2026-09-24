@@ -1,0 +1,97 @@
+import { Ajv } from 'ajv';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, schemas, type SchemaName } from './index.js';
+
+type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
+const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
+const data = JSON.parse(readFileSync(file, 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(data.synthetic, true);
+const ajv = new Ajv({ allErrors: true, strict: true });
+const byName = new Map<string, Example>();
+for (const example of data.cases) {
+  assert.ok(!byName.has(example.name), `duplicate example ${example.name}`);
+  byName.set(example.name, example);
+  assert.ok(Object.hasOwn(schemas, example.schema), `unknown schema ${example.schema}`);
+  const validate = ajv.compile(schemas[example.schema]);
+  const result = validate(example.value);
+  assert.equal(result, example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
+}
+const value = (name: string) => {
+  const example = byName.get(name);
+  assert.ok(example, name);
+  return example.value;
+};
+const before = value('run-before-tab-close');
+const after = value('run-after-relogin');
+assert.equal(before.run_id, after.run_id, 'new session must find same run');
+assert.equal(before.execution_request_id, after.execution_request_id, 'relogin must not create another execution');
+assert.equal(before.input_hash, after.input_hash, 'immutable snapshot survives browser close');
+assert.equal(after.state, 'running', 'browser close does not cancel server work');
+const events = value('run-recovery-events');
+assert.deepEqual((events.items as Array<Record<string, unknown>>).map(event => event.seq), [2, 3]);
+assert.equal(events.next_cursor, after.event_cursor);
+assert.equal(byName.get('owner-safe-404')?.http_status, 404);
+assert.equal(byName.get('revision-conflict-409')?.http_status, 409);
+assert.equal(byName.get('idempotency-conflict-409')?.http_status, 409);
+const unknown = value('model-attempt-unknown-usage');
+assert.equal(unknown.usage_status, 'pending');
+assert.equal(unknown.input_tokens, null);
+assert.equal(unknown.output_tokens, null);
+assert.equal(unknown.prompt_snapshot_ref, before.prompt_snapshot_ref);
+const upload = value('upload-session');
+const complete = value('upload-complete-request');
+const material = value('material-persisted');
+assert.equal(upload.upload_id, material.upload_id);
+assert.equal(material.sha256, complete.sha256);
+assert.equal(material.byte_size, complete.byte_size);
+assert.equal(upload.state, 'uploading');
+assert.equal(material.state, 'persisted');
+const projectEvent = value('project-upload-progress-event');
+assert.equal(projectEvent.project_id, value('project-revision-7').project_id);
+assert.equal((projectEvent.payload as Record<string, unknown>).uploaded_bytes, complete.byte_size);
+assert.equal(Object.hasOwn(projectEvent, 'run_id'), false, 'upload precedes run creation');
+const lockRequest = value('lock-input-revision-request');
+const locked = value('locked-input-revision');
+assert.deepEqual(lockRequest.material_versions, locked.material_versions);
+assert.equal(locked.input_hash, before.input_hash);
+assert.equal(lockRequest.draft_revision, locked.input_revision);
+const recognition = value('recognition-needs-confirmation');
+assert.equal(recognition.material_id, material.material_id);
+const sourceMarket = recognition.source_market as Record<string, unknown>;
+assert.equal(sourceMarket.value, null);
+assert.ok((sourceMarket.uncertainty as string[]).length > 0);
+assert.deepEqual((sourceMarket.provenance as Record<string, unknown>).evidence_refs, ['page-1-region-2']);
+const periods = recognition.reporting_periods as Array<Record<string, unknown>>;
+assert.equal(periods[0]?.end, '2024-12-31');
+assert.equal(periods[0]?.scope, 'consolidated');
+assert.equal(periods[1]?.end, null, 'ambiguous OCR date must stay unknown');
+assert.equal((recognition.latest_reporting_cutoff as Record<string, unknown>).value, null);
+const private404 = value('owner-safe-404');
+assert.equal(private404.code, 'NOT_FOUND');
+assert.equal(JSON.stringify(private404).includes('victim'), false);
+assert.equal(value('artifact-ready-after-quality-check').run_id, before.run_id);
+assert.equal(isMarketOffering('nafmii', 'dfi'), true);
+assert.equal(isMarketOffering('sse', 'dfi'), false);
+assert.equal(value('upload-spreadsheet-request').media_type, M1_UPLOAD_MIME_TYPES[2]);
+assert.equal(value('upload-image-request').media_type, 'image/jpeg');
+assert.equal(value('upload-create').role, material.role);
+for (const name of ['unsupported-legacy-or-macro-format-415', 'encrypted-material-422', 'content-mismatch-422']) {
+  assert.ok(byName.get(name)?.http_status === 415 || byName.get(name)?.http_status === 422);
+}
+const internalEvent = value('internal-model-attempt-event-unknown-usage');
+assert.equal(internalEvent.run_id, before.run_id);
+assert.equal(internalEvent.call_id, unknown.call_id);
+assert.equal(internalEvent.prompt_snapshot_ref, unknown.prompt_snapshot_ref);
+assert.equal((internalEvent.usage as Record<string, unknown>).input_tokens, null);
+assert.equal((value('internal-error-event').error as Record<string, unknown>).category, 'model_provider');
+const prototype = await import(fileURLToPath(new URL('../../../product-prototype/public/project-fields.js', import.meta.url))) as { MATERIAL_GROUPS: Array<{ label: string; items: Array<[string, string]> }>; SUPPORT_ROLES: string[] };
+const expectedRoles = ['historical', 'reference', ...prototype.SUPPORT_ROLES];
+assert.deepEqual([...M1_UPLOAD_MATERIAL_ROLES].sort(), expectedRoles.sort(), 'M1 upload roles must follow current prototype partitions');
+for (const partition of M1_MATERIAL_PARTITIONS) {
+  const source = prototype.MATERIAL_GROUPS.find(group => group.label === partition.label);
+  assert.ok(source, `missing prototype partition ${partition.label}`);
+  for (const role of partition.roles) assert.equal(source.items.find(item => item[0] === role.code)?.[1], role.label);
+}
+console.log(`validated ${data.cases.length} synthetic examples and recovery/conflict/usage invariants`);

@@ -1,0 +1,13 @@
+{
+  "name": "bondbuddy-m1",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "workspaces": ["packages/contracts", "apps/api"],
+  "scripts": {
+    "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api",
+    "check:contracts": "npm run check:examples -w @bondbuddy/contracts",
+    "test:api": "npm test -w @bondbuddy/api",
+    "start:api": "npm start -w @bondbuddy/api"
+  }
+}
