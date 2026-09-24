@@ -78,6 +78,16 @@ The existing migration has no dedicated confidence column, so candidate
 confidence is round-tripped in the per-anchor evidence JSON; a future schema
 change should make it first-class before adding generic fact queries.
 
+`fact-decision-repository.ts` is an internal append-only #15 conflict audit
+seam. A trusted actor can record a versioned choice of an exact owner/project/
+fact-key candidate or leave the group unresolved; the candidates and their
+source statuses remain unchanged. Same-request retries return the same
+decision, while a decision and its outbox event commit or roll back together.
+Migration `0012_m1_fact_decisions.sql` rejects decision edits and freezes a
+candidate once selected. A decision is not audit verification or permission to
+generate; no public fact-resolution API or production processor uses it yet.
+Its live PostgreSQL test uses synthetic candidates and a disposable database.
+
 The fact repository has an optional live PostgreSQL 16 test. After applying
 the repository migrations to a disposable database, set
 `FACT_REPOSITORY_TEST_DATABASE_URL` when running the worker tests. Fixtures are
