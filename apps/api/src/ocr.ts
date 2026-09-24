@@ -89,7 +89,48 @@ async function load(pool: Pool|PoolClient, blobs: PrivateBlobs, owner:string, pr
   let stored:Stored;
   try { stored=JSON.parse(bytes.toString());validateOcrResponse(stored.response,{materialId,version:source.version,sha256:source.sha256.trim(),mediaType:source.media_type,requestId:row.request_id,purpose:row.purpose},false); }
   catch { throw new Problem(503,'DATA_UNAVAILABLE','OCR result integrity failed'); }
-  return {row,stored};
+  return {row,stored,source};
+}
+
+/** A worker-only reader for OCR fact extraction. Caller-provided record text and
+ * coordinates are never accepted: each value is resolved from the hash-checked
+ * immutable result object and an active, owner-scoped material version. */
+export async function readOcrFactSource(pool: Pool|PoolClient, blobs: PrivateBlobs, input: {
+  owner: string; projectId: string; materialId: string; version: number;
+  snapshotId: string; resultSha256: string; recordId: string; correctionId?: string;
+}) {
+  if (!/^[a-f0-9]{64}$/.test(input.resultSha256)) throw changed();
+  const {row,stored,source} = await load(pool,blobs,input.owner,input.projectId,input.materialId,input.snapshotId);
+  if (row.material_version !== input.version || row.result_hash.trim() !== input.resultSha256) throw changed();
+  const record = stored.response.records.find(item => item.record_id === input.recordId);
+  if (!record) throw missing();
+  const page = stored.response.pages.find(item => item.page === record.page);
+  if (!page) throw new Problem(503,'DATA_UNAVAILABLE','OCR record page is missing');
+  const pageObject = stored.page_objects[String(page.page)];
+  if (!pageObject || pageObject.sha256 !== page.image_sha256) throw new Problem(503,'DATA_UNAVAILABLE','OCR page reference integrity failed');
+  const pageBytes = await blobs.getIfExistsBounded(pageObject.key,32*1024*1024);
+  if (!pageBytes || digest(pageBytes) !== pageObject.sha256) throw new Problem(503,'DATA_UNAVAILABLE','OCR page integrity failed');
+  let correction: OcrCorrection|undefined;
+  if (input.correctionId !== undefined) {
+    const latest = await pool.query(`SELECT id,revision,correction FROM bb_ocr_corrections
+      WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_id=$3 AND record_id=$4
+      ORDER BY revision DESC LIMIT 1`, [input.owner,input.projectId,row.id,record.record_id]);
+    const stored = latest.rows[0];
+    if (!stored || stored.id !== input.correctionId) throw changed();
+    const value = stored.correction as OcrCorrection;
+    if (value?.correction_id !== stored.id || value.record_id !== record.record_id || value.original_text !== record.text ||
+      value.actor_user_id !== input.owner || value.status !== 'user_asserted' || value.eligible_for_manuscript !== false ||
+      !Number.isSafeInteger(value.revision) || value.revision !== stored.revision || !Number.isFinite(Date.parse(value.created_at)) ||
+      typeof value.corrected_text !== 'string' || typeof value.reason !== 'string' || !value.reason.trim() ||
+      ![value.period,value.scope,value.unit].every(item => item === null || typeof item === 'string')) {
+      throw new Problem(503,'DATA_UNAVAILABLE','OCR correction integrity failed');
+    }
+    correction = value;
+  }
+  return {snapshotId:row.id,resultSha256:row.result_hash.trim(),materialId:input.materialId,
+    materialVersion:row.material_version,materialSha256:stored.response.material.sha256,materialRole:source.role,
+    snapshotCreatedAt:new Date(row.created_at).toISOString(),processorVersion:stored.response.processor_version,
+    record,page,correction};
 }
 
 export async function readOcr(pool: Pool, blobs: PrivateBlobs, owner:string, projectId:string, materialId:string):Promise<OcrReview> {

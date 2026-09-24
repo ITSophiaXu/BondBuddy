@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import type { OcrEngineResponse } from '@bondbuddy/contracts';
+import { azureBlobs, digest } from '@bondbuddy/api/data';
 import type { FactCandidate, FactIdentity } from '@bondbuddy/domain/facts';
 import {
   insertFactCandidate,
+  insertOcrFactCandidate,
   listFactCandidates,
   type FactEvidenceAnchor,
   type FactRepositoryContext,
@@ -197,6 +200,16 @@ test('user statements require a valid observed date and remain user asserted', a
   assert.equal(stored.candidate.source.observedAt, '2025-09-23T01:02:03.000Z');
 });
 
+test('OCR insertion rejects caller verification claims before reading or persisting anything', async () => {
+  const pool = new MockPool();
+  const deps = { ...dependencies(pool), blobs: {} as never };
+  await assert.rejects(insertOcrFactCandidate(deps, scope, candidate({ auditCheck: {
+    kind: 'source_anchor_review', evidenceId: 'caller-record', verifierId: 'caller-reviewer', verifierRole: 'internal_reviewer',
+  } }), { materialId: material.id, materialVersion: material.version, snapshotId: 'caller-snapshot',
+    resultSha256: 'a'.repeat(64), recordId: 'caller-record' }), /OCR_FACT_CANNOT_BE_VERIFIED/);
+  assert.equal(pool.calls.length, 0);
+});
+
 test('lists every candidate for exact owner/project/key and uses scoped parameter bindings', async () => {
   const pool = new MockPool();
   const first = await insertFactCandidate(dependencies(new MockPool()), scope, candidate(), material, evidence);
@@ -308,6 +321,143 @@ test('live PostgreSQL keeps conflicting candidates and owner/material boundaries
         { id: materialId, version: 2 }, liveEvidence), /FACT_SOURCE_EVIDENCE_NOT_FOUND/);
     } finally {
       await client.query('ROLLBACK');
+      client.release();
+      await pool.end();
+    }
+  });
+
+test('live PostgreSQL and private Blob bind OCR facts to immutable snapshots and keep corrections separate',
+  { skip: !process.env.FACT_REPOSITORY_TEST_DATABASE_URL || !process.env.BB_TEST_AZURITE_CONNECTION_STRING
+    ? 'set FACT_REPOSITORY_TEST_DATABASE_URL and BB_TEST_AZURITE_CONNECTION_STRING for migrated PostgreSQL 16 and Azurite' : false },
+  async () => {
+    const pool = new Pool({ connectionString: process.env.FACT_REPOSITORY_TEST_DATABASE_URL });
+    const client = await pool.connect();
+    const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!);
+    const suffix = randomUUID();
+    const owner = `ocr-fact-owner-${suffix}`;
+    const project = `ocr-fact-project-${suffix}`;
+    const upload = `ocr-fact-upload-${suffix}`;
+    const materialId = `ocr-fact-material-${suffix}`;
+    const snapshotId = `ocr-fact-snapshot-${suffix}`;
+    const resultKey = `synthetic-ocr-fact/${suffix}.json`;
+    const pageKey = `synthetic-ocr-fact/${suffix}-page.png`;
+    const sourceHash = 'a'.repeat(64);
+    const pageBytes = Buffer.from(`synthetic OCR page ${suffix}`);
+    const resultImageHash = digest(pageBytes);
+    const result = {
+      schema_version: 'ocr-response-v1', request_id: `ocr-fact-request-${suffix}`, processor_version: 'synthetic-ocr-v1',
+      engine_version: 'synthetic-only', language_data_sha256: { eng: 'c'.repeat(64) }, language: 'eng',
+      purpose: 'source_preflight', status: 'needs_confirmation',
+      material: { material_id: materialId, material_version: 2, media_type: 'image/png', sha256: sourceHash },
+      page_count: 1, coverage: 'complete',
+      pages: [{ page: 1, width: 100, height: 100, rotation_clockwise: 0, coordinate_system: 'rendered_pixels_top_left',
+        image_sha256: resultImageHash, image_base64: '', warnings: ['synthetic_only'] }],
+      records: [{ record_id: 'ocr-record-1', page: 1, bbox: [3, 4, 50, 20], text: '营业收入 123 万元', confidence: 0.99,
+        numeric: { kind: 'number', decimal: '123', unit: '万元' }, cell: null,
+        uncertainty: ['synthetic OCR needs visual confirmation'], eligible_for_manuscript: false }],
+      warnings: ['synthetic_only'], error: null, eligible_for_manuscript: false,
+    } as OcrEngineResponse;
+    const stored = { response: result, page_objects: { '1': { key: pageKey, sha256: resultImageHash } } };
+    const resultBytes = Buffer.from(JSON.stringify(stored));
+    const resultHash = digest(resultBytes);
+    const liveScope = { ownerUserId: owner, projectId: project };
+    const liveIdentity = { ...identity, accountId: owner, unit: '万元' };
+    const ocrCandidate = (overrides: Partial<FactCandidate> = {}): FactCandidate => ({
+      ...candidate({ identity: liveIdentity }),
+      value: { kind: 'known', decimalOrText: '123' },
+      ...overrides,
+    });
+    const db = { pool: { query: async (sql: string, values: unknown[]) => {
+      const response = await client.query(sql, values);
+      return { rows: response.rows as Record<string, unknown>[] };
+    } } };
+    await blobs.put(resultKey, resultBytes, 'application/json');
+    await blobs.put(pageKey, pageBytes, 'image/png');
+    try {
+      await client.query('BEGIN');
+      await client.query('INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES ($1,$2,$3,$4)',
+        [project, owner, 'Synthetic OCR facts', 'update']);
+      await client.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '1 hour',$10)`,
+      [upload, owner, project, 'synthetic.png', 'image/png', 5, sourceHash, 'audit', `synthetic-ocr-fact-source/${suffix}`, 'completed']);
+      await client.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+        VALUES ($1,2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [materialId, owner, project, upload, 'audit', 'synthetic.png', 'image/png', 5, sourceHash,
+        `synthetic-ocr-fact-material/${suffix}`, 'needs_confirmation']);
+      await client.query(`INSERT INTO bb_ocr_snapshots
+        (id,owner_user_id,project_id,material_id,material_version,request_id,request_hash,result_hash,result_key,purpose,run_id)
+        VALUES ($1,$2,$3,$4,2,$5,$6,$7,$8,'source_preflight',NULL)`,
+      [snapshotId, owner, project, materialId, result.request_id, 'd'.repeat(64), resultHash, resultKey]);
+      const correction = { correction_id: `ocr-correction-${suffix}`, record_id: 'ocr-record-1', revision: 1,
+        original_text: '营业收入 123 万元', corrected_text: '128', reason: 'Synthetic visual confirmation',
+        period: '2024 年', scope: '合并', unit: '万元', actor_user_id: owner, created_at: '2025-03-20T10:00:00.000Z',
+        status: 'user_asserted', eligible_for_manuscript: false };
+      await client.query(`INSERT INTO bb_ocr_corrections
+        (id,owner_user_id,project_id,snapshot_id,record_id,revision,request_id,request_hash,correction)
+        VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8::jsonb)`,
+      [correction.correction_id, owner, project, snapshotId, correction.record_id, `ocr-correction-request-${suffix}`,
+        'e'.repeat(64), JSON.stringify(correction)]);
+
+      const deps = { ...dependencies(db.pool as unknown as MockPool), blobs };
+      await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate({
+        value: { kind: 'known', decimalOrText: '999' },
+      }), { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1' }),
+      /OCR_FACT_VALUE_MISMATCH/);
+      const raw = await insertOcrFactCandidate(deps, liveScope, ocrCandidate({ confidence: 1,
+        auditCheck: null }), { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1' });
+      assert.equal(raw.provenance.status, 'needs_confirmation');
+      assert.equal(raw.candidate.confidence, 0.99);
+      assert.equal(raw.provenance.evidence[0]?.literal_quote, '营业收入 123 万元');
+      assert.deepEqual(raw.provenance.evidence[0]?.ocr_source, { snapshot_id: snapshotId, result_sha256: resultHash,
+        record_id: 'ocr-record-1', page: 1, bbox: [3, 4, 50, 20], page_image_sha256: resultImageHash,
+        coordinate_system: 'rendered_pixels_top_left' });
+      assert.equal((await client.query('SELECT status FROM bb_fact_candidates WHERE id=$1', [raw.candidate.candidateId])).rows[0]?.status,
+        'needs_confirmation');
+
+      const corrected = await insertOcrFactCandidate(deps, liveScope, ocrCandidate({
+        value: { kind: 'known', decimalOrText: correction.corrected_text },
+        source: { kind: 'user_statement', sourceId: 'untrusted-source-id', observedAt: '2025-09-25T00:00:00Z' },
+        confidence: 1,
+      }), { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1',
+        correctionId: correction.correction_id });
+      assert.equal(corrected.provenance.status, 'user_asserted');
+      assert.equal(corrected.candidate.source.sourceId, correction.correction_id);
+      assert.equal(corrected.provenance.evidence[0]?.literal_quote, '营业收入 123 万元');
+      assert.equal(corrected.provenance.evidence[0]?.ocr_correction?.corrected_text, correction.corrected_text);
+
+      const latestCorrection = { ...correction, correction_id: `ocr-correction-latest-${suffix}`, revision: 2,
+        corrected_text: '营业收入 129 万元' };
+      await client.query(`INSERT INTO bb_ocr_corrections
+        (id,owner_user_id,project_id,snapshot_id,record_id,revision,request_id,request_hash,correction)
+        VALUES ($1,$2,$3,$4,$5,2,$6,$7,$8::jsonb)`,
+      [latestCorrection.correction_id, owner, project, snapshotId, latestCorrection.record_id,
+        `ocr-correction-latest-request-${suffix}`, '9'.repeat(64), JSON.stringify(latestCorrection)]);
+      await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate({
+        value: { kind: 'known', decimalOrText: correction.corrected_text },
+        source: { kind: 'user_statement', sourceId: 'stale-source-id', observedAt: '2025-09-25T00:00:00Z' },
+      }), { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1',
+        correctionId: correction.correction_id }), /changed/);
+
+      await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate(),
+        { materialId, materialVersion: 2, snapshotId, resultSha256: 'f'.repeat(64), recordId: 'ocr-record-1' }), /changed/);
+      await assert.rejects(insertOcrFactCandidate(deps, { ...liveScope, ownerUserId: `${owner}-other` },
+        ocrCandidate({ identity: { ...liveIdentity, accountId: `${owner}-other` } }),
+        { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1' }));
+      await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate(),
+        { materialId, materialVersion: 1, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1' }), /changed/);
+      await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate({
+        value: { kind: 'known', decimalOrText: '999' }, source: { kind: 'user_statement', sourceId: 'forged', observedAt: '2025-09-25T00:00:00Z' },
+      }), { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1',
+        correctionId: latestCorrection.correction_id }), /OCR_CORRECTION_VALUE_MISMATCH/);
+      await client.query("UPDATE bb_material_versions SET role='reference' WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=2",
+        [owner, project, materialId]);
+      await assert.rejects(insertOcrFactCandidate(deps, liveScope, ocrCandidate(),
+        { materialId, materialVersion: 2, snapshotId, resultSha256: resultHash, recordId: 'ocr-record-1' }), /NON_ISSUER_FACT_SOURCE/);
+      assert.equal((await client.query('SELECT count(*)::integer n FROM bb_fact_candidates WHERE owner_user_id=$1', [owner])).rows[0]?.n, 2);
+    } finally {
+      await client.query('ROLLBACK');
+      await blobs.delete(resultKey);
+      await blobs.delete(pageKey);
       client.release();
       await pool.end();
     }
