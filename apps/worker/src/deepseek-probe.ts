@@ -1,29 +1,15 @@
 // Isolated #16 compatibility probe. It is deliberately not wired into runOnce.
 // The caller owns a durable, owner-checked journal; recordIntent must commit before fetch.
-export type Usage = {
-  status: 'measured' | 'pending';
-  input_tokens: number | null;
-  cached_input_tokens: number | null;
-  output_tokens: number | null;
-  reasoning_tokens: number | null;
-  total_tokens: number | null;
-};
-export type ProbeObservation = {
-  owner_user_id: string; project_id: string; job_id: string; run_id: string; trace_id: string;
-  logical_call_id: string; call_id: string; attempt_no: number;
-  provider_request_id: string | null; model_id: string; model_config_version: string;
-  prompt_snapshot_ref: string; finish_reason: string | null;
-  outcome: 'completed' | 'failed' | 'pending_reconcile' | 'confirmed_not_sent';
-  usage: Usage; error_code: string | null;
-};
-export type ProbeIntent = Pick<ProbeObservation, 'owner_user_id' | 'project_id' | 'job_id' | 'run_id' | 'trace_id' | 'logical_call_id' | 'call_id' | 'attempt_no' | 'model_id' | 'model_config_version' | 'prompt_snapshot_ref'>;
+import type { ProviderCallIntent as ProbeIntent, ProviderCallObservation as ProbeObservation, ProviderResultReference, ProviderUsage as Usage } from '@bondbuddy/api/provider-results';
+export type { ProbeIntent, ProbeObservation, Usage };
 export interface ProbeJournal {
   recordIntent(intent: ProbeIntent): Promise<void>;
+  storeResult(intent: ProbeIntent, bytes: Buffer, schemaVersion: string): Promise<ProviderResultReference>;
   recordObservation(observation: ProbeObservation): Promise<void>;
 }
 export type ProbeInput = ProbeIntent & {
   apiKey: string; messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
-  stream: boolean; signal?: AbortSignal; timeoutMs?: number;
+  stream: boolean; result_schema_version: string; signal?: AbortSignal; timeoutMs?: number;
   // Callers may only use immutable, owner-authorized prompt snapshots. No tools or URLs.
   validate: (value: unknown) => boolean;
 };
@@ -56,12 +42,12 @@ function parseSse(raw: string) {
 }
 
 export async function runDeepSeekProbe(input: ProbeInput, journal: ProbeJournal, fetcher: typeof fetch = fetch): Promise<ProbeObservation> {
-  if (!['deepseek-flash','deepseek-v4-pro'].includes(input.model_id) || !input.model_config_version || !input.prompt_snapshot_ref || !input.apiKey || !input.owner_user_id || !input.project_id || !input.job_id || !input.run_id || !input.trace_id || !input.messages.length || input.messages.some(m=>!['system','user','assistant'].includes(m.role) || typeof m.content!=='string')) throw new Error('INVALID_PROBE_INPUT');
+  if (!['deepseek-flash','deepseek-v4-pro'].includes(input.model_id) || !input.model_config_version || !input.prompt_snapshot_ref || !input.result_schema_version || !input.apiKey || !input.owner_user_id || !input.project_id || !input.job_id || !input.run_id || !input.trace_id || !input.messages.length || input.messages.some(m=>!['system','user','assistant'].includes(m.role) || typeof m.content!=='string')) throw new Error('INVALID_PROBE_INPUT');
   // A request cancelled before intent has no possible provider attempt to ledger.
   if (input.signal?.aborted) throw new Error('PROBE_CANCELLED_BEFORE_INTENT');
   const intent:ProbeIntent={owner_user_id:input.owner_user_id,project_id:input.project_id,job_id:input.job_id,run_id:input.run_id,trace_id:input.trace_id,logical_call_id:input.logical_call_id,call_id:input.call_id,attempt_no:input.attempt_no,model_id:input.model_id,model_config_version:input.model_config_version,prompt_snapshot_ref:input.prompt_snapshot_ref};
   await journal.recordIntent(intent);
-  const base:ProbeObservation={...intent,provider_request_id:null,finish_reason:null,outcome:'pending_reconcile',usage:emptyUsage(),error_code:null};
+  const base:ProbeObservation={...intent,provider_request_id:null,finish_reason:null,outcome:'pending_reconcile',usage:emptyUsage(),error_code:null,result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
   const controller=new AbortController();
   const abort=()=>controller.abort();
   input.signal?.addEventListener('abort',abort,{once:true});
@@ -69,7 +55,7 @@ export async function runDeepSeekProbe(input: ProbeInput, journal: ProbeJournal,
   let observation=base;
   try {
     // Intent may have committed while cancellation arrived. No fetch occurred.
-    if (input.signal?.aborted) {observation={...observation,outcome:'confirmed_not_sent',error_code:'CANCELLED'};return observation;}
+    if (input.signal?.aborted) {observation={...observation,outcome:'confirmed_not_sent',usage:{...observation.usage,status:'unknown'},error_code:'CANCELLED'};return observation;}
     // No provider-side tools, external URLs, file access or automatic retry.
     const response=await fetcher(endpoint,{method:'POST',headers:{Authorization:`Bearer ${input.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({model:input.model_id,messages:[{role:'system',content:'Return one valid JSON object only.'},...input.messages],response_format:{type:'json_object'},stream:input.stream,...(input.stream?{stream_options:{include_usage:true}}:{})}),signal:controller.signal});
     const requestId=response.headers.get('x-request-id');
@@ -109,11 +95,18 @@ export async function runDeepSeekProbe(input: ProbeInput, journal: ProbeJournal,
     let value:unknown;
     try {value=JSON.parse(content);} catch {throw new Error('INVALID_MODEL_JSON');}
     if (!input.validate(value)) throw new Error('SCHEMA_REJECTED');
+    // Preserve a schema-checked JSON value in private, content-addressed Blob storage
+    // even when supplier token evidence is incomplete. It remains non-reusable until
+    // durable reconciliation sees agreed measured usage.
+    let result:ProviderResultReference;
+    try { result=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),input.result_schema_version); }
+    catch { throw new Error('RESULT_STORE_FAILED'); }
+    observation={...observation,...result};
     if (usage.status!=='measured') throw new Error('USAGE_PENDING');
     observation={...observation,outcome:'completed'};
     return observation;
   } catch(error) {
-    const code=error instanceof Error && ['INVALID_STREAM_JSON','TOOL_DENIED','INTERRUPTED_STREAM','INVALID_PROVIDER_JSON','INCOMPLETE_OUTPUT','INVALID_MODEL_JSON','SCHEMA_REJECTED','USAGE_PENDING'].includes(error.message)?error.message:'PROVIDER_TRANSPORT_UNKNOWN';
+    const code=error instanceof Error && ['INVALID_STREAM_JSON','TOOL_DENIED','INTERRUPTED_STREAM','INVALID_PROVIDER_JSON','INCOMPLETE_OUTPUT','INVALID_MODEL_JSON','SCHEMA_REJECTED','USAGE_PENDING','RESULT_STORE_FAILED'].includes(error.message)?error.message:'PROVIDER_TRANSPORT_UNKNOWN';
     observation={...observation,error_code:controller.signal.aborted?(input.signal?.aborted?'CANCELLED':'TIMEOUT'):code};
     // A sent call with uncertain final state remains pending; never auto resend it.
     return observation;

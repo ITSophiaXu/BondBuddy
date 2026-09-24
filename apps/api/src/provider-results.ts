@@ -1,0 +1,367 @@
+import { Pool, type PoolClient } from 'pg';
+import { digest, missing, Problem, transaction, uid, type PrivateBlobs, run as getRun } from './data.js';
+import { emitInternal, internalEvent } from './observability.js';
+import type { Lease } from './queue.js';
+export type { PrivateBlobs } from './data.js';
+
+const safeId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+const safeVersion = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(value);
+const safeError = (value: unknown): value is string => typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(value);
+const safeFinish = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+const safeRequestId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9._:-]{1,256}$/.test(value);
+const token = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+
+export type ProviderCallIntent = {
+  owner_user_id: string;
+  project_id: string;
+  job_id: string;
+  run_id: string;
+  trace_id: string;
+  logical_call_id: string;
+  call_id: string;
+  attempt_no: number;
+  model_id: string;
+  model_config_version: string;
+  prompt_snapshot_ref: string;
+};
+
+export type ProviderUsage = {
+  status: 'measured' | 'pending' | 'unknown';
+  input_tokens: number | null;
+  cached_input_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_tokens: number | null;
+  total_tokens: number | null;
+};
+
+export type ProviderResultReference = {
+  result_ref: string;
+  result_sha256: string;
+  result_schema_version: string;
+  result_byte_size: number;
+};
+
+export type ProviderCallObservation = ProviderCallIntent & {
+  provider_request_id: string | null;
+  finish_reason: string | null;
+  outcome: 'completed' | 'failed' | 'pending_reconcile' | 'confirmed_not_sent';
+  usage: ProviderUsage;
+  error_code: string | null;
+  result_ref: string | null;
+  result_sha256: string | null;
+  result_schema_version: string | null;
+  result_byte_size: number | null;
+};
+
+export type ProviderObservationResult = {
+  attempt_status: 'completed' | 'failed' | 'pending_reconcile' | 'confirmed_not_sent';
+  usage_status: 'measured' | 'pending' | 'unknown' | 'conflict';
+  idempotent: boolean;
+};
+
+export function providerResultObjectKey(intent: ProviderCallIntent, sha256: string): string {
+  if (!safeId(intent.owner_user_id) || !safeId(intent.project_id) || !safeId(intent.call_id) || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error('Invalid provider result identity');
+  }
+  return `users/${intent.owner_user_id}/projects/${intent.project_id}/provider-results/${intent.call_id}-${sha256}.json`;
+}
+
+function assertIntent(intent: ProviderCallIntent) {
+  if (!safeId(intent.owner_user_id) || !safeId(intent.project_id) || !safeId(intent.job_id) || !safeId(intent.run_id) ||
+      !safeId(intent.trace_id) || !safeId(intent.logical_call_id) || !safeId(intent.call_id) || !Number.isSafeInteger(intent.attempt_no) || intent.attempt_no < 1 ||
+      !safeId(intent.model_id) || !safeVersion(intent.model_config_version) || !safeId(intent.prompt_snapshot_ref) || intent.trace_id !== intent.run_id || intent.call_id.length > 128) {
+    throw new Error('Invalid provider call identity');
+  }
+}
+
+function assertObservation(observation: ProviderCallObservation) {
+  assertIntent(observation);
+  if (observation.provider_request_id !== null && !safeRequestId(observation.provider_request_id)) throw new Error('Invalid provider request reference');
+  if (observation.finish_reason !== null && !safeFinish(observation.finish_reason)) throw new Error('Invalid provider finish reason');
+  if (observation.error_code !== null && !safeError(observation.error_code)) throw new Error('Invalid provider error code');
+  const u = observation.usage;
+  if (!u || !['measured','pending','unknown'].includes(u.status)) throw new Error('Invalid provider usage status');
+  const values = [u.input_tokens,u.cached_input_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens];
+  if (values.some(value => value !== null && !token(value))) throw new Error('Invalid provider usage counts');
+  if (u.cached_input_tokens !== null && u.input_tokens !== null && u.cached_input_tokens > u.input_tokens) throw new Error('Invalid cached input count');
+  if (u.reasoning_tokens !== null && u.output_tokens !== null && u.reasoning_tokens > u.output_tokens) throw new Error('Invalid reasoning output count');
+  if (u.status === 'measured' && (u.input_tokens === null || u.output_tokens === null || u.total_tokens !== u.input_tokens + u.output_tokens)) throw new Error('Measured provider usage is incomplete');
+  if (u.status === 'unknown' && values.some(value => value !== null)) throw new Error('Unknown usage cannot include token counts');
+  const refParts = [observation.result_ref,observation.result_sha256,observation.result_schema_version,observation.result_byte_size];
+  const hasResult = refParts.every(value => value !== null);
+  if (refParts.some(value => value === null) && refParts.some(value => value !== null)) throw new Error('Provider result reference is incomplete');
+  if (hasResult) {
+    if (!/^[a-f0-9]{64}$/.test(observation.result_sha256!) || !safeVersion(observation.result_schema_version) || !Number.isSafeInteger(observation.result_byte_size) || observation.result_byte_size! < 1 || observation.result_byte_size! > 10485760 ||
+        observation.result_ref !== providerResultObjectKey(observation,observation.result_sha256!)) throw new Error('Invalid provider result reference');
+  }
+  if (!['completed','failed','pending_reconcile','confirmed_not_sent'].includes(observation.outcome)) throw new Error('Invalid provider outcome');
+  if (observation.outcome === 'completed' && (!hasResult || u.status !== 'measured' || observation.finish_reason !== 'stop' || observation.error_code !== null)) throw new Error('Completed call needs a checked result and measured usage');
+  if (observation.outcome === 'confirmed_not_sent' && (hasResult || observation.provider_request_id !== null || u.status !== 'unknown')) throw new Error('Not-sent observation cannot have supplier response or usage evidence');
+}
+
+function parseAndValidate(bytes: Buffer, validate: (value: unknown) => boolean): unknown {
+  let value: unknown;
+  try { value = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)); }
+  catch { throw new Problem(422,'DELIVERY_FAILED','Provider result is not valid UTF-8 JSON'); }
+  if (!validate(value)) throw new Problem(422,'DELIVERY_FAILED','Provider result failed its versioned schema');
+  return value;
+}
+
+export async function persistProviderResultObject(input: {
+  blobs: PrivateBlobs;
+  intent: ProviderCallIntent;
+  bytes: Buffer;
+  resultSchemaVersion: string;
+  validate: (value: unknown) => boolean;
+}): Promise<ProviderResultReference> {
+  assertIntent(input.intent);
+  if (!safeVersion(input.resultSchemaVersion) || input.bytes.length < 1 || input.bytes.length > 10485760) throw new Problem(422,'DELIVERY_FAILED','Invalid provider result size or schema version');
+  parseAndValidate(input.bytes,input.validate);
+  const sha256 = digest(input.bytes);
+  const resultRef = providerResultObjectKey(input.intent,sha256);
+  await input.blobs.put(resultRef,input.bytes,'application/json');
+  const stored = await input.blobs.get(resultRef);
+  if (stored.length !== input.bytes.length || digest(stored) !== sha256) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob verification failed');
+  return {result_ref:resultRef,result_sha256:sha256,result_schema_version:input.resultSchemaVersion,result_byte_size:input.bytes.length};
+}
+
+function observationHash(observation: ProviderCallObservation): string {
+  return digest(JSON.stringify({
+    owner_user_id:observation.owner_user_id,project_id:observation.project_id,job_id:observation.job_id,run_id:observation.run_id,trace_id:observation.trace_id,
+    logical_call_id:observation.logical_call_id,call_id:observation.call_id,attempt_no:observation.attempt_no,provider_request_id:observation.provider_request_id,
+    model_id:observation.model_id,model_config_version:observation.model_config_version,prompt_snapshot_ref:observation.prompt_snapshot_ref,
+    finish_reason:observation.finish_reason,outcome:observation.outcome,usage:{status:observation.usage.status,input_tokens:observation.usage.input_tokens,cached_input_tokens:observation.usage.cached_input_tokens,output_tokens:observation.usage.output_tokens,reasoning_tokens:observation.usage.reasoning_tokens,total_tokens:observation.usage.total_tokens},error_code:observation.error_code,
+    result_ref:observation.result_ref,result_sha256:observation.result_sha256,result_schema_version:observation.result_schema_version,result_byte_size:observation.result_byte_size
+  }));
+}
+
+async function verifyObservationResult(blobs: PrivateBlobs, observation: ProviderCallObservation, validate: (value: unknown) => boolean) {
+  if (observation.result_ref === null) return;
+  let bytes: Buffer;
+  try { bytes = await blobs.get(observation.result_ref); }
+  catch { throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob is unavailable; call remains pending'); }
+  if (bytes.length !== observation.result_byte_size || digest(bytes) !== observation.result_sha256) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob hash mismatch; call remains pending');
+  parseAndValidate(bytes,validate);
+}
+
+async function lockIdentity(client: PoolClient, observation: ProviderCallObservation, lease?: Lease) {
+  const r = await getRun(client,observation.owner_user_id,observation.run_id,true);
+  if (r.project_id !== observation.project_id) throw missing();
+  const job = (await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.run_id])).rows[0];
+  if (!job) throw missing();
+  if (['succeeded','failed','cancelled','rejected'].includes(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+  if (lease) {
+    if (lease.owner !== observation.owner_user_id || lease.runId !== observation.run_id || lease.jobId !== observation.job_id || job.state !== 'running' || job.lease_token !== lease.token || !job.lease_until || new Date(job.lease_until).getTime() <= Date.now()) {
+      throw new Problem(409,'CAPABILITY_NOT_READY','Provider observation lease is no longer active');
+    }
+  } else if (r.state !== 'paused' || job.state !== 'paused') {
+    throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting provider reconciliation');
+  }
+  return {r,job};
+}
+
+async function assertObservationScope(pool: Pool, observation: ProviderCallObservation, lease?: Lease) {
+  const q=await pool.query(`SELECT r.state,j.state AS job_state,j.lease_token,j.lease_until,a.model_id,a.prompt_snapshot_id
+    FROM bb_runs r JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
+    JOIN bb_model_call_attempts a ON a.owner_user_id=j.owner_user_id AND a.job_id=j.id
+    WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.id=$3 AND j.id=$4
+      AND a.logical_call_id=$5 AND a.attempt_no=$6 AND a.id=$7`,[observation.owner_user_id,observation.project_id,observation.run_id,observation.job_id,observation.logical_call_id,observation.attempt_no,observation.call_id]);
+  const row=q.rows[0];
+  if(!row || row.model_id!==observation.model_id || row.prompt_snapshot_id!==observation.prompt_snapshot_ref)throw missing();
+  if(['succeeded','failed','cancelled','rejected'].includes(row.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+  if(lease){
+    if(lease.owner!==observation.owner_user_id || lease.runId!==observation.run_id || lease.jobId!==observation.job_id || row.job_state!=='running' || row.lease_token!==lease.token || !row.lease_until || new Date(row.lease_until).getTime()<=Date.now())throw new Problem(409,'CAPABILITY_NOT_READY','Provider observation lease is no longer active');
+  }else if(row.state!=='paused' || row.job_state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting provider reconciliation');
+}
+
+async function appendRunEvent(client: PoolClient, r: any, state: string, stage: string, reason: string, type='run.progress') {
+  const seq = r.event_cursor + 1;
+  const eventId = uid();
+  await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
+  await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[eventId,r.owner_user_id,r.id,seq,r.id,type,state,stage,{reason}]);
+  await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:eventId,seq,state,stage,reason}]);
+  const job = await client.query('SELECT id FROM bb_jobs WHERE run_id=$1',[r.id]);
+  await emitInternal(client,internalEvent({kind:'job.state_changed',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.rows[0]?.id,traceId:r.id,status:state as any,stage}));
+  r.state=state;r.stage=stage;r.event_cursor=seq;
+}
+
+async function insertUsageEvidence(client: PoolClient, observation: ProviderCallObservation, source: 'provider'|'reconciliation', hash: string, resultId: string | null) {
+  const u=observation.usage;
+  const measured=u.status==='measured';
+  const values=measured?[u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens]:[null,null,null,null];
+  const sourceEventId=`${source}-${hash}`;
+  const evidenceRef=resultId ?? observation.call_id;
+  const inserted=await client.query("INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,evidence_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(attempt_id,source,source_event_id) DO NOTHING RETURNING id",[uid(),observation.owner_user_id,observation.call_id,source,sourceEventId,u.status,...values,evidenceRef]);
+  if (!inserted.rowCount) {
+    const old=(await client.query('SELECT usage_status,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,evidence_ref FROM bb_usage_observations WHERE attempt_id=$1 AND source=$2 AND source_event_id=$3',[observation.call_id,source,sourceEventId])).rows[0];
+    if (!old || old.usage_status!==u.status || ![old.input_tokens,old.output_tokens,old.cached_input_tokens,old.reasoning_tokens].every((v,i)=>v===values[i]) || old.evidence_ref!==evidenceRef) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider usage event conflicts with its previous evidence');
+    return false;
+  }
+  const usageEvent=internalEvent({kind:'model.usage_observed',owner:observation.owner_user_id,projectId:observation.project_id,jobId:observation.job_id,runId:observation.run_id,traceId:observation.trace_id,logicalCallId:observation.logical_call_id,attemptNo:observation.attempt_no,promptSnapshotRef:observation.prompt_snapshot_ref,usage:{status:measured?'reported':u.status==='pending'?'pending':'unavailable',input_tokens:u.input_tokens,output_tokens:u.output_tokens,cached_input_tokens:u.cached_input_tokens,reasoning_tokens:u.reasoning_tokens,evidence_ref:evidenceRef}});
+  usageEvent.call_id=observation.call_id;
+  await emitInternal(client,usageEvent);
+  return true;
+}
+
+async function appendCallFinished(client: PoolClient, observation: ProviderCallObservation, status: 'running'|'paused'|'succeeded'|'failed') {
+  const u=observation.usage;
+  const measured=u.status==='measured';
+  const finished=internalEvent({kind:'model.call_finished',owner:observation.owner_user_id,projectId:observation.project_id,jobId:observation.job_id,runId:observation.run_id,traceId:observation.trace_id,logicalCallId:observation.logical_call_id,attemptNo:observation.attempt_no,promptSnapshotRef:observation.prompt_snapshot_ref,status,usage:{status:measured?'reported':u.status==='pending'?'pending':'unavailable',input_tokens:u.input_tokens,output_tokens:u.output_tokens,cached_input_tokens:u.cached_input_tokens,reasoning_tokens:u.reasoning_tokens,evidence_ref:observation.result_sha256 ?? observation.call_id}});
+  finished.call_id=observation.call_id;
+  await emitInternal(client,finished);
+}
+
+function checkpointWithResult(checkpoint: Record<string,unknown>, item: {logical_call_id:string;attempt_no:number;call_id:string;result_id:string;result_ref:string;result_sha256:string;result_schema_version:string}) {
+  const current=Array.isArray(checkpoint.provider_results)?checkpoint.provider_results as Record<string,unknown>[]:[];
+  const matches=current.filter(entry=>entry.logical_call_id===item.logical_call_id&&entry.attempt_no===item.attempt_no);
+  if(matches.length>1)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Checkpoint has duplicate provider result entries for this call');
+  const old=matches[0];
+  if (old && (old.call_id!==item.call_id || old.result_id!==item.result_id || old.result_sha256!==item.result_sha256 || old.result_ref!==item.result_ref)) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Checkpoint already names different provider result evidence');
+  const next=old?current:[...current,item];
+  return {...checkpoint,provider_results:next};
+}
+
+export async function recordProviderCallObservation(
+  pool: Pool,
+  blobs: PrivateBlobs,
+  observation: ProviderCallObservation,
+  validateResult: (value: unknown) => boolean,
+  options: { lease?: Lease; source?: 'provider'|'reconciliation' } = {}
+): Promise<ProviderObservationResult> {
+  assertObservation(observation);
+  await assertObservationScope(pool,observation,options.lease);
+  await verifyObservationResult(blobs,observation,validateResult);
+  const hash=observationHash(observation);
+  return transaction(pool,async client=>{
+    const {r,job}=await lockIdentity(client,observation,options.lease);
+    const a=(await client.query('SELECT * FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.logical_call_id,observation.attempt_no])).rows[0];
+    if (!a || a.id!==observation.call_id || a.model_id!==observation.model_id || a.prompt_snapshot_id!==observation.prompt_snapshot_ref || observation.trace_id!==r.id) throw missing();
+    if (a.provider_request_id && observation.provider_request_id && a.provider_request_id!==observation.provider_request_id) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider request identity conflicts with the recorded attempt');
+    const oldMeta=await client.query('SELECT model_config_version,provider_request_id FROM bb_provider_call_observations WHERE attempt_id=$1 ORDER BY observed_at,id LIMIT 1',[a.id]);
+    if (oldMeta.rows[0] && oldMeta.rows[0].model_config_version!==observation.model_config_version) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider model configuration conflicts with the recorded attempt');
+    const oldRequest=await client.query('SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND provider_request_id IS NOT NULL AND provider_request_id<>$2 LIMIT 1',[a.id,observation.provider_request_id]);
+    if (observation.provider_request_id && oldRequest.rowCount) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider request identity conflicts with the recorded attempt');
+    if (a.status==='confirmed_not_sent' && observation.outcome!=='confirmed_not_sent') throw new Problem(409,'IDEMPOTENCY_CONFLICT','A not-sent attempt cannot later be reused as a sent call');
+
+    const duplicate=await client.query('SELECT id FROM bb_provider_call_observations WHERE attempt_id=$1 AND observation_hash=$2',[a.id,hash]);
+    if (duplicate.rowCount) {
+      const usage=(await client.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[a.id])).rows[0];
+      return {attempt_status:a.status,usage_status:usage?.usage_status??'unknown',idempotent:true};
+    }
+
+    let result:any=null;
+    const existingResults=(await client.query('SELECT * FROM bb_provider_result_refs WHERE attempt_id=$1 FOR UPDATE',[a.id])).rows;
+    if (observation.result_ref) {
+      result=existingResults.find((candidate:any)=>candidate.result_sha256.trim()===observation.result_sha256) ?? null;
+      if (result) {
+        if (result.result_ref!==observation.result_ref || result.result_sha256.trim()!==observation.result_sha256 || result.result_schema_version!==observation.result_schema_version || Number(result.byte_size)!==observation.result_byte_size || result.model_config_version!==observation.model_config_version || result.prompt_snapshot_ref!==observation.prompt_snapshot_ref) {
+          throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider attempt already has different immutable result evidence');
+        }
+      } else {
+        const inserted=await client.query('INSERT INTO bb_provider_result_refs(id,owner_user_id,project_id,job_id,run_id,attempt_id,logical_call_id,attempt_no,call_id,trace_id,model_id,model_config_version,prompt_snapshot_ref,result_ref,result_sha256,result_schema_version,byte_size,media_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *',[uid(),observation.owner_user_id,observation.project_id,observation.job_id,observation.run_id,a.id,observation.logical_call_id,observation.attempt_no,observation.call_id,observation.trace_id,observation.model_id,observation.model_config_version,observation.prompt_snapshot_ref,observation.result_ref,observation.result_sha256,observation.result_schema_version,observation.result_byte_size,'application/json']);
+        result=inserted.rows[0];
+      }
+    }
+    const resultCandidates=await client.query('SELECT count(*)::int AS candidate_count FROM bb_provider_result_refs WHERE attempt_id=$1',[a.id]);
+    const candidateCount=Number(resultCandidates.rows[0].candidate_count);
+    const resultConflict=candidateCount>1;
+    if (candidateCount>0 && observation.outcome==='confirmed_not_sent') throw new Problem(409,'IDEMPOTENCY_CONFLICT','A provider result cannot belong to a confirmed not-sent attempt');
+    if (candidateCount>0 && observation.outcome==='failed') throw new Problem(409,'IDEMPOTENCY_CONFLICT','A completed provider result conflicts with a failed call observation');
+
+    const resultId=result?.id ?? null;
+    await client.query('INSERT INTO bb_provider_call_observations(id,owner_user_id,project_id,job_id,run_id,attempt_id,logical_call_id,attempt_no,call_id,trace_id,provider_request_id,model_id,model_config_version,prompt_snapshot_ref,result_id,outcome,finish_reason,usage_status,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens,error_code,observation_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)',[uid(),observation.owner_user_id,observation.project_id,observation.job_id,observation.run_id,a.id,observation.logical_call_id,observation.attempt_no,observation.call_id,observation.trace_id,observation.provider_request_id,observation.model_id,observation.model_config_version,observation.prompt_snapshot_ref,resultId,observation.outcome,observation.finish_reason,observation.usage.status,observation.usage.input_tokens,observation.usage.cached_input_tokens,observation.usage.output_tokens,observation.usage.reasoning_tokens,observation.usage.total_tokens,observation.error_code,hash]);
+    await insertUsageEvidence(client,observation,options.source??'reconciliation',hash,resultId);
+    const usageRow=(await client.query('SELECT usage_status,conflicting_measurements FROM bb_call_usage WHERE attempt_id=$1',[a.id])).rows[0];
+    const usageStatus:ProviderObservationResult['usage_status']=usageRow?.usage_status==='conflict'?'conflict':usageRow?.usage_status==='measured'?'measured':usageRow?.usage_status==='pending'?'pending':'unknown';
+    const measuredWithoutConflict=usageStatus==='measured' && Number(usageRow.conflicting_measurements)===0;
+    const complete=observation.outcome==='completed' && !!result && candidateCount===1 && measuredWithoutConflict;
+    const failed=observation.outcome==='failed' && measuredWithoutConflict;
+    const notSent=observation.outcome==='confirmed_not_sent';
+    const nextAttemptStatus=complete?'completed':failed?'failed':notSent?'confirmed_not_sent':'pending_reconcile';
+    const nextUsageStatus=measuredWithoutConflict?'measured':usageStatus==='unknown'?'unknown':'pending';
+    await client.query('UPDATE bb_model_call_attempts SET status=$2,usage_status=$3,provider_request_id=COALESCE(provider_request_id,$4),updated_at=now() WHERE id=$1',[a.id,nextAttemptStatus,nextUsageStatus,observation.provider_request_id]);
+
+    if (complete && result) {
+      const checkpoint=checkpointWithResult(job.checkpoint,{logical_call_id:observation.logical_call_id,attempt_no:observation.attempt_no,call_id:a.id,result_id:result.id,result_ref:result.result_ref,result_sha256:result.result_sha256.trim(),result_schema_version:result.result_schema_version});
+      await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1',[job.id,checkpoint]);
+      await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_result_reconciled');
+      await appendCallFinished(client,observation,'succeeded');
+    } else if (failed) {
+      await client.query("UPDATE bb_jobs SET state='failed',stage='failed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
+      await appendRunEvent(client,r,'failed','failed','provider_call_failed','run.state_changed');
+      await appendCallFinished(client,observation,'failed');
+    } else if (notSent) {
+      await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
+      await appendRunEvent(client,r,'paused','provider_reconcile','provider_call_confirmed_not_sent');
+      await appendCallFinished(client,observation,'paused');
+    } else {
+      await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
+      await appendRunEvent(client,r,'paused','provider_reconcile',usageStatus==='conflict'?'provider_usage_conflict':resultConflict?'provider_result_conflict':'provider_result_pending');
+      await appendCallFinished(client,observation,'paused');
+    }
+    return {attempt_status:nextAttemptStatus,usage_status:usageStatus,idempotent:false};
+  });
+}
+
+export async function reconcilePausedProviderCall(pool: Pool, blobs: PrivateBlobs, observation: ProviderCallObservation, validateResult: (value: unknown) => boolean) {
+  return recordProviderCallObservation(pool,blobs,observation,validateResult,{source:'reconciliation'});
+}
+
+export async function pauseProviderCallForReconciliation(pool: Pool, lease: Lease, reason: 'provider_result_unavailable'|'provider_result_conflict') {
+  await transaction(pool,async client=>{
+    const r=await getRun(client,lease.owner,lease.runId,true);
+    const job=(await client.query("SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE",[lease.jobId,lease.owner,lease.runId])).rows[0];
+    if (!job || job.state!=='running' || job.lease_token!==lease.token || !job.lease_until || new Date(job.lease_until).getTime()<=Date.now() || ['failed','succeeded','cancelled','rejected'].includes(r.state)) throw new Problem(409,'CAPABILITY_NOT_READY','Cannot pause a stale provider result lease');
+    await client.query("UPDATE bb_model_call_attempts SET status='pending_reconcile',usage_status=CASE WHEN usage_status='measured' THEN 'pending' ELSE usage_status END,updated_at=now() WHERE job_id=$1 AND status='completed'",[lease.jobId]);
+    await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId]);
+    await appendRunEvent(client,r,'paused','provider_reconcile',reason);
+  });
+}
+
+export async function readCheckpointedProviderResult(input: {
+  pool: Pool;
+  blobs: PrivateBlobs;
+  lease: Lease;
+  logicalCallId: string;
+  attemptNo: number;
+  validateResult: (value: unknown) => boolean;
+}) {
+  if (!safeId(input.logicalCallId) || !Number.isSafeInteger(input.attemptNo) || input.attemptNo<1) throw new Error('Invalid replay identity');
+  const activeLease=await input.pool.query("SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[input.lease.owner,input.lease.jobId,input.lease.runId,input.lease.token]);
+  if (!activeLease.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result reuse requires the active worker lease');
+  const q=await input.pool.query(`SELECT a.id,a.status,a.logical_call_id,a.attempt_no,j.checkpoint,u.usage_status,u.conflicting_measurements
+    FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_call_usage u ON u.attempt_id=a.id
+    WHERE a.owner_user_id=$1 AND a.job_id=$2 AND j.run_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5`,[input.lease.owner,input.lease.jobId,input.lease.runId,input.logicalCallId,input.attemptNo]);
+  const attempt=q.rows[0];
+  if (!attempt) {
+    const later=await input.pool.query('SELECT COALESCE(max(attempt_no),0)::int AS max_attempt FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3',[input.lease.owner,input.lease.jobId,input.logicalCallId]);
+    if (input.attemptNo!==Number(later.rows[0].max_attempt)+1) throw new Problem(409,'CAPABILITY_NOT_READY','Provider attempt sequence changed; never reuse an earlier attempt number');
+    return null;
+  }
+  const checkpoint=attempt.checkpoint as Record<string,unknown>;
+  const refs=Array.isArray(checkpoint.provider_results)?checkpoint.provider_results as Record<string,unknown>[]:[];
+  const matches=refs.filter(entry=>entry.logical_call_id===input.logicalCallId&&entry.attempt_no===input.attemptNo);
+  if (matches.length!==1) throw new Problem(409,'CAPABILITY_NOT_READY','Existing provider attempt does not have exactly one reusable checkpoint; supplier reconciliation is required');
+  const replay=matches[0];
+  const result=(await input.pool.query(`SELECT rr.* FROM bb_provider_result_refs rr
+    WHERE rr.owner_user_id=$1 AND rr.project_id=(SELECT project_id FROM bb_runs WHERE owner_user_id=$1 AND id=$2)
+      AND rr.job_id=$3 AND rr.run_id=$2 AND rr.logical_call_id=$4 AND rr.attempt_no=$5 AND rr.attempt_id=$6 AND rr.id=$7 AND rr.result_sha256=$8
+      AND (SELECT count(*) FROM bb_provider_result_refs candidate WHERE candidate.attempt_id=rr.attempt_id)=1`,[input.lease.owner,input.lease.runId,input.lease.jobId,input.logicalCallId,input.attemptNo,replay.call_id,replay.result_id,replay.result_sha256])).rows[0];
+  if (!result || attempt.status!=='completed' || attempt.usage_status!=='measured' || result.result_ref!==replay.result_ref || result.result_schema_version!==replay.result_schema_version || Number(result.byte_size)<1 || Number(attempt.conflicting_measurements)>0 || result.trace_id!==input.lease.runId) {
+    throw new Problem(409,'CAPABILITY_NOT_READY','Provider result or usage is not reconciled; call remains pending');
+  }
+  const observation=(await input.pool.query("SELECT 1 FROM bb_provider_call_observations WHERE owner_user_id=$1 AND project_id=$2 AND job_id=$3 AND run_id=$4 AND attempt_id=$5 AND result_id=$6 AND outcome='completed' AND usage_status='measured' LIMIT 1",[input.lease.owner,result.project_id,input.lease.jobId,input.lease.runId,result.attempt_id,result.id])).rowCount;
+  if (!observation) throw new Problem(409,'CAPABILITY_NOT_READY','No verified completed provider observation is available');
+  let bytes:Buffer;
+  try { bytes=await input.blobs.get(result.result_ref); }
+  catch {
+    await pauseProviderCallForReconciliation(input.pool,input.lease,'provider_result_unavailable');
+    throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob is unavailable; call remains pending');
+  }
+  if (bytes.length!==Number(result.byte_size) || digest(bytes)!==result.result_sha256.trim()) {
+    await pauseProviderCallForReconciliation(input.pool,input.lease,'provider_result_unavailable');
+    throw new Problem(409,'CAPABILITY_NOT_READY','Provider result Blob hash mismatch; call remains pending');
+  }
+  const value=parseAndValidate(bytes,input.validateResult);
+  return {value,result_ref:result.result_ref,result_sha256:result.result_sha256.trim(),result_schema_version:result.result_schema_version,call_id:result.call_id,attempt_no:result.attempt_no};
+}
