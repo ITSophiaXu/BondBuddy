@@ -173,4 +173,4 @@ Production publication requires verified sources, source/pack validity, enabled 
 
 注销先 `GET /account/closure` 列出未结束 run、项目/材料/成果数量、保留记录与 `local_exports=not_affected`；有未终态 run 时 `POST` 返回 409 `ACCOUNT_CLOSURE_BLOCKED`。确认用户名和密码后，同一事务锁定用户行、软删材料（经 0006 触发器写存储墓碑）与项目、撤销成果交付与下载授权、撤销全部会话、删除密码凭据、标记账号关闭并写注销记录和 `user.closed` outbox。用户名保留不可重新注册；协议接受、注册事件、run 历史、#79 操作/用量日志与 outbox 按依法留存保留。并发写入由触发器等待注销事务提交后拒绝。`balance_status` 固定为 `not_applicable_m1`，M2 钱包/退款须以新增状态和迁移接入，不能直接复用。
 
-仍未关闭：无可靠身份核验渠道，因此不提供自助找回，人工找回流程与核验证据需产品/合规定稿，客服不得绕过；被不可变输入快照引用的材料、成果文件字节与 prompt 快照正文还没有注销后的物理清理生命周期；浏览器设置页由 `apps/web/` 后续接入。运行与验证见 `apps/api/README.md`。
+仍未关闭：无可靠身份核验渠道，因此不提供自助找回，人工找回流程与核验证据需产品/合规定稿，客服不得绕过；被不可变输入快照引用的材料、成果文件字节与 prompt 快照正文还没有注销后的物理清理生命周期。浏览器设置页已在 `apps/web/` 的 `#/account` 接入，只消费上述公共路由，不新增契约或迁移。运行与验证见 `apps/api/README.md` 和 `apps/web/README.md`。
