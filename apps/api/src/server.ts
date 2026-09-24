@@ -1,6 +1,6 @@
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool } from 'pg';
-import { openApiDocument, schemas, type Market, type Offering } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { action as queueAction, enqueue } from './queue.js';
@@ -13,6 +13,7 @@ const param = (request: FastifyRequest, name: string) => (request.params as Reco
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
 const MAX_BYTES = 104857600;
+const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
 
 export function createServer(settings: Settings = {}) {
   // Trust only an explicitly configured reverse proxy for client source addresses.
@@ -23,7 +24,7 @@ export function createServer(settings: Settings = {}) {
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_BYTES }, (_request, value, done) => done(null, value));
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: false, field_errors: [], correlation_id: request.id });
+    if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
     if (error instanceof Error && 'validation' in error && error.validation) return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Request validation failed', retryable: false, field_errors: [], correlation_id: request.id });
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
@@ -118,7 +119,7 @@ export function createServer(settings: Settings = {}) {
     await project(db(),user,id);blob();
     if(b.byte_size>MAX_BYTES)throw new Problem(422,'VALIDATION_FAILED','Upload exceeds limit');
     const suffix=b.filename.toLowerCase().split('.').at(-1);
-    const expectedExtensions:Record<string,string[]>={'application/pdf':['pdf'],'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['docx'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['xlsx'],'text/csv':['csv'],'text/plain':['txt'],'image/png':['png'],'image/jpeg':['jpg','jpeg']};
+    const expectedExtensions:Record<string,string[]>={[PDF_MEDIA_TYPE]:['pdf'],[DOCX_MEDIA_TYPE]:['docx'],[XLSX_MEDIA_TYPE]:['xlsx'],[CSV_MEDIA_TYPE]:['csv'],[TEXT_MEDIA_TYPE]:['txt'],[PNG_MEDIA_TYPE]:['png'],[JPEG_MEDIA_TYPE]:['jpg','jpeg']};
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
     await transaction(db(),async client=>{
@@ -178,7 +179,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/projects/:project_id/materials/:material_id/download',async (request,reply)=>{
     const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
     const bytes=await blob().get(m.object_key);if(digest(bytes)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Stored material failed integrity check');
-    return reply.header('content-type',m.media_type).header('cache-control','private, no-store').send(bytes);
+    return reply.header('content-type',m.media_type).header('x-content-type-options','nosniff').header('cache-control','private, no-store').send(bytes);
   });
   app.delete('/api/v1/projects/:project_id/materials/:material_id',async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id');
