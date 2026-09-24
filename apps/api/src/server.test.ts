@@ -6,9 +6,11 @@ import { createServer } from './server.js';
 
 const origin='http://bondbuddy.test';
 test('production seam rejects arbitrary client identity and reports honest capabilities',async()=>{
-  const app=createServer();try{
+  const app=createServer({allowedOrigin:origin});try{
     const r=await app.inject({method:'POST',url:'/api/v1/projects',headers:{origin,'x-user-id':'synthetic-owner'},payload:{name:'Test',kind:'update',issuer_name:null,market:null,offering:null}});
     assert.equal(r.statusCode,401);
+    const sms=await app.inject({method:'POST',url:'/api/v1/auth/sms/challenges',headers:{origin},payload:{phone:'+8613800000001',purpose:'login'}});
+    assert.equal(sms.statusCode,501,'production entry has no synthetic SMS transport');
     const spec=(await app.inject('/openapi.json')).json();
     assert.match(spec.paths['/api/v1/runs/execute'].post['x-implementation-status'],/production-501/);
   }finally{await app.close();}
@@ -73,4 +75,75 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${mat}/download`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/projects/${project}/input-revisions/${input.input_revision}`)).json().input_hash,input.input_hash);
   }finally{await pool.query('DROP TRIGGER IF EXISTS bb_fail_test_outbox ON bb_outbox');await pool.query('DROP FUNCTION IF EXISTS bb_fail_test_outbox()');await app.close();await pool.end();}
+});
+
+test('PostgreSQL sessions, SMS challenge lifecycle and real cookie ownership', {skip:!connection||!blobConnection},async()=>{
+  const pool=new Pool({connectionString:connection});
+  const delivered=new Map<string,string>();
+  const app=createServer({pool,blobs:azureBlobs(blobConnection!),allowedOrigin:origin,auth:{otpKey:'synthetic-key-used-only-in-test',termsVersion:'synthetic-v1',sms:{async send(phone,code){delivered.set(phone,code);}}}});
+  const jar=(response:any)=>Object.fromEntries((response.headers['set-cookie'] as string[]).map((v:string)=>v.split(';')[0].split('=')));
+  const cookie=(c:Record<string,string>)=>Object.entries(c).map(([k,v])=>`${k}=${v}`).join('; ');
+  const send=(method:string,url:string,payload?:unknown,c:Record<string,string>={},extra:Record<string,string>={})=>app.inject({method:method as any,url,headers:{origin,cookie:cookie(c),...(c.bb_csrf?{'x-bb-csrf':c.bb_csrf}:{}),...extra},payload:payload as any});
+  const challenge=(p:string)=>send('POST','/api/v1/auth/sms/challenges',{phone:p,purpose:'login'});
+  const verify=(id:string,p:string,version='synthetic-v1')=>send('POST','/api/v1/auth/sms/verify',{challenge_id:id,code:delivered.get(p),accepted_terms_version:version});
+  try{
+    await pool.query('TRUNCATE bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_users,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
+    const p1='+8613800000001',p2='+8613800000002',p3='+8613800000003';
+    const badOrigin=await send('POST','/api/v1/auth/sms/challenges',{phone:p1,purpose:'login'},{},{origin:'https://evil.test'});assert.equal(badOrigin.statusCode,403);
+    const first=await challenge(p1);assert.equal(first.statusCode,202,first.body);assert.equal(JSON.stringify(first.json()).includes(delivered.get(p1)!),false);
+    assert.equal((await challenge(p1)).statusCode,429);
+    const invalidTerms=await verify(first.json().challenge_id,p1,'old-v0');assert.equal(invalidTerms.statusCode,422);assert.equal(invalidTerms.json().code,'AGREEMENT_REQUIRED');
+    const wrong=await send('POST','/api/v1/auth/sms/verify',{challenge_id:first.json().challenge_id,code:'999999',accepted_terms_version:'synthetic-v1'});assert.equal(wrong.statusCode,401);
+    const account1=await verify(first.json().challenge_id,p1);assert.equal(account1.statusCode,200,account1.body);
+    assert.equal((await verify(first.json().challenge_id,p1)).statusCode,401,'replayed challenge rejected');
+    const c1=jar(account1);assert.ok(c1.bb_session&&c1.bb_refresh&&c1.bb_csrf);
+    for(const header of account1.headers['set-cookie'] as string[]){assert.match(header,/Secure; SameSite=Strict/);if(!header.startsWith('bb_csrf='))assert.match(header,/HttpOnly/);}
+    const me=await send('GET','/api/v1/me',undefined,c1);assert.equal(me.json().user_id,account1.json().user_id);
+    assert.equal((await send('POST','/api/v1/projects',{name:'Denied',kind:'update',issuer_name:null,market:null,offering:null},c1,{'x-bb-csrf':'wrong'})).statusCode,403);
+    assert.equal((await send('POST','/api/v1/projects',{name:'Denied',kind:'update',issuer_name:null,market:null,offering:null},c1,{origin:'https://evil.test'})).statusCode,403);
+    const created=await send('POST','/api/v1/projects',{name:'Synthetic Session Project',kind:'update',issuer_name:null,market:null,offering:null},c1);assert.equal(created.statusCode,201,created.body);
+    const project=created.json().project_id;
+    const bytes=Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n'),sha=digest(bytes);
+    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'},c1);assert.equal(upload.statusCode,201,upload.body);
+    assert.equal((await send('PUT',upload.json().upload_url,bytes,c1,{'content-type':'application/octet-stream'})).statusCode,204);
+    const done=await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha},c1);assert.equal(done.statusCode,200,done.body);
+    const materialUrl=`/api/v1/projects/${project}/materials/${done.json().material_id}/download`;
+    assert.equal((await send('GET',materialUrl,undefined,c1)).statusCode,200);
+    const second=await challenge(p2);assert.equal(second.statusCode,202,'same shared IP does not ban another phone');
+    assert.deepEqual(Object.keys(second.json()).sort(),Object.keys(first.json()).sort());
+    const account2=await verify(second.json().challenge_id,p2);assert.equal(account2.statusCode,200);const c2=jar(account2);
+    assert.equal((await send('GET',`/api/v1/projects/${project}`,undefined,c2)).statusCode,404);
+    assert.equal((await send('GET',materialUrl,undefined,c2)).statusCode,404);
+    const rotated=await send('POST','/api/v1/auth/refresh',undefined,c1);assert.equal(rotated.statusCode,200,rotated.body);const c1new=jar(rotated);
+    assert.equal((await send('GET',materialUrl,undefined,c1)).statusCode,401,'old access token rotated out');
+    assert.equal((await send('GET',materialUrl,undefined,c1new)).statusCode,200);
+    assert.equal((await send('POST','/api/v1/auth/logout',undefined,c1new)).statusCode,204);
+    assert.equal((await send('GET',materialUrl,undefined,c1new)).statusCode,401);
+    assert.equal((await send('POST','/api/v1/auth/refresh',undefined,c1new)).statusCode,401);
+    await pool.query("UPDATE bb_auth_challenges SET issued_at=now()-interval '61 seconds' WHERE phone_e164=$1",[p1]);
+    const resend=await challenge(p1);assert.equal(resend.statusCode,202,resend.body);
+    assert.deepEqual(Object.keys(resend.json()).sort(),Object.keys(second.json()).sort(),'existing and new phone receive same response shape');
+    const again=await verify(resend.json().challenge_id,p1);assert.equal(again.statusCode,200);
+    assert.equal(again.json().user_id,account1.json().user_id,'account creation is idempotent');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_registration_events WHERE user_id=$1',[account1.json().user_id])).rows[0].n,1);
+    await pool.query("UPDATE bb_auth_challenges SET issued_at=now()-interval '61 seconds' WHERE phone_e164=$1",[p1]);
+    const expired=await challenge(p1);assert.equal(expired.statusCode,202);
+    await pool.query("UPDATE bb_auth_challenges SET expires_at=now()-interval '1 second' WHERE id=$1",[expired.json().challenge_id]);
+    assert.equal((await verify(expired.json().challenge_id,p1)).statusCode,401);
+    await pool.query("UPDATE bb_auth_challenges SET issued_at=now()-interval '61 seconds' WHERE phone_e164=$1",[p1]);
+    const five=await challenge(p1);assert.equal(five.statusCode,202);
+    for(let i=0;i<5;i++)assert.equal((await send('POST','/api/v1/auth/sms/verify',{challenge_id:five.json().challenge_id,code:'999999',accepted_terms_version:'synthetic-v1'})).statusCode,401);
+    assert.equal((await verify(five.json().challenge_id,p1)).statusCode,401);
+    await pool.query("UPDATE bb_auth_challenges SET issued_at=now()-interval '61 seconds' WHERE phone_e164=$1",[p1]);
+    assert.equal((await challenge(p1)).statusCode,202);
+    await pool.query("UPDATE bb_auth_challenges SET issued_at=now()-interval '61 seconds' WHERE phone_e164=$1",[p1]);
+    assert.equal((await challenge(p1)).statusCode,429,'hourly per-phone limit');
+    const neverRegistered=await challenge(p3);assert.equal(neverRegistered.statusCode,202);
+    await pool.query("UPDATE bb_auth_challenges SET issued_at=now()-interval '61 seconds' WHERE id=$1",[neverRegistered.json().challenge_id]);
+    const replaced=await challenge(p3);assert.equal(replaced.statusCode,202);
+    assert.equal((await verify(neverRegistered.json().challenge_id,p3)).statusCode,401,'resend invalidates prior code');
+    await pool.query("UPDATE bb_auth_challenges SET expires_at=now()-interval '1 second' WHERE id=$1",[replaced.json().challenge_id]);
+    assert.equal((await verify(replaced.json().challenge_id,p3)).statusCode,401);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_users WHERE phone_e164=$1',[p3])).rows[0].n,0,'expired unknown challenge creates no account');
+  }finally{await app.close();await pool.end();}
 });
