@@ -493,7 +493,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
       return runDocumentParser(request, { pythonExecutable: localPython, repoRoot: repositoryRoot });
     },
     parseCache: { dependencies: { pool: db, blobs: privateBlobs }, versions: {
-      parserVersion: 'bondbuddy-document-parser-1.0.1',
+      parserVersion: 'bondbuddy-document-parser-1.0.2',
       ocrVersion: 'native-text-1',
       basisVersion: 'evidence-basis-1',
     } },
