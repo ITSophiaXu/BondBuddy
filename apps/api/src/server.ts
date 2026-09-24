@@ -3,9 +3,10 @@ import { Pool } from 'pg';
 import { openApiDocument, schemas, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
+import { action as queueAction, enqueue } from './queue.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -153,7 +154,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/projects/:project_id/events',async request=>{await project(db(),await owner(request),param(request,'project_id'));throw unavailable();});
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
-    const user=await owner(request);if(!settings.enableRunStaging)throw unavailable();
+    const user=await owner(request);if(!settings.enableRunStaging && !settings.enableSyntheticQueue)throw unavailable();
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);
     const result=await transaction(db(),async client=>{
       const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
@@ -165,10 +166,15 @@ export function createServer(settings: Settings = {}) {
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       const runId=uid(),trace=uid(),eventId=uid();
-      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'paused',1) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,b.execution_request_id,b.task_kind,requestHash]);
+      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,b.execution_request_id,b.task_kind,requestHash,settings.enableSyntheticQueue?'queued':'paused']);
+      if(settings.enableSyntheticQueue) {
+        await enqueue(client,q.rows[0]);
+        return runDto({...q.rows[0],state:'queued',stage:'queued',event_cursor:1,updated_at:new Date()});
+      }
+      await client.query("UPDATE bb_runs SET event_cursor=1 WHERE id=$1",[runId]);
       await client.query("INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,payload) VALUES($1,$2,$3,1,$4,'run.state_changed','paused',$5)",[eventId,user,runId,trace,{reason:'capability_not_ready'}]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'run',runId,'run.staged',{run_id:runId,event_id:eventId}]);
-      return runDto(q.rows[0]);
+      return runDto({...q.rows[0],event_cursor:1});
     });
     return reply.code(202).send(result);
   });
@@ -180,7 +186,11 @@ export function createServer(settings: Settings = {}) {
     const items=q.rows.map(e=>({event_id:e.id,schema_version:1,trace_id:e.trace_id,run_id:e.run_id,seq:e.seq,occurred_at:date(e.occurred_at),stage:e.stage,type:e.type,state:e.state,payload:e.payload}));
     return {items,next_cursor:items.length?items.at(-1)!.seq:after};
   });
-  for(const action of ['cancel','resume'] as const) app.post(`/api/v1/runs/:run_id/${action}`,{schema:{body:schemas.RunActionRequest}},async request=>{await run(db(),await owner(request),param(request,'run_id'));throw unavailable();});
+  for(const kind of ['cancel','resume'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
+    const user=await owner(request),id=param(request,'run_id');await run(db(),user,id);
+    if(!settings.enableSyntheticQueue)throw unavailable();
+    return queueAction(db(),user,id,kind);
+  });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query("SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND quality_status='passed' AND delivery_status='available' ORDER BY version DESC LIMIT 1",[user,id]);
