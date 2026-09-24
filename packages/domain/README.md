@@ -18,6 +18,17 @@ matching service or new-document generator. #15/#17/#19/#77 dependencies,
 authorized sample matching, durable ReferenceSelection storage and editable
 Word quality checks are still required before #33 can close.
 
+`reference-source-selection.ts` adds an internal, explicit user-reference
+choice before the library matcher. Only a parsed, readable, authorized DOCX/PDF
+reference in the authenticated project and applicable target rule can be used;
+cross-market or cross-offering reuse needs an accepted chapter mapping. A
+missing or unusable optional upload falls back to the library without making
+that upload mandatory. Selection grants structure-only use, never permission
+to copy another issuer's facts or a conclusion that a new draft is deliverable.
+The caller must supply project identity and material metadata from trusted
+server-side records, not browser-provided authorization flags. This pure seam
+has no production query, durable selection, generation, or real-sample proof.
+
 ## Historical-period difficulty estimator (#76)
 
 `update-difficulty.ts` is an internal, deterministic estimator for a historical
