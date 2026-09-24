@@ -22,7 +22,7 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.0"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.1"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -94,12 +94,12 @@ def _record(
 
 
 def _final_text(element: Any) -> str:
-    """Return the effective Word text: include insertions and exclude deletions."""
+    """Return effective inline Word text without deleted or moved-from runs."""
     pieces: list[str] = []
 
-    def visit(node: Any, deleted: bool = False) -> None:
-        is_deleted = deleted or node.tag == qn("w:del")
-        if not is_deleted:
+    def visit(node: Any, excluded: bool = False) -> None:
+        is_excluded = excluded or node.tag in {qn("w:del"), qn("w:moveFrom")}
+        if not is_excluded:
             if node.tag == qn("w:t") and node.text:
                 pieces.append(node.text)
             elif node.tag == qn("w:tab"):
@@ -107,7 +107,7 @@ def _final_text(element: Any) -> str:
             elif node.tag in {qn("w:br"), qn("w:cr")}:
                 pieces.append("\n")
         for child in node:
-            visit(child, is_deleted)
+            visit(child, is_excluded)
 
     visit(element)
     return "".join(pieces)
@@ -191,12 +191,44 @@ def _docx_locator_text(locator: dict[str, Any]) -> str:
     return "docx:" + ":".join(parts)
 
 
+def _unsupported_docx_revision_count(root: Any) -> int:
+    unsupported_revision_tags = {
+        "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd",
+        "cellIns", "cellDel", "cellMerge", "tblPrChange", "tblGridChange", "trPrChange",
+        "tcPrChange", "pPrChange", "rPrChange", "sectPrChange",
+    }
+    count = sum(
+        1 for node in root.iter()
+        if isinstance(node.tag, str) and node.tag.rsplit("}", 1)[-1] in unsupported_revision_tags
+    )
+
+    # Row insertion/deletion and move markers inside property containers are
+    # structural; the inline text walker cannot safely resolve their text view.
+    property_tags = {
+        qn("w:trPr"), qn("w:pPr"), qn("w:rPr"), qn("w:tcPr"),
+        qn("w:tblPr"), qn("w:tblGrid"), qn("w:sectPr"),
+    }
+    structural_revision_tags = {qn("w:ins"), qn("w:del"), qn("w:moveFrom"), qn("w:moveTo")}
+    for node in root.iter():
+        if node.tag not in structural_revision_tags:
+            continue
+        parent = node.getparent()
+        while parent is not None:
+            if parent.tag in property_tags:
+                count += 1
+                break
+            parent = parent.getparent()
+    return count
+
+
 def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:
     _validate_archive(path, "word/document.xml")
     try:
         document = Document(path)
     except Exception as exc:
         raise ParseFailure("MATERIAL_UNREADABLE", "DOCX is damaged or unreadable") from exc
+    root = document.element
+    unsupported_revision_count = _unsupported_docx_revision_count(root)
     records: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
     heading = ""
@@ -207,15 +239,37 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
         if paragraph.style and ("Heading" in paragraph.style.name or "标题" in paragraph.style.name):
             heading = value
         locator["stable_ref"] = _docx_locator_text(locator)
-        records.append(_record(len(records) + 1, "docx_block", locator, value, context=heading, formatting=_paragraph_formatting(paragraph, document)))
+        uncertainty = ["docx_revision_effective_text_unresolved"] if unsupported_revision_count else None
+        records.append(_record(
+            len(records) + 1,
+            "docx_block",
+            locator,
+            value,
+            context=heading,
+            formatting=_paragraph_formatting(paragraph, document),
+            uncertainty=uncertainty,
+        ))
 
-    root = document.element
     inserted = len(list(root.iter(qn("w:ins"))))
     deleted = len(list(root.iter(qn("w:del"))))
-    if inserted or deleted:
+    moved_from = len(list(root.iter(qn("w:moveFrom"))))
+    moved_to = len(list(root.iter(qn("w:moveTo"))))
+    if inserted or deleted or moved_from or moved_to:
         warnings.append({
             "code": "DOCX_REVISIONS_RESOLVED",
-            "message": f"Effective text includes {inserted} insertion revision(s) and excludes {deleted} deletion revision(s); the source file was not changed.",
+            "message": (
+                f"Effective text includes {inserted} insertion revision(s) and {moved_to} moved-to revision(s), "
+                f"and excludes {deleted} deletion revision(s) and {moved_from} moved-from revision(s); "
+                "the source file was not changed."
+            ),
+        })
+    if unsupported_revision_count:
+        warnings.append({
+            "code": "DOCX_UNSUPPORTED_REVISION_MARKERS",
+            "message": (
+                f"The document contains {unsupported_revision_count} range, table, or property revision marker(s) "
+                "whose effective text is not resolved; review before relying on extracted text."
+            ),
         })
     for tag, code, label in (
         ("w:sdt", "DOCX_CONTENT_CONTROLS", "content control(s)"),
