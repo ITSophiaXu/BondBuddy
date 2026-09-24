@@ -1,3 +1,5 @@
+import { readOcr, readOcrPage, correctOcr } from './ocr.js';
+import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
@@ -326,6 +328,19 @@ export function createServer(settings: Settings = {}) {
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
     const bytes=await verifiedArtifactBytes(a);
     return reply.header('content-type',a.media_type).header('cache-control','private, no-store').send(bytes);
+  });
+  const ocrPath='/api/v1/projects/:project_id/materials/:material_id/ocr';
+  app.get(ocrPath,{schema:{response:{200:schemas.OcrReview}}},async(request,reply)=>{
+    reply.header('cache-control','private, no-store');
+    return readOcr(db(),blob(),await owner(request),param(request,'project_id'),param(request,'material_id'));
+  });
+  app.get(`${ocrPath}/pages/:snapshot_id/:page`,async(request,reply)=>{
+    const bytes=await readOcrPage(db(),blob(),await owner(request),param(request,'project_id'),param(request,'material_id'),param(request,'snapshot_id'),param(request,'page'));
+    return reply.header('content-type','image/png').header('x-content-type-options','nosniff').header('cache-control','private, no-store').send(bytes);
+  });
+  app.post(`${ocrPath}/corrections`,{schema:{body:schemas.OcrCorrectionRequest,response:{201:schemas.OcrCorrection}}},async(request,reply)=>{
+    const result=await correctOcr(db(),blob(),await owner(request),param(request,'project_id'),param(request,'material_id'),body<OcrCorrectionRequest>(request));
+    return reply.code(201).send(result);
   });
   const sourceProfile='/api/v1/projects/:project_id/materials/:material_id/source-profile';
   app.get(sourceProfile,async request=>{await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));throw unavailable();});

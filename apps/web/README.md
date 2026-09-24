@@ -87,3 +87,7 @@ BB_E2E_REAL_API=1 BB_E2E_LIVE=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
 视觉来源：`product-prototype/public/styles.css` 与 `favicon.svg`；原型 JSON 存储、演示认证、积分和内存队列均未接入新页面。`src/api.ts` 是页面唯一 HTTP 客户端；DTO 从 `@bondbuddy/contracts` 推导。后续页面复用它，避免复制鉴权和版本逻辑。
 
 草稿 PATCH 带 `If-Match`，自动保存串行提交；新输入不被旧请求响应覆盖。409 不自动重试或合并，不改变任务输入快照。网络错误不盲目重放创建操作；如果创建响应丢失，用户需回到项目列表确认是否已创建，服务端创建幂等契约仍待补齐。
+
+## #14 OCR 原页核对
+
+材料行可打开识别核对页，查看受权 worker 已生成的结果、原页片段及版本化用户校正。读取、图片与写入均走同源 owner API；没有结果时明确显示不可查看。用户校正不等于审计确认。真实 Tesseract、存储、预算和运行说明见 [OCR 交接](../../python/OCR-HANDOFF.md)。自动预检调度和下游事实消费仍待接入，不在上传后偷偷启动全文 OCR。

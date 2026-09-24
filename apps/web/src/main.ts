@@ -1,3 +1,5 @@
+import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
+import './ocr-review.css';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
@@ -47,6 +49,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  disposeOcrReview();
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
@@ -130,7 +133,7 @@ async function logout() {
 async function renderRoute() {
   if (!identity) return;
   const requested = location.hash.slice(1) || '/';
-  if (creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？'))) {
+  if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？'))) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
   newDirty = false;
@@ -145,10 +148,13 @@ async function renderRoute() {
   }
   draft?.dispose(); draft = undefined;
   items = []; nextCursor = null; listBusy = false;
+  disposeOcrReview();
   currentRoute = requested;
   if (requested === '/new') { renderNew(); return; }
   if (requested === '/account') { await renderAccount(accountPage); return; }
   if (requested === '/') { renderProjects(); await loadProjects(token); return; }
+  const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
+  if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
   const match = requested.match(/^\/projects\/([^/]+)$/);
   if (!match) { location.hash = '/'; return; }
   shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', 'projects');
@@ -333,7 +339,7 @@ function renderUploadRow(upload: LocalUpload) {
   const canRemove = ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status" role="status">${esc(uploadStatus(upload))}</p>${upload.phase === 'failed' ? `<p class="material-file-error" role="alert">${esc(upload.error)}</p>` : ''}</div><div class="material-file-actions">${controls}${canRemove}</div></li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status" role="status">${esc(uploadStatus(upload))}</p>${upload.phase === 'failed' ? `<p class="material-file-error" role="alert">${esc(upload.error)}</p>` : ''}</div><div class="material-file-actions">${controls}${canRemove}${upload.phase === 'persisted' && upload.material ? `<a class="text-button" href="#/projects/${encodeURIComponent(upload.projectId)}/materials/${encodeURIComponent(upload.material.material_id)}/ocr">核对识别内容</a>` : ''}</div></li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -346,7 +352,7 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">${esc(materialStatus(material))}</p></div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">${esc(materialStatus(material))}</p><a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a></div></li>`).join('');
     return `<li class="material-role"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(roleGuidance(role.code))}</span></div><label class="button secondary material-picker" for="upload-${esc(role.code)}">选择文件<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label></div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
   }).join('')}</ul></section>`).join('');
   return groups;

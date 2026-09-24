@@ -22,6 +22,7 @@
     "test:documents": "PYTHONPATH=python python3 -m unittest discover -s python/tests -v",
     "start:api": "npm start -w @bondbuddy/api",
     "migrate:api": "node db/migrate.mjs",
-    "storage:lifecycle": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api && npm run storage:lifecycle -w @bondbuddy/api"
+    "storage:lifecycle": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api && npm run storage:lifecycle -w @bondbuddy/api",
+    "ocr:preflight": "node apps/worker/dist/ocr.js"
   }
 }
