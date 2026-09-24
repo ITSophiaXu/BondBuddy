@@ -22,6 +22,19 @@ length/hash and source response, then rebinds request and material IDs to the
 current authorized material before returning it. A missing or corrupt Blob is
 an error, not a successful miss. Staging paths are never stored.
 
+The authorized material bridge now optionally composes this cache after it
+checks the current owned material metadata and private bytes. A same-owner,
+same-content parse can therefore skip the Python subprocess even when the
+filename, project or material ID changes; a hit is rebound to the new request.
+The caller must pass deployment-controlled parser/OCR/basis versions, and a
+cache failure is fail-closed rather than treated as a miss. Failed and
+page-limited parses are not cached. This integration is exercised with
+synthetic adapters and, when `MATERIAL_CACHE_TEST_DATABASE_URL` points to a
+disposable migrated PostgreSQL 16 database and `.venv` is installed, an
+actual Python subprocess plus database test. Its private Blob adapter remains
+in-memory; the production worker has not yet installed this optional
+composition.
+
 Blob insertion precedes the idempotent database insert. A crash or concurrent
 winner can leave an unreferenced private object; storage-lifecycle cleanup
 must cover those objects before the seam is wired into a production worker.
