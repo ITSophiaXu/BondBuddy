@@ -1,5 +1,24 @@
 # BondBuddy domain rules (#19)
 
+## Fact and cache foundation (#15)
+
+`facts.ts` is an internal, HTTP/database-independent foundation, covered by
+synthetic boundary tests. Fact identity includes account, entity, scope, metric,
+period/as-of, currency, unit, basis, and data version. Same-key disagreements
+retain all candidates; user statements remain asserted, uncertain OCR values
+cannot become verified, and template/reference issuer facts are excluded.
+Bank-facility totals use exact decimal arithmetic only when bank, date, scope,
+currency, unit, and basis match. The private parse-cache key includes account,
+content SHA-256, parser/OCR/basis versions but not filename or project.
+
+Migration `0010_m1_facts_parse_cache.sql` adds owner-scoped candidate metadata
+and private Blob cache references. This does not install a production fact
+extractor, cache writer/reader, public DTO, or conflict-resolution log. The
+trusted worker must verify cached Blob bytes, rebind output to the newly
+authorized material version, and record source/date/anchor before reuse. #13
+native parsing and #14 OCR are still open; PostgreSQL integration and authorized
+professional sample acceptance remain required before #15 can close.
+
 `@bondbuddy/domain` is the HTTP/database-independent rule-pack boundary. It imports market and offering values from `@bondbuddy/contracts`; consumers must not duplicate those enums.
 
 The `rule-pack-v1` schema is strict and versioned. A pack fixes exactly one market/offering combination and records source type and version, official location and quote, validity, applicability, checker version, boundaries, positive/negative/boundary examples, owner role, sample evidence and release audit metadata.
