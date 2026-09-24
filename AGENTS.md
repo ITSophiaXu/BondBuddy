@@ -55,9 +55,9 @@
 
 真实登录 → 创建项目 → 上传并核验 DOCX/PDF → 保存材料版本 → 提交持久化 run → 关闭并重开浏览器后恢复状态 → 获取通过检查的 Word 成果。这条链路必须留存 prompt、任务、模型调用尝试、token、错误和终态证据。
 
-## vm1 直连 Azure 部署机器
+## master 主机直连 Azure 部署机器
 
-- 用户指定的 Azure 部署机器兼 DeepSeek 授权测试主机是 `azureuser@20.243.2.34`（登录后主机名 `openclaw-vm`）。在 vm1 上从任意目录连接：`ssh -i /data/workspaces/bondbuddy/openclaw-vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes azureuser@20.243.2.34`。这只是连接方式，不代表应用已经部署或通过上线验收。
-- 用户于 2026-09-24 核对的 ED25519 主机指纹为 `SHA256:WJkDE47NVg04vfrPTj5xNRM2+p1jkqAvwyjD7jFVGHY`；vm1 的 `known_hosts` 已固定该主机密钥。若主机密钥不匹配，停止连接并重新核验，不要绕过严格校验。
-- 私钥仅保存在 vm1 的 `/data/workspaces/bondbuddy/openclaw-vm_key.pem`，权限应为 `0600`，已被仓库根目录 `.gitignore` 排除。新环境缺少私钥时，由用户在该主机单独提供；不得提交、回显或复制私钥到 Worker 主机。
+- 主调度主机现名 `master`；旧记录中的 `vm1` 指同一台机器。用户指定的 Azure 部署机器兼 DeepSeek 授权测试主机是 `azureuser@20.243.2.34`（登录后主机名 `openclaw-vm`）。在 master 上从任意目录连接：`ssh -i /data/workspaces/bondbuddy/openclaw-vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes azureuser@20.243.2.34`。这只是连接方式，不代表应用已经部署或通过上线验收。
+- 用户于 2026-09-24 核对的 ED25519 主机指纹为 `SHA256:WJkDE47NVg04vfrPTj5xNRM2+p1jkqAvwyjD7jFVGHY`；master 的 `known_hosts` 已固定该主机密钥。若主机密钥不匹配，停止连接并重新核验，不要绕过严格校验。
+- 私钥仅保存在 master 的 `/data/workspaces/bondbuddy/openclaw-vm_key.pem`，权限应为 `0600`，已被仓库根目录 `.gitignore` 排除。新环境缺少私钥时，由用户在该主机单独提供；不得提交、回显或复制私钥到 Worker 主机。
 - 主机获授权与真实 DeepSeek 协议、用量验收是两件事；执行 #16 联调后仍需在 Issue 留下脱敏请求与 usage 证据。
