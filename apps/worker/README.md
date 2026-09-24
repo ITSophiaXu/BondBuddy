@@ -12,6 +12,16 @@ queued precheck: OCR/model assistance, persistence/correction history, API/UI,
 free-precheck cost logging and authorized real-material acceptance remain #76
 work.
 
+`historical-material-precheck.ts` now composes the authorized immutable-material
+parser with that native recognizer. Its owner/project/version lookup also
+requires the persisted `historical` role and DOCX/PDF media type before private
+bytes are read; an invalid profile version is rejected before lookup. Parser
+failure, OCR gaps and ambiguous native evidence remain non-ready. This is an
+internal function, not an upload-triggered job: it does not persist a profile,
+emit events, perform OCR/model fallback, record platform precheck cost or
+expose the source-profile API. A stored upload role is not independent proof
+that a document belongs to this issuer; that still needs evidence review.
+
 `material-parser.ts` adds an internal #13 bridge from an owner/project-scoped,
 immutable material version to the versioned Python parser. It verifies private
 Blob bytes against the database size and SHA-256, stages them with restricted

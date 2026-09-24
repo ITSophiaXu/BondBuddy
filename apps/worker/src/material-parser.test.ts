@@ -26,6 +26,7 @@ const row: Record<string, unknown> = {
   byte_size: bytes.byteLength,
   sha256: hash,
   object_key: 'private/users/owner-alice/project-synthetic/material-synthetic/v2',
+  role: 'historical',
 };
 const input = {
   ownerUserId: 'owner-alice',
@@ -87,10 +88,12 @@ function dependencies(options: {
       assert.match(sql, /project_id\s*=\s*\$2/);
       assert.match(sql, /id\s*=\s*\$3/);
       assert.match(sql, /version\s*=\s*\$4/);
+      assert.match(sql, /role\s*=\s*\$5/);
       assert.match(sql, /deleted_at\s+IS\s+NULL/);
       const material = options.material ?? row;
       const matches = values[0] === material.owner_user_id && values[1] === material.project_id &&
-        values[2] === material.id && values[3] === material.version;
+        values[2] === material.id && values[3] === material.version &&
+        (values[4] === null || values[4] === material.role);
       return { rows: matches && options.material !== null ? [material] : [] };
     },
   };
