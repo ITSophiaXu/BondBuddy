@@ -2,9 +2,10 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool } from 'pg';
 import { openApiDocument, schemas, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
+import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; enableRunStaging?: boolean };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -13,6 +14,8 @@ const MAX_BYTES = 104857600;
 export function createServer(settings: Settings = {}) {
   const app = Fastify({ logger: false, bodyLimit: MAX_BYTES + 1024 });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
+  const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
+  const auth:AuthConfig={pool,allowedOrigin,otpKey:settings.auth?.otpKey ?? process.env.BB_AUTH_OTP_KEY,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,sms:settings.auth?.sms};
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_BYTES }, (_request, value, done) => done(null, value));
   app.setErrorHandler((error, request, reply) => {
@@ -21,11 +24,12 @@ export function createServer(settings: Settings = {}) {
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
+  installAuth(app,auth);
   async function owner(request: FastifyRequest) {
-    const principal = await settings.principal?.(request);
+    const principal = await (settings.principal ? settings.principal(request) : sessionPrincipal(request,auth));
     if (!principal?.userId || !/^[A-Za-z0-9_-]{1,128}$/.test(principal.userId)) throw new Problem(401,'UNAUTHENTICATED','Trusted session required');
     if (!['GET','HEAD','OPTIONS'].includes(request.method)) {
-      if (!principal.csrfVerified || !settings.allowedOrigin || request.headers.origin !== settings.allowedOrigin) throw new Problem(403,'UNAUTHENTICATED','CSRF or Origin check failed');
+      if (!principal.csrfVerified || !allowedOrigin || request.headers.origin !== allowedOrigin) throw new Problem(403,'CSRF_DENIED','CSRF or Origin check failed');
     }
     return principal.userId;
   }

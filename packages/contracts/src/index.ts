@@ -23,7 +23,7 @@ export const M1_UPLOAD_MIME_TYPES = [
 export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'failed', 'cancelled'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED'] as const;
+export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED'] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -77,9 +77,9 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 export const schemas = {
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
-  SmsChallengeRequest: obj({ phone: Type.String({ minLength: 1 }), purpose: Type.Literal('login') }),
+  SmsChallengeRequest: obj({ phone: Type.String({ minLength: 1, description: 'M1 accepts +86 E.164 or mainland 11 digit form; server normalizes.' }), purpose: Type.Literal('login') }),
   SmsChallengeResponse: obj({ challenge_id: id, expires_at: utc, retry_at: utc }),
-  SmsVerifyRequest: obj({ challenge_id: id, code: Type.String({ minLength: 1 }), accepted_terms_version: Type.String({ minLength: 1 }) }),
+  SmsVerifyRequest: obj({ challenge_id: id, code: Type.String({ pattern: '^[0-9]{6}$', description: 'Six digit SMS code, never returned by the API.' }), accepted_terms_version: Type.String({ minLength: 1, description: 'Exact currently published required agreement version; marketing consent is separate.' }) }),
   SessionResponse: obj({ user_id: id, expires_at: utc, session_status: Type.Literal('active') }),
   MeResponse: obj({ user_id: id, session_status: Type.Literal('active') }),
   CapabilityResponse: obj({ scopes: Type.Array(Type.String()), version: Type.String(), status: Type.Union([Type.Literal('available'), Type.Literal('limited')]) }),
@@ -142,11 +142,11 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
-  op('post', '/auth/sms/challenges', 'Create SMS challenge (contract only)', 'SmsChallengeResponse', 202, 'SmsChallengeRequest'),
-  op('post', '/auth/sms/verify', 'Verify SMS and establish HttpOnly session (contract only)', 'SessionResponse', 200, 'SmsVerifyRequest'),
-  op('post', '/auth/refresh', 'Refresh session (contract only)', 'SessionResponse'),
-  op('post', '/auth/logout', 'Revoke session (contract only)', 'SessionResponse'),
-  op('get', '/me', 'Read authenticated identity (contract only)', 'MeResponse'),
+  op('post', '/auth/sms/challenges', 'Issue generic SMS challenge when provider is configured', 'SmsChallengeResponse', 202, 'SmsChallengeRequest', [429,503]),
+  op('post', '/auth/sms/verify', 'Verify code and accept current agreement; establish cookie session', 'SessionResponse', 200, 'SmsVerifyRequest', [401,422,503]),
+  op('post', '/auth/refresh', 'Rotate access and refresh cookies', 'SessionResponse'),
+  op('post', '/auth/logout', 'Revoke current session', 'SessionResponse', 204),
+  op('get', '/me', 'Read authenticated identity', 'MeResponse'),
   op('get', '/capabilities', 'Read released capabilities (contract only)', 'CapabilityResponse'),
   op('get', '/projects', 'List owner projects with cursor (contract only)', 'ProjectListResponse'),
   op('post', '/projects', 'Create project draft (contract only)', 'ProjectResponse', 201, 'ProjectCreateRequest'),
@@ -190,15 +190,16 @@ export function openApiDocument() {
     const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
     const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
-    const status = operation.path === '/runs/execute' ? 'test-only-staging; production-501-until-queue-and-logging' : ready ? 'implemented; requires-trusted-session-adapter' : 'contract-only-or-501';
-    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: operation.path.startsWith('/auth/sms/') ? [] : [{ sessionCookie: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
+    const status = operation.path.startsWith('/auth/sms/') ? 'implemented; SMS provider required' : ['/auth/refresh','/auth/logout','/me'].includes(operation.path) ? 'implemented; PostgreSQL session' : operation.path === '/runs/execute' ? 'test-only-staging; production-501-until-queue-and-logging' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
+    const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!operation.path.startsWith('/auth/sms/') ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
+    paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: operation.path.startsWith('/auth/sms/') ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
   paths['/api/v1/projects/{project_id}/materials/uploads/{upload_id}/bytes'] = { put: {
     summary: 'Stream declared bytes to a private owner-scoped upload session',
-    'x-implementation-status': 'implemented; requires-trusted-session-adapter',
-    security: [{ sessionCookie: [] }], parameters: parameters('/projects/{project_id}/materials/uploads/{upload_id}/bytes'),
+    'x-implementation-status': 'implemented; requires-valid-session',
+    security: [{ sessionCookie: [] }], parameters: [...parameters('/projects/{project_id}/materials/uploads/{upload_id}/bytes'),{name:'Origin',in:'header',required:true,schema:{type:'string'}},{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'}}],
     requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
     responses: { '204': { description: 'Bytes verified and received; call complete to register material' }, '404': { description: 'Unknown or foreign upload' }, '422': { description: 'Content mismatch or expired upload', content: { 'application/json': { schema: ref('Error') } } } }
   } };
-  return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.2.0', description: 'Persistence routes require a trusted session adapter; without #7 all personal routes reject. Run execution is disabled in production until #17/#79. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Sessions use HttpOnly Secure SameSite cookies; mutations require CSRF/Origin checks when implemented.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite cookie; never expose supplier credentials to browser.' } } }, paths };
+  return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Phone challenges require an approved SMS provider; production fails closed until configured. PostgreSQL-backed sessions bind personal routes to a verified user. Run execution is disabled in production until #17/#79. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
 }

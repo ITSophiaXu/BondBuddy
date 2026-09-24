@@ -2,6 +2,36 @@
   "synthetic": true,
   "cases": [
     {
+      "name": "auth-challenge-request-synthetic",
+      "schema": "SmsChallengeRequest",
+      "valid": true,
+      "value": { "phone": "+8613800000001", "purpose": "login" }
+    },
+    {
+      "name": "auth-challenge-response-synthetic",
+      "schema": "SmsChallengeResponse",
+      "valid": true,
+      "value": { "challenge_id": "synthetic-challenge", "expires_at": "2026-09-24T04:00:00Z", "retry_at": "2026-09-24T03:56:00Z" }
+    },
+    {
+      "name": "auth-verify-request-synthetic",
+      "schema": "SmsVerifyRequest",
+      "valid": true,
+      "value": { "challenge_id": "synthetic-challenge", "code": "123456", "accepted_terms_version": "synthetic-v1" }
+    },
+    {
+      "name": "auth-verify-code-invalid",
+      "schema": "SmsVerifyRequest",
+      "valid": false,
+      "value": { "challenge_id": "synthetic-challenge", "code": "12345", "accepted_terms_version": "synthetic-v1" }
+    },
+    {
+      "name": "auth-session-response-synthetic",
+      "schema": "SessionResponse",
+      "valid": true,
+      "value": { "user_id": "synthetic-user", "expires_at": "2026-09-24T04:10:00Z", "session_status": "active" }
+    },
+    {
       "name": "create-project-request",
       "schema": "ProjectCreateRequest",
       "valid": true,
