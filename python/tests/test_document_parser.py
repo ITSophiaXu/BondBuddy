@@ -88,6 +88,61 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
 
+    def test_docx_move_revisions_use_current_amount_and_preserve_order(self):
+        path = self.root / "moved-amount.docx"
+        document = Document()
+        paragraph = document.add_paragraph("期末资产：")
+
+        move_from = OxmlElement("w:moveFrom")
+        old_run = OxmlElement("w:r")
+        old_text = OxmlElement("w:t")
+        old_text.text = "999万元"
+        old_run.append(old_text)
+        move_from.append(old_run)
+        paragraph._p.append(move_from)
+
+        move_to = OxmlElement("w:moveTo")
+        current_run = OxmlElement("w:r")
+        current_text = OxmlElement("w:t")
+        current_text.text = "120万元"
+        current_run.append(current_text)
+        move_to.append(current_run)
+        paragraph._p.append(move_to)
+        paragraph.add_run("，核验完毕")
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        quote = result["records"][0]["literal_quote"]
+        self.assertEqual(quote, "期末资产：120万元，核验完毕")
+        self.assertNotIn("999万元", quote)
+        self.assertLess(quote.index("期末资产"), quote.index("120万元"))
+        self.assertLess(quote.index("120万元"), quote.index("核验完毕"))
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertTrue(any(warning["code"] == "DOCX_REVISIONS_RESOLVED" for warning in result["warnings"]))
+
+    def test_docx_unresolved_revision_markers_require_confirmation(self):
+        path = self.root / "revision-range.docx"
+        document = Document()
+        paragraph = document.add_paragraph("期末资产：120万元")
+        range_start = OxmlElement("w:moveFromRangeStart")
+        range_start.set(qn("w:id"), "7")
+        range_start.set(qn("w:author"), "Synthetic")
+        range_end = OxmlElement("w:moveFromRangeEnd")
+        range_end.set(qn("w:id"), "7")
+        paragraph._p.insert(0, range_start)
+        paragraph._p.append(range_end)
+        paragraph_mark_move = OxmlElement("w:moveFrom")
+        paragraph._p.get_or_add_pPr().append(paragraph_mark_move)
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertIn("docx_revision_effective_text_unresolved", result["records"][0]["uncertainty"])
+        self.assertTrue(any(
+            warning["code"] == "DOCX_UNSUPPORTED_REVISION_MARKERS"
+            for warning in result["warnings"]
+        ))
+
     def test_pdf_preserves_page_and_source_bbox(self):
         path = self.root / "synthetic.pdf"
         pdf = canvas.Canvas(str(path), pagesize=(300, 300))
