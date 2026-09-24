@@ -44,6 +44,7 @@ export interface PrivateBlobs {
   get(key: string): Promise<Buffer>;
   getIfExists(key: string): Promise<Buffer | null>;
   getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
+  exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
 }
 export function azureBlobs(connectionString: string, containerName = 'bondbuddy-private'): PrivateBlobs {
@@ -88,6 +89,14 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       } catch (error) {
         if (error instanceof Problem) throw error;
         if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound')) return null;
+        throw error;
+      }
+    },
+    async exists(key) {
+      await ensure();
+      try { await container.getBlockBlobClient(key).getProperties(); return true; }
+      catch (error) {
+        if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound')) return false;
         throw error;
       }
     },
