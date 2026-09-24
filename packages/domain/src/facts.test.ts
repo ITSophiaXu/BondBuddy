@@ -7,7 +7,9 @@ import {
   groupFactCandidates,
   normalizeDecimal,
   parseCacheKey,
+  validateCreditFacilitySupplement,
   type CreditFacilityAmount,
+  type CreditFacilitySupplementAmount,
   type FactCandidate,
   type FactIdentity,
 } from './facts.js';
@@ -118,6 +120,93 @@ test('credit facility arithmetic uses exact decimals and requires matching conte
   assert.deepEqual(checkCreditFacilityAmounts(facility('100'), facility('80'), facility(null)),
     { status: 'needs_confirmation', reason: 'missing_amount' });
   assert.equal(normalizeDecimal('9007199254740993.10'), '9007199254740993.1');
+});
+
+const supplement = (
+  amount: string | null,
+  sourceId: string,
+  statementDate: string,
+  overrides: Partial<CreditFacilityAmount> = {},
+): CreditFacilitySupplementAmount => ({
+  ...facility(amount, overrides), sourceId, statementDate,
+});
+
+test('credit supplement retains per-amount source/date and never promotes a user assertion to manuscript fact', () => {
+  const total = supplement('120', 'synthetic-total-note', '2026-04-02');
+  const used = supplement('80', 'synthetic-used-email', '2026-04-03');
+  const unused = supplement('40', 'synthetic-unused-note', '2026-04-04');
+  const checked = validateCreditFacilitySupplement(total, used, unused);
+  assert.equal(checked.status, 'user_asserted');
+  assert.equal(checked.eligibleForManuscript, false);
+  assert.equal(checked.amounts.total.sourceId, 'synthetic-total-note');
+  assert.equal(checked.amounts.total.statementDate, '2026-04-02');
+  assert.equal(checked.amounts.used.sourceId, 'synthetic-used-email');
+  assert.equal(checked.amounts.unused.statementDate, '2026-04-04');
+  assert.deepEqual([checked.statedTotal, checked.calculatedTotal], ['120', '120']);
+});
+
+test('same-context total 100, used 80 and unused 40 is retained as a manuscript-blocking conflict', () => {
+  const checked = validateCreditFacilitySupplement(
+    supplement('100', 'synthetic-total', '2026-04-02'),
+    supplement('80', 'synthetic-used', '2026-04-02'),
+    supplement('40', 'synthetic-unused', '2026-04-02'),
+  );
+  assert.equal(checked.status, 'conflicted');
+  assert.equal(checked.eligibleForManuscript, false);
+  assert.deepEqual([checked.statedTotal, checked.calculatedTotal], ['100', '120']);
+  assert.equal(checked.amounts.unused.sourceId, 'synthetic-unused');
+});
+
+test('different credit contexts and incomplete provenance remain pending confirmation', () => {
+  const total = supplement('100', 'synthetic-total', '2026-04-02');
+  assert.deepEqual(validateCreditFacilitySupplement(
+    total,
+    supplement('80', 'synthetic-used', '2026-04-02', { basis: 'drawn_credit' }),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ), {
+    status: 'needs_confirmation', eligibleForManuscript: false,
+    amounts: {
+      total,
+      used: supplement('80', 'synthetic-used', '2026-04-02', { basis: 'drawn_credit' }),
+      unused: supplement('20', 'synthetic-unused', '2026-04-02'),
+    },
+    reason: 'context_mismatch',
+  });
+  assert.equal(validateCreditFacilitySupplement(
+    supplement('100', '', '2026-04-02'),
+    supplement('80', 'synthetic-used', '2026-04-02'),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'missing_source');
+  assert.equal(validateCreditFacilitySupplement(
+    total,
+    supplement('80', 'synthetic-used', '2026-02-30'),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'invalid_statement_date');
+  assert.equal(validateCreditFacilitySupplement(
+    total,
+    supplement('80', 'synthetic-used', '2026-04-02', { bank: ' ' }),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'missing_context');
+  assert.equal(validateCreditFacilitySupplement(
+    total,
+    supplement('80', 'synthetic-used', '2026-04-02', { asOf: '2025-02-30' }),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'invalid_as_of');
+  assert.equal(validateCreditFacilitySupplement(
+    total,
+    supplement(null, 'synthetic-used', '2026-04-02'),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'missing_amount');
+  assert.equal(validateCreditFacilitySupplement(
+    total,
+    supplement('eighty', 'synthetic-used', '2026-04-02'),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'invalid_amount');
+  assert.equal(validateCreditFacilitySupplement(
+    total,
+    supplement('-80', 'synthetic-used', '2026-04-02'),
+    supplement('20', 'synthetic-unused', '2026-04-02'),
+  ).reason, 'invalid_amount');
 });
 
 test('parse cache key is content/version/account scoped and ignores filename/project', () => {
