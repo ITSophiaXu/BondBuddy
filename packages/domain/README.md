@@ -12,10 +12,11 @@ currency, unit, and basis match. The private parse-cache key includes account,
 content SHA-256, parser/OCR/basis versions but not filename or project.
 
 Migration `0010_m1_facts_parse_cache.sql` adds owner-scoped candidate metadata
-and private Blob cache references. This does not install a production fact
-extractor, cache writer/reader, public DTO, or conflict-resolution log. The
-trusted worker must verify cached Blob bytes, rebind output to the newly
-authorized material version, and record source/date/anchor before reuse. #13
+and private Blob cache references. The worker package now has a unit-tested
+internal cache read/write seam, but this does not install a production fact
+extractor, active worker processor, public DTO, or conflict-resolution log.
+The trusted processor must still authorize the material version and record
+source/date/anchor when creating facts. #13
 native parsing and #14 OCR are still open; PostgreSQL integration and authorized
 professional sample acceptance remain required before #15 can close.
 
