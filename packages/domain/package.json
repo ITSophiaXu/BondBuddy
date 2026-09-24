@@ -6,7 +6,8 @@
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./facts": { "types": "./dist/facts.d.ts", "default": "./dist/facts.js" },
-    "./update-difficulty": { "types": "./dist/update-difficulty.d.ts", "default": "./dist/update-difficulty.js" }
+    "./update-difficulty": { "types": "./dist/update-difficulty.d.ts", "default": "./dist/update-difficulty.js" },
+    "./reference-match": { "types": "./dist/reference-match.d.ts", "default": "./dist/reference-match.js" }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -1,5 +1,23 @@
 # BondBuddy domain rules (#19)
 
+## Internal reference matching foundation (#33)
+
+`reference-match.ts` conservatively compares reviewed, complete annual
+consolidated business-revenue profiles. Only an exact set of three evidenced
+business codes can match; rank order may differ. Missing lines, a third-place
+tie, a taxonomy or basis mismatch, and an unavailable library remain explicit
+states. Candidates must be published, readable, authorized for use, source-
+valid and applicable to the target rule; cross-market candidates additionally
+need an accepted chapter mapping. A deterministic internal selection record
+keeps the target issuer's amounts and evidence, candidate exclusion reasons,
+version identifiers and a hash, but never copies reference-issuer facts into
+issuer facts or a public DTO.
+
+This is a pure domain seam tested with synthetic profiles, not a deployed
+matching service or new-document generator. #15/#17/#19/#77 dependencies,
+authorized sample matching, durable ReferenceSelection storage and editable
+Word quality checks are still required before #33 can close.
+
 ## Historical-period difficulty estimator (#76)
 
 `update-difficulty.ts` is an internal, deterministic estimator for a historical
