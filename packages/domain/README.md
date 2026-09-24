@@ -41,6 +41,10 @@ Product-specific releases must use `publishRulePackBundle`; it validates the pac
 
 `nafmiiCpDraftRulePack` is an independent `nafmii` + `cp` bundle. It reuses only the association-wide M-table chapter structure and common registration/disclosure sources. Its product identity comes from the fingerprinted 2021 CP guide, including the one-year tenor boundary. SCP's 270-day definition and disclosure omission mechanism are explicitly outside this pack. Like the MTN bundle, CP remains a non-advertised draft until its machine-readable blockers are resolved with industry review and authorized real samples.
 
+## SCP engineering draft (#29)
+
+`nafmiiScpDraftRulePack` is scoped to standard public SCP only. It pins the official 2021 product guide, enforces the 270-day-inclusive boundary and the working-capital-only/no-long-term-investment use boundary, and overlays MC.4-1 through MC.4-4 on the shared M-table chapters. Omission of M-5/M-6/M-7 is evidence-dependent and is rejected for first public registration or when effective public issuer information is unavailable. Specialist products, 2026 transition interpretation and authorized real samples remain explicit release blockers.
+
 Run:
 
 ```bash
