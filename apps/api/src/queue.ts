@@ -1,5 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
+import { emitInternal, internalEvent } from './observability.js';
 
 const terminal = new Set(['succeeded','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -10,6 +11,8 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
   await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,r.owner_user_id,r.id,seq,trace,type,state,stage,payload]);
   await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:id,seq,state,stage,reason,...(errorCode?{error_code:errorCode}:{})}]);
+  const job=await client.query('SELECT id FROM bb_jobs WHERE run_id=$1',[r.id]);
+  await emitInternal(client,internalEvent({kind:'job.state_changed',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.rows[0]?.id,traceId:trace,status:state as any,stage}));
   r.state=state;r.stage=stage;r.event_cursor=seq;
 }
 
@@ -58,10 +61,15 @@ export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Rec
 }
 
 // Persist intent before any supplier request. An unknown attempt is never silently resent.
-export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number) {
+export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, metadata:{modelId?:string;promptSnapshotId?:string}={}) {
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
-    await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status) VALUES($1,$2,$3,$4,$5,'pending_reconcile')",[uid(),lease.owner,lease.jobId,logicalCallId,attemptNo]);
+    if(metadata.promptSnapshotId){
+      const ref=await client.query('SELECT 1 FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4',[metadata.promptSnapshotId,lease.owner,r.project_id,r.id]);
+      if(!ref.rowCount)throw missing();
+    }
+    await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7)",[uid(),lease.owner,lease.jobId,logicalCallId,attemptNo,metadata.modelId??null,metadata.promptSnapshotId??null]);
+    await emitInternal(client,internalEvent({kind:'model.call_started',owner:lease.owner,projectId:r.project_id,runId:r.id,jobId:lease.jobId,traceId:r.id,logicalCallId,attemptNo,promptSnapshotRef:metadata.promptSnapshotId}));
     await event(client,r,'running','provider_call','provider_call_may_be_sent');
   });
 }
