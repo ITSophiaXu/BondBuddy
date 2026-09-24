@@ -1,14 +1,14 @@
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { Draft } from './draft';
+import { renderAccount, renderClosed, type AccountContext } from './account';
+import { date, esc, icon } from './ui';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES } from '@bondbuddy/contracts';
 import './style.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
-const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
-const date = (value: string) => new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-const icon = (path: string) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
 const plus = icon('M12 5v14M5 12h14');
+const person = icon('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0');
 let identity: string | undefined;
 let epoch = 0;
 let currentRoute = '/';
@@ -31,6 +31,15 @@ const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
 };
 const sessionChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('bondbuddy-session') : undefined;
 const api = new ApiClient(() => signedOut(identity ? '登录已失效。已保存的项目会在重新登录后恢复。' : ''));
+const accountPage: AccountContext = {
+  api, shell, epoch: () => epoch, reload: () => { void renderRoute(); },
+  closed: result => {
+    clearPrivateState();
+    history.replaceState(null, '', `${location.pathname}${location.search}#/`);
+    currentRoute = '/'; sessionChannel?.postMessage('changed');
+    renderClosed(root, result, () => renderLogin());
+  }
+};
 
 function clearPrivateState() {
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
@@ -83,8 +92,8 @@ function shell(content: string, section: string) {
     <div class="workspace-tag"><span class="workspace-symbol">B</span><div><strong>我的工作区</strong><small>募集书项目管理</small></div></div>
     <p class="nav-label">工作空间</p><nav aria-label="主导航"><a class="nav-item ${section === 'projects' ? 'active' : ''}" href="#/" ${section === 'projects' ? 'aria-current="page"' : ''}>${folder}我的项目</a>
     <a class="nav-item ${section === 'new' ? 'active' : ''}" href="#/new" ${section === 'new' ? 'aria-current="page"' : ''}>${plus}新建更新项目</a></nav>
-    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : '我的项目'}</span><span class="trial">受控试用</span></header>
+    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><nav aria-label="账号"><a class="nav-item ${section === 'account' ? 'active' : ''}" href="#/account" ${section === 'account' ? 'aria-current="page"' : ''}>${person}账号设置</a></nav><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : section === 'account' ? '账号设置' : '我的项目'}</span><span class="trial">受控试用</span></header>
     <main id="main" tabindex="-1">${content}</main></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
 }
@@ -127,6 +136,7 @@ async function renderRoute() {
   items = []; nextCursor = null; listBusy = false;
   currentRoute = requested;
   if (requested === '/new') { renderNew(); return; }
+  if (requested === '/account') { await renderAccount(accountPage); return; }
   if (requested === '/') { renderProjects(); await loadProjects(token); return; }
   const match = requested.match(/^\/projects\/([^/]+)$/);
   if (!match) { location.hash = '/'; return; }

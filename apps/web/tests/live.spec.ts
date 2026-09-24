@@ -1,27 +1,9 @@
-import { expect, test, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
+import { expect, test, type Page } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { account, login, origin } from './live-helpers';
 
 test.skip(process.env.BB_E2E_LIVE !== '1', 'Requires a dedicated migrated API/database; no production or mocked API is used.');
-const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
-async function account(playwright: PlaywrightWorkerArgs['playwright']) {
-  const username = `web_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
-  const password = `Synthetic-${randomUUID()}`;
-  const request = await playwright.request.newContext({ baseURL: origin, ignoreHTTPSErrors: true });
-  const result = await request.post('/api/v1/auth/register', { headers: { Origin: origin }, data: {
-    username, password, accepted_terms_version: process.env.BB_E2E_TERMS_VERSION ?? 'synthetic-web-test-v1'
-  } });
-  expect(result.status()).toBe(201); await request.dispose();
-  return { username, password };
-}
-async function login(page: Page, user: { username: string; password: string }) {
-  await page.goto('/');
-  await page.getByLabel('用户名', { exact: true }).fill(user.username);
-  await page.getByLabel('密码', { exact: true }).fill(user.password);
-  await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
-}
 async function createProject(page: Page, name: string) {
   await page.getByRole('link', { name: '新建更新项目', exact: true }).first().click();
   await page.getByLabel('项目名称 必填', { exact: true }).fill(name);

@@ -16,6 +16,8 @@ export function friendlyError(error: unknown): string {
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
     case 'VALIDATION_FAILED': case 'INPUT_REQUIRED': return '请检查填写内容后重试。';
     case 'CAPABILITY_NOT_READY': return '这项功能暂未开放，请稍后再试。';
+    case 'PASSWORD_INVALID': return '当前密码不正确。';
+    case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
     default: return '暂时无法完成操作，请稍后重试。';
   }
 }
@@ -73,6 +75,13 @@ export class ApiClient {
   me() { return this.request<Dto<'MeResponse'>>('GET', '/me'); }
   login(input: Dto<'LoginRequest'>) { return this.request<Dto<'SessionResponse'>>('POST', '/auth/login', input); }
   logout() { return this.request<void>('POST', '/auth/logout'); }
+  account() { return this.request<Dto<'AccountResponse'>>('GET', '/account'); }
+  sessions() { return this.request<Dto<'AccountSessionListResponse'>>('GET', '/account/sessions'); }
+  revokeSession(sessionId: string) { return this.request<void>('DELETE', `/account/sessions/${encodeURIComponent(sessionId)}`); }
+  revokeOtherSessions() { return this.request<Dto<'SessionRevokeOthersResponse'>>('POST', '/account/sessions/revoke-others'); }
+  changePassword(input: Dto<'PasswordChangeRequest'>) { return this.request<Dto<'PasswordChangeResponse'>>('POST', '/account/password', input); }
+  closurePreview() { return this.request<Dto<'AccountClosurePreviewResponse'>>('GET', '/account/closure'); }
+  closeAccount(input: Dto<'AccountClosureRequest'>) { return this.request<Dto<'AccountClosureResponse'>>('POST', '/account/closure', input); }
   projects(cursor?: string) { return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
   project(id: string) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`); }
   material(id: string, materialId: string, signal?: AbortSignal) {
