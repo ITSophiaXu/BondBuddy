@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": { ".": { "types": "./dist/server.d.ts", "default": "./dist/server.js" }, "./queue": { "types": "./dist/queue.d.ts", "default": "./dist/queue.js" } },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "test": "node --test dist/server.test.js"
+    "test": "node --test --test-concurrency=1 dist/*.test.js"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",
