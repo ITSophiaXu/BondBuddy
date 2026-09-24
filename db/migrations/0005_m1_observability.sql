@@ -11,6 +11,8 @@ CREATE TABLE bb_operations (
 );
 CREATE INDEX bb_operations_lookup_idx ON bb_operations(owner_user_id,project_id,created_at DESC);
 CREATE INDEX bb_operations_trace_idx ON bb_operations(owner_user_id,trace_id);
+-- A snapshot can only point at a run in the same owner's same project.
+ALTER TABLE bb_runs ADD CONSTRAINT bb_run_owner_project_id UNIQUE(owner_user_id,project_id,id);
 CREATE TABLE bb_snapshot_refs (
  id text PRIMARY KEY, owner_user_id text NOT NULL, project_id text NOT NULL, run_id text,
  snapshot_kind text NOT NULL CHECK (snapshot_kind IN ('user_prompt','model_request','structured_input')),
@@ -20,7 +22,7 @@ CREATE TABLE bb_snapshot_refs (
  created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(owner_user_id,project_id,snapshot_kind,version),
  FOREIGN KEY (owner_user_id,project_id) REFERENCES bb_projects(owner_user_id,id),
- FOREIGN KEY (owner_user_id,run_id) REFERENCES bb_runs(owner_user_id,id),
+ FOREIGN KEY (owner_user_id,project_id,run_id) REFERENCES bb_runs(owner_user_id,project_id,id),
  FOREIGN KEY (owner_user_id,project_id,input_revision) REFERENCES bb_input_revisions(owner_user_id,project_id,revision),
  CHECK (object_key LIKE 'users/' || owner_user_id || '/projects/' || project_id || '/snapshots/%'),
  CHECK (input_revision IS NULL OR input_hash IS NOT NULL)
@@ -76,15 +78,27 @@ ALTER TABLE bb_outbox ADD COLUMN lease_token text;
 ALTER TABLE bb_outbox ADD COLUMN lease_until timestamptz;
 ALTER TABLE bb_outbox ADD COLUMN delivery_attempts integer NOT NULL DEFAULT 0;
 ALTER TABLE bb_outbox ADD CONSTRAINT bb_outbox_lease_pair CHECK ((lease_token IS NULL) = (lease_until IS NULL));
--- A measured observation is chosen once per actual attempt, regardless of gateway/framework duplicates.
--- Cached input and reasoning output are subsets, never added to total tokens.
+-- A measured observation is selected only when all reported non-null dimensions agree.
+-- Conflicts stay unresolved; cached input and reasoning output are subsets, not extra tokens.
 CREATE VIEW bb_call_usage AS
 SELECT a.id attempt_id,a.owner_user_id,a.job_id,a.logical_call_id,a.attempt_no,a.status call_status,
- COALESCE(m.usage_status,CASE WHEN EXISTS (SELECT 1 FROM bb_usage_observations u WHERE u.attempt_id=a.id AND u.usage_status='pending') THEN 'pending' ELSE 'unknown' END) usage_status,
- m.input_tokens,m.output_tokens,m.cached_input_tokens,m.reasoning_tokens,
- (SELECT count(*)::integer FROM bb_usage_observations u WHERE u.attempt_id=a.id AND u.usage_status='measured' AND (u.input_tokens,u.output_tokens) IS DISTINCT FROM (m.input_tokens,m.output_tokens)) conflicting_measurements
+ CASE WHEN variants.conflicting_measurements>0 THEN 'conflict'
+      WHEN m.id IS NOT NULL THEN 'measured'
+      WHEN EXISTS (SELECT 1 FROM bb_usage_observations u WHERE u.attempt_id=a.id AND u.usage_status='pending') THEN 'pending'
+      ELSE 'unknown' END usage_status,
+ CASE WHEN variants.conflicting_measurements=0 THEN m.input_tokens END input_tokens,
+ CASE WHEN variants.conflicting_measurements=0 THEN m.output_tokens END output_tokens,
+ CASE WHEN variants.conflicting_measurements=0 THEN m.cached_input_tokens END cached_input_tokens,
+ CASE WHEN variants.conflicting_measurements=0 THEN m.reasoning_tokens END reasoning_tokens,
+ variants.conflicting_measurements
 FROM bb_model_call_attempts a
-LEFT JOIN LATERAL (SELECT * FROM bb_usage_observations u WHERE u.attempt_id=a.id AND u.usage_status='measured' ORDER BY u.observed_at,u.id LIMIT 1) m ON true;
+LEFT JOIN LATERAL (SELECT * FROM bb_usage_observations u WHERE u.attempt_id=a.id AND u.usage_status='measured' ORDER BY u.observed_at,u.id LIMIT 1) m ON true
+CROSS JOIN LATERAL (
+ SELECT CASE WHEN count(DISTINCT u.input_tokens)>1 OR count(DISTINCT u.output_tokens)>1
+              OR count(DISTINCT u.cached_input_tokens)>1 OR count(DISTINCT u.reasoning_tokens)>1
+             THEN 1 ELSE 0 END::integer conflicting_measurements
+ FROM bb_usage_observations u WHERE u.attempt_id=a.id AND u.usage_status='measured'
+) variants;
 CREATE TRIGGER bb_snapshot_ref_immutable BEFORE UPDATE OR DELETE ON bb_snapshot_refs FOR EACH ROW EXECUTE FUNCTION bb_reject_snapshot_change();
 CREATE TRIGGER bb_usage_immutable BEFORE UPDATE OR DELETE ON bb_usage_observations FOR EACH ROW EXECUTE FUNCTION bb_reject_snapshot_change();
 CREATE TRIGGER bb_operation_immutable BEFORE UPDATE OR DELETE ON bb_operations FOR EACH ROW EXECUTE FUNCTION bb_reject_snapshot_change();

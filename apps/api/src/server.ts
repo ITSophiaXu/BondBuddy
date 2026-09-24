@@ -159,7 +159,8 @@ export function createServer(settings: Settings = {}) {
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);
     const traceId=uid();
     if(!settings.enableRunStaging && !settings.enableSyntheticQueue){
-      await rejectOperation(db(),{owner:user,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});
+      const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+      await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY',inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
       throw unavailable();
     }
     let result;

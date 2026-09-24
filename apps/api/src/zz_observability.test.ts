@@ -17,9 +17,29 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     const project=(await send('POST','/api/v1/projects',{name:'Synthetic logging',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
     const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
     const request={execution_request_id:'synthetic-log-1',project_id:project,input_revision:1,input_hash:input.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'};
+    owner='synthetic-log-b';
+    const foreignProject=(await send('POST','/api/v1/projects',{name:'Other owner project',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
+    owner='synthetic-log-a';
+    const production=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
+    try {
+      const own=await production.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:request});
+      const foreign=await production.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:{...request,project_id:foreignProject}});
+      assert.equal(own.statusCode,501);assert.equal(foreign.statusCode,501);
+      assert.equal(own.json().code,foreign.json().code,'foreign project is not enumerable from production rejection');
+      const records=await pool.query("SELECT * FROM bb_operations WHERE owner_user_id=$1 AND error_code='CAPABILITY_NOT_READY' ORDER BY created_at,id",[owner]);
+      assert.equal(records.rowCount,2);
+      const ownedRecord=records.rows.find(r=>r.project_id===project),foreignRecord=records.rows.find(r=>r.project_id===null);
+      assert.ok(ownedRecord);assert.ok(foreignRecord);
+      assert.equal(ownedRecord.run_id,null);assert.equal(ownedRecord.input_revision,1);assert.equal(ownedRecord.input_hash.trim(),input.input_hash);
+      assert.ok(ownedRecord.request_id);assert.ok(ownedRecord.trace_id);
+      assert.equal(foreignRecord.input_revision,null);assert.equal(foreignRecord.input_hash,null);assert.equal(foreignRecord.run_id,null);
+      const actor=await pool.query('SELECT event FROM bb_observability_events WHERE trace_id=$1',[ownedRecord.trace_id]);
+      assert.equal(actor.rows[0].event.actor_type,'user');
+      assert.equal(actor.rows[0].event.project_id,project);
+    } finally {await production.close();}
     const rejection=await send('POST','/api/v1/runs/execute',{...request,input_hash:'0'.repeat(64)});
     assert.equal(rejection.statusCode,409);
-    const rejected=await pool.query("SELECT * FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND status='rejected'",[owner,project]);
+    const rejected=await pool.query("SELECT * FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND status='rejected' AND error_code='INPUT_REVISION_CONFLICT'",[owner,project]);
     assert.equal(rejected.rowCount,1);assert.equal(rejected.rows[0].run_id,null);
     const created=await send('POST','/api/v1/runs/execute',request);assert.equal(created.statusCode,202,created.body);
     const runId=created.json().run_id;
@@ -29,6 +49,8 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     await blobs.put(promptKey,Buffer.from('synthetic prompt body containing OTP 123456 and Cookie secret'),'text/plain');
     const snapshot=await saveSnapshotRef(pool,{owner,projectId:project,runId,kind:'user_prompt',version:1,objectKey:promptKey,blobs,sha256:digest('synthetic prompt body containing OTP 123456 and Cookie secret'),redactionVersion:'redaction_v1',inputRevision:1,inputHash:input.input_hash});
     assert.ok(snapshot);
+    const otherProject=(await send('POST','/api/v1/projects',{name:'Other synthetic project',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
+    await assert.rejects(pool.query("INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version) VALUES($1,$2,$3,$4,'user_prompt',1,$5,$6,'redaction_v1')",['wrong-project-snapshot',owner,otherProject,runId,`users/${owner}/projects/${otherProject}/snapshots/wrong_project`,digest('synthetic bytes')]),(error:any)=>error.code==='23503');
     await assert.rejects(saveSnapshotRef(pool,{owner,projectId:project,runId,kind:'user_prompt',version:2,objectKey:`users/${owner}/projects/${project}/snapshots/Cookie=secret`,sha256:digest('x'),redactionVersion:'redaction_v1',blobs}));
     await recordPotentialCall(pool,lease,'synthetic-call',1,{modelId:'synthetic-model',promptSnapshotId:snapshot});
     await recordPotentialCall(pool,lease,'synthetic-call',2);
@@ -43,7 +65,12 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     let usage=await queryUsage(pool,owner,lease.jobId,'synthetic-operator');
     assert.equal(usage.length,2);assert.equal(usage[0].usage_status,'measured');assert.equal(usage[0].input_tokens,10);assert.equal(usage[0].output_tokens,4);assert.equal(usage[0].conflicting_measurements,0);
     assert.equal(usage[1].usage_status,'unknown');assert.equal(usage[1].input_tokens,null);
-    assert.deepEqual(await usageTotals(pool,owner,lease.jobId,'synthetic-operator'),{attempts:2,measured_attempts:1,unresolved_attempts:1,input_tokens:10,output_tokens:4,cached_input_tokens:3,reasoning_tokens:2});
+    assert.deepEqual(await usageTotals(pool,owner,lease.jobId,'synthetic-operator'),{attempts:2,measured_attempts:1,unresolved_attempts:1,conflicted_attempts:0,input_tokens:10,output_tokens:4,cached_input_tokens:3,reasoning_tokens:2});
+    await observeUsage(pool,{owner,attemptId:failed,source:'framework',sourceEventId:'conflicting-measurement',status:'measured',inputTokens:11,outputTokens:4,cachedInputTokens:3,reasoningTokens:2});
+    usage=await queryUsage(pool,owner,lease.jobId,'synthetic-operator');
+    assert.equal(usage[0].usage_status,'conflict');assert.equal(usage[0].conflicting_measurements,1);
+    assert.equal(usage[0].input_tokens,null);assert.equal(usage[0].output_tokens,null);
+    assert.deepEqual(await usageTotals(pool,owner,lease.jobId,'synthetic-operator'),{attempts:2,measured_attempts:0,unresolved_attempts:2,conflicted_attempts:1,input_tokens:null,output_tokens:null,cached_input_tokens:null,reasoning_tokens:null});
     await assert.rejects(recordStructuredError(pool,{owner,projectId:project,jobId:lease.jobId,traceId:runId,code:'DATA_UNAVAILABLE',category:'model_provider',safeMessageCode:'Cookie: secret'}));
     await recordStructuredError(pool,{owner,projectId:project,jobId:lease.jobId,attemptId:failed,traceId:runId,code:'DATA_UNAVAILABLE',category:'model_provider',stage:'provider_call',safeMessageCode:'supplier_timeout',retryCount:1});
     const timeline=await queryTimeline(pool,{actorId:'synthetic-operator',owner,projectId:project});
