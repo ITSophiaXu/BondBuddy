@@ -1,0 +1,59 @@
+import type { ChapterTemplate, CoverageManifest, RuleDefinition, RulePack } from './index.js';
+import { nafmiiMtnChapterTemplate, nafmiiMtnDraftRulePack } from './nafmii-mtn.js';
+
+const CHECKED_AT='2026-09-24T09:00:00Z';
+const commonSources=nafmiiMtnDraftRulePack.sources.filter(source=>source.source_id!=='nafmii-mtn-guide-2021');
+const applicability:RuleDefinition['applicability']={document_stages:['registration','issuance'],issuer_scopes:['domestic-nonfinancial-enterprise-public'],investor_scopes:['interbank-institutional'],industries:[],special_features:[]};
+
+const rule=(input:Omit<RuleDefinition,'version'|'enabled'|'enforcement'|'checker'|'owner_role'> & {checker_id:string}):RuleDefinition=>{
+  const {checker_id,...definition}=input;
+  return {version:'1',enabled:true,enforcement:'soft_check',owner_role:'industry_reviewer',checker:{checker_id,checker_version:'1',parameter_version:'2026-03-23'},...definition};
+};
+
+export const nafmiiCpDraftRulePack={
+  schema_version:'rule-pack-v1',pack_id:'nafmii-cp',version:'2026.09-draft.1',supersedes_version:null,status:'draft',
+  scope:{market:'nafmii',offering:'cp',instruments:['standard-cp'],document_stages:['registration','issuance'],issuer_scopes:['domestic-nonfinancial-enterprise-public']},
+  validity:{published_on:null,effective_from:'2026-03-23',effective_to:null,transition_terms:['The 2026-03-23 notice changes basic-tier classification and registration mechanics; an industry reviewer must confirm its interaction with the 2023 procedure before release.']},
+  sources:[{
+    source_id:'nafmii-cp-guide-2021',kind:'formal_rule',authority:'中国银行间市场交易商协会',document_title:'非金融企业短期融资券业务指引（2021版）',source_version:'2021',
+    official_url:'https://www.nafmii.org.cn/ggtz/gg/202103/P020220117435171924460.docx',document_hash:'20995cb88877bd53e81bfc9190898fa21433c544ad2fb35fcd75737ac84ad5b1',
+    clause_locator:'第二条至第五条',
+    exact_quote:'第二条 本指引所称短期融资券，是指具有法人资格的非金融企业（以下简称企业）在银行间债券市场发行的，约定在1年内还本付息的债务融资工具。第三条 企业发行短期融资券应依据《非金融企业债务融资工具注册发行规则》在交易商协会注册。第四条 企业发行短期融资券所募集的资金应用于符合国家相关法律法规及政策要求的企业生产经营活动，并在发行文件中明确披露具体资金用途。企业在短期融资券存续期内变更募集资金用途应提前披露。第五条 企业发行短期融资券应按交易商协会《银行间债券市场非金融企业债务融资工具信息披露规则》在银行间债券市场披露信息。',
+    published_on:'2021-03-26',effective_from:'2021-03-26',effective_to:null,verified_by:'official-source-integrity',verified_at:CHECKED_AT,
+  },...commonSources],
+  rules:[
+    rule({rule_id:'cp-instrument-identity',title:'CP产品身份与一年内期限边界',checker_id:'cp-scope-and-tenor-check',source_ref_ids:['nafmii-cp-guide-2021'],applicability:{...applicability},
+      required_inputs:['issuer_legal_form','issuer_financial_status','market','offering','investor_scope','interest_start_date','maturity_date','stated_tenor'],exceptions:['境外、定向、资产支持、专项或主题产品须选择对应独立规则包。'],evidence_requirements:['发行人主体材料','发行对象依据','期限起止日及原始期限表达'],outputs:{when_met:'pass',when_not_met:'issue',severity:'warning'},boundaries:['CP须约定在1年内还本付息；不能套用SCP的270天边界，不能用固定365天替代所有日历年判断，也不能把恰好一年误判为超期。'],
+      positive_examples:[{example_id:'cp-identity-positive',summary:'境内非金融企业公开发行期限365天的标准CP。',expected_outcome:'pass',evidence_ref:'synthetic:cp-365-day'}],negative_examples:[{example_id:'cp-identity-negative',summary:'期限超过一年的工具被标成CP。',expected_outcome:'issue',evidence_ref:'synthetic:cp-over-one-year'}],boundary_examples:[{example_id:'cp-identity-boundary',summary:'只有到期日但缺起息日，无法计算是否在一年内。',expected_outcome:'needs_evidence',evidence_ref:'synthetic:cp-tenor-anchor-missing'}]}),
+    rule({rule_id:'cp-registration-files',title:'CP注册文件、方式与有效期证据',checker_id:'cp-registration-evidence-check',source_ref_ids:['nafmii-registration-rules-2023','nafmii-basic-tier-notice-2026'],applicability:{...applicability},
+      required_inputs:['registration_mode','registration_notice','registration_expiry','document_stage','issuer_tier'],exceptions:['历史过渡项目及专项或主题产品按其适用规定处理。'],evidence_requirements:['注册文件','接受注册通知书（发行阶段）','发行人层级与注册方式依据'],outputs:{when_met:'pass',when_not_met:'needs_evidence',severity:'warning'},boundaries:['不得沿用2023规程中原第四类企业的旧备案逻辑作为2026年3月23日后的确定结论。'],
+      positive_examples:[{example_id:'cp-registration-positive',summary:'发行阶段提供在有效期内且覆盖CP的注册通知。',expected_outcome:'pass',evidence_ref:'synthetic:cp-registration-valid'}],negative_examples:[{example_id:'cp-registration-negative',summary:'以不覆盖CP的注册文件支持本期发行。',expected_outcome:'issue',evidence_ref:'synthetic:cp-registration-mismatch'}],boundary_examples:[{example_id:'cp-registration-boundary',summary:'基础层统一注册项目的过渡适用依据不完整。',expected_outcome:'needs_evidence',evidence_ref:'synthetic:cp-registration-transition'}]}),
+    rule({rule_id:'cp-chapter-and-financial-disclosure',title:'CP的M表章节与财务披露',checker_id:'cp-m-form-coverage-check',source_ref_ids:['nafmii-public-forms-2020','nafmii-disclosure-rules-2021'],applicability:{...applicability},
+      required_inputs:['document_stage','m_form_coverage','financial_periods','financial_scope','conditional_features'],exceptions:['符合条件的后续发行可使用BM表；补充表、产品表和行业表按事实触发。'],evidence_requirements:['M-0至M-17章节映射','最近三年审计报告和最近一期报表证据','合并及母公司口径'],outputs:{when_met:'pass',when_not_met:'needs_evidence',severity:'warning'},boundaries:['SCP的MC.4省略披露机制不适用于CP；评级报告为如有，不得因缺少评级而虚构。'],
+      positive_examples:[{example_id:'cp-chapters-positive',summary:'标准首期CP映射M表并保留完整财务章节。',expected_outcome:'pass',evidence_ref:'synthetic:cp-full-m-form'}],negative_examples:[{example_id:'cp-chapters-negative',summary:'复制SCP省略披露方式删除CP财务章节。',expected_outcome:'issue',evidence_ref:'synthetic:cp-scp-omission'}],boundary_examples:[{example_id:'cp-chapters-boundary',summary:'季度报表已披露但发行人层级和更新要求尚不明确。',expected_outcome:'needs_evidence',evidence_ref:'synthetic:cp-quarter-update'}]}),
+    rule({rule_id:'cp-funds-use-and-ongoing-disclosure',title:'CP募集资金用途与存续披露',checker_id:'cp-funds-and-disclosure-check',source_ref_ids:['nafmii-cp-guide-2021','nafmii-public-forms-2020','nafmii-disclosure-rules-2021','nafmii-basic-tier-notice-2026'],applicability:{...applicability},
+      required_inputs:['funds_use_stage','funds_use_items','issue_amount','change_procedure','disclosure_arrangements','payment_schedule'],exceptions:['基础层有额度统一注册的注册阶段原则上可按大类匡算；政策敏感用途仍按现行要求披露明细。'],evidence_requirements:['用途逐项金额与材料锚点','注册/发行阶段','变更、重大事项、定期报告和兑付披露安排'],outputs:{when_met:'pass',when_not_met:'needs_evidence',severity:'warning'},boundaries:['用途未知保持待补，不得造值；注册阶段大类匡算不等于发行阶段无需具体披露。'],
+      positive_examples:[{example_id:'cp-funds-positive',summary:'发行阶段用途、金额和披露安排完整且相互一致。',expected_outcome:'pass',evidence_ref:'synthetic:cp-funds-complete'}],negative_examples:[{example_id:'cp-funds-negative',summary:'分项用途金额超过发行规模且未提示冲突。',expected_outcome:'issue',evidence_ref:'synthetic:cp-funds-overflow'}],boundary_examples:[{example_id:'cp-funds-boundary',summary:'统一注册阶段只有用途大类且具体一期尚未形成。',expected_outcome:'needs_evidence',evidence_ref:'synthetic:cp-funds-registration-stage'}]}),
+  ],
+  sample_suite:{suite_id:'nafmii-cp-synthetic-engineering',version:'1',data_classification:'synthetic',cases:[
+    {case_id:'cp-synthetic-basic',polarity:'positive',evidence_ref:'synthetic:cp-365-day',result:'passed',reviewed_by:'engineering-fixture-author',reviewed_at:CHECKED_AT},
+    {case_id:'cp-synthetic-over-tenor',polarity:'negative',evidence_ref:'synthetic:cp-over-one-year',result:'passed',reviewed_by:'engineering-fixture-author',reviewed_at:CHECKED_AT},
+    {case_id:'cp-synthetic-transition',polarity:'boundary',evidence_ref:'synthetic:cp-registration-transition',result:'passed',reviewed_by:'engineering-fixture-author',reviewed_at:CHECKED_AT},
+  ]},reviews:[],release:null,withdrawal:null,
+} satisfies RulePack;
+
+export const nafmiiCpChapterTemplate={...nafmiiMtnChapterTemplate,template_id:'nafmii-cp-m-form',version:'2026.09-draft.1',rule_pack_id:'nafmii-cp',offering:'cp'} satisfies ChapterTemplate;
+
+export const nafmiiCpCoverageManifest={schema_version:'capability-coverage-v1',manifest_id:'nafmii-cp-coverage',version:'2026.09-draft.1',rule_pack_id:'nafmii-cp',assessed_at:CHECKED_AT,items:[
+  {item_id:'standard-cp-m-form',area:'标准公开发行CP的M表章节骨架',disposition:'covered',document_stages:['registration','issuance'],source_ref_ids:['nafmii-public-forms-2020'],rationale:'复用协会通用M-0至M-17章节结构，不复用MTN产品规则。'},
+  {item_id:'cp-core-product',area:'标准CP产品身份、一年内期限、注册、用途和披露',disposition:'covered',document_stages:['registration','issuance'],source_ref_ids:['nafmii-cp-guide-2021','nafmii-registration-rules-2023','nafmii-disclosure-rules-2021'],rationale:'已记录官方原件URL、哈希、效力日期和条款定位。'},
+  {item_id:'basic-tier-2026',area:'2026基础层分类和有额度统一注册',disposition:'uncovered',document_stages:['registration','issuance'],source_ref_ids:['nafmii-basic-tier-notice-2026','nafmii-registration-rules-2023'],rationale:'变化已记录，但替代和过渡关系尚未经行业审核。'},
+  {item_id:'mtn-ppn-scp-dfi',area:'MTN、PPN、SCP、DFI产品规则',disposition:'not_applicable',document_stages:['registration','issuance'],source_ref_ids:['nafmii-cp-guide-2021'],rationale:'本包仅适用于offering=cp；尤其不得把SCP的270天及省略披露机制用于CP。'},
+  {item_id:'special-products',area:'绿色、科创、乡村振兴等专项或主题CP',disposition:'uncovered',document_stages:['registration','issuance'],source_ref_ids:[],rationale:'需要专项规则、补充表、适用矩阵和独立样本。'},
+  {item_id:'industry-overlays',area:'房地产、城市基础设施等行业补充表',disposition:'uncovered',document_stages:['registration','issuance'],source_ref_ids:[],rationale:'尚未录入现行行业补充表及政策证据。'},
+  {item_id:'authorized-real-samples',area:'基础、复杂、边界真实样本',disposition:'uncovered',document_stages:['registration','issuance'],source_ref_ids:[],rationale:'只有合成工程样本，不能替代授权真实任务和行业审核。'},
+],open_blockers:[
+  {blocker_id:'industry-source-review',description:'现行效力、过渡、范围和例外尚未由行业审核人签署。',required_evidence:'行业审核attestation及逐项意见。'},
+  {blocker_id:'real-sample-suite',description:'缺少授权真实CP基础、复杂和边界样本。',required_evidence:'样本哈希、期望结果、规则锚点及行业复核记录。'},
+  {blocker_id:'special-overlay-gaps',description:'专项产品和行业补充表尚未覆盖。',required_evidence:'补齐独立规则和样本，或批准受限上线范围。'},
+]} satisfies CoverageManifest;

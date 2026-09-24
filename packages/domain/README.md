@@ -37,6 +37,10 @@ Production release remains blocked until an industry reviewer confirms source ef
 
 Product-specific releases must use `publishRulePackBundle`; it validates the pack, chapter template and coverage manifest together and rejects any remaining `uncovered` item or open blocker before the lower-level publication checks run.
 
+## CP engineering draft (#28)
+
+`nafmiiCpDraftRulePack` is an independent `nafmii` + `cp` bundle. It reuses only the association-wide M-table chapter structure and common registration/disclosure sources. Its product identity comes from the fingerprinted 2021 CP guide, including the one-year tenor boundary. SCP's 270-day definition and disclosure omission mechanism are explicitly outside this pack. Like the MTN bundle, CP remains a non-advertised draft until its machine-readable blockers are resolved with industry review and authorized real samples.
+
 Run:
 
 ```bash
