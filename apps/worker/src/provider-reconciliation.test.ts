@@ -11,6 +11,7 @@ import { DurableProbeJournal } from './durable-probe-journal.js';
 import { runDeepSeekProbe, type ProbeInput, type ProbeJournal, type ProbeObservation } from './deepseek-probe.js';
 import { runOnce } from './index.js';
 import { reuseProviderCallOrSend } from './provider-reconciliation.js';
+import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -28,7 +29,7 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
   const pool=new Pool({connectionString:connection});
   const blobs=azureBlobs(blobConnection!,'bondbuddy-m1-12-result');
   let activeOwner='synthetic-reconcile-owner';
-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:activeOwner,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:activeOwner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   async function fixture(label:string) {
     const p=await send('POST','/api/v1/projects',{name:`Synthetic reconciliation ${label}`,kind:'update',issuer_name:null,market:null,offering:null});
@@ -114,7 +115,7 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
     const wrongProjectRef=await persistProviderResultObject({blobs,intent:{...pendingResult.input,project_id:'synthetic-other-project'},bytes:Buffer.from('{"ok":true,"candidate":3}'),resultSchemaVersion:'synthetic-update-result-v1',validate:validResult});
     const wrongProject={...pendingResult.observation,project_id:'synthetic-other-project',...wrongProjectRef};
     let unauthorizedBlobReads=0;
-    const guardedBlobs:PrivateBlobs={put:(key,bytes,mediaType)=>blobs.put(key,bytes,mediaType),get:async key=>{unauthorizedBlobReads++;return blobs.get(key);},getIfExists:async key=>{unauthorizedBlobReads++;return blobs.getIfExists(key);},delete:key=>blobs.delete(key)};
+    const guardedBlobs:PrivateBlobs={put:(key,bytes,mediaType)=>blobs.put(key,bytes,mediaType),get:async key=>{unauthorizedBlobReads++;return blobs.get(key);},getIfExists:async key=>{unauthorizedBlobReads++;return blobs.getIfExists(key);},getIfExistsBounded:async(key,maxBytes)=>{unauthorizedBlobReads++;return blobs.getIfExistsBounded(key,maxBytes);},delete:key=>blobs.delete(key)};
     await assert.rejects(reconcilePausedProviderCall(pool,guardedBlobs,wrongProject,validResult),/NOT_FOUND|Resource does not exist/);
     const foreignRef=await persistProviderResultObject({blobs,intent:{...pendingResult.input,owner_user_id:'synthetic-foreign-owner'},bytes:Buffer.from('{"ok":true,"candidate":4}'),resultSchemaVersion:'synthetic-update-result-v1',validate:validResult});
     const foreign={...pendingResult.observation,owner_user_id:'synthetic-foreign-owner',...foreignRef};
@@ -228,6 +229,19 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
     assert.equal((await send('POST',`/api/v1/runs/${failed.runId}/resume`,{reason:'synthetic'})).json().code,'ALREADY_TERMINAL');
 
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_provider_result_refs')).rows[0].n>0,true);
+
+    // The installed worker seam can publish only an explicit candidate after the shared
+    // Word validator and Blob readback succeed; the fixture remains synthetic.
+    const word=await fixture('word-delivery');
+    const candidate=makeWorkerDocxFixture();
+    assert.equal(await runOnce(pool,async()=>({kind:'word_candidate',bytes:candidate}),30,blobs),true);
+    const deliveredRun=(await send('GET',`/api/v1/runs/${word.runId}`)).json();
+    assert.equal(deliveredRun.state,'succeeded');assert.ok(deliveredRun.artifact_id);
+    const artifactMeta=await send('GET',`/api/v1/artifacts/${deliveredRun.artifact_id}`);
+    assert.equal(artifactMeta.statusCode,200,artifactMeta.body);
+    const artifactDownload=await send('GET',artifactMeta.json().download_url);
+    assert.equal(artifactDownload.statusCode,200,artifactDownload.body);
+    assert.deepEqual(artifactDownload.rawPayload,candidate,'the successful worker run has an owned fetchable Word artifact');
   } finally {
     await pool.query('DROP TRIGGER IF EXISTS bb_test_fail_provider_outbox ON bb_outbox');
     await pool.query('DROP FUNCTION IF EXISTS bb_test_fail_provider_outbox()');

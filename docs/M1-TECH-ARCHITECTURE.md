@@ -79,11 +79,11 @@ deploy/              # Compose、Nginx、部署与回滚
 
 #6 契约修订采用规格 04 的七类普通材料格式及现有 `project-fields.js` 的 M1 更新材料分区；声明 MIME 不可信，服务端核对真实内容。历史稿识别响应逐字段保留来源、不确定性和报告期集合；公开的项目材料 `ProjectEvent`、运行 `RunEvent` 与仅供受信服务使用的 `InternalObservabilityEvent` 分开。草稿 PATCH 在服务端合并旧值后校验市场/发行方式组合，不能只校验局部 JSON。具体值、错误码与交接说明仍以 `packages/contracts/` 为唯一公共定义；#79 的日志持久化不因本次 DTO 定义而视为完成。
 
-### #11 首个 Vite 表单与草稿持久化切片（2026-09-24）
+### #11 更新项目表单与草稿持久化切片（2026-09-24）
 
-`apps/web/` 复用原型样式，以 TypeScript 导入公共契约，使用同源 `/api/v1` cookie 会话、CSRF 和 If-Match，提供已有账号登录、项目草稿保存与打开、字段联动和冲突对比。运行与测试说明见 `apps/web/README.md`。这是渐进迁移的第一页，未改旧原型服务，也未接通上传、真实对话或执行。
+在 #10/#12 已有的 `apps/web/` 中扩展新建及编辑表单，保留同源 API client、登录/会话隔离、项目列表、串行自动保存和材料上传。新增历史稿有/没有、展开的选填信息、市场/发行方式联动、灵活债券与机构描述、多项资金用途和右侧补充说明。DFI 仅属于交易商协会下的发行方式，未定金额为 null；不增加注册模式问卷。409 保留本页输入，用户可自行复制后明确放弃并加载服务器新版；不自动覆盖。嵌套值比较忽略 JSONB 对象键顺序，资金用途数组顺序仍影响草稿变化。运行与测试说明见 `apps/web/README.md`。
 
-`packages/contracts/src/update-project.ts` 补充规格 05 已确认的草稿输入，POST/PATCH/GET 的 `update_details` 为兼容旧客户端而可省略；PATCH 省略时保留，出现时完整替换，null 表示未知。`0009_m1_update_project_details.sql` 仅新增项目 JSONB 列，服务端合并默认值并校验真实日期和不同单位的金额比较。项目改动及 outbox 同事务；新 input manifest 包含完整用户输入，旧快照不重写。目标字段独立于原稿识别；补充输入未经模型处理/证据确认。公共契约、迁移和 UI 分别交 Chris/Felix 评审；本切片不解除 #8/#16/#18/#79 的剩余联调与上线门槛。
+`packages/contracts/src/update-project.ts` 补充规格 05 已确认的草稿输入，POST/PATCH/GET 的 `update_details` 为兼容旧客户端而可省略；PATCH 省略时保留，出现时完整替换，null 表示未知。`0013_m1_update_project_details.sql` 仅新增项目 JSONB 列，服务端合并默认值并校验真实日期和不同单位的金额比较。项目改动及 outbox 同事务；新 input manifest 包含完整用户输入，旧快照不重写。目标字段独立于原稿识别；补充输入未经模型处理/证据确认。表单数据与真实 PostgreSQL 16 联调，不代表材料事件恢复、真实多轮对话、模型调用或 Word 交付已打通。公共契约、迁移和 UI 需 Chris/Felix 评审；本切片不解除 #8/#16/#18/#79 的剩余联调与上线门槛。
 
 ### #79 logging foundation slice (2026-09-24)
 
@@ -93,7 +93,7 @@ deploy/              # Compose、Nginx、部署与回滚
 
 ### #17 queue implementation slice (2026-09-24)
 
-`0004_m1_durable_jobs.sql` and `apps/api/src/queue.ts` implement PostgreSQL job leases, checkpoints, owner-bound run events and transactional outbox transitions. `apps/worker/` is a separate Node process with an injectable synthetic processor; its shipped CLI refuses production execution. The existing run and event DTOs remain the public contract. The API's real entry point still returns 501 for execute/cancel/resume until #16 provider verification, #79 operation/prompt/attempt/usage/error logs and checked Word delivery are connected. A pending provider attempt pauses on recovery and requires supplier reconciliation before resume. This slice establishes queue mechanics and does not assert real update acceptance. The explicit test-only queue option is for local integration tests, and the existing prototype and Cowork applications are untouched.
+`0004_m1_durable_jobs.sql` and `apps/api/src/queue.ts` implement PostgreSQL job leases, checkpoints, owner-bound run events and transactional outbox transitions. `apps/worker/` is a separate Node process with an injectable synthetic processor; its shipped CLI refuses production execution. The existing run and event DTOs remain the public contract. The API's real entry point still returns 501 for execute/cancel/resume until #16 provider verification, #79 operation/prompt/attempt/usage/error logs and a real checked Word generation path are integrated. A pending provider attempt pauses on recovery and requires supplier reconciliation before resume. This slice establishes queue mechanics and does not assert real update acceptance. The explicit test-only queue option is for local integration tests, and the existing prototype and Cowork applications are untouched.
 
 `0007_m1_provider_result_reconciliation.sql` appends immutable owner/project/job/run/call/attempt bindings for provider result candidates and observations; it is independent of the concurrent #8 `0006` storage migration. A result is stored as JSON in the private Blob container by content hash; a single candidate with measured, non-conflicting #79 usage is added to the job checkpoint in the same transaction as its observation and outbox event. The worker must read and revalidate that checkpoint result before calling a provider, so a completed attempt is reused after restart. Missing/unknown/conflicting evidence remains paused; a second result hash is retained as a conflict rather than selected. A measured supplier failure ends the run as failed with no automatic retry. A verified `confirmed_not_sent` observation requires an explicit resume and a new attempt number before sending. These seams remain synthetic/internal only and do not enable the production routes or replace Word delivery checks.
 
@@ -109,6 +109,10 @@ This slice does not add public HTTP DTOs, database persistence or production que
 
 Production publication requires verified sources, source/pack validity, enabled non-research rules, authorized real positive/negative/boundary sample results, and separate industry/technical attestations completed before release. Draft, test-channel, withdrawn, expired, source-expired, mismatched or evidence-incomplete packs cannot advertise capability. Rule/source text remains data under a strict schema with no prompt/system/tool fields; any future model rendering is a separate versioned boundary. The checked-in example is explicitly synthetic, unverified, disabled and draft-only, and does not claim coverage for any product. #20–#30 must supply their own authorized sources, samples and professional acceptance; persistence, operator authorization, signed artifact storage and transactional outbox publication remain Felix integration work before production use.
 
+### #17 Word delivery validator and promotion gate (2026-09-24)
+
+`0010_m1_word_delivery_evidence.sql` is the append-only #17 Word quality/delivery gate after accepted account lifecycle migration 0009 (0008 is the #7 username/password migration). `inspectDocx` checks the actual ZIP package, CRC/decompression, XML, required OOXML parts, content types and relationship targets/references under fixed archive, part, XML, entry-count and compression-ratio bounds. The trusted worker seam validates candidate bytes before writing; it records immutable owner/run/hash-bound evidence and promotes only after a bounded private-Blob readback has the same size and SHA-256. Duplicate promotion and lease recovery reuse the same artifact/evidence identity. `queue.finish` repeats the bounded read, rechecking evidence and Blob bytes; a later missing/mismatched Blob read appends unavailable evidence and revokes the row. Owner-scoped metadata/download routes also use evidence-sized reads and compare the stored hash. Database triggers reject available artifacts or successful runs without matching evidence. The validator is structural only: it does not render, assess financial/legal content or substitute for professional review. No real Word generator is installed, so worker integration fixtures are synthetic and production execute/cancel/resume remain 501.
+
 1. 用户完成用户名密码登录，API 建立会话；前端创建项目草稿并按 revision 保存。
 2. 上传经 API 创建受限会话，Blob 接收字节；API 核对 hash 后登记不可变材料版本，worker 解析/OCR 并登记证据锚点。
 3. 用户预检和执行时，API 校验 owner、材料、目标市场/品种、规则能力与输入版本；事务内写 run、首次 job event 和 outbox。M1 标记 `billing_mode=platform_trial`。
@@ -117,6 +121,12 @@ Production publication requires verified sources, source/pack validity, enabled 
 6. 外部模型、存储或日志故障时，按同一 run 和检查点恢复。已经发出的模型请求先对账，不能直接重发；无法持久化关键事件时停止新的外部调用并告警。
 
 ## 5. 四人工作面与交接
+
+### #10/#12 浏览器项目与材料上传切片（2026-09-24）
+
+`apps/web/` 以 Vite、原生 TypeScript 和原型的视觉样式接入现有 `/api/v1`，复用 `packages/contracts` 类型。当前覆盖已有账号登录、会话刷新/退出、本人项目分页列表、已加载名称搜索、新建项目、名称/发行人自动保存，以及按公共固定分区上传文件。每个文件有独立上传会话、XHR 字节进度、服务端保存/核验阶段、失败重试和取消；只有 `complete` 返回材料版本才显示服务端确认成功。刷新恢复读取项目材料事件并按 owner-scoped material ID 拉取当前状态，不从浏览器存储恢复个人数据；当前 API 项目事件仍返回 501，生产重登录材料恢复尚未联通。409 保留输入且不覆盖服务端新版本；跨页账号切换清除旧页面内容。没有新增公开契约或数据库迁移。
+
+该切片不宣称完成 #10/#12：项目材料恢复仍依赖未实现的 project events 接口；同内容去重、历史稿重复识别抑制、扫描/加密/缺页提示的完整验收及真实 Blob 浏览器验证待完成。默认 upload tests 使用合成 API fixture，不构成 live acceptance。全局搜索、类型/状态筛选和归档仍依赖后续接口；业务表单由上述 #11 切片扩展，#18/#34 的完整工作区后续接入。不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
 
 | 负责人 | 主改动面 | 必须与谁对齐 |
 | --- | --- | --- |
@@ -162,3 +172,11 @@ Production publication requires verified sources, source/pack validity, enabled 
 ### #7 用户名密码决策（2026-09-24）
 
 用户选择 M1 使用用户名密码，短信供应商接入不需要。以上 #7 短信切片仅为历史实现记录；公开 `/api/v1` 契约现使用 `auth/register` 和 `auth/login`。`0008_m1_username_password.sql` 追加唯一小写 ASCII 用户名与 Argon2id 凭据；旧手机账号保留，但没有自动用户名、密码或账号接管入口。旧短信路由从 API 和 OpenAPI 移除。登录使用账号及账号/来源组合的 15 分钟失败窗口（分别 10、5 次）；不按共享 IP 单独封禁。密码找回与账号迁移需 #9 单独设计。正式浏览器、TLS 和部署验收仍未完成。
+
+### #9 账号设置、会话管理与注销切片（2026-09-24）
+
+用户名密码决策后，Issue #9 原文的“换号验证/旧号码找回”按等价安全要求落地：不存在仅凭新凭据接管旧账号的入口。追加迁移 `0009_m1_account_lifecycle.sql` 增加 `closed` 账号状态、会话撤销原因与最近刷新时间、注销记录表，以及已注销 owner 的写入拒绝触发器。`/api/v1/account` 返回用户名、旧手机号掩码、协议版本、改密时间、`self_service_recovery=unavailable` 和配置的支持入口（`BB_SUPPORT_CONTACT`，未配置为 null）。会话列表只含本人有效会话；撤销指定会话或其他全部会话后，其访问/刷新令牌立即失效，外部或未知会话 ID 统一 404。改密必须验证当前密码，并撤销其他会话；会话内密码校验失败返回 403 `PASSWORD_INVALID`（不当成会话过期），与登录共用账号及账号/来源限流。
+
+注销先 `GET /account/closure` 列出未结束 run、项目/材料/成果数量、保留记录与 `local_exports=not_affected`；有未终态 run 时 `POST` 返回 409 `ACCOUNT_CLOSURE_BLOCKED`。确认用户名和密码后，同一事务锁定用户行、软删材料（经 0006 触发器写存储墓碑）与项目、撤销成果交付与下载授权、撤销全部会话、删除密码凭据、标记账号关闭并写注销记录和 `user.closed` outbox。用户名保留不可重新注册；协议接受、注册事件、run 历史、#79 操作/用量日志与 outbox 按依法留存保留。并发写入由触发器等待注销事务提交后拒绝。`balance_status` 固定为 `not_applicable_m1`，M2 钱包/退款须以新增状态和迁移接入，不能直接复用。
+
+仍未关闭：无可靠身份核验渠道，因此不提供自助找回，人工找回流程与核验证据需产品/合规定稿，客服不得绕过；被不可变输入快照引用的材料、成果文件字节与 prompt 快照正文还没有注销后的物理清理生命周期；浏览器设置页由 `apps/web/` 后续接入。运行与验证见 `apps/api/README.md`。

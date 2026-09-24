@@ -1,6 +1,7 @@
 import { Value } from '@sinclair/typebox/value';
 import { schemas, MARKETS, MARKET_OFFERINGS, emptyUpdateDetails, updateDetailsErrors, type Market, type Offering, type Project, type UpdateDetails } from '@bondbuddy/contracts';
-import type { ProjectCreate } from './api.js';
+import type { Dto } from './api.js';
+export type ProjectCreate = Dto<'ProjectCreateRequest'>;
 
 export function blankDraft(): ProjectCreate {
   return { name: '', kind: 'update', issuer_name: null, market: null, offering: null, update_details: emptyUpdateDetails() };

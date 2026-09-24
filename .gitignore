@@ -14,6 +14,7 @@ outputs/*
 .env
 .env.*
 *.pem
+/openclaw-vm_key.pem
 *.key
 *.pfx
 *.p12

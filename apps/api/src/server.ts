@@ -1,10 +1,11 @@
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool } from 'pg';
-import { openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { action as queueAction, enqueue } from './queue.js';
 import { recordOperation, rejectOperation } from './observability.js';
+import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean };
@@ -12,17 +13,18 @@ const param = (request: FastifyRequest, name: string) => (request.params as Reco
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
 const MAX_BYTES = 104857600;
+const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
 
 export function createServer(settings: Settings = {}) {
   // Trust only an explicitly configured reverse proxy for client source addresses.
   const app = Fastify({ logger: false, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
-  const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION};
+  const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_BYTES }, (_request, value, done) => done(null, value));
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: false, field_errors: [], correlation_id: request.id });
+    if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
     if (error instanceof Error && 'validation' in error && error.validation) return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Request validation failed', retryable: false, field_errors: [], correlation_id: request.id });
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
@@ -38,6 +40,21 @@ export function createServer(settings: Settings = {}) {
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
+  async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
+    let bytes:Buffer|null;
+    if(artifact.media_type===WORD_MEDIA_TYPE){
+      const expectedSize=Number(artifact.delivery_evidence_byte_size);
+      if(!Number.isSafeInteger(expectedSize)||expectedSize<0||expectedSize>DOCX_LIMITS.archiveBytes)
+        throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+      try { bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize); }
+      catch { throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed'); }
+      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    }else{
+      bytes=await blob().get(artifact.object_key);
+    }
+    if(digest(bytes)!==artifact.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    return bytes;
+  }
   app.get('/health', { schema: { response: { 200: schemas.HealthResponse } } }, async () => ({ status: 'ok' as const, service: 'bondbuddy-m1-api-skeleton' as const, implementation: 'health-and-contract-only' as const }));
   app.get('/openapi.json', async () => openApiDocument());
   app.get('/api/v1/projects', async request => {
@@ -106,7 +123,7 @@ export function createServer(settings: Settings = {}) {
     await project(db(),user,id);blob();
     if(b.byte_size>MAX_BYTES)throw new Problem(422,'VALIDATION_FAILED','Upload exceeds limit');
     const suffix=b.filename.toLowerCase().split('.').at(-1);
-    const expectedExtensions:Record<string,string[]>={'application/pdf':['pdf'],'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['docx'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['xlsx'],'text/csv':['csv'],'text/plain':['txt'],'image/png':['png'],'image/jpeg':['jpg','jpeg']};
+    const expectedExtensions:Record<string,string[]>={[PDF_MEDIA_TYPE]:['pdf'],[DOCX_MEDIA_TYPE]:['docx'],[XLSX_MEDIA_TYPE]:['xlsx'],[CSV_MEDIA_TYPE]:['csv'],[TEXT_MEDIA_TYPE]:['txt'],[PNG_MEDIA_TYPE]:['png'],[JPEG_MEDIA_TYPE]:['jpg','jpeg']};
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
     await transaction(db(),async client=>{
@@ -166,7 +183,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/projects/:project_id/materials/:material_id/download',async (request,reply)=>{
     const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
     const bytes=await blob().get(m.object_key);if(digest(bytes)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Stored material failed integrity check');
-    return reply.header('content-type',m.media_type).header('cache-control','private, no-store').send(bytes);
+    return reply.header('content-type',m.media_type).header('x-content-type-options','nosniff').header('cache-control','private, no-store').send(bytes);
   });
   app.delete('/api/v1/projects/:project_id/materials/:material_id',async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id');
@@ -237,18 +254,22 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query("SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND quality_status='passed' AND delivery_status='available' ORDER BY version DESC LIMIT 1",[user,id]);
-    if(!q.rows[0])throw missing();const a=q.rows[0];const bytes=await blob().get(a.object_key);if(digest(bytes)!==a.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+      LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
+    if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
     await db().query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
     return {artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString()};
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query("SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND quality_status='passed' AND delivery_status='available' ORDER BY version DESC LIMIT 1",[user,id]);
+    const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+      LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
+      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
-    const bytes=await blob().get(a.object_key);if(digest(bytes)!==a.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
+    const bytes=await verifiedArtifactBytes(a);
     return reply.header('content-type',a.media_type).header('cache-control','private, no-store').send(bytes);
   });
   const sourceProfile='/api/v1/projects/:project_id/materials/:material_id/source-profile';

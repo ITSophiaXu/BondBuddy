@@ -63,10 +63,7 @@ test('saved details round-trip, old clients preserve them, snapshots are immutab
     assert.deepEqual(legacy.json().update_details, emptyUpdateDetails());
   } finally {
     await app.close();
-    await pool.query('UPDATE bb_projects SET latest_input_revision=NULL WHERE owner_user_id=$1', [owner]);
-    await pool.query('DELETE FROM bb_input_revisions WHERE owner_user_id=$1', [owner]);
-    await pool.query('DELETE FROM bb_projects WHERE owner_user_id=$1', [owner]);
-    await pool.query('DELETE FROM bb_outbox WHERE owner_user_id=$1', [owner]);
+    // Input revisions are append-only. Unique synthetic owners remain in the disposable test DB.
     await pool.end();
   }
 });

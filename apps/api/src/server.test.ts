@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
+import { PDF, pdfSample } from './upload-safety.samples.js';
 
 const origin='http://bondbuddy.test';
 test('production seam rejects arbitrary client identity and reports honest capabilities',async()=>{
@@ -26,12 +27,12 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
   const send=async(method:string,url:string,payload?:unknown,extra:Record<string,string>={})=>await app.inject({method:method as any,url,headers:{origin,...extra},payload:payload as any});
   const create=async(name:string)=>send('POST','/api/v1/projects',{name,kind:'update',issuer_name:null,market:'nafmii',offering:'mtn'});
   try{
-    await pool.query('TRUNCATE bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const a=await create('Synthetic Alice');assert.equal(a.statusCode,201,a.body);const project=a.json().project_id;
     const patch=await send('PATCH',`/api/v1/projects/${project}`,{name:'Synthetic Updated'}, {'if-match':'1'});assert.equal(patch.statusCode,200,patch.body);
     const stale=await send('PATCH',`/api/v1/projects/${project}`,{name:'Stale'},{'if-match':'1'});assert.equal(stale.statusCode,409);assert.equal(stale.json().code,'INPUT_REVISION_CONFLICT');
-    const bytes=Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');const sha=digest(bytes);
-    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'});assert.equal(upload.statusCode,201,upload.body);
+    const bytes=pdfSample();const sha=digest(bytes);
+    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});assert.equal(upload.statusCode,201,upload.body);
     const uploaded=await send('PUT',upload.json().upload_url,bytes,{'content-type':'application/octet-stream'});assert.equal(uploaded.statusCode,204,uploaded.body);
     const completeUrl=`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`;
     const complete=await send('POST',completeUrl,{byte_size:bytes.length,sha256:sha});assert.equal(complete.statusCode,200,complete.body);
@@ -56,16 +57,15 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     const run1=await send('POST','/api/v1/runs/execute',req);assert.equal(run1.statusCode,202,run1.body);assert.equal(run1.json().state,'paused');
     const run2=await send('POST','/api/v1/runs/execute',req);assert.equal(run2.json().run_id,run1.json().run_id);
     const collision=await send('POST','/api/v1/runs/execute',{...req,input_manifest_ref:'different'});assert.equal(collision.statusCode,409);assert.equal(collision.json().code,'IDEMPOTENCY_CONFLICT');
-    const artifactId='synthetic-artifact',artifactKey=`users/synthetic-alice/artifacts/${artifactId}`,artifactBytes=Buffer.from('synthetic checked bytes');
-    await blobs.put(artifactKey,artifactBytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    await pool.query("INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status) VALUES($1,1,$2,$3,$4,$5,$6,'passed','available')",[artifactId,'synthetic-alice',run1.json().run_id,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',digest(artifactBytes),artifactKey]);
+    const artifactId='synthetic-artifact',artifactKey=`users/synthetic-alice/artifacts/${artifactId}`;
+    await pool.query("INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status) VALUES($1,1,$2,$3,$4,$5,$6,'pending','pending')",[artifactId,'synthetic-alice',run1.json().run_id,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',digest('unverified synthetic bytes'),artifactKey]);
     active='synthetic-bob';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}/events`)).statusCode,404);
-    active='synthetic-alice';const artifactMeta=await send('GET',`/api/v1/artifacts/${artifactId}`);assert.equal(artifactMeta.statusCode,200);assert.equal((await send('GET',artifactMeta.json().download_url)).statusCode,200);const events=await send('GET',`/api/v1/runs/${run1.json().run_id}/events`);assert.equal(events.json().items.length,1);
+    active='synthetic-alice';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404,'pending artifacts cannot receive download grants');assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);const events=await send('GET',`/api/v1/runs/${run1.json().run_id}/events`);assert.equal(events.json().items.length,1);
     const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,8);
     await pool.query("CREATE FUNCTION bb_fail_test_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='material.persisted' THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END $$");
     await pool.query('CREATE TRIGGER bb_fail_test_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_fail_test_outbox()');
-    const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'});
+    const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});
     assert.equal((await send('PUT',upload2.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
     assert.equal((await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload2.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha})).statusCode,500);
     const rolled=await pool.query('SELECT count(*)::int AS n FROM bb_material_versions WHERE upload_id=$1',[upload2.json().upload_id]);assert.equal(rolled.rows[0].n,0);
@@ -86,7 +86,7 @@ test('username/password sessions preserve owner resources across relogin', {skip
   const register=(username:string,password:string)=>send('POST','/api/v1/auth/register',{username,password,accepted_terms_version:'synthetic-v1'});
   const login=(username:string,password:string)=>send('POST','/api/v1/auth/login',{username,password});
   try{
-    await pool.query('TRUNCATE bb_password_login_limits,bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_users,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE bb_password_login_limits,bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_users,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const pwd='synthetic password for Alice 123';
     assert.equal((await send('POST','/api/v1/auth/register',{username:'Alice_One',password:pwd,accepted_terms_version:'synthetic-v1'},{},{origin:'https://evil.test'})).statusCode,403);
     assert.equal((await register('alice_one','short')).statusCode,422);
@@ -109,8 +109,8 @@ test('username/password sessions preserve owner resources across relogin', {skip
     assert.equal((await send('POST','/api/v1/projects',{name:'Denied',kind:'update',issuer_name:null,market:null,offering:null},c3,{origin:'https://evil.test'})).statusCode,403);
     const created=await send('POST','/api/v1/projects',{name:'Synthetic owner project',kind:'update',issuer_name:null,market:null,offering:null},c3);assert.equal(created.statusCode,201,created.body);
     const project=created.json().project_id;
-    const bytes=Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');const sha=digest(bytes);
-    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:'application/pdf',byte_size:bytes.length,sha256:sha,role:'audit'},c3);assert.equal(upload.statusCode,201,upload.body);
+    const bytes=pdfSample();const sha=digest(bytes);
+    const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'},c3);assert.equal(upload.statusCode,201,upload.body);
     assert.equal((await send('PUT',upload.json().upload_url,bytes,c3,{'content-type':'application/octet-stream'})).statusCode,204);
     const complete=await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha},c3);assert.equal(complete.statusCode,200,complete.body);
     const mat=complete.json().material_id;

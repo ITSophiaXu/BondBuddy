@@ -9,8 +9,8 @@
     "packages/contracts",
     "packages/domain",
     "apps/api",
-    "apps/web",
-    "apps/worker"
+    "apps/worker",
+    "apps/web"
   ],
   "scripts": {
     "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web",

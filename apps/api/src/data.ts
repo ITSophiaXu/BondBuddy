@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { fileTypeFromBuffer } from 'file-type';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { inspectMaterialUpload } from './upload-safety.js';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -43,6 +43,7 @@ export interface PrivateBlobs {
   put(key: string, bytes: Buffer, mediaType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
   getIfExists(key: string): Promise<Buffer | null>;
+  getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
   delete(key: string): Promise<void>;
 }
 export function azureBlobs(connectionString: string, containerName = 'bondbuddy-private'): PrivateBlobs {
@@ -66,20 +67,42 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         throw error;
       }
     },
+    async getIfExistsBounded(key, maxBytes) {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Problem(422,'VALIDATION_FAILED','Invalid Blob read limit');
+      await ensure();
+      const blob = container.getBlockBlobClient(key);
+      try {
+        const properties = await blob.getProperties();
+        if (properties.contentLength !== undefined && properties.contentLength > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+        const response = await blob.download();
+        const chunks: Buffer[] = [];
+        let total = 0;
+        if (response.readableStreamBody) for await (const chunk of response.readableStreamBody) {
+          const value = Buffer.from(chunk);
+          total += value.length;
+          if (total > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+          chunks.push(value);
+        }
+        if (properties.contentLength !== undefined && total !== properties.contentLength) throw new Problem(503,'DATA_UNAVAILABLE','Stored object size changed during bounded read');
+        return Buffer.concat(chunks,total);
+      } catch (error) {
+        if (error instanceof Problem) throw error;
+        if (error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound')) return null;
+        throw error;
+      }
+    },
     async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); }
   };
 }
 export async function verifiedMedia(bytes: Buffer, declared: string): Promise<string> {
-  const magic = await fileTypeFromBuffer(bytes);
-  let actual = magic?.mime;
-  if (declared === 'text/plain' || declared === 'text/csv') {
-    if (magic || bytes.includes(0)) throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Binary content declared as text');
-    try { new TextDecoder('utf-8',{fatal:true}).decode(bytes); } catch { throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Text must be UTF-8'); }
-    actual = declared;
+  try {
+    return await inspectMaterialUpload(bytes, declared);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'status' in error && 'code' in error && error instanceof Error) {
+      throw new Problem(error.status as number, String(error.code), error.message);
+    }
+    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected');
   }
-  if (actual === 'application/zip') throw new Problem(415,'MATERIAL_FORMAT_UNSUPPORTED','Unsupported or unreadable Office container');
-  if (actual !== declared) throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Declared media type does not match content');
-  return actual;
 }
 export function checkedPair(market: Market | null, offering: Offering | null) {
   if (market && offering && !isMarketOffering(market,offering)) throw new Problem(422,'VALIDATION_FAILED','Market and offering do not match');

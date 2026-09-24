@@ -1,58 +1,139 @@
 import type { Static } from '@sinclair/typebox';
-import { schemas, type Project } from '@bondbuddy/contracts';
+import type { schemas, SchemaName } from '@bondbuddy/contracts';
 
-export type ProjectCreate = Static<typeof schemas.ProjectCreateRequest>;
-export type ProjectPatch = Static<typeof schemas.ProjectPatchRequest>;
-export type Session = Static<typeof schemas.MeResponse>;
-export type ProjectList = Static<typeof schemas.ProjectListResponse>;
+export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+  constructor(public status: number, public code: string) { super(code); }
 }
-type Fetch = typeof fetch;
+
+export function friendlyError(error: unknown): string {
+  if (!(error instanceof ApiError)) return '连接中断，尚未确认保存。请检查网络后重试。';
+  switch (error.code) {
+    case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
+    case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
+    case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
+    case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
+    case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
+    case 'VALIDATION_FAILED': case 'INPUT_REQUIRED': return '请检查填写内容后重试。';
+    case 'CAPABILITY_NOT_READY': return '这项功能暂未开放，请稍后再试。';
+    default: return '暂时无法完成操作，请稍后重试。';
+  }
+}
+
 export class ApiClient {
+  private controller = new AbortController();
   private refresh: Promise<void> | undefined;
-  constructor(private transport: Fetch = fetch, private cookies: () => string = () => document.cookie) {}
-  private csrf(): string {
-    const match = this.cookies().split(';').map(part => part.trim()).find(part => part.startsWith('bb_csrf='));
-    try { return match ? decodeURIComponent(match.slice('bb_csrf='.length)) : ''; } catch { return ''; }
+  constructor(private sessionLost: () => void) {}
+
+  reset() {
+    this.controller.abort();
+    this.controller = new AbortController();
+    this.refresh = undefined;
   }
-  async request<T>(path: string, method = 'GET', body?: unknown, headers: Record<string, string> = {}, retry = true): Promise<T> {
-    if (!path.startsWith('/api/v1/')) throw new Error('API path must stay on the current origin.');
-    const response = await this.transport(path, {
-      method, credentials: 'same-origin', cache: 'no-store',
-      headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(method === 'GET' ? {} : { 'X-BB-CSRF': this.csrf() }), ...headers },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+
+  private async send(method: string, path: string, body: unknown, headers: Record<string, string>, signal: AbortSignal) {
+    const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length);
+    return fetch(`/api/v1${path}`, {
+      method, credentials: 'same-origin', cache: 'no-store', signal,
+      headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(method === 'GET' || !csrf ? {} : { 'X-BB-CSRF': csrf }), ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body)
     });
-    if (response.status === 401 && retry && !path.startsWith('/api/v1/auth/')) {
-      this.refresh ??= this.request<void>('/api/v1/auth/refresh', 'POST', undefined, {}, false).finally(() => { this.refresh = undefined; });
-      await this.refresh;
-      return this.request<T>(path, method, body, headers, false);
+  }
+
+  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
+    const signal = signalOverride ?? this.controller.signal;
+    let response = await this.send(method, path, body, headers, signal);
+    const authenticated = !['/auth/login', '/auth/register'].includes(path);
+    if (response.status === 401 && authenticated && document.cookie.includes('bb_csrf=')) {
+      if (!this.refresh) {
+        const pending = this.send('POST', '/auth/refresh', undefined, {}, signal).then(async res => {
+          if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({}))).code ?? 'UNAUTHENTICATED');
+        });
+        this.refresh = pending;
+        void pending.finally(() => { if (this.refresh === pending) this.refresh = undefined; }).catch(() => {});
+      }
+      try { await this.refresh; }
+      catch (error) {
+        if (!signal.aborted && error instanceof ApiError && error.status === 401) this.sessionLost();
+        throw error;
+      }
+      signal.throwIfAborted();
+      response = await this.send(method, path, body, headers, signal);
     }
+    signal.throwIfAborted();
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new ApiError(response.status, error.code ?? 'DATA_UNAVAILABLE', error.message ?? '请求未完成');
+      const problem = await response.json().catch(() => ({}));
+      if (response.status === 401 && authenticated) this.sessionLost();
+      throw new ApiError(response.status, problem.code ?? 'DATA_UNAVAILABLE');
     }
-    return (response.status === 204 ? undefined : await response.json()) as T;
+    return response.status === 204 ? undefined as T : response.json();
   }
-  me() { return this.request<Session>('/api/v1/me'); }
-  login(username: string, password: string) { return this.request<Session>('/api/v1/auth/login', 'POST', { username, password }); }
-  logout() { return this.request<void>('/api/v1/auth/logout', 'POST'); }
-  list(cursor?: string) { return this.request<ProjectList>(`/api/v1/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
-  project(id: string) { return this.request<Project>(`/api/v1/projects/${encodeURIComponent(id)}`); }
-  save(draft: ProjectCreate, current: Project | null) {
-    if (!current) return this.request<Project>('/api/v1/projects', 'POST', draft);
-    const { kind: _kind, ...patch } = draft;
-    return this.request<Project>(`/api/v1/projects/${encodeURIComponent(current.project_id)}`, 'PATCH', patch, { 'If-Match': String(current.draft_revision) });
+
+  me() { return this.request<Dto<'MeResponse'>>('GET', '/me'); }
+  login(input: Dto<'LoginRequest'>) { return this.request<Dto<'SessionResponse'>>('POST', '/auth/login', input); }
+  logout() { return this.request<void>('POST', '/auth/logout'); }
+  projects(cursor?: string) { return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
+  project(id: string) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`); }
+  material(id: string, materialId: string, signal?: AbortSignal) {
+    return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, signal);
   }
-}
-export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return '登录已过期，请重新登录；尚未保存的内容会为当前账号保留在本页面。';
-    if (error.code === 'INPUT_REVISION_CONFLICT') return '项目已在其他页面修改。本页内容尚未覆盖，请先查看已保存版本，再决定如何合并。';
-    if (error.status === 404) return '项目不存在或当前账号无法访问。';
-    if (error.code === 'RATE_LIMITED') return '尝试次数较多，请稍后重试。';
-    if (error.code === 'CSRF_DENIED') return '会话校验未通过，请重新登录后再试。';
-    if (error.status === 422) return '填写内容未通过校验，请核对日期、金额、单位和文字长度。';
+  projectEvents(id: string, after: number, signal?: AbortSignal) {
+    return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
   }
-  return '请求未完成，填写内容仍保留。请检查连接后重试。';
+  createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
+  }
+  completeUpload(id: string, uploadId: string, input: Dto<'UploadCompleteRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'MaterialResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`, input, {}, signal);
+  }
+  uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal) {
+    const target = new URL(uploadUrl, window.location.href);
+    if (!['http:', 'https:'].includes(target.protocol)) return Promise.reject(new ApiError(0, 'DATA_UNAVAILABLE'));
+    const sameOrigin = target.origin === window.location.origin;
+    const send = () => new Promise<XMLHttpRequest>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', target.href);
+      xhr.withCredentials = sameOrigin;
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      if (sameOrigin) {
+        const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length);
+        if (csrf) xhr.setRequestHeader('X-BB-CSRF', csrf);
+      }
+      xhr.upload.addEventListener('progress', event => {
+        onProgress(event.loaded, event.lengthComputable ? event.total : file.size);
+      });
+      const abort = () => xhr.abort();
+      signal.addEventListener('abort', abort, { once: true });
+      xhr.addEventListener('load', () => { signal.removeEventListener('abort', abort); resolve(xhr); }, { once: true });
+      xhr.addEventListener('error', () => { signal.removeEventListener('abort', abort); reject(new ApiError(0, 'DATA_UNAVAILABLE')); }, { once: true });
+      xhr.addEventListener('abort', () => {
+        signal.removeEventListener('abort', abort);
+        reject(new DOMException('Upload aborted', 'AbortError'));
+      }, { once: true });
+      if (signal.aborted) { abort(); return; }
+      xhr.send(file);
+    });
+    return (async () => {
+      let refreshed = false;
+      for (;;) {
+        const xhr = await send();
+        if (xhr.status === 204) return;
+        if (xhr.status === 401 && sameOrigin && !refreshed && document.cookie.includes('bb_csrf=')) {
+          refreshed = true;
+          await this.request<void>('POST', '/auth/refresh', undefined, {}, signal);
+          signal.throwIfAborted();
+          onProgress(0, file.size); // The next progress events describe the fresh, real retry attempt.
+          continue;
+        }
+      let code = 'DATA_UNAVAILABLE';
+      try { code = JSON.parse(xhr.responseText).code ?? code; } catch { /* response may be empty */ }
+      throw new ApiError(xhr.status, code);
+      }
+    })();
+  }
+  create(input: Dto<'ProjectCreateRequest'>) { return this.request<Dto<'ProjectResponse'>>('POST', '/projects', input); }
+  patch(id: string, revision: number, input: Dto<'ProjectPatchRequest'>) {
+    return this.request<Dto<'ProjectResponse'>>('PATCH', `/projects/${encodeURIComponent(id)}`, input, { 'If-Match': String(revision) });
+  }
 }
