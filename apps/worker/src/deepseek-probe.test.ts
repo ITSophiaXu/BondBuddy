@@ -44,6 +44,37 @@ test('stream uses final cumulative usage exactly once',async()=>{
   const result=await runDeepSeekProbe({...seed,stream:true},j,fake(frames));assert.equal(result.outcome,'completed');assert.equal(result.usage.total_tokens,19);assert.equal(result.provider_request_id,'request-synthetic');
 });
 
+test('DONE and valid JSON without measured final usage remain pending',async()=>{
+  for(const finalUsage of [undefined,{...okBody.usage,total_tokens:20}]) {
+    const {j,events}=journal();
+    const chunks=[{id:'chunk-synthetic',choices:[{delta:{content:'{"ok":true}'},finish_reason:'stop'}],usage:okBody.usage},{id:'chunk-synthetic',choices:[],...(finalUsage?{usage:finalUsage}:{})}];
+    const frames=chunks.map(c=>'data: '+JSON.stringify(c)+'\n\n').join('')+'data: [DONE]\n\n';
+    const result=await runDeepSeekProbe({...seed,stream:true},j,fake(frames));
+    assert.equal(result.outcome,'pending_reconcile');assert.equal(result.error_code,'USAGE_PENDING');assert.equal(result.finish_reason,'stop');
+    assert.equal(result.usage.status,'pending');assert.equal(result.usage.total_tokens,finalUsage?.total_tokens??19);
+    assert.deepEqual(events,['intent','observation']);
+  }
+});
+
+test('non-stream success with missing usage also remains pending',async()=>{
+  const {j}=journal();const {usage:_usage,...body}=okBody;
+  const result=await runDeepSeekProbe(seed,j,fake(body));
+  assert.equal(result.outcome,'pending_reconcile');assert.equal(result.error_code,'USAGE_PENDING');assert.equal(result.usage.total_tokens,null);
+});
+
+test('pre-aborted input creates no intent or provider request',async()=>{
+  const controller=new AbortController();controller.abort();const {j,events}=journal();let fetched=false;
+  await assert.rejects(runDeepSeekProbe({...seed,signal:controller.signal},j,((async()=>{fetched=true;return new Response('{}');}) as typeof fetch)),/PROBE_CANCELLED_BEFORE_INTENT/);
+  assert.deepEqual(events,[]);assert.equal(fetched,false);
+});
+
+test('cancellation during durable intent is recorded as confirmed not sent',async()=>{
+  const controller=new AbortController();const events:string[]=[];let fetched=false;
+  const j:ProbeJournal={recordIntent:async()=>{events.push('intent');controller.abort();},recordObservation:async o=>{events.push('observation');assert.equal(o.outcome,'confirmed_not_sent');}};
+  const result=await runDeepSeekProbe({...seed,signal:controller.signal},j,((async()=>{fetched=true;return new Response('{}');}) as typeof fetch));
+  assert.equal(result.outcome,'confirmed_not_sent');assert.equal(result.error_code,'CANCELLED');assert.deepEqual(events,['intent','observation']);assert.equal(fetched,false);
+});
+
 test('tool output, including cross-project material access, is denied',async()=>{
   const {j}=journal();const body={...okBody,choices:[{message:{content:null,tool_calls:[{function:{name:'read_material',arguments:'{"project_id":"other-project"}'}}]},finish_reason:'tool_calls'}]};
   const result=await runDeepSeekProbe(seed,j,fake(body));assert.equal(result.outcome,'pending_reconcile');assert.equal(result.error_code,'TOOL_DENIED');
