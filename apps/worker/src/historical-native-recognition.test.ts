@@ -175,6 +175,62 @@ test('recognizes common Q1 month ranges and three-month cutoff wording', () => {
   }
 });
 
+test('recognizes explicit half-year labels from financial section evidence and deduplicates equivalent ranges', () => {
+  const value = recognizeHistoricalNativeText(response([
+    record('half-year-label', '2025年半年度', '合并财务报表'),
+    record('first-half-label', '2025年上半年', '合并财务报表'),
+    record('half-year-range', '报告期：2025年1-6月', '合并财务报表'),
+  ]), { profileVersion: 1 });
+
+  assert.equal(value.reporting_periods.length, 1);
+  assert.deepEqual(value.reporting_periods[0], {
+    start: '2025-01-01', end: '2025-06-30', period_kind: 'interim', scope: 'consolidated',
+    raw_value: '2025年半年度；2025年上半年；2025年1-6月',
+    provenance: {
+      material_id: material.material_id, material_version: material.material_version, method: 'native_text',
+      extractor_version: 'historical-native-recognition-v2/synthetic-native-1',
+      evidence_refs: ['half-year-label', 'first-half-label', 'half-year-range'],
+    },
+    uncertainty: [], status: 'recognized',
+  });
+  assert.equal(value.latest_reporting_cutoff.value, '2025-06-30');
+  assert.deepEqual(value.latest_reporting_cutoff.provenance.evidence_refs,
+    ['half-year-label', 'first-half-label', 'half-year-range']);
+});
+
+test('a half-year label does not hide a separate annual period for the same year', () => {
+  const value = recognizeHistoricalNativeText(response([
+    record('mixed-periods', '报告期：2025年半年度、2025年一季度、2025年度', '合并财务报表'),
+  ]), { profileVersion: 1 });
+  assert.deepEqual(value.reporting_periods.map(period => period.end), ['2025-03-31', '2025-06-30', '2025-12-31']);
+  assert.equal(value.latest_reporting_cutoff.value, '2025-12-31');
+});
+
+test('does not treat cover and signing or issuance dates, or nonfinancial half-year references, as reporting periods', () => {
+  const value = recognizeHistoricalNativeText(response([
+    record('cover-issue-date', '发行日期：2025年6月30日。', '财务会计信息'),
+    record('signing-date', '签署日期：2025年6月30日。', '财务会计信息'),
+    record('cover-label', '2025年上半年', '募集说明书封面'),
+    record('nonfinancial-reference', '2025年半年度', '发行人历史沿革'),
+  ]), { profileVersion: 1 });
+
+  assert.deepEqual(value.reporting_periods, []);
+  assert.equal(value.latest_reporting_cutoff.value, null);
+  assert.deepEqual(value.latest_reporting_cutoff.provenance.evidence_refs, []);
+});
+
+test('keeps an anchored half-year label awaiting confirmation when its statement scope is unknown', () => {
+  const value = recognizeHistoricalNativeText(response([
+    record('half-year-unknown-scope', '2025年半年度', '财务会计信息'),
+  ]), { profileVersion: 1 });
+
+  assert.equal(value.reporting_periods.length, 1);
+  assert.equal(value.reporting_periods[0]?.start, '2025-01-01');
+  assert.equal(value.reporting_periods[0]?.end, '2025-06-30');
+  assert.equal(value.reporting_periods[0]?.status, 'needs_confirmation');
+  assert.equal(value.latest_reporting_cutoff.value, null);
+});
+
 test('a year in financial-section context without a reporting-period/table anchor is ignored', () => {
   const value = recognizeHistoricalNativeText(response([
     record('cover-year', '发行日期为2025年3月31日。', '财务报表'),

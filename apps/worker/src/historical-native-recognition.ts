@@ -2,7 +2,22 @@ import type { Recognition, ReportingPeriod } from '@bondbuddy/contracts';
 import type { DocumentParseResponse, DocumentParseRecord } from './document-parser.js';
 
 /** Conservative native-text subset of historical prospectus recognition. */
-export const HISTORICAL_NATIVE_RECOGNITION_VERSION = 'historical-native-recognition-v1' as const;
+export const HISTORICAL_NATIVE_RECOGNITION_VERSION = 'historical-native-recognition-v2' as const;
+const SUPPORTED_HISTORICAL_NATIVE_RECOGNITION_VERSIONS = new Set([
+  'historical-native-recognition-v1',
+  HISTORICAL_NATIVE_RECOGNITION_VERSION,
+]);
+
+export function parseHistoricalNativeExtractorVersion(value: unknown): { algorithmVersion: string; parserVersion: string } | null {
+  if (typeof value !== 'string') return null;
+  const separator = value.indexOf('/');
+  if (separator < 1) return null;
+  const algorithmVersion = value.slice(0, separator);
+  const parserVersion = value.slice(separator + 1);
+  if (!SUPPORTED_HISTORICAL_NATIVE_RECOGNITION_VERSIONS.has(algorithmVersion) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(parserVersion) || parserVersion === 'unknown-parser') return null;
+  return { algorithmVersion, parserVersion };
+}
 
 type Market = NonNullable<Recognition['source_market']['value']>;
 type Offering = NonNullable<Recognition['source_offering']['value']>;
@@ -191,7 +206,12 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
   const explicitPeriod = /报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(compact);
   const periodTableHeader = Array.isArray(record.locator.path) && record.locator.path.some(part => typeof part === 'object' && part !== null && 'table' in part);
   const annualHeaderInContext = periodTableHeader && inFinancialContext(record);
-  if (hasSigningOrIssueDate || (!explicitPeriod && !annualHeaderInContext)) return [];
+  const halfYearLabel = /20\d{2}\s*年\s*(?:半年度|上半年)/.test(text);
+  // Native parsers can put a financial heading in the record context and the
+  // period label alone in the quote. Accept that label only under a financial
+  // heading; a date or a similarly worded nonfinancial reference is not enough.
+  const halfYearLabelInFinancialSection = halfYearLabel && inFinancialContext(record);
+  if (hasSigningOrIssueDate || (!explicitPeriod && !annualHeaderInContext && !halfYearLabelInFinancialSection)) return [];
   const periodRecords: ReportingPeriod[] = [];
   const scopeText = normalize(allText(record));
   const hasParentScope = /母公司|公司本部/.test(scopeText);
@@ -236,6 +256,15 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
     });
   }
 
+  for (const match of text.matchAll(/(20\d{2})\s*年\s*(?:半年度|上半年)/g)) {
+    const year = Number(match[1]);
+    periodRecords.push({
+      start: `${year}-01-01`, end: `${year}-06-30`, period_kind: 'interim', scope,
+      raw_value: match[0], provenance, uncertainty: [...uncertainty],
+      status: uncertainty.length || scope === null ? 'needs_confirmation' : 'recognized',
+    });
+  }
+
   const threeMonthCutoffs = [...text.matchAll(/截至\s*(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日[^。；\n]{0,12}三个月/g)];
   for (const match of threeMonthCutoffs) {
     const year = Number(match[1]);
@@ -258,9 +287,11 @@ function reportingPeriodMatches(record: DocumentParseRecord): ReportingPeriod[] 
   if (/年度|年报|报告期/.test(compact) || annualHeaderInContext) {
     for (const match of text.matchAll(/(20\d{2})\s*年(?:度)?/g)) {
       const year = Number(match[1]);
-      if (new RegExp(`${year}\\s*年.{0,5}(?:第\\s*)?[一二三四1-4]\\s*季`).test(text)) continue;
-      if (new RegExp(`${year}\\s*年\\s*\\d{1,2}\\s*[-—–至到]`).test(text)) continue;
-      if (new RegExp(`截至?\\s*${year}\\s*年\\s*\\d{1,2}月\\s*\\d{1,2}日`).test(text)) continue;
+      const atYear = text.slice(match.index);
+      if (/^20\d{2}\s*年\s*(?:半年度|上半年)/.test(atYear)) continue;
+      if (/^20\d{2}\s*年.{0,5}(?:第\s*)?[一二三四1-4]\s*季/.test(atYear)) continue;
+      if (/^20\d{2}\s*年\s*\d{1,2}\s*[-—–至到]/.test(atYear)) continue;
+      if (/^20\d{2}\s*年\s*\d{1,2}月\s*\d{1,2}日/.test(atYear)) continue;
       if (periodRecords.some(period => period.start === `${year}-01-01` && period.end === `${year}-12-31`)) continue;
       periodRecords.push({
         start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual', scope,

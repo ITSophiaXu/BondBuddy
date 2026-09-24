@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
 import { M1_MATERIAL_PARTITIONS, schemas, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
 import { estimateUpdateDifficulty, type CutoffDecision, type UpdateDifficultyEstimate } from '@bondbuddy/domain/update-difficulty';
-import { HISTORICAL_NATIVE_RECOGNITION_VERSION } from './historical-native-recognition.js';
+import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 
 export interface UpdateDifficultyClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -183,15 +183,17 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
     recognition.latest_reporting_cutoff.provenance, ...recognition.reporting_periods.map(period => period.provenance)];
   if (sourceProvenance.some(provenance => provenance.material_id !== input.source.materialId ||
       provenance.material_version !== input.source.materialVersion)) allEvidenceBound = false;
-  const parserPrefix = `${HISTORICAL_NATIVE_RECOGNITION_VERSION}/`;
   const sourceExtractor = recognition.source_market.provenance.extractor_version;
-  const sourceParserVersion = typeof sourceExtractor === 'string' && sourceExtractor.startsWith(parserPrefix)
-    ? sourceExtractor.slice(parserPrefix.length) : null;
-  const expectedSourceExtractor = sourceParserVersion ? `${parserPrefix}${sourceParserVersion}` : null;
-  if (!expectedSourceExtractor || [recognition.source_offering.provenance.extractor_version,
+  const sourceIdentity = parseHistoricalNativeExtractorVersion(sourceExtractor);
+  const sourceParserVersion = sourceIdentity?.parserVersion ?? null;
+  if (sourceIdentity === null || [recognition.source_offering.provenance.extractor_version,
     recognition.latest_reporting_cutoff.provenance.extractor_version,
     ...recognition.reporting_periods.map(period => period.provenance.extractor_version)]
-    .some(version => version !== expectedSourceExtractor)) allEvidenceBound = false;
+    .some(version => {
+      const identity = parseHistoricalNativeExtractorVersion(version);
+      return identity === null || identity.algorithmVersion !== sourceIdentity.algorithmVersion ||
+        identity.parserVersion !== sourceIdentity.parserVersion;
+    })) allEvidenceBound = false;
   const sourceRefs = [recognition.source_market.provenance.evidence_refs, recognition.source_offering.provenance.evidence_refs,
     recognition.latest_reporting_cutoff.provenance.evidence_refs, ...recognition.reporting_periods.map(period => period.provenance.evidence_refs)].flat();
   if (!sourceParserVersion || sourceRefs.length === 0) allEvidenceBound = false;

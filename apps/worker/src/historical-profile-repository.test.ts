@@ -211,6 +211,8 @@ test('source correction appends a user-asserted version and preserves the origin
   assert.equal(corrected.recognition.source_market.value, 'szse');
   assert.equal(corrected.recognition.source_market.status, 'user_asserted');
   assert.equal(corrected.recognition.source_market.provenance.method, 'user_correction');
+  assert.equal(corrected.recognition.source_market.provenance.extractor_version,
+    'historical-native-recognition-v1/parser-synthetic-1', 'correction preserves the legacy algorithm/parser provenance');
   assert.deepEqual(corrected.recognition.source_market.provenance.evidence_refs, patch.evidence_refs);
   assert.equal(corrected.recognition.state, 'needs_confirmation', 'caller refs are not server-validated evidence');
   assert.equal(original.recognition.source_market.value, 'sse');
