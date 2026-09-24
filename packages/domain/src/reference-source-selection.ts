@@ -249,7 +249,7 @@ export function selectReferenceSource(input: ReferenceSourceSelectionInput): Ref
         status: issuerEvidenceStatus === 'ready' ? 'selected_user_reference' : issuerEvidenceStatus,
         selected: {
           source: 'user_material', use: 'structure_only', materialId: material.materialId,
-          materialVersion: material.materialVersion, contentHash: material.contentHash,
+          materialVersion: material.materialVersion, contentHash: safeContentHash(material.contentHash),
           chapterMappingVersion: mapping?.version ?? null,
         },
         deliverableStatus: 'not_determined', issuerEvidenceStatus, userReferenceDecisions, libraryDecision: null,
