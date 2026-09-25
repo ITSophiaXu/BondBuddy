@@ -44,6 +44,14 @@
       "types": "./dist/material-jobs.d.ts",
       "default": "./dist/material-jobs.js"
     },
+    "./storage-lifecycle": {
+      "types": "./dist/storage-lifecycle.d.ts",
+      "default": "./dist/storage-lifecycle.js"
+    },
+    "./deletion-lifecycle": {
+      "types": "./dist/deletion-lifecycle.d.ts",
+      "default": "./dist/deletion-lifecycle.js"
+    },
     "./library": {
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"

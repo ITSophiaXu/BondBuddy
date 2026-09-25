@@ -9,6 +9,7 @@ export * from './data-lifecycle.js';
 // --- #17 worker runtime (BB-M1-12-RUNTIME) ---
 import { runtimeSchemas } from './worker-runtime.js';
 export * from './worker-runtime.js';
+export * from './ops-scheduler.js'; // #79 scheduled ops
 // --- end #17 worker runtime ---
 import { trialSchemas, TRIAL_GUARD_ERROR_CODES, TRIAL_ADMIN_OPERATIONS, trialOpenApiPaths } from './trial-guard.js'; export * from './trial-guard.js'; // #35 trial guard
 export * from './reference-library.js';
