@@ -16,6 +16,7 @@ export * from './ops-scheduler.js'; // #79 scheduled ops
 import { trialSchemas, TRIAL_GUARD_ERROR_CODES, TRIAL_ADMIN_OPERATIONS, trialOpenApiPaths } from './trial-guard.js'; export * from './trial-guard.js'; // #35 trial guard
 export * from './reference-library.js';
 export * from './platform-probe.js'; // #79/#16 platform probe
+import { agreementSchemas, agreementOpenApiPaths } from './agreement.js'; export * from './agreement.js'; // #7 registration agreement
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -117,6 +118,7 @@ export const schemas = {
   ...adminSchemas,
   ...runtimeSchemas, // #17 worker runtime
   ...trialSchemas, // #35 trial guard
+  ...agreementSchemas, // #7 registration agreement
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
@@ -323,5 +325,6 @@ export function openApiDocument() {
     (paths[`/api/v1${path}`][method] as Record<string, unknown>)['x-implementation-status'] = 'implemented; worker-runtime; production-501-unless-BB_RUN_RUNTIME_ENABLED; stages-without-implementation-pause-capability_not_ready';
   // --- end #17 worker runtime ---
   Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
+  Object.assign(paths, agreementOpenApiPaths(ref)); // #7 registration agreement
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
 }

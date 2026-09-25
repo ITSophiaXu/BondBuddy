@@ -17,6 +17,19 @@ test('production seam rejects arbitrary client identity and reports honest capab
   }finally{await app.close();}
 });
 
+test('public registration agreement returns the configured version or a stable 503',async()=>{
+  const open=createServer({allowedOrigin:origin,auth:{termsVersion:'synthetic-v1',supportContact:'support@example.invalid'}});
+  const closed=createServer({allowedOrigin:origin,auth:{termsVersion:''}});
+  try{
+    const ok=await open.inject('/api/v1/auth/agreement');
+    assert.equal(ok.statusCode,200);assert.match(String(ok.headers['cache-control']),/public, max-age=60/);
+    assert.deepEqual(ok.json(),{terms_version:'synthetic-v1',title:'BondBuddy 用户协议与数据保存说明',summary_url_or_path:'/#/data-policy',support_contact:'support@example.invalid'});
+    const unset=await closed.inject('/api/v1/auth/agreement');
+    assert.equal(unset.statusCode,503);assert.equal(unset.json().code,'CAPABILITY_NOT_READY');
+    assert.ok((await open.inject('/openapi.json')).json().paths['/api/v1/auth/agreement'].get);
+  }finally{await open.close();await closed.close();}
+});
+
 const connection=process.env.BB_TEST_DATABASE_URL;
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', {skip:!connection||!blobConnection},async()=>{

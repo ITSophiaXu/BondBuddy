@@ -7,6 +7,7 @@ import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } 
 import { renderAccount, renderClosed, type AccountContext } from './account';
 import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
+import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USERNAME_PATTERN, validateRegister } from './register';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
@@ -64,22 +65,62 @@ function clearPrivateState() {
 }
 
 function signedOut(message = '') {
+  const anonymous = !identity && !message, hash = location.hash;
   clearPrivateState();
+  currentRoute = '/';
+  if (anonymous) { routeSignedOut(hash); return; } // e.g. the first /me 401 on #/register or #/data-policy
   history.replaceState(null, '', `${location.pathname}${location.search}#/`);
-  currentRoute = '/'; renderLogin(message);
+  renderLogin(message);
 }
 sessionChannel?.addEventListener('message', () => signedOut('账号会话已在其他页面更改，请重新登录。'));
 
-function renderLogin(message = '') {
+let signedOutView = false;
+function routeSignedOut(hash = location.hash) {
+  const route = ['#/data-policy', '#/register'].includes(hash) ? hash : '#/';
+  if (location.hash !== route) history.replaceState(null, '', `${location.pathname}${location.search}${route}`);
+  if (route === '#/data-policy') renderPublicPolicy();
+  else if (route === '#/register') renderLogin('', 'register');
+  else renderLogin();
+}
+
+// The agreement links here, so the data-policy page is also readable before an account exists.
+function renderPublicPolicy() {
+  signedOutView = true;
+  const token = ++epoch;
+  void renderDataPolicyPage(api, content => {
+    root.innerHTML = `<main id="main" class="closed-layout" tabindex="-1"><div class="panel closed-panel"><a class="brand" href="#/"><img src="/favicon.svg" alt=""/>BondBuddy</a>${content.replace('← 返回我的项目', '← 返回登录')}</div></main>`;
+  }, () => token === epoch && !identity);
+}
+
+function renderLogin(message = '', mode: 'login' | 'register' = 'login') {
+  signedOutView = true;
+  const registering = mode === 'register';
+  const form = registering
+    ? `<form id="register-form" novalidate><label for="reg-username">用户名</label><input id="reg-username" name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="${USERNAME_PATTERN}" autocapitalize="none" spellcheck="false" aria-describedby="reg-username-help"/>
+      <p id="reg-username-help" class="settings-note">${esc(USERNAME_HELP)}</p>
+      <label for="reg-password">密码</label><input id="reg-password" name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="reg-password-help"/>
+      <p id="reg-password-help" class="settings-note">${esc(PASSWORD_HELP)}</p>
+      <label for="reg-confirm">确认密码</label><input id="reg-confirm" name="confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="128"/>
+      <div id="agreement" class="check-row agreement-row"><span class="muted">正在读取用户协议…</span></div>
+      <p id="login-message" class="form-message" role="status">${esc(message)}</p><button class="button primary" type="submit" disabled>注册并进入工作区</button></form>
+      <p class="switch-note">已有账号？<a id="to-login" href="#/">登录</a></p>`
+    : `<form id="login-form"><label for="username">用户名</label><input id="username" name="username" autocomplete="username" required minlength="3" maxlength="32" autocapitalize="none" spellcheck="false"/>
+      <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="512"/>
+      <p id="login-message" class="form-message" role="status">${esc(message)}</p><button class="button primary" type="submit">登录</button></form>
+      <p class="switch-note">没有账号？<a id="to-register" href="#/register">注册</a></p>`;
   root.innerHTML = `<main id="main" class="login-layout" tabindex="-1">
     <div class="login-intro"><a class="brand" href="#/"><img src="/favicon.svg" alt=""/>BondBuddy</a>
       <div><p class="eyebrow">债券项目工作空间</p><h1>把每一次准备，<br/>接着做下去。</h1><p>项目资料按账号保存。重新登录，<br/>继续上次的工作。</p></div>
       <p class="intro-foot">有据可查 · 有序协作</p></div>
-    <section class="login-panel" aria-labelledby="login-title"><p class="eyebrow">欢迎回来</p><h2 id="login-title">登录工作区</h2><p class="muted">使用已有的用户名和密码登录。</p>
-      <form id="login-form"><label for="username">用户名</label><input id="username" name="username" autocomplete="username" required minlength="3" maxlength="32" autocapitalize="none" spellcheck="false"/>
-      <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="512"/>
-      <p id="login-message" class="form-message" role="status">${esc(message)}</p><button class="button primary" type="submit">登录</button></form>
+    <section class="login-panel" aria-labelledby="login-title">${registering
+      ? '<p class="eyebrow">创建账号</p><h2 id="login-title">注册工作区账号</h2><p class="muted">设置用户名和密码，注册后直接进入工作区。</p>'
+      : '<p class="eyebrow">欢迎回来</p><h2 id="login-title">登录工作区</h2><p class="muted">使用已有的用户名和密码登录。</p>'}
+      ${form}
       <p class="privacy-note">项目资料保存在平台工作区，仅限当前账号访问。</p></section></main>`;
+  if (registering) bindRegister(); else bindLogin();
+}
+
+function bindLogin() {
   document.querySelector<HTMLFormElement>('#login-form')!.addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
@@ -92,12 +133,52 @@ function renderLogin(message = '') {
       const result = await api.login({ username: (form.elements.namedItem('username') as HTMLInputElement).value.trim(), password: (form.elements.namedItem('password') as HTMLInputElement).value });
       if (token !== epoch) return;
       (form.elements.namedItem('password') as HTMLInputElement).value = '';
-      identity = result.user_id; sessionChannel?.postMessage('changed');
+      identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
       await renderRoute();
     } catch (error) {
       if (token !== epoch) return;
       feedback.textContent = error instanceof ApiError && error.status === 401 ? '用户名或密码不正确，请重试。' : friendlyError(error);
     } finally { button.disabled = false; button.textContent = '登录'; }
+  });
+}
+
+function bindRegister() {
+  const form = document.querySelector<HTMLFormElement>('#register-form')!;
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const feedback = form.querySelector<HTMLElement>('#login-message')!;
+  const agreementBox = form.querySelector<HTMLElement>('#agreement')!;
+  let termsVersion: string | undefined;
+  const token = ++epoch;
+  api.agreement().then(agreement => {
+    if (token !== epoch) return;
+    termsVersion = agreement.terms_version;
+    agreementBox.innerHTML = `<input id="reg-agree" name="agree" type="checkbox" required/><label for="reg-agree">我已阅读并同意<a href="${esc(agreementHref(agreement.summary_url_or_path))}" target="_blank" rel="noopener">《${esc(agreement.title)}》</a>（版本 <span id="terms-version">${esc(agreement.terms_version)}</span>）${agreement.support_contact ? `，如有疑问请联系 ${esc(agreement.support_contact)}` : ''}。</label>`;
+    button.disabled = false;
+  }, error => {
+    if (token !== epoch) return;
+    agreementBox.innerHTML = `<span class="form-message">${esc(registerErrorMessage(error instanceof ApiError ? error : new ApiError(0, 'DATA_UNAVAILABLE')))}</span>`;
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!termsVersion) return;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
+    const input = { username: value('username').trim(), password: value('password'), confirm: value('confirm'), agreed: (form.elements.namedItem('agree') as HTMLInputElement).checked };
+    const invalid = validateRegister(input);
+    if (invalid) { feedback.textContent = invalid; return; }
+    button.disabled = true; button.textContent = '正在注册…'; feedback.textContent = '';
+    api.reset();
+    const submit = ++epoch;
+    try {
+      const result = await api.register({ username: input.username, password: input.password, accepted_terms_version: termsVersion });
+      if (submit !== epoch) return;
+      identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
+      history.replaceState(null, '', `${location.pathname}${location.search}#/`);
+      await renderRoute();
+    } catch (error) {
+      if (submit !== epoch) return;
+      feedback.textContent = registerErrorMessage(error);
+      button.disabled = false; button.textContent = '注册并进入工作区';
+    }
   });
 }
 
@@ -653,7 +734,7 @@ function bindMaterialWorkspace(projectId: string) {
   });
 }
 
-window.addEventListener('hashchange', () => { void renderRoute(); });
+window.addEventListener('hashchange', () => { if (!identity) { if (signedOutView) routeSignedOut(); return; } void renderRoute(); });
 document.querySelector('.skip-link')!.addEventListener('click', event => {
   event.preventDefault(); document.querySelector<HTMLElement>('#main')?.focus();
 });
@@ -681,7 +762,7 @@ async function start() {
     identity = me.user_id; await renderRoute();
   } catch (error) {
     if (token !== epoch) return;
-    renderLogin(error instanceof ApiError && error.status === 401 ? '' : friendlyError(error));
+    if (error instanceof ApiError && error.status === 401) routeSignedOut(); else renderLogin(friendlyError(error));
   }
 }
 void start();
