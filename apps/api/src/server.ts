@@ -15,6 +15,7 @@ import { recordOperation, rejectOperation } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
+import { sendMaterial } from './material-download.js';
 import { dataPolicyFromEnv } from './deletion-lifecycle.js';
 import { dataLifecycleSchemas } from '@bondbuddy/contracts';
 import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
@@ -336,8 +337,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/projects/:project_id/materials/:material_id/download',async (request,reply)=>{
     const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
-    const bytes=await blob().get(m.object_key);if(digest(bytes)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Stored material failed integrity check');
-    return reply.header('content-type',m.media_type).header('x-content-type-options','nosniff').header('cache-control','private, no-store').send(bytes);
+    return sendMaterial(reply,db(),blob(),m);
   });
   app.delete('/api/v1/projects/:project_id/materials/:material_id',async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id');

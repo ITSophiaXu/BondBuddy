@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
-import { azureBlobs, digest, verifiedMedia } from './data.js';
+import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js';
 import { createServer } from './server.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
@@ -16,13 +19,44 @@ const connection = process.env.BB_TEST_DATABASE_URL;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
 
+// Every sample is inspected twice: from memory and from a spooled file. The file path must give
+// the same verdict, status, code and message as the in-memory inspection (parity).
+async function spooled<T>(bytes: Buffer, use: (path: string) => Promise<T>): Promise<T> {
+  const directory = await mkdtemp(join(tmpdir(), 'bb-inspect-'));
+  const path = join(directory, 'sample.part');
+  try {
+    await writeFile(path, bytes, { mode: 0o600 });
+    return await use(path);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function outcome(inspection: Promise<string>): Promise<unknown> {
+  try { return { ok: await inspection }; }
+  catch (error) { const e = error as Error & { status: number; code: string }; return { status: e.status, code: e.code, message: e.message }; }
+}
+
 async function expectInspectionFailure(bytes: Buffer, mediaType: string, status: number, code: string): Promise<void> {
-  await assert.rejects(verifiedMedia(bytes, mediaType), (error: unknown) => {
-    assert.ok(error instanceof Error);
-    assert.equal((error as Error & { status: number }).status, status);
-    assert.equal((error as Error & { code: string }).code, code);
-    return true;
-  });
+  const memory = await outcome(verifiedMedia(bytes, mediaType));
+  assert.equal((memory as { status: number }).status, status);
+  assert.equal((memory as { code: string }).code, code);
+  assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, mediaType))), memory, `file/memory parity for ${code}`);
+}
+
+/** Rewrite the declared expanded size of one stored part in both its local and central headers. */
+function lieAboutExpandedSize(zip: Buffer, name: string, declared: number): Buffer {
+  const copy = Buffer.from(zip);
+  const raw = Buffer.from(name);
+  const local = copy.indexOf(raw);
+  const central = copy.indexOf(raw, local + raw.length);
+  assert.ok(local > 30 && central > local, 'part headers found');
+  assert.equal(copy.readUInt32LE(local - 30), 0x04034b50);
+  assert.equal(copy.readUInt32LE(central - 46), 0x02014b50);
+  assert.equal(copy.readUInt16LE(local - 30 + 6) & 0x0008, 0, 'sizes live in the headers');
+  copy.writeUInt32LE(declared, local - 30 + 22);
+  copy.writeUInt32LE(declared, central - 46 + 24);
+  return copy;
 }
 
 test('bounded upload inspection accepts valid synthetic samples for the seven shared MIME types', async () => {
@@ -37,7 +71,35 @@ test('bounded upload inspection accepts valid synthetic samples for the seven sh
     { name: 'synthetic.png', mediaType: PNG, bytes: pngSample },
     { name: 'synthetic.jpg', mediaType: JPEG, bytes: jpegSample }
   ];
-  for (const item of valid) assert.equal(await verifiedMedia(item.bytes, item.mediaType), item.mediaType, item.name);
+  for (const item of valid) {
+    assert.equal(await verifiedMedia(item.bytes, item.mediaType), item.mediaType, item.name);
+    assert.equal(await spooled(item.bytes, path => verifiedMediaFile(path, item.bytes.length, item.mediaType)), item.mediaType, `${item.name} from file`);
+  }
+});
+
+test('Office containers are inspected from the spooled file entry by entry and zip bombs fail closed', async () => {
+  // Large, incompressible media parts are streamed through inflate with only a bounded head kept.
+  const media = randomBytes(24 * 1024 * 1024);
+  const largeDocx = await neutralExtensionDocxSample('application/octet-stream', media);
+  const largeXlsx = await xlsxSample(undefined, [{ name: 'xl/media/synthetic.bin', contents: randomBytes(24 * 1024 * 1024) }]);
+  assert.equal(await spooled(largeDocx, path => verifiedMediaFile(path, largeDocx.length, DOCX)), DOCX);
+  assert.equal(await verifiedMedia(largeDocx, DOCX), DOCX);
+  assert.deepEqual(await spooled(largeXlsx, path => outcome(verifiedMediaFile(path, largeXlsx.length, XLSX))), await outcome(verifiedMedia(largeXlsx, XLSX)));
+
+  // A header that under-declares the expanded size is caught while inflating, before the lie can grow.
+  const payload = Buffer.concat([randomBytes(64 * 1024), Buffer.alloc(512 * 1024, 0x41)]);
+  const honest = await docxSample([{ name: 'word/media/synthetic.bin', contents: payload }]);
+  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 128 * 1024), DOCX, 422, 'MATERIAL_UNREADABLE');
+  // Per-entry, aggregate and ratio caps come from the central directory, before any part is inflated.
+  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 40 * 1024 * 1024), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  const aggregate = await docxSample(Array.from({ length: 5 }, (_, index) => ({ name: `word/media/part-${index}.bin`, contents: Buffer.concat([randomBytes(15 * 1024 * 1024), Buffer.alloc(15 * 1024 * 1024)]) })));
+  assert.ok(aggregate.length < 100 * 1024 * 1024, 'aggregate sample stays under the upload limit');
+  await expectInspectionFailure(aggregate, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  // Truncated spool files (size mismatch with the central directory) are unreadable.
+  await spooled(honest, async path => {
+    await assert.rejects(verifiedMediaFile(path, honest.length - 1, DOCX), (error: unknown) => (error as { code: string }).code === 'MATERIAL_UNREADABLE');
+  });
 });
 
 test('upload inspection rejects encryption, corrupt structures, active content, and bounded archive abuse', async () => {
