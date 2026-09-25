@@ -682,8 +682,10 @@ type SelectionLockInput = V1SelectionLockInput | V1_1SelectionLockInput;
 function lockComparabilityMatches(row: any, expected: LibraryComparability, profileId: string, profileVersion: number): boolean {
   const attestation = expected.attestation;
   return expected.accounting_scope === 'consolidated'
+    && expected.revenue_basis === 'main_business_revenue'
     && row.profile_version === profileVersion
     && row.accounting_scope === expected.accounting_scope
+    && row.revenue_basis === 'main_business_revenue'
     && row.revenue_basis === expected.revenue_basis
     && row.currency === expected.currency
     && row.unit === expected.unit

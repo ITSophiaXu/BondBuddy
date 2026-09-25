@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
+import { hasLib01AAutoMatchBasis, type AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
 
 export interface IssuerProfileRunScope {
   readonly ownerUserId: string;
@@ -282,6 +282,7 @@ export async function loadReviewedIssuerAnnualProfile(
   scope: IssuerProfileRunScope,
 ): Promise<null> {
   const pending = await getPendingIssuerBusinessProfile(pool, scope);
+  if (pending && !hasLib01AAutoMatchBasis(pending.profile)) return null;
   if (pending) return null;
   // Even if a row was corrupted or future schema is extended, never infer review authority here.
   return null;

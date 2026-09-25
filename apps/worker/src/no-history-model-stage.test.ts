@@ -11,7 +11,7 @@ const target = { market: 'sse', offering: 'public', instrument: 'corporate-bond'
 const profile: AnnualBusinessProfile = {
   issuerId: 'issuer-synthetic', profileVersion: 'issuer-profile-v1', taxonomyVersion: 'business-taxonomy-v1', fiscalYear: 2025,
   completeAnnualPeriod: true, latestCompleteAnnual: true, verificationStatus: 'verified', accountingScope: 'consolidated',
-  revenueBasis: 'operating revenue', currency: 'CNY', unit: 'yuan', allComparableBusinessLinesPresent: true, sourceEvidence: ['target-audit-p1'],
+  revenueBasis: 'main_business_revenue', currency: 'CNY', unit: 'yuan', allComparableBusinessLinesPresent: true, sourceEvidence: ['target-audit-p1'],
   lines: [1, 2, 3].map(rank => ({ code: `business-${rank}`, label: `业务${rank}`, originalLabel: `主业${rank}`, revenue: `${400 - rank * 50}`,
     rank, evidence: [`target-audit-p${rank}`], classificationEvidence: [`target-classification-${rank}`] })),
 };
@@ -42,6 +42,16 @@ function context(): StageContext {
 test('no reviewed target issuer profile pauses before reference selection or model setup', async () => {
   const counts = { config: 0, rules: 0, select: 0, facts: 0 };
   const stage = noHistoryModelGenerationStage(adapters({ loadReviewedIssuerProfile: async () => null }, counts));
+  const outcome = await stage.run(context());
+  assert.deepEqual(outcome, { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:issuer_annual_business_profile_missing_or_unreviewed' });
+  assert.deepEqual(counts, { config: 0, rules: 0, select: 0, facts: 0 });
+});
+
+test('a reviewed operating-revenue profile is rejected before facts, reference selection, or model setup', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({ loadReviewedIssuerProfile: async () => ({
+    ...reviewedProfile, profile: { ...reviewedProfile.profile, revenueBasis: 'operating_revenue' },
+  }) }, counts));
   const outcome = await stage.run(context());
   assert.deepEqual(outcome, { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:issuer_annual_business_profile_missing_or_unreviewed' });
   assert.deepEqual(counts, { config: 0, rules: 0, select: 0, facts: 0 });

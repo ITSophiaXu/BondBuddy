@@ -32,6 +32,11 @@ export interface AnnualBusinessProfile {
   readonly lines: readonly BusinessRevenueLine[];
 }
 
+/** LIB-01A auto-matching basis; other stored revenue bases remain valid source facts. */
+export function hasLib01AAutoMatchBasis(profile: Pick<AnnualBusinessProfile, 'accountingScope' | 'revenueBasis'>): boolean {
+  return profile.accountingScope === 'consolidated' && profile.revenueBasis === 'main_business_revenue';
+}
+
 export interface ReferenceTarget {
   readonly market: Market;
   readonly offering: Offering;
@@ -158,16 +163,18 @@ function decimalCoefficient(value: string | null): { coefficient: bigint; scale:
   return { coefficient: BigInt(`${whole}${fraction}`), scale: fraction.length };
 }
 
-function inspectProfile(profile: AnnualBusinessProfile): ProfileInspection {
+function inspectProfile(profile: AnnualBusinessProfile, requireLib01AAutoMatchBasis = true): ProfileInspection {
   if (!profile.issuerId.trim() || !profile.profileVersion.trim() || !profile.taxonomyVersion.trim()) {
     return { reason: 'profile_identity_or_version_missing', topThree: [] };
   }
   if (!Number.isInteger(profile.fiscalYear) || profile.fiscalYear < 1900 || profile.fiscalYear > 9999
     || !profile.completeAnnualPeriod || !profile.latestCompleteAnnual || profile.verificationStatus !== 'verified'
-    || profile.accountingScope !== 'consolidated'
-    || !profile.revenueBasis.trim() || !profile.currency.trim() || !profile.unit.trim() || !profile.allComparableBusinessLinesPresent
+    || profile.accountingScope !== 'consolidated' || !profile.revenueBasis.trim()
+    || (requireLib01AAutoMatchBasis && !hasLib01AAutoMatchBasis(profile))
+    || !profile.currency.trim() || !profile.unit.trim() || !profile.allComparableBusinessLinesPresent
     || profile.sourceEvidence.length === 0) {
-    return { reason: 'profile_incomplete_or_not_consolidated', topThree: [] };
+    return { reason: profile.revenueBasis !== 'main_business_revenue'
+      ? 'profile_revenue_basis_not_main_business_revenue' : 'profile_incomplete_or_not_consolidated', topThree: [] };
   }
 
   const seenCodes = new Set<string>();
@@ -192,6 +199,14 @@ function inspectProfile(profile: AnnualBusinessProfile): ProfileInspection {
     return { reason: 'third_place_revenue_tie', topThree: [] };
   }
   return { reason: null, topThree: ranked.slice(0, 3) };
+}
+
+/** General target-evidence check for a user-selected structure source; this does not authorize library matching. */
+export function validateUserReferenceIssuerEvidence(profile: AnnualBusinessProfile): 'ready' | 'needs_evidence' | 'needs_review' {
+  const inspection = inspectProfile(profile, false);
+  if (!inspection.reason) return 'ready';
+  return inspection.reason === 'third_place_revenue_tie' || inspection.reason === 'profile_fewer_than_three_businesses'
+    ? 'needs_review' : 'needs_evidence';
 }
 
 function canonicalSet(codes: readonly string[]): string {
@@ -441,7 +456,7 @@ function comparabilityReason(candidate: LibraryCandidateV1_1, targetProfile: Ann
   }
   if (facts.fiscal_year !== candidate.fiscal_year || facts.fiscal_year !== targetProfile.fiscalYear
     || facts.accounting_scope !== 'consolidated' || targetProfile.accountingScope !== 'consolidated'
-    || facts.revenue_basis !== targetProfile.revenueBasis
+    || facts.revenue_basis !== 'main_business_revenue' || targetProfile.revenueBasis !== 'main_business_revenue'
     || facts.currency !== targetProfile.currency || facts.unit !== targetProfile.unit) {
     return 'candidate_comparability_mismatch';
   }
