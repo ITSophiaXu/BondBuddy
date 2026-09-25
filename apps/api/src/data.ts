@@ -55,6 +55,8 @@ export interface PrivateBlobs {
   putFile?(key: string, path: string, mediaType: string): Promise<void>;
   /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
   readToFile?(key: string, path: string | null, maxBytes: number): Promise<BlobDigest | null>;
+  /** Opens the object as a stream (with its stored length); null when absent. */
+  openRead?(key: string): Promise<{ body: Readable; contentLength: number | undefined } | null>;
 }
 export type BlobDigest = { byteSize: number; sha256: string };
 const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
@@ -155,6 +157,18 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       // Always stage blocks (the SDK would otherwise send objects up to 256 MiB in one buffered request),
       // so at most blockSize x concurrency bytes are in memory at a time.
       await container.getBlockBlobClient(key).uploadFile(path, { blockSize: BLOB_BLOCK_BYTES, maxSingleShotSize: BLOB_BLOCK_BYTES, concurrency: 2, blobHTTPHeaders: { blobContentType: mediaType } });
+    },
+    async openRead(key) {
+      await ensure();
+      try {
+        const response = await container.getBlockBlobClient(key).download();
+        if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
+        return { body: response.readableStreamBody as Readable, contentLength: response.contentLength };
+      } catch (error) {
+        if (error instanceof Problem) throw error;
+        if (notFound(error)) return null;
+        throw error;
+      }
     },
     async readToFile(key, path, maxBytes) {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Problem(422,'VALIDATION_FAILED','Invalid Blob read limit');

@@ -1,7 +1,8 @@
 import { isUtf8 } from 'node:buffer';
+import { closeSync, openSync, readSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
 import { parentPort, workerData } from 'node:worker_threads';
-import { inflateRawSync, inflateSync } from 'node:zlib';
+import { crc32 as zlibCrc32, createInflateRaw, inflateSync } from 'node:zlib';
 import { fileTypeFromBuffer } from 'file-type';
 import { decode as decodeJpeg } from 'jpeg-js';
 import { SaxesParser } from 'saxes';
@@ -317,11 +318,9 @@ const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
 });
 
 function crc32(parts: readonly Buffer[]): number {
-  let value = 0xffffffff;
-  for (const part of parts) {
-    for (const byte of part) value = CRC32_TABLE[(value ^ byte) & 0xff]! ^ (value >>> 8);
-  }
-  return (value ^ 0xffffffff) >>> 0;
+  let value = 0;
+  for (const part of parts) value = zlibCrc32(part, value);
+  return value >>> 0;
 }
 
 function hasCompoundFileHeader(bytes: Buffer): boolean {
@@ -337,11 +336,19 @@ function hasNestedContainerHeader(bytes: Buffer): boolean {
   ].some(signature => startsWith(bytes, signature)) || bytes.subarray(257, 262).toString('ascii') === 'ustar';
 }
 
-function isEncryptedOfficeCompoundFile(bytes: Buffer): boolean {
-  if (!hasCompoundFileHeader(bytes)) return false;
-  const marker = bytes.toString('latin1');
-  return marker.includes(Buffer.from('EncryptionInfo', 'utf16le').toString('latin1')) &&
-    marker.includes(Buffer.from('EncryptedPackage', 'utf16le').toString('latin1'));
+const COMPOUND_MARKERS = ['EncryptionInfo', 'EncryptedPackage'].map(marker => Buffer.from(marker, 'utf16le'));
+
+/** Scan a compound file for both encryption stream names in bounded, overlapping chunks. */
+function isEncryptedOfficeCompoundSource(source: ZipSource): boolean {
+  const found = COMPOUND_MARKERS.map(() => false);
+  const overlap = Math.max(...COMPOUND_MARKERS.map(marker => marker.length)) - 1;
+  for (let offset = 0; offset < source.size; offset += ZIP_READ_CHUNK_BYTES) {
+    const start = Math.max(0, offset - overlap);
+    const chunk = source.read(start, Math.min(source.size, offset + ZIP_READ_CHUNK_BYTES) - start);
+    COMPOUND_MARKERS.forEach((marker, index) => { if (chunk.includes(marker)) found[index] = true; });
+    if (found.every(Boolean)) return true;
+  }
+  return false;
 }
 
 type ZipEntry = {
@@ -371,9 +378,9 @@ function decodeZipName(rawName: Buffer, flags: number): string {
   return rawName.toString('ascii');
 }
 
-function validateZipExtra(bytes: Buffer, start: number, length: number): void {
-  let offset = start;
-  const end = start + length;
+function validateZipExtra(bytes: Buffer): void {
+  let offset = 0;
+  const end = bytes.length;
   while (offset < end) {
     if (offset + 4 > end) unreadable();
     const id = bytes.readUInt16LE(offset);
@@ -387,49 +394,91 @@ function validateZipExtra(bytes: Buffer, start: number, length: number): void {
   if (offset !== end) unreadable();
 }
 
-function parseZip(bytes: Buffer): ZipEntry[] {
-  const minimumEocd = Math.max(0, bytes.length - 65_557);
+// Random access to an Office container. The spooled file is read through the ZIP central
+// directory entry by entry, so only headers and one bounded part are ever held in memory.
+type ZipSource = { size: number; read(offset: number, length: number): Buffer; close(): void };
+const MAX_CENTRAL_DIRECTORY_BYTES = 16 * 1024 * 1024;
+const ZIP_READ_CHUNK_BYTES = 1024 * 1024;
+
+function bufferSource(bytes: Buffer): ZipSource {
+  return {
+    size: bytes.length,
+    read(offset, length) {
+      if (offset < 0 || length < 0 || offset + length > bytes.length) unreadable();
+      return bytes.subarray(offset, offset + length);
+    },
+    close() { /* nothing to release */ }
+  };
+}
+
+function fileSource(path: string, byteSize: number): ZipSource {
+  const fd = openSync(path, 'r');
+  return {
+    size: byteSize,
+    read(offset, length) {
+      if (offset < 0 || length < 0 || offset + length > byteSize) unreadable();
+      const buffer = Buffer.allocUnsafe(length);
+      let done = 0;
+      while (done < length) {
+        const count = readSync(fd, buffer, done, length - done, offset + done);
+        if (count === 0) unreadable();
+        done += count;
+      }
+      return buffer;
+    },
+    close() { closeSync(fd); }
+  };
+}
+
+function parseZip(source: ZipSource): ZipEntry[] {
+  const size = source.size;
+  if (size < 22) unreadable();
+  const tailStart = Math.max(0, size - 65_557);
+  const tail = source.read(tailStart, size - tailStart);
   let eocd = -1;
-  for (let offset = bytes.length - 22; offset >= minimumEocd; offset--) {
-    if (bytes.readUInt32LE(offset) === 0x06054b50 && offset + 22 <= bytes.length && offset + 22 + bytes.readUInt16LE(offset + 20) === bytes.length) {
+  for (let offset = tail.length - 22; offset >= 0; offset--) {
+    if (tail.readUInt32LE(offset) === 0x06054b50 && tailStart + offset + 22 + tail.readUInt16LE(offset + 20) === size) {
       eocd = offset;
       break;
     }
   }
   if (eocd < 0) unreadable();
 
-  const disk = bytes.readUInt16LE(eocd + 4);
-  const centralDisk = bytes.readUInt16LE(eocd + 6);
-  const entriesOnDisk = bytes.readUInt16LE(eocd + 8);
-  const entryCount = bytes.readUInt16LE(eocd + 10);
-  const centralSize = bytes.readUInt32LE(eocd + 12);
-  const centralOffset = bytes.readUInt32LE(eocd + 16);
+  const disk = tail.readUInt16LE(eocd + 4);
+  const centralDisk = tail.readUInt16LE(eocd + 6);
+  const entriesOnDisk = tail.readUInt16LE(eocd + 8);
+  const entryCount = tail.readUInt16LE(eocd + 10);
+  const centralSize = tail.readUInt32LE(eocd + 12);
+  const centralOffset = tail.readUInt32LE(eocd + 16);
+  const eocdOffset = tailStart + eocd;
   if (disk !== 0 || centralDisk !== 0 || entriesOnDisk !== entryCount) unsupported('Multi-disk ZIP containers are not supported');
   if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) unsupported('ZIP64 Office containers exceed the bounded inspection profile');
   if (entryCount < 1 || entryCount > MAX_ARCHIVE_ENTRIES) unsupported('Office container has too many entries');
-  if (centralOffset + centralSize !== eocd || centralOffset > bytes.length || centralSize > bytes.length) unreadable();
+  if (centralOffset + centralSize !== eocdOffset || centralOffset > size || centralSize > size) unreadable();
+  if (centralSize > MAX_CENTRAL_DIRECTORY_BYTES) unsupported('Office container directory exceeds the inspection limit');
+  const central = source.read(centralOffset, centralSize);
 
   const entries: ZipEntry[] = [];
   const names = new Set<string>();
-  const centralEnd = centralOffset + centralSize;
-  let cursor = centralOffset;
+  const centralEnd = centralSize;
+  let cursor = 0;
   let expandedTotal = 0;
   let compressedTotal = 0;
 
   for (let index = 0; index < entryCount; index++) {
-    if (cursor + 46 > centralEnd || bytes.readUInt32LE(cursor) !== 0x02014b50) unreadable();
-    const madeBy = bytes.readUInt16LE(cursor + 4);
-    const flags = bytes.readUInt16LE(cursor + 8);
-    const method = bytes.readUInt16LE(cursor + 10);
-    const crc = bytes.readUInt32LE(cursor + 16);
-    const compressedSize = bytes.readUInt32LE(cursor + 20);
-    const expandedSize = bytes.readUInt32LE(cursor + 24);
-    const nameLength = bytes.readUInt16LE(cursor + 28);
-    const extraLength = bytes.readUInt16LE(cursor + 30);
-    const commentLength = bytes.readUInt16LE(cursor + 32);
-    const diskStart = bytes.readUInt16LE(cursor + 34);
-    const externalAttributes = bytes.readUInt32LE(cursor + 38);
-    const localOffset = bytes.readUInt32LE(cursor + 42);
+    if (cursor + 46 > centralEnd || central.readUInt32LE(cursor) !== 0x02014b50) unreadable();
+    const madeBy = central.readUInt16LE(cursor + 4);
+    const flags = central.readUInt16LE(cursor + 8);
+    const method = central.readUInt16LE(cursor + 10);
+    const crc = central.readUInt32LE(cursor + 16);
+    const compressedSize = central.readUInt32LE(cursor + 20);
+    const expandedSize = central.readUInt32LE(cursor + 24);
+    const nameLength = central.readUInt16LE(cursor + 28);
+    const extraLength = central.readUInt16LE(cursor + 30);
+    const commentLength = central.readUInt16LE(cursor + 32);
+    const diskStart = central.readUInt16LE(cursor + 34);
+    const externalAttributes = central.readUInt32LE(cursor + 38);
+    const localOffset = central.readUInt32LE(cursor + 42);
     const recordEnd = cursor + 46 + nameLength + extraLength + commentLength;
     if (nameLength < 1 || nameLength > 512 || recordEnd > centralEnd) unreadable();
     if (diskStart !== 0) unsupported('Multi-disk ZIP containers are not supported');
@@ -439,7 +488,7 @@ function parseZip(bytes: Buffer): ZipEntry[] {
     if (method !== 0 && method !== 8) unsupported('Office container uses an unsupported compression method');
     if (method === 0 && (flags & 0x0006)) unsupported('Stored ZIP entries cannot use deflate options');
 
-    const rawName = bytes.subarray(cursor + 46, cursor + 46 + nameLength);
+    const rawName = Buffer.from(central.subarray(cursor + 46, cursor + 46 + nameLength));
     const name = decodeZipName(rawName, flags);
     const normalizedName = name.normalize('NFC');
     if (normalizedName !== name || name.startsWith('/') || name.includes('\\') || /[:?#%\x00-\x1f\x7f]/.test(name)) unsupported('Office container contains an ambiguous part name');
@@ -462,30 +511,34 @@ function parseZip(bytes: Buffer): ZipEntry[] {
     }
     expandedTotal += expandedSize;
     compressedTotal += compressedSize;
-    validateZipExtra(bytes, cursor + 46 + nameLength, extraLength);
+    validateZipExtra(central.subarray(cursor + 46 + nameLength, cursor + 46 + nameLength + extraLength));
 
-    if (localOffset + 30 > centralOffset || bytes.readUInt32LE(localOffset) !== 0x04034b50) unreadable();
-    const localFlags = bytes.readUInt16LE(localOffset + 6);
-    const localMethod = bytes.readUInt16LE(localOffset + 8);
-    const localCrc = bytes.readUInt32LE(localOffset + 14);
-    const localCompressed = bytes.readUInt32LE(localOffset + 18);
-    const localExpanded = bytes.readUInt32LE(localOffset + 22);
-    const localNameLength = bytes.readUInt16LE(localOffset + 26);
-    const localExtraLength = bytes.readUInt16LE(localOffset + 28);
+    if (localOffset + 30 > centralOffset) unreadable();
+    const local = source.read(localOffset, 30);
+    if (local.readUInt32LE(0) !== 0x04034b50) unreadable();
+    const localFlags = local.readUInt16LE(6);
+    const localMethod = local.readUInt16LE(8);
+    const localCrc = local.readUInt32LE(14);
+    const localCompressed = local.readUInt32LE(18);
+    const localExpanded = local.readUInt32LE(22);
+    const localNameLength = local.readUInt16LE(26);
+    const localExtraLength = local.readUInt16LE(28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     const dataEnd = dataStart + compressedSize;
     if (localFlags !== flags || localMethod !== method || localNameLength !== nameLength || dataEnd > centralOffset) unreadable();
-    if (!bytes.subarray(localOffset + 30, localOffset + 30 + localNameLength).equals(rawName)) unreadable();
-    validateZipExtra(bytes, localOffset + 30 + localNameLength, localExtraLength);
+    const localVariable = source.read(localOffset + 30, localNameLength + localExtraLength);
+    if (!localVariable.subarray(0, localNameLength).equals(rawName)) unreadable();
+    validateZipExtra(localVariable.subarray(localNameLength));
     if (!(flags & 0x0008) && (localCrc !== crc || localCompressed !== compressedSize || localExpanded !== expandedSize)) unreadable();
     if ((flags & 0x0008) && (localCrc !== 0 && localCrc !== crc || localCompressed !== 0 && localCompressed !== compressedSize || localExpanded !== 0 && localExpanded !== expandedSize)) unreadable();
 
     let finalRecordEnd = dataEnd;
     if (flags & 0x0008) {
-      let descriptor = dataEnd;
-      if (descriptor + 4 <= centralOffset && bytes.readUInt32LE(descriptor) === 0x08074b50) descriptor += 4;
-      if (descriptor + 12 > centralOffset || bytes.readUInt32LE(descriptor) !== crc || bytes.readUInt32LE(descriptor + 4) !== compressedSize || bytes.readUInt32LE(descriptor + 8) !== expandedSize) unreadable();
-      finalRecordEnd = descriptor + 12;
+      const available = source.read(dataEnd, Math.min(16, centralOffset - dataEnd));
+      let descriptor = 0;
+      if (descriptor + 4 <= available.length && available.readUInt32LE(descriptor) === 0x08074b50) descriptor += 4;
+      if (descriptor + 12 > available.length || available.readUInt32LE(descriptor) !== crc || available.readUInt32LE(descriptor + 4) !== compressedSize || available.readUInt32LE(descriptor + 8) !== expandedSize) unreadable();
+      finalRecordEnd = dataEnd + descriptor + 12;
     }
 
     entries.push({ name, rawName, flags, method, crc, compressedSize, expandedSize, localOffset, dataStart, dataEnd, recordEnd: finalRecordEnd, directory });
@@ -504,6 +557,63 @@ function parseZip(bytes: Buffer): ZipEntry[] {
   }
   if (localRecords.at(-1)?.recordEnd !== centralOffset) unreadable();
   return entries;
+}
+
+type ExpandedPart = { head: Buffer; whole: Buffer | null; length: number; crc: number };
+const PART_HEAD_BYTES = Math.max(MAX_ACTIVE_PART_PREFIX_BYTES, 262);
+
+/** Inflate one entry in bounded chunks. Only the head is kept unless `keepWhole` (XML parts). */
+async function expandEntry(source: ZipSource, entry: ZipEntry, keepWhole: boolean): Promise<ExpandedPart> {
+  const kept: Buffer[] = [];
+  let head = Buffer.alloc(0);
+  let length = 0;
+  let crc = 0;
+  const accept = (chunk: Buffer) => {
+    length += chunk.length;
+    // Never expand past the declared size: a lying header cannot turn into a zip bomb.
+    if (length > entry.expandedSize) unreadable();
+    crc = zlibCrc32(chunk, crc);
+    if (head.length < PART_HEAD_BYTES) head = Buffer.concat([head, chunk.subarray(0, PART_HEAD_BYTES - head.length)]);
+    if (keepWhole) kept.push(Buffer.from(chunk));
+  };
+  const compressed = async function* () {
+    for (let offset = entry.dataStart; offset < entry.dataEnd; offset += ZIP_READ_CHUNK_BYTES) {
+      yield source.read(offset, Math.min(ZIP_READ_CHUNK_BYTES, entry.dataEnd - offset));
+    }
+  };
+  if (entry.method === 0) {
+    for await (const chunk of compressed()) accept(chunk);
+  } else {
+    const inflate = createInflateRaw({ chunkSize: 64 * 1024 });
+    const feed = (async () => {
+      try {
+        for await (const chunk of compressed()) {
+          if (!inflate.write(chunk)) {
+            await new Promise<void>(resolve => {
+              const resume = () => { inflate.off('drain', resume); inflate.off('close', resume); resolve(); };
+              inflate.on('drain', resume);
+              inflate.on('close', resume);
+            });
+          }
+          if (inflate.destroyed) return;
+        }
+        inflate.end();
+      } catch (error) {
+        inflate.destroy(error as Error);
+      }
+    })();
+    try {
+      for await (const chunk of inflate) accept(chunk as Buffer);
+    } catch (error) {
+      inflate.destroy();
+      if (error instanceof MaterialInspectionError) throw error;
+      unreadable();
+    } finally {
+      await feed;
+    }
+  }
+  if (length !== entry.expandedSize || crc >>> 0 !== entry.crc) unreadable();
+  return { head, whole: keepWhole ? Buffer.concat(kept, length) : null, length, crc: crc >>> 0 };
 }
 
 type Relationship = { type: string; target: string; external: boolean };
@@ -597,7 +707,7 @@ function officePayloadTextPrefix(bytes: Buffer): string {
   return bytes.subarray(0, end).toString('utf8');
 }
 
-function officePayloadHazard(bytes: Buffer): 'active' | 'markup' | undefined {
+function officePayloadHazard(bytes: Buffer, totalLength = bytes.length): 'active' | 'markup' | undefined {
   const text = officePayloadTextPrefix(bytes);
   const header = text.replace(/^\uFEFF/, '');
   const headerStart = header.trimStart();
@@ -627,7 +737,7 @@ function officePayloadHazard(bytes: Buffer): 'active' | 'markup' | undefined {
 
   const prefix = text.slice(cursor).trimStart();
   if (!prefix) {
-    if (bytes.length > MAX_ACTIVE_PART_PREFIX_BYTES) return 'markup';
+    if (totalLength > MAX_ACTIVE_PART_PREFIX_BYTES) return 'markup';
     return undefined;
   }
   if (/^<!doctype\s+(?:html|(?:[\w.-]+:)?svg)\b/i.test(prefix)) return 'active';
@@ -803,14 +913,15 @@ function officePartContentType(state: OfficeState, part: string): string | undef
   return state.contentTypes?.defaults.get(extension);
 }
 
-function inspectOffice(bytes: Buffer, declared: string): void {
-  if (hasCompoundFileHeader(bytes)) {
-    if (isEncryptedOfficeCompoundFile(bytes)) encrypted();
+async function inspectOffice(source: ZipSource, declared: string): Promise<void> {
+  const signature = source.read(0, Math.min(source.size, 512));
+  if (hasCompoundFileHeader(signature)) {
+    if (isEncryptedOfficeCompoundSource(source)) encrypted();
     unsupported('Legacy or compound Office files are not accepted; upload readable DOCX or XLSX');
   }
-  if (!startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) mismatch();
+  if (!startsWith(signature, [0x50, 0x4b, 0x03, 0x04])) mismatch();
 
-  const entries = parseZip(bytes);
+  const entries = parseZip(source);
   const state: OfficeState = { files: new Set(), contentTypes: null, relationships: new Map(), payloadHazards: new Map(), rootDocumentTarget: null, mainPartRoot: null };
   for (const entry of entries) if (!entry.directory) state.files.add(entry.name);
   for (const name of state.files) {
@@ -825,23 +936,15 @@ function inspectOffice(bytes: Buffer, declared: string): void {
 
   for (const entry of entries) {
     if (entry.directory) continue;
-    const compressed = bytes.subarray(entry.dataStart, entry.dataEnd);
-    let expanded: Buffer;
-    try {
-      expanded = entry.method === 0
-        ? Buffer.from(compressed)
-        : inflateRawSync(compressed, { maxOutputLength: Math.max(1, entry.expandedSize + 1) });
-    } catch {
-      return unreadable();
-    }
-    if (expanded.length !== entry.expandedSize || crc32([expanded]) !== entry.crc) unreadable();
-    if (hasNestedContainerHeader(expanded)) {
+    const xmlPart = /\.(?:xml|rels|vml)$/i.test(entry.name);
+    const expanded = await expandEntry(source, entry, xmlPart);
+    if (hasNestedContainerHeader(expanded.head)) {
       unsupported('Nested archive or compound-file content is not accepted');
     }
-    const payloadHazard = officePayloadHazard(expanded);
+    const payloadHazard = officePayloadHazard(expanded.head, expanded.length);
     if (payloadHazard) state.payloadHazards.set(entry.name, payloadHazard);
-    if (/\.(?:xml|rels|vml)$/i.test(entry.name)) {
-      parsePackageXml(entry.name, expanded, state);
+    if (xmlPart) {
+      parsePackageXml(entry.name, expanded.whole!, state);
     }
   }
 
@@ -1110,7 +1213,7 @@ async function inspectContent(bytes: Buffer, declared: string): Promise<void> {
       return;
     case DOCX_MIME:
     case XLSX_MIME:
-      inspectOffice(bytes, declared);
+      await inspectOffice(bufferSource(bytes), declared);
       return;
     case TEXT_MIME:
       await inspectText(bytes, false);
@@ -1158,7 +1261,12 @@ async function inspectFile(path: string, byteSize: number, declared: string): Pr
     return;
   }
   if (declared === PDF_MIME) return inspectPdfFile(path, byteSize);
-  // Office and image formats need random access; the one whole-file copy lives only in this worker.
+  if (declared === DOCX_MIME || declared === XLSX_MIME) {
+    const source = fileSource(path, byteSize);
+    try { await inspectOffice(source, declared); } finally { source.close(); }
+    return;
+  }
+  // Image formats need random access; the one whole-file copy (bounded by the image limits) lives only in this worker.
   const bytes = await readFile(path);
   if (bytes.length !== byteSize) unreadable();
   await inspectContent(bytes, declared);

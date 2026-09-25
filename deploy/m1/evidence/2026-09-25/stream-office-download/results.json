@@ -1,0 +1,14 @@
+{
+ "synthetic": true,
+ "generated_at": "2026-09-25T11:27:38Z",
+ "host": "worker (local docker, not the staging VM)",
+ "profile": "api image built from the commit; --memory 512m --memory-swap 512m --cpus 0.75, NODE_OPTIONS=--max-old-space-size=320 --expose-gc, read-only root, tmpfs /tmp, disk spool volume, PostgreSQL 16 + Azurite",
+ "method": "cgroup memory.peak after a fresh api restart (upload: create -> PUT -> complete incl. inspection; download: separate restart, then GET .../download streamed and hashed by the client). memory.peak includes page cache from the spool file.",
+ "samples": "deploy/m1/scripts/office-sample.mjs: valid package XML + four ~24.7 MiB random media parts (deflate level 1)",
+ "results": [
+  { "image": "this branch", "type": "docx", "bytes": 103563878, "idle_mib": 51, "upload_peak_mib": 263, "download_peak_mib": 96, "download_sha256_match": true, "oom_kill": 0 },
+  { "image": "this branch", "type": "xlsx", "bytes": 103822055, "idle_mib": 57, "upload_peak_mib": 280, "download_peak_mib": 96, "download_sha256_match": true, "oom_kill": 0 },
+  { "image": "origin/develop 17da4ce", "type": "docx", "bytes": 103563878, "idle_mib": 55, "upload_peak_mib": 423, "download_peak_mib": 276, "download_sha256_match": true, "oom_kill": 0 },
+  { "image": "origin/develop 17da4ce", "type": "xlsx", "bytes": 103822055, "idle_mib": 55, "upload_peak_mib": 471, "download_peak_mib": 276, "download_sha256_match": true, "oom_kill": 0 }
+ ]
+}

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Upload capacity probe (synthetic data only). Registers a throwaway user, creates a project and
 // uploads N copies of a generated file concurrently through create -> PUT bytes -> complete.
-// Usage: node upload-probe.mjs <base-url> <origin> <terms-version> <bytes> [count=1] [type=txt|pdf]
+// Usage: node upload-probe.mjs <base-url> <origin> <terms-version> <bytes> [count=1] [type=txt|pdf|docx|xlsx]
+// docx/xlsx need BB_PROBE_FILE (see office-sample.mjs). BB_PROBE_DOWNLOAD=1 downloads each saved material
+// again and checks its streamed sha256; BB_PROBE_DOWNLOAD_GATE delays that download until a file exists.
 import { createHash, randomBytes } from 'node:crypto';
-import { createReadStream, createWriteStream, readFileSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,8 +94,9 @@ try {
   const proj = await call('POST', '/api/v1/projects', { json: { name: 'capacity probe', kind: 'update', issuer_name: null, market: null, offering: null } });
   if (proj.status !== 201) throw new Error(`project ${proj.status} ${JSON.stringify(proj.data)}`);
   const projectId = proj.data.project_id;
-  const mediaType = type === 'txt' ? 'text/plain' : 'application/pdf';
-  const role = type === 'txt' ? 'audit' : 'historical';
+  const mediaType = { txt: 'text/plain', pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }[type];
+  if (!mediaType || ((type === 'docx' || type === 'xlsx') && !process.env.BB_PROBE_FILE)) throw new Error(`unsupported probe type ${type}`);
+  const role = { txt: 'audit', xlsx: 'accountDetails' }[type] ?? 'historical';
   const one = async i => {
     const started = Date.now();
     const created = await call('POST', `/api/v1/projects/${projectId}/materials/uploads`, { json: { filename: `probe-${i}.${type}`, media_type: mediaType, byte_size: size, sha256, role } });
@@ -102,7 +105,19 @@ try {
     const putMs = Date.now() - started;
     if (put.status !== 204) return { i, step: 'put', status: put.status, body: put.data, ms: putMs };
     const done = await call('POST', `/api/v1/projects/${projectId}/materials/uploads/${created.data.upload_id}/complete`, { json: { byte_size: size, sha256 } });
-    return { i, step: 'complete', status: done.status, body: done.status === 201 || done.status === 200 ? { state: done.data?.state, byte_size: done.data?.byte_size } : done.data, put_ms: putMs, total_ms: Date.now() - started };
+    let download;
+    if (process.env.BB_PROBE_DOWNLOAD && (done.status === 200 || done.status === 201)) {
+      // BB_PROBE_DOWNLOAD_GATE=<path>: wait for that file first (lets an operator reset memory counters).
+      if (process.env.BB_PROBE_DOWNLOAD_GATE) writeFileSync(`${process.env.BB_PROBE_DOWNLOAD_GATE}.waiting`, '');
+      while (process.env.BB_PROBE_DOWNLOAD_GATE && !existsSync(process.env.BB_PROBE_DOWNLOAD_GATE)) await new Promise(resolve => setTimeout(resolve, 500));
+      const began = Date.now();
+      const r = await fetch(`${base}/api/v1/projects/${projectId}/materials/${done.data.material_id}/download`, { headers: { Origin: origin, Cookie: cookieHeader() } });
+      const hash = createHash('sha256');
+      let received = 0;
+      try { for await (const chunk of r.body) { received += chunk.length; hash.update(chunk); } } catch (error) { download = { error: String(error) }; }
+      download = { status: r.status, received, sha256_match: hash.digest('hex') === sha256, ms: Date.now() - began, ...download };
+    }
+    return { i, step: 'complete', status: done.status, download, body: done.status === 201 || done.status === 200 ? { state: done.data?.state, byte_size: done.data?.byte_size } : done.data, put_ms: putMs, total_ms: Date.now() - started };
   };
   const results = await Promise.all(Array.from({ length: count }, (_, i) => one(i).catch(error => ({ i, error: String(error) }))));
   console.log(JSON.stringify({ type, size, count, results }, null, 1));
