@@ -10,6 +10,9 @@ import {
   type CreditFacilitySupplementInput,
   type TrustedCreditFacilitySupplementContext,
 } from './credit-facility-supplement-repository.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL');
 
 const context: TrustedCreditFacilitySupplementContext = {
   ownerUserId: 'credit-owner-a', projectId: 'credit-project-a', requestId: 'credit-request-a',
@@ -159,9 +162,9 @@ test('owner-scoped read never returns a foreign project record', async () => {
 });
 
 test('live PostgreSQL persists immutable supplements with atomic outbox and owner isolation', {
-  skip: !process.env.CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL && 'set CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL for migrated PostgreSQL 16',
+  skip: !testDatabaseUrl && 'set CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL for migrated PostgreSQL 16',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: testDatabaseUrl });
   const suffix = randomUUID();
   const owner = `credit-owner-${suffix}`;
   const project = `credit-project-${suffix}`;

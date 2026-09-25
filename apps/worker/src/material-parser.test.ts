@@ -14,6 +14,9 @@ import {
   type MaterialParserPool,
 } from './material-parser.js';
 import type { ParseCacheDependencies, ParseCacheVersions } from './parse-cache.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('MATERIAL_CACHE_TEST_DATABASE_URL');
 
 const bytes = Buffer.from('synthetic authorized material\n', 'utf8');
 const hash = createHash('sha256').update(bytes).digest('hex');
@@ -457,13 +460,13 @@ test('bridge parses synthetic text through the actual Python subprocess when the
 });
 
 test('migrated PostgreSQL and actual Python reuse content only within the owner account', {
-  skip: !process.env.MATERIAL_CACHE_TEST_DATABASE_URL || !existsSync(localPython)
+  skip: !testDatabaseUrl || !existsSync(localPython)
     ? 'set MATERIAL_CACHE_TEST_DATABASE_URL and install repository .venv for live integration'
     : false,
 }, async (t) => {
   const root = await temporaryRoot();
   t.after(() => rm(root, { recursive: true, force: true }));
-  const database = new Pool({ connectionString: process.env.MATERIAL_CACHE_TEST_DATABASE_URL });
+  const database = new Pool({ connectionString: testDatabaseUrl });
   const client = await database.connect();
   const suffix = randomUUID();
   const ownerA = `cache-owner-a-${suffix}`;

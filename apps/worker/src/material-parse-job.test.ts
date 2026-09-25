@@ -9,9 +9,12 @@ import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, succeedMaterialPar
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase();
 
 // All data, parser output and identities here are synthetic. No real material or provider is used.
-const connection = process.env.BB_TEST_DATABASE_URL;
+const connection = testDatabaseUrl;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const ORIGIN = 'http://bondbuddy.test';

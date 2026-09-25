@@ -16,6 +16,9 @@ import {
   type RulePackLedgerClient,
   type RulePackLedgerDependencies,
 } from './rule-pack-release-ledger.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('RULE_PACK_LEDGER_TEST_DATABASE_URL');
 
 const sourceId = 'synthetic-ledger-source';
 const releaseTime = '2026-09-25T12:00:00Z';
@@ -223,9 +226,9 @@ test('accepts UTC timestamps with and without fractional seconds and rejects nor
 });
 
 test('live PostgreSQL 16 stores test release, rollback and withdrawal as immutable rows', {
-  skip: !process.env.RULE_PACK_LEDGER_TEST_DATABASE_URL && 'set RULE_PACK_LEDGER_TEST_DATABASE_URL after migration 0018 is applied',
+  skip: !testDatabaseUrl && 'set RULE_PACK_LEDGER_TEST_DATABASE_URL after migration 0018 is applied',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.RULE_PACK_LEDGER_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: testDatabaseUrl });
   const outer = await pool.connect();
   await outer.query('BEGIN');
   let savepoint = 0;

@@ -7,6 +7,9 @@ import {
   type UpdateDifficultyClient, type UpdateDifficultyDependencies, type UpdateDifficultyPool,
   type TrustedUpdateDifficultyInput,
 } from './update-difficulty-repository.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('UPDATE_DIFFICULTY_TEST_DATABASE_URL');
 
 const owner = 'difficulty-owner-synthetic';
 const project = 'difficulty-project-synthetic';
@@ -151,9 +154,9 @@ test('input revision hash/draft/material binding is checked before an estimate',
 });
 
 test('live PostgreSQL 16 persists snapshot plus outbox, enforces immutability and scopes reads', {
-  skip: !process.env.UPDATE_DIFFICULTY_TEST_DATABASE_URL && 'set UPDATE_DIFFICULTY_TEST_DATABASE_URL for migrated PostgreSQL 16',
+  skip: !testDatabaseUrl && 'set UPDATE_DIFFICULTY_TEST_DATABASE_URL for migrated PostgreSQL 16',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.UPDATE_DIFFICULTY_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: testDatabaseUrl });
   const suffix = (await import('node:crypto')).randomUUID();
   const connection = await pool.connect();
   await connection.query('BEGIN');

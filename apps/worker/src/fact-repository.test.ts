@@ -13,6 +13,9 @@ import {
   type FactRepositoryContext,
   type FactRepositoryPool,
 } from './fact-repository.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('FACT_REPOSITORY_TEST_DATABASE_URL');
 
 const scope: FactRepositoryContext = { ownerUserId: 'owner-a', projectId: 'project-a' };
 const identity: FactIdentity = {
@@ -245,9 +248,9 @@ test('list query is owner/project isolated and rejects unexpected rows from outs
 });
 
 test('live PostgreSQL keeps conflicting candidates and owner/material boundaries',
-  { skip: !process.env.FACT_REPOSITORY_TEST_DATABASE_URL && 'set FACT_REPOSITORY_TEST_DATABASE_URL for migrated PostgreSQL 16' },
+  { skip: !testDatabaseUrl && 'set FACT_REPOSITORY_TEST_DATABASE_URL for migrated PostgreSQL 16' },
   async () => {
-    const pool = new Pool({ connectionString: process.env.FACT_REPOSITORY_TEST_DATABASE_URL });
+    const pool = new Pool({ connectionString: testDatabaseUrl });
     const client = await pool.connect();
     const suffix = randomUUID();
     const owner = `fact-owner-${suffix}`;
@@ -327,10 +330,10 @@ test('live PostgreSQL keeps conflicting candidates and owner/material boundaries
   });
 
 test('live PostgreSQL and private Blob bind OCR facts to immutable snapshots and keep corrections separate',
-  { skip: !process.env.FACT_REPOSITORY_TEST_DATABASE_URL || !process.env.BB_TEST_AZURITE_CONNECTION_STRING
+  { skip: !testDatabaseUrl || !process.env.BB_TEST_AZURITE_CONNECTION_STRING
     ? 'set FACT_REPOSITORY_TEST_DATABASE_URL and BB_TEST_AZURITE_CONNECTION_STRING for migrated PostgreSQL 16 and Azurite' : false },
   async () => {
-    const pool = new Pool({ connectionString: process.env.FACT_REPOSITORY_TEST_DATABASE_URL });
+    const pool = new Pool({ connectionString: testDatabaseUrl });
     const client = await pool.connect();
     const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!);
     const suffix = randomUUID();

@@ -12,8 +12,11 @@ import { runDeepSeekProbe, type ProbeInput, type ProbeJournal, type ProbeObserva
 import { runOnce } from './index.js';
 import { reuseProviderCallOrSend } from './provider-reconciliation.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
+import { isolatedTestDatabase } from './test-database.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+const testDatabaseUrl = await isolatedTestDatabase();
+
+const connection=testDatabaseUrl;
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const validResult=(value:unknown)=>typeof value==='object'&&value!==null&&(value as {ok?:unknown}).ok===true;
 const measuredUsage={status:'measured' as const,input_tokens:11,cached_input_tokens:2,output_tokens:4,reasoning_tokens:1,total_tokens:15};
