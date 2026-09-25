@@ -1,0 +1,126 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { LibraryCandidate, LibraryQueryRequest, LibraryQueryResponse } from '@bondbuddy/contracts';
+import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
+import { selectNoHistoryLibraryReference } from './reference-library-selection.js';
+
+const businessCodes = ['chemicals', 'logistics', 'equipment'];
+const targetProfile: AnnualBusinessProfile = {
+  issuerId: 'issuer-synthetic', profileVersion: 'issuer-profile-v1', taxonomyVersion: 'bond-business-2026.1', fiscalYear: 2025,
+  completeAnnualPeriod: true, latestCompleteAnnual: true, verificationStatus: 'verified', accountingScope: 'consolidated',
+  revenueBasis: 'operating_revenue', currency: 'CNY', unit: 'CNY 10,000', allComparableBusinessLinesPresent: true,
+  sourceEvidence: ['synthetic:annual-note'],
+  lines: [
+    { code: 'chemicals', label: 'Chemicals', originalLabel: 'Chemical products', revenue: '100', rank: 1, evidence: ['synthetic:line-1'], classificationEvidence: ['synthetic:map-1'] },
+    { code: 'logistics', label: 'Logistics', originalLabel: 'Logistics services', revenue: '60', rank: 2, evidence: ['synthetic:line-2'], classificationEvidence: ['synthetic:map-2'] },
+    { code: 'equipment', label: 'Equipment', originalLabel: 'Equipment sales', revenue: '40', rank: 3, evidence: ['synthetic:line-3'], classificationEvidence: ['synthetic:map-3'] },
+    { code: 'services', label: 'Services', originalLabel: 'Services', revenue: '10', rank: 4, evidence: ['synthetic:line-4'], classificationEvidence: ['synthetic:map-4'] },
+  ],
+};
+const target = { market: 'sse' as const, offering: 'private' as const, instrument: 'corporate_bond', documentStage: 'issuance' as const, ruleVersion: 'rules-v4' };
+const scope = { market: target.market, offering: target.offering, instrument: target.instrument,
+  document_stage: target.documentStage, rule_version: target.ruleVersion };
+
+function candidate(overrides: Partial<LibraryCandidate> = {}): LibraryCandidate {
+  return {
+    reference_id: 'reference-a', document_version_id: 'document-v3', document_version: 3, profile_id: 'profile-v2', profile_version: 2,
+    taxonomy_version: 'bond-business-2026.1', fiscal_year: 2024, market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance',
+    availability: 'published', readable: true, use_authorized: true, source_validity: 'valid', applicable_scopes: [scope], chapter_mapping_versions: [],
+    review_quality: 90, disclosed_at: '2025-08-01', top3_set_key: JSON.stringify([...businessCodes].sort()),
+    ...overrides,
+  };
+}
+function response(candidates: LibraryCandidate[]): LibraryQueryResponse {
+  return { schema_version: 'reference-library-query-v1', status: candidates.length ? 'candidates' : 'no_match',
+    index_release: { release_id: 'release-12', release_no: 12 }, candidates, reason: candidates.length ? null : 'no_published_exact_set' };
+}
+function input() {
+  return { ownerUserId: 'owner-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic', traceId: 'trace-synthetic',
+    targetProfile, target, ruleVersion: 'rules-v4' };
+}
+function adapters(result: LibraryQueryResponse) {
+  const calls = { query: 0, lock: 0, persist: 0, request: null as LibraryQueryRequest | null };
+  return {
+    calls,
+    deps: {
+      query: async (request: LibraryQueryRequest) => { calls.query++; calls.request = request; return result; },
+      lock: async (lockInput: { ownerUserId: string; projectId: string; runId: string; documentVersionId: string; profileId: string; indexReleaseId: string }) => {
+        calls.lock++;
+        assert.deepEqual(lockInput, { ownerUserId: 'owner-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic',
+          documentVersionId: 'document-v3', profileId: 'profile-v2', indexReleaseId: 'release-12' });
+        return { lock_id: 'lock-synthetic', query_schema_version: 'reference-library-query-v1' as const, document_version_id: lockInput.documentVersionId,
+          profile_id: lockInput.profileId, taxonomy_version: 'bond-business-2026.1', index_release_id: lockInput.indexReleaseId, locked_at: '2026-09-25T00:00:00Z' };
+      },
+      persist: async () => { calls.persist++; },
+    },
+  };
+}
+
+test('an exact unordered set preserves target rank evidence but does not fabricate candidate revenue lines', async () => {
+  const fixture = adapters(response([candidate()]));
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'needs_review');
+  assert.equal(selected.selected, null);
+  assert.equal(selected.target.targetBusinessProfile?.topThree[0]?.rank, 1);
+  assert.deepEqual(fixture.calls.request?.target.top3_codes, businessCodes);
+  assert.equal(selected.candidate_decisions[0]?.reason, 'candidate_revenue_basis_not_exposed_by_query_v1');
+  assert.equal(fixture.calls.lock, 0);
+  assert.equal(fixture.calls.persist, 1);
+});
+
+test('two of three business codes do not match', async () => {
+  const partial = candidate({ top3_set_key: JSON.stringify(['chemicals', 'logistics', 'finance'].sort()) });
+  const fixture = adapters(response([partial]));
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'no_match');
+  assert.equal(selected.candidate_decisions[0]?.reason, 'top_three_business_set_mismatch');
+  assert.equal(fixture.calls.lock, 0);
+});
+
+test('different business ranking remains an exact set match', async () => {
+  // The v1 candidate intentionally carries only an unordered set key, not invented candidate revenue lines.
+  const fixture = adapters(response([candidate({ top3_set_key: JSON.stringify(['equipment', 'chemicals', 'logistics'].sort()) })]));
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'needs_review');
+  assert.deepEqual(fixture.calls.request?.target.top3_codes, businessCodes);
+  assert.equal(selected.candidate_decisions[0]?.reason, 'candidate_revenue_basis_not_exposed_by_query_v1');
+  assert.deepEqual(selected.target.targetBusinessProfile?.topThree.map(line => line.code), businessCodes);
+});
+
+test('wrong rule, market, or instrument candidates are excluded', async () => {
+  const wrongRule = candidate({ applicable_scopes: [{ ...scope, rule_version: 'rules-v3' }] });
+  const wrongMarket = candidate({ market: 'szse', applicable_scopes: [scope], chapter_mapping_versions: ['mapping-v2'] });
+  const wrongInstrument = candidate({ instrument: 'cp', applicable_scopes: [scope] });
+  const fixture = adapters(response([wrongRule, wrongMarket, wrongInstrument]));
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'no_match');
+  assert.deepEqual(selected.candidate_decisions.map(decision => decision.reason).sort(), [
+    'cross_market_or_offering_mapping_details_missing', 'reference_instrument_or_stage_mismatch', 'target_rule_scope_not_applicable',
+  ].sort());
+  assert.equal(fixture.calls.lock, 0);
+});
+
+test('withdrawn or authorization-limited versions returned as no_match cannot be locked', async () => {
+  // The API query filters revoked sources and withdrawn versions before returning candidates.
+  const fixture = adapters(response([]));
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'no_match');
+  assert.equal(fixture.calls.lock, 0);
+});
+
+test('empty library produces an explicit no_match and durable bounded result', async () => {
+  const fixture = adapters(response([]));
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'no_match');
+  assert.equal(selected.selected, null);
+  assert.equal(fixture.calls.persist, 1);
+});
+
+test('library outage and stale release remain explicit and never lock', async () => {
+  const unavailableFixture = adapters({ schema_version: 'reference-library-query-v1', status: 'unavailable', index_release: null, candidates: [], reason: 'library_unavailable' });
+  assert.equal((await selectNoHistoryLibraryReference(input(), unavailableFixture.deps)).status, 'unavailable');
+  const mismatchFixture = adapters({ schema_version: 'reference-library-query-v1', status: 'index_version_mismatch',
+    index_release: { release_id: 'release-13', release_no: 13 }, candidates: [], reason: 'requested_release_not_active' });
+  assert.equal((await selectNoHistoryLibraryReference(input(), mismatchFixture.deps)).status, 'index_version_mismatch');
+  assert.equal(unavailableFixture.calls.lock + mismatchFixture.calls.lock, 0);
+});
