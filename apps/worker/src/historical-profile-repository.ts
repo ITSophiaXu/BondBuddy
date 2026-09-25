@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
 import type { Pool } from 'pg';
 import { isMarketOffering, schemas, type Market, type Offering, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
-import { readOcr } from '@bondbuddy/api/ocr';
+import { readOcr, readOcrPage } from '@bondbuddy/api/ocr';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 import { parseHistoricalOcrExtractorVersion, recognizeHistoricalOcr } from './historical-ocr-recognition.js';
@@ -25,6 +25,32 @@ export interface HistoricalProfileDependencies {
 export interface HistoricalOcrProfileDependencies extends HistoricalProfileDependencies {
   /** Private storage used by the owner-scoped reader to hash-check the immutable OCR result. */
   blobs: PrivateBlobs;
+}
+
+async function verifyCitedOcrPages(
+  pool: HistoricalProfileClient,
+  dependencies: HistoricalOcrProfileDependencies,
+  context: TrustedHistoricalProfileContext,
+  review: Awaited<ReturnType<typeof readOcr>>,
+  refs: readonly string[],
+): Promise<void> {
+  const cited = new Set(refs);
+  const records = review.records.filter(record => cited.has(record.record_id));
+  if (records.length !== cited.size) throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
+  const pages = [...new Set(records.map(record => record.page))].sort((a, b) => a - b);
+  try {
+    for (const page of pages) {
+      // The existing reader checks the private rendered-page Blob against the immutable page hash.
+      const bytes = await readOcrPage(pool as unknown as Pool, dependencies.blobs, context.ownerUserId,
+        context.projectId, context.materialId, review.snapshot_id, String(page));
+      const expectedHash = review.pages.find(item => item.page === page)?.image_sha256;
+      if (!expectedHash || createHash('sha256').update(bytes).digest('hex') !== expectedHash) {
+        throw fail('HISTORICAL_OCR_PROFILE_PAGE_INTEGRITY_FAILED');
+      }
+    }
+  } catch {
+    throw fail('HISTORICAL_OCR_PROFILE_PAGE_INTEGRITY_FAILED');
+  }
 }
 
 export interface TrustedHistoricalProfileContext {
@@ -465,6 +491,8 @@ export async function appendHistoricalOcrRecognition(
     if (fields.some(field => field.provenance.evidence_refs.some(ref => !availableRefs.has(ref)))) {
       throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
     }
+    await verifyCitedOcrPages(client, dependencies, context, review,
+      fields.flatMap(field => field.provenance.evidence_refs));
     const expectedRecognition = recognizeHistoricalOcr(review, { profileVersion: 1 });
     if (canonical(expectedRecognition) !== canonical({ ...recognition, profile_version: 1 })) {
       throw fail('HISTORICAL_OCR_PROFILE_RECOGNITION_MISMATCH');
@@ -556,6 +584,7 @@ export async function correctHistoricalRecognition(
           review.material_version !== context.materialVersion) throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
       const availableRefs = new Set(review.records.map(record => record.record_id));
       if (citedEvidenceRefs.some(ref => !availableRefs.has(ref))) throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
+      await verifyCitedOcrPages(client, dependencies, context, review, citedEvidenceRefs);
     } else {
       await validateCorrectionEvidenceReferences(client, context, parserVersionFromRecognition(prior), citedEvidenceRefs);
     }
