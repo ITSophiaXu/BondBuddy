@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isMarketOffering, type LibraryCandidate, type LibraryQueryResponse, type Market, type Offering } from '@bondbuddy/contracts';
+import { isMarketOffering, type LibraryCandidate, type LibraryCandidateV1_1, type LibraryChapterMapping, type LibraryQueryResponse, type Market, type Offering } from '@bondbuddy/contracts';
 
 /** Internal matching inputs. These types are not API DTOs. */
 export interface BusinessRevenueLine {
@@ -137,10 +137,11 @@ export interface ReferenceMatchResult {
   readonly selectionHash: string;
 }
 
-/** Selection trace for the v1 library query, which deliberately omits reference revenue lines. */
+/** Selection trace for the reduced internal library query responses. */
 export interface LibraryQueryMatchResult {
   readonly status: ReferenceMatchStatus | 'index_version_mismatch';
   readonly selected: LibraryCandidate | null;
+  readonly selectedChapterMapping: LibraryChapterMapping | null;
   readonly decisions: readonly ReferenceCandidateDecision[];
   readonly targetValidation: ReferenceMatchResult;
   readonly reasons: readonly string[];
@@ -416,11 +417,42 @@ export function matchBusinessReferences(input: ReferenceMatchInput): ReferenceMa
   });
 }
 
+function chapterMappingForV11(candidate: LibraryCandidateV1_1, target: ReferenceTarget, ruleVersion: string): LibraryChapterMapping | null {
+  if (candidate.market === target.market && candidate.offering === target.offering) return null;
+  return candidate.chapter_mappings.find(mapping => mapping.status === 'accepted'
+    && mapping.mapping_version_id.trim() !== '' && mapping.mapping_key.trim() !== ''
+    && mapping.version >= 1 && candidate.chapter_mapping_versions.includes(mapping.mapping_version_id)
+    && mapping.source.market === candidate.market && mapping.source.offering === candidate.offering
+    && mapping.source.instrument === candidate.instrument
+    && mapping.target.market === target.market && mapping.target.offering === target.offering
+    && mapping.target.instrument === target.instrument
+    && mapping.document_stage === target.documentStage && mapping.rule_version === ruleVersion) ?? null;
+}
+
+function comparabilityReason(candidate: LibraryCandidateV1_1, targetProfile: AnnualBusinessProfile): string | null {
+  const facts = candidate.comparability;
+  if (!facts) return 'candidate_comparability_missing';
+  const attestation = facts.attestation;
+  const reviewedAt = /^([0-9]{4}-[0-9]{2}-[0-9]{2})T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?Z$/.exec(attestation.reviewed_at);
+  if (!attestation.review_id.trim() || !attestation.reviewed_by.trim()
+    || !reviewedAt || !validDate(reviewedAt[1]!)
+    || attestation.profile_id !== candidate.profile_id || attestation.profile_version !== candidate.profile_version) {
+    return 'candidate_comparability_attestation_invalid';
+  }
+  if (facts.fiscal_year !== candidate.fiscal_year || facts.fiscal_year !== targetProfile.fiscalYear
+    || facts.accounting_scope !== 'consolidated' || targetProfile.accountingScope !== 'consolidated'
+    || facts.revenue_basis !== targetProfile.revenueBasis
+    || facts.currency !== targetProfile.currency || facts.unit !== targetProfile.unit) {
+    return 'candidate_comparability_mismatch';
+  }
+  return null;
+}
+
 /**
- * Applies the domain gates to the library's reduced v1 response. Candidate revenue lines are
- * intentionally unavailable here: the library's exact set key is the only candidate business
- * evidence. Cross-market/offering mappings are rejected because v1 exposes mapping version IDs,
- * not the mapping scope needed to prove that a version applies to this target.
+ * Applies the domain gates to the reduced internal library response. v1 remains fail-closed because
+ * it omits comparability facts and mapping scopes. v1.1 validates those facts and scopes, but its
+ * current attestation does not establish that the source profile covered every comparable revenue
+ * line or resolved a third-place tie; that proof is required before an exact result can be locked.
  */
 export function matchLibraryQuery(input: {
   targetProfile: AnnualBusinessProfile;
@@ -438,69 +470,91 @@ export function matchLibraryQuery(input: {
     candidates: [],
   });
   if (targetValidation.status === 'needs_evidence' || targetValidation.status === 'needs_review') {
-    return { status: targetValidation.status, selected: null, decisions: [], targetValidation, reasons: [...targetValidation.reasons] };
+    return { status: targetValidation.status, selected: null, selectedChapterMapping: null, decisions: [], targetValidation, reasons: [...targetValidation.reasons] };
   }
   if (input.response.status === 'unavailable') {
-    return { status: 'unavailable', selected: null, decisions: [], targetValidation, reasons: ['reference_library_unavailable'] };
+    return { status: 'unavailable', selected: null, selectedChapterMapping: null, decisions: [], targetValidation, reasons: ['reference_library_unavailable'] };
   }
   if (input.response.status === 'index_version_mismatch') {
-    return { status: 'index_version_mismatch', selected: null, decisions: [], targetValidation, reasons: ['reference_index_version_mismatch'] };
+    return { status: 'index_version_mismatch', selected: null, selectedChapterMapping: null, decisions: [], targetValidation, reasons: ['reference_index_version_mismatch'] };
   }
-  if (!input.response.index_release || input.response.schema_version !== 'reference-library-query-v1') {
-    return { status: 'needs_review', selected: null, decisions: [], targetValidation, reasons: ['reference_query_release_or_schema_missing'] };
+  if (!input.response.index_release) {
+    return { status: 'needs_review', selected: null, selectedChapterMapping: null, decisions: [], targetValidation, reasons: ['reference_query_release_or_schema_missing'] };
   }
   if (input.response.status === 'no_match') {
-    return { status: 'no_match', selected: null, decisions: [], targetValidation, reasons: ['no_published_exact_reference'] };
+    return { status: 'no_match', selected: null, selectedChapterMapping: null, decisions: [], targetValidation, reasons: ['no_published_exact_reference'] };
   }
 
   const targetSetKey = targetValidation.snapshot.targetTop3SetKey;
   if (!targetSetKey) {
-    return { status: 'needs_review', selected: null, decisions: [], targetValidation, reasons: ['target_business_set_missing'] };
+    return { status: 'needs_review', selected: null, selectedChapterMapping: null, decisions: [], targetValidation, reasons: ['target_business_set_missing'] };
   }
   const decisions: ReferenceCandidateDecision[] = [];
-  const eligible: LibraryCandidate[] = [];
+  const eligible: { candidate: LibraryCandidate | LibraryCandidateV1_1; mapping: LibraryChapterMapping | null }[] = [];
+  let pendingComparison = false;
   for (const candidate of input.response.candidates) {
     let reason: string | null = null;
     if (candidate.availability !== 'published' || !candidate.readable || !candidate.use_authorized || candidate.source_validity !== 'valid') {
       reason = 'reference_not_currently_published_and_authorized';
-    } else if (candidate.top3_set_key !== targetSetKey || candidate.taxonomy_version !== input.targetProfile.taxonomyVersion) {
-      reason = candidate.taxonomy_version !== input.targetProfile.taxonomyVersion ? 'taxonomy_version_mismatch' : 'top_three_business_set_mismatch';
+    } else if (candidate.top3_set_key !== targetSetKey) {
+      reason = 'top_three_business_set_mismatch';
+    } else if (candidate.taxonomy_version !== input.targetProfile.taxonomyVersion) {
+      reason = 'taxonomy_version_mismatch';
     } else if (candidate.instrument !== input.target.instrument || candidate.document_stage !== input.target.documentStage) {
       reason = 'reference_instrument_or_stage_mismatch';
     } else if (!candidate.applicable_scopes.some(scope => scope.market === input.target.market
       && scope.offering === input.target.offering && scope.instrument === input.target.instrument
       && scope.document_stage === input.target.documentStage && scope.rule_version === input.ruleVersion)) {
       reason = 'target_rule_scope_not_applicable';
-    } else if (candidate.market !== input.target.market || candidate.offering !== input.target.offering) {
+    } else if (input.response.schema_version === 'reference-library-query-v1'
+      && (candidate.market !== input.target.market || candidate.offering !== input.target.offering)) {
       reason = 'cross_market_or_offering_mapping_details_missing';
-    } else {
-      // Query v1 guarantees a complete consolidated profile but omits the revenue basis. The full
-      // matcher requires basis equality, so the reduced response cannot safely produce an exact pick.
+    } else if (input.response.schema_version === 'reference-library-query-v1') {
       reason = 'candidate_revenue_basis_not_exposed_by_query_v1';
+      pendingComparison = true;
+    } else {
+      const v11Candidate = 'comparability' in candidate ? candidate as LibraryCandidateV1_1 : null;
+      const mapping = v11Candidate ? chapterMappingForV11(v11Candidate, input.target, input.ruleVersion) : null;
+      if (!v11Candidate) {
+        reason = 'reference_query_candidate_shape_mismatch';
+        pendingComparison = true;
+      } else if ((candidate.market !== input.target.market || candidate.offering !== input.target.offering) && !mapping) {
+        reason = 'accepted_chapter_mapping_missing_or_mismatched';
+        pendingComparison = true;
+      } else {
+        reason = comparabilityReason(v11Candidate, input.targetProfile);
+        if (reason) pendingComparison = true;
+        else {
+          // The current v1.1 review attestation binds comparability fields to a profile version but
+          // does not attest full-universe/top-three completeness or third-place tie resolution.
+          reason = 'candidate_business_profile_completeness_or_tie_proof_missing';
+          pendingComparison = true;
+        }
+      }
     }
     if (reason) {
       decisions.push({ referenceId: candidate.reference_id, documentVersion: String(candidate.document_version),
         profileVersion: String(candidate.profile_version), reason, disposition: 'excluded' });
     } else {
-      eligible.push(candidate);
+      const mapping = input.response.schema_version === 'reference-library-query-v1.1'
+        ? chapterMappingForV11(candidate as LibraryCandidateV1_1, input.target, input.ruleVersion) : null;
+      eligible.push({ candidate, mapping });
     }
   }
-  eligible.sort((a, b) => b.review_quality - a.review_quality
-    || (b.disclosed_at ?? '').localeCompare(a.disclosed_at ?? '')
-    || a.reference_id.localeCompare(b.reference_id)
-    || a.document_version - b.document_version);
+  eligible.sort((a, b) => b.candidate.review_quality - a.candidate.review_quality
+    || (b.candidate.disclosed_at ?? '').localeCompare(a.candidate.disclosed_at ?? '')
+    || a.candidate.reference_id.localeCompare(b.candidate.reference_id)
+    || a.candidate.document_version - b.candidate.document_version);
   const selected = eligible[0] ?? null;
-  for (const candidate of eligible) {
+  for (const { candidate } of eligible) {
     decisions.push({ referenceId: candidate.reference_id, documentVersion: String(candidate.document_version),
       profileVersion: String(candidate.profile_version),
-      reason: selected === candidate ? 'exact_business_set_and_target_scope_selected' : 'exact_business_set_usable_but_lower_stable_preference',
+      reason: selected?.candidate === candidate ? 'exact_business_set_and_target_scope_selected' : 'exact_business_set_usable_but_lower_stable_preference',
       disposition: 'matched' });
   }
   decisions.sort(compareDecisions);
   return selected
-    ? { status: 'exact', selected, decisions, targetValidation, reasons: ['exact_three_business_set', 'reference_scope_usable'] }
-    : { status: decisions.some(decision => decision.reason === 'candidate_revenue_basis_not_exposed_by_query_v1') ? 'needs_review' : 'no_match',
-      selected: null, decisions, targetValidation,
-      reasons: decisions.some(decision => decision.reason === 'candidate_revenue_basis_not_exposed_by_query_v1')
-        ? ['candidate_comparability_fields_missing'] : ['no_usable_exact_reference'] };
+    ? { status: 'exact', selected: selected.candidate, selectedChapterMapping: selected.mapping, decisions, targetValidation, reasons: ['exact_three_business_set', 'reference_scope_usable'] }
+    : { status: pendingComparison ? 'needs_review' : 'no_match', selected: null, selectedChapterMapping: null, decisions, targetValidation,
+      reasons: pendingComparison ? ['candidate_comparison_needs_review'] : ['no_usable_exact_reference'] };
 }
