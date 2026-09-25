@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/domain/package.json packages/domain/
+COPY packages/rule-pack-registry/package.json packages/rule-pack-registry/
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
 COPY apps/web/package.json apps/web/
