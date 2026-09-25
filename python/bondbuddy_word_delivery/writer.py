@@ -490,8 +490,8 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
             insert_columns(root, plan["columns"], tracked, next_id, stamp)
             add_comments(parts, root, notes, rows, tracked, next_id, stamp)
             parts["word/document.xml"] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
-            if tracked:
-                settings = parse_xml(parts.get("word/settings.xml", f'<w:settings xmlns:w="{W}"/>'.encode()))
+            if tracked and "word/settings.xml" in parts:
+                settings = parse_xml(parts["word/settings.xml"])
                 if settings.find(Q("trackRevisions")) is None:
                     settings.append(etree.Element(Q("trackRevisions")))
                 parts["word/settings.xml"] = etree.tostring(settings, encoding="UTF-8", xml_declaration=True)
