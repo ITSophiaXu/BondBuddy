@@ -19,10 +19,12 @@
 | context | owner、project、发行人、inputRevision/inputHash、目标市场/方式及规则版本/hash；复用公共市场枚举 |
 | materials | 材料 ID/version/hash/role；逐一查询 owner/project 下未删除记录，禁止历史稿改走 reference |
 | baseline | 指定历史材料、parse snapshot ID、profile version；不取 latest 作为回退 |
-| factCandidateIds + factsHash | 输入快照建立时，可信预检须锁定所有相关候选，**包括冲突**；hash 使用 `historicalUpdateFactsHash`，包含身份、值及来源 |
+| factCandidateIds + factsHash | 输入快照建立时，可信预检须锁定所有相关候选，**包括冲突**，并为每个精确事实身份锁定最新决策 ID/version（无决策为 version 0）；hash 使用 `historicalUpdateFactsHash(facts, decisions)`，包含候选身份、值、来源及决策版本 |
 | semantic inventory | 每处原文位置、财务身份与全块覆盖原因；必须经过上游证据核对 |
 
 运行中新增的候选属于下一次 input revision，不能改写既有任务的候选清单；清单中候选丢失或内容/hash 改变则停止。此函数不负责创建或持久化输入快照；#17 接入时须在可信输入冻结流程中保证候选清单完整性，不能让客户端挑选候选来隐藏冲突。
+
+同一精确身份有多个候选时，只有决策选择了冻结清单内且身份一致的候选才可用于事实计算；无决策、未解决决策或清单外候选选择均保持待确认。决策只选择原候选，不改变其状态；`user_asserted`、OCR 存疑值仍不能成为可用审计事实。
 
 解析记录以原始 parser response hash 及有序 evidence 再核验；profile 的材料版本、引用记录和原生 extractor/parser 版本必须对应。历史材料归属本发行人的专业确认仍由上游提供，上传分区本身不是发行人身份证据。规则 pack 引用仅用于锁定版本，生产发布资格仍由 #19 的 gate 检查。
 

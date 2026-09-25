@@ -7,6 +7,7 @@ import { factIdentityKey, type FactCandidate, type FactIdentity } from '@bondbud
 import { insertFactCandidate, type FactEvidenceAnchor } from './fact-repository.js';
 import {
   appendFactDecision,
+  getLatestFactDecision,
   type FactDecisionClient,
   type FactDecisionDependencies,
   type FactDecisionInput,
@@ -82,6 +83,11 @@ class TransactionMock implements FactDecisionClient {
     if (sql.startsWith('SELECT pg_advisory_xact_lock')) return { rows: [] };
     if (sql.includes('FROM bb_fact_decisions') && sql.includes('request_id = $3')) {
       return { rows: this.decisions.filter((row) => row.owner_user_id === values[0] && row.project_id === values[1] && row.request_id === values[2]) };
+    }
+    if (sql.includes('FROM bb_fact_decisions') && sql.includes('ORDER BY version DESC LIMIT 1')) {
+      const rows = this.decisions.filter((row) => row.owner_user_id === values[0] && row.project_id === values[1] && row.fact_key_hash === values[2])
+        .sort((left, right) => Number(right.version) - Number(left.version));
+      return { rows: rows.slice(0, 1) };
     }
     if (sql.includes('FROM bb_fact_candidates')) {
       const rows = this.candidates.filter((candidate) => candidate.owner_user_id === values[0] &&
@@ -204,6 +210,19 @@ test('unresolved decision is versioned and competing candidates remain intact', 
   assert.equal(client.candidates.length, 2);
   assert.deepEqual(client.candidates.map((candidate) => candidate.id), ['candidate-a', 'candidate-user']);
   assert.equal(client.outbox[0]!.payload && (client.outbox[0]!.payload as Record<string, unknown>).resolution, 'unresolved');
+});
+
+test('latest decision reader is exact identity and owner/project scoped', async () => {
+  const client = new TransactionMock(); const deps = dependencies(client);
+  const first = await appendFactDecision(deps, context, makeDecision());
+  const latest = await appendFactDecision(deps, context, makeDecision({ decisionId: 'decision-2', requestId: 'request-2', resolution: 'unresolved', selectedCandidateId: undefined }));
+  assert.equal((await getLatestFactDecision(deps, context, identity))?.decisionId, latest.decisionId);
+  assert.equal((await getLatestFactDecision(deps, context, otherIdentity)), null);
+  const query = client.calls.find(call => call.sql.includes('ORDER BY version DESC LIMIT 1'))!;
+  assert.match(query.sql, /WHERE owner_user_id = \$1 AND project_id = \$2 AND fact_key_hash = \$3/);
+  assert.deepEqual(query.values, [context.ownerUserId, context.projectId, factKeyHash(identity)]);
+  await assert.rejects(getLatestFactDecision(deps, { ...context, ownerUserId: 'other-owner' }, identity), /INVALID_FACT_DECISION_SCOPE/);
+  assert.equal(first.version, 1);
 });
 
 test('decision and outbox roll back atomically if the outbox insert fails', async () => {

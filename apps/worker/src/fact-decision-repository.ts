@@ -262,3 +262,34 @@ export async function appendFactDecision(
     client.release();
   }
 }
+
+/** Reads the latest immutable decision for one exact identity inside an authenticated owner/project scope. */
+export async function getLatestFactDecision(
+  dependencies: FactDecisionDependencies,
+  context: Pick<TrustedFactDecisionContext, 'ownerUserId' | 'projectId'>,
+  identity: FactIdentity,
+): Promise<StoredFactDecision | null> {
+  if (!context.ownerUserId.trim() || !context.projectId.trim() || identity.accountId !== context.ownerUserId) {
+    throw fail('INVALID_FACT_DECISION_SCOPE');
+  }
+  let identityKey: string;
+  try { identityKey = factIdentityKey(identity); } catch { throw fail('INVALID_FACT_IDENTITY'); }
+  const client = await dependencies.pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT ${DECISION_COLUMNS} FROM bb_fact_decisions
+        WHERE owner_user_id = $1 AND project_id = $2 AND fact_key_hash = $3
+        ORDER BY version DESC LIMIT 1`,
+      [context.ownerUserId, context.projectId, hashIdentity(identityKey)],
+    );
+    if (result.rows.length === 0) return null;
+    const decision = mapDecision(result.rows[0]!, false);
+    if (decision.ownerUserId !== context.ownerUserId || decision.projectId !== context.projectId ||
+      decision.factKeyHash !== hashIdentity(identityKey) || factIdentityKey(decision.identity) !== identityKey) {
+      throw fail('FACT_DECISION_SCOPE_OR_IDENTITY_MISMATCH');
+    }
+    return decision;
+  } finally {
+    client.release();
+  }
+}

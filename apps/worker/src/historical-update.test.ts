@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { updateContentHash, type HistoricalUpdateInput } from '@bondbuddy/domain/historical-update';
 import { factIdentityKey } from '@bondbuddy/domain/facts';
 import { prepareHistoricalUpdate, historicalUpdateFactsHash, type LockedHistoricalUpdate, type HistoricalUpdateReaders } from './historical-update.js';
+import type { StoredFactDecision } from './fact-decision-repository.js';
 import type { ParseEvidenceDependencies, StoredParseSnapshot } from './parse-evidence-repository.js';
 import type { StoredFactCandidate } from './fact-repository.js';
 import type { StoredHistoricalProfile } from './historical-profile-repository.js';
@@ -48,10 +49,15 @@ function setup(parsed?: DocumentParseResponse) {
       extraction_version: anchor.extractionVersion, confidence: 1, uncertainty: [],
     })),
   } }));
+  const identities = [...new Map(input.bindings.flatMap(binding => {
+    const expr = binding.expression;
+    return [...(expr.kind === 'fact' ? [expr.identity] : expr.kind === 'sum' ? expr.terms : [expr.left, expr.right]), ...(binding.replaces ? [binding.replaces] : [])];
+  }).map(identity => [factIdentityKey(identity), identity])).values()];
+  const decisions = identities.map(identity => ({ identity, decision: null as StoredFactDecision | null }));
   const locked: LockedHistoricalUpdate = { context: input.context, bindings: input.bindings, occurrences: input.occurrences, columns: input.columns, coverage: input.coverage,
     baseline: { materialId: baseline.materialId, materialVersion: 1, snapshotId: baseline.snapshotId, profileVersion: 1 },
     materials: [{ materialId: baseline.materialId, materialVersion: 1, role: 'historical', contentHash: snapshot.contentSha256 },
-      { materialId: 'audit-1', materialVersion: 1, role: 'audit', contentHash: 'b'.repeat(64) }], factCandidateIds: facts.map(fact => fact.candidate.candidateId), factsHash: historicalUpdateFactsHash(facts) };
+      { materialId: 'audit-1', materialVersion: 1, role: 'audit', contentHash: 'b'.repeat(64) }], factCandidateIds: facts.map(fact => fact.candidate.candidateId), factsHash: historicalUpdateFactsHash(facts, decisions) };
   const rows = locked.materials.map(material => ({ owner_user_id: baseline.ownerUserId, project_id: baseline.projectId,
     id: material.materialId, version: material.materialVersion, sha256: material.contentHash, role: material.role }));
   const queries: unknown[][] = [];
@@ -63,8 +69,9 @@ function setup(parsed?: DocumentParseResponse) {
     async snapshot(scope, id) { assert.equal(scope.ownerUserId, baseline.ownerUserId); assert.equal(id, baseline.snapshotId); return snapshot; },
     async profiles() { return [profile]; },
     async facts(scope, identity) { assert.equal(scope.projectId, baseline.projectId); return facts.filter(fact => factIdentityKey(fact.candidate.identity) === factIdentityKey(identity)); },
+    async decision(scope, identity) { assert.equal(scope.ownerUserId, baseline.ownerUserId); assert.equal(scope.projectId, baseline.projectId); return decisions.find(item => factIdentityKey(item.identity) === factIdentityKey(identity))?.decision ?? null; },
   };
-  return { input, locked, response, snapshot, profile, facts, rows, queries, dependencies, readers };
+  return { input, locked, response, snapshot, profile, facts, decisions, rows, queries, dependencies, readers };
 }
 
 test('composes immutable repositories, exact material/profile locks and audited facts into a deterministic plan', async () => {
@@ -94,17 +101,98 @@ for (const changed of ['owner', 'project', 'material_hash', 'missing_material', 
     if (changed === 'profile_parser') s.profile.recognition.source_market.provenance.extractor_version = 'historical-native-recognition-v2/other-parser';
     if (changed === 'candidate_missing') s.facts.splice(0, 1);
     if (changed === 'fact_hash') s.locked.factsHash = '1'.repeat(64);
-    if (changed === 'fact_material') { s.facts[0] = { ...s.facts[0]!, provenance: { ...s.facts[0]!.provenance, materialId: 'unlocked-audit' } }; s.locked.factsHash = historicalUpdateFactsHash(s.facts); }
+    if (changed === 'fact_material') { s.facts[0] = { ...s.facts[0]!, provenance: { ...s.facts[0]!.provenance, materialId: 'unlocked-audit' } }; s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions); }
     await assert.rejects(prepareHistoricalUpdate(s.dependencies, s.locked, s.readers), /UPDATE_/);
   });
 }
 
 test('a new conflicting fact in the locked candidate set stays unresolved', async () => {
   const s = setup(); s.facts.push({ ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate, candidateId: 'conflict', value: { kind: 'known', decimalOrText: '42' } } });
-  s.locked.factsHash = historicalUpdateFactsHash(s.facts);
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
   s.locked.factCandidateIds = s.facts.map(fact => fact.candidate.candidateId);
   const plan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
-  assert.ok(plan.findings.some(finding => finding.code === 'UPDATE_FACT_CONFLICT')); assert.equal(plan.replacements.length, 0);
+  assert.equal(plan.status, 'needs_confirmation'); assert.equal(plan.replacements.length, 0);
+  assert.ok(plan.findings.some(finding => finding.code === 'UPDATE_FACT_MISSING'));
+});
+
+function decisionFor(candidate: StoredFactCandidate, projectId = 'project-1'): StoredFactDecision {
+  return { decisionId: 'decision-1', requestId: 'request-1', ownerUserId: candidate.candidate.identity.accountId, projectId,
+    factKeyHash: 'fixture-hash', identity: candidate.candidate.identity, version: 1, resolution: 'selected',
+    selectedCandidateId: candidate.candidate.candidateId,
+    selectedCandidateProvenance: { candidate_id: candidate.candidate.candidateId, source_kind: candidate.candidate.source.kind,
+      source_ref: candidate.candidate.source.sourceId, status: candidate.provenance.status,
+      source_observed_at: candidate.provenance.sourceObservedAt, source_valid_as_of: candidate.provenance.sourceValidAsOf ?? null,
+      material_id: candidate.provenance.materialId, material_version: candidate.provenance.materialVersion },
+    reason: 'synthetic review', actorId: 'reviewer-1', actorKind: 'internal_reviewer', createdAt: '2025-03-01T00:00:00.000Z', replayed: false };
+}
+
+test('a matching latest decision selects only the frozen candidate and its version changes the input hash', async () => {
+  const s = setup();
+  const conflict = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate, candidateId: 'conflict', value: { kind: 'known' as const, decimalOrText: '42' } } };
+  s.facts.push(conflict); s.locked.factCandidateIds = s.facts.map(item => item.candidate.candidateId);
+  s.decisions[0]!.decision = decisionFor(s.facts[0]!);
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const plan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(plan.replacements.length, 3);
+  assert.ok(plan.replacements.every(change => change.candidateIds.length === 1 && change.candidateIds[0] === s.facts[0]!.candidate.candidateId));
+  const withoutDecision = structuredClone(s.decisions); withoutDecision[0]!.decision = null;
+  const pendingLock = { ...s.locked, factsHash: historicalUpdateFactsHash(s.facts, withoutDecision) };
+  const pending = await prepareHistoricalUpdate(s.dependencies, pendingLock, { ...s.readers, async decision() { return null; } });
+  assert.equal(pending.status, 'needs_confirmation');
+  assert.notEqual(plan.planningInputHash, pending.planningInputHash);
+});
+
+test('unresolved or non-frozen selections remain pending and foreign decisions are rejected', async () => {
+  const s = setup();
+  const conflict = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate, candidateId: 'conflict', value: { kind: 'known' as const, decimalOrText: '42' } } };
+  s.facts.push(conflict); s.locked.factCandidateIds = s.facts.map(item => item.candidate.candidateId);
+  const selected = decisionFor(s.facts[0]!);
+  s.decisions[0]!.decision = { ...selected, resolution: 'unresolved', selectedCandidateId: null, selectedCandidateProvenance: null };
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const unresolvedPlan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(unresolvedPlan.status, 'needs_confirmation');
+  const noDecisionStates = structuredClone(s.decisions); noDecisionStates[0]!.decision = null;
+  const noDecisionLock = { ...s.locked, factsHash: historicalUpdateFactsHash(s.facts, noDecisionStates) };
+  const noDecisionPlan = await prepareHistoricalUpdate(s.dependencies, noDecisionLock, { ...s.readers, async decision() { return null; } });
+  assert.notEqual(unresolvedPlan.planningInputHash, noDecisionPlan.planningInputHash);
+  s.decisions[0]!.decision = { ...selected, selectedCandidateId: 'not-in-frozen-manifest' };
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  assert.equal((await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers)).status, 'needs_confirmation');
+  s.decisions[0]!.decision = { ...selected, ownerUserId: 'foreign-owner' };
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  await assert.rejects(prepareHistoricalUpdate(s.dependencies, s.locked, s.readers), /UPDATE_FACT_DECISION_SCOPE_MISMATCH/);
+});
+
+test('even value-equal competing candidates require a selected decision', async () => {
+  const s = setup();
+  s.facts.push({ ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate, candidateId: 'same-value-candidate' } });
+  s.locked.factCandidateIds = s.facts.map(item => item.candidate.candidateId);
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const plan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(plan.status, 'needs_confirmation'); assert.equal(plan.replacements.length, 0);
+});
+
+test('a selected user statement remains user_asserted and cannot become a usable fact', async () => {
+  const s = setup(); const original = s.facts[0]!;
+  const userFact: StoredFactCandidate = { ...original, candidate: { ...original.candidate,
+    source: { kind: 'user_statement', sourceId: 'statement-1', observedAt: '2025-03-01T00:00:00.000Z' } },
+    provenance: { ...original.provenance, status: 'user_asserted' } };
+  s.facts[0] = userFact; s.decisions[0]!.decision = decisionFor(userFact);
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const plan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(plan.status, 'needs_confirmation'); assert.equal(plan.replacements.length, 0);
+  assert.ok(plan.findings.some(finding => finding.code === 'UPDATE_FACT_UNRESOLVED'));
+});
+
+test('a selected OCR-uncertain audited candidate is never promoted to verified', async () => {
+  const s = setup(); const original = s.facts[0]!;
+  const ocrFact: StoredFactCandidate = { ...original, candidate: { ...original.candidate, uncertainty: 'OCR_REVIEW_REQUIRED' },
+    provenance: { ...original.provenance, status: 'needs_confirmation' } };
+  s.facts[0] = ocrFact; s.decisions[0]!.decision = decisionFor(ocrFact);
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const plan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(plan.status, 'needs_confirmation'); assert.equal(plan.replacements.length, 0);
+  assert.ok(plan.findings.some(finding => finding.code === 'UPDATE_FACT_UNRESOLVED'));
 });
 
 test('facts added after execution snapshot do not mutate a locked plan on recovery', async () => {

@@ -13,6 +13,8 @@ export interface UpdateAnchor {
 }
 export interface UpdateFact {
   candidate: FactCandidate; status: FactStatus; evidence: readonly UpdateAnchor[];
+  /** Latest durable human decision version observed when this input was frozen. It never changes candidate status. */
+  decisionVersion?: number;
 }
 export interface BaselineBlock {
   recordId: string; text: string; locatorType: 'docx_block' | 'pdf_bbox';
@@ -64,6 +66,8 @@ export interface BlockDisposition {
 }
 export interface HistoricalUpdateInput {
   context: UpdateContext; baseline: HistoricalBaseline; facts: readonly UpdateFact[];
+  /** Internal frozen decision ledger projection; included in the planning hash even when unresolved candidates are withheld. */
+  factDecisionVersions?: readonly { identity: FactIdentity; decisionId: string | null; version: number }[];
   bindings: readonly UpdateBinding[]; occurrences: readonly UpdateOccurrence[];
   columns: readonly TableColumnRequest[];
   /** Output of the upstream semantic traversal. Missing records remain an explicit coverage gap. */
