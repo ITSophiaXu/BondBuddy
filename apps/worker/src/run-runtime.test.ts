@@ -282,7 +282,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
     row = await runRow(notReadyRun);
     const pauseReason = (await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [notReadyRun])).rows[0].reason;
-    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_pack_pin_missing'); assert.equal(row.artifact_id, null);
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_applicability_reference_missing'); assert.equal(row.artifact_id, null);
     assert.equal((await send('POST', `/api/v1/runs/${notReadyRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
 
     // 8. Pinned materials still parsing -> awaiting_materials; the runtime sweep re-queues after parse succeeds.

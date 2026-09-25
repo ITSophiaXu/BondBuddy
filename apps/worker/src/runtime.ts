@@ -18,6 +18,7 @@ import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
 import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
+import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -36,6 +37,8 @@ export type WorkerRuntimeOptions = {
   concurrency?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   runStages?: RunStage[];
+  /** #15/#19 reviewed context loader; absent until owner producer and review policy are installed. */
+  reviewedContextLoader?: ReviewedContextLoader;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
   parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
@@ -67,8 +70,8 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'reviewedContextLoader'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
@@ -98,6 +101,7 @@ export class WorkerRuntime {
         try {
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
+              reviewedContextLoader: this.o.reviewedContextLoader,
               onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';

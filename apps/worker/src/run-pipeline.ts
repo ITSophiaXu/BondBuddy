@@ -11,6 +11,7 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
+import { revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
@@ -22,6 +23,7 @@ export type StageContext = {
   checkpoint: Record<string, Record<string, unknown>>; values: Map<string, unknown>;
   /** Revalidate update issuer identity immediately before constructing a prompt and before each provider intent. */
   validateBeforeModelCall?: () => Promise<InputBindingGate | null>;
+  reviewedContextLoader?: ReviewedContextLoader;
 };
 export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown }
@@ -39,7 +41,7 @@ export type RunStage = {
 export type RunPipelineOutcome = 'idle' | 'succeeded' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
 export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal; reviewedContextLoader?: ReviewedContextLoader;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -49,7 +51,17 @@ const lost = (error: unknown) => error instanceof Problem && (error.code === 'AL
 const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'stage_not_implemented' }) });
 
 type InputBindingGate = Extract<StageOutcome, { kind: 'pause' | 'fail' }>;
-type InputRevisionRow = { input_hash: string; manifest: Record<string, unknown> | null };
+type InputRevisionRow = { input_hash: string; manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
+
+async function verifyProductionRulePin(pool: Pool, run: RunRow, input: InputRevisionRow, loader?: ReviewedContextLoader): Promise<InputBindingGate | null> {
+  if (String(input.input_hash).trim() !== run.input_hash.trim())
+    return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+  const result = await revalidateStoredProductionRulePin(pool,
+    { ownerUserId: run.owner_user_id, projectId: run.project_id }, input, loader);
+  if (result.status === 'valid') return null;
+  if (result.status === 'tampered') return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+  return { kind: 'pause', stage: 'capability_not_ready', reason: result.reason };
+}
 
 async function verifyUpdateIssuerIdentityBinding(pool: Pool, run: RunRow, manifest: Record<string, unknown> | null): Promise<InputBindingGate | null> {
   if (run.task_kind !== 'update') return null;
@@ -87,7 +99,7 @@ async function verifyUpdateIssuerIdentityBinding(pool: Pool, run: RunRow, manife
 }
 
 async function currentRunInput(pool: Pool, run: RunRow): Promise<InputRevisionRow | null> {
-  const result = await pool.query(`SELECT i.input_hash,i.manifest FROM bb_input_revisions i
+  const result = await pool.query(`SELECT i.input_hash,i.manifest,i.rule_pack_version,i.template_version FROM bb_input_revisions i
     JOIN bb_projects p ON p.id=i.project_id AND p.owner_user_id=i.owner_user_id AND p.deleted_at IS NULL
     WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
   return (result.rows[0] as InputRevisionRow | undefined) ?? null;
@@ -98,7 +110,7 @@ export const inputLockStage: RunStage = {
   name: 'input_lock',
   // Recovery must re-check the production rule pin before any later stage can run.
   replay: true,
-  run: async ({ pool, run }) => {
+  run: async ({ pool, run, reviewedContextLoader }) => {
     const q = await pool.query(`SELECT i.input_hash,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
       JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id AND p.deleted_at IS NULL
       WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
@@ -108,18 +120,7 @@ export const inputLockStage: RunStage = {
     const manifest = input.manifest as Record<string, unknown> | null;
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
-    const pin = manifest && typeof manifest === 'object' && !Array.isArray(manifest)
-      ? manifest.rule_pack_pin as Record<string, unknown> | undefined : undefined;
-    const completePin = typeof input.rule_pack_version === 'string' && input.rule_pack_version.length > 0 &&
-      pin && typeof pin === 'object' && !Array.isArray(pin) &&
-      typeof pin.pack_id === 'string' && pin.pack_id.length > 0 &&
-      pin.version === input.rule_pack_version && typeof pin.content_hash === 'string' && /^[a-f0-9]{64}$/.test(pin.content_hash);
-    if (!completePin) return { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' };
-    // 0018 persists test-channel events only. There is no authenticated production release
-    // registry/selector yet, so a manifest pin (including one that claims production) cannot
-    // establish reviewer authority, active status, exact scope, or current rule/source validity.
-    // Keep the run parked until a trusted selector can resolve and verify that exact hash.
-    return { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_selector_unavailable' };
+    return (await verifyProductionRulePin(pool, run, input, reviewedContextLoader)) ?? { kind: 'done' };
   },
 };
 
@@ -243,11 +244,13 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   try {
     const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
-    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), validateBeforeModelCall: async () => {
-      if (run.task_kind !== 'update') return null;
+    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, validateBeforeModelCall: async () => {
+      // Synthetic mechanics tests install their own input-lock stage. The production stage
+      // always rechecks both bindings before a provider intent, including checkpoint replay.
+      if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-      return verifyUpdateIssuerIdentityBinding(pool, run, input.manifest);
+      return (await verifyUpdateIssuerIdentityBinding(pool, run, input.manifest)) ?? await verifyProductionRulePin(pool, run, input, deps.reviewedContextLoader);
     } };
     for (const stage of deps.stages) {
       currentStage = stage.name;
