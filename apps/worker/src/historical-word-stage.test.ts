@@ -9,6 +9,15 @@ import { fileURLToPath } from 'node:url';
 import { updateContentHash } from '@bondbuddy/domain/historical-update';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import type { StageContext } from './run-pipeline.js';
+import { workerRuntimeOptionsFromEnv } from './runtime.js';
+
+function productionWordStage() {
+  const options = workerRuntimeOptionsFromEnv({} as Parameters<typeof workerRuntimeOptionsFromEnv>[0],
+    {} as Parameters<typeof workerRuntimeOptionsFromEnv>[1], { BB_WORKER_JOB_KINDS: 'run' });
+  const stage = options.runStages?.find(candidate => candidate.name === 'word_delivery');
+  assert.ok(stage);
+  return stage;
+}
 
 function context(plan: Record<string, unknown>): StageContext {
   return { run: { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 2,
@@ -62,6 +71,20 @@ test('Word delivery fails closed on tampered plan, scope, or missing pending not
   assert.equal(called, 0);
 });
 
+test('production runtime binds the real Word stage and rejects missing locked source', async () => {
+  const stage = productionWordStage();
+  assert.equal(stage.replay, true, 'the real writer stage must replay after a worker restart');
+  const noHistory = context(plan());
+  noHistory.run.task_kind = 'generation';
+  assert.deepEqual(await stage.run(noHistory), { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_word_task_kind_required' });
+
+  const locked = context(plan());
+  locked.run.task_kind = 'update';
+  locked.pool = { query: async () => ({ rows: [] }) } as unknown as StageContext['pool'];
+  assert.deepEqual(await stage.run(locked), { kind: 'fail', code: 'WORD_QUALITY_REJECTED' },
+    'a valid synthetic plan must reach the writer and fail on absent server-side source');
+});
+
 test('actual Python writer accepts a locked synthetic source through the worker stage', {
   skip: !process.env.BONDBUDDY_TEST_PYTHON && 'Set BONDBUDDY_TEST_PYTHON to run the real Python writer bridge.',
 }, async () => {
@@ -102,7 +125,8 @@ test('actual Python writer accepts a locked synthetic source through the worker 
       throw new Error('Unexpected query');
     } } as StageContext['pool'];
     ctx.blobs = { getIfExistsBounded: async () => source } as unknown as StageContext['blobs'];
-    const outcome = await historicalWordDeliveryStage().run(ctx);
+    ctx.run.task_kind = 'update';
+    const outcome = await productionWordStage().run(ctx);
     assert.equal(outcome.kind, 'deliver');
     if (outcome.kind === 'deliver') {
       assert.equal(outcome.wordSummary?.pending, 1);
