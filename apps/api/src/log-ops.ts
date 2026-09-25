@@ -361,11 +361,74 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
   });
 }
 
+const promptAbort = () => new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+
+/** Return a connection that arrives after the HTTP waiter has disconnected. */
+function connectPrompt(pool: Pool, signal?: AbortSignal): Promise<PoolClient> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(promptAbort()); return; }
+    let settled = false;
+    const abort = () => { if (!settled) { settled = true; reject(promptAbort()); } };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    void pool.connect().then(client => {
+      if (settled) { client.release(); return; }
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) { client.release(); reject(promptAbort()); }
+      else resolve(client);
+    }, error => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      reject(error);
+    });
+  });
+}
+
+function waitPromptRetry(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(promptAbort()); return; }
+    const abort = () => { clearTimeout(timer); reject(promptAbort()); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, milliseconds);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+/** A try-lock never blocks a pool connection behind another HTTP response. */
+async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortSignal): Promise<PoolClient> {
+  let retryMs = 25;
+  for (;;) {
+    if (signal?.aborted) throw promptAbort();
+    // Do not leave a cancelled prompt in pg-pool's unabortable connect queue.
+    if (pool.idleCount === 0 && pool.totalCount >= (pool.options.max ?? 10)) {
+      await waitPromptRetry(retryMs, signal);
+      retryMs = Math.min(retryMs * 2, 250);
+      continue;
+    }
+    const client = await connectPrompt(pool, signal);
+    let locked = false;
+    try {
+      if (signal?.aborted) throw promptAbort();
+      locked = (await client.query("SELECT pg_try_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text)) locked", [snapshotId])).rows[0].locked === true;
+      if (signal?.aborted) throw promptAbort();
+      if (locked) return client;
+      client.release();
+    } catch (error) {
+      // Destroying this session releases a lock even if the query raced the abort.
+      client.release(true);
+      throw error;
+    }
+    await waitPromptRetry(retryMs, signal);
+    retryMs = Math.min(retryMs * 2, 250);
+  }
+}
+
 /** The caller must hold release until the HTTP response finishes or aborts. */
 export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string, signal?: AbortSignal) {
   if (!validId(snapshotId)) throw missing();
   if (!safeCode.test(reasonCode)) throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
-  const client = await pool.connect();
+  const client = await acquirePromptLock(pool, snapshotId, signal);
   let releasePromise: Promise<void> | undefined;
   const release = () => releasePromise ??= (async () => {
     try {
@@ -378,7 +441,7 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
     }
   })();
   try {
-    await client.query("SELECT pg_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshotId]);
+    if (signal?.aborted) throw promptAbort();
     // Audit commits before any plaintext read. The session lock survives that commit.
     await client.query('BEGIN');
     let snapshot: any, auditId: string;

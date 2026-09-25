@@ -802,3 +802,60 @@ test('#79 real TCP slow response and onSend failure release the prompt lock', { 
     assert.equal(pool.idleCount, pool.totalCount, 'onSend error returned every PG connection');
   } finally { sendGate.resolve(); await app?.close(); await f.app.close(); await pool.end(); }
 });
+
+for (const firstOutcome of ['success', 'failure'] as const) test(`#79 disconnected lock waiter frees a two-connection PG pool (${firstOutcome} first read)`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const firstRead = deferred<Buffer | null>(), readEntered = deferred<void>(), secondEntered = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined;
+  let first: ReturnType<typeof connect> | undefined, second: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic two-socket lock', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic TWO_SOCKET_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    let reads = 0, requests = 0;
+    const blobs = { ...realBlobs, getIfExistsBounded: async (objectKey: string, limit: number) => {
+      if (objectKey === key && ++reads === 1) { readEntered.resolve(); return firstRead.promise; }
+      return realBlobs.getIfExistsBounded(objectKey, limit);
+    } };
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    app.addHook('onRequest', async request => { if (request.url === path && ++requests === 2) secondEntered.resolve(); });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    first = await rawGetSocket(address, path);
+    let firstResponse = '';
+    first.on('data', chunk => { firstResponse += chunk.toString(); });
+    await readEntered.promise; // First socket owns the advisory lock and holds Blob I/O.
+    second = await rawGetSocket(address, path);
+    await secondEntered.promise;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const secondClosed = new Promise<void>(resolve => second!.once('close', () => resolve()));
+    second.destroy();
+    await secondClosed;
+    const probe = await Promise.race([pool.query('SELECT 1'), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('disconnected lock waiter exhausted the PG pool')), 1500))]);
+    assert.equal(probe.rowCount, 1);
+    assert.equal(pool.waitingCount, 0);
+    assert.equal(pool.totalCount - pool.idleCount, 1, 'only the first live reader retains a connection');
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let finished = false;
+    const purge = purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { finished = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge waits for the live first response');
+    const firstClosed = new Promise<void>(resolve => first!.once('close', () => resolve()));
+    if (firstOutcome === 'success') firstRead.resolve(original);
+    else firstRead.reject(new Error('synthetic first Blob failure'));
+    await firstClosed;
+    assert.equal(firstResponse.includes('TWO_SOCKET_MARKER_79'), firstOutcome === 'success');
+    assert.equal((await purge).purged, 1);
+    const after = await fetch(`${address}${path}`);
+    assert.equal(after.status, 404);
+    assert.ok(!(await after.text()).includes('TWO_SOCKET_MARKER_79'));
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally {
+    firstRead.resolve(null);
+    first?.destroy(); second?.destroy();
+    await app?.close(); await f.app.close(); await pool.end();
+  }
+});
