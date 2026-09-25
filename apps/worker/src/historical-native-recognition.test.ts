@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -236,6 +237,10 @@ type AuthorizedManifest = {
 };
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const localPython = join(sourceRoot, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+const sampleParserPython = process.env.BB_PYTHON?.trim() || (existsSync(localPython)
+  ? localPython
+  : process.platform === 'win32' ? 'python' : 'python3');
 
 function expectedPeriodKeys(periods: string[]): string[] {
   return periods.map((period) => {
@@ -250,6 +255,8 @@ function expectedPeriodKeys(periods: string[]): string[] {
   }).sort();
 }
 
+// Opt in with BB_RUN_AUTHORIZED_SAMPLE_TESTS=1; set BB_PYTHON to a Python
+// interpreter with python/requirements.txt installed when no worktree .venv exists.
 test('recognizes the four authorized historical DOCX files through the Python bridge', {
   skip: process.env.BB_RUN_AUTHORIZED_SAMPLE_TESTS === '1' ? false : 'set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 to run the real-material bridge check',
 }, async () => {
@@ -284,7 +291,7 @@ test('recognizes the four authorized historical DOCX files through the Python br
       pool: { query: async () => ({ rows: [row] }) },
       blobs: { getPrivate: async () => bytes },
       parser: (request) => runDocumentParser(request, {
-        pythonExecutable: join(sourceRoot, '.venv/bin/python'),
+        pythonExecutable: sampleParserPython,
         repoRoot: sourceRoot,
       }),
     }, {
