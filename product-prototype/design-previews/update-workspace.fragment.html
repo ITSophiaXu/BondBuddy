@@ -1,0 +1,306 @@
+<!-- BOND_BUDDY_UPDATE_PREVIEW_START -->
+<div id="bb-update-preview" aria-label="BondBuddy 更新募集书工作区交互原型">
+  <div class="bb-demo-bar">
+    <span class="bb-demo-label">交互演示 · 示例项目</span>
+    <div class="bb-scene-switch" aria-label="查看流程状态">
+      <button type="button" data-scene="ready" aria-pressed="false">开始前</button>
+      <button type="button" data-scene="running" aria-pressed="true">更新中</button>
+      <button type="button" data-scene="needs" aria-pressed="false">待补充</button>
+      <button type="button" data-scene="complete" aria-pressed="false">已完成</button>
+    </div>
+  </div>
+  <div class="bb-app">
+    <aside class="bb-sidebar" aria-label="应用导航">
+      <div class="bb-brand"><i data-lucide="sprout" aria-hidden="true"></i><span>bondbuddy</span></div>
+      <div class="bb-workspace-name">我的工作空间</div>
+      <div class="bb-nav-item"><i data-lucide="layout-dashboard" aria-hidden="true"></i>工作台</div>
+      <div class="bb-nav-label">开始工作</div>
+      <div class="bb-nav-item bb-nav-active" aria-current="page"><i data-lucide="file-pen-line" aria-hidden="true"></i>更新募集书</div>
+      <div class="bb-nav-item"><i data-lucide="shield-check" aria-hidden="true"></i>复核募集书</div>
+      <div class="bb-nav-item"><i data-lucide="files" aria-hidden="true"></i>材料生成</div>
+      <div class="bb-nav-item"><i data-lucide="messages-square" aria-hidden="true"></i>项目问答</div>
+      <div class="bb-nav-label">工作空间</div>
+      <div class="bb-nav-item"><i data-lucide="folder-open" aria-hidden="true"></i>全部项目</div>
+      <div class="bb-nav-item"><i data-lucide="wallet" aria-hidden="true"></i>积分与充值</div>
+      <div class="bb-sidebar-bottom"><span class="bb-avatar">我</span><span>个人工作空间</span></div>
+    </aside>
+    <div class="bb-page">
+      <div class="bb-topbar"><span>更新募集书 <span class="bb-slash">/</span> 项目工作区</span><span class="bb-saved"><i data-lucide="cloud-check" aria-hidden="true"></i>已保存</span></div>
+      <header class="bb-project-header">
+        <div><div class="bb-eyebrow">募集说明书更新</div><h1>明川城发 · 2026 年公司债</h1><p>明川城市发展有限公司 <span>·</span> 上交所普通私募 <span>·</span> 财务截至 2025 年末</p></div>
+        <span id="bb-phase-badge" class="bb-status-badge"></span>
+      </header>
+      <div class="bb-project-strip"><span><i data-lucide="file-text" aria-hidden="true"></i><span id="bb-source-label">基于历史募集书更新</span></span><span><i data-lucide="paperclip" aria-hidden="true"></i><span id="bb-file-count">2 份材料</span></span><span>全文更新</span></div>
+      <div class="bb-work-grid">
+        <main class="bb-main" aria-label="进度与成果">
+          <section id="bb-main-content" aria-live="polite"></section>
+          <details class="bb-materials"><summary><span><i data-lucide="folder-open" aria-hidden="true"></i>项目信息与材料</span><span class="bb-secondary">随时查看</span></summary><div id="bb-material-content"></div></details>
+        </main>
+        <aside class="bb-chat" aria-label="项目对话">
+          <div class="bb-chat-heading"><div><span class="bb-assistant-mark"><i data-lucide="sparkles" aria-hidden="true"></i></span><h2>项目对话</h2></div><span class="bb-secondary">贯穿整个项目</span></div>
+          <div id="bb-chat-messages" class="bb-chat-messages" aria-live="polite"></div>
+          <div id="bb-chat-context" class="bb-chat-context"></div>
+          <form id="bb-chat-form" class="bb-chat-composer">
+            <label for="bb-chat-input">补充说明与修改要求</label>
+            <textarea id="bb-chat-input" rows="3" maxlength="700" placeholder="例如：请补充授信余额，并解释有息负债的变化。"></textarea>
+            <div class="bb-compose-actions"><button class="bb-text-button" type="button" data-action="attach"><i data-lucide="paperclip" aria-hidden="true"></i>示例材料</button><button class="bb-button bb-primary bb-small" type="button" data-action="send">发送 <i data-lucide="arrow-up" aria-hidden="true"></i></button></div>
+          </form>
+        </aside>
+      </div>
+      <div id="bb-feedback" class="bb-feedback" role="status" hidden></div>
+    </div>
+  </div>
+</div>
+<style>
+#bb-update-preview{--bb-bg:light-dark(#f6f7f2,#171d1a);--bb-panel:light-dark(#ffffff,#202924);--bb-sidebar:light-dark(#edf1e6,#1c2520);--bb-text:light-dark(#21382e,#e1e9e1);--bb-muted:light-dark(#697769,#a3b3a5);--bb-line:light-dark(#dee5da,#354338);--bb-green:light-dark(#284d36,#b6d49d);--bb-on-green:light-dark(#ffffff,#1c3425);--bb-soft:light-dark(#eef4e6,#2d3e2c);--bb-warn-bg:light-dark(#faf4e8,#393225);--bb-warn-text:light-dark(#7d5824,#e8c58d);font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--bb-text);font-size:13px;line-height:1.65;width:100%;color-scheme:light dark}
+#bb-update-preview *{box-sizing:border-box}
+#bb-update-preview button,#bb-update-preview input,#bb-update-preview textarea{font:inherit}
+#bb-update-preview button,#bb-update-preview summary{cursor:pointer}
+#bb-update-preview button:disabled{opacity:.55;cursor:default}
+#bb-update-preview h1,#bb-update-preview h2,#bb-update-preview h3,#bb-update-preview p{margin:0}
+#bb-update-preview h1{font-size:23px;line-height:1.4;font-weight:500;letter-spacing:-.4px}
+#bb-update-preview h2{font-size:18px;font-weight:500;line-height:1.5}
+#bb-update-preview h3{font-size:14px;font-weight:500}
+#bb-update-preview strong{font-weight:500}
+#bb-update-preview svg{flex-shrink:0;width:17px;height:17px;vertical-align:middle}
+#bb-update-preview .bb-demo-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:0 0 12px}
+#bb-update-preview .bb-demo-label{color:var(--bb-muted);font-size:12px}
+#bb-update-preview .bb-scene-switch{display:flex;gap:3px;flex-wrap:wrap;background:var(--bb-sidebar);padding:4px;border-radius:9px}
+#bb-update-preview .bb-scene-switch button{border:0;background:transparent;color:var(--bb-muted);padding:6px 13px;border-radius:6px;font-size:12px}
+#bb-update-preview .bb-scene-switch button[aria-pressed=true]{background:var(--bb-green);color:var(--bb-on-green)}
+#bb-update-preview .bb-app{display:grid;grid-template-columns:155px minmax(0,1fr);background:var(--bb-bg);border:1px solid var(--bb-line);border-radius:14px;overflow:hidden;min-height:710px}
+#bb-update-preview .bb-sidebar{display:flex;flex-direction:column;padding:23px 11px 18px;background:var(--bb-sidebar);border-right:1px solid var(--bb-line)}
+#bb-update-preview .bb-brand{display:flex;gap:5px;align-items:center;font-size:18px;letter-spacing:-.6px;font-weight:500;color:var(--bb-green);padding:0 5px}
+#bb-update-preview .bb-brand svg{width:21px;height:21px}
+#bb-update-preview .bb-workspace-name{color:var(--bb-muted);font-size:11px;padding:10px 8px 24px}
+#bb-update-preview .bb-nav-label{font-size:11px;color:var(--bb-muted);padding:20px 10px 7px}
+#bb-update-preview .bb-nav-item{display:flex;align-items:center;gap:9px;padding:10px 9px;border-radius:7px;white-space:nowrap;font-size:12px;color:var(--bb-muted)}
+#bb-update-preview .bb-nav-active{color:var(--bb-green);background:var(--bb-panel);font-weight:500}
+#bb-update-preview .bb-sidebar-bottom{display:flex;align-items:center;gap:8px;margin-top:auto;padding:50px 5px 0;font-size:11px;color:var(--bb-muted)}
+#bb-update-preview .bb-avatar{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--bb-soft);color:var(--bb-green)}
+#bb-update-preview .bb-page{min-width:0;padding:0 22px 22px}
+#bb-update-preview .bb-topbar{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:15px 0;border-bottom:1px solid var(--bb-line);font-size:11px;color:var(--bb-muted)}
+#bb-update-preview .bb-slash{margin:0 10px;color:var(--bb-line)}
+#bb-update-preview .bb-saved{display:flex;align-items:center;gap:5px}
+#bb-update-preview .bb-saved svg{width:14px;height:14px}
+#bb-update-preview .bb-project-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:24px 0 18px}
+#bb-update-preview .bb-eyebrow{font-size:11px;letter-spacing:1px;color:var(--bb-muted);margin-bottom:6px}
+#bb-update-preview .bb-project-header p{font-size:11px;color:var(--bb-muted);margin-top:8px}
+#bb-update-preview .bb-project-header p span{margin:0 5px}
+#bb-update-preview .bb-status-badge{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:var(--bb-soft);color:var(--bb-green);padding:5px 9px;border-radius:30px;font-size:11px;margin-top:6px}
+#bb-update-preview .bb-status-badge svg{width:13px;height:13px}
+#bb-update-preview .bb-status-badge.bb-warning{background:var(--bb-warn-bg);color:var(--bb-warn-text)}
+#bb-update-preview .bb-project-strip{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--bb-muted);padding:0 0 19px}
+#bb-update-preview .bb-project-strip>span{display:flex;gap:6px;align-items:center}
+#bb-update-preview .bb-project-strip svg{width:14px;height:14px}
+#bb-update-preview .bb-work-grid{display:grid;grid-template-columns:minmax(0,1fr) var(--bb-chat-width,282px);gap:16px;align-items:start}
+#bb-update-preview .bb-main{min-width:0}
+#bb-update-preview .bb-card{padding:23px;background:var(--bb-panel);border:1px solid var(--bb-line);border-radius:11px}
+#bb-update-preview .bb-label{font-size:11px;color:var(--bb-muted);margin-bottom:8px;display:block}
+#bb-update-preview .bb-subline{color:var(--bb-muted);font-size:12px;margin-top:8px}
+#bb-update-preview .bb-current-title{display:flex;gap:10px;align-items:center}
+#bb-update-preview .bb-current-title>svg{color:var(--bb-green);width:21px;height:21px}
+#bb-update-preview .bb-step-list{list-style:none;padding:0;margin:24px 0 8px}
+#bb-update-preview .bb-step{position:relative;display:grid;grid-template-columns:25px minmax(0,1fr);gap:11px;padding:0 0 21px}
+#bb-update-preview .bb-step:not(:last-child):after{content:"";position:absolute;left:11px;top:26px;bottom:4px;width:1px;background:var(--bb-line)}
+#bb-update-preview .bb-step-symbol{border-radius:50%;width:23px;height:23px;display:grid;place-items:center;background:var(--bb-bg);color:var(--bb-muted);font-size:11px}
+#bb-update-preview .bb-step-symbol svg{width:13px;height:13px}
+#bb-update-preview .bb-step.done .bb-step-symbol{background:var(--bb-soft);color:var(--bb-green)}
+#bb-update-preview .bb-step.current .bb-step-symbol{background:var(--bb-green);color:var(--bb-on-green)}
+#bb-update-preview .bb-step-title{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px}
+#bb-update-preview .bb-step-title>span:last-child{font-size:11px;color:var(--bb-muted)}
+#bb-update-preview .bb-step:not(.current):not(.done){color:var(--bb-muted)}
+#bb-update-preview .bb-step-detail{margin:5px 0 0;color:var(--bb-muted);font-size:11px}
+#bb-update-preview .bb-step-meter{height:5px;border-radius:5px;background:var(--bb-bg);margin-top:11px;overflow:hidden}
+#bb-update-preview .bb-step-meter>span{display:block;height:100%;background:var(--bb-green);width:66.667%;border-radius:5px}
+#bb-update-preview .bb-actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center;padding-top:17px;border-top:1px solid var(--bb-line);margin-top:10px}
+#bb-update-preview .bb-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--bb-line);background:var(--bb-panel);color:var(--bb-text);border-radius:7px;padding:9px 14px;font-size:12px;white-space:normal}
+#bb-update-preview .bb-primary{background:var(--bb-green);border-color:var(--bb-green);color:var(--bb-on-green)}
+#bb-update-preview .bb-button.bb-small{padding:6px 12px}
+#bb-update-preview .bb-text-button{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:var(--bb-green);padding:4px 0;font-size:12px;text-align:left}
+#bb-update-preview .bb-secondary{font-size:11px;color:var(--bb-muted)}
+#bb-update-preview .bb-foot-note{font-size:11px;color:var(--bb-muted);margin-top:14px}
+#bb-update-preview .bb-materials{margin-top:12px;border:1px solid var(--bb-line);border-radius:9px;background:var(--bb-panel)}
+#bb-update-preview .bb-materials summary{list-style:none;display:flex;justify-content:space-between;gap:9px;align-items:center;padding:13px 16px;font-size:12px}
+#bb-update-preview .bb-materials summary::-webkit-details-marker{display:none}
+#bb-update-preview .bb-materials summary>span:first-child{display:flex;gap:8px;align-items:center}
+#bb-update-preview #bb-material-content{padding:0 16px 16px;font-size:12px}
+#bb-update-preview .bb-file-row{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--bb-line)}
+#bb-update-preview .bb-file-row>svg{color:var(--bb-green)}
+#bb-update-preview .bb-file-row>div{min-width:0;flex:1;overflow-wrap:anywhere}
+#bb-update-preview .bb-file-row small{display:block;color:var(--bb-muted);font-size:11px;margin-top:2px}
+#bb-update-preview .bb-fact-row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 0;font-size:12px}
+#bb-update-preview .bb-fact-row span{color:var(--bb-muted)}
+#bb-update-preview .bb-ready-files{margin:18px 0}
+#bb-update-preview .bb-ready-files .bb-file-row:last-child{border-bottom:0}
+#bb-update-preview .bb-chat{background:var(--bb-panel);border:1px solid var(--bb-line);border-radius:11px;min-width:0}
+#bb-update-preview .bb-chat-heading{padding:16px;border-bottom:1px solid var(--bb-line)}
+#bb-update-preview .bb-chat-heading>div{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+#bb-update-preview .bb-chat-heading h2{font-size:14px}
+#bb-update-preview .bb-assistant-mark{color:var(--bb-green)}
+#bb-update-preview .bb-chat-messages{padding:18px 15px 10px;display:flex;flex-direction:column;gap:19px}
+#bb-update-preview .bb-message-label{font-size:11px;color:var(--bb-muted);margin-bottom:5px;display:flex;align-items:center;gap:5px}
+#bb-update-preview .bb-message-body{font-size:12px;line-height:1.85;overflow-wrap:anywhere;white-space:pre-wrap}
+#bb-update-preview .bb-message.user .bb-message-body{background:var(--bb-bg);padding:11px 12px;border-radius:8px}
+#bb-update-preview .bb-message.user .bb-message-label{justify-content:flex-end}
+#bb-update-preview .bb-message.assistant{padding:0 2px}
+#bb-update-preview .bb-chat-context{margin:0 15px 15px;padding:10px 12px;border-radius:7px;background:var(--bb-soft);font-size:11px;color:var(--bb-green)}
+#bb-update-preview .bb-chat-composer{padding:14px;border-top:1px solid var(--bb-line)}
+#bb-update-preview .bb-chat-composer label{font-size:11px;color:var(--bb-muted);display:block;margin-bottom:8px}
+#bb-update-preview textarea{width:100%;border:1px solid var(--bb-line);border-radius:7px;padding:10px;resize:vertical;background:var(--bb-panel);color:var(--bb-text);font-size:12px;min-height:90px}
+#bb-update-preview textarea::placeholder{color:var(--bb-muted)}
+#bb-update-preview .bb-compose-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px}
+#bb-update-preview .bb-compose-actions svg{width:14px;height:14px}
+#bb-update-preview .bb-need-card{padding:15px;border-radius:8px;background:var(--bb-warn-bg);color:var(--bb-warn-text);margin:20px 0}
+#bb-update-preview .bb-need-card p{font-size:12px;margin:7px 0 12px}
+#bb-update-preview .bb-done-banner{display:flex;gap:11px;align-items:center;padding-bottom:17px}
+#bb-update-preview .bb-done-icon{width:33px;height:33px;border-radius:50%;background:var(--bb-soft);color:var(--bb-green);display:grid;place-items:center}
+#bb-update-preview .bb-delivery{background:var(--bb-bg);border:1px solid var(--bb-line);border-radius:9px;padding:17px;margin-top:15px}
+#bb-update-preview .bb-doc-title{display:flex;align-items:center;gap:10px;margin-bottom:15px}
+#bb-update-preview .bb-doc-icon{width:33px;height:41px;display:grid;place-items:center;background:var(--bb-panel);color:var(--bb-green);border:1px solid var(--bb-line);border-radius:5px}
+#bb-update-preview .bb-doc-title div:last-child{min-width:0}
+#bb-update-preview .bb-doc-title h3{font-size:13px}
+#bb-update-preview .bb-doc-title p{font-size:11px;color:var(--bb-muted);margin-top:3px}
+#bb-update-preview .bb-delivery-buttons{display:flex;gap:7px;flex-wrap:wrap}
+#bb-update-preview .bb-change-list{padding-left:17px;margin:17px 0;font-size:12px}
+#bb-update-preview .bb-change-list li{margin-bottom:7px}
+#bb-update-preview .bb-inline-gap{padding:11px 13px;background:var(--bb-warn-bg);color:var(--bb-warn-text);font-size:11px;border-radius:7px;margin:14px 0}
+#bb-update-preview .bb-feedback{background:var(--bb-panel);border:1px solid var(--bb-line);border-radius:8px;margin-top:14px;padding:12px 15px;font-size:12px}
+#bb-update-preview .bb-compact .bb-step{padding-bottom:15px}
+#bb-update-preview .bb-compact .bb-step-detail{display:none}
+#bb-update-preview .bb-compact .bb-step-meter{display:none}
+@media(max-width:900px){#bb-update-preview .bb-app{grid-template-columns:130px minmax(0,1fr)}#bb-update-preview .bb-brand{font-size:16px}#bb-update-preview .bb-page{padding:0 16px 16px}#bb-update-preview .bb-work-grid{grid-template-columns:minmax(0,1fr) 250px;gap:12px}#bb-update-preview .bb-card{padding:18px}#bb-update-preview .bb-project-header{flex-wrap:wrap}#bb-update-preview h1{font-size:21px}}
+@media(max-width:740px){#bb-update-preview .bb-sidebar{display:none}#bb-update-preview .bb-app{grid-template-columns:minmax(0,1fr);min-height:0}#bb-update-preview .bb-work-grid{grid-template-columns:minmax(0,1fr)}#bb-update-preview .bb-chat-messages{display:grid;grid-template-columns:1fr 1fr}#bb-update-preview .bb-chat-messages .bb-message:last-child{grid-column:1/-1}#bb-update-preview .bb-chat-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}#bb-update-preview .bb-project-header{padding-top:20px}#bb-update-preview .bb-chat-composer textarea{min-height:70px}}
+@media(max-width:420px){#bb-update-preview .bb-page{padding:0 12px 12px}#bb-update-preview .bb-card{padding:16px}#bb-update-preview .bb-demo-bar{gap:7px}#bb-update-preview .bb-scene-switch{width:100%}#bb-update-preview .bb-scene-switch button{flex:1;padding:7px 6px}#bb-update-preview .bb-chat-messages{display:flex}#bb-update-preview h1{font-size:20px}#bb-update-preview .bb-project-strip{gap:9px}#bb-update-preview .bb-delivery-buttons .bb-button{flex:1}#bb-update-preview .bb-topbar .bb-saved{display:none}}
+@media(pointer:coarse){#bb-update-preview button{min-height:44px}#bb-update-preview textarea{font-size:16px}#bb-update-preview .bb-materials summary{min-height:44px}}
+@media(prefers-reduced-motion:no-preference){#bb-update-preview .bb-step-meter>span{transition:width .35s ease}}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('bb-update-preview');
+  const $ = selector => root.querySelector(selector);
+  const esc = text => String(text ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+  const steps = ['整理项目材料','核对报告期与发行要求','更新财务与业务章节','检查全文一致性','生成 Word 成果'];
+  const titles = ['正在读取项目材料','正在核对更新目标','正在更新财务与业务章节','正在检查全文一致性','正在生成 Word'];
+  const details = ['历史募集书、审计报告及附注','2023—2025 年 · 上交所普通私募','已完成 8 / 12 个章节','核对数字、条款、期间及交叉引用','修订版、清洁版和更新说明'];
+  const state = { phase:'running', step:2, version:1, supplied:false, deferred:false, pending:false, messages:[], source:'historical' };
+  const design = { progress:'详细步骤', chatWidth:282, source:'有历史募集书' };
+  let timer = null;
+  let playing = false;
+  let lastSaved = '';
+  const phaseLabels = {ready:'待开始',running:'正在更新',needs:'待补充材料',paused:'已停止',complete:'已完成'};
+  const phaseIcons = {ready:'circle',running:'loader-circle',needs:'circle-alert',paused:'pause',complete:'check'};
+  function restore(snapshot) {
+    const data = snapshot?.privateContent;
+    if (!data || data.kind !== 'bondbuddy-workspace-v1') return;
+    if (Object.hasOwn(phaseLabels, data.phase)) state.phase = data.phase;
+    state.step = Math.max(0, Math.min(4, Number(data.step) || 0));
+    state.version = Math.max(1, Math.min(9, Number(data.version) || 1));
+    state.supplied = !!data.supplied; state.deferred = !!data.deferred; state.pending = !!data.pending;
+    state.messages = Array.isArray(data.messages) ? data.messages.filter(x => x && ['user','assistant'].includes(x.role)).slice(-4).map(x => ({role:x.role,text:String(x.text).slice(0,700)})) : [];
+    if (['historical','new'].includes(data.source)) state.source = data.source;
+    design.source = state.source === 'new' ? '无历史募集书' : '有历史募集书';
+  }
+  restore(window.openai?.widgetState);
+  function save() {
+    const snapshot = { modelContent:{preview:'BondBuddy 连续项目工作区',phase:phaseLabels[state.phase],source:design.source,version:state.version}, privateContent:{kind:'bondbuddy-workspace-v1',...state} };
+    lastSaved = JSON.stringify(snapshot.privateContent);
+    try { window.openai?.setWidgetState?.(snapshot)?.catch?.(() => {}); } catch {}
+  }
+  function stopClock() { clearTimeout(timer); timer = null; playing = false; }
+  function message(role, text) { state.messages.push({role,text}); state.messages = state.messages.slice(-4); }
+  function feedback(text) { const box=$('#bb-feedback'); box.textContent=text; box.hidden=false; }
+  function files() {
+    const rows = state.source === 'historical' ? [['2025 年募集说明书.docx','历史募集书 · 已保存'],['2025 年审计报告及附注.pdf','财务材料 · 已保存']] : [['2025 年审计报告及附注.pdf','财务材料 · 已保存'],['发行人补充资料.docx','项目材料 · 已保存']];
+    if (state.supplied) rows.push(['2025 年末银行授信明细.xlsx','补充材料 · 已保存']);
+    return rows.map(([name,label]) => `<div class="bb-file-row">${icon('file-text')}<div>${name}<small>${label}</small></div>${icon('check')}</div>`).join('');
+  }
+  function timeline() {
+    return `<ol class="bb-step-list">${steps.map((label,i) => {
+      const done = i < state.step;
+      const current = i === state.step;
+      const status = done ? '已完成' : current ? state.phase === 'paused' ? '已停止' : '处理中' : '等待中';
+      const detail = i === 0 && state.source === 'new' ? '审计报告、附注及发行人资料' : i === 4 && state.source === 'new' ? '募集说明书初稿和编制说明' : details[i];
+      return `<li class="bb-step ${done?'done':''} ${current?'current':''}"><span class="bb-step-symbol">${done?icon('check'):i+1}</span><div><div class="bb-step-title"><span>${label}</span><span>${status}</span></div>${(done||current)?`<div class="bb-step-detail">${detail}</div>`:''}${current&&i===2?'<div class="bb-step-meter" role="progressbar" aria-label="章节更新进度" aria-valuenow="8" aria-valuemin="0" aria-valuemax="12"><span></span></div>':''}</div></li>`;
+    }).join('')}</ol>`;
+  }
+  function readyView() {
+    return `<div class="bb-card"><span class="bb-label">材料与要求</span><h2>准备好，开始更新</h2><p class="bb-subline">项目信息与材料已保存。你也可以在右侧补充要求。</p><div class="bb-ready-files">${files()}</div><div class="bb-fact-row"><span>目标报告期</span><strong>2023—2025 年</strong></div><div class="bb-fact-row"><span>发行方式</span><strong>上交所普通私募公司债</strong></div><div class="bb-actions"><button class="bb-button bb-primary" data-action="start" type="button">开始更新 ${icon('arrow-right')}</button></div><p class="bb-foot-note">演示流程，不调用模型、不消耗积分。</p></div>`;
+  }
+  function runningView() {
+    const paused=state.phase==='paused';
+    return `<div class="bb-card"><span class="bb-label">第 ${state.step+1} / 5 步 · 第 ${state.version} 版</span><div class="bb-current-title">${icon(paused?'pause':'file-pen-line')}<h2>${paused?'更新已停止':titles[state.step]}</h2></div><p class="bb-subline">${paused?'已完成的处理进度保留，可以从这里继续。':'项目正在处理中，你可以查看材料或在右侧补充说明。'}</p>${timeline()}<div class="bb-actions"><button class="bb-button ${paused?'bb-primary':''}" type="button" data-action="${paused?'resume':'stop'}">${icon(paused?'play':'square')}${paused?'继续更新':'停止更新'}</button><span class="bb-secondary">${paused?'已有进度保留':'材料和进度自动保存'}</span></div></div>`;
+  }
+  function needsView() {
+    return `<div class="bb-card"><span class="bb-label">更新进行到：偿债能力与授信情况</span><div class="bb-current-title">${icon('circle-alert')}<h2>补充一份材料后继续</h2></div><p class="bb-subline">已完成的章节保留，其他已提供材料无需重新上传。</p><div class="bb-need-card"><h3>缺少 2025 年末银行授信明细</h3><p>旧稿中的授信额度截至 2024 年末。需要新时点的授信总额、已使用及未使用额度。</p><button class="bb-button bb-primary" type="button" data-action="supply">${icon('paperclip')}补充示例材料并继续</button></div><button class="bb-text-button" type="button" data-action="defer">暂列为待补事项，继续更新 ${icon('arrow-right')}</button><p class="bb-foot-note">这项非关键缺口会保留在更新说明中。</p></div>`;
+  }
+  function completeView() {
+    const historical=state.source==='historical';
+    return `<div class="bb-card"><div class="bb-done-banner"><span class="bb-done-icon">${icon('check')}</span><div><h2>${historical?'募集书已更新':'募集书初稿已生成'}</h2><p class="bb-subline">第 ${state.version} 版已保存，可以下载审阅。</p></div></div><div class="bb-delivery"><div class="bb-doc-title"><span class="bb-doc-icon">${icon('file-text')}</span><div><h3>${historical?'募集说明书 · 更新稿':'募集说明书 · 初稿'}</h3><p>Word 文档 · v${state.version}</p></div></div><div class="bb-delivery-buttons"><button class="bb-button bb-primary" type="button" data-action="download" data-file="${historical?'修订版':'募集说明书初稿'}">${icon('download')}${historical?'下载修订版':'下载初稿'}</button>${historical?'<button class="bb-button" type="button" data-action="download" data-file="清洁版">下载清洁版</button>':''}</div></div><ul class="bb-change-list"><li>财务数据及分析已更新至 2025 年末</li><li>发行条款、资金用途与全文引用已核对</li><li>${historical?'原文修改保留修订痕迹，原文件保留':'已按本发行人资料完成各章节起草'}</li></ul>${state.deferred?'<div class="bb-inline-gap">1 项待补充：2025 年末银行授信明细，已列入更新说明。</div>':''}<button class="bb-text-button" type="button" data-action="download" data-file="${historical?'更新说明':'编制说明'}">${icon('file-text')}查看${historical?'更新说明与来源':'编制说明与来源'} ${icon('arrow-up-right')}</button><div class="bb-actions"><button class="bb-button" type="button" data-action="revise">${icon('message-square')}继续修改</button><span class="bb-secondary">下一轮生成新版本，保留当前稿</span></div></div>`;
+  }
+  function renderChat() {
+    const initialUser = '请将报告期更新至 2025 年末，全文核对相关数据和表述。未发生变化的内容请保留。';
+    const runningReplies = ['正在整理材料并核对本次更新目标。进度会一直显示在左侧。','正在核对新旧报告期和发行要求。接下来开始更新正文。','正在处理财务与业务章节。接下来会核对全文一致性，再生成 Word。','正文已处理，正在核对数字、期间、条款及全文引用。','正在生成 Word 成果。文件准备好后会直接显示在左侧。'];
+    const replies = {ready:'材料已收到。你可以继续补充信息，准备好后点击左侧“开始更新”。',running:runningReplies[state.step],needs:'审计报告中没有完整的银行授信明细。请补充截至 2025 年末的授信数据；也可以先把这项列为待补，继续完成其余内容。',paused:'已停止更新，完成的章节已保存。点击“继续更新”即可接着处理。',complete:'本轮成果已保存，Word 下载在左侧。你可以继续提出修改要求，我会保留当前稿并生成下一版。'};
+    const messages = [{role:'user',text:initialUser},{role:'assistant',text:replies[state.phase]},...state.messages];
+    $('#bb-chat-messages').innerHTML=messages.map(m=>`<div class="bb-message ${m.role}"><div class="bb-message-label">${m.role==='assistant'?icon('sparkles')+' BondBuddy':'你'}</div><div class="bb-message-body">${esc(m.text)}</div></div>`).join('');
+    $('#bb-chat-context').textContent=state.phase==='complete'?'当前成果：v'+state.version+' · 可继续修改':state.phase==='needs'?'等待补充：银行授信明细':state.phase==='running'?'本轮材料已锁定，新补充将用于下一轮':state.phase==='paused'?'已保留处理进度':'对话与材料一起保存在当前项目';
+  }
+  function render() {
+    root.style.setProperty('--bb-chat-width',design.chatWidth+'px');
+    root.classList.toggle('bb-compact',design.progress==='精简步骤');
+    state.source=design.source==='无历史募集书'?'new':'historical';
+    $('#bb-source-label').textContent=state.source==='historical'?'基于历史募集书更新':'依据发行人资料编制';
+    $('#bb-file-count').textContent=(state.supplied?3:2)+' 份材料';
+    const badge=$('#bb-phase-badge');badge.innerHTML=icon(phaseIcons[state.phase])+phaseLabels[state.phase];badge.classList.toggle('bb-warning',state.phase==='needs');
+    root.querySelectorAll('[data-scene]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.scene===state.phase)));
+    $('#bb-main-content').innerHTML=state.phase==='ready'?readyView():state.phase==='needs'?needsView():state.phase==='complete'?completeView():runningView();
+    $('#bb-material-content').innerHTML=`<div class="bb-fact-row"><span>报告期</span><strong>2023—2025 年</strong></div>${files()}`;
+    renderChat();
+    if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});
+  }
+  function advance() {
+    if(!playing||state.phase!=='running')return;
+    if(state.step===2&&!state.supplied&&!state.deferred){state.phase='needs';stopClock();render();save();return;}
+    if(state.step>=4){state.phase='complete';stopClock();render();save();return;}
+    state.step++;render();timer=setTimeout(advance,2000);
+  }
+  function start(step=0){stopClock();state.phase='running';state.step=step;playing=true;render();save();timer=setTimeout(advance,2000);}
+  function supply(){state.supplied=true;state.deferred=false;message('user','已补充：2025 年末银行授信明细.xlsx（示例材料）');message('assistant','材料已加入本轮更新，继续核对授信情况并完成剩余章节。');start(2);}
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button');if(!button||!root.contains(button))return;
+    if(button.dataset.scene){stopClock();state.phase=button.dataset.scene;state.step=state.phase==='complete'?4:2;state.pending=false;state.messages=[];$('#bb-feedback').hidden=true;render();save();return;}
+    const action=button.dataset.action;
+    if(action==='send')sendMessage();
+    if(action==='start'){state.pending=false;start(0);}
+    if(action==='stop'){stopClock();state.phase='paused';render();save();}
+    if(action==='resume')start(state.step);
+    if(action==='supply')supply();
+    if(action==='defer'){state.deferred=true;message('user','授信明细暂列待补，继续更新。');start(2);}
+    if(action==='attach'){
+      if(state.phase==='needs'){supply();return;}
+      message('user','补充示例材料：2025 年末银行授信明细.xlsx');
+      if(state.phase==='ready'){state.supplied=true;message('assistant','材料已加入当前项目，开始更新时会一起使用。');}
+      else{state.pending=true;message('assistant',state.phase==='complete'?'已收录补充材料，点击左侧“继续修改”生成下一版。':'已收录补充材料，当前这轮继续处理，新材料将在下一轮使用。');}
+      render();save();
+    }
+    if(action==='revise'){
+      if(state.pending){state.version++;state.supplied=true;state.pending=false;message('assistant','开始生成 v'+state.version+'，当前版本保留。');start(2);}
+      else{$('#bb-chat-input').focus();feedback('在右侧写下修改要求并发送，再点击“继续修改”。');}
+    }
+    if(action==='download')feedback('已点击“'+button.dataset.file+'”。这是交互演示，未生成真实募集书文件；正式产品将在这里下载 Word。');
+  });
+  function sendMessage(){
+    const input=$('#bb-chat-input');const text=input.value.trim();if(!text)return;
+    message('user',text);input.value='';state.pending=true;
+    message('assistant',state.phase==='complete'?'修改要求已记录。点击左侧“继续修改”生成下一版，当前成果会保留。':state.phase==='ready'?'已加入项目要求，开始更新时会一并处理。':state.phase==='needs'?'说明已记录。请补充左侧所需材料，或选择暂列待补后继续。':'已收录这条补充。本轮继续处理，补充要求将在下一轮修改时使用。');
+    render();save();
+  }
+  $('#bb-chat-form').addEventListener('submit',event=>{event.preventDefault();sendMessage();});
+  window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==lastSaved){stopClock();restore(snapshot);render();}});
+  render();
+  if(globalThis.Tweak){const tweak=new globalThis.Tweak({container:root,onChange:()=>{render();save();}});tweak.addSelect(design,'progress',{label:'进度信息',options:['详细步骤','精简步骤']});tweak.addSlider(design,'chatWidth',{label:'对话区域宽度',min:250,max:330,step:10,unit:'px'});tweak.addSelect(design,'source',{label:'项目材料',options:['有历史募集书','无历史募集书']});}
+})();
+</script>
+<!-- BOND_BUDDY_UPDATE_PREVIEW_END -->
