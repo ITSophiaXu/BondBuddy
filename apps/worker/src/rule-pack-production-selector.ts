@@ -112,6 +112,24 @@ function dateText(value: string | Date | null): string | null {
   return value.slice(0, 10);
 }
 
+/** Mirrors the business gates in domain.publishRulePack for persisted snapshots. */
+function isPublishableProductionPack(pack: RulePack): boolean {
+  const releaseAt = pack.release?.released_at;
+  if (!releaseAt || !Number.isFinite(Date.parse(releaseAt))) return false;
+  const releaseDate = releaseAt.slice(0, 10);
+  if (pack.validity.effective_to !== null && pack.validity.effective_to < releaseDate) return false;
+  if (pack.sources.some((source) => source.kind === 'unverified_lead'
+    || (source.effective_to !== null && source.effective_to < releaseDate)
+    || (source.verified_at !== null && Date.parse(source.verified_at) > Date.parse(releaseAt)))) return false;
+  if (pack.rules.some((rule) => !rule.enabled || rule.enforcement === 'research_only')) return false;
+  if (pack.sample_suite.cases.some((sample) => sample.result !== 'passed'
+    || Date.parse(sample.reviewed_at) > Date.parse(releaseAt))) return false;
+  if (!(['positive', 'negative', 'boundary'] as const).every((polarity) =>
+    pack.sample_suite.cases.some((sample) => sample.polarity === polarity))) return false;
+  if (pack.reviews.some((review) => Date.parse(review.reviewed_at) > Date.parse(releaseAt))) return false;
+  return true;
+}
+
 function validDate(value: string): boolean {
   if (!DATE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -140,6 +158,7 @@ function mapAndValidate(row: ProductionRulePackRow): RulePack | null {
   if (pack.status !== 'published' || pack.release?.channel !== 'production'
     || pack.pack_id !== row.pack_id || pack.version !== row.pack_version
     || pack.release.content_hash !== row.content_hash || !HASH.test(row.content_hash)
+    || pack.validity.published_on !== pack.release.released_at.slice(0, 10)
     || rulePackContentHash(pack) !== row.content_hash
     || pack.scope.market !== row.market || pack.scope.offering !== row.offering
     || JSON.stringify(pack.scope.instruments) !== JSON.stringify(row.instruments)
@@ -149,6 +168,7 @@ function mapAndValidate(row: ProductionRulePackRow): RulePack | null {
     || checked.template.version !== row.template_version || snapshotHash(checked.template) !== row.template_hash
     || checked.coverage.version !== row.coverage_version || snapshotHash(checked.coverage) !== row.coverage_hash
     || pack.sample_suite.data_classification !== 'authorized_real'
+    || !isPublishableProductionPack(pack)
     || !industryReview || !technicalReview || industryReview.reviewer_id === technicalReview.reviewer_id) return null;
   return pack;
 }
@@ -204,11 +224,14 @@ export async function selectProductionRulePack(
     const proof = await pool.query<{ reviewers_active: boolean; sources_current: boolean; samples_complete: boolean }>(`
       SELECT
         EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants g
-          WHERE g.id=$10 AND g.user_id=$11 AND g.role='rule_pack_operator' AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL)
+          WHERE g.id=$10 AND g.user_id=$11 AND g.role='rule_pack_operator' AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL
+            AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz)
         AND EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants g
-          WHERE g.id=$12 AND g.user_id=$13 AND g.role='rule_pack_industry_reviewer' AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL)
+          WHERE g.id=$12 AND g.user_id=$13 AND g.role='rule_pack_industry_reviewer' AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL
+            AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz)
         AND EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants g
-          WHERE g.id=$14 AND g.user_id=$15 AND g.role='rule_pack_technical_reviewer' AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL)
+          WHERE g.id=$14 AND g.user_id=$15 AND g.role='rule_pack_technical_reviewer' AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL
+            AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz)
         AS reviewers_active,
         cardinality($1::text[]) > 0
         AND cardinality($1::text[]) = (
@@ -216,7 +239,10 @@ export async function selectProductionRulePack(
           JOIN bb_rule_pack_production_reviewer_grants g ON g.id=s.verifier_grant_id AND g.user_id=s.verifier_user_id
           WHERE s.id=ANY($1::text[]) AND s.pack_id=$2 AND s.pack_version=$3 AND s.pack_hash=$4
             AND s.market=$5 AND s.offering=$6 AND s.checked_at <= ($7::date + interval '1 day')
+            AND s.checked_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+            AND s.created_at<=($8::jsonb->'release'->>'released_at')::timestamptz
             AND s.effective_from <= $7::date AND (s.effective_to IS NULL OR s.effective_to >= $7::date)
+            AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz
             AND g.role='rule_pack_industry_reviewer' AND g.revoked_at IS NULL
         )
         AND NOT EXISTS (
@@ -231,7 +257,10 @@ export async function selectProductionRulePack(
               AND s.effective_from IS NOT DISTINCT FROM NULLIF(src->>'effective_from','')::date
               AND s.effective_to IS NOT DISTINCT FROM NULLIF(src->>'effective_to','')::date
               AND s.checked_at <= ($7::date + interval '1 day') AND s.effective_from <= $7::date
+              AND s.checked_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+              AND s.created_at<=($8::jsonb->'release'->>'released_at')::timestamptz
               AND (s.effective_to IS NULL OR s.effective_to >= $7::date)
+              AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz
               AND g.role='rule_pack_industry_reviewer' AND g.revoked_at IS NULL)
         ) AS sources_current,
         cardinality($9::text[]) >= 3
@@ -244,6 +273,10 @@ export async function selectProductionRulePack(
           WHERE s.id=ANY($9::text[]) AND s.pack_id=$2 AND s.pack_version=$3 AND s.pack_hash=$4
             AND s.market=$5 AND s.offering=$6 AND a.authorization_scope='rule_pack_validation' AND a.revoked_at IS NULL
             AND ag.role='rule_pack_operator' AND ag.market=$5 AND ag.offering=$6 AND ag.revoked_at IS NULL
+            AND a.authorized_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+            AND s.reviewed_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+            AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+            AND ag.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz
             AND g.role IN ('rule_pack_industry_reviewer','rule_pack_technical_reviewer') AND g.market=$5 AND g.offering=$6
             AND s.observed_outcome=s.expected_outcome AND g.revoked_at IS NULL
         )
@@ -266,7 +299,11 @@ export async function selectProductionRulePack(
               AND s.reviewer_user_id=c->>'reviewed_by' AND g.role IN ('rule_pack_industry_reviewer','rule_pack_technical_reviewer')
               AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL
               AND a.authorization_scope='rule_pack_validation' AND a.revoked_at IS NULL
-              AND ag.role='rule_pack_operator' AND ag.market=$5 AND ag.offering=$6 AND ag.revoked_at IS NULL))
+              AND ag.role='rule_pack_operator' AND ag.market=$5 AND ag.offering=$6 AND ag.revoked_at IS NULL
+              AND a.authorized_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+              AND s.reviewed_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+              AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz
+              AND ag.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz))
         AND jsonb_array_length($8::jsonb->'sample_suite'->'cases')=cardinality($9::text[])
         AS samples_complete`, [row.source_check_ids, row.pack_id, row.pack_version, row.content_hash,
       row.market, row.offering, input.asOf, JSON.stringify(pack), row.sample_evidence_ids,

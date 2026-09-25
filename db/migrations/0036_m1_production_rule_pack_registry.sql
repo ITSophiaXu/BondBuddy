@@ -243,13 +243,16 @@ BEGIN
     IF NEW.sequence<>current_event.sequence+1 THEN RAISE EXCEPTION 'production rule-pack event sequence conflict' USING ERRCODE='23514'; END IF;
   ELSIF NEW.sequence<>1 THEN RAISE EXCEPTION 'production rule-pack event sequence must start at one' USING ERRCODE='23514'; END IF;
   IF NOT EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants g WHERE g.id=NEW.operator_grant_id
-      AND g.user_id=NEW.operator_user_id AND g.role='rule_pack_operator' AND g.market=NEW.market AND g.offering=NEW.offering AND g.revoked_at IS NULL)
+      AND g.user_id=NEW.operator_user_id AND g.role='rule_pack_operator' AND g.market=NEW.market AND g.offering=NEW.offering
+      AND g.granted_at<=NEW.occurred_at AND g.revoked_at IS NULL)
   THEN RAISE EXCEPTION 'active scoped production operator grant required' USING ERRCODE='23514'; END IF;
   IF NEW.action IN ('production_release','production_rollback') AND (
     NOT EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants g WHERE g.id=NEW.industry_reviewer_grant_id
-      AND g.user_id=NEW.industry_reviewer_user_id AND g.role='rule_pack_industry_reviewer' AND g.market=NEW.market AND g.offering=NEW.offering AND g.revoked_at IS NULL)
+      AND g.user_id=NEW.industry_reviewer_user_id AND g.role='rule_pack_industry_reviewer' AND g.market=NEW.market AND g.offering=NEW.offering
+      AND g.granted_at<=NEW.occurred_at AND g.revoked_at IS NULL)
     OR NOT EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants g WHERE g.id=NEW.technical_reviewer_grant_id
-      AND g.user_id=NEW.technical_reviewer_user_id AND g.role='rule_pack_technical_reviewer' AND g.market=NEW.market AND g.offering=NEW.offering AND g.revoked_at IS NULL)
+      AND g.user_id=NEW.technical_reviewer_user_id AND g.role='rule_pack_technical_reviewer' AND g.market=NEW.market AND g.offering=NEW.offering
+      AND g.granted_at<=NEW.occurred_at AND g.revoked_at IS NULL)
     OR NEW.industry_reviewer_user_id=NEW.technical_reviewer_user_id
   ) THEN RAISE EXCEPTION 'active scoped distinct reviewer grants required' USING ERRCODE='23514'; END IF;
   IF NEW.action='production_release' AND has_current AND current_event.action<>'production_withdrawal' THEN
@@ -302,6 +305,41 @@ BEGIN
     IF bad_count>0 OR jsonb_array_length(NEW.coverage_snapshot->'items')=0 THEN
       RAISE EXCEPTION 'complete bundle coverage evidence required' USING ERRCODE='23514';
     END IF;
+    -- Match publishRulePack's business gates even when an event is inserted
+    -- directly into the registry rather than produced by the domain publisher.
+    SELECT count(*) INTO bad_count FROM jsonb_array_elements(NEW.pack_snapshot->'sources') src
+      WHERE src->>'kind'='unverified_lead'
+        OR (src->>'kind'<>'unverified_lead' AND
+            (NULLIF(src->>'verified_by','') IS NULL OR NULLIF(src->>'verified_at','') IS NULL))
+        OR (src->>'kind' IN ('formal_rule','official_interpretation') AND
+            (NULLIF(src->>'published_on','') IS NULL OR NULLIF(src->>'effective_from','') IS NULL))
+        OR (NULLIF(src->>'effective_from','') IS NOT NULL AND NULLIF(src->>'effective_to','') IS NOT NULL
+            AND (src->>'effective_to')::date<(src->>'effective_from')::date)
+        OR (NULLIF(src->>'effective_to','') IS NOT NULL AND (src->>'effective_to')::date<NEW.occurred_at::date)
+        OR (NULLIF(src->>'verified_at','') IS NOT NULL AND (src->>'verified_at')::timestamptz>NEW.occurred_at);
+    IF NEW.action='production_release'
+      AND NEW.pack_snapshot->'validity'->>'published_on' IS DISTINCT FROM NEW.occurred_at::date::text THEN
+      RAISE EXCEPTION 'pack publication date must match release event date' USING ERRCODE='23514';
+    END IF;
+    IF bad_count>0 OR (NULLIF(NEW.pack_snapshot->'validity'->>'effective_to','') IS NOT NULL
+        AND (NEW.pack_snapshot->'validity'->>'effective_to')::date<NEW.occurred_at::date) THEN
+      RAISE EXCEPTION 'expired or unverified sources cannot be production published' USING ERRCODE='23514';
+    END IF;
+    SELECT count(*) INTO bad_count FROM jsonb_array_elements(NEW.pack_snapshot->'rules') r
+      WHERE r->>'enabled' IS DISTINCT FROM 'true' OR r->>'enforcement'='research_only';
+    IF bad_count>0 THEN RAISE EXCEPTION 'disabled or research-only rules cannot be production published' USING ERRCODE='23514'; END IF;
+    SELECT count(*) INTO bad_count FROM jsonb_array_elements(NEW.pack_snapshot->'sample_suite'->'cases') c
+      WHERE c->>'result' IS DISTINCT FROM 'passed'
+        OR NULLIF(c->>'reviewed_at','') IS NULL
+        OR (c->>'reviewed_at')::timestamptz>NEW.occurred_at;
+    IF bad_count>0 OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.pack_snapshot->'sample_suite'->'cases') c WHERE c->>'polarity'='positive')
+      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.pack_snapshot->'sample_suite'->'cases') c WHERE c->>'polarity'='negative')
+      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.pack_snapshot->'sample_suite'->'cases') c WHERE c->>'polarity'='boundary') THEN
+      RAISE EXCEPTION 'production release requires passed positive negative and boundary samples reviewed by release time' USING ERRCODE='23514';
+    END IF;
+    SELECT count(*) INTO bad_count FROM jsonb_array_elements(NEW.pack_snapshot->'reviews') r
+      WHERE NULLIF(r->>'reviewed_at','') IS NULL OR (r->>'reviewed_at')::timestamptz>NEW.occurred_at;
+    IF bad_count>0 THEN RAISE EXCEPTION 'future review attestations cannot authorize a production release' USING ERRCODE='23514'; END IF;
     IF NEW.pack_snapshot->'sample_suite'->>'data_classification' IS DISTINCT FROM 'authorized_real'
       OR NEW.operator_user_id=NEW.industry_reviewer_user_id
       OR NEW.operator_user_id=NEW.technical_reviewer_user_id
@@ -319,7 +357,9 @@ BEGIN
     LEFT JOIN bb_rule_pack_production_source_checks s ON s.id=sid
       AND s.pack_id=NEW.pack_id AND s.pack_version=NEW.pack_version AND s.pack_hash=NEW.content_hash
       AND s.checked_at<=NEW.occurred_at AND s.effective_from<=NEW.occurred_at::date
-      AND (s.effective_to IS NULL OR s.effective_to>=NEW.occurred_at::date)
+      AND s.created_at<=NEW.occurred_at AND (s.effective_to IS NULL OR s.effective_to>=NEW.occurred_at::date)
+      AND EXISTS (SELECT 1 FROM bb_rule_pack_production_reviewer_grants sg WHERE sg.id=s.verifier_grant_id
+        AND sg.user_id=s.verifier_user_id AND sg.granted_at<=NEW.occurred_at)
     WHERE s.id IS NULL;
     IF cardinality(NEW.source_check_ids)=0 OR bad_count>0 THEN
       RAISE EXCEPTION 'current official source verification evidence required' USING ERRCODE='23514';
@@ -355,8 +395,9 @@ BEGIN
           AND s.expected_outcome=c->>'expected_outcome' AND c->>'result'='passed'
           AND s.reviewer_user_id=c->>'reviewed_by' AND g.role IN ('rule_pack_industry_reviewer','rule_pack_technical_reviewer')
           AND g.market=NEW.market AND g.offering=NEW.offering AND g.revoked_at IS NULL
-          AND a.revoked_at IS NULL AND a.authorization_scope='rule_pack_validation'
+          AND a.revoked_at IS NULL AND a.authorization_scope='rule_pack_validation' AND a.authorized_at<=NEW.occurred_at
           AND ag.role='rule_pack_operator' AND ag.market=NEW.market AND ag.offering=NEW.offering AND ag.revoked_at IS NULL
+          AND ag.granted_at<=NEW.occurred_at AND s.reviewed_at<=NEW.occurred_at AND g.granted_at<=NEW.occurred_at
           AND a.authorization_document_sha256 ~ '^[a-f0-9]{64}$');
     IF bad_count>0 OR jsonb_array_length(NEW.pack_snapshot->'sample_suite'->'cases')<>cardinality(NEW.sample_evidence_ids) THEN
       RAISE EXCEPTION 'every positive negative and boundary pack sample requires exact authorized material and reviewer evidence' USING ERRCODE='23514';

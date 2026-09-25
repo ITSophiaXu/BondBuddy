@@ -44,7 +44,7 @@ function fixture(): { pack: RulePack; template: typeof nafmiiMtnChapterTemplate;
   draft.reviews = [];
   draft.release = null;
   draft.withdrawal = null;
-  const pack = publishRulePack(draft, { channel: 'production', reviews, released_by: 'synthetic-operator', released_at: '2026-09-24T02:00:00Z', reason: 'Synthetic selector fixture only; no production evidence.' });
+  const pack = publishRulePack(draft, { channel: 'production', reviews: structuredClone(reviews), released_by: 'synthetic-operator', released_at: '2026-09-25T02:00:00Z', reason: 'Synthetic selector fixture only; no production evidence.' });
   const template = structuredClone(nafmiiMtnChapterTemplate);
   template.rule_pack_id = pack.pack_id;
   template.template_id = 'synthetic-selector-template';
@@ -77,6 +77,13 @@ function registryRow(action = 'production_release') {
     template_version: template.version, template_hash: hashSnapshot(template),
     coverage_version: coverage.version, coverage_hash: hashSnapshot(coverage),
   };
+}
+
+function resignMutatedPack(row: ReturnType<typeof registryRow>): void {
+  const pack = row.pack_snapshot as RulePack;
+  const hash = rulePackContentHash(pack);
+  pack.release!.content_hash = hash;
+  row.content_hash = hash;
 }
 
 test('production selector rejects malformed scope before database access', async () => {
@@ -127,6 +134,34 @@ test('selector rejects self-inconsistent hash snapshots and stale source or samp
     const result = await selectProductionRulePack({ query: async () => (++call === 1 ? { rows: [registryRow()] } : { rows: [proof] }) } as never,
       { ...request, investorScope: 'synthetic-investor', industry: 'synthetic-industry', specialFeatures: [] });
     assert.deepEqual(result, { status: 'blocked', reasons: [expected] });
+  }
+});
+
+test('selector refuses snapshots that bypass publishRulePack business gates', async () => {
+  const variants: Array<[string, (pack: RulePack) => void]> = [
+    ['unverified lead', (pack) => {
+      pack.sources[0]!.kind = 'unverified_lead';
+      pack.sources[0]!.verified_by = null;
+      pack.sources[0]!.verified_at = null;
+      pack.rules[0]!.enabled = false;
+      pack.rules[0]!.enforcement = 'research_only';
+    }],
+    ['disabled rule', (pack) => { pack.rules[0]!.enabled = false; }],
+    ['research-only rule', (pack) => { pack.rules[0]!.enforcement = 'research_only'; }],
+    ['failed sample', (pack) => { pack.sample_suite.cases[0]!.result = 'failed'; }],
+    ['future sample timestamp', (pack) => { pack.sample_suite.cases[0]!.reviewed_at = '2026-09-26T00:00:00Z'; }],
+    ['future reviewer timestamp', (pack) => { pack.reviews[0]!.reviewed_at = '2026-09-26T00:00:00Z'; }],
+    ['publication date mismatch', (pack) => { pack.validity.published_on = '2026-09-24'; }],
+  ];
+
+  for (const [label, mutate] of variants) {
+    const row = registryRow();
+    mutate(row.pack_snapshot as RulePack);
+    resignMutatedPack(row);
+    const result = await selectProductionRulePack({
+      query: async () => ({ rows: [row] }),
+    } as never, request);
+    assert.deepEqual(result, { status: 'blocked', reasons: ['production_rule_pack_snapshot_invalid'] }, label);
   }
 });
 
@@ -194,10 +229,11 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
   try {
     await client.query('BEGIN');
     const rejectsWithSavepoint = async (sql: string, values: unknown[], pattern: RegExp, name: string) => {
-      await client.query(`SAVEPOINT ${name}`);
+      const safeName = name.replaceAll(/[^a-zA-Z0-9_]/g, '_');
+      await client.query(`SAVEPOINT ${safeName}`);
       await assert.rejects(client.query(sql, values), pattern);
-      await client.query(`ROLLBACK TO SAVEPOINT ${name}`);
-      await client.query(`RELEASE SAVEPOINT ${name}`);
+      await client.query(`ROLLBACK TO SAVEPOINT ${safeName}`);
+      await client.query(`RELEASE SAVEPOINT ${safeName}`);
     };
     for (const [index, id] of users.entries()) await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `u${id}`.slice(0, 32)]);
     await client.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
@@ -210,6 +246,50 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
       release: { channel: 'production', content_hash: 'a'.repeat(64) },
       scope: { market: 'sse', offering: 'public_all', instruments: ['synthetic-bond'], document_stages: ['registration'] },
       validity: { effective_from: '2026-01-01', effective_to: null } };
+
+    const assertProductionGateRejects = async (label: string, mutate: (snapshot: Record<string, any>, occurredAt: string) => void, pattern: RegExp) => {
+      const occurredAt = new Date(Date.now() + 60_000).toISOString();
+      const releaseHash = 'a'.repeat(64);
+      const snapshot: Record<string, any> = {
+        ...rowSnapshot,
+        validity: { published_on: occurredAt.slice(0, 10), effective_from: '2026-01-01', effective_to: null },
+        sources: [{ source_id: 'source-1', kind: 'formal_rule', published_on: '2025-01-01', effective_from: '2025-01-01',
+          effective_to: null, verified_by: 'synthetic-reviewer', verified_at: '2026-09-24T00:00:00Z' }],
+        rules: [{ enabled: true, enforcement: 'soft_check' }],
+        sample_suite: { data_classification: 'authorized_real', cases: [
+          { case_id: 'positive', polarity: 'positive', result: 'passed', reviewed_at: '2026-09-24T00:00:00Z' },
+          { case_id: 'negative', polarity: 'negative', result: 'passed', reviewed_at: '2026-09-24T00:00:00Z' },
+          { case_id: 'boundary', polarity: 'boundary', result: 'passed', reviewed_at: '2026-09-24T00:00:00Z' },
+        ] },
+        reviews: [
+          { reviewer_id: industry, reviewer_role: 'industry_reviewer', reviewed_at: '2026-09-24T00:00:00Z', source_verified: true, scope_verified: true, samples_verified: true },
+          { reviewer_id: technical, reviewer_role: 'technical_reviewer', reviewed_at: '2026-09-24T00:00:00Z', source_verified: true, scope_verified: true, samples_verified: true },
+        ],
+        release: { channel: 'production', content_hash: releaseHash, released_by: operator, released_at: occurredAt, reason: `synthetic ${label}` },
+      };
+      mutate(snapshot, occurredAt);
+      await rejectsWithSavepoint(`INSERT INTO bb_rule_pack_production_release_events
+        (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
+         coverage_version,coverage_hash,market,offering,instruments,document_stages,effective_from,effective_to,
+         pack_snapshot,template_snapshot,coverage_snapshot,operator_user_id,operator_grant_id,industry_reviewer_user_id,
+         industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at)
+        VALUES ($1,'synthetic-pack',$2,$3,1,'production_release','1',$4,'template.1',$5,'coverage.1',$6,
+         'sse','public_all',ARRAY['synthetic-bond'],ARRAY['registration'],'2026-01-01',NULL,$7::jsonb,
+         '{"rule_pack_id":"synthetic-pack","version":"template.1","market":"sse","offering":"public_all"}'::jsonb,
+         '{"rule_pack_id":"synthetic-pack","version":"coverage.1","open_blockers":[],"items":[{"disposition":"covered"}]}'::jsonb,
+         $8,$9,$10,$11,$12,$13,$14,$15)`,
+      [`unsafe-${label}-${suffix}`, `unsafe-request-${label}-${suffix}`, '9'.repeat(64), releaseHash,
+        '2'.repeat(64), '3'.repeat(64), JSON.stringify(snapshot), operator, operatorGrant, industry,
+        industryGrant, technical, technicalGrant, `synthetic ${label}`, occurredAt], pattern, `publish_gate_${label}`);
+    };
+    await assertProductionGateRejects('unverified-source', (snapshot) => { snapshot.sources[0]!.kind = 'unverified_lead'; }, /expired or unverified sources cannot be production published/);
+    await assertProductionGateRejects('publication-date-mismatch', (snapshot) => { snapshot.validity.published_on = '2026-09-24'; }, /pack publication date must match release event date/);
+    await assertProductionGateRejects('disabled-rule', (snapshot) => { snapshot.rules[0]!.enabled = false; }, /disabled or research-only rules cannot be production published/);
+    await assertProductionGateRejects('research-only-rule', (snapshot) => { snapshot.rules[0]!.enforcement = 'research_only'; }, /disabled or research-only rules cannot be production published/);
+    await assertProductionGateRejects('failed-sample', (snapshot) => { snapshot.sample_suite.cases[1]!.result = 'failed'; }, /production release requires passed positive negative and boundary samples/);
+    await assertProductionGateRejects('future-review', (snapshot, occurredAt) => { snapshot.reviews[0]!.reviewed_at = new Date(Date.parse(occurredAt) + 60_000).toISOString(); }, /future review attestations cannot authorize a production release/);
+    await assertProductionGateRejects('future-sample', (snapshot, occurredAt) => { snapshot.sample_suite.cases[0]!.reviewed_at = new Date(Date.parse(occurredAt) + 60_000).toISOString(); }, /production release requires passed positive negative and boundary samples/);
+
     await rejectsWithSavepoint(`INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
        coverage_version,coverage_hash,target_event_id,market,offering,instruments,
@@ -249,8 +329,10 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
     const seedId = `synthetic-seeded-release-${suffix}`;
     const templateSnapshot = { rule_pack_id: 'synthetic-pack', version: 'template.1', market: 'sse', offering: 'public_all' };
     const coverageSnapshot = { rule_pack_id: 'synthetic-pack', version: 'coverage.1', open_blockers: [], items: [] };
-    const releasedSnapshot = { ...rowSnapshot, release: { ...rowSnapshot.release, released_by: operator,
-      released_at: '2026-09-25T12:00:00Z', reason: 'rolled-back synthetic fixture' } };
+    const releaseAt = new Date(Date.now() + 60_000).toISOString();
+    const releasedSnapshot = { ...rowSnapshot, validity: { ...rowSnapshot.validity, published_on: releaseAt.slice(0, 10) },
+      release: { ...rowSnapshot.release, released_by: operator,
+        released_at: releaseAt, reason: 'rolled-back synthetic fixture' } };
     await client.query('ALTER TABLE bb_rule_pack_production_release_events DISABLE TRIGGER bb_rule_pack_production_event_guard');
     await client.query(`INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
@@ -259,12 +341,12 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
        industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at)
       VALUES ($1,'synthetic-pack',$2,$3,1,'production_release','1',$4,'template.1',$5,'coverage.1',$6,
        'sse','public_all',ARRAY['synthetic-bond'],ARRAY['registration'],'2026-01-01',NULL,$7::jsonb,$8::jsonb,$9::jsonb,
-       $10,$11,$12,$13,$14,$15,'rolled-back synthetic fixture','2026-09-25T12:00:00Z')`,
+       $10,$11,$12,$13,$14,$15,'rolled-back synthetic fixture',$16)`,
     [seedId, `request-${suffix}`, '1'.repeat(64), 'a'.repeat(64), '2'.repeat(64), '3'.repeat(64),
       JSON.stringify(releasedSnapshot), JSON.stringify(templateSnapshot), JSON.stringify(coverageSnapshot),
-      operator, operatorGrant, industry, industryGrant, technical, technicalGrant]);
+      operator, operatorGrant, industry, industryGrant, technical, technicalGrant, releaseAt]);
     await client.query('ALTER TABLE bb_rule_pack_production_release_events ENABLE TRIGGER bb_rule_pack_production_event_guard');
-    const withdrawnAt = '2026-09-25T12:30:00Z';
+    const withdrawnAt = new Date(Date.parse(releaseAt) + 60_000).toISOString();
     const withdrawnSnapshot = { ...releasedSnapshot, status: 'withdrawn', withdrawal: {
       withdrawn_by: operator, withdrawn_at: withdrawnAt, reason: 'rolled-back synthetic withdrawal fixture',
     } };
