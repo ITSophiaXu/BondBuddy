@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { runDocumentParser, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
 import {
   parseAuthorizedMaterial,
@@ -441,6 +442,7 @@ test('failed and page-limited parser results are not cached', async (t) => {
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const localPython = join(repositoryRoot, '.venv', 'bin', 'python');
+const authorizedSampleManifestPath = join(repositoryRoot, 'tests/samples/2026-09-25/manifest.json');
 test('bridge parses synthetic text through the actual Python subprocess when the repo venv exists', {
   skip: existsSync(localPython) ? false : 'repository .venv is not installed',
 }, async (t) => {
@@ -456,6 +458,94 @@ test('bridge parses synthetic text through the actual Python subprocess when the
   const result = await parseAuthorizedMaterial(deps, input);
   assert.equal(result.status, 'parsed');
   assert.equal(result.records.some((record) => record.literal_quote.includes('synthetic authorized material')), true);
+  assert.deepEqual(await readdir(root), []);
+});
+
+test('opt-in authorized historical DOCX parses through Python and reuses owner-scoped cache by content', {
+  skip: process.env.BB_RUN_AUTHORIZED_SAMPLE_TESTS !== '1'
+    ? 'set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 to parse an authorized real sample'
+    : existsSync(localPython) ? false : 'repository .venv is not installed',
+}, async (t) => {
+  const manifest = JSON.parse(await readFile(authorizedSampleManifestPath, 'utf8')) as {
+    cases: Array<{ files: Array<{ file_id: string; path: string; upload_role: string; bytes: number; sha256: string; media_type: string }> }>;
+  };
+  const file = manifest.cases.flatMap((sampleCase) => sampleCase.files)
+    .find((candidate) => candidate.file_id === 'rq-202509-01');
+  assert.ok(file, 'approved manifest entry rq-202509-01 must exist');
+  assert.equal(file.upload_role, 'historical');
+  assert.equal(file.media_type, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const samplePath = join(repositoryRoot, 'tests/samples/2026-09-25', file.path);
+  const sampleBytes = await readFile(samplePath);
+  assert.equal(sampleBytes.byteLength, file.bytes, 'authorized sample byte size must match manifest');
+  assert.equal(createHash('sha256').update(sampleBytes).digest('hex'), file.sha256,
+    'authorized sample SHA-256 must match manifest');
+
+  const root = await temporaryRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const cache = cacheHarness();
+  cache.adapter.versions.parserVersion = documentParserVersion();
+  let pythonParserCalls = 0;
+  const parser: MaterialParserDependencies['parser'] = (request) => {
+    pythonParserCalls += 1;
+    return runDocumentParser(request, { pythonExecutable: localPython, repoRoot: repositoryRoot });
+  };
+  const originalMaterial = {
+    ...row,
+    owner_user_id: 'authorized-owner-alice',
+    project_id: 'authorized-project-original-name',
+    id: 'authorized-material-original-name',
+    version: 1,
+    media_type: file.media_type,
+    byte_size: file.bytes,
+    sha256: file.sha256,
+    filename: file.path.split('/').at(-1),
+    object_key: 'private/authorized-owner-alice/original-name/v1',
+  };
+  const renamedMaterial = {
+    ...originalMaterial,
+    project_id: 'authorized-project-renamed-file',
+    id: 'authorized-material-renamed-file',
+    filename: 'renamed-historical-prospectus.docx',
+    object_key: 'private/authorized-owner-alice/renamed-file/v1',
+  };
+  const anotherOwnerMaterial = {
+    ...renamedMaterial,
+    owner_user_id: 'authorized-owner-bob',
+    project_id: 'authorized-project-bob',
+    id: 'authorized-material-bob',
+    object_key: 'private/authorized-owner-bob/renamed-file/v1',
+  };
+  const parseCache = cache.adapter;
+  const parse = (material: Record<string, unknown>, ownerUserId: string, requestId: string) => parseAuthorizedMaterial(
+    dependencies({ tempRoot: root, material, bytes: sampleBytes, parser, parseCache }),
+    {
+      ownerUserId,
+      projectId: String(material.project_id),
+      materialId: String(material.id),
+      version: Number(material.version),
+      requestId,
+      options: {},
+    },
+  );
+
+  const first = await parse(originalMaterial, 'authorized-owner-alice', 'authorized-sample-original');
+  const sameOwnerRename = await parse(renamedMaterial, 'authorized-owner-alice', 'authorized-sample-renamed');
+  assert.ok(first.status === 'parsed' || first.status === 'needs_confirmation');
+  assert.equal(sameOwnerRename.status, first.status);
+  assert.equal(sameOwnerRename.request_id, 'authorized-sample-renamed');
+  assert.equal(sameOwnerRename.material?.material_id, 'authorized-material-renamed-file');
+  assert.ok(sameOwnerRename.records.length > 0);
+  assert.ok(sameOwnerRename.records.every((record) => record.material_id === 'authorized-material-renamed-file' &&
+    record.material_version === 1 && record.content_hash === file.sha256));
+  assert.equal(pythonParserCalls, 1, 'same-owner renamed content should be a cache hit');
+
+  const crossOwner = await parse(anotherOwnerMaterial, 'authorized-owner-bob', 'authorized-sample-other-owner');
+  assert.ok(crossOwner.status === 'parsed' || crossOwner.status === 'needs_confirmation');
+  assert.equal(crossOwner.material?.material_id, 'authorized-material-bob');
+  assert.equal(pythonParserCalls, 2, 'another owner must parse independently instead of observing Alice\'s cache');
+  assert.equal(cache.size(), 2);
+  assert.deepEqual([...cache.rows.values()].map((entry) => entry.owner_user_id).sort(),
+    ['authorized-owner-alice', 'authorized-owner-bob']);
   assert.deepEqual(await readdir(root), []);
 });
 

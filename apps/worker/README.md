@@ -152,6 +152,14 @@ tests cover same-account rename reuse, account isolation and corruption; when
 `MATERIAL_CACHE_TEST_DATABASE_URL` points to a disposable migrated PostgreSQL
 16 database and `.venv` is installed, a test also runs the actual Python
 subprocess against synthetic material. Its Blob adapter remains in-memory.
+An additional real-material regression is opt-in with
+`BB_RUN_AUTHORIZED_SAMPLE_TESTS=1`. It reads the `rq-202509-01` historical DOCX
+from the authorized sample manifest, verifies its declared byte count and
+SHA-256, then exercises the actual Python subprocess and same-owner renamed
+cache hit plus cross-owner isolation using in-memory cache repository/Blob
+adapters. This is parser/cache regression evidence only; extracted text is not
+logged and the test does not assert industry acceptance. The test also needs
+the repository `.venv`.
 
 Blob insertion precedes the idempotent database insert. A concurrent loser
 removes only its own object after a conflict. If an insert fails ambiguously,
