@@ -18,28 +18,35 @@ const int = (value: unknown) => value === null || value === undefined ? null : N
 // ---------------------------------------------------------------- scrubbing
 
 export const SCRUB_VERSION = 'scrub_v1';
-const sensitiveField = /^(?:setcookie|cookie|authorization|proxyauthorization|apikey|accesskey|clientsecret|secret|(?:access|refresh|bearer|id|session|auth)?token|password(?:confirmation)?|passwd|pwd|otp(?:code)?|captcha|verificationcode|验证码|校验码|动态码|短信码)$/iu;
+const MAX_DIAGNOSTIC_BYTES = 10 * 1024 * 1024;
+const MAX_JSON_DEPTH = 64;
+const MAX_JSON_STRING_LAYERS = 4;
+const sensitiveField = /^(?:setcookie|cookie|sessioncookie|authorization|proxyauthorization|apikey|xapikey|accesskey|clientsecret|secret|(?:access|refresh|bearer|id|session|auth)?token|(?:onetime)?password(?:confirmation)?|passwd|pwd|otp(?:code)?|captcha|verificationcode|验证码|校验码|动态码|短信码)$/iu;
 const redacted = '[REDACTED]';
 const isSensitiveField = (key: string) => sensitiveField.test(key.replace(/[_ -]/g, ''));
+class DiagnosticScrubError extends Error {
+  constructor() { super('Diagnostic body rejected'); this.name = 'DiagnosticScrubError'; }
+}
 const scrubRules: Array<[RegExp, string]> = [
   [/\b(set-cookie|cookie)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
   [/\b(authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
   [/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[REDACTED_JWT]'],
   [/\b(sk|rk|pk)-[A-Za-z0-9_-]{16,}/g, '[REDACTED_KEY]'],
+  [/\b(session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
   [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
   [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
-function scrubStructured(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(scrubStructured);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) =>
-    [key, isSensitiveField(key) ? redacted : scrubStructured(item)]));
-  return typeof value === 'string' ? scrubSecrets(value) : value;
+type ScrubBudget = { remaining: number };
+function charge(budget: ScrubBudget, size: number) {
+  budget.remaining -= size;
+  if (budget.remaining < 0) throw new DiagnosticScrubError();
 }
 
-/** Find a JSON object in otherwise ordinary text without consuming adjacent prose or CR/LF. */
-function objectEnd(text: string, start: number, escapedQuotes: boolean): number {
-  let depth = 0, quoted = false, escaped = false;
+/** One forward scan per candidate; a malformed candidate is rejected, never scanned again at each inner brace. */
+function jsonEnd(text: string, start: number, escapedQuotes: boolean): number {
+  const stack: string[] = [];
+  let quoted = false, escaped = false;
   for (let i = start; i < text.length; i++) {
     const char = text[i];
     if (escapedQuotes && char === '\\' && text[i + 1] === '"') { quoted = !quoted; i++; continue; }
@@ -47,42 +54,79 @@ function objectEnd(text: string, start: number, escapedQuotes: boolean): number 
       if (escaped) escaped = false;
       else if (char === '\\') escaped = true;
       else if (char === '"') quoted = false;
-    } else if (char === '"') quoted = true;
-    else if (char === '{') depth++;
-    else if (char === '}' && --depth === 0) return i + 1;
+      continue;
+    }
+    if (char === '"') { quoted = true; continue; }
+    if (char === '{' || char === '[') {
+      stack.push(char);
+      if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
+    } else if (char === '}' || char === ']') {
+      if (stack.pop() !== (char === '}' ? '{' : '[')) throw new DiagnosticScrubError();
+      if (!stack.length) return i + 1;
+    }
   }
-  return -1;
+  throw new DiagnosticScrubError();
 }
 
-function scrubJsonObjects(text: string): string {
-  let result = '', cursor = 0;
+function scrubStructured(root: unknown, budget: ScrubBudget, layer: number): unknown {
+  if (!root || typeof root !== 'object') throw new DiagnosticScrubError();
+  const copy: any = Array.isArray(root) ? [] : {};
+  const pending: Array<{ source: any; target: any }> = [{ source: root, target: copy }];
+  while (pending.length) {
+    const { source, target } = pending.pop()!;
+    for (const [key, item] of Object.entries(source)) {
+      charge(budget, key.length + 1);
+      if (!Array.isArray(source) && isSensitiveField(key)) { target[key] = redacted; continue; }
+      if (item && typeof item === 'object') {
+        const child: any = Array.isArray(item) ? [] : {};
+        target[key] = child;
+        pending.push({ source: item, target: child });
+      } else target[key] = typeof item === 'string' ? scrubText(item, budget, layer + 1) : item;
+    }
+  }
+  return copy;
+}
+
+function scrubText(text: string, budget: ScrubBudget, layer: number): string {
+  charge(budget, text.length);
+  const pieces: string[] = [];
+  let cursor = 0;
+  let nextObject = text.indexOf('{'), nextArray = text.indexOf('[');
   while (cursor < text.length) {
-    const start = text.indexOf('{', cursor);
-    if (start < 0) return result + text.slice(cursor);
-    const end = objectEnd(text, start, /^\{\s*\\"/.test(text.slice(start, start + 32)));
-    if (end < 0) return result + text.slice(cursor);
+    if (nextObject !== -1 && nextObject < cursor) nextObject = text.indexOf('{', cursor);
+    if (nextArray !== -1 && nextArray < cursor) nextArray = text.indexOf('[', cursor);
+    const start = nextObject < 0 ? nextArray : nextArray < 0 ? nextObject : Math.min(nextObject, nextArray);
+    if (start < 0) { pieces.push(text.slice(cursor)); break; }
+    let probe = start + 1;
+    while (probe < text.length && /\s/.test(text[probe])) probe++;
+    const first = text[probe];
+    // Plain prose such as {section} or [note] remains untouched. JSON-like fragments must parse.
+    const unquotedKey = text[start] === '{' && /^[\p{L}_][\p{L}\p{N}_-]{0,63}\s*:/u.test(text.slice(probe, probe + 128));
+    if (!unquotedKey && !['"', '\\', '{', '[', '}', ']'].includes(first)) {
+      pieces.push(text.slice(cursor, start + 1)); cursor = start + 1; continue;
+    }
+    if (layer >= MAX_JSON_STRING_LAYERS) throw new DiagnosticScrubError();
+    const quoteEscaped = first === '\\' && text[probe + 1] === '"';
+    const end = jsonEnd(text, start, quoteEscaped);
     const raw = text.slice(start, end);
     let parsed: unknown;
-    let escapedQuotes = false;
-    try { parsed = JSON.parse(raw); }
-    catch {
-      // A JSON object copied inside another text/JSON string often escapes every quote.
-      // Only decode this exact quoting layer; malformed fragments fall through unchanged.
-      try { parsed = JSON.parse(raw.replace(/\\"/g, '"')); escapedQuotes = true; }
-      catch { result += text.slice(cursor, start + 1); cursor = start + 1; continue; }
-    }
-    const cleaned = JSON.stringify(scrubStructured(parsed));
-    result += text.slice(cursor, start) + (escapedQuotes ? cleaned.replace(/"/g, '\\"') : cleaned);
+    try { parsed = JSON.parse(quoteEscaped ? raw.replace(/\\"/g, '"') : raw); }
+    catch { throw new DiagnosticScrubError(); }
+    const cleaned = JSON.stringify(scrubStructured(parsed, budget, layer));
+    pieces.push(text.slice(cursor, start), quoteEscaped ? cleaned.replace(/"/g, '\\"') : cleaned);
     cursor = end;
   }
-  return result;
-}
-
-/** Removes known credentials and codes from structured JSON and diagnostic prose. */
-export function scrubSecrets(text: string) {
-  let value = scrubJsonObjects(text);
+  let value = pieces.join('');
   for (const [pattern, replacement] of scrubRules) value = value.replace(pattern, replacement);
   return value;
+}
+
+/** Bounded scrub: rejects malformed/oversized JSON before any diagnostic Blob write. */
+export function scrubSecrets(text: string) {
+  if (Buffer.byteLength(text, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  const cleaned = scrubText(text, { remaining: MAX_DIAGNOSTIC_BYTES * (MAX_JSON_STRING_LAYERS + 2) }, 0);
+  if (Buffer.byteLength(cleaned, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  return cleaned;
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */

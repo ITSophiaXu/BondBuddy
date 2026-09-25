@@ -121,6 +121,28 @@ test('#79 scrubber handles nested, embedded and escaped JSON without losing surr
   }
 });
 
+test('#79 scrubber bounds JSON depth, body length and malformed brace work', () => {
+  const inside = '{"session_cookie":"SYN_DEEP_SECRET"}';
+  const nested = (depth: number) => '{"v":'.repeat(depth - 1) + inside + '}'.repeat(depth - 1);
+  const accepted = scrubSecrets(nested(64));
+  assert.ok(!accepted.includes('SYN_DEEP_SECRET'));
+  for (const input of [nested(65), nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{"session_cookie":"SYN_UNCLOSED"']) {
+    const start = performance.now();
+    assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    assert.ok(performance.now() - start < 2000, 'rejection remains bounded for malformed or deep input');
+  }
+  const ordinaryBraces = '{section} 业务正文\r\n'.repeat(20000);
+  const proseStart = performance.now();
+  assert.equal(scrubSecrets(ordinaryBraces), ordinaryBraces);
+  assert.ok(performance.now() - proseStart < 2000, 'many ordinary braces stay linear and unchanged');
+  const plainKeys = scrubSecrets('session_cookie=SYN_PLAIN_COOKIE\r\nx_api_key=SYN_PLAIN_KEY\r\none_time_password=SYN_PLAIN_PASSWORD\r\n业务正文');
+  for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD']) assert.ok(!plainKeys.includes(secret));
+  assert.ok(plainKeys.endsWith('业务正文'));
+  const maxBody = 'A'.repeat(10 * 1024 * 1024);
+  assert.equal(scrubSecrets(maxBody).length, maxBody.length);
+  assert.throws(() => scrubSecrets(maxBody + 'B'), /Diagnostic body rejected/);
+});
+
 test('#79 structured secrets are absent from the private diagnostic Blob readback', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
@@ -129,16 +151,38 @@ test('#79 structured secrets are absent from the private diagnostic Blob readbac
     const { project } = await f.runFor(f.ownerA, 'Synthetic structured scrub');
     const body = 'business SYN_VISIBLE\r\n' + JSON.stringify({
       Cookie: 'SYN_COOKIE_BLOB', nested: [{ otp: '456789', Authorization: 'SYN_AUTH_BLOB', token: 'SYN_TOKEN_BLOB', password: 'SYN_PASSWORD_BLOB' }],
+      session_cookie: 'SYN_SESSION_COOKIE_BLOB', x_api_key: 'SYN_X_API_KEY_BLOB', one_time_password: 'SYN_ONE_TIME_PASSWORD_BLOB',
       note: 'SYN_BUSINESS_BLOB', 验证码提示: 'SYN_UNICODE_BLOB'
     }) + '\r\nmore={\\"Cookie\\":\\"SYN_ESCAPED_BLOB\\",\\"otp\\":\\"567890\\"}';
     const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body });
     const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
     const stored = (await blobs.get(row.object_key)).toString('utf8');
-    for (const secret of ['SYN_COOKIE_BLOB', '456789', 'SYN_AUTH_BLOB', 'SYN_TOKEN_BLOB', 'SYN_PASSWORD_BLOB', 'SYN_ESCAPED_BLOB', '567890'])
+    for (const secret of ['SYN_COOKIE_BLOB', '456789', 'SYN_AUTH_BLOB', 'SYN_TOKEN_BLOB', 'SYN_PASSWORD_BLOB', 'SYN_ESCAPED_BLOB', '567890',
+      'SYN_SESSION_COOKIE_BLOB', 'SYN_X_API_KEY_BLOB', 'SYN_ONE_TIME_PASSWORD_BLOB'])
       assert.ok(!stored.includes(secret), `Blob contains ${secret}`);
     for (const ordinary of ['SYN_VISIBLE\r\n', 'SYN_BUSINESS_BLOB', 'SYN_UNICODE_BLOB']) assert.ok(stored.includes(ordinary));
     assert.equal(row.content_sha256, digest(stored));
     assert.equal(row.redaction_version, 'scrub_v1');
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 rejected diagnostics never call Blob put or register a partial snapshot', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic scrub rejection');
+    const before = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
+    let puts = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    const deep = '{"v":'.repeat(5000) + '{"session_cookie":"SYN_REJECT_SECRET"}' + '}'.repeat(5000);
+    for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"', 'A'.repeat(10 * 1024 * 1024 + 1)]) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    assert.equal(puts, 0, 'scrub rejects before Blob put');
+    const after = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
+    assert.equal(after, before, 'no partial snapshot reference');
   } finally { await f.app.close(); await pool.end(); }
 });
 
