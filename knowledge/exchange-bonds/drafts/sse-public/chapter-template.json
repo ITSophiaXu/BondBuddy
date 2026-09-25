@@ -1,0 +1,296 @@
+{
+  "schema_version": "chapter-template-v1",
+  "template_id": "sse-public-chapters",
+  "version": "2026.09.25-draft.1",
+  "rule_pack_id": "sse-public",
+  "market": "sse",
+  "offering": "public",
+  "document_stages": [
+    "registration",
+    "issuance"
+  ],
+  "chapters": [
+    {
+      "chapter_id": "front",
+      "title": "封面、声明、重大事项、释义和目录",
+      "form_refs": [
+        "EX017:P00329"
+      ],
+      "source_ref_ids": [
+        "ex017-p00329"
+      ],
+      "required_fields": [
+        "issue_identity",
+        "market_offering",
+        "risk_summary",
+        "definitions"
+      ],
+      "applicability": "本期身份/期限/规模/评级与正文一致；重大事项最后回写；不全局替换历史日期。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "risk",
+      "title": "第一节 风险提示及说明",
+      "form_refs": [
+        "EX017:P00462"
+      ],
+      "source_ref_ids": [
+        "ex017-p00462"
+      ],
+      "required_fields": [
+        "financial_risks",
+        "business_risks",
+        "terms_risks"
+      ],
+      "applicability": "财务与业务重算后重写风险，量化余额及占比，保留仍成立的历史风险。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "terms",
+      "title": "第二节 发行概况",
+      "form_refs": [
+        "EX017:P00487"
+      ],
+      "source_ref_ids": [
+        "ex017-p00487"
+      ],
+      "required_fields": [
+        "approvals",
+        "tranches",
+        "options",
+        "institutions"
+      ],
+      "applicability": "有权决议/批文/本期方案逐项核对，多品种逐一拆分，不复制旧批文及机构。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "funds",
+      "title": "第三节 募集资金运用",
+      "form_refs": [
+        "EX017:P00544"
+      ],
+      "source_ref_ids": [
+        "ex017-p00544"
+      ],
+      "required_fields": [
+        "use_items",
+        "project_approvals",
+        "debt_details",
+        "simulation"
+      ],
+      "applicability": "按用途组合收集偿债/项目/股权/基金资料；更新专户、变更权限和发行后模拟。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "issuer",
+      "title": "第四节 发行人基本情况",
+      "form_refs": [
+        "EX017:P00640"
+      ],
+      "source_ref_ids": [
+        "ex017-p00640"
+      ],
+      "required_fields": [
+        "registry",
+        "ownership",
+        "governance",
+        "segments",
+        "restructuring"
+      ],
+      "applicability": "工商与章程、业务财务、合并范围相互核对；经营进度不按日期机械外推。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "financial",
+      "title": "第五节 财务会计信息",
+      "form_refs": [
+        "EX017:P00730"
+      ],
+      "source_ref_ids": [
+        "ex017-p00730"
+      ],
+      "required_fields": [
+        "statements",
+        "opinions",
+        "notes",
+        "ratios",
+        "debt",
+        "contingencies"
+      ],
+      "applicability": "六张表滚动窗口、审计意见、重述、合并范围、指标、MD&A、债务和或有事项全量更新。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "credit",
+      "title": "第六节 发行人及本期债券的资信情况",
+      "form_refs": [
+        "EX017:P00814"
+      ],
+      "source_ref_ids": [
+        "ex017-p00814"
+      ],
+      "required_fields": [
+        "ratings",
+        "bank_facilities",
+        "outstanding_bonds",
+        "defaults"
+      ],
+      "applicability": "分开无评级/仅主体/主体及债项；授信及债券清单更新到实际证据时点。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "enhancement",
+      "title": "第七节 增信情况",
+      "form_refs": [
+        "EX017:P00849"
+      ],
+      "source_ref_ids": [
+        "ex017-p00849"
+      ],
+      "required_fields": [
+        "enhancement_type",
+        "guarantor",
+        "collateral",
+        "contracts"
+      ],
+      "applicability": "无增信简述；有增信核对合同、担保主体、范围、期限和履行方式。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "tax",
+      "title": "第八节 税项",
+      "form_refs": [
+        "EX017:P00890"
+      ],
+      "source_ref_ids": [
+        "ex017-p00890"
+      ],
+      "required_fields": [
+        "tax_basis",
+        "tax_risk"
+      ],
+      "applicability": "核对当期有效税务依据，不沿用未经核查的税率或个税结论。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "disclosure",
+      "title": "第九节 信息披露安排",
+      "form_refs": [
+        "EX017:P00893"
+      ],
+      "source_ref_ids": [
+        "ex017-p00893"
+      ],
+      "required_fields": [
+        "disclosure_officer",
+        "periodic_reports",
+        "material_events"
+      ],
+      "applicability": "核对现行持续披露规则、本期负责人、定期/临时/兑付安排及专项义务。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "protection",
+      "title": "第十节 投资者保护机制",
+      "form_refs": [
+        "EX017:P00896"
+      ],
+      "source_ref_ids": [
+        "ex017-p00896"
+      ],
+      "required_fields": [
+        "covenants",
+        "triggers",
+        "remedies"
+      ],
+      "applicability": "与本期持有人规则/受托协议共同核对保护条款、触发及救济。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "default",
+      "title": "第十一节 违约事项及纠纷解决机制",
+      "form_refs": [
+        "EX017:P00901"
+      ],
+      "source_ref_ids": [
+        "ex017-p00901"
+      ],
+      "required_fields": [
+        "default_events",
+        "liability",
+        "dispute_resolution"
+      ],
+      "applicability": "违约事件、责任、纠纷解决依本期协议，不凭生成器添加承诺。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "holders",
+      "title": "第十二节 债券持有人会议规则",
+      "form_refs": [
+        "EX017:P00904"
+      ],
+      "source_ref_ids": [
+        "ex017-p00904"
+      ],
+      "required_fields": [
+        "meeting_rules",
+        "voting",
+        "change_process"
+      ],
+      "applicability": "取得当前签署/拟签署文本，核对召开、表决、约束力和用途调整程序。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "trustee",
+      "title": "第十三节 受托管理人",
+      "form_refs": [
+        "EX017:P00907"
+      ],
+      "source_ref_ids": [
+        "ex017-p00907"
+      ],
+      "required_fields": [
+        "trustee_agreement",
+        "rights",
+        "duties",
+        "contacts"
+      ],
+      "applicability": "更换受托人时连同职责、地址、电话及关联引用全部更新。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "institutions",
+      "title": "第十四节 本次发行有关机构",
+      "form_refs": [
+        "EX017:P00914"
+      ],
+      "source_ref_ids": [
+        "ex017-p00914"
+      ],
+      "required_fields": [
+        "institutions",
+        "contacts",
+        "interests"
+      ],
+      "applicability": "按本期机构名单及利害关系确认更新，只有一家主承销商时不造联席。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "declarations",
+      "title": "第十五节 发行人及中介机构声明",
+      "form_refs": [
+        "EX017:P00926"
+      ],
+      "source_ref_ids": [
+        "ex017-p00926"
+      ],
+      "required_fields": [
+        "signatories",
+        "statement_types",
+        "signature_dates"
+      ],
+      "applicability": "按当期任职和适用声明类型匹配签章，不自动签字或推定同意。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    },
+    {
+      "chapter_id": "reference",
+      "title": "第十六节 备查文件",
+      "form_refs": [
+        "EX017:P00929"
+      ],
+      "source_ref_ids": [
+        "ex017-p00929"
+      ],
+      "required_fields": [
+        "reference_files",
+        "inspection_location",
+        "contacts"
+      ],
+      "applicability": "列真实已备文件、查阅地点与联系方式；目录/引用同步。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+    }
+  ]
+}

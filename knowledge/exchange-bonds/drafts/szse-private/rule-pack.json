@@ -1,0 +1,3344 @@
+{
+  "schema_version": "rule-pack-v1",
+  "pack_id": "szse-private",
+  "version": "2026.09.25-draft.1",
+  "supersedes_version": null,
+  "status": "draft",
+  "scope": {
+    "market": "szse",
+    "offering": "private",
+    "instruments": [
+      "ordinary-company-bond"
+    ],
+    "document_stages": [
+      "registration",
+      "issuance"
+    ],
+    "issuer_scopes": [
+      "domestic-company"
+    ]
+  },
+  "validity": {
+    "published_on": null,
+    "effective_from": "2026-09-25",
+    "effective_to": null,
+    "transition_terms": [
+      "此日期只是知识整理基准日，非法规生效日。全部source有效时点待官方复核；不得用于生产能力开放。"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "ex038-p00082",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00082",
+      "exact_quote": "同一字段在材料间不一致时，不得静默选值。应列明冲突内容、来源及日期，标记【数据冲突，待项目组确认】。经确认后，同一字段在全文统一替换。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00151",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00151",
+      "exact_quote": "两份输入材料存在差异时，同时列明，默认填写优先顺序为审计报告＞项目方案＞历史募集说明书＞评级报告＞其他，同时标记【哪些输入材料存在差异，待用户确认】，不得替用户选择。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00209",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00209",
+      "exact_quote": "专家模板写明：私募债为最近两年一期（也有可能是两年），公募债为最近三年一期（也有可能是三年）。【来源：模板2 §2.6；批注C28】",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00210",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00210",
+      "exact_quote": "专家模板同时写明：第五节报告期需要用户主动告知；未告知时，根据用户提供的审计报告和财务报告确定。【来源：模板2 U-05·R2；批注C23】",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00617",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00617",
+      "exact_quote": "公开发行一般列示三年一期，非公开发行一般列示两年一期。合并和母公司资产负债表、利润表、现金流量表全部按原始财务报表录入：",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00845",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00845",
+      "exact_quote": "主要银行授信：用户提供最新授信额度情况表；专家批注“企业用户提供即可信，无须证明材料”。【来源：模板2 U-06·R3；批注C0】",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00622",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00622",
+      "exact_quote": "最近一期无附注而明细不足时，向发行人索取科目明细；取得前使用【待补充】，不得自行填0；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00647",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00647",
+      "exact_quote": "变动原因优先取审计附注、发行人财务分析和管理层说明。仅能通过勾稽推测的原因标记【待发行人确认】，不得写成确定事实。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00621",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00621",
+      "exact_quote": "审计报告与最近一期报表单位不一致时统一换算并留底；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00595",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00595",
+      "exact_quote": "经营范围和主营业务。经营范围以工商为准；主营业务分类优先与审计报告收入附注及管理口径一致。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex035-page011",
+      "kind": "unverified_lead",
+      "authority": "中国证监会/相关联合发布机关（依原件）",
+      "document_title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+      "clause_locator": "PAGE011",
+      "exact_quote": "11\n根据债券资信状况的变化及时调整交易机制和投资者适当性安\n排。\n第三十三条 公开发行公司债券申请上市交易的，应当在\n发行前根据证券交易场所的相关规则，明确交易机制和交易环\n节投资者适当性安排。发行环节和交易环节的投资者适当性要\n求应当保持一致。\n第四章 非公开发行及转让\n第三十四条 非公开发行的公司债券应当向专业投资者发\n行，不得采用广告、公开劝诱和变相公开方式，每次发行对象\n不得超过二百人。\n第三十五条 承销机构应当按照中国证监会、证券自律组\n织规定的投资者适当性制度，了解和评估投资者对非公开发行\n公司债券的风险识别和承担能力，确认参与非公开发行公司债\n券认购的投资者为专业投资者，并充分揭示风险。\n第三十六条 非公开发行公司债券，承销机构或依照本办\n法第三十九条规定自行销售的发行人应当在每次发行完成后五\n个工作日内向中国证券业协会报备。\n中国证券业协会在材料齐备时应当及时予以报备。报备不\n代表中国证券业协会实行合规性审查，不构成市场准入，也不\n豁免相关主体的违规责任。\n第三十七条 非公开发行公司债券，可以申请在证券交易\n场所、证券公司柜台转让。\n非公开发行公司债券并在证券交易场所转让的，应当遵守",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex035-page012",
+      "kind": "unverified_lead",
+      "authority": "中国证监会/相关联合发布机关（依原件）",
+      "document_title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+      "clause_locator": "PAGE012",
+      "exact_quote": "12\n证券交易场所制定的业务规则，并经证券交易场所同意。\n非公开发行公司债券并在证券公司柜台转让的，应当符合\n中国证监会的相关规定。\n第三十八条 非公开发行的公司债券仅限于专业投资者范\n围内转让。转让后，持有同次发行债券的投资者合计不得超过\n二百人。\n第五章 发行与承销管理\n第三十九条 发行公司债券应当依法由具有证券承销业务\n资格的证券公司承销。\n取得证券承销业务资格的证券公司、中国证券金融股份有\n限公司非公开发行公司债券可以自行销售。\n第四十条 承销机构承销公司债券，应当依据本办法以及\n中国证监会、中国证券业协会有关风险管理和内部控制等相关\n规定，制定严格的风险管理和内部控制制度，明确操作规程，\n保证人员配备，加强定价和配售等过程管理，有效控制业务风\n险。\n承销机构应当建立健全内部问责机制，相关业务人员因违\n反公司债券相关规定被采取自律监管措施、自律处分、行政监\n管措施、市场禁入措施、行政处罚、刑事处罚等的，承销机构\n应当进行内部问责。\n承销机构应当制定合理的薪酬考核体系，不得以业务包干\n等承包方式开展公司债券承销业务，或者以其他形式实施过度\n激励。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00059",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00059",
+      "exact_quote": "发行人提交的财务报表应当以年度末、半年度末或者季度末为截止日。募集说明书引用的财务报表在其最近一期截止后六个月内有效，特别情况下发行人可以向本所申请适当延长有效期，延长期限不超过一个月，中国证监会或者本所对财务报表有效期另有规定的除外。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00072",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00072",
+      "exact_quote": "在境外上市的境内发行人，或者发行人合并报表范围内重要子公司为境外上市公司的，如上市地监管规则不强制要求上市公司披露季度财务报告，为加强境内外监管协调，可豁免提供季度财务报告。发行人所提交的财务报告应当与其在上市场所披露的最新财务报告保持一致，并仍应当严格遵守财务报表有效期相关规定。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00471",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00471",
+      "exact_quote": "更新方法：C/U。董事会、股东会或其他有权机构日期、届次、议案名称、授权事项，以及证监会注册文件或深交所无异议函的名称、文号、额度和日期，全部取本期原始文件。未取得时留【】，不得复制历史批文。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00475",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00475",
+      "exact_quote": "品种数量、品种间回拨和各品种最大规模；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00173",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00173",
+      "exact_quote": "受托管理人发生变化",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00125",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00125",
+      "exact_quote": "募集资金用于偿还有息债务、补充流动资金、股权投资或者资产收购、设立或者认购基金份额的，发行人应当分别披露下列内容：",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00133",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00133",
+      "exact_quote": "（三）募投项目合法性文件取得情况，包括立项、土地、环评、规划等已取得有关主管部门批准文件的名称、文号、发文机关、印发时间和主要内容，或者已签署协议文件的名称、签署时间和主要内容等。如未取得，应当披露原因及其对项目建设和本次公司债券募集资金使用合规性的影响。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00129",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00129",
+      "exact_quote": "（四）募集资金用于设立或者认购基金份额的，应当披露基金设立情况、运营情况、退出方式，以及是否符合《关于规范金融机构资产管理业务的指导意见》等资产管理业务相关规定。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00512",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00512",
+      "exact_quote": "固定资产投资项目。逐项取得可研报告、立项/备案、土地、环评、规划、施工等批复或协议、投资明细、资金来源和收益测算。至少更新功能定位、建设背景、建设内容、实施主体及持股、建设期和进度、资金来源、用地、合规文件、未取得文件及影响、盈利性、收入来源、定价依据、收益覆盖、财政补贴、资本金、置换自筹资金和节余资金安排。项目数据不得从历史进度外推。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex035-page004",
+      "kind": "unverified_lead",
+      "authority": "中国证监会/相关联合发布机关（依原件）",
+      "document_title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+      "clause_locator": "PAGE004",
+      "exact_quote": "4\n证券自律组织可以在中国证监会相关规定的基础上，设定\n更为严格的投资者适当性要求。\n发行人的董事、监事、高级管理人员及持股比例超过百分\n之五的股东，可视同专业投资者参与发行人相关公司债券的认\n购或交易、转让。\n第十三条 公开发行公司债券筹集的资金，必须按照公司\n债券募集说明书所列资金用途使用；改变资金用途，必须经债\n券持有人会议作出决议。非公开发行公司债券，募集资金应当\n用于约定的用途；改变资金用途，应当履行募集说明书约定的\n程序。\n鼓励公开发行公司债券的募集资金投向符合国家宏观调控\n政策和产业政策的项目建设。\n公开发行公司债券筹集的资金，不得用于弥补亏损和非生\n产性支出。发行人应当指定专项账户，用于公司债券募集资金\n的接收、存储、划转。\n第三章 公开发行及交易\n第一节 注册规定\n第十四条 公开发行公司债券，应当符合下列条件：\n（一）具备健全且运行良好的组织机构；\n（二）最近三年平均可分配利润足以支付公司债券一年的\n利息；\n（三）具有合理的资产负债结构和正常的现金流量；\n（四）国务院规定的其他条件。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00539",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00539",
+      "exact_quote": "非公开发行：按章程、募集资金制度和本期持有人会议规则填写申请、分级权限、决策程序、金额阈值、风控和信息披露安排。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00546",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00546",
+      "exact_quote": "以最近一期财务数据为基准，按本期募集资金净额和用途模拟发行后流动资产、非流动资产、流动负债、非流动负债、总资产、总负债、资产负债率和流动比率。假设前提、基准日和金额必须明确。发行前指标与第五节一致；发行后数据保留计算底稿，不得复用旧期次模拟值。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00554",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00554",
+      "exact_quote": "数据源：前次募集说明书、发行结果、银行流水/专户对账、发行人募集资金台账、受托管理事务报告、用途变更公告和发行人说明。历史文字可作框架，使用进度必须更新至最新可核验时点。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00559",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00559",
+      "exact_quote": "更新方法：U。公司名称、股票代码（如有）、法定代表人、注册资本、实缴资本、设立日期、统一社会信用代码、住所、邮编、电话、传真、办公地址、信披负责人及联系方式、所属行业、经营范围、网址逐项核验。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00565",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00565",
+      "exact_quote": "报告期内、期后或拟进行的重大资产重组分别按深交所模板披露，取得交易方案、决议、协议、评估和财务影响资料。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00566",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00566",
+      "exact_quote": "“未发生重大资产重组”必须有发行人确认和项目判断，不得仅因工商未显示变更而得出。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00174",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00174",
+      "exact_quote": "最近三年内发生重大资产重组的发行人，应当披露重大资产重组前一年的备考财务报表及其编制基础，以及相关财务数据和分析的数据来源。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00162",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00162",
+      "exact_quote": "发行人应当披露最近一年或者最近一期主营业务收入或者毛利润占比百分之十以上的业务板块运营情况，包括但不限于报告期各期营业收入、毛利润、毛利率情况，以及经营模式、各主要产品或者服务内容和规模、上下游产业链情况、产销区域、关键技术工艺，并说明相关数据来源。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00596",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00596",
+      "exact_quote": "收入、毛利润和毛利率。各期数据来自审计附注和最近一期明细；毛利润=收入-成本，毛利率=毛利润/收入。分类变化时建立新旧口径映射，不得强行拼接。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00172",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00172",
+      "exact_quote": "（三）审计报告为带强调事项段无保留意见或者保留意见的，发行人应当披露董事会或者其他有权机构关于带强调事项段或者保留意见段所涉及事项处理情况的说明以及会计师事务所、注册会计师对于带强调事项段或者保留意见段所涉及事项的补充意见，并分析相关事项对偿债能力的影响。主承销商和注册会计师应当对保留意见所涉及事项以及保留意见所涉及事项的影响是否已经消除进行核查并发表明确意见。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00608",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00608",
+      "exact_quote": "明确各年度和最近一期财务数据来源、审计/未经审计状态及编制基础。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00611",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00611",
+      "exact_quote": "带强调事项段无保留意见或保留意见时，取得有权机构说明和会计师补充意见，并分析发行条件、财务真实性和偿债能力影响。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00177",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00177",
+      "exact_quote": "发行人应当披露最近三年和最近一期财务会计信息和主要财务指标。财务会计信息包括但不限于资产负债表、利润表和现金流量表；发行人编制合并财务报表的，应当同时披露合并财务报表和母公司财务报表。财务指标包括但不限于偿债能力指标、盈利能力指标、运营效率指标。发行人应当对可能影响投资者理解公司财务状况、经营业绩和现金流量情况等信息加以说明。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00618",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00618",
+      "exact_quote": "不得复制旧期间数字或用审计报告期初数替代另一年度期末数；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00619",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00619",
+      "exact_quote": "核对本年期初与上年审计期末差异，存在追溯调整时说明；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00623",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00623",
+      "exact_quote": "最近三年内重大资产重组适用备考财务报表时，取得备考审阅/审计资料并明确编制基础。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00775",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00775",
+      "exact_quote": "流动比率=流动资产/流动负债；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00779",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00779",
+      "exact_quote": "资本化利息未提供时可留【】并提示用户提供。【来源：模板2批注C24】",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00632",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00632",
+      "exact_quote": "EBITDA=利润总额+计入财务费用的利息支出+固定资产折旧+无形资产摊销+长期待摊费用摊销；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00634",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00634",
+      "exact_quote": "EBITDA利息保障倍数=EBITDA/（费用化利息+资本化利息）；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00179",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00179",
+      "exact_quote": "发行人应当分析最近一年和最近一期末占总资产百分之十以上的资产类报表项目、占总负债百分之十以上的负债类报表项目的构成情况。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00180",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00180",
+      "exact_quote": "发行人应当分析变化幅度在百分之三十以上的资产类、负债类报表项目的变动情况和变动原因。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00782",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00782",
+      "exact_quote": "原因可沿用前次募集说明书，或根据审计报告和勾稽关系先填写并提示用户复核。【来源：模板2 U-05·R3；批注C26】",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00181",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00181",
+      "exact_quote": "发行人应当采用列表形式披露最近一期末有息债务情况，包括有息债务总余额、债务类型和期限结构、信用融资和担保融资的结构等。相关数据与财务报表存在差异的，应当披露差异原因。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00194",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00194",
+      "exact_quote": "发行人应当披露截至最近一期末合并报表范围内获得的主要贷款银行等金融机构的授信和使用情况、报告期内境内外债券偿还情况、截至报告期末境内外债券存续情况、尚未发行的各债券品种额度，以及自身和重要子公司因严重违法、失信行为被列为失信被执行人、失信生产经营单位或者其它失信单位情况（如有）。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00649",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00649",
+      "exact_quote": "更新方法：U。以最近一期末全口径有息债务台账为基础，和财务报表逐项勾稽；存在差异时披露原因。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00183",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00183",
+      "exact_quote": "发行人应当披露关联方、关联关系以及关联交易情况，包括与关联方的产品销售、原材料采购、劳务提供、资产租赁、应收应付款项、融资、担保等交易情况和金额。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00186",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00186",
+      "exact_quote": "（一）对外担保余额及其占总资产的比例；",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00190",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00190",
+      "exact_quote": "截至募集说明书签署之日，如发生其他影响偿债能力的报告期后重大事项也应当补充披露。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00659",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00659",
+      "exact_quote": "对外担保更新至最近一期末，不含发行人与子公司之间担保的口径按参考文本执行；核对担保余额、总资产/净资产占比、到期和被担保人资信。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00191",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00191",
+      "exact_quote": "发行人委托资信评级机构进行信用评级的，应当披露资信评级机构名称、评级时间、评级结论以及标识所代表的涵义、评级报告揭示的主要风险、跟踪评级安排等。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00195",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00195",
+      "exact_quote": "公司债券存在保证担保的，发行人应当披露担保合同或者担保函的主要内容，包括但不限于下列事项：",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00215",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00215",
+      "exact_quote": "公司债券约定商业保险、债务加入、差额补足、流动性支持等其他增信措施的，发行人应当披露增信措施的触发条件、实施方式、责任承担的前置条件（如有）、责任承担方式和承担期间、信息披露安排、争议解决机制等。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00669",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00669",
+      "exact_quote": "本期评级时，更新评级结论及含义、报告揭示的主要风险、跟踪评级安排；仅主体评级或无评级时明确相应情形。数据只取最新有效评级报告及评级机构确认，并与封面、重大事项、第二节一致。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00960",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00960",
+      "exact_quote": "第七节和第十节的具体保护条款：须另行取得并核对申报时有效的《深圳证券交易所公司债券发行上市审核业务指南第2号——投资者权益保护（参考文本）》。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00117",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00117",
+      "exact_quote": "先更新第五节财务数据及第六节资信，再更新第四节主体、第三节募资、第二节条款、第一节风险，最后回写重大事项提示。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00465",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00465",
+      "exact_quote": "风险标题及可能后果应加粗或按模板突出。风险已造成损失的，应清晰披露；如披露应对措施，只写已经采取的措施，不写尚未实施的计划。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00467",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00467",
+      "exact_quote": "历史沿用规则：风险逻辑和发行人特有背景可沿用；报告期、金额、比例、原因、后果和应对措施必须复核。无材料证明风险消除时不得擅自删除。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex027-page003",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）",
+      "source_version": "provided-2025",
+      "official_url": null,
+      "document_hash": "924c34839069791dec469f49f2457429b04e3279e2bb45b616258a207f4d92c5",
+      "clause_locator": "PAGE003",
+      "exact_quote": "— 3 —\n发行人及其控股股东、实际控制人存在严重失信等负面情形，\n或者发行人控股股东、实际控制人存在债务违约情况，并对发行\n人公司治理、经营情况或者偿债能力造成严重不利影响的，发行\n人应当结合相关情形审慎确定公司债券申报方案，包括调整公司\n债券申报规模以及募集资金用途、设置有效增信措施等。\n第七条 报告期内发行人、发行人控股股东或者实际控制人\n存在重大负面舆情的，发行人应当充分披露相关情况及其对自身\n偿债能力的影响。主承销商、发行人律师应当就相关事项是否对\n本次债券发行构成实质影响发表核查意见。\n前款所称重大负面舆情，包括但不限于发行人、发行人控股\n股东或者实际控制人频繁受到监管关注或者问询、面临大额诉讼\n或者频繁涉诉、存在被媒体质疑的重大事项以及发行人及其相关\n人员存在多次行贿、巨额行贿或向多人行贿等情形。\n第八条 报告期内发行人的重要子公司、重要客户、重要供应\n商、大额应收款对手方涉嫌违法违规被有权机关调查、被采取强\n制措施或者在“信用中国”网站、国家企业信用信息公示系统、\n最高法失信被执行人名单等显示存在失信情形的，发行人应当充\n分披露相关事项对自身经营情况、偿债能力的影响，主承销商、\n发行人律师应当发表核查意见。\n第九条 发行人控股股东或者实际控制人可支配的发行人股\n权存在高比例质押、冻结或者发生诉讼、仲裁等事项，可能造成\n发行人股权结构不稳定的，发行人应当充分披露相关事项对其经",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex027-page015",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）",
+      "source_version": "provided-2025",
+      "official_url": null,
+      "document_hash": "924c34839069791dec469f49f2457429b04e3279e2bb45b616258a207f4d92c5",
+      "clause_locator": "PAGE015",
+      "exact_quote": "— 15 —\n设施代建项目、应收和预付地方政府或者与政府相关联的企事业\n单位款项的金额和占比；\n（二）报告期内主营业务收入中市政基础设施建设和土地开\n发整理、公益性住房建设等业务收入的金额和占比，以及贸易业\n务和来自上市公司子公司的收入金额和占比；\n（三）报告期内净利润构成中地方政府补贴的金额和占比。\n第四十二条 主营业务主要为市政基础设施建设、土地开发\n整理、公益性住房建设等业务的地方国有企业（以下简称市政建\n设企业）申报发行公司债券应当符合地方政府性债务管理的相关\n规定，不得新增政府债务。募集资金用于偿还存量债务的，发行\n人应当披露拟偿还的存量债务明细，并承诺所偿还的存量债务不\n涉及地方政府隐性债务。\n第四十三条 市政建设企业发行人应当结合自身所属行政层\n级、经营情况、资产负债结构、盈利情况、现金流量情况等评估\n自身偿债能力，审慎确定公司债券申报方案。资质良好的市政建\n设企业发行人募集资金可以用于固定资产投资项目建设。\n第四十四条 本所鼓励发行人持续增强市场化经营能力，发\n行人最近一年末来自于所属地方政府的政府性应收款占扣除重点\n关注资产后的净资产比例高于 30%的，应当披露具体原因和合理\n性、报告期内回款情况、后续回款安排和可行性以及对偿债能力\n的影响，并结合相关情形审慎确定公司债券申报方案。\n第四十五条 房地产企业申报发行公司债券，发行人存在扣",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex022-page001",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "《深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）》修订说明",
+      "source_version": "provided-2025",
+      "official_url": null,
+      "document_hash": "26b90733bab1e709690c4175de75be99eef97596d0b9353eb74b19086f8f053a",
+      "clause_locator": "PAGE001",
+      "exact_quote": "— 1 —\n附件 2\n《深圳证券交易所公司债券发行上市审核业务\n指引第 2 号——审核重点关注事项\n（2025 年修订）》修订说明\n一、修订背景\n为了进一步强化公司债券（含企业债券）发行准入监管，提\n升审核透明度，结合近年审核业务实践，本所对《深圳证券交易\n所公司债券发行上市审核业务指引第 2 号——审核重点关注事\n项（2023 年修订）》进行了修订完善，现将有关情况说明如下。\n二、主要修订内容\n修订后的《审核重点关注事项指引》共七章，分为总则、公\n司治理与组织机构、财务信息披露、特定情形发行人、募集资金\n用途、主承销商执业要求和附则。相较于原指引，本次主要修订\n内容如下：\n（一）完善市政建设企业募集资金用途和信息披露要求\n一是明确发行人为市政建设企业的，应当审慎确定公司债券\n申报方案，其中资质良好的可以新增债券用于手续合规、收益良\n好的项目建设；二是明确主要业务涉及市政建设的企业应当披露\n市政建设业务相关的资产、收入和净利润占比。\n（二）扩展应当关注的特定情形\n一是将失信行为核查范围拓展至发行人重要子公司、重要客",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex032-page002",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": null,
+      "document_hash": "515d247a023b6fd3e5a234cb49286879974dd6f255507588acb747519f800c21",
+      "clause_locator": "PAGE002",
+      "exact_quote": "— 2 —\n第十一章 中小微企业支持债券 ..........................39\n第十二章 附则 ....................................... 42",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex033-page001",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）修订说明",
+      "source_version": "provided-2026",
+      "official_url": null,
+      "document_hash": "cf3a05216f9ef1f6f01ae5777a9ee495b6d978daf85fe1d5adc70f22955dc6eb",
+      "clause_locator": "PAGE001",
+      "exact_quote": "— 1 —\n附件 2\n《深圳证券交易所公司债券发行上市审核\n业务指引第 7 号——专项品种公司债券》\n修订说明\n一、修订背景\n近年来，为了更好贯彻落实国家战略部署，深圳证券交\n易所（以下简称本所）陆续推出绿色债券、科技创新债券、\n乡村振兴债券等多个专项品种债券，并于 2023 年 10 月制定\n《深圳证券交易所公司债券发行上市审核业务指引第 7 号—\n—专项品种公司债券》（以下简称《专项品种指引》），汇总\n规范各类专项品种债券监管要求，引导资金流向国家重大发\n展战略。2025 年 5 月，为了落实中国人民银行、中国证监会\n联合发布的《关于支持发行科技创新债券有关事宜的公告》\n要求，本所发布《关于进一步支持发行科技创新债券 服务\n新质生产力的通知》（以下简称《科创债通知》），进一步拓\n宽了科技创新债券的发行主体和募集资金使用范围。\n为了扎实做好金融“五篇大文章”，进一步提升公司债\n券对科技创新、绿色低碳、乡村振兴等领域的支持精准度，\n本所拟修订《专项品种指引》，完善对科技创新债券主体认\n定和募集资金监管要求，同步吸收整合前期《科创债通知》\n相关内容，并对绿色债券和乡村振兴债券准入要求进行适应\n性修订。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00753",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00753",
+      "exact_quote": "专项品种内容是在通用13节基础上的增量要求。更新时至少检查封面/重大事项、第一节风险、第二节条款、第三节募资、第七节增信、第九节披露和第十节保护是否需要增加专项内容。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00448",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00448",
+      "exact_quote": "更新方法：T。正文定稿后使用Word目录域自动生成和刷新。检查13节通用文本及适用专项品种标题是否齐全，页码不得手工维护。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00748",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00748",
+      "exact_quote": "更新发行人、主承销商等查阅地点、地址、联系人、电话和办公时间，与第十一节一致。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex017-p00146",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "私募债全文更新知识V6",
+      "source_version": "expert-v6",
+      "official_url": null,
+      "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "clause_locator": "P00146",
+      "exact_quote": "第一部分 严格执行原则",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00451",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00451",
+      "exact_quote": "第一节 风险提示及说明",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00468",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00468",
+      "exact_quote": "第二节 发行概况",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00491",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00491",
+      "exact_quote": "第三节 募集资金运用",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00557",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00557",
+      "exact_quote": "第四节 发行人基本情况",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00605",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00605",
+      "exact_quote": "第五节 财务会计信息",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00665",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00665",
+      "exact_quote": "第六节 发行人及本次债券的资信状况",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00682",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00682",
+      "exact_quote": "第七节 增信机制",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00692",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00692",
+      "exact_quote": "第八节 税项",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00694",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00694",
+      "exact_quote": "第九节 信息披露安排",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00708",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00708",
+      "exact_quote": "第十节 投资者保护机制",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00718",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00718",
+      "exact_quote": "第十一节 本次债券发行的有关机构及利害关系",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00736",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00736",
+      "exact_quote": "第十二节 发行人、主承销商、证券服务机构及相关人员声明",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex038-p00744",
+      "kind": "unverified_lead",
+      "authority": "用户提供的专家指南作者（未登记签认人）",
+      "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "source_version": "expert-draft-v1",
+      "official_url": null,
+      "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "clause_locator": "P00744",
+      "exact_quote": "第十三节 备查文件",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "szse-private-source-authority",
+      "version": "1",
+      "title": "逐字段来源与冲突处理",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00082",
+        "ex017-p00151"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "field_type",
+        "source_versions",
+        "evidence_anchors"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "年度财务依据对应审计原件，中期依据对应报表与附注；工商依据官方登记/章程，发行条款依据本期决议和协议，评级依据评级报告。保留相互冲突的值、版本、时点和来源，不用“最新文件优先”或统一文件排名覆盖所有事实。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-source-authority-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:source-authority-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-source-authority-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:source-authority-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-source-authority-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:source-authority-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-period-window",
+      "version": "1",
+      "title": "目标报告期及滚动窗口",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex017-p00209",
+        "ex017-p00210",
+        "ex038-p00617"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "historical_periods",
+        "target_periods",
+        "statement_dates",
+        "document_stage"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "识别历史与目标期间集合并由项目输入确认；公募通常最近三年及一期，私募通常最近两年及一期。年末项目、成立不足年限、豁免或简明披露单独判断。滚动替换全套业务/财务/风险引用，不无限追加年份。历史事件日、报表日和签署日分别处理。深交所私募两年口径目前依据参考文本和专家稿，须在正式规则复核时确认。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-period-window-pos",
+          "summary": "同私募目标滚动一年，仍保留两年及所需中期窗口。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:period-window-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-period-window-neg",
+          "summary": "仅改年份却保留旧数，或公募只提交两年资料。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:period-window-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-period-window-bound",
+          "summary": "新设主体或特殊报表豁免需依据确认，不机械报缺三年。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:period-window-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-evidence-state",
+      "version": "1",
+      "title": "空值、用户陈述与待确认信息",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex017-p00845",
+        "ex038-p00622",
+        "ex038-p00647"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "user_assertions",
+        "fact_status",
+        "source_evidence"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "自然语言中的授信、资金用途等可形成用户陈述，保留消息版本及确认状态；不因用户输入就变成已核验事实。空白、零、破折号、未披露不同义；缺数不填零、未知原因不编造，不把历史“无重大事项”当作当期证据。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-evidence-state-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:evidence-state-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-evidence-state-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:evidence-state-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-evidence-state-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:evidence-state-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-identity",
+      "version": "1",
+      "title": "发行主体、口径与单位一致",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00617",
+        "ex038-p00621",
+        "ex038-p00595"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "entity",
+        "consolidation_scope",
+        "currency",
+        "unit",
+        "period"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "每个事实绑定发行主体、合并或母公司、期间、币种、单位和原件版本；子公司、担保人及参考发行人不得混入本企业。换算金额后计算比例，保留负号和舍入误差；引用其他发行人仅作结构参考。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-identity-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:identity-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-identity-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:identity-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-identity-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:identity-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-private-investors",
+      "version": "1",
+      "title": "私募发行对象与人数限制",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex035-page011",
+        "ex035-page012"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "investor_scope",
+        "investor_count",
+        "distribution_arrangement"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "按所供《管理办法》第34/38条，非公开发行面向专业投资者，不得广告、公开劝诱或变相公开，每次发行对象不超过200人；转让后持有同次债券的投资者合计不超过200人。核对适当性安排和本期发行文件，不以模板声明替代发行对象事实。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-private-investors-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:private-investors-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-private-investors-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:private-investors-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-private-investors-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:private-investors-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-financial-validity-szse",
+      "version": "1",
+      "title": "深交所财务有效期",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00059",
+        "ex026-p00072"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "latest_cutoff",
+        "submission_date",
+        "extension_approval"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "按所供指引，财务报表年度末/半年度末/季度末截止，最近一期截止后六个月有效；特别情况申请延长不超过一个月，另有规定及境外上市协调豁免须按实际适用依据判断，不能自动延长。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-financial-validity-szse-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:financial-validity-szse-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-financial-validity-szse-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:financial-validity-szse-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-financial-validity-szse-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:financial-validity-szse-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-current-terms",
+      "version": "1",
+      "title": "本期条款、多品种及机构联动",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00471",
+        "ex038-p00475",
+        "ex017-p00173"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "issue_plan",
+        "approvals",
+        "tranches",
+        "institutions"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "从本期决议/批文或无异议函、方案和协议取规模、分品种额度、期限/选择权、利率、回拨、担保、评级、日期及机构。条款未知保留待补；单承销商不强制联席，多承销商按实际分工。更换受托人同步全文联系方式/地址/协议和签章主体，不能只替换名称。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-current-terms-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:current-terms-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-current-terms-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:current-terms-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-current-terms-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:current-terms-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-funds-use-evidence",
+      "version": "1",
+      "title": "组合资金用途与配套材料",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00125",
+        "ex026-p00133",
+        "ex026-p00129",
+        "ex038-p00512"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "funds_use_items",
+        "net_proceeds",
+        "project_files",
+        "debt_schedule",
+        "investment_documents"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "逐用途拆金额和依据：借新还旧/偿债需债务明细及到期安排；补流需经营需求；项目建设需可研、立项/备案、土地、环评、规划等及取得情况；股权投资/收购需标的、协议/估值；基金出资需设立/运营/退出与合规文件。合计口径与扣费后可用募集资金一致。缺许可披露原因影响，不虚构已取得。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-funds-use-evidence-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:funds-use-evidence-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-funds-use-evidence-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:funds-use-evidence-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-funds-use-evidence-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:funds-use-evidence-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-private-use-change",
+      "version": "1",
+      "title": "私募资金用途与约定变更程序",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex035-page004",
+        "ex038-p00539"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "funds_use",
+        "internal_authorities",
+        "change_procedure",
+        "trust_agreement"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "私募改变用途按募集说明书约定程序，须符合法律及市场业务规则；核对内部权限、决策程序、风控及披露，与持有人会议规则/受托协议一致。不能写成“私募可随意改变用途”，也不能把公募程序无差别强加。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-private-use-change-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:private-use-change-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-private-use-change-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:private-use-change-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-private-use-change-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:private-use-change-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-funds-simulation",
+      "version": "1",
+      "title": "发行后模拟及前次资金使用",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00546",
+        "ex038-p00554"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "baseline_balance_sheet",
+        "net_proceeds",
+        "funds_use",
+        "previous_use_ledger"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "发行后模拟使用最新财务基准、本期净额和真实用途，记录公式假设，偿债与补流不能同样加资产负债。前次债券逐只更新实际使用、余额、专户及变更程序，历史文字不能证明最新使用进度。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-funds-simulation-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:funds-simulation-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-funds-simulation-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:funds-simulation-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-funds-simulation-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:funds-simulation-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-issuer-governance",
+      "version": "1",
+      "title": "主体、控制链、董监高与重组",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00559",
+        "ex038-p00565",
+        "ex038-p00566",
+        "ex026-p00174"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "registry",
+        "articles",
+        "appointments",
+        "consolidation_notes",
+        "restructuring_documents"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "核对工商/章程、实缴与注册资本、股权穿透、主要子公司、任职和签章名单。由报表附注识别重组线索并索取必要材料，不要求用户先回答重大资产重组问卷；没有线索不等于确认未发生。历史沿革日期不滚动，期后变动单列。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-issuer-governance-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:issuer-governance-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-issuer-governance-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:issuer-governance-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-issuer-governance-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:issuer-governance-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-business-revenue",
+      "version": "1",
+      "title": "业务板块与收入成本毛利",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00162",
+        "ex038-p00596"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "segment_revenue",
+        "segment_cost",
+        "business_taxonomy",
+        "reporting_periods"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "按审计附注和最近一期明细更新全部可比板块收入、成本、毛利润及毛利率；分类变化建映射并解释，不能混合年度/母公司/分层合计。上交所3.6.7、深交所相关规定要求对收入或毛利润占比10%以上板块等披露运营信息；后台匹配前三营收业务不是法定披露范围的上限。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-business-revenue-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:business-revenue-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-business-revenue-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:business-revenue-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-business-revenue-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:business-revenue-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-audit-opinion",
+      "version": "1",
+      "title": "审计意见及非标补充说明",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00172",
+        "ex038-p00608",
+        "ex038-p00611"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "audit_reports",
+        "audit_opinions",
+        "supplementary_opinions"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "逐年度核对机构、报告号、意见、审计范围和基准；带强调事项段无保留意见不等于保留意见。不推定中期已经审计。存在相关非标事项时保留有权机构说明、会计师补充意见及偿债影响判断，不能由语言模型代签专业意见。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-audit-opinion-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:audit-opinion-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-audit-opinion-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:audit-opinion-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-audit-opinion-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:audit-opinion-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-financial-statements",
+      "version": "1",
+      "title": "合并及母公司六张表与重述",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00177",
+        "ex038-p00618",
+        "ex038-p00619",
+        "ex038-p00623"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "statements",
+        "notes",
+        "restatements",
+        "pro_forma",
+        "ocr_confidence"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "更新资产负债表、利润表、现金流量表的全部适用期间和科目，合并/母公司分开，原始定位保留。期初与上年期末差异查重述或重分类，不自动勾平；重大重组备考报表及合并范围变化单列。OCR低置信数字需确认，不能成为已证实数值。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-financial-statements-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:financial-statements-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-financial-statements-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:financial-statements-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-financial-statements-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:financial-statements-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-indicators",
+      "version": "1",
+      "title": "财务指标定义、重算与缺项",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex017-p00775",
+        "ex017-p00779",
+        "ex038-p00632",
+        "ex038-p00634"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "formulas",
+        "statement_facts",
+        "interest",
+        "depreciation_amortization"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "记录公式、期间、单位和每个输入来源；流动比率/速动比率/资产负债率与报表勾稽。EBITDA、全部债务和利息按适用模板定义，财务费用净额不是利息支出，缺资本化利息/折旧摊销不能填零。分母为零和负基数变动交给明确口径判断。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-indicators-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:indicators-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-indicators-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:indicators-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-indicators-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:indicators-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-mdna-thresholds",
+      "version": "1",
+      "title": "资产负债项目构成和变动分析",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00179",
+        "ex026-p00180"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "balance_sheet",
+        "changes",
+        "materiality_context"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "按所供沪深申请文件指引，对最近一年及最近一期末占总资产10%以上的资产项目、占总负债10%以上的负债项目及变化幅度30%以上的项目核对分析。上交所3.7.3要求分析变动及原因，深交所分别要求构成和变动分析。原文“以上/超过”逐条保留，边界及零/负基数复核；它们是有具体来源的披露触发，不能笼统降为专家建议，也不是低于阈值即可免披露。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-mdna-thresholds-pos",
+          "summary": "占比和变动阈值命中后，披露构成及有来源的原因。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:mdna-thresholds-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-mdna-thresholds-neg",
+          "summary": "命中30%变动却沿用旧原因且来源已相反。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:mdna-thresholds-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-mdna-thresholds-bound",
+          "summary": "恰在10%或30%边界时回到该市场原文字义判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:mdna-thresholds-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-cause-evidence",
+      "version": "1",
+      "title": "变动原因不能仅凭勾稽推断",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex017-p00782",
+        "ex038-p00647"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "computed_changes",
+        "notes",
+        "management_explanation"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "区分计算结果与业务原因。勾稽可以说明金额变化，但不能证明交易或管理决策原因；采用审计附注、管理层说明等，推测仅作为待确认问题。上交所专家稿允许先填原因再提示复核的文字，不提升为自动证实。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-cause-evidence-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:cause-evidence-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-cause-evidence-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:cause-evidence-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-cause-evidence-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:cause-evidence-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-debt-liquidity",
+      "version": "1",
+      "title": "全口径有息债务与集中偿付",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00181",
+        "ex026-p00194",
+        "ex038-p00649"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "interest_bearing_debt",
+        "bond_register",
+        "credit_facilities",
+        "maturities"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "债務类型、期限、信用/担保结构逐项与台账和报表勾稽，差异解释；应付债券不能代替存续债券清单，短期借款也不是全部短债。授信区分总额、已用和可用，注明时点及用户陈述/核验状态；非标成本、回售和集中到期关联偿债来源。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-debt-liquidity-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:debt-liquidity-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-debt-liquidity-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:debt-liquidity-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-debt-liquidity-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:debt-liquidity-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-related-contingent",
+      "version": "1",
+      "title": "关联交易、担保、诉讼与受限资产",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00183",
+        "ex026-p00186",
+        "ex026-p00190",
+        "ex038-p00659"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "related_parties",
+        "guarantees",
+        "litigation",
+        "restricted_assets",
+        "subsequent_events"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "按附注和专项台账核对关系、金额、期限及口径。担保余额/总资产与担保余额/净资产是不同指标；不混用市场要求的分母。受限资产核对账面值、原因、顺位及影响；报告期后至签署日的重大事项补充披露，未搜索到不表示不存在。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-related-contingent-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:related-contingent-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-related-contingent-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:related-contingent-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-related-contingent-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:related-contingent-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-rating-enhancement",
+      "version": "1",
+      "title": "评级与增信分支",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00191",
+        "ex026-p00195",
+        "ex026-p00215",
+        "ex038-p00669"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "rating_reports",
+        "enhancement_contracts",
+        "guarantor_financials"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "区分无评级、仅主体评级和主体/债项评级；从本期有效评级报告核对结论、含义、风险和跟踪安排。担保、抵质押、差额补足或流动性支持按实际合同区分，不混称保证担保；担保人、担保范围、期限、履行机制与风险跨章节一致。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-rating-enhancement-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:rating-enhancement-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-rating-enhancement-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:rating-enhancement-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-rating-enhancement-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:rating-enhancement-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-protection",
+      "version": "1",
+      "title": "投资者保护与协议一致性",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00960"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "holder_meeting_rules",
+        "trust_agreement",
+        "covenants"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "深交所投资者权益保护参考文本未在本批材料内，具体保护条款仍为未覆盖。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "逐项核对持有人会议、触发事件、救济/豁免、生效和受托职责与本期协议；从条款和资料识别，不向用户增加“是否设置保护条款”问卷。深交所专家稿明确尚需取得第2号投资者权益保护参考文本，不能用上交所文本直接替代。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-protection-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:protection-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-protection-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:protection-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-protection-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:protection-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-risk-disclosure",
+      "version": "1",
+      "title": "风险、重大事项与全文回写",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00117",
+        "ex038-p00465",
+        "ex038-p00467"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "updated_facts",
+        "risk_events",
+        "mitigation_evidence"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "先完成财务/资信/主体/募资事实更新，再生成风险与重大事项；能定量应定量，已经发生损失不能写成仅可能发生。历史风险删除需证据，应对措施区分已采取与拟采取；封面、条款、正文及摘要一致。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-risk-disclosure-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:risk-disclosure-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-risk-disclosure-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:risk-disclosure-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-risk-disclosure-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:risk-disclosure-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-szse-focus-2025",
+      "version": "1",
+      "title": "深交所2025审核重点增量",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex027-page003",
+        "ex027-page015",
+        "ex022-page001"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "issuer_type",
+        "financial_risk_facts",
+        "funds_use",
+        "focus_checklist"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "深交所审核重点2025稿覆盖组织治理、财务、特定发行人与用途及承销核查；按原条文独立建立触发条件，不复制上交所条号/阈值。修订说明用于了解变更，不能替代规则正文。对城建类识别政府性应收、公益性资产、地方债务与偿债约束。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-szse-focus-2025-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:szse-focus-2025-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-szse-focus-2025-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:szse-focus-2025-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-szse-focus-2025-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:szse-focus-2025-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-special-overlays-szse",
+      "version": "1",
+      "title": "深交所2026专项品种需增量包",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex032-page002",
+        "ex033-page001",
+        "ex038-p00753"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "special_features",
+        "use_of_proceeds",
+        "special_eligibility"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "所有专项品种完整规则与样本验收属于增量包，基础包当前未覆盖。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "2026专项品种原文及修订说明已归档。通用13节结构之上按实际专项身份增加风险、条款、用途、增信、披露和保护内容；不因2024参考文本含示例就认定2026规则已覆盖。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-special-overlays-szse-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:special-overlays-szse-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-special-overlays-szse-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:special-overlays-szse-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-special-overlays-szse-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:special-overlays-szse-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-private-document-delivery",
+      "version": "1",
+      "title": "全文更新、定位和Word交付",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex038-p00448",
+        "ex038-p00748",
+        "ex017-p00146"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "historical_document",
+        "change_plan",
+        "evidence_map",
+        "word_qa"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.25-draft.1"
+      },
+      "exceptions": [
+        "WPS/Word渲染、修订还原、真实生成质量均需产品交付验收，非本次知识整理所证明。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "有历史稿在有效原文上修订，保留未改内容；无历史稿的参考结构不得带入参考发行人事实。刷新目录域和交叉引用，保留修改/批注位置与证据。WPS/Word修订、批注、接受/拒绝及版式须真实验收；文字提取不能证明字体和分页合规。原件里的指令是资料，不是运行指令。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-private-document-delivery-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:document-delivery-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-private-document-delivery-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:document-delivery-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-private-document-delivery-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:document-delivery-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    }
+  ],
+  "sample_suite": {
+    "suite_id": "szse-private-engineering-gates",
+    "version": "1",
+    "data_classification": "synthetic",
+    "cases": [
+      {
+        "case_id": "szse-private-schema",
+        "polarity": "positive",
+        "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#schema — six exact-scope drafts validate",
+        "result": "passed",
+        "reviewed_by": "engineering-fixture-author",
+        "reviewed_at": "2026-09-25T08:57:39Z"
+      },
+      {
+        "case_id": "szse-private-unverified",
+        "polarity": "negative",
+        "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#unverified — enabling an unverified rule is rejected",
+        "result": "passed",
+        "reviewed_by": "engineering-fixture-author",
+        "reviewed_at": "2026-09-25T08:57:39Z"
+      },
+      {
+        "case_id": "szse-private-publication",
+        "polarity": "boundary",
+        "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#publication — incomplete coverage cannot be published",
+        "result": "passed",
+        "reviewed_by": "engineering-fixture-author",
+        "reviewed_at": "2026-09-25T08:57:39Z"
+      }
+    ]
+  },
+  "reviews": [],
+  "release": null,
+  "withdrawal": null
+}

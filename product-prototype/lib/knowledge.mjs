@@ -8,16 +8,19 @@ export const manifest = () => readJson(join(ROOT,'knowledge','manifest.json'));
 export async function loadKnowledge(scope,kind) {
   if (!SCOPES.includes(scope) || !['update','review'].includes(kind)) throw new Error('不支持的知识范围。');
   if(scope.startsWith('nafmii-'))return bankKnowledge(scope,kind);
-  const originalScope=scope;scope=scope.replace('-public_all','-public');
   const id=`${scope}-${kind}`, base=join(ROOT,'knowledge',id);
   const data=await readJson(base+'.json');
+  if (data.scope!==scope || data.kind!==kind || data.id!==id) throw new Error('知识包与项目市场、发行方式或任务类型不匹配。');
   const handbook=await readFile(base+'.md','utf8');
   const sourceChunks=[];
   for (const source of data.sources) {
-    const content=await readFile(join(ROOT,'knowledge','sources',source+'.md'),'utf8');
-    sourceChunks.push(...packDocument({id:source,role:'knowledge',filename:source,records:content.split('\n').filter(Boolean).map((text,i)=>({locator:`L${i+1}`,text}))},5000));
+    const extracted=await readJson(join(ROOT,'..','knowledge','exchange-bonds','records',source+'.json'));
+    if (extracted.source_id!==source || !extracted.records.length) throw new Error('知识来源尚未解析或身份不匹配。');
+    // Keep original paragraph/page anchors; commentary is not authoritative body text.
+    const records=extracted.records.filter(record=>record.role==='body');
+    sourceChunks.push(...packDocument({id:source,role:'knowledge',filename:source,records},5000));
   }
-  return {...data,scope:originalScope,handbook:handbook+'\n本项目选择：'+SCOPE_NAMES[originalScope]+'。小公募面向专业投资者，大公募面向普通投资者；资格与适当性条件需逐项核实，不能因选项已选而认定已满足。',conflicts:'规则效力、适用条件、专家阈值与项目事实必须区分；未能解析的源文件不能作为已核验依据。',sourceChunks};
+  return {...data,handbook:handbook+'\n本项目选择：'+SCOPE_NAMES[scope]+'。小公募面向专业投资者，大公募可包含普通投资者；资格与适当性条件需逐项核实，不能因选项已选而认定已满足。',conflicts:'知识为上传资料整理的研究草稿，现行效力及专业验收待核。规则要求、专家方法、批注意见与项目事实必须区分；未解析来源不能作为依据，不能以知识加载成功宣布生产能力已开放。',sourceChunks};
 }
 export const relatedKnowledge = (knowledge,query) => retrieve(query,knowledge.sourceChunks,2).map(c=>c.text).join('\n\n');
 

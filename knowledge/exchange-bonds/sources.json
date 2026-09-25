@@ -1,0 +1,967 @@
+{
+  "catalog_version": "2026.09.25.1",
+  "received_on": "2026-09-25",
+  "authorization": "用户于2026-09-25明确提供四个知识文件夹并要求整理提交到BondBuddy仓库，用于团队开发和专业核验。授权不等于现行效力或专家验收。",
+  "source_occurrences": 38,
+  "unique_sources": 34,
+  "sources": [
+    {
+      "source_id": "EX001",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX001.docx",
+      "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+      "bytes": 137633,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）.docx",
+          "archive_member": null,
+          "intake_id": "EX001",
+          "archive_filename": null
+        },
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）.docx",
+          "intake_id": "EX004",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX002",
+      "title": "上海证券交易所债券招标发行业务操作指引",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX002.docx",
+      "sha256": "06fdb9b6a5df9de86082281e52968346a7ad6f3ec682d79a4ed0a6d33c1596ca",
+      "bytes": 21307,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所债券招标发行业务操作指引.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所债券招标发行业务操作指引.docx",
+          "intake_id": "EX002",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX003",
+      "title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX003.docx",
+      "sha256": "9ec72b618eb398a96b8f04b73f91383fbd45afcd2c8f986c2564395355b39933",
+      "bytes": 75229,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）.docx",
+          "intake_id": "EX003",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX005",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第2号——专项品种公司债券（2026年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX005.docx",
+      "sha256": "60c4b46f1664c419f272957fa9d3667d6efb9b08c8671e939b2a23cf09168e9f",
+      "bytes": 48235,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第2号——专项品种公司债券（2026年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则适用指引第2号——专项品种公司债券（2026年修订）.docx",
+          "intake_id": "EX005",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2026"
+    },
+    {
+      "source_id": "EX006",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX006.docx",
+      "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+      "bytes": 42034,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）.docx",
+          "intake_id": "EX006",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2025"
+    },
+    {
+      "source_id": "EX007",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第4号——审核程序",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX007.docx",
+      "sha256": "93ccf50b594c5327b7a78f90dc753b5f2484a081af497e27b7209fa553e26603",
+      "bytes": 47158,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第4号——审核程序.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则适用指引第4号——审核程序.docx",
+          "intake_id": "EX007",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX008",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第5号——审核会（2026年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX008.docx",
+      "sha256": "6a3197409146c898e4f91e2aca46e8e9c3ce7a8120b29d511ac68cafe897c337",
+      "bytes": 28589,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第5号——审核会（2026年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则适用指引第5号——审核会（2026年修订）.docx",
+          "intake_id": "EX008",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2026"
+    },
+    {
+      "source_id": "EX009",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第6号——知名成熟发行人优化审核（2023年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX009.docx",
+      "sha256": "050fc634d0e46e81cd28e64c13a424ddd5fcb52b0990ccbcd44d65b4529bf34f",
+      "bytes": 32330,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则适用指引第6号——知名成熟发行人优化审核（2023年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则适用指引第6号——知名成熟发行人优化审核（2023年修订）.docx",
+          "intake_id": "EX009",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX010",
+      "title": "上海证券交易所公司债券发行上市审核规则（2023年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX010.docx",
+      "sha256": "b85d9c3f9df5a78218c337d40ba1e7bb72903a06d53d6d6ad07ea9aeec30f481",
+      "bytes": 42912,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行上市审核规则（2023年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行上市审核规则（2023年修订）.docx",
+          "intake_id": "EX010",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX011",
+      "title": "上海证券交易所公司债券发行承销规则",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX011.docx",
+      "sha256": "000888e84a2a7eaaa7a4e2e59994bc091bcede9b2fb91ffed534d2f3cf64f464",
+      "bytes": 39608,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行承销规则.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行承销规则.docx",
+          "intake_id": "EX011",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX012",
+      "title": "上海证券交易所公司债券发行承销规则适用指引第1号——发行备案（2024年修订）",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX012.docx",
+      "sha256": "3f883612cfe342d46a174ce1241353887fcdb12f240ca4ecd504a5605e31a894",
+      "bytes": 29109,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行承销规则适用指引第1号——发行备案（2024年修订）.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行承销规则适用指引第1号——发行备案（2024年修订）.docx",
+          "intake_id": "EX012",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2024"
+    },
+    {
+      "source_id": "EX013",
+      "title": "上海证券交易所公司债券发行承销规则适用指引第2号——簿记建档",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX013.docx",
+      "sha256": "6ac104460704460132008ec1b4c52e72c813f200eda4c98aacb3a38c215f0456",
+      "bytes": 28818,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "上海证券交易所公司债券发行承销规则适用指引第2号——簿记建档.docx",
+          "archive_member": "上海证券交易所公司债券规则/上海证券交易所公司债券发行承销规则适用指引第2号——簿记建档.docx",
+          "intake_id": "EX013",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX014",
+      "title": "关于开展债务重组类债券置换业务有关事项的通知",
+      "market": "sse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX014.docx",
+      "sha256": "9ec24d07bdb006d60e77087a6af756cede9ddbafd4d6ac7b3f3f692ab2b42b58",
+      "bytes": 14366,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "关于开展债务重组类债券置换业务有关事项的通知.docx",
+          "archive_member": "上海证券交易所公司债券规则/关于开展债务重组类债券置换业务有关事项的通知.docx",
+          "intake_id": "EX014",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX015",
+      "title": "附件：上海证券交易所公司债券发行上市审核业务指南第2号——投资者权益保护（参考文本）",
+      "market": "sse",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX015.docx",
+      "sha256": "c4a19e6be63b27c3eb0962561bbca44a3a8761549328614375b6c315b2423620",
+      "bytes": 170746,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "附件：上海证券交易所公司债券发行上市审核业务指南第2号——投资者权益保护（参考文本）.docx",
+          "archive_member": "上海证券交易所公司债券规则/附件：上海证券交易所公司债券发行上市审核业务指南第2号——投资者权益保护（参考文本）.docx",
+          "intake_id": "EX015",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX016",
+      "title": "深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）",
+      "market": "szse",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX016.docx",
+      "sha256": "87dd71922ab8beab39d1d4f80d4b68479f119245f47ac47d5664472ba83254bc",
+      "bytes": 235823,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）.docx",
+          "intake_id": "EX016",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        },
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）.docx",
+          "archive_member": null,
+          "intake_id": "EX020",
+          "archive_filename": null
+        },
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）.docx",
+          "intake_id": "EX024",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [
+        "上交所压缩包内的深交所参考文本，按实际发布机构归入深交所；与EX020/EX024字节相同。"
+      ],
+      "provided_version": "reference-2024"
+    },
+    {
+      "source_id": "EX017",
+      "title": "私募债全文更新知识V6",
+      "market": "sse",
+      "document_kind": "internal_method",
+      "original_path": "originals/EX017.docx",
+      "sha256": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+      "bytes": 122504,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-general",
+          "filename": "私募债全文更新知识V6.docx",
+          "archive_member": "私募债全文更新知识V6.docx",
+          "intake_id": "EX017",
+          "archive_filename": "上海证券交易所公司债券规则.zip"
+        },
+        {
+          "folder": "sse-expert",
+          "filename": "私募债全文更新知识V6.docx",
+          "archive_member": null,
+          "intake_id": "EX018",
+          "archive_filename": null
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [
+        "专家内部方法V6，非交易所正式法规；与单独提供的EX018字节相同。"
+      ],
+      "provided_version": "expert-v6"
+    },
+    {
+      "source_id": "EX019",
+      "title": "私募债募集说明书撰写模板(余总填写版)2",
+      "market": "sse",
+      "document_kind": "internal_method",
+      "original_path": "originals/EX019.docx",
+      "sha256": "b27928515a349f3ed46711f6ac1a8dab0abf17f3901ef39b6bfe7c3b5c0ddcc5",
+      "bytes": 105579,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "sse-expert",
+          "filename": "私募债募集说明书撰写模板(余总填写版)2.docx",
+          "archive_member": null,
+          "intake_id": "EX019",
+          "archive_filename": null
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "expert-template-2"
+    },
+    {
+      "source_id": "EX021",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX021.docx",
+      "sha256": "fd0b21e1ab6fd0805f8ebd02381338ad2911f34ef670fb19dff82cebf9228239",
+      "bytes": 196608,
+      "parse_status": "encrypted_office_container",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）.docx",
+          "archive_member": null,
+          "intake_id": "EX021",
+          "archive_filename": null
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [
+        "扩展名为DOCX但为OLE容器，目录含EncryptedPackage；未解密、未提取，不作为可用依据。EX026为同标题的独立可读副本，hash不同，不能宣称两者等同。"
+      ],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX022",
+      "title": "《深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）》修订说明",
+      "market": "szse",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX022.pdf",
+      "sha256": "26b90733bab1e709690c4175de75be99eef97596d0b9353eb74b19086f8f053a",
+      "bytes": 169987,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "《深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）》修订说明.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/《深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）》修订说明.pdf",
+          "intake_id": "EX022",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2025"
+    },
+    {
+      "source_id": "EX023",
+      "title": "公司信用类债券信息披露管理办法",
+      "market": "shared",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX023.docx",
+      "sha256": "10497ffa2d690e22a005dc8bad99601240bbd964ae75f69399090fe0069a505d",
+      "bytes": 10108,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "公司信用类债券信息披露管理办法.docx",
+          "archive_member": "深圳证券交易所公司债券规则/公司信用类债券信息披露管理办法.docx",
+          "intake_id": "EX023",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX025",
+      "title": "深圳证券交易所公司债券发行上市审核业务指南第3号——简明信息披露",
+      "market": "szse",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX025.docx",
+      "sha256": "b8281ceda4f8af87dc071b1ceca34da958e5c5eaff72501d0c93aec9bb09b704",
+      "bytes": 99098,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指南第3号——简明信息披露.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指南第3号——简明信息披露.docx",
+          "intake_id": "EX025",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX026",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX026.docx",
+      "sha256": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "bytes": 59065,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）.docx",
+          "intake_id": "EX026",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX027",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX027.pdf",
+      "sha256": "924c34839069791dec469f49f2457429b04e3279e2bb45b616258a207f4d92c5",
+      "bytes": 429897,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第2号——审核重点关注事项（2025年修订）.pdf",
+          "intake_id": "EX027",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2025"
+    },
+    {
+      "source_id": "EX028",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX028.doc",
+      "sha256": "74e94a9b7d6727bf5e2377dcf7b7d31c4f7ad9ef2fb5bfd90ae2db21eadee9dc",
+      "bytes": 25862,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2023年修订）.doc",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2023年修订）.doc",
+          "intake_id": "EX028",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [
+        "扩展名.doc，实际为OOXML，按内容成功提取；保留原字节和原扩展名。"
+      ],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX029",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第4号——公开发行公司债券审核程序（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX029.doc",
+      "sha256": "74077382bfb0bbc498f95e62cf0347f8d6a08ba2aaa1b5af20e2b35c169ec5f8",
+      "bytes": 30542,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第4号——公开发行公司债券审核程序（2023年修订）.doc",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第4号——公开发行公司债券审核程序（2023年修订）.doc",
+          "intake_id": "EX029",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [
+        "扩展名.doc，实际为OOXML，按内容成功提取；保留原字节和原扩展名。"
+      ],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX030",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第5号——非公开发行公司债券挂牌条件确认程序（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX030.docx",
+      "sha256": "b68f55d3412f9f6719514a5be12572d99748048fdc34ee71161a5140351d58d4",
+      "bytes": 38170,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第5号——非公开发行公司债券挂牌条件确认程序（2023年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第5号——非公开发行公司债券挂牌条件确认程序（2023年修订）.docx",
+          "intake_id": "EX030",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX031",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第6号——公开发行公司债券审核会议（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX031.docx",
+      "sha256": "8ae3c8f262a4692e031aa28d5484b0b58f6a74cdb3f969afdc89fbc95f6bf199",
+      "bytes": 31402,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第6号——公开发行公司债券审核会议（2023年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第6号——公开发行公司债券审核会议（2023年修订）.docx",
+          "intake_id": "EX031",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX032",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX032.pdf",
+      "sha256": "515d247a023b6fd3e5a234cb49286879974dd6f255507588acb747519f800c21",
+      "bytes": 342142,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）.pdf",
+          "intake_id": "EX032",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2026"
+    },
+    {
+      "source_id": "EX033",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）修订说明",
+      "market": "szse",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX033.pdf",
+      "sha256": "cf3a05216f9ef1f6f01ae5777a9ee495b6d978daf85fe1d5adc70f22955dc6eb",
+      "bytes": 180122,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）修订说明.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第7号——专项品种公司债券（2026年修订）修订说明.pdf",
+          "intake_id": "EX033",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2026"
+    },
+    {
+      "source_id": "EX034",
+      "title": "深圳证券交易所公司债券发行上市审核规则（2023年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX034.docx",
+      "sha256": "e693491deec79faf8a11d7d42f2754a48258b5737ab3d0f07d56d7541f796802",
+      "bytes": 43521,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核规则（2023年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核规则（2023年修订）.docx",
+          "intake_id": "EX034",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX035",
+      "title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+      "market": "shared",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX035.pdf",
+      "sha256": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+      "bytes": 236765,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "附件1：公司债券发行与交易管理办法（2023-10-20）.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/附件1：公司债券发行与交易管理办法（2023-10-20）.pdf",
+          "intake_id": "EX035",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX036",
+      "title": "附件1：公开发行证券的公司信息披露内容与格式准则第24号—公开发行公司债券申请文件（2023年修订）",
+      "market": "shared",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX036.pdf",
+      "sha256": "f18315d86371388db41dfe24809d53ba2a4ec5d98effd05fc339ea663020a2ee",
+      "bytes": 161710,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "附件1：公开发行证券的公司信息披露内容与格式准则第24号—公开发行公司债券申请文件（2023年修订）.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/附件1：公开发行证券的公司信息披露内容与格式准则第24号—公开发行公司债券申请文件（2023年修订）.pdf",
+          "intake_id": "EX036",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-2023"
+    },
+    {
+      "source_id": "EX037",
+      "title": "附件2：《公开发行证券的公司信息披露内容与格式准则第24号—公开发行公司债券申请文件》修订说明",
+      "market": "shared",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX037.pdf",
+      "sha256": "a780897032d9769474fc5d2d7aefb3d7f6402556027d72200199f4ef8b53504f",
+      "bytes": 107386,
+      "parse_status": "extracted_pdf_text",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "附件2：《公开发行证券的公司信息披露内容与格式准则第24号—公开发行公司债券申请文件》修订说明.pdf",
+          "archive_member": "深圳证券交易所公司债券规则/附件2：《公开发行证券的公司信息披露内容与格式准则第24号—公开发行公司债券申请文件》修订说明.pdf",
+          "intake_id": "EX037",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [],
+      "provided_version": "provided-undated"
+    },
+    {
+      "source_id": "EX038",
+      "title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+      "market": "szse",
+      "document_kind": "internal_method",
+      "original_path": "originals/EX038.docx",
+      "sha256": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+      "bytes": 115286,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-expert",
+          "filename": "深交所公司债券募集说明书全文更新知识Draft_V1 (2).docx",
+          "archive_member": null,
+          "intake_id": "EX038",
+          "archive_filename": null
+        }
+      ],
+      "official_url": null,
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "pending_official_verification",
+      "professional_acceptance": "pending",
+      "notes": [
+        "原文标为Draft_V1 / 供专家Review，问题和批注不是已签认结论。"
+      ],
+      "provided_version": "expert-draft-v1"
+    }
+  ]
+}

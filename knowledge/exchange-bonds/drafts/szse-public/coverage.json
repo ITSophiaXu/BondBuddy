@@ -1,0 +1,440 @@
+{
+  "schema_version": "capability-coverage-v1",
+  "manifest_id": "szse-public-coverage",
+  "version": "2026.09.25-draft.1",
+  "rule_pack_id": "szse-public",
+  "assessed_at": "2026-09-25T08:57:39Z",
+  "items": [
+    {
+      "item_id": "source-authority",
+      "area": "全文 / 逐字段来源与冲突处理",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00082",
+        "ex017-p00151"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "period-window",
+      "area": "释义、业务、财务、重大事项 / 目标报告期及滚动窗口",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00209",
+        "ex017-p00210",
+        "ex038-p00617"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "evidence-state",
+      "area": "全文、右侧项目对话 / 空值、用户陈述与待确认信息",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00845",
+        "ex038-p00622",
+        "ex038-p00647"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "identity",
+      "area": "全文、合并/母公司报表 / 发行主体、口径与单位一致",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00617",
+        "ex038-p00621",
+        "ex038-p00595"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "public-eligibility",
+      "area": "发行概况、财务、信用、重大事项 / 公募共同发行条件及禁发情形",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex035-page004",
+        "ex035-page005"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "professional-public",
+      "area": "封面、条款、发行对象 / 小公募的专业投资者适用性",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex035-page005",
+        "ex035-page011"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "financial-validity-szse",
+      "area": "第五节财务会计信息、申报材料 / 深交所财务有效期",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00059",
+        "ex026-p00072"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "public-document-validity",
+      "area": "封面、发行概况 / 注册决定与募集书签署有效期分开",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex035-page007"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "current-terms",
+      "area": "封面、重大事项、发行概况、机构、声明 / 本期条款、多品种及机构联动",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00471",
+        "ex038-p00475",
+        "ex017-p00173"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "funds-use-evidence",
+      "area": "募集资金运用 / 组合资金用途与配套材料",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00125",
+        "ex026-p00133",
+        "ex026-p00129",
+        "ex038-p00512"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "public-use-change",
+      "area": "募集资金、持有人会议、受托管理 / 公募资金用途限制与变更程序",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex035-page004",
+        "ex026-p00145"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "funds-simulation",
+      "area": "募集资金、财务 / 发行后模拟及前次资金使用",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00546",
+        "ex038-p00554"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "issuer-governance",
+      "area": "发行人基本情况、声明、重大事项 / 主体、控制链、董监高与重组",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00559",
+        "ex038-p00565",
+        "ex038-p00566",
+        "ex026-p00174"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "business-revenue",
+      "area": "发行人主要业务、财务、风险 / 业务板块与收入成本毛利",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00162",
+        "ex038-p00596"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "audit-opinion",
+      "area": "财务基础、重大事项、风险 / 审计意见及非标补充说明",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00172",
+        "ex038-p00608",
+        "ex038-p00611"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "financial-statements",
+      "area": "财务会计信息 / 合并及母公司六张表与重述",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00177",
+        "ex038-p00618",
+        "ex038-p00619",
+        "ex038-p00623"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "indicators",
+      "area": "财务指标、摘要、重大事项 / 财务指标定义、重算与缺项",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00775",
+        "ex017-p00779",
+        "ex038-p00632",
+        "ex038-p00634"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "mdna-thresholds",
+      "area": "管理层讨论与分析 / 资产负债项目构成和变动分析",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00179",
+        "ex026-p00180"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "cause-evidence",
+      "area": "业务、财务、风险 / 变动原因不能仅凭勾稽推断",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00782",
+        "ex038-p00647"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "debt-liquidity",
+      "area": "财务、资信、风险 / 全口径有息债务与集中偿付",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00181",
+        "ex026-p00194",
+        "ex038-p00649"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "related-contingent",
+      "area": "发行人、财务、重大事项、风险 / 关联交易、担保、诉讼与受限资产",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00183",
+        "ex026-p00186",
+        "ex026-p00190",
+        "ex038-p00659"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "rating-enhancement",
+      "area": "封面、资信、增信、风险、条款 / 评级与增信分支",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00191",
+        "ex026-p00195",
+        "ex026-p00215",
+        "ex038-p00669"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "protection",
+      "area": "投资者保护、违约、持有人会议、受托管理 / 投资者保护与协议一致性",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00960"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "risk-disclosure",
+      "area": "风险提示、重大事项、全文 / 风险、重大事项与全文回写",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00117",
+        "ex038-p00465",
+        "ex038-p00467"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "szse-focus-2025",
+      "area": "治理、财务、特定发行人、募资 / 深交所2025审核重点增量",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex027-page003",
+        "ex027-page015",
+        "ex022-page001"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "special-overlays-szse",
+      "area": "通用13节及专项增量 / 深交所2026专项品种需增量包",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex032-page002",
+        "ex033-page001",
+        "ex038-p00753"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "document-delivery",
+      "area": "全文、目录、交叉引用、签章页 / 全文更新、定位和Word交付",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00448",
+        "ex038-p00748",
+        "ex017-p00146"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "other-markets",
+      "area": "交易商协会及其他市场",
+      "disposition": "not_applicable",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [],
+      "rationale": "本包仅限指定交易所及发行方式，不改变NAFMII包。"
+    }
+  ],
+  "open_blockers": [
+    {
+      "blocker_id": "official-effectivity",
+      "description": "上传的官方样式原件尚未逐条与发布机关现行版本、公告日期及过渡条款核验。",
+      "required_evidence": "官方链接/原文hash、发布及生效日期、废止替代关系、行业核验记录。"
+    },
+    {
+      "blocker_id": "professional-samples",
+      "description": "尚无本scope基础/复杂/边界真实结果的行业验收；本sample_suite只验证工程门禁。",
+      "required_evidence": "授权样本、真实更新/反例结果、逐条财务和行业审核记录。"
+    },
+    {
+      "blocker_id": "production-release",
+      "description": "依赖#19的真实授权发布/选择链路及双角色签认，草稿文件不是生产发布。",
+      "required_evidence": "#19发布记录、锁定版本/hash、权限/撤回/回滚及任务选择证据。"
+    },
+    {
+      "blocker_id": "szse-protection-text",
+      "description": "专家稿指出需补充深交所第2号投资者权益保护参考文本；本批未提供。",
+      "required_evidence": "申报时有效的深交所投资者权益保护参考文本和逐条映射。"
+    }
+  ]
+}
