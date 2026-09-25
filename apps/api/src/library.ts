@@ -579,6 +579,18 @@ export async function lockReferenceSelection(pool: Pool, input: { ownerUserId: s
     const project = await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL', [input.ownerUserId, input.projectId]);
     if (!project.rowCount) throw missing();
     if (input.runId && !(await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3', [input.ownerUserId, input.projectId, input.runId])).rowCount) throw missing();
+    if (input.runId) {
+      const existing = (await client.query(`SELECT id, query_schema_version, document_version_id, profile_id, taxonomy_version, index_release_id, locked_at
+        FROM bb_library_selection_locks WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 FOR UPDATE`, [input.ownerUserId, input.projectId, input.runId])).rows[0];
+      if (existing) {
+        if (existing.document_version_id !== input.documentVersionId || existing.profile_id !== input.profileId || existing.index_release_id !== input.indexReleaseId) {
+          throw new Problem(409, 'ALREADY_TERMINAL', 'Run already has a different immutable reference selection');
+        }
+        return { lock_id: existing.id, query_schema_version: existing.query_schema_version, document_version_id: existing.document_version_id,
+          profile_id: existing.profile_id, taxonomy_version: existing.taxonomy_version, index_release_id: existing.index_release_id,
+          locked_at: date(existing.locked_at) };
+      }
+    }
     const entry = (await client.query(`SELECT e.taxonomy_version FROM bb_library_index_entries e
       JOIN bb_library_index_releases r ON r.id=e.release_id AND r.active
       JOIN bb_library_document_versions v ON v.id=e.document_version_id AND v.state='published'
