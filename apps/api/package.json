@@ -27,6 +27,10 @@
     "./ocr": {
       "types": "./dist/ocr.d.ts",
       "default": "./dist/ocr.js"
+    },
+    "./material-jobs": {
+      "types": "./dist/material-jobs.d.ts",
+      "default": "./dist/material-jobs.js"
     }
   },
   "scripts": {

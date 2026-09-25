@@ -83,14 +83,15 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id='synthetic-operator'")).rows[0].n>=3);
     assert.deepEqual(await queryUsage(pool,'synthetic-log-b',lease.jobId,'synthetic-operator'),[]);
     await assert.rejects(observeUsage(pool,{owner:'synthetic-log-b',attemptId:failed,source:'provider',sourceEventId:'foreign',status:'unknown'}));
-    const claimed=await claimOutbox(pool,100);
+    // Earlier suites leave pending outbox rows (including parse-job events); claim enough to reach this test's rows.
+    const claimed=await claimOutbox(pool,1000);
     const item=claimed.find(x=>x.event_type==='model.usage_observed');assert.ok(item);
     assert.equal(await ackOutbox(pool,item.id,'wrong-token'),false);
     assert.equal(await ackOutbox(pool,item.id,item.lease_token),true);
     assert.equal(await ackOutbox(pool,item.id,item.lease_token),false);
     const replay=claimed.find(x=>x.event_type==='operation.rejected');assert.ok(replay);
     await pool.query("UPDATE bb_outbox SET lease_until=now()-interval '1 second' WHERE id=$1",[replay.id]);
-    const replayed=await claimOutbox(pool,100);
+    const replayed=await claimOutbox(pool,1000);
     assert.ok(replayed.some(x=>x.id===replay.id&&x.lease_token!==replay.lease_token));
     assert.equal(await ackOutbox(pool,replay.id,replay.lease_token),false);
     assert.equal(await ackOutbox(pool,replay.id,replayed.find(x=>x.id===replay.id)!.lease_token),true);

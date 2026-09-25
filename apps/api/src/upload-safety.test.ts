@@ -175,10 +175,9 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
     assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${complete.json().material_id}/download`)).statusCode, 404);
   } finally {
     if (projectId) {
+      // The completed material now has a retained parse job and append-only #79 operation rows,
+      // so its synthetic owner/project rows stay; suites that need a clean slate TRUNCATE ... CASCADE.
       await pool.query('DELETE FROM bb_outbox WHERE owner_user_id=$1', [originalOwnerId]);
-      await pool.query('DELETE FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2', [originalOwnerId, projectId]);
-      await pool.query('DELETE FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2', [originalOwnerId, projectId]);
-      await pool.query('DELETE FROM bb_projects WHERE owner_user_id=$1 AND id=$2', [originalOwnerId, projectId]);
     }
     await app.close();
     await pool.end();

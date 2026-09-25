@@ -59,7 +59,7 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
     return {observation,input};
   }
   try {
-    const activeJobs=await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE state IN ('queued','running')");
+    const activeJobs=await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE state IN ('queued','running') AND run_id IS NOT NULL"); // Run-less parse jobs are never claimed by the run queue.
     assert.equal(activeJobs.rows[0].count,0,'provider reconciliation integration test requires a dedicated database without queued or running jobs');
     // Worker 1 durably records the returned result and then crashes before its processor
     // advances. Worker 2 must load the checkpointed bytes and must not call the supplier.

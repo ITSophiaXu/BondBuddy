@@ -46,6 +46,16 @@ export const MODEL_ADAPTER_KINDS = ['codex_exec'] as const;
 export const MODEL_ADAPTER_ERROR_CODES = ['MODEL_ADAPTER_CONFIG_INVALID', 'MODEL_SPAWN_FAILED', 'MODEL_TOOL_ATTEMPT_BLOCKED', 'MODEL_OUTPUT_SCHEMA_INVALID', 'MODEL_TIMEOUT', 'MODEL_STREAM_BROKEN', 'MODEL_TURN_FAILED', 'MODEL_PROCESS_EXIT_NONZERO', 'MODEL_CANCELLED', 'MODEL_OUTPUT_TOO_LARGE', 'MODEL_RESULT_STORE_FAILED', 'MODEL_USAGE_PENDING', 'MODEL_PRIOR_ATTEMPT_UNRESOLVED'] as const;
 export const MODEL_ADAPTER_OUTCOMES = ['completed', 'failed', 'pending_reconcile', 'confirmed_not_sent'] as const;
 export const MODEL_ADAPTER_USAGE_STATUSES = ['measured', 'pending', 'unknown'] as const;
+// #17/#13/#76 durable material parse seam. One job per owner + material version + parser version.
+export const MATERIAL_PARSE_JOB_TYPE = 'parse' as const;
+export const MATERIAL_PARSE_JOB_SUBTYPE = 'material_parse' as const;
+export const MATERIAL_PARSE_JOB_STATES = ['queued', 'running', 'paused', 'succeeded', 'failed', 'cancelled'] as const;
+// Checkpointed stages in execution order; awaiting_ocr is a paused stage until the OCR processor is connected.
+export const MATERIAL_PARSE_STAGES = ['parse_evidence', 'historical_profile', 'awaiting_ocr'] as const;
+export const MATERIAL_PARSE_OUTCOMES = ['parsed', 'needs_confirmation', 'pending_ocr'] as const;
+export const MATERIAL_PARSE_PENDING_CAPABILITIES = ['ocr'] as const;
+// Outbox event_type values; each commits in the same transaction as the job state change.
+export const MATERIAL_PARSE_EVENT_TYPES = ['material_parse.enqueued', 'material_parse.claimed', 'material_parse.stage_completed', 'material_parse.retry_scheduled', 'material_parse.paused', 'material_parse.succeeded', 'material_parse.failed', 'material_parse.cancelled'] as const;
 export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered'] as const;
 
 const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal<T[number]>(value)));
@@ -75,6 +85,7 @@ const jobKind = enumOf(JOB_KINDS);
 const jobStatus = enumOf(JOB_STATUSES);
 const errorCategory = enumOf(ERROR_CATEGORIES);
 const observabilityEventKind = enumOf(OBSERVABILITY_EVENT_KINDS);
+const MaterialParseJobSchema = obj({ job_id: id, job_type: Type.Literal(MATERIAL_PARSE_JOB_TYPE), subtype: Type.Literal(MATERIAL_PARSE_JOB_SUBTYPE), project_id: id, material_id: id, material_version: revision, material_sha256: hash, parser_version: Type.String({ minLength: 1, maxLength: 128 }), state: enumOf(MATERIAL_PARSE_JOB_STATES), stage: nullable(Type.String()), completed_stages: Type.Array(enumOf(MATERIAL_PARSE_STAGES)), attempts: Type.Integer({ minimum: 0 }), max_attempts: Type.Integer({ minimum: 1 }), error_code: nullable(errorCode), outcome: nullable(enumOf(MATERIAL_PARSE_OUTCOMES)), parse_status: nullable(enumOf(['parsed', 'needs_confirmation', 'failed'] as const)), profile_version: nullable(revision), pending_capabilities: Type.Array(enumOf(MATERIAL_PARSE_PENDING_CAPABILITIES)), updated_at: utc });
 const PageSchema = obj({ next_cursor: cursor, has_more: Type.Boolean() });
 const provenanceMethod = enumOf(['native_text', 'ocr', 'model_assisted', 'user_correction', 'derived'] as const);
 const recognitionStatus = enumOf(['recognized', 'needs_confirmation', 'user_asserted', 'unknown'] as const);
@@ -138,6 +149,7 @@ export const schemas = {
   ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id }),
   RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: Type.Literal('platform_trial'), reservation_id: Type.Null(), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
   RunActionRequest: obj({ reason: Type.String({ minLength: 1 }) }),
+  MaterialParseJobResponse: MaterialParseJobSchema,
   RunEvent: RunEventSchema,
   RunEventsResponse: obj({ items: Type.Array(RunEventSchema), next_cursor: nullable(Type.Integer({ minimum: 0 })) }),
   ProjectEvent: ProjectEventSchema,
@@ -161,6 +173,7 @@ export type Material = Static<typeof schemas.MaterialResponse>;
 export type ModelCallAttempt = Static<typeof schemas.ModelCallAttempt>;
 export type ModelAdapterAttemptRecord = Static<typeof schemas.ModelAdapterAttemptRecord>;
 export type ModelAdapterErrorCode = typeof MODEL_ADAPTER_ERROR_CODES[number];
+export type MaterialParseJob = Static<typeof schemas.MaterialParseJobResponse>;
 export type Recognition = Static<typeof schemas.RecognitionResponse>;
 export type ReportingPeriod = Static<typeof ReportingPeriodSchema>;
 export type RecognitionPatchRequest = Static<typeof schemas.RecognitionPatchRequest>;
@@ -207,9 +220,11 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}/materials/{material_id}/download', 'Download verified owner material bytes', 'MaterialResponse', 200, undefined, [404]),
   op('delete', '/projects/{project_id}/materials/{material_id}', 'Remove current material access while preserving pinned snapshots', 'MaterialResponse', 204, undefined, [404]),
   op('get', '/projects/{project_id}/events', 'Read current owner material events after the project-local sequence (50 by default, at most 100)', 'ProjectEventsResponse', 200, undefined, [404, 422]),
-  op('get', '/projects/{project_id}/materials/{material_id}/source-profile', 'Read asynchronous recognition (contract only)', 'RecognitionResponse', 200, undefined, [404]),
+  op('get', '/projects/{project_id}/materials/{material_id}/parse-job', 'Read the durable parse job of the current material version', 'MaterialParseJobResponse', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/materials/{material_id}/parse-job/cancel', 'Cancel a non-final parse job; exactly one final state wins', 'MaterialParseJobResponse', 200, 'RunActionRequest', [404, 409]),
+  op('get', '/projects/{project_id}/materials/{material_id}/source-profile', 'Read the latest persisted historical recognition; 409 CAPABILITY_NOT_READY while its parse job is pending', 'RecognitionResponse', 200, undefined, [404, 409]),
   op('patch', '/projects/{project_id}/materials/{material_id}/source-profile', 'Correct source recognition with revision (contract only)', 'RecognitionResponse', 200, 'RecognitionPatchRequest', [404, 409]),
-  op('post', '/projects/{project_id}/preflight', 'Validate material, capability and input snapshot (contract only)', 'PreflightResponse', 200, 'PreflightRequest', [404, 409]),
+  op('post', '/projects/{project_id}/preflight', 'Evaluate an immutable input revision against durable parse jobs, profiles and capability', 'PreflightResponse', 200, 'PreflightRequest', [404, 409]),
   op('post', '/runs/execute', 'Submit idempotent persistent run (contract only)', 'RunResponse', 202, 'ExecuteRequest', [404, 409]),
   op('get', '/runs/{run_id}', 'Re-read owner run after new session (contract only)', 'RunResponse', 200, undefined, [404]),
   op('get', '/runs/{run_id}/events', 'Read events after cursor (contract only)', 'RunEventsResponse', 200, undefined, [404]),
@@ -249,7 +264,7 @@ export function openApiDocument() {
     for (const code of [401,403,501]) responses[code] = { description: code === 501 ? 'Capability not connected' : 'Session or CSRF/Origin check failed', content: { 'application/json': { schema: ref('Error') } } };
     const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
-    const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/projects/{project_id}/events','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
+    const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/projects/{project_id}/events','/projects/{project_id}/materials/{material_id}/parse-job','/projects/{project_id}/materials/{material_id}/parse-job/cancel','/projects/{project_id}/materials/{material_id}/source-profile','/projects/{project_id}/preflight','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
     const status = operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
     const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!['/auth/register','/auth/login'].includes(operation.path) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: ['/auth/register','/auth/login'].includes(operation.path) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };

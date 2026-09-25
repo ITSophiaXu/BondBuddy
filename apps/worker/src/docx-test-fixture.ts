@@ -1,7 +1,7 @@
 import { deflateRawSync } from 'node:zlib';
 
 // Synthetic OOXML package for the worker queue integration test only.
-export function makeWorkerDocxFixture():Buffer {
+export function makeWorkerDocxFixture(options:{externalLink?:boolean}={}):Buffer {
   const pRel='http://schemas.openxmlformats.org/package/2006/relationships';
   const pTypes='http://schemas.openxmlformats.org/package/2006/content-types';
   const pWord='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -11,7 +11,10 @@ export function makeWorkerDocxFixture():Buffer {
     ['_rels/.rels',`<Relationships xmlns="${pRel}"><Relationship Id="rIdDocument" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`],
     ['word/document.xml',`<w:document xmlns:w="${pWord}" xmlns:r="${pOffice}"><w:body><w:p><w:hyperlink r:id="rIdLink"><w:r><w:t>Synthetic worker delivery fixture</w:t></w:r></w:hyperlink></w:p><w:sectPr/></w:body></w:document>`],
     ['word/_rels/document.xml.rels',`<Relationships xmlns="${pRel}"><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.invalid/synthetic" TargetMode="External"/></Relationships>`]
-  ] as const;
+  ].filter(([filename])=>options.externalLink!==false || filename!=='word/_rels/document.xml.rels')
+    .map(([filename,content])=>options.externalLink===false && filename==='word/document.xml'
+      ? [filename,`<w:document xmlns:w="${pWord}"><w:body><w:p><w:r><w:t>Synthetic worker upload fixture</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`] as const
+      : [filename,content] as const);
   const crc32=(bytes:Buffer)=>{
     let value=0xffffffff;
     for(const byte of bytes){value^=byte;for(let bit=0;bit<8;bit++)value=value&1?0xedb88320^(value>>>1):value>>>1;}
