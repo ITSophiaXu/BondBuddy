@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { createServer } from '@bondbuddy/api';
 import { factIdentityKey, type FactCandidate, type FactIdentity } from '@bondbuddy/domain/facts';
 import { insertFactCandidate, type FactEvidenceAnchor } from './fact-repository.js';
 import {
@@ -52,7 +53,7 @@ const candidates = [
 
 function makeDecision(overrides: Partial<FactDecisionInput> = {}): FactDecisionInput {
   return {
-    decisionId: 'decision-1', requestId: 'request-1', identity, resolution: 'selected',
+    decisionId: 'decision-1', requestId: 'request-1', expectedVersion: 0, identity, resolution: 'selected',
     selectedCandidateId: 'candidate-a', reason: '采用审计报告的合并口径数字', ...overrides,
   };
 }
@@ -174,6 +175,11 @@ test('same request replays the same decision and does not add another version or
   assert.equal(client.decisions.length, 1);
   assert.equal(client.outbox.length, 1);
   assert.equal(client.calls.some((call) => call.sql.startsWith('INSERT INTO bb_fact_decisions') && call !== client.calls[0]), true);
+  assert.equal((await appendFactDecision(deps, context, makeDecision({ expectedVersion: 99 }))).replayed, true,
+    'a same-content idempotent replay returns its original decision regardless of the newly observed version');
+  await assert.rejects(appendFactDecision(deps, context, makeDecision({ decisionId: 'stale-decision', requestId: 'stale-request' })), /INPUT_REVISION_CONFLICT/);
+  assert.equal(client.decisions.length, 1);
+  assert.equal(client.outbox.length, 1);
   await assert.rejects(appendFactDecision(deps, context, makeDecision({ reason: 'changed reason' })),
     /FACT_DECISION_IDEMPOTENCY_MISMATCH/);
   assert.equal(client.decisions.length, 1);
@@ -197,6 +203,10 @@ test('replay compares canonical fact identity and validates malformed runtime va
     /INVALID_FACT_PERIOD/);
   await assert.rejects(appendFactDecision(deps, { ...context, actorKind: 'system' }, makeDecision()),
     /SYSTEM_CANNOT_SELECT_FACT/);
+  await assert.rejects(appendFactDecision(deps, context, makeDecision({ expectedVersion: Number.NaN })),
+    /INVALID_FACT_DECISION_VERSION/);
+  await assert.rejects(appendFactDecision(deps, context, { ...makeDecision(), expectedVersion: undefined } as unknown as FactDecisionInput),
+    /INVALID_FACT_DECISION_VERSION/);
   assert.equal(client.decisions.length, 1);
 });
 
@@ -217,7 +227,7 @@ test('unresolved decision is versioned and competing candidates remain intact', 
 test('latest decision reader is exact identity and owner/project scoped', async () => {
   const client = new TransactionMock(); const deps = dependencies(client);
   const first = await appendFactDecision(deps, context, makeDecision());
-  const latest = await appendFactDecision(deps, context, makeDecision({ decisionId: 'decision-2', requestId: 'request-2', resolution: 'unresolved', selectedCandidateId: undefined }));
+  const latest = await appendFactDecision(deps, context, makeDecision({ decisionId: 'decision-2', requestId: 'request-2', expectedVersion: 1, resolution: 'unresolved', selectedCandidateId: undefined }));
   assert.equal((await getLatestFactDecision(deps, context, identity))?.decisionId, latest.decisionId);
   assert.equal((await getLatestFactDecision(deps, context, otherIdentity)), null);
   const query = client.calls.find(call => call.sql.includes('ORDER BY version DESC LIMIT 1'))!;
@@ -230,7 +240,7 @@ test('latest decision reader is exact identity and owner/project scoped', async 
 test('pinned decision version survives a newer decision without a latest-version fallback', async () => {
   const client = new TransactionMock(); const deps = dependencies(client);
   const first = await appendFactDecision(deps, context, makeDecision());
-  await appendFactDecision(deps, context, makeDecision({ decisionId: 'decision-2', requestId: 'request-2', resolution: 'unresolved', selectedCandidateId: undefined }));
+  await appendFactDecision(deps, context, makeDecision({ decisionId: 'decision-2', requestId: 'request-2', expectedVersion: 1, resolution: 'unresolved', selectedCandidateId: undefined }));
   assert.equal((await getFactDecisionAtVersion(deps, context, identity, 1))?.decisionId, first.decisionId);
   assert.equal(await getFactDecisionAtVersion(deps, context, identity, 3), null);
   assert.equal(await getFactDecisionAtVersion(deps, { ...context, projectId: 'other-project' }, identity, 1), null);
@@ -344,6 +354,7 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
     assert.equal(replay.version, 1);
     const secondDecision = await appendFactDecision(decisionDeps, liveContext, makeDecision({
       decisionId: `decision-second-${suffix}`, requestId: `request-second-${suffix}`, identity: liveIdentity,
+      expectedVersion: 1,
       selectedCandidateId: secondCandidate.candidate.candidateId, reason: '合成样本：后续改选第二个候选',
     }));
     assert.equal(secondDecision.version, 2);
@@ -352,8 +363,61 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
     assert.equal(latestRead?.version, 2);
     assert.equal(await getLatestFactDecision(decisionDeps, liveContext, { ...liveIdentity, scope: 'parent_company' }), null);
 
+    const apiApp = createServer({ pool, principal: async () => ({ userId: owner, csrfVerified: true }), allowedOrigin: 'http://bondbuddy.test' });
+    try {
+      const apiRequest = {
+        decision_id: `decision-cross-replay-${suffix}`, request_id: `request-cross-replay-${suffix}`, expected_version: 2,
+        identity: { entity_id: liveIdentity.entityId, scope: liveIdentity.scope, metric: liveIdentity.metric,
+          period: { start: liveIdentity.period.start, end: liveIdentity.period.end }, currency: liveIdentity.currency,
+          unit: liveIdentity.unit, basis: liveIdentity.basis, data_version: liveIdentity.dataVersion },
+        resolution: 'selected' as const, selected_candidate_id: firstCandidate.candidate.candidateId, reason: 'Synthetic API/worker version race',
+      };
+      const sameRequest = await Promise.all([
+        apiApp.inject({ method: 'POST', url: `/api/v1/projects/${project}/facts/decisions`, headers: { origin: 'http://bondbuddy.test' }, payload: apiRequest }),
+        appendFactDecision(decisionDeps, { ...liveContext, actorId: owner }, makeDecision({ decisionId: apiRequest.decision_id,
+          requestId: apiRequest.request_id, identity: liveIdentity, expectedVersion: 2, selectedCandidateId: firstCandidate.candidate.candidateId,
+          reason: apiRequest.reason })),
+      ]);
+      assert.ok(sameRequest[0].statusCode === 200 || sameRequest[0].statusCode === 201);
+      assert.equal(sameRequest[1].version, 3);
+      assert.equal(sameRequest[0].json().version, 3);
+      assert.notEqual(sameRequest[0].json().replayed, sameRequest[1].replayed,
+        'matching API/worker request IDs serialize and return one created decision plus one replay');
+
+      const crossEntryRaceRequest = { ...apiRequest, decision_id: `decision-api-race-${suffix}`, request_id: `request-api-race-${suffix}`, expected_version: 3,
+        reason: 'Synthetic API/worker version race' };
+      const [apiResult, workerResult] = await Promise.allSettled([
+        apiApp.inject({ method: 'POST', url: `/api/v1/projects/${project}/facts/decisions`, headers: { origin: 'http://bondbuddy.test' }, payload: crossEntryRaceRequest }),
+        appendFactDecision(decisionDeps, liveContext, makeDecision({ decisionId: `decision-worker-race-${suffix}`, requestId: `request-worker-race-${suffix}`,
+          identity: liveIdentity, expectedVersion: 3, selectedCandidateId: secondCandidate.candidate.candidateId, reason: 'Synthetic worker/API version race' })),
+      ]);
+      const apiWon = apiResult.status === 'fulfilled' && apiResult.value.statusCode === 201;
+      const workerWon = workerResult.status === 'fulfilled';
+      assert.notEqual(apiWon, workerWon, 'exactly one API or worker write accepts the observed version');
+      if (apiResult.status === 'rejected') throw apiResult.reason;
+      if (workerResult.status === 'rejected') assert.match(String(workerResult.reason), /INPUT_REVISION_CONFLICT/);
+      else assert.equal(apiResult.value.statusCode, 409, apiResult.value.body);
+      if (!apiWon) assert.equal(apiResult.value.json().code, 'INPUT_REVISION_CONFLICT');
+    } finally { await apiApp.close(); }
+
+    const concurrent = await Promise.allSettled([
+      appendFactDecision(decisionDeps, liveContext, makeDecision({ decisionId: `decision-race-a-${suffix}`, requestId: `request-race-a-${suffix}`, identity: liveIdentity,
+        expectedVersion: 4, selectedCandidateId: firstCandidate.candidate.candidateId, reason: 'Synthetic page A at version 4' })),
+      appendFactDecision(decisionDeps, liveContext, makeDecision({ decisionId: `decision-race-b-${suffix}`, requestId: `request-race-b-${suffix}`, identity: liveIdentity,
+        expectedVersion: 4, selectedCandidateId: secondCandidate.candidate.candidateId, reason: 'Synthetic page B at version 4' })),
+    ]);
+    assert.equal(concurrent.filter((result) => result.status === 'fulfilled').length, 1);
+    assert.equal(concurrent.filter((result) => result.status === 'rejected' && String(result.reason).includes('INPUT_REVISION_CONFLICT')).length, 1);
+    const afterRace = await pool.query('SELECT count(*)::int AS count, max(version)::int AS version FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND fact_key_hash=$3',
+      [owner, project, factKeyHash(liveIdentity)]);
+    assert.deepEqual([afterRace.rows[0]!.count, afterRace.rows[0]!.version], [5, 5]);
+    await assert.rejects(appendFactDecision(decisionDeps, liveContext, makeDecision({ decisionId: `decision-stale-${suffix}`, requestId: `request-stale-${suffix}`,
+      identity: liveIdentity, expectedVersion: 1, selectedCandidateId: firstCandidate.candidate.candidateId, reason: 'Stale after concurrent review' })), /INPUT_REVISION_CONFLICT/);
+    assert.equal((await getLatestFactDecision(decisionDeps, liveContext, liveIdentity))?.version, 5);
+
     await assert.rejects(appendFactDecision(decisionDeps, liveContext, makeDecision({
       decisionId: `decision-wrong-owner-${suffix}`, requestId: `request-wrong-owner-${suffix}`, identity: liveIdentity,
+      expectedVersion: 5,
       selectedCandidateId: foreignCandidate.candidate.candidateId, reason: 'wrong owner',
     })), /FACT_CANDIDATE_NOT_FOUND/);
     const wrongKeyIdentity: FactIdentity = { ...liveIdentity, scope: 'parent_company' };
@@ -362,6 +426,7 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
       { id: materialId, version: 1 }, liveEvidence);
     await assert.rejects(appendFactDecision(decisionDeps, liveContext, makeDecision({
       decisionId: `decision-wrong-key-${suffix}`, requestId: `request-wrong-key-${suffix}`, identity: liveIdentity,
+      expectedVersion: 5,
       selectedCandidateId: wrongKey.candidate.candidateId, reason: 'wrong identity',
     })), /FACT_CANDIDATE_IDENTITY_MISMATCH/);
 
@@ -374,6 +439,7 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
     try {
       await assert.rejects(appendFactDecision(decisionDeps, liveContext, makeDecision({
         decisionId: `decision-rollback-${suffix}`, requestId: `request-rollback-${suffix}`, identity: liveIdentity,
+        expectedVersion: 5,
         selectedCandidateId: firstCandidate.candidate.candidateId, reason: 'outbox rollback',
       })), /synthetic outbox failure/);
     } finally {
@@ -400,7 +466,7 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
     await assert.rejects(pool.query('DELETE FROM bb_fact_decisions WHERE id=$1', [firstDecision.decisionId]),
       /fact decisions are append-only/);
     const outboxCount = await pool.query(`SELECT count(*)::int AS count FROM bb_outbox WHERE owner_user_id=$1 AND event_type='fact.decision.appended'`, [owner]);
-    assert.equal(outboxCount.rows[0]!.count, 2);
+    assert.equal(outboxCount.rows[0]!.count, 5, 'initial, sequential, cross-entry replay, and two race winners emit five events');
   } finally {
     await pool.end();
   }
