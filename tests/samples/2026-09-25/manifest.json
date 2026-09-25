@@ -25,6 +25,16 @@
       ],
       "source_latest_cutoff": "2024-09-30",
       "requested_target_cutoff": "2025-06-30",
+      "target_confirmation": {
+        "status": "confirmed",
+        "confirmed_by": "ITSophiaXu / Maxy",
+        "confirmed_on": "2026-09-25",
+        "market": "sse",
+        "offering": "private",
+        "reporting_periods": ["2023", "2024", "2025-01/2025-06"],
+        "latest_cutoff": "2025-06-30",
+        "record_path": "TARGET-CONFIRMATIONS.md#rq-202506"
+      },
       "focus": "旧稿含 2022/2023 年及 2024 年前三季度；补入 2024 年度与 2025 年半年度材料，测试多期间差异、合并/母公司口径与期间冲突提示。",
       "known_issues": [
         "六月附注按用户指定和文件名作为 2025 年半年度材料提供，但正文仍有 2025-03-31、2025-04-20，并出现无效日期“2025年6月31日”。保留原件，标为 needs_confirmation；不得直接视为日期一致的通过样本。",
@@ -236,6 +246,16 @@
       ],
       "source_latest_cutoff": "2025-06-30",
       "requested_target_cutoff": "2025-09-30",
+      "target_confirmation": {
+        "status": "confirmed",
+        "confirmed_by": "ITSophiaXu / Maxy",
+        "confirmed_on": "2026-09-25",
+        "market": "sse",
+        "offering": "private",
+        "reporting_periods": ["2023", "2024", "2025-01/2025-09"],
+        "latest_cutoff": "2025-09-30",
+        "record_path": "TARGET-CONFIRMATIONS.md#rq-202509"
+      },
       "focus": "同一发行人由半年度更新至前三季度；区分本期、上年同期、年初/上年末余额，测试含隐藏辅助页的 Excel 和 PDF 转 DOCX 附注。",
       "known_issues": [
         "报表共 15 个工作表，其中 7 个隐藏辅助页含旧年度信息；应基于主表表头识别当前期间，不取工作簿中最早出现的年份。",
@@ -408,6 +428,16 @@
       ],
       "source_latest_cutoff": "2023-06-30",
       "requested_target_cutoff": "2026-06-30",
+      "target_confirmation": {
+        "status": "confirmed",
+        "confirmed_by": "ITSophiaXu / Maxy",
+        "confirmed_on": "2026-09-25",
+        "market": "sse",
+        "offering": "private",
+        "reporting_periods": ["2024", "2025", "2026-01/2026-06"],
+        "latest_cutoff": "2026-06-30",
+        "record_path": "TARGET-CONFIRMATIONS.md#qx-202606"
+      },
       "focus": "跨多年更新、扫描与文本混合 PDF、审计报告年份与会计年度区分；来源锚点、OCR 不确定数字及多年度比较数据的处理。",
       "known_issues": [
         "2024 年度审计报告 74 页、2025 年度审计报告 70 页，均有无可提取文本的页面；纯文本提取成功不能代表扫描财务表已识别。",
@@ -582,6 +612,16 @@
       ],
       "source_latest_cutoff": "2023-09-30",
       "requested_target_cutoff": "2023-12-31",
+      "target_confirmation": {
+        "status": "confirmed",
+        "confirmed_by": "ITSophiaXu / Maxy",
+        "confirmed_on": "2026-09-25",
+        "market": "sse",
+        "offering": "private",
+        "reporting_periods": ["2022", "2023"],
+        "latest_cutoff": "2023-12-31",
+        "record_path": "TARGET-CONFIRMATIONS.md#zq-202312"
+      },
       "focus": "前三季度更新至年度；新报表及附注实际覆盖 2021–2023 年，测试比较期重述/差异识别，不把旧年度比较数据简单当成新增年度重复计数。",
       "known_issues": [
         "XLSX 主表标明来源为原 PDF 页码；这是用户提供的整理版，原 PDF 未包含在本批指定文件中，不能宣称已核对原审计 PDF。",
