@@ -5,6 +5,7 @@ import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
+import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
 import { recordOperation, rejectOperation } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
@@ -13,10 +14,12 @@ import { installEventStreams, type StreamSettings } from './stream.js';
 import { dataPolicyFromEnv } from './deletion-lifecycle.js';
 import { dataLifecycleSchemas } from '@bondbuddy/contracts';
 import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
+import { admitProjectCreate, admitRunSubmit, admitUploadCreate, reportTrialRejection, sourceHash, TrialLimitProblem, trialConfigFromEnv, type TrialConfig } from './trial-guard.js';
+import { installTrialRoutes } from './trial-routes.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -94,8 +97,17 @@ export function createServer(settings: Settings = {}) {
   }
   installAdminRoutes(app,{db,blobs:blob,owner});
   installEventStreams(app,{db,owner},settings.stream);
+  const trial=settings.trial ?? trialConfigFromEnv();
+  installTrialRoutes(app,{db,blobs,owner,config:trial});
+  // #35: a trial rejection is still a logged #79 operation and may raise the quota alert.
+  async function trialRejected(error:unknown,user:string,kind:string,projectId:string|null,requestId:string){
+    if(!(error instanceof TrialLimitProblem))return;
+    await rejectOperation(db(),{owner:user,projectId,requestId,traceId:uid(),kind,status:'rejected',errorCode:error.code});
+    await reportTrialRejection(db(),error,user);
+  }
   app.get('/health', { schema: { response: { 200: schemas.HealthResponse } } }, async () => ({ status: 'ok' as const, service: 'bondbuddy-m1-api-skeleton' as const, implementation: 'health-and-contract-only' as const }));
   app.get('/openapi.json', async () => openApiDocument());
+  installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   app.get('/api/v1/projects', async request => {
     const user = await owner(request); const cursor = (request.query as {cursor?:string}).cursor;
     const rows = await db().query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND deleted_at IS NULL AND ($2::text IS NULL OR id>$2) ORDER BY id LIMIT 51',[user,cursor ?? null]);
@@ -108,10 +120,11 @@ export function createServer(settings: Settings = {}) {
     const details={...emptyUpdateDetails(),...b.update_details};
     const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
     const id=uid(), value=await transaction(db(),async client=>{
+      await admitProjectCreate(client,trial,user,sourceHash(request.ip));
       const row=await client.query('INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,user,b.name,b.kind,b.issuer_name,b.market,b.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.created',{project_id:id}]);
       return projectDto(row.rows[0]);
-    });
+    }).catch(async error=>{await trialRejected(error,user,'project_create',null,request.id);throw error;});
     return reply.code(201).send(value);
   });
   app.get('/api/v1/projects/:project_id',async request=>projectDto(await project(db(),await owner(request),param(request,'project_id'))));
@@ -189,9 +202,10 @@ export function createServer(settings: Settings = {}) {
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
     await transaction(db(),async client=>{
+      await admitUploadCreate(client,trial,user,sourceHash(request.ip),b.byte_size);
       await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.created',{project_id:id}]);
-    });
+    }).catch(async error=>{await trialRejected(error,user,'upload_create',id,request.id);throw error;});
     return reply.code(201).send({upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:expires.toISOString(),max_bytes:MAX_BYTES});
   });
   app.put('/api/v1/projects/:project_id/materials/uploads/:upload_id/bytes',async (request,reply)=>{
@@ -349,6 +363,7 @@ export function createServer(settings: Settings = {}) {
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+      await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,b.execution_request_id,b.task_kind,requestHash,queueEnabled?'queued':'paused']);
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
@@ -364,6 +379,7 @@ export function createServer(settings: Settings = {}) {
       if(error instanceof Problem){
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2',[user,b.project_id]);
         await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code,inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
+        await reportTrialRejection(db(),error,user);
       }
       throw error;
     }

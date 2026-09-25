@@ -1,0 +1,720 @@
+{
+  "manifest_version": 1,
+  "batch_id": "2026-09-25",
+  "provided_by": "ITSophiaXu / Maxy",
+  "authorization": {
+    "basis": "用户于 2026-09-25 在 BondBuddy 开发任务中明确指定这 15 份文件，并要求提交到 Git 用于测试。",
+    "scope": "BondBuddy 私有仓库内的团队开发、联调与验收准备",
+    "production_reference_library_authorized": false,
+    "public_redistribution_authorized": false
+  },
+  "synthetic": false,
+  "acceptance_status": "pending_industry_review",
+  "evidence_convention": "DOCX locator 对 word/document.xml 中所有 w:p 按文档顺序从 1 起计数（含表格及空段落），不是 Word 页码；PDF 为从 1 起算的物理页；XLSX 为工作表/单元格。元数据核对不代表财务或行业验收。",
+  "file_count": 15,
+  "total_bytes": 26246609,
+  "cases": [
+    {
+      "case_id": "rq-202506",
+      "issuer": "任丘市建设投资集团有限公司",
+      "title": "任丘建投：更新至 2025 年 6 月",
+      "source_reporting_periods": [
+        "2022",
+        "2023",
+        "2024-01/2024-09"
+      ],
+      "source_latest_cutoff": "2024-09-30",
+      "requested_target_cutoff": "2025-06-30",
+      "focus": "旧稿含 2022/2023 年及 2024 年前三季度；补入 2024 年度与 2025 年半年度材料，测试多期间差异、合并/母公司口径与期间冲突提示。",
+      "known_issues": [
+        "六月附注按用户指定和文件名作为 2025 年半年度材料提供，但正文仍有 2025-03-31、2025-04-20，并出现无效日期“2025年6月31日”。保留原件，标为 needs_confirmation；不得直接视为日期一致的通过样本。",
+        "本组未单独提供带审计意见的 2024 年度审计报告，不能仅凭报表/附注认定审计意见或完整审计包。"
+      ],
+      "scenario": "historical_prospectus_update",
+      "market": "sse",
+      "offering": "private",
+      "bond_type_label": "上交所面向专业投资者非公开发行公司债券（普通私募公司债）",
+      "classification_status": "intake_metadata_checked_not_industry_accepted",
+      "industry_acceptance": {
+        "status": "pending",
+        "reviewer": null,
+        "record_url": null
+      },
+      "files": [
+        {
+          "file_id": "rq-202506-01",
+          "path": "rq-202506/2、任丘市建设投资集团有限公司2025年面向专业投资者非公开发行公司债券（第一期）募集说明书(1).docx",
+          "original_filename": "2、任丘市建设投资集团有限公司2025年面向专业投资者非公开发行公司债券（第一期）募集说明书(1).docx",
+          "upload_role": "historical",
+          "material_type": "历史募集书",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 925141,
+          "sha256": "d19e8dca15ed3bc6c1288523263a951eb682ee488363f027d37c951957f2a182",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[4]",
+              "quote": "2025年面向专业投资者非公开发行公司债券（第一期）"
+            },
+            {
+              "locator": "word/document.xml//w:p[65]",
+              "quote": "6、本期债券的挂牌转让场所为上海证券交易所，仅对专业投资者发行，投资者人数不超过200人。目前无法保证本期债券一定能够按照预期在上海证券交易所挂牌转让，亦不能保证本期债券会在债券二级市场有活跃的交易表现。本期债券将在特定专业投资者之间进行流通转让，可能会出现在二级市场交易不活跃甚至无法持续成交的情况，投资者可能会面临债券流动性风险。"
+            },
+            {
+              "locator": "word/document.xml//w:p[249]",
+              "quote": "2022年/度、2023年/度和2024年1-9月/末"
+            }
+          ],
+          "reporting_periods": [
+            "2022",
+            "2023",
+            "2024-01/2024-09"
+          ],
+          "latest_cutoff": "2024-09-30"
+        },
+        {
+          "file_id": "rq-202506-02",
+          "path": "rq-202506/任丘建投2025年6月财务报表.xlsx",
+          "original_filename": "任丘建投2025年6月财务报表.xlsx",
+          "upload_role": "interimFinancial",
+          "material_type": "中期财务报表",
+          "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "bytes": 32065,
+          "sha256": "1f60036f096b428768e7990e8693a671351ccd97a37b7d09744e54ff20fdc8b0",
+          "evidence": [
+            {
+              "locator": "合并资产负债表!C2",
+              "quote": "2025年6月30日"
+            },
+            {
+              "locator": "合并利润表!C2",
+              "quote": "2025年1-6月"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2025-06-30",
+            "description": "2025 年 1–6 月；比较期/年初数需逐表识别",
+            "status": "observed_header"
+          },
+          "worksheets": [
+            {
+              "name": "合并资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "合并利润表",
+              "state": "visible"
+            },
+            {
+              "name": "合并现金流量表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司利润表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司现金流量表",
+              "state": "visible"
+            }
+          ]
+        },
+        {
+          "file_id": "rq-202506-03",
+          "path": "rq-202506/任丘建投2024年财务报表.xlsx",
+          "original_filename": "任丘建投2024年财务报表.xlsx",
+          "upload_role": "financial",
+          "material_type": "年度财务报表",
+          "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "bytes": 31916,
+          "sha256": "46063499573c6d5d811a901d43d4526f4cc7ef596b63808a2222803faa49083f",
+          "evidence": [
+            {
+              "locator": "合并资产负债表!C2",
+              "quote": "2024年12月31日"
+            },
+            {
+              "locator": "合并利润表!C2",
+              "quote": "2024年度"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2024-12-31",
+            "description": "2024 年度；含上期比较数据",
+            "status": "observed_header"
+          },
+          "worksheets": [
+            {
+              "name": "合并资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "合并利润表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司利润表",
+              "state": "visible"
+            },
+            {
+              "name": "合并现金流量表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司现金流量表",
+              "state": "visible"
+            }
+          ]
+        },
+        {
+          "file_id": "rq-202506-04",
+          "path": "rq-202506/00-附注-建投-20250630合并-8.23.docx",
+          "original_filename": "00-附注-建投-20250630合并-8.23.docx",
+          "upload_role": "notes",
+          "material_type": "财务报表附注",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 230819,
+          "sha256": "5baa1bc46d4da09db9ff7a8778d0497cd44252b6ade3ebc953f73318de6f7ca9",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[13]",
+              "quote": "截止2025年3月31日，本公司将任丘市安居资产运营有限公司、任丘市城市运营有限公司、任丘市市政工程公司、任丘市洁杰环保有限公司、任丘市美丽乡村建设有限公司、任丘建投融资担保有限公司、任丘建投睿盛置业发展有限公司、任丘市村村通水利工程有限公司、任丘市经发产业投资集团有限公司、任丘建投污水处理有限公司、任丘建投城市综合开发有限公司、任丘建投基础设施建设有限公司、任丘建投科技发展有限公司等13家子公司纳入合并范围。"
+            },
+            {
+              "locator": "word/document.xml//w:p[15]",
+              "quote": "本公司财务报告于2025年4月20日经总经理办公会批准报出。"
+            },
+            {
+              "locator": "word/document.xml//w:p[530]",
+              "quote": "以下除另有指明者外，资产负债表项目“年初”指2025年1月1日数据，“期末”指2025年6月31日数据，利润表以及现金流量表项目“上期”指2024年1-6月，“本期”指2025年1-6月，金额单位为人民币元。"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2025-06-30",
+            "description": "用户指定为 2025 年半年度，但正文日期冲突且有无效日期",
+            "status": "needs_confirmation"
+          }
+        },
+        {
+          "file_id": "rq-202506-05",
+          "path": "rq-202506/3-附注-建投-20241231合并-OK-4.23.docx",
+          "original_filename": "3-附注-建投-20241231合并-OK-4.23.docx",
+          "upload_role": "notes",
+          "material_type": "财务报表附注",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 286222,
+          "sha256": "0ac1096f9429e5393959cafd7ad10d36e6145ce519418b58eceacbdb93c1008f",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[2]",
+              "quote": "截止2024年12月31日"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2024-12-31",
+            "description": "2024 年度",
+            "status": "observed_heading"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "rq-202509",
+      "issuer": "任丘市建设投资集团有限公司",
+      "title": "任丘建投：更新至 2025 年 9 月",
+      "source_reporting_periods": [
+        "2023",
+        "2024",
+        "2025-01/2025-06"
+      ],
+      "source_latest_cutoff": "2025-06-30",
+      "requested_target_cutoff": "2025-09-30",
+      "focus": "同一发行人由半年度更新至前三季度；区分本期、上年同期、年初/上年末余额，测试含隐藏辅助页的 Excel 和 PDF 转 DOCX 附注。",
+      "known_issues": [
+        "报表共 15 个工作表，其中 7 个隐藏辅助页含旧年度信息；应基于主表表头识别当前期间，不取工作簿中最早出现的年份。",
+        "附注由 PDF 转为 DOCX，文件名说明已移除前面的财务报表；财务主表应与本组 XLSX 配合使用，原 PDF 不在本批授权清单中。"
+      ],
+      "scenario": "historical_prospectus_update",
+      "market": "sse",
+      "offering": "private",
+      "bond_type_label": "上交所面向专业投资者非公开发行公司债券（普通私募公司债）",
+      "classification_status": "intake_metadata_checked_not_industry_accepted",
+      "industry_acceptance": {
+        "status": "pending",
+        "reviewer": null,
+        "record_url": null
+      },
+      "files": [
+        {
+          "file_id": "rq-202509-01",
+          "path": "rq-202509/2、任丘市建设投资集团有限公司2025年面向专业投资者非公开发行公司债券（第二期）募集说明书 (3).docx",
+          "original_filename": "2、任丘市建设投资集团有限公司2025年面向专业投资者非公开发行公司债券（第二期）募集说明书 (3).docx",
+          "upload_role": "historical",
+          "material_type": "历史募集书",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 926528,
+          "sha256": "51f77e36dcdc8b565f9a7b58ebf87cb6be4839a3444b8602df833e3fd61ef678",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[4]",
+              "quote": "2025年面向专业投资者非公开发行公司债券（第二期）"
+            },
+            {
+              "locator": "word/document.xml//w:p[65]",
+              "quote": "6、本期债券的挂牌转让场所为上海证券交易所，仅对专业投资者发行，投资者人数不超过200人。目前无法保证本期债券一定能够按照预期在上海证券交易所挂牌转让，亦不能保证本期债券会在债券二级市场有活跃的交易表现。本期债券将在特定专业投资者之间进行流通转让，可能会出现在二级市场交易不活跃甚至无法持续成交的情况，投资者可能会面临债券流动性风险。"
+            },
+            {
+              "locator": "word/document.xml//w:p[46]",
+              "quote": "4、报告期内，随着业务规模的不断扩大，发行人经营性现金流量净额有所波动。2023年度、2024年度和2025年1-6月，公司经营活动产生的现金流量净额分别为23,718.78万元、34,838.75万元和-64,136.41万元。发行人主营业务包括工程项目施工业务、污水处理业务、供水业务、化工产品销售、房地产销售业务等。未来公司的经营性现金流净流量可能受到来自工程施工项目周期、资金投入、竣工结算、工程项目施工业务等业务回款情况、市场需求及经济周期等多种因素的影响，进而出现经营性现金流量净额持续波动的风险。"
+            }
+          ],
+          "reporting_periods": [
+            "2023",
+            "2024",
+            "2025-01/2025-06"
+          ],
+          "latest_cutoff": "2025-06-30"
+        },
+        {
+          "file_id": "rq-202509-02",
+          "path": "rq-202509/0-报表-建投20250930-1.14.xlsx",
+          "original_filename": "0-报表-建投20250930-1.14.xlsx",
+          "upload_role": "interimFinancial",
+          "material_type": "中期财务报表",
+          "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "bytes": 424900,
+          "sha256": "c11db9a211c7e8c21efc5aab6a8e503b3817aa78f3d184cfe5d077b0a32826c2",
+          "evidence": [
+            {
+              "locator": "01合并资产负债表!B3",
+              "quote": " 2025年9月30日"
+            },
+            {
+              "locator": "02合并利润表!B3",
+              "quote": "2025年1-9月"
+            },
+            {
+              "locator": "02合并利润表!E4",
+              "quote": "2024年1-9月"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2025-09-30",
+            "description": "2025 年 1–9 月；利润/现金流量表含 2024 年 1–9 月比较数据",
+            "status": "observed_header"
+          },
+          "worksheets": [
+            {
+              "name": "Sheet2",
+              "state": "hidden"
+            },
+            {
+              "name": "Sheet1",
+              "state": "hidden"
+            },
+            {
+              "name": "Sheet4",
+              "state": "hidden"
+            },
+            {
+              "name": "Sheet6",
+              "state": "hidden"
+            },
+            {
+              "name": "Sheet7",
+              "state": "hidden"
+            },
+            {
+              "name": "01合并资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "01母公司资产负债",
+              "state": "visible"
+            },
+            {
+              "name": "02合并利润表",
+              "state": "visible"
+            },
+            {
+              "name": "02母公司利润表",
+              "state": "visible"
+            },
+            {
+              "name": "03合并现金流量表",
+              "state": "visible"
+            },
+            {
+              "name": "03母公司现金流量表",
+              "state": "visible"
+            },
+            {
+              "name": "04合并所有者权益变动表",
+              "state": "visible"
+            },
+            {
+              "name": "Sheet3",
+              "state": "hidden"
+            },
+            {
+              "name": "Sheet5",
+              "state": "hidden"
+            },
+            {
+              "name": "04母公司所有者权益变动表",
+              "state": "visible"
+            }
+          ]
+        },
+        {
+          "file_id": "rq-202509-03",
+          "path": "rq-202509/5-2-3、任丘市建设投资集团有限公司2025年三季度财务报告及附注(移除了前面的财务报表)(pdf转docx).docx",
+          "original_filename": "5-2-3、任丘市建设投资集团有限公司2025年三季度财务报告及附注(移除了前面的财务报表)(pdf转docx).docx",
+          "upload_role": "notes",
+          "material_type": "财务报表附注",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 97341,
+          "sha256": "e592002029cebe4fb3ffbe23a7a5b7750b291fe558aa2085c339312196371c40",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[1]",
+              "quote": "任丘市建设投资集团有限公司2025年1-9月财务报表附注"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2025-09-30",
+            "description": "2025 年 1–9 月",
+            "status": "observed_heading"
+          },
+          "provenance_note": "用户提供的 PDF 转 DOCX 附注，文件名明确移除了前面的财务报表；不重新转换、不改写。"
+        }
+      ]
+    },
+    {
+      "case_id": "qx-202606",
+      "issuer": "杞县豫资城乡发展建设有限公司",
+      "title": "杞县豫资：跨多年更新至 2026 年 6 月",
+      "source_reporting_periods": [
+        "2021",
+        "2022",
+        "2023-01/2023-06"
+      ],
+      "source_latest_cutoff": "2023-06-30",
+      "requested_target_cutoff": "2026-06-30",
+      "focus": "跨多年更新、扫描与文本混合 PDF、审计报告年份与会计年度区分；来源锚点、OCR 不确定数字及多年度比较数据的处理。",
+      "known_issues": [
+        "2024 年度审计报告 74 页、2025 年度审计报告 70 页，均有无可提取文本的页面；纯文本提取成功不能代表扫描财务表已识别。",
+        "两份审计意见对应会计年度分别为 2024、2025 年；报告编号中的 2025/2026 年不是被审计会计年度。",
+        "本批指定的 2026 年半年度 PDF 为 10 页财务报表，未另提供该期附注；先记录材料缺口，不将同目录其他未指定文件自动补入。"
+      ],
+      "scenario": "historical_prospectus_update",
+      "market": "sse",
+      "offering": "private",
+      "bond_type_label": "上交所面向专业投资者非公开发行公司债券（普通私募公司债）",
+      "classification_status": "intake_metadata_checked_not_industry_accepted",
+      "industry_acceptance": {
+        "status": "pending",
+        "reviewer": null,
+        "record_url": null
+      },
+      "files": [
+        {
+          "file_id": "qx-202606-01",
+          "path": "qx-202606/202306末-杞县豫资城乡发展建设有限公司2023年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "original_filename": "202306末-杞县豫资城乡发展建设有限公司2023年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "upload_role": "historical",
+          "material_type": "历史募集书",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 6775574,
+          "sha256": "667bfa4e3872d69ae8364b6ebd1753f3f2bb65a9d362e9a49daaab8c7234ab14",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[3]",
+              "quote": "2023年面向专业投资者非公开发行公司债券"
+            },
+            {
+              "locator": "word/document.xml//w:p[297]",
+              "quote": "本期债券面向专业投资者非公开发行，发行结束后，发行人将积极申请本期债券在上海证券交易所挂牌转让。本期债券交易活跃程度受到宏观经济环境、投资者分布和投资者交易意愿等因素的影响，发行人无法保证本期债券持有人能够随时并足额交易其所持有的债券，由此可能产生由于无法及时完成交易带来的流动性风险。"
+            },
+            {
+              "locator": "word/document.xml//w:p[227]",
+              "quote": "2021年、2022年和2023年1-6月"
+            }
+          ],
+          "reporting_periods": [
+            "2021",
+            "2022",
+            "2023-01/2023-06"
+          ],
+          "latest_cutoff": "2023-06-30"
+        },
+        {
+          "file_id": "qx-202606-02",
+          "path": "qx-202606/5-2-1 杞县豫资城乡发展建设有限公司2024年审计报告.pdf",
+          "original_filename": "5-2-1 杞县豫资城乡发展建设有限公司2024年审计报告.pdf",
+          "upload_role": "audit",
+          "material_type": "审计报告（含报表及附注）",
+          "media_type": "application/pdf",
+          "bytes": 6960431,
+          "sha256": "f6ab6dae2d70f09390915ea9d3eeb7a755df51d3307f1eb204ae1243ed971844",
+          "evidence": [
+            {
+              "locator": "PDF physical page 3 / 审计意见",
+              "quote": "2024年12月31日的合并及公司资产负债表、2024年度合并及公司财务报表",
+              "method": "rendered_page_visual_check"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2024-12-31",
+            "description": "2024 年度；报告编号年为 2025",
+            "status": "observed_audit_opinion"
+          },
+          "page_count": 74,
+          "encrypted": false,
+          "pages_without_extracted_text": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "extraction_note": "pypdf 文本预检；无文本页需走 OCR/原页检查，这不代表 OCR 或表格准确率已验收。"
+        },
+        {
+          "file_id": "qx-202606-03",
+          "path": "qx-202606/5-2-2 杞县豫资城乡发展建设有限公司2025年审计报告.pdf",
+          "original_filename": "5-2-2 杞县豫资城乡发展建设有限公司2025年审计报告.pdf",
+          "upload_role": "audit",
+          "material_type": "审计报告（含报表及附注）",
+          "media_type": "application/pdf",
+          "bytes": 7227129,
+          "sha256": "82a95dcd65ad1d1595fb2f340fa1912f540fbaa6ddec41e28c56ae971002a891",
+          "evidence": [
+            {
+              "locator": "PDF physical page 3 / 审计意见",
+              "quote": "2025年12月31日的合并及公司资产负债表、2025年度合并及公司财务报表",
+              "method": "pdf_text_extraction"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2025-12-31",
+            "description": "2025 年度；报告编号年为 2026",
+            "status": "observed_audit_opinion"
+          },
+          "page_count": 70,
+          "encrypted": false,
+          "pages_without_extracted_text": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            66,
+            67,
+            69,
+            70
+          ],
+          "extraction_note": "pypdf 文本预检；无文本页需走 OCR/原页检查，这不代表 OCR 或表格准确率已验收。"
+        },
+        {
+          "file_id": "qx-202606-04",
+          "path": "qx-202606/5-2-3 杞县豫资城乡发展建设有限公司2026年6月财务报表.pdf",
+          "original_filename": "5-2-3 杞县豫资城乡发展建设有限公司2026年6月财务报表.pdf",
+          "upload_role": "interimFinancial",
+          "material_type": "中期财务报表",
+          "media_type": "application/pdf",
+          "bytes": 348036,
+          "sha256": "6fc2b04841cbcf53b42b9c35f4f6fa970c69b130e7bcb0e160372b4de760ea37",
+          "evidence": [
+            {
+              "locator": "PDF physical page 1",
+              "quote": "2026年6月30日"
+            },
+            {
+              "locator": "PDF physical page 3",
+              "quote": "2026年1-6月"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2026-06-30",
+            "description": "2026 年 1–6 月；比较期间仍需逐表识别",
+            "status": "observed_header"
+          },
+          "page_count": 10,
+          "encrypted": false,
+          "pages_without_extracted_text": [],
+          "extraction_note": "pypdf 文本预检；无文本页需走 OCR/原页检查，这不代表 OCR 或表格准确率已验收。"
+        }
+      ]
+    },
+    {
+      "case_id": "zq-202312",
+      "issuer": "济南章丘控股集团有限公司",
+      "title": "章丘控股：更新至 2023 年末",
+      "source_reporting_periods": [
+        "2021",
+        "2022",
+        "2023-01/2023-09"
+      ],
+      "source_latest_cutoff": "2023-09-30",
+      "requested_target_cutoff": "2023-12-31",
+      "focus": "前三季度更新至年度；新报表及附注实际覆盖 2021–2023 年，测试比较期重述/差异识别，不把旧年度比较数据简单当成新增年度重复计数。",
+      "known_issues": [
+        "XLSX 主表标明来源为原 PDF 页码；这是用户提供的整理版，原 PDF 未包含在本批指定文件中，不能宣称已核对原审计 PDF。",
+        "历史稿释义中“报告期”与“报告期末”的年度/时点表述有交叉，应结合财务章节和表头核对；本目录只登记初步期间，不充当专业金标准。",
+        "未单独提供审计意见页。财务报表与附注不等于完整审计报告。"
+      ],
+      "scenario": "historical_prospectus_update",
+      "market": "sse",
+      "offering": "private",
+      "bond_type_label": "上交所面向专业投资者非公开发行公司债券（普通私募公司债）",
+      "classification_status": "intake_metadata_checked_not_industry_accepted",
+      "industry_acceptance": {
+        "status": "pending",
+        "reviewer": null,
+        "record_url": null
+      },
+      "files": [
+        {
+          "file_id": "zq-202312-01",
+          "path": "zq-202312/202309末-济南章丘控股集团有限公司2024年面向专业投资者非公开发行公司债券（第一期）募集说明书.docx",
+          "original_filename": "202309末-济南章丘控股集团有限公司2024年面向专业投资者非公开发行公司债券（第一期）募集说明书.docx",
+          "upload_role": "historical",
+          "material_type": "历史募集书",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 623540,
+          "sha256": "8b7dab59cc9d0cc86da5fa06af2fcc9d9dfc84012cbb6460e5e92a650c73a0be",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[6]",
+              "quote": "2024年面向专业投资者非公开发行公司债券"
+            },
+            {
+              "locator": "word/document.xml//w:p[368]",
+              "quote": "26、拟挂牌转让场所：上海证券交易所。"
+            },
+            {
+              "locator": "word/document.xml//w:p[216]",
+              "quote": "2021年度、2022年度和2023年9月末"
+            }
+          ],
+          "reporting_periods": [
+            "2021",
+            "2022",
+            "2023-01/2023-09"
+          ],
+          "latest_cutoff": "2023-09-30"
+        },
+        {
+          "file_id": "zq-202312-02",
+          "path": "zq-202312/2.5 发行人2023年末财务报表.xlsx",
+          "original_filename": "2.5 发行人2023年末财务报表.xlsx",
+          "upload_role": "financial",
+          "material_type": "年度财务报表",
+          "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "bytes": 48915,
+          "sha256": "1904db38788dacc07603234ac83be81548493321abc45905601422a6a9b30a2f",
+          "evidence": [
+            {
+              "locator": "合并资产负债表!C2",
+              "quote": "期间：2023年12月31日、2022年12月31日、2021年12月31日"
+            },
+            {
+              "locator": "合并利润表!C2",
+              "quote": "期间：2023年度、2022年度、2021年度"
+            },
+            {
+              "locator": "合并资产负债表!D2",
+              "quote": "来源：原 PDF 第 5–6 页"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2023-12-31",
+            "description": "2021、2022、2023 年；权益变动表提示未列示 2021 年该表",
+            "status": "observed_header"
+          },
+          "worksheets": [
+            {
+              "name": "合并资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "合并利润表",
+              "state": "visible"
+            },
+            {
+              "name": "合并现金流量表",
+              "state": "visible"
+            },
+            {
+              "name": "合并所有者权益变动表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司资产负债表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司利润表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司现金流量表",
+              "state": "visible"
+            },
+            {
+              "name": "母公司所有者权益变动表",
+              "state": "visible"
+            }
+          ],
+          "provenance_note": "工作表自述源于原 PDF 第 5–16 页，本批未包含该原 PDF。"
+        },
+        {
+          "file_id": "zq-202312-03",
+          "path": "zq-202312/2.5 发行人2023年末财务报表附注.docx",
+          "original_filename": "2.5 发行人2023年末财务报表附注.docx",
+          "upload_role": "notes",
+          "material_type": "财务报表附注",
+          "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "bytes": 1308052,
+          "sha256": "91622b7d9b7b032aacdc9f517c673a68106d8483f87b717fa5a3c6d9c4bc3d4f",
+          "evidence": [
+            {
+              "locator": "word/document.xml//w:p[2]",
+              "quote": "济南章丘控股集团有限公司2021-2023 年度财务报表附注"
+            }
+          ],
+          "period": {
+            "supplied_cutoff": "2023-12-31",
+            "description": "2021–2023 年度附注",
+            "status": "observed_heading"
+          }
+        }
+      ]
+    }
+  ]
+}

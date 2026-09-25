@@ -36,9 +36,17 @@
       "types": "./dist/evidence-gate.d.ts",
       "default": "./dist/evidence-gate.js"
     },
+    "./trial-guard": {
+      "types": "./dist/trial-guard.d.ts",
+      "default": "./dist/trial-guard.js"
+    },
     "./material-jobs": {
       "types": "./dist/material-jobs.d.ts",
       "default": "./dist/material-jobs.js"
+    },
+    "./library": {
+      "types": "./dist/library.d.ts",
+      "default": "./dist/library.js"
     }
   },
   "scripts": {
@@ -47,6 +55,7 @@
     "test": "node --test --test-concurrency=1 dist/*.test.js",
     "storage:lifecycle": "node dist/storage-lifecycle.js",
     "log:ops": "node dist/log-ops.js",
+    "trial:health": "node dist/trial-guard.js health",
     "deletion:lifecycle": "node dist/deletion-lifecycle.js"
   },
   "dependencies": {

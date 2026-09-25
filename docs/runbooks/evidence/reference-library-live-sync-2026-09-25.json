@@ -1,0 +1,114 @@
+{
+  "note": "Redacted live sync summary, SSE bond project platform (query.sse.com.cn ZQ_XMLB/ZQ_GGJG, static.sse.com.cn/bond), worker.westus2, 2026-09-25. Counts and codes only; no document bytes or text. Source registered evaluation_only (SSE legal notice: non-commercial use only without written permission), so nothing is selectable by tasks. max_projects=3.",
+  "runs": [
+    {
+      "run": 1,
+      "kind": "initial",
+      "state": "partial",
+      "started_at": "2026-09-25T08:20:38.414Z",
+      "finished_at": "2026-09-25T08:25:12.477Z",
+      "outcomes": {
+        "failed": 2,
+        "new_document": 3,
+        "new_version": 3
+      },
+      "item_fetch_retries": 6,
+      "item_errors": [
+        "LIBRARY_FETCH_FAILED:network",
+        "LIBRARY_PARSE_FAILED:None"
+      ],
+      "counts_after": {
+        "new_24h": 6,
+        "pending": 2,
+        "failed": 1,
+        "stale_sources": 1,
+        "published": 0,
+        "open_reviews": 2
+      },
+      "source_after": {
+        "source_id": "sse_bond_project_platform",
+        "usage_rights": "evaluation_only",
+        "last_success_at": null,
+        "last_error_code": "LIBRARY_FETCH_FAILED",
+        "stale": true
+      },
+      "alerts_after": [
+        "source_sync_failed",
+        "source_stale",
+        "items_failed"
+      ]
+    },
+    {
+      "run": 2,
+      "kind": "incremental",
+      "state": "partial",
+      "started_at": "2026-09-25T08:25:32.709Z",
+      "finished_at": "2026-09-25T08:29:43.550Z",
+      "outcomes": {
+        "failed": 2,
+        "new_version": 2,
+        "unchanged": 4
+      },
+      "item_fetch_retries": 5,
+      "item_errors": [
+        "LIBRARY_FETCH_FAILED:network"
+      ],
+      "counts_after": {
+        "new_24h": 8,
+        "pending": 2,
+        "failed": 1,
+        "stale_sources": 1,
+        "published": 0,
+        "open_reviews": 2
+      },
+      "source_after": {
+        "source_id": "sse_bond_project_platform",
+        "usage_rights": "evaluation_only",
+        "last_success_at": null,
+        "last_error_code": "LIBRARY_FETCH_FAILED",
+        "stale": true
+      },
+      "alerts_after": [
+        "source_sync_failed",
+        "source_stale",
+        "items_failed"
+      ]
+    },
+    {
+      "run": 3,
+      "kind": "incremental",
+      "state": "succeeded",
+      "started_at": "2026-09-25T08:30:03.771Z",
+      "finished_at": "2026-09-25T08:30:57.815Z",
+      "outcomes": {
+        "unchanged": 8
+      },
+      "item_fetch_retries": 0,
+      "item_errors": [],
+      "counts_after": {
+        "new_24h": 8,
+        "pending": 2,
+        "failed": 1,
+        "stale_sources": 0,
+        "published": 0,
+        "open_reviews": 2
+      },
+      "source_after": {
+        "source_id": "sse_bond_project_platform",
+        "usage_rights": "evaluation_only",
+        "last_success_at": "2026-09-25T08:30:57.815Z",
+        "last_error_code": null,
+        "stale": false
+      },
+      "alerts_after": [
+        "items_failed"
+      ]
+    }
+  ],
+  "observations": [
+    "Run 1/2 fetch failures were transport errors ('network') after 3 tries each; carried via cursor retry_items and succeeded in the next run.",
+    "LIBRARY_PARSE_FAILED: the existing parser bridge rejects any parser stderr; real SSE PDFs make pypdf log 'Ignoring wrong pointing object'. Versions stay failed with an items_failed alert (operator rerun path).",
+    "Default classifier leaves top-3 business profile incomplete; nothing was approved or published from live data.",
+    "An earlier attempt on this host exposed a failed->superseded transition bug, fixed in 0023 and covered by a regression test."
+  ]
+}
