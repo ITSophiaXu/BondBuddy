@@ -97,6 +97,51 @@ test('#79 scrubber removes secrets, captcha codes and cookies', () => {
   assert.ok(out.includes('PLAINTEXT_MARKER_79'), 'ordinary prompt text survives');
 });
 
+test('#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text', () => {
+  const cases = [
+    '{"Cookie":"SYN_COOKIE_A","nested":[{"otp":"654321","Authorization":"Bearer SYN_AUTH_A","token":"SYN_TOKEN_A","password":"SYN_PASSWORD_A","apiKey":"SYN_APIKEY_A","access_token":"SYN_ACCESS_A"}],"ordinary":"SYN_BUSINESS_A","token_budget":"SYN_BUDGET_A"}',
+    '前文 SYN_BUSINESS_B\r\nbody={"cOoKiE":"SYN_COOKIE_B","OTP":"123456","验证码":"876543","验证码提示":"SYN_UNICODE_OK"}; tail SYN_TAIL_B\r\n',
+    'prefix | {\\"Cookie\\":\\"SYN_COOKIE_C\\",\\"otp\\":\\"234567\\"} | suffix',
+    '{"nested_json":"{\\"Cookie\\":\\"SYN_COOKIE_D\\",\\"otp\\":\\"345678\\"}","plain":"SYN_BUSINESS_D"}'
+  ];
+  for (const [index, input] of cases.entries()) {
+    const output = scrubSecrets(input);
+    for (const secret of ['SYN_COOKIE_A', '654321', 'SYN_AUTH_A', 'SYN_TOKEN_A', 'SYN_PASSWORD_A', 'SYN_APIKEY_A', 'SYN_ACCESS_A',
+      'SYN_COOKIE_B', '123456', '876543', 'SYN_COOKIE_C', '234567', 'SYN_COOKIE_D', '345678']) {
+      assert.ok(!output.includes(secret), `case ${index}: ${secret}`);
+    }
+    if (index === 0) assert.ok(output.includes('SYN_BUSINESS_A') && output.includes('SYN_BUDGET_A'));
+    if (index === 1) {
+      assert.ok(output.includes('SYN_BUSINESS_B\r\n'));
+      assert.ok(output.includes('SYN_UNICODE_OK'));
+      assert.ok(output.includes('SYN_TAIL_B\r\n'));
+    }
+    if (index === 2) assert.ok(output.includes('prefix | ') && output.includes(' | suffix'));
+    if (index === 3) assert.ok(output.includes('SYN_BUSINESS_D'));
+  }
+});
+
+test('#79 structured secrets are absent from the private diagnostic Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic structured scrub');
+    const body = 'business SYN_VISIBLE\r\n' + JSON.stringify({
+      Cookie: 'SYN_COOKIE_BLOB', nested: [{ otp: '456789', Authorization: 'SYN_AUTH_BLOB', token: 'SYN_TOKEN_BLOB', password: 'SYN_PASSWORD_BLOB' }],
+      note: 'SYN_BUSINESS_BLOB', 验证码提示: 'SYN_UNICODE_BLOB'
+    }) + '\r\nmore={\\"Cookie\\":\\"SYN_ESCAPED_BLOB\\",\\"otp\\":\\"567890\\"}';
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body });
+    const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
+    const stored = (await blobs.get(row.object_key)).toString('utf8');
+    for (const secret of ['SYN_COOKIE_BLOB', '456789', 'SYN_AUTH_BLOB', 'SYN_TOKEN_BLOB', 'SYN_PASSWORD_BLOB', 'SYN_ESCAPED_BLOB', '567890'])
+      assert.ok(!stored.includes(secret), `Blob contains ${secret}`);
+    for (const ordinary of ['SYN_VISIBLE\r\n', 'SYN_BUSINESS_BLOB', 'SYN_UNICODE_BLOB']) assert.ok(stored.includes(ordinary));
+    assert.equal(row.content_sha256, digest(stored));
+    assert.equal(row.redaction_version, 'scrub_v1');
+  } finally { await f.app.close(); await pool.end(); }
+});
+
 test('#79 NDJSON sink cannot be split by log injection', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bb79-'));
   try {

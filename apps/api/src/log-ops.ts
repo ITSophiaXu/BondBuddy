@@ -18,6 +18,9 @@ const int = (value: unknown) => value === null || value === undefined ? null : N
 // ---------------------------------------------------------------- scrubbing
 
 export const SCRUB_VERSION = 'scrub_v1';
+const sensitiveField = /^(?:setcookie|cookie|authorization|proxyauthorization|apikey|accesskey|clientsecret|secret|(?:access|refresh|bearer|id|session|auth)?token|password(?:confirmation)?|passwd|pwd|otp(?:code)?|captcha|verificationcode|验证码|校验码|动态码|短信码)$/iu;
+const redacted = '[REDACTED]';
+const isSensitiveField = (key: string) => sensitiveField.test(key.replace(/[_ -]/g, ''));
 const scrubRules: Array<[RegExp, string]> = [
   [/\b(set-cookie|cookie)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
   [/\b(authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
@@ -27,9 +30,57 @@ const scrubRules: Array<[RegExp, string]> = [
   [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
   [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
-/** Removes credentials, captcha/OTP codes and cookies before a prompt body is stored anywhere. */
+function scrubStructured(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(scrubStructured);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) =>
+    [key, isSensitiveField(key) ? redacted : scrubStructured(item)]));
+  return typeof value === 'string' ? scrubSecrets(value) : value;
+}
+
+/** Find a JSON object in otherwise ordinary text without consuming adjacent prose or CR/LF. */
+function objectEnd(text: string, start: number, escapedQuotes: boolean): number {
+  let depth = 0, quoted = false, escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (escapedQuotes && char === '\\' && text[i + 1] === '"') { quoted = !quoted; i++; continue; }
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+function scrubJsonObjects(text: string): string {
+  let result = '', cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf('{', cursor);
+    if (start < 0) return result + text.slice(cursor);
+    const end = objectEnd(text, start, /^\{\s*\\"/.test(text.slice(start, start + 32)));
+    if (end < 0) return result + text.slice(cursor);
+    const raw = text.slice(start, end);
+    let parsed: unknown;
+    let escapedQuotes = false;
+    try { parsed = JSON.parse(raw); }
+    catch {
+      // A JSON object copied inside another text/JSON string often escapes every quote.
+      // Only decode this exact quoting layer; malformed fragments fall through unchanged.
+      try { parsed = JSON.parse(raw.replace(/\\"/g, '"')); escapedQuotes = true; }
+      catch { result += text.slice(cursor, start + 1); cursor = start + 1; continue; }
+    }
+    const cleaned = JSON.stringify(scrubStructured(parsed));
+    result += text.slice(cursor, start) + (escapedQuotes ? cleaned.replace(/"/g, '\\"') : cleaned);
+    cursor = end;
+  }
+  return result;
+}
+
+/** Removes known credentials and codes from structured JSON and diagnostic prose. */
 export function scrubSecrets(text: string) {
-  let value = text;
+  let value = scrubJsonObjects(text);
   for (const [pattern, replacement] of scrubRules) value = value.replace(pattern, replacement);
   return value;
 }

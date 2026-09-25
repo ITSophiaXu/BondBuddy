@@ -61,11 +61,13 @@ The writer requires stable local file and lock paths shared by its processes. Do
 
 ## Retention configuration
 
+Before a diagnostic snapshot is written to private Blob, `scrubSecrets` recursively replaces known sensitive fields in JSON objects (including nested arrays), and handles embedded or quote-escaped JSON objects in surrounding text. It also applies the existing prose patterns for cookies, authorization headers, tokens, passwords and short verification codes. Ordinary text outside those objects and CR/LF boundaries remain available for audit. This is bounded recognition, not a guarantee that arbitrary free text or malformed/custom encodings cannot contain an unknown secret; callers must avoid putting unrestricted credentials into diagnostic bodies. Existing `scrub_v1` references remain readable under the same storage contract.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `BB_LOG_CONTENT_RETENTION_DAYS` | 180 (1–3650) | Age after which prompt snapshot and provider-result bytes are purged, for terminal or run-less content |
 | `BB_LOG_RETENTION_POLICY_VERSION` | `log_retention_v1` | Stored on each tombstone |
 
-`node apps/api/dist/log-ops.js retention` (needs `AZURE_STORAGE_CONNECTION_STRING`) purges a batch. Content of closed accounts is reclaimed regardless of age (`user_deleted`). Content bound to a non-terminal run is never purged. The following are kept: operation, attempt, usage, correction, error, event and audit rows, and snapshot metadata with hashes (see `CLOSURE_RETAINED_RECORDS`). The 180-day default is an engineering placeholder; the legal retention period is a product/legal decision. Prompts are never used for public libraries or training.
+`node apps/api/dist/log-ops.js retention` (needs `AZURE_STORAGE_CONNECTION_STRING`) purges a batch. Content of closed accounts is reclaimed regardless of age (`user_deleted`). Content bound to a non-terminal run is never purged. The following are kept: operation, attempt, usage, correction, error, event and audit rows, and snapshot metadata with hashes (see `CLOSURE_RETAINED_RECORDS`). The 180-day M1 default matches the published trial data notice and current API/Compose configuration (see #6 acceptance comment 5831276003). A change requires an updated configuration and user notice. Remote archives containing mixed users' NDJSON records have no automatic deletion policy yet; do not apply this prompt-body window to them. Prompts are never used for public libraries or training.
 
 Runbook: [log alerts and recovery](runbooks/log-alert-recovery.md).
