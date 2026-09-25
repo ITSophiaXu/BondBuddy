@@ -21,6 +21,8 @@ export interface ParseCachePool {
 export interface PrivateParseBlobStore {
   getPrivate(objectKey: string): Promise<Uint8Array | null>;
   putPrivate(objectKey: string, bytes: Uint8Array): Promise<void>;
+  /** Optional cleanup for an object this exact save attempt created. */
+  deletePrivate?(objectKey: string): Promise<void>;
 }
 
 export interface ParseCacheDependencies {
@@ -158,6 +160,24 @@ function responseForCurrentMaterial(value: unknown, context: ParseCacheContext):
   return validateDocumentParseResponse(rebound, context.request);
 }
 
+async function deleteAttemptObject(dependencies: ParseCacheDependencies, objectKey: string, checkReference: boolean): Promise<void> {
+  if (!dependencies.blobs.deletePrivate) return;
+  try {
+    if (checkReference) {
+      // A failed INSERT may have committed before its connection failed. Keep
+      // the object if metadata now points to it; if this check is unavailable,
+      // leave a harmless orphan rather than risk deleting a referenced cache.
+      const reference = await dependencies.pool.query(
+        'SELECT 1 FROM bb_parse_cache WHERE object_key = $1 LIMIT 1', [objectKey],
+      );
+      if (reference.rows.length !== 0) return;
+    }
+    await dependencies.blobs.deletePrivate(objectKey);
+  } catch {
+    // Cache cleanup is best effort and must not mask a parse or database error.
+  }
+}
+
 /** Looks up only within the current owner and verifies private object integrity before reuse. */
 export async function lookupParseCache(
   dependencies: ParseCacheDependencies,
@@ -190,7 +210,7 @@ export async function lookupParseCache(
   return rebound;
 }
 
-/** Stores sanitized complete parses. A concurrent winner can leave this attempt's private blob orphaned. */
+/** Stores sanitized complete parses and best-effort removes this attempt's unreferenced Blob on conflict/error. */
 export async function saveParseCache(
   dependencies: ParseCacheDependencies,
   context: ParseCacheContext,
@@ -208,17 +228,29 @@ export async function saveParseCache(
   // storage keys do not expose account identifiers to operational tooling.
   const ownerNamespace = createHash('sha256').update(context.ownerUserId).digest('hex');
   const objectKey = `parse-cache/${ownerNamespace}/${randomUUID()}`;
-  await dependencies.blobs.putPrivate(objectKey, bytes);
-  const inserted = await dependencies.pool.query(
-    `INSERT INTO bb_parse_cache
-       (owner_user_id, content_sha256, parser_version, ocr_version, basis_version,
-        result_state, object_key, object_sha256, object_bytes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     ON CONFLICT (owner_user_id, content_sha256, parser_version, ocr_version, basis_version) DO NOTHING
-     RETURNING object_key`,
-    [context.ownerUserId, context.request.material.sha256, context.versions.parserVersion,
-      context.versions.ocrVersion, context.versions.basisVersion, validated.status,
-      objectKey, objectSha256, bytes.byteLength],
-  );
+  try {
+    await dependencies.blobs.putPrivate(objectKey, bytes);
+  } catch (error) {
+    await deleteAttemptObject(dependencies, objectKey, false);
+    throw error;
+  }
+  let inserted: { rows: Record<string, unknown>[] };
+  try {
+    inserted = await dependencies.pool.query(
+      `INSERT INTO bb_parse_cache
+         (owner_user_id, content_sha256, parser_version, ocr_version, basis_version,
+          result_state, object_key, object_sha256, object_bytes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (owner_user_id, content_sha256, parser_version, ocr_version, basis_version) DO NOTHING
+       RETURNING object_key`,
+      [context.ownerUserId, context.request.material.sha256, context.versions.parserVersion,
+        context.versions.ocrVersion, context.versions.basisVersion, validated.status,
+        objectKey, objectSha256, bytes.byteLength],
+    );
+  } catch (error) {
+    await deleteAttemptObject(dependencies, objectKey, true);
+    throw error;
+  }
+  if (inserted.rows.length !== 1) await deleteAttemptObject(dependencies, objectKey, false);
   return inserted.rows.length === 1;
 }

@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
+import { DOCUMENT_PARSER_MAX_OUTPUT_BYTES } from './document-parser.js';
 import type { ParseCacheDependencies, ParseCacheVersions } from './parse-cache.js';
 
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -34,8 +35,9 @@ export function createRuntimeParseCache(pool: Pool, blobs: PrivateBlobs, version
     dependencies: {
       pool,
       blobs: {
-        getPrivate: key => blobs.getIfExists(key),
+        getPrivate: key => blobs.getIfExistsBounded(key, DOCUMENT_PARSER_MAX_OUTPUT_BYTES),
         putPrivate: (key, bytes) => blobs.put(key, Buffer.from(bytes), 'application/json; charset=utf-8'),
+        deletePrivate: key => blobs.delete(key),
       },
     },
   };
