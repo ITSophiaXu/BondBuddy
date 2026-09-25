@@ -510,6 +510,15 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       source_content_sha256: 'c'.repeat(64), reviewed_by: industry, reviewed_at: now.toISOString() };
     const scope = { owner_user_id: operator, id: projectId, market: 'sse', offering: 'public_all' };
     const currentLock = { draftRevision: 1, materials: [] };
+    const mustNotLoad = async () => { throw new Error('reviewed loader must not run for a changed source lock'); };
+    assert.deepEqual(await lockProductionRulePack(client, scope, { draftRevision: 2, materials: [] }, identity, ref, mustNotLoad),
+      { status: 'blocked', reasons: ['rule_applicability_source_draft_mismatch'] });
+    assert.deepEqual(await lockProductionRulePack(client, scope,
+      { draftRevision: 1, materials: [{ material_id: 'synthetic-added', material_version: 1, role: 'audit', sha256: 'd'.repeat(64) }] },
+      identity, ref, mustNotLoad),
+    { status: 'blocked', reasons: ['rule_applicability_source_material_mismatch'] });
+    assert.deepEqual(await lockProductionRulePack(client, { ...scope, owner_user_id: admin }, currentLock, identity, ref, mustNotLoad),
+      { status: 'blocked', reasons: ['rule_applicability_source_input_mismatch'] });
     assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref),
       { status: 'blocked', reasons: ['rule_applicability_loader_unavailable'] });
     assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, { ...ref, source_input_hash: '0'.repeat(64) },

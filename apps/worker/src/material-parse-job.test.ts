@@ -120,7 +120,7 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.equal(pendingPreflight.json().status, 'blocked');
     const issuerBlock = (pendingPreflight.json().missing_inputs as string[]).find(input => input.startsWith('issuer_identity_not_bound:'));
     assert.ok(issuerBlock, 'parsing a historical material does not supply a reviewed issuer identity');
-    assert.deepEqual(pendingPreflight.json().missing_inputs, [issuerBlock, `material_parse_pending:${historicalId}:1`, 'execution_capability_not_ready']);
+    assert.deepEqual(pendingPreflight.json().missing_inputs, ['rule_pack:issuer_identity_not_bound', issuerBlock, `material_parse_pending:${historicalId}:1`, 'execution_capability_not_ready']);
 
     // 2. Crash after the parse_evidence checkpoint, lease expiry, then resume without re-parsing.
     await assert.rejects(runMaterialParseOnce(deps({ afterStage: async stage => { if (stage === 'parse_evidence') throw new Error('SYNTHETIC_CRASH'); } })), /SYNTHETIC_CRASH/);
@@ -158,7 +158,7 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox o JOIN bb_observability_events e ON o.aggregate_id=e.id WHERE o.aggregate_type='observability' AND e.job_id=$1", [historicalJob.id])).rows[0].n, successLog.length);
     const readyPreflight = await send('POST', `/api/v1/projects/${projectId}/preflight`, preflightBody, undefined, stagingApp);
     assert.equal(readyPreflight.statusCode, 200, readyPreflight.body);
-    assert.deepEqual(readyPreflight.json().missing_inputs, [issuerBlock], 'parse completion clears material pending, but cannot verify issuer identity');
+    assert.deepEqual(readyPreflight.json().missing_inputs, ['rule_pack:issuer_identity_not_bound', issuerBlock], 'parse completion clears material pending, but cannot verify issuer identity');
     assert.equal(readyPreflight.json().status, 'blocked');
     assert.equal((await operations('preflight', 'submitted')).length, 2);
 
