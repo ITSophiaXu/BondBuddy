@@ -161,7 +161,7 @@ services:
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
-    deploy: {resources: {limits: {cpus: '0.5', memory: 256M}}}
+    deploy: {resources: {limits: {cpus: '0.5', memory: 384M}}}
 
   egress:
     image: bondbuddy-m1-egress:${BB_IMAGE_TAG:?set by deploy.sh}

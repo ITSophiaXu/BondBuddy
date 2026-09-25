@@ -182,6 +182,11 @@ export async function writeArchivedNdjson(path: string, sink: string, records: L
     const oldId = await activeId(path);
     const names = await readdir(dirname(path));
     const prefix = `${basename(path)}.seg.`;
+    // A lost active identity must be reconciled against existing PG/file evidence
+    // by an operator. Never invent a replacement UUID for an initialized sink.
+    if (!oldId && (names.some(name => name.startsWith(prefix)) ||
+      (await pool.query('SELECT 1 FROM bb_log_segments WHERE sink=$1 LIMIT 1', [sink])).rowCount))
+      throw new Error('Missing active segment identity; operator recovery required');
     for (const name of names.filter(n => n.startsWith(`${basename(path)}.active-id.`) && n.endsWith('.tmp'))) {
       const stale = join(dirname(path), name);
       await safeOpen(stale).then(({ file }) => file.close());

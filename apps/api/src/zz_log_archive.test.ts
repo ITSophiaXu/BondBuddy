@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { spawn } from 'node:child_process';
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BlobServiceClient } from '@azure/storage-blob';
@@ -11,8 +11,9 @@ import { ndjsonFileSink, forwardLogs, type LogRecord } from './log-ops.js';
 import { transaction } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
 import { gateState, resetProcessGateForTests } from './evidence-gate.js';
+import { isolatedTestDatabase } from './test-database.js';
 
-const databaseUrl = process.env.BB_TEST_DATABASE_URL;
+const databaseUrl = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const available = !!databaseUrl && !!blobConnection;
 const record = (n: number, sink: string): LogRecord => {
@@ -159,6 +160,17 @@ test('#79 PG16/Azurite archive survives two rotations, delayed replay and crash 
       assert.ok(!(await readdir(dir)).includes('legacy.ndjson.1'));
       assert.deepEqual(await localKeys(file), []);
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_archive_receipts WHERE object_key LIKE $1', [`log-archive/${writer.name}/%`])).rows[0].n, 1);
+    });
+    await t.test('lost active identity requires operator recovery without inventing a UUID', async () => {
+      const file = join(dir, 'lostid.ndjson'), writer = sink(file);
+      const first = record(955, writer.name), next = record(956, writer.name);
+      await writer.deliver([first]);
+      const before = await readFile(file);
+      await unlink(`${file}.active-id`);
+      await assert.rejects(writer.deliver([next]), /operator recovery required/);
+      assert.deepEqual(await readFile(file), before);
+      assert.ok(!(await readdir(dir)).includes('lostid.ndjson.active-id'));
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_segments WHERE sink=$1 AND state='active'", [writer.name])).rows[0].n, 1);
     });
     await t.test('Blob hash mismatch and receipt SQL failure retain local segment', async () => {
       const file = join(dir, 'sqlfail.ndjson'), writer = sink(file), a = record(960, writer.name), b = record(961, writer.name);
