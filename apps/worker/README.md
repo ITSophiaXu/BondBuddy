@@ -148,5 +148,17 @@ synthetic and rolled back. The current worker entry point still has no
 production parse/fact processor, and #14 OCR plus authorized sample validation
 remain outside this slice; it does not establish #15 acceptance.
 
+`rule-pack-release-ledger.ts` is an internal #19 persistence seam with an
+append-only, hash-bound event history for test-channel release, withdrawal and
+rollback. It only calls the domain publication gate with `channel: test`; it
+cannot publish or select a production capability. Reviewer IDs and sample
+classification remain untrusted fixture metadata until a trusted operator and
+professional reviewer identity boundary is connected. Rollback binds to an
+older event for the same pack and rechecks pack/source effective dates at the
+rollback timestamp. Migration `0018_m1_rule_pack_release_ledger.sql` stores
+each snapshot and its outbox event in one transaction. The optional live
+PostgreSQL 16 test uses synthetic bundles and rolls its outer transaction back;
+set `RULE_PACK_LEDGER_TEST_DATABASE_URL` after applying migrations.
+
 Build dependencies first, then run `npm test -w @bondbuddy/worker` from the
 repository root.
