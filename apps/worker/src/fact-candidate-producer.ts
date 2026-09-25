@@ -124,9 +124,11 @@ function factDataVersion(extractor: { id: string; version: string }): string {
 }
 
 function candidateId(context: FactCandidateProductionContext, snapshot: StoredParseSnapshot,
-  extractor: SemanticFactExtractionResult['extractor'], extractionId: string): string {
+  extractor: SemanticFactExtractionResult['extractor'], extractionId: string,
+  issuerIdentity: { recordId: string; version: number; contentHash: string; entityId: string }): string {
   const identity = [context.ownerUserId, context.projectId, snapshot.snapshotId, snapshot.responseSha256,
-    extractor.id, extractor.version, extractionId];
+    context.inputRevision, issuerIdentity.recordId, issuerIdentity.version, issuerIdentity.contentHash,
+    issuerIdentity.entityId, extractor.id, extractor.version, extractionId];
   return `fact-${createHash('sha256').update(JSON.stringify(identity), 'utf8').digest('hex')}`;
 }
 
@@ -371,25 +373,25 @@ export async function produceParsedFactCandidates(
     const byId = new Map(existing.map(item => [item.candidate.candidateId, item]));
     const persistedIds: string[] = [];
     for (const fact of result.facts) {
-    const evidence = fact.evidence_refs.map(ref => toEvidence(snapshot, ref));
-    const uncertainty = [...new Set([
-      ...fact.uncertainty,
-      ...(snapshot.response.status === 'needs_confirmation' ? ['PARSE_SNAPSHOT_NEEDS_CONFIRMATION'] : []),
-      ...evidence.flatMap(anchor => anchor.uncertainty),
-      ...(evidence.some(anchor => anchor.confidence === null) ? ['SOURCE_CONFIDENCE_MISSING'] : []),
-    ])];
-    const candidate: FactCandidate = {
-      candidateId: 'producer-assigned',
-      identity: { accountId: context.ownerUserId, entityId: verifiedIdentity.entityId, ...parseIdentity(fact.identity),
-        dataVersion: factDataVersion(result.extractor) },
-      value: fact.value,
-      source: { kind: fact.source_kind, sourceId: context.materialId, observedAt: snapshot.createdAt },
-      confidence: Math.min(fact.confidence, ...evidence.map(anchor => anchor.confidence ?? 0)),
-      uncertainty: uncertainty.length ? uncertainty.join('; ') : null,
-      auditCheck: null,
-    };
-    const id = candidateId(context, snapshot, result.extractor, fact.extraction_id);
-    const stableCandidate = { ...candidate, candidateId: id };
+      const evidence = fact.evidence_refs.map(ref => toEvidence(snapshot, ref));
+      const uncertainty = [...new Set([
+        ...fact.uncertainty,
+        ...(snapshot.response.status === 'needs_confirmation' ? ['PARSE_SNAPSHOT_NEEDS_CONFIRMATION'] : []),
+        ...evidence.flatMap(anchor => anchor.uncertainty),
+        ...(evidence.some(anchor => anchor.confidence === null) ? ['SOURCE_CONFIDENCE_MISSING'] : []),
+      ])];
+      const candidate: FactCandidate = {
+        candidateId: 'producer-assigned',
+        identity: { accountId: context.ownerUserId, entityId: currentIdentity.entityId, ...parseIdentity(fact.identity),
+          dataVersion: factDataVersion(result.extractor) },
+        value: fact.value,
+        source: { kind: fact.source_kind, sourceId: context.materialId, observedAt: snapshot.createdAt },
+        confidence: Math.min(fact.confidence, ...evidence.map(anchor => anchor.confidence ?? 0)),
+        uncertainty: uncertainty.length ? uncertainty.join('; ') : null,
+        auditCheck: null,
+      };
+      const id = candidateId(context, snapshot, result.extractor, fact.extraction_id, currentIdentity);
+      const stableCandidate = { ...candidate, candidateId: id };
       const existingCandidate = byId.get(id);
       if (existingCandidate) {
         if (!sameCandidate(existingCandidate, stableCandidate)) throw fail('FACT_EXTRACTION_IDEMPOTENCY_CONFLICT');
