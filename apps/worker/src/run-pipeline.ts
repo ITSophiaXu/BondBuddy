@@ -23,7 +23,7 @@ export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
-  | { kind: 'deliver'; bytes: Buffer }
+  | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; wordSummary?: Record<string, unknown> }
   /** The stage already moved the durable job (e.g. provider reconciliation paused it). */
   | { kind: 'stopped' };
 export type RunStage = {
@@ -203,9 +203,38 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, outcome.reason); return 'paused'; }
       if (outcome.kind === 'fail') { await finish(pool, lease, 'failed', { errorCode: outcome.code, failedStage: stage.name }); return 'failed'; }
       if (outcome.kind === 'stopped') return 'stopped';
+      if (Boolean(outcome.cleanBytes) !== Boolean(outcome.baselineBytes) ||
+        (outcome.cleanBytes && !outcome.wordSummary)) {
+        await finish(pool, lease, 'failed', { errorCode: 'VALIDATION_FAILED', failedStage: stage.name });
+        return 'failed';
+      }
+      let cleanArtifactId: string | undefined;
+      let baselineArtifactId: string | undefined;
+      if (outcome.baselineBytes) {
+        const baseline = await promoteWordArtifact(pool, lease, outcome.baselineBytes, blobs);
+        if (baseline.status !== 'available') {
+          await finish(pool, lease, 'failed', { errorCode: baseline.failureCode, failedStage: stage.name });
+          return 'failed';
+        }
+        baselineArtifactId = baseline.artifactId;
+      }
+      if (outcome.cleanBytes) {
+        const clean = await promoteWordArtifact(pool, lease, outcome.cleanBytes, blobs);
+        if (clean.status !== 'available') {
+          await finish(pool, lease, 'failed', { errorCode: clean.failureCode, failedStage: stage.name });
+          return 'failed';
+        }
+        cleanArtifactId = clean.artifactId;
+      }
       const delivered = await promoteWordArtifact(pool, lease, outcome.bytes, blobs);
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
+      if (cleanArtifactId) {
+        const pair = { ...outcome.wordSummary, revision_artifact_id: delivered.artifactId,
+          clean_artifact_id: cleanArtifactId, baseline_artifact_id: baselineArtifactId };
+        await checkpointStage(pool, lease, 'word_delivery_pair', pair);
+        ctx.checkpoint.word_delivery_pair = pair;
+      }
       await finish(pool, lease, 'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
       return 'succeeded';
     }
