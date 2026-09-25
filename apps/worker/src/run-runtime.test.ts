@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
+import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
-import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
+import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
@@ -31,6 +32,7 @@ const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', impo
 const schema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string';
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+const hashText = (value: string) => sha(Buffer.from(value));
 const PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
@@ -47,6 +49,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   const blobs = azureBlobs(blobConnection!, `bb-runtime-${randomUUID()}`);
   let owner = `runtime-owner-${randomUUID()}`;
   const alice = owner, mallory = `runtime-other-${randomUUID()}`, operator = `runtime-operator-${randomUUID()}`;
+  const reviewer = `runtime-reviewer-${randomUUID()}`, grantor = `runtime-grantor-${randomUUID()}`;
   const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true, stream: { pollMs: 50, maxDurationMs: 1500 } });
   const closedApp = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: false });
   const send = (method: string, url: string, payload?: unknown, extra: { contentType?: string; headers?: Record<string, string>; target?: typeof app } = {}) => (extra.target ?? app).inject({ method: method as any, url,
@@ -75,14 +78,47 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   const attempts = async (jobId: string) => (await pool.query('SELECT attempt_no,status FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY attempt_no', [jobId])).rows.map(r => [r.attempt_no, r.status]);
   const active = async () => (await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type<>'parse' AND state IN ('queued','running')")).rows[0].n;
 
-  async function project(label: string, materialVersions: { material_id: string; material_version: number }[] = [], projectId?: string) {
+  async function reviewedHistoricalMaterial(projectId: string) {
+    const materialId = randomUUID(), uploadId = randomUUID(), snapshotId = randomUUID(), evidenceId = randomUUID();
+    const contentHash = hashText(`synthetic historical material ${materialId}`);
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,
+      state,received_sha256,received_bytes) VALUES($1,$2,$3,'synthetic-history.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',10,$4,'historical',$5,now()+interval '1 hour','completed',$4,10)`,
+    [uploadId, alice, projectId, contentHash, `users/${alice}/projects/${projectId}/uploads/${uploadId}`]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'historical','synthetic-history.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',10,$5,$6,'parsed')`,
+    [materialId, alice, projectId, uploadId, contentHash, `users/${alice}/projects/${projectId}/materials/${materialId}`]);
+    const parserVersion = documentParserVersion();
+    const meta = { schema_version: 'document-parse-response-v1', request_id: `parse-${snapshotId}`, status: 'parsed', parser_version: parserVersion,
+      material: { material_id: materialId, material_version: 1, media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256: contentHash },
+      warnings: [], document: { page_count: null }, error: null };
+    await pool.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,
+      response_status,response_schema_version,response_sha256,record_count,response_meta)
+      VALUES($1,$2,$3,$4,1,$5,$6,$7,'parsed','document-parse-response-v1',$8,1,$9::jsonb)`,
+    [snapshotId, alice, projectId, materialId, contentHash, parserVersion, hashText(`request-${snapshotId}`), hashText(`response-${snapshotId}`), JSON.stringify(meta)]);
+    await pool.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,
+      locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+      VALUES($1,$2,$3,1,$4,$5,$6,'docx_block',$7::jsonb,'合成发行人','synthetic identity evidence','native_text',$8,1,'[]','{}',$9,0)`,
+    [alice, projectId, materialId, snapshotId, evidenceId, contentHash, JSON.stringify({ paragraph: 1 }), parserVersion, hashText(evidenceId)]);
+    const observation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
+      requestId: randomUUID(), sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: 'synthetic-runtime-issuer' });
+    const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer);
+    assert.ok(trustedReviewer);
+    await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
+      sourceRecordRowId: observation.id, reviewer: trustedReviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,job_type,subtype,state,project_id,material_id,material_version,material_sha256,
+      parser_version,trace_id,max_attempts,result) VALUES($1,$2,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8::jsonb)`,
+    [randomUUID(), alice, projectId, materialId, contentHash, parserVersion, randomUUID(), JSON.stringify({ outcome: 'parsed' })]);
+    return { material_id: materialId, material_version: 1 };
+  }
+  async function project(label: string, materialVersions: { material_id: string; material_version: number }[] = [], projectId?: string, withIdentity = true) {
     let id = projectId;
     if (!id) {
       const p = await send('POST', '/api/v1/projects', { name: `Synthetic runtime ${label}`, kind: 'update', issuer_name: null, market: null, offering: null });
       assert.equal(p.statusCode, 201, p.body); id = p.json().project_id as string;
     }
+    const selected = withIdentity ? [...materialVersions, await reviewedHistoricalMaterial(id!)] : materialVersions;
     const current = (await send('GET', `/api/v1/projects/${id}`)).json();
-    const input = await send('POST', `/api/v1/projects/${id}/input-revisions`, { draft_revision: current.draft_revision, material_versions: materialVersions, requirement_message_ids: [] });
+    const input = await send('POST', `/api/v1/projects/${id}/input-revisions`, { draft_revision: current.draft_revision, material_versions: selected, requirement_message_ids: [] });
     assert.equal(input.statusCode, 201, input.body);
     return { projectId: id!, inputRevision: input.json().input_revision as number, inputHash: input.json().input_hash as string };
   }
@@ -107,6 +143,9 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   try {
     assert.equal(await active(), 0, 'requires a dedicated database');
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [operator, `u${operator.replace(/-/g, '_').toLowerCase()}`.slice(0, 32)]);
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [reviewer, `r${randomUUID().replaceAll('-', '').slice(0, 30)}`, grantor, `g${randomUUID().replaceAll('-', '').slice(0, 30)}`]);
+    await pool.query("INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test')",
+      [randomUUID(), reviewer, grantor]);
     await grantOperator(pool, { userId: operator, role: 'log_reader', grantedBy: 'synthetic-test', reasonCode: 'runtime_test' });
 
     // 1. Ten concurrent identical submissions -> one run, one job.
@@ -227,7 +266,17 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.ok(row.checkpoint.stages.input_lock && row.checkpoint.stages.model_generation, 'checkpoint survives failure');
     assert.equal((await send('GET', `/api/v1/projects/${p5.projectId}/input-revisions/${p5.inputRevision}`)).statusCode, 200, 'input revision still readable');
 
-    // 7. A missing production rule pin is an explicit capability pause, never success.
+    // 7. An update without a reviewed historical identity remains pending before rule/model stages.
+    const p6MissingIdentity = await project('missing-identity', [], undefined, false);
+    const missingIdentityRun = (await execute(p6MissingIdentity)).json().run_id as string;
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
+    row = await runRow(missingIdentityRun);
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(row.job_error, null); assert.equal(row.artifact_id, null);
+    assert.equal((await pool.query("SELECT payload->>'reason' reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [missingIdentityRun])).rows[0].reason,
+      'historical_material_not_selected');
+    assert.equal((await send('POST', `/api/v1/runs/${missingIdentityRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
+
+    // A reviewed identity passes the identity gate; a missing production rule pin still pauses.
     const p6 = await project('not-ready');
     const notReadyRun = (await execute(p6)).json().run_id as string;
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
