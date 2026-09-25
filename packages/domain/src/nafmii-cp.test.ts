@@ -28,7 +28,10 @@ test('CP product cases keep the one-year boundary distinct from SCP',()=>{
   assert.ok(identity?.required_inputs.includes('stated_tenor'));
   const positive=identity?.positive_examples.find(example=>example.example_id==='cp-identity-positive');
   assert.ok(positive);
+  assert.match(positive.summary,/合成工程示例/);
   assert.match(positive.summary,/11个月/);
+  assert.match(positive.summary,/2025-01-01/);
+  assert.match(positive.summary,/2025-12-01/);
   assert.match(positive.summary,/1年内/);
   assert.equal(positive.evidence_ref,'synthetic:cp-eleven-month-tenor');
   assert.doesNotMatch(positive.summary,/365\s*天/);
