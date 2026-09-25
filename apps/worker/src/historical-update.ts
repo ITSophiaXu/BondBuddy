@@ -1,10 +1,11 @@
 import { Ajv } from 'ajv';
 import { schemas, type Material } from '@bondbuddy/contracts';
-import { factIdentityKey, type FactIdentity } from '@bondbuddy/domain/facts';
+import { factCandidateStatus, factIdentityKey, type FactIdentity } from '@bondbuddy/domain/facts';
 import { planHistoricalUpdate, updateContentHash, type HistoricalUpdateInput, type HistoricalUpdatePlan, type UpdateFact } from '@bondbuddy/domain/historical-update';
 import { getParseSnapshot, type ParseEvidenceDependencies, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { listHistoricalProfileHistory, type StoredHistoricalProfile } from './historical-profile-repository.js';
 import { listFactCandidates, type StoredFactCandidate } from './fact-repository.js';
+import { getLatestFactDecision, type StoredFactDecision } from './fact-decision-repository.js';
 import { validateDocumentParseResponse } from './document-parser.js';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 
@@ -24,6 +25,7 @@ export interface HistoricalUpdateReaders {
   snapshot(scope: Scope, id: string): Promise<StoredParseSnapshot | null>;
   profiles(scope: Scope): Promise<StoredHistoricalProfile[]>;
   facts(scope: Pick<Scope, 'ownerUserId' | 'projectId'>, identity: FactIdentity): Promise<readonly StoredFactCandidate[]>;
+  decision(scope: Pick<Scope, 'ownerUserId' | 'projectId'>, identity: FactIdentity): Promise<StoredFactDecision | null>;
 }
 const profileValidator = new Ajv({ strict: false, allErrors: true }).compile(schemas.RecognitionResponse);
 const auditedRoles = new Set<Material['role']>(['audit', 'financial', 'interimFinancial', 'notes']);
@@ -37,8 +39,33 @@ function factIdentities(input: LockedHistoricalUpdate): FactIdentity[] {
   return [...new Map(identities.map(identity => [factIdentityKey(identity), identity])).values()];
 }
 /** Stable across repository row ordering; binds exact immutable candidate contents. */
-export function historicalUpdateFactsHash(facts: readonly StoredFactCandidate[]): string {
-  return updateContentHash([...facts].sort((a, b) => a.candidate.candidateId.localeCompare(b.candidate.candidateId, 'en')));
+export interface HistoricalUpdateDecisionSnapshot {
+  readonly identity: FactIdentity;
+  readonly decision: StoredFactDecision | null;
+}
+/** Binds both frozen candidates and each exact identity's latest decision version (including version zero). */
+export function historicalUpdateFactsHash(facts: readonly StoredFactCandidate[], decisions: readonly HistoricalUpdateDecisionSnapshot[] = []): string {
+  return updateContentHash({
+    facts: [...facts].sort((a, b) => a.candidate.candidateId.localeCompare(b.candidate.candidateId, 'en')),
+    decisions: [...decisions].sort((a, b) => factIdentityKey(a.identity).localeCompare(factIdentityKey(b.identity), 'en')).map(({ identity, decision }) => ({
+      identity: factIdentityKey(identity), ownerUserId: decision?.ownerUserId ?? null, projectId: decision?.projectId ?? null,
+      decisionId: decision?.decisionId ?? null, version: decision?.version ?? 0, resolution: decision?.resolution ?? null,
+      selectedCandidateId: decision?.selectedCandidateId ?? null,
+    })),
+  });
+}
+
+function decisionMatchesFrozenCandidate(decision: StoredFactDecision, identity: FactIdentity, candidates: readonly StoredFactCandidate[]): string | null {
+  if (decision.resolution !== 'selected' || !decision.selectedCandidateId || factIdentityKey(decision.identity) !== factIdentityKey(identity)) return null;
+  const candidate = candidates.find(item => item.candidate.candidateId === decision.selectedCandidateId);
+  if (!candidate) return null;
+  const provenance = decision.selectedCandidateProvenance;
+  if (!provenance || provenance.candidate_id !== candidate.candidate.candidateId ||
+    provenance.source_kind !== candidate.candidate.source.kind || provenance.source_ref !== candidate.candidate.source.sourceId ||
+    provenance.status !== candidate.provenance.status || provenance.source_observed_at !== candidate.provenance.sourceObservedAt ||
+    provenance.source_valid_as_of !== (candidate.provenance.sourceValidAsOf ?? null) ||
+    provenance.material_id !== candidate.provenance.materialId || provenance.material_version !== candidate.provenance.materialVersion) return null;
+  return candidate.candidate.candidateId;
 }
 
 /** Internal preparation seam only: no queue transitions, provider calls, billing or Word success promotion. */
@@ -49,6 +76,7 @@ export async function prepareHistoricalUpdate(
     snapshot: (scope, id) => getParseSnapshot(dependencies, scope, id),
     profiles: scope => listHistoricalProfileHistory(dependencies, scope),
     facts: (scope, identity) => listFactCandidates(dependencies, scope, identity),
+    decision: (scope, identity) => getLatestFactDecision(dependencies, scope, identity),
   },
 ): Promise<HistoricalUpdatePlan> {
   const locked = structuredClone(input);
@@ -92,21 +120,60 @@ export async function prepareHistoricalUpdate(
   if (fields.some(field => field.status === 'recognized' && (field.provenance.method !== 'native_text' ||
     parseHistoricalNativeExtractorVersion(field.provenance.extractor_version)?.parserVersion !== snapshot.parserVersion))) fail('UPDATE_PROFILE_PARSER_MISMATCH');
   const stored: StoredFactCandidate[] = [];
+  const identities = factIdentities(locked);
   const selectedIds = new Set(locked.factCandidateIds);
   if (selectedIds.size !== locked.factCandidateIds.length) fail('UPDATE_INVALID_FACT_MANIFEST');
-  for (const identity of factIdentities(locked)) {
+  for (const identity of identities) {
     if (identity.accountId !== context.ownerUserId || identity.entityId !== context.issuerEntityId) fail('UPDATE_FACT_OWNER_OR_ISSUER_MISMATCH');
     const rows = await readers.facts(scope, identity);
     if (rows.some(row => factIdentityKey(row.candidate.identity) !== factIdentityKey(identity))) fail('UPDATE_FACT_IDENTITY_MISMATCH');
     stored.push(...rows.filter(row => selectedIds.has(row.candidate.candidateId)));
   }
+  const decisionSnapshots: HistoricalUpdateDecisionSnapshot[] = [];
+  for (const identity of identities) {
+    const decision = await readers.decision({ ownerUserId: context.ownerUserId, projectId: context.projectId }, identity);
+    if (decision && (decision.ownerUserId !== context.ownerUserId || decision.projectId !== context.projectId ||
+      factIdentityKey(decision.identity) !== factIdentityKey(identity) || decision.version < 1 || !Number.isSafeInteger(decision.version))) {
+      fail('UPDATE_FACT_DECISION_SCOPE_MISMATCH');
+    }
+    decisionSnapshots.push({ identity, decision });
+  }
   if (stored.length !== selectedIds.size || new Set(stored.map(row => row.candidate.candidateId)).size !== stored.length ||
-    historicalUpdateFactsHash(stored) !== locked.factsHash) fail('UPDATE_FACT_SNAPSHOT_CHANGED');
-  const facts: UpdateFact[] = stored.map(({ candidate, provenance }) => {
+    historicalUpdateFactsHash(stored, decisionSnapshots) !== locked.factsHash) fail('UPDATE_FACT_SNAPSHOT_CHANGED');
+  // Check every frozen candidate before applying a decision filter, so an invalid
+  // competing row cannot disappear merely because another candidate was selected.
+  for (const { candidate, provenance } of stored) {
     const source = materials.get(materialKey(provenance.materialId, provenance.materialVersion));
-    if (!source || !auditedRoles.has(source.role) || provenance.uncertainty.length || !provenance.evidence.length ||
-      provenance.evidence.some(anchor => anchor.material_id !== source.materialId || anchor.material_version !== source.materialVersion || anchor.content_hash !== source.contentHash)) fail('UPDATE_FACT_MATERIAL_MISMATCH');
-    return { candidate, status: provenance.status, evidence: provenance.evidence.map(anchor => ({
+    if (candidate.identity.accountId !== context.ownerUserId || candidate.identity.entityId !== context.issuerEntityId ||
+      provenance.status !== factCandidateStatus(candidate) || !source || !auditedRoles.has(source.role) || !provenance.evidence.length ||
+      provenance.evidence.some(anchor => anchor.material_id !== source.materialId || anchor.material_version !== source.materialVersion || anchor.content_hash !== source.contentHash)) {
+      fail('UPDATE_FACT_MATERIAL_MISMATCH');
+    }
+  }
+  const selectedByIdentity = new Map<string, string>();
+  for (const { identity, decision } of decisionSnapshots) {
+    if (!decision) continue;
+    const selected = decisionMatchesFrozenCandidate(decision, identity, stored.filter(row => factIdentityKey(row.candidate.identity) === factIdentityKey(identity)));
+    if (selected) selectedByIdentity.set(factIdentityKey(identity), selected);
+  }
+  const candidateCounts = new Map<string, number>();
+  for (const row of stored) {
+    const key = factIdentityKey(row.candidate.identity);
+    candidateCounts.set(key, (candidateCounts.get(key) ?? 0) + 1);
+  }
+  const facts: UpdateFact[] = stored.filter(row => {
+    const key = factIdentityKey(row.candidate.identity);
+    const selected = selectedByIdentity.get(key);
+    const latestDecision = decisionSnapshots.find(snapshot => factIdentityKey(snapshot.identity) === key)?.decision;
+    // Any competing exact-key candidates stay out of fact evaluation until a
+    // current decision selects one of the frozen candidates. An explicit
+    // unresolved or stale/mismatched selection also stays pending for a singleton.
+    if (!selected && ((candidateCounts.get(key) ?? 0) > 1 || latestDecision !== null && latestDecision !== undefined)) return false;
+    return !selected || selected === row.candidate.candidateId;
+  }).map(({ candidate, provenance }) => {
+    if (provenance.uncertainty.length) fail('UPDATE_FACT_MATERIAL_MISMATCH');
+    const decisionVersion = decisionSnapshots.find(snapshot => factIdentityKey(snapshot.identity) === factIdentityKey(candidate.identity))?.decision?.version;
+    return { candidate, status: provenance.status, ...(decisionVersion === undefined ? {} : { decisionVersion }), evidence: provenance.evidence.map(anchor => ({
       materialId: anchor.material_id, materialVersion: anchor.material_version, contentHash: anchor.content_hash,
       recordId: anchor.evidence_id, locatorType: anchor.locator_type, locator: anchor.locator, literalQuote: anchor.literal_quote,
       extractionVersion: anchor.extraction_version, uncertainty: anchor.uncertainty,
@@ -120,7 +187,10 @@ export async function prepareHistoricalUpdate(
     return { recordId: record.record_id, text: record.literal_quote, locatorType: record.locator_type as 'docx_block' | 'pdf_bbox',
       locator: record.locator, formatting: record.formatting, uncertainty: record.uncertainty };
   });
-  return planHistoricalUpdate({ ...locked, facts, baseline: {
+  return planHistoricalUpdate({ ...locked, facts,
+    factDecisionVersions: decisionSnapshots.map(({ identity, decision }) => ({ identity,
+      decisionId: decision?.decisionId ?? null, version: decision?.version ?? 0 })),
+    baseline: {
     ...scope, contentHash: historical.contentHash, snapshotId: snapshot.snapshotId, parserVersion: snapshot.parserVersion,
     parseResultHash: snapshot.responseSha256, format: response.material.media_type === docx ? 'docx_effective' : 'pdf_requires_reconstruction',
     parseStatus: response.status, warnings: response.warnings.map(warning => warning.code),
