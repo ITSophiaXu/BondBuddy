@@ -37,11 +37,12 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
     let blobs: PrivateBlobs; try { blobs = deps.blobs(); } catch { throw unavailable(); }
     let release: (() => Promise<void>) | undefined;
     let disconnected = false;
-    const disconnect = () => { disconnected = true; void release?.(); };
+    const controller = new AbortController();
+    const disconnect = () => { disconnected = true; controller.abort(); if (release) void release().catch(() => undefined); };
     // Register before Blob I/O: a client may disconnect while its read is pending.
     request.raw.once('aborted', disconnect);
     reply.raw.once('close', disconnect);
-    const result = await adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code);
+    const result = await adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code, controller.signal);
     release = result.release;
     if (disconnected) { await release(); throw unavailable(); }
     promptReleases.set(request, release);

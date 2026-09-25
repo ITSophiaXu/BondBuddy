@@ -362,7 +362,7 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
 }
 
 /** The caller must hold release until the HTTP response finishes or aborts. */
-export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string) {
+export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string, signal?: AbortSignal) {
   if (!validId(snapshotId)) throw missing();
   if (!safeCode.test(reasonCode)) throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
   const client = await pool.connect();
@@ -388,7 +388,20 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK'); throw error; }
     if (!snapshot || snapshot.tombstone) throw missing();
-    const bytes = await blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
+    if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+    // A Blob request may never settle after a TCP disconnect. Promise.race observes its
+    // eventual result/rejection, while the abort path releases the session lock now.
+    const blobRead = blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted'));
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    let bytes: Buffer | null;
+    try { bytes = await Promise.race([blobRead, aborted]); }
+    finally { if (onAbort) signal?.removeEventListener('abort', onAbort); }
+    if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
     if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
     return { view: { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId }, release };
   } catch (error) { await release(); throw error; }
