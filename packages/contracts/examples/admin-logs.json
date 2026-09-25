@@ -1,0 +1,233 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "admin-job-timeline-retry-then-success",
+      "schema": "AdminJobTimelineResponse",
+      "valid": true,
+      "value": {
+        "job": {
+          "job_id": "job_syn_1",
+          "user_id": "user_syn_1",
+          "project_id": "proj_syn_1",
+          "run_id": "run_syn_1",
+          "trace_id": "run_syn_1",
+          "job_type": "update",
+          "subtype": "revision",
+          "state": "succeeded",
+          "stage": "delivered",
+          "attempts": 1,
+          "error_code": null,
+          "created_at": "2026-09-25T08:00:00Z",
+          "updated_at": "2026-09-25T08:05:00Z",
+          "duration_ms": 300000
+        },
+        "prompts": [
+          {
+            "snapshot_id": "snap_syn_1",
+            "kind": "user_prompt",
+            "version": 1,
+            "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "redaction_version": "scrub_v1",
+            "input_revision": 1,
+            "template_version": "tpl_1",
+            "rule_pack_version": null,
+            "model_parameters_version": "params_1",
+            "content_state": "available",
+            "created_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "stages": [
+          {
+            "seq": 1,
+            "type": "run.state_changed",
+            "state": "queued",
+            "stage": null,
+            "reason": "submitted",
+            "occurred_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "att_syn_1",
+            "logical_call_id": "draft",
+            "attempt_no": 1,
+            "status": "failed",
+            "model_id": "synthetic-model",
+            "provider_request_id": null,
+            "prompt_snapshot_ref": "snap_syn_1",
+            "usage_status": "measured",
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 10,
+              "cached_input_tokens": 40,
+              "reasoning_tokens": 5
+            },
+            "corrected": false,
+            "duration_ms": 1200,
+            "error_code": "MODEL_TIMEOUT",
+            "created_at": "2026-09-25T08:00:00Z"
+          },
+          {
+            "attempt_id": "att_syn_2",
+            "logical_call_id": "draft",
+            "attempt_no": 2,
+            "status": "completed",
+            "model_id": "synthetic-model",
+            "provider_request_id": "req_syn_2",
+            "prompt_snapshot_ref": "snap_syn_1",
+            "usage_status": "measured",
+            "usage": {
+              "input_tokens": 200,
+              "output_tokens": 50,
+              "cached_input_tokens": 80,
+              "reasoning_tokens": 20
+            },
+            "corrected": false,
+            "duration_ms": 3400,
+            "error_code": null,
+            "created_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "errors": [
+          {
+            "error_id": "err_syn_1",
+            "code": "MODEL_TIMEOUT",
+            "category": "model_provider",
+            "stage": "provider_call",
+            "attempt_id": "att_syn_1",
+            "retry_count": 0,
+            "fingerprint": null,
+            "recovery_status": "retried",
+            "created_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "artifact": {
+          "artifact_id": "art_syn_1",
+          "version": 1,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "quality_status": "passed",
+          "delivery_status": "available",
+          "created_at": "2026-09-25T08:00:00Z"
+        },
+        "outcome": {
+          "state": "succeeded",
+          "error_code": null,
+          "artifact_available": true
+        },
+        "consumption": {
+          "all_attempts": {
+            "attempts": 2,
+            "measured_attempts": 2,
+            "unresolved_attempts": 0,
+            "input_tokens": 300,
+            "output_tokens": 60,
+            "cached_input_tokens": 120,
+            "reasoning_tokens": 25
+          },
+          "completed_attempts": {
+            "attempts": 1,
+            "measured_attempts": 1,
+            "unresolved_attempts": 0,
+            "input_tokens": 200,
+            "output_tokens": 50,
+            "cached_input_tokens": 80,
+            "reasoning_tokens": 20
+          }
+        }
+      }
+    },
+    {
+      "name": "admin-events-redacted",
+      "schema": "AdminLogEventsResponse",
+      "valid": true,
+      "value": {
+        "items": [
+          {
+            "event_id": "ev1",
+            "kind": "model.call_started",
+            "occurred_at": "2026-09-25T08:00:00Z",
+            "user_id": "user_syn_1",
+            "project_id": null,
+            "job_id": "job_syn_1",
+            "run_id": "run_syn_1",
+            "trace_id": "run_syn_1",
+            "actor_type": "system",
+            "status": null,
+            "stage": null,
+            "error_code": null,
+            "logical_call_id": "draft",
+            "attempt_no": 1,
+            "prompt_snapshot_ref": "snap_syn_1"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "name": "admin-events-plaintext-rejected",
+      "schema": "AdminLogEventsResponse",
+      "valid": false,
+      "value": {
+        "items": [
+          {
+            "event_id": "ev1",
+            "kind": "model.call_started",
+            "occurred_at": "2026-09-25T08:00:00Z",
+            "user_id": "user_syn_1",
+            "project_id": null,
+            "job_id": "job_syn_1",
+            "run_id": "run_syn_1",
+            "trace_id": "run_syn_1",
+            "actor_type": "system",
+            "status": null,
+            "stage": null,
+            "error_code": null,
+            "logical_call_id": "draft",
+            "attempt_no": 1,
+            "prompt_snapshot_ref": "snap_syn_1",
+            "prompt_body": "plaintext must not appear"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "name": "admin-prompt-view-without-audit-rejected",
+      "schema": "AdminPromptView",
+      "valid": false,
+      "value": {
+        "snapshot_id": "snap_syn_1",
+        "user_id": "user_syn_1",
+        "project_id": "proj_syn_1",
+        "kind": "user_prompt",
+        "version": 1,
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "redaction_version": "scrub_v1",
+        "media_type": "text/plain; charset=utf-8",
+        "body": "synthetic"
+      }
+    },
+    {
+      "name": "evidence-gate-paused",
+      "schema": "EvidenceGateResponse",
+      "valid": true,
+      "value": {
+        "state": "paused",
+        "reason_code": "call_intent_not_persisted",
+        "changed_at": "2026-09-25T08:00:00Z",
+        "process_state": "open"
+      }
+    },
+    {
+      "name": "usage-correction-measured-request",
+      "schema": "UsageCorrectionRequest",
+      "valid": true,
+      "value": {
+        "chosen_observation_id": "obs_syn_1",
+        "usage_status": "measured",
+        "reason_code": "provider_invoice_match"
+      }
+    }
+  ]
+}

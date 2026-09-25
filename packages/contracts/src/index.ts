@@ -3,6 +3,8 @@ export * from './ocr.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
+import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
+export * from './admin-logs.js';
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -56,7 +58,7 @@ export const MATERIAL_PARSE_OUTCOMES = ['parsed', 'needs_confirmation', 'pending
 export const MATERIAL_PARSE_PENDING_CAPABILITIES = ['ocr'] as const;
 // Outbox event_type values; each commits in the same transaction as the job state change.
 export const MATERIAL_PARSE_EVENT_TYPES = ['material_parse.enqueued', 'material_parse.claimed', 'material_parse.stage_completed', 'material_parse.retry_scheduled', 'material_parse.paused', 'material_parse.succeeded', 'material_parse.failed', 'material_parse.cancelled'] as const;
-export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered'] as const;
+export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered', 'model.usage_corrected', 'log.content_purged'] as const;
 
 const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal<T[number]>(value)));
 const obj = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
@@ -101,6 +103,7 @@ const ObservabilityErrorSchema = obj({ error_id: id, code: errorCode, category: 
 const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), kind: observabilityEventKind, occurred_at: utc, operation_id: id, request_id: id, trace_id: id, span_id: id, parent_span_id: nullable(id), actor_type: enumOf(['user', 'system', 'operator'] as const), user_id: nullable(id), project_id: nullable(id), conversation_id: nullable(id), message_id: nullable(id), job_id: nullable(id), parent_job_id: nullable(id), run_id: nullable(id), work_item_id: nullable(id), logical_call_id: nullable(id), call_id: nullable(id), attempt_no: nullable(revision), job_kind: nullable(jobKind), stage: nullable(Type.String()), status: nullable(jobStatus), prompt_snapshot_ref: nullable(id), error: nullable(ObservabilityErrorSchema), usage: nullable(UsageObservationSchema) });
 
 export const schemas = {
+  ...adminSchemas,
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
@@ -232,7 +235,16 @@ export const operations: readonly Operation[] = [
   op('post', '/runs/{run_id}/resume', 'Resume paused run after provider reconciliation (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
   op('get', '/artifacts/{artifact_id}', 'Get authorized checked Word artifact', 'ArtifactResponse', 200, undefined, [404]),
   op('get', '/artifacts/{artifact_id}/download', 'Download checked owner Word artifact bytes', 'ArtifactResponse', 200, undefined, [404]),
-  op('post', '/conversations/{conversation_id}/messages', 'Submit and snapshot user message (contract only)', 'ConversationMessageResponse', 202, 'ConversationMessageRequest', [404, 409])
+  op('post', '/conversations/{conversation_id}/messages', 'Submit and snapshot user message (contract only)', 'ConversationMessageResponse', 202, 'ConversationMessageRequest', [404, 409]),
+  // #79 operator routes: deny by default; a session without an active operator grant gets 404.
+  op('get', '/admin/logs/events', 'Filter redacted observability events by user/project/job/trace/time/model/status/error_code (log_reader)', 'AdminLogEventsResponse', 200, undefined, [404, 422]),
+  op('get', '/admin/jobs/{job_id}/timeline', 'Job timeline: prompt refs, stages, model attempts with token breakdown, errors and artifact (log_reader)', 'AdminJobTimelineResponse', 200, undefined, [404]),
+  op('get', '/admin/metrics', 'Token, success/failure rate and duration aggregates; retries and final consumption kept apart (log_reader)', 'AdminMetricsResponse', 200, undefined, [404, 422]),
+  op('get', '/admin/prompts/{snapshot_id}', 'Audited plaintext view of a redacted prompt snapshot (prompt_viewer)', 'AdminPromptView', 200, undefined, [404, 422]),
+  op('get', '/admin/alerts', 'List operational alerts (log_reader)', 'AdminAlertsResponse', 200, undefined, [404]),
+  op('get', '/admin/evidence-gate', 'Read whether new external model calls are paused (log_reader)', 'EvidenceGateResponse', 200, undefined, [404]),
+  op('post', '/admin/evidence-gate/resume', 'Append an operator resume after evidence persistence is healthy (log_operator)', 'EvidenceGateResponse', 200, 'EvidenceGateResumeRequest', [404, 409]),
+  op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_operator)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422])
 ];
 
 const ref = (name: SchemaName) => ({ $ref: `#/components/schemas/${name}` });
@@ -262,10 +274,10 @@ export function openApiDocument() {
       responses[status] = { description, content: { 'application/json': { schema: ref('Error') } } };
     }
     for (const code of [401,403,501]) responses[code] = { description: code === 501 ? 'Capability not connected' : 'Session or CSRF/Origin check failed', content: { 'application/json': { schema: ref('Error') } } };
-    const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
+    const queryParameters = ['/admin/logs/events','/admin/metrics'].includes(operation.path) ? ADMIN_LOG_FILTERS.map(name => ({ name, in: 'query', required: false, schema: name === 'limit' ? { type: 'integer', minimum: 1, maximum: 500 } : { type: 'string' } })) : operation.path === '/admin/prompts/{snapshot_id}' ? [{ name: 'reason_code', in: 'query', required: true, schema: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,63}$' }, description: 'Recorded in the access audit.' }] : operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
     const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/projects/{project_id}/events','/projects/{project_id}/materials/{material_id}/parse-job','/projects/{project_id}/materials/{material_id}/parse-job/cancel','/projects/{project_id}/materials/{material_id}/source-profile','/projects/{project_id}/preflight','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
-    const status = operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
+    const status = operation.path.startsWith('/admin/') ? 'implemented; operator-grant-required; deny-by-default-404' : operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
     const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!['/auth/register','/auth/login'].includes(operation.path) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: ['/auth/register','/auth/login'].includes(operation.path) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }

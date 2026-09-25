@@ -1,0 +1,65 @@
+# M1 log operations (#79)
+
+Scope: durable forwarding, the operator query API, restricted prompt view, retention and deletion. All code-level evidence is **synthetic** (PostgreSQL 16/Azurite, no real provider calls). Alert delivery to external channels is #35, and real anonymised provider evidence is #16.
+
+## Field dictionary
+
+| Table / view | Key fields | Meaning |
+|---|---|---|
+| `bb_operations` (0005) | owner, project, run, request_id, trace_id, operation_kind, status, error_code, input_revision/hash | Every submitted or rejected user action, including rejections that created no run |
+| `bb_observability_events` (0005) | kind, trace_id, job_id, run_id, event (`InternalObservabilityEvent`) | Append-only event log. Each row has one `bb_outbox` row (`aggregate_type='observability'`) in the same transaction |
+| `bb_snapshot_refs` (0005) | kind, version, object_key, content_sha256, redaction_version, input/template/rule/model-parameter versions | Reference to the prompt body in private Blob. The row never holds the body |
+| `bb_model_call_attempts` (0004/0005) | logical_call_id, attempt_no, status, model_id, provider_request_id, prompt_snapshot_id | One row per real supplier attempt. The intent is written before the network call |
+| `bb_usage_observations` (0005) | source (provider/gateway/framework/reconciliation), usage_status, input/output/cached/reasoning | Raw usage reports, which are immutable |
+| `bb_call_usage` (0005) → `bb_call_usage_effective` (0021) | usage_status ∈ measured/pending/unknown/conflict, tokens, correction_id | One row per attempt, so duplicate reports count once. The latest `bb_usage_corrections` row wins. Conflicts count no tokens |
+| `bb_usage_corrections` (0021) | chosen_observation_id, usage_status, reason_code, actor_id | Append-only resolution. It must match a measured observation of the same attempt |
+| `bb_model_call_attempt_runtime` (0019) | duration_ms, exit_code, error_code | Adapter runtime facts |
+| `bb_observability_errors` (0005) | code, category, stage, retry_count, fingerprint, recovery_status | Structured errors. They never contain messages or stacks |
+| `bb_log_deliveries` (0021) | outbox_id, sink, delivery_key = sha256(sink:outbox_id), attempts | One row per event and sink. The sink dedupes on `delivery_key` |
+| `bb_ops_alerts` / `bb_ops_alert_acks` (0021) | kind, severity, dedupe_key (kind:scope:hour), detail | Append-only alerts. There is one per condition per hour |
+| `bb_evidence_gate_events` (0021) | state open/paused, reason_code, actor | The latest row decides whether new external calls are allowed. No row means open |
+| `bb_operator_grants` (0021) | role log_reader/log_operator/prompt_viewer, granted_by, revoked_at | Deny by default. The only allowed change is a single revocation |
+| `bb_log_access_audit` (0005+0021) | actor_id, actor_role, owner_user_id (`*` = all), purpose, filter_hash, target_ref, reason_code | Written for every operator read and correction |
+| `bb_log_content_tombstones` (0021) | content_kind, content_id, object_key, reason retention_expired/user_deleted, policy_version | Content bytes were purged. The metadata row stays |
+
+## Event catalog (`OBSERVABILITY_EVENT_KINDS`)
+
+`operation.submitted`, `operation.rejected`, `job.state_changed` (run and parse jobs, including terminal states), `prompt.snapshot_saved`, `model.call_started` (durable intent), `model.call_finished`, `model.usage_observed`, `model.usage_corrected` (actor `operator`), `error.recorded`, `artifact.delivered`, `log.content_purged` (stage = purge reason). Payloads are the `InternalObservabilityEvent` schema: ids, codes and counts only.
+
+## Operator API (`/api/v1/admin/...`, contracts in `packages/contracts/src/admin-logs.ts`)
+
+Without an active grant for the exact role, every route returns the same 404 as an unknown resource. Filters are allow-listed (`ADMIN_LOG_FILTERS`), and any other key or malformed value returns 422. This is also the log-injection boundary.
+
+- `GET logs/events` (log_reader): filters are user_id, project_id, job_id, trace_id, from, to, model_id, status, error_code and limit (≤500). `model_id` matches the event's attempt, or the job for job-level events.
+- `GET jobs/{job_id}/timeline` (log_reader): returns prompt refs with `content_state`, stages, attempts with token breakdown and duration, errors, artifact, outcome and consumption.
+- `GET metrics` (log_reader): see metric definitions below.
+- `GET prompts/{snapshot_id}?reason_code=` (prompt_viewer only): the audit row commits before the body is read, and the response is `no-store`. A purged, missing or hash-mismatched body returns 404. There is no separate export route; this audited view is the only plaintext exit.
+- `GET alerts`, `GET evidence-gate` (log_reader).
+- `POST evidence-gate/resume`, `POST attempts/{attempt_id}/usage-corrections` (**log_operator** only: a write role separate from the read-only `log_reader`; grant both when an operator must also read).
+
+## Metric definitions (`AdminMetricsResponse`)
+
+- **Scope:** jobs created in `[from,to]` that match the filters. `status` means job state. `error_code` means the job error code or any of its error records.
+- **Job rates:** `success_rate` = succeeded / (succeeded+failed+cancelled), and `failure_rate` = failed / the same denominator. Both are null when no job is finished. Durations are `updated_at − created_at` of finished jobs (avg, p95).
+- **Attempts:** counts by status. `conflict` counts attempts whose effective usage is unresolved.
+- **Consumption:** `all_attempts` includes failed retries. `completed_attempts` covers final successful calls only. `retry_attempts` covers attempt_no > 1. Only `measured` attempts add tokens. unknown, pending and conflict attempts go into `unresolved_attempts` and are never counted as 0. Totals are null when nothing is measured. Cached input and reasoning output are subsets of input and output, not additions.
+- **operations:** submitted/rejected, including rejections before any run was created.
+
+## Forwarding
+
+Run `node apps/api/dist/log-ops.js forward` with `BB_LOG_SINK_FILE` set to an NDJSON file (mode 0600). Each invocation handles one bounded batch. It leases observability outbox rows, delivers them, then records `bb_log_deliveries` and `delivered_at` in one transaction. Delivery is at-least-once with a stable `delivery_key`, so consumers must dedupe on it. JSON encoding prevents CR/LF line forging. `health` raises `log_backlog_stale` when the oldest undelivered event is older than `BB_LOG_BACKLOG_ALERT_SECONDS` (default 300), and `usage_conflict` for unresolved conflicts.
+
+## Evidence gate
+
+`recordPotentialCall` (the only call-intent seam, used by the durable probe journal and the adapters) checks the gate before and inside its transaction. `observeUsage` is guarded too. Connection, resource or crash-class failures (SQLSTATE 08/53/54/57/58/XX, or non-SQL errors) append a `paused` gate row and a critical `evidence_persist_failed` alert. Constraint and validation errors do not trip the gate. If even the pause cannot be written, the process holds it in memory and persists it on the next attempt. Only an operator `resume` reopens the gate.
+
+## Retention configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BB_LOG_CONTENT_RETENTION_DAYS` | 180 (1–3650) | Age after which prompt snapshot and provider-result bytes are purged, for terminal or run-less content |
+| `BB_LOG_RETENTION_POLICY_VERSION` | `log_retention_v1` | Stored on each tombstone |
+
+`node apps/api/dist/log-ops.js retention` (needs `AZURE_STORAGE_CONNECTION_STRING`) purges a batch. Content of closed accounts is reclaimed regardless of age (`user_deleted`). Content bound to a non-terminal run is never purged. The following are kept: operation, attempt, usage, correction, error, event and audit rows, and snapshot metadata with hashes (see `CLOSURE_RETAINED_RECORDS`). The 180-day default is an engineering placeholder; the legal retention period is a product/legal decision. Prompts are never used for public libraries or training.
+
+Runbook: [log alerts and recovery](runbooks/log-alert-recovery.md).

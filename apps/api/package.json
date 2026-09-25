@@ -28,6 +28,14 @@
       "types": "./dist/ocr.d.ts",
       "default": "./dist/ocr.js"
     },
+    "./log-ops": {
+      "types": "./dist/log-ops.d.ts",
+      "default": "./dist/log-ops.js"
+    },
+    "./evidence-gate": {
+      "types": "./dist/evidence-gate.d.ts",
+      "default": "./dist/evidence-gate.js"
+    },
     "./material-jobs": {
       "types": "./dist/material-jobs.d.ts",
       "default": "./dist/material-jobs.js"
@@ -37,7 +45,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "test": "node --test --test-concurrency=1 dist/*.test.js",
-    "storage:lifecycle": "node dist/storage-lifecycle.js"
+    "storage:lifecycle": "node dist/storage-lifecycle.js",
+    "log:ops": "node dist/log-ops.js"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",
