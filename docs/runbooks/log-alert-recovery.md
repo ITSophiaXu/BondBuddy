@@ -13,5 +13,6 @@ All alerts are rows in `bb_ops_alerts`, visible through `GET /api/v1/admin/alert
 ## Crash recovery facts
 
 - Forwarder crash after the sink accepted a batch: leases expire, and the same `delivery_key`s are re-sent.
+- NDJSON writer failure on a partial/corrupt line or unsafe file/lock permissions: forwarding stays unacknowledged and raises `log_sink_unavailable`. Preserve a restricted copy of the file, reconcile the damaged tail and its `delivery_key` against PostgreSQL outbox/receipts, repair only with a reviewed operator action, then replay. Never replace the file with an empty one or silently discard a complete line: the file itself is the durable dedupe journal. Keep the active file and `.lock` inode stable across retries.
 - API or worker crash: jobs, attempts and terminal events are committed with their outbox rows. Nothing is written only to memory.
 - Grants: create them with `grantOperator` in a reviewed maintenance session (no HTTP route). Revoke with `revokeOperator`, which takes effect on the next request.

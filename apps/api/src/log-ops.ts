@@ -1,5 +1,7 @@
-import { pathToFileURL } from 'node:url';
-import { appendFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { constants } from 'node:fs';
+import { open } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
@@ -46,9 +48,32 @@ export type LogRecord = { delivery_key: string; outbox_id: string; event: Record
 /** A sink must treat delivery_key as an idempotency key: the same key may arrive again after a crash. */
 export interface LogSink { name: string; deliver(records: LogRecord[]): Promise<void> }
 
-/** NDJSON file sink. JSON encoding escapes CR/LF, so a field value cannot forge another log line. */
+/**
+ * NDJSON file sink. The flock child holds an OS lock while it scans and fsyncs
+ * the file; a process exit releases the lock. The file itself is the receipt
+ * journal, so there is no second index whose crash ordering could lose events.
+ */
 export function ndjsonFileSink(path: string, name = 'ndjson_file'): LogSink {
-  return { name, async deliver(records) { await appendFile(path, records.map(r => JSON.stringify({ delivery_key: r.delivery_key, ...r.event }) + '\n').join(''), { mode: 0o600 }); } };
+  return { name, async deliver(records) {
+    if (!records.length) return;
+    const lock = await open(`${path}.lock`, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+    try {
+      const stat = await lock.stat();
+      if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.uid !== process.getuid?.()) throw new Error('Unsafe NDJSON lock permissions');
+      const child = spawn('flock', ['-x', '-F', '/proc/self/fd/3', process.execPath, fileURLToPath(new URL('./ndjson-file-sink.js', import.meta.url)), path],
+        { stdio: ['pipe', 'ignore', 'pipe', lock.fd] });
+      let errorText = '';
+      child.stderr!.setEncoding('utf8');
+      child.stderr!.on('data', chunk => { errorText = (errorText + chunk).slice(0, 4096); });
+      const exited = new Promise<number>((resolve, reject) => {
+        child.on('error', reject);
+        child.on('close', code => resolve(code ?? 1));
+      });
+      child.stdin!.on('error', () => undefined); // child failure is reported by its exit code
+      child.stdin!.end(JSON.stringify(records));
+      if (await exited !== 0) throw new Error(`NDJSON sink refused delivery: ${errorText || 'writer failed'}`);
+    } finally { await lock.close(); }
+  } };
 }
 
 export type ForwardOptions = { batchSize?: number; leaseSeconds?: number; retrySeconds?: number; afterSinkAccept?: () => Promise<void> };
