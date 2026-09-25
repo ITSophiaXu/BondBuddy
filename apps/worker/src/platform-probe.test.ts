@@ -12,11 +12,11 @@ import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { platformProbeSchemas } from '@bondbuddy/contracts';
 import { azureBlobs, uid } from '@bondbuddy/api/data';
-import { grantOperator } from '@bondbuddy/api/log-ops';
+import { grantOperator, purgeLogContent } from '@bondbuddy/api/log-ops';
 import { claim } from '@bondbuddy/api/queue';
 import { setKillSwitch, trialConfigFromEnv } from '@bondbuddy/api/trial-guard';
 import { assertCodexConfig, codexProxyEnv, DEFAULT_DISABLED_FEATURES, runCodexProcess, type CodexAdapterConfig } from './codex-adapter.js';
-import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
+import { assertProbeConfig, PLATFORM_PROBE_TEMPLATES, runPlatformProbeOnce } from './platform-probe-job.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection = await isolatedTestDatabase('BB_TEST_CODEX_DATABASE_URL');
@@ -95,8 +95,12 @@ test('synthetic platform probe: operator-only enqueue, separate claim, durable #
     assert.equal(rows.length, 1);
     assert.deepEqual([rows[0].status, rows[0].usage_status, rows[0].outcome, rows[0].model_id, rows[0].pricing_status, rows[0].provider_request_id_status, rows[0].adapter], ['completed', 'measured', 'completed', 'deepseek-flash', 'unknown', 'unknown', 'codex_exec']);
     assert.deepEqual([rows[0].input_tokens, rows[0].cached_input_tokens, rows[0].output_tokens, rows[0].reasoning_tokens], [8418, 6784, 46, 33]);
-    const snapshot = (await pool.query('SELECT snapshot_kind,template_version,redaction_version FROM bb_snapshot_refs WHERE id=$1', [rows[0].prompt_snapshot_id])).rows[0];
-    assert.deepEqual(snapshot, { snapshot_kind: 'model_request', template_version: 'bb_probe_json_echo_v1', redaction_version: 'synthetic_probe_v1' });
+    const snapshot = (await pool.query('SELECT snapshot_kind,template_version,redaction_version,input_revision,input_hash,object_key FROM bb_snapshot_refs WHERE id=$1', [rows[0].prompt_snapshot_id])).rows[0];
+    const probeRun = (await pool.query('SELECT input_revision,input_hash FROM bb_runs WHERE id=$1', [probe.run_id])).rows[0];
+    assert.deepEqual([snapshot.snapshot_kind, snapshot.template_version, snapshot.redaction_version, snapshot.input_revision, snapshot.input_hash.trim()],
+      ['model_request', 'bb_probe_json_echo_v1', 'synthetic_probe_v1', probeRun.input_revision, probeRun.input_hash.trim()]);
+    assert.equal((await blobs.get(snapshot.object_key)).toString('utf8'), PLATFORM_PROBE_TEMPLATES.bb_probe_json_echo_v1.prompt);
+    assert.equal((await pool.query('SELECT registered_at IS NOT NULL AS registered FROM bb_prompt_blob_intents WHERE object_key=$1', [snapshot.object_key])).rows[0].registered, true);
     const ledger = (await pool.query('SELECT owner_user_id,usage_status,input_tokens,pricing_status FROM bb_platform_cost_ledger WHERE job_id=$1', [probe.job_id])).rows;
     assert.deepEqual(ledger, [{ owner_user_id: principal, usage_status: 'measured', input_tokens: 8418, pricing_status: 'unknown' }]);
     const run = (await pool.query('SELECT state,artifact_id FROM bb_runs WHERE id=$1', [probe.run_id])).rows[0];
@@ -119,6 +123,34 @@ test('synthetic platform probe: operator-only enqueue, separate claim, durable #
     const killed = (await pool.query('SELECT j.state,j.error_code,(SELECT count(*)::int FROM bb_model_call_attempts a WHERE a.job_id=j.id) attempts FROM bb_jobs j WHERE j.id=$1', [queued.json().job_id])).rows[0];
     assert.deepEqual(killed, { state: 'failed', error_code: 'MODEL_CALLS_SUSPENDED', attempts: 0 });
     await setKillSwitch(pool, trial, operator, 'released', 'synthetic_drill');
+
+    // The production worker path must leave a replayable address if Blob upload
+    // succeeds but snapshot registration and compensating deletion both fail.
+    const broken = (await send(operator, 'POST', '/api/v1/admin/probes/model', body('synthetic-probe-orphan-0001'))).json();
+    assert.match(broken.run_id, /^[a-f0-9-]{36}$/);
+    await pool.query(`CREATE FUNCTION bb_test_reject_probe_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.run_id='${broken.run_id}' THEN RAISE EXCEPTION 'synthetic reference failure'; END IF; RETURN NEW; END $$`);
+    await pool.query('CREATE TRIGGER bb_test_reject_probe_snapshot BEFORE INSERT ON bb_snapshot_refs FOR EACH ROW EXECUTE FUNCTION bb_test_reject_probe_snapshot()');
+    const failedDeleteBlobs = { ...blobs, async delete(_key: string) { throw new Error('synthetic Blob delete outage'); } };
+    try {
+      assert.equal(await runPlatformProbeOnce({ pool, blobs: failedDeleteBlobs, config: baseConfig(root, 'probe_echo') }), 'failed');
+    } finally {
+      await pool.query('DROP TRIGGER bb_test_reject_probe_snapshot ON bb_snapshot_refs');
+      await pool.query('DROP FUNCTION bb_test_reject_probe_snapshot()');
+    }
+    const orphan = (await pool.query('SELECT object_key FROM bb_prompt_blob_intents WHERE owner_user_id=$1 AND registered_at IS NULL AND cleared_at IS NULL', [principal])).rows[0];
+    assert.ok(orphan);
+    assert.equal(await blobs.exists(orphan.object_key), true);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE run_id=$1', [broken.run_id])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [broken.job_id])).rows[0].n, 0);
+    assert.equal((await purgeLogContent(pool, failedDeleteBlobs, { contentRetentionDays: 180, ownerScope: [principal] })).orphanFailed, 1);
+    const restarted = new Pool({ connectionString: connection });
+    try {
+      assert.equal((await purgeLogContent(restarted, blobs, { contentRetentionDays: 180, ownerScope: [principal] })).orphanPurged, 1);
+      assert.equal((await purgeLogContent(restarted, blobs, { contentRetentionDays: 180, ownerScope: [principal] })).orphanDue, 0);
+    } finally { await restarted.end(); }
+    assert.equal(await blobs.exists(orphan.object_key), false);
+    assert.equal(await blobs.exists(snapshot.object_key), true, 'the successful probe remains authorized and intact');
 
     // User data is out of reach: the principal cannot own user work and users cannot own probes.
     const own = await user('probe-owner');

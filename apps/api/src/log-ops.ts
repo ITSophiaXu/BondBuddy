@@ -35,7 +35,7 @@ export function scrubSecrets(text: string) {
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */
-export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string }) {
+export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
   const scrubbed = scrubSecrets(input.body);
   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
   const intentId = uid();
@@ -47,7 +47,7 @@ export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input:
       // cannot delete an in-flight write even when it passes its grace period.
       await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
       await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
-      const id = await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: SCRUB_VERSION, blobs }, client);
+      const id = await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: input.redactionVersion ?? SCRUB_VERSION, blobs }, client);
       await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
       return id;
     });
