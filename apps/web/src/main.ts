@@ -8,7 +8,7 @@ import { renderAccount, renderClosed, type AccountContext } from './account';
 import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
 import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USERNAME_PATTERN, validateRegister } from './register';
-import { MaterialProcessing, materialProcessingKey } from './material-processing';
+import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow } from './material-processing';
 import './material-processing.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 import './style.css';
@@ -695,6 +695,13 @@ async function refreshProjectMaterials(projectId: string, token: number) {
   }
 }
 
+function updatePeriodRowLabels(form: HTMLFormElement) {
+  for (const [index, row] of [...form.querySelectorAll<HTMLElement>('[data-period-row]')].entries()) {
+    row.querySelector<HTMLElement>('[data-period-number]')!.textContent = String(index + 1);
+    row.querySelector<HTMLButtonElement>('[data-period-remove]')!.setAttribute('aria-label', `移除报告期 ${index + 1}`);
+  }
+}
+
 function bindMaterialWorkspace(projectId: string) {
   const host = document.querySelector<HTMLElement>('#material-partitions')!;
   host.addEventListener('submit', event => {
@@ -720,13 +727,12 @@ function bindMaterialWorkspace(projectId: string) {
       reason: String(data.get('reason') ?? '').trim(), evidence_refs,
       ...(correctMarket ? { source_market: market || null } : {}),
       ...(correctOffering ? { source_offering: offering || null } : {}),
-      ...(correctPeriods ? { reporting_periods: [...form.querySelectorAll<HTMLInputElement>('[name^="period_start_"]')].map((input, index) => ({
-        start: String(data.get(`period_start_${index}`) ?? '') || null,
-        end: String(data.get(`period_end_${index}`) ?? '') || null,
-        period_kind: (String(data.get(`period_kind_${index}`) ?? '') || null) as 'annual' | 'interim' | null,
-        scope: (String(data.get(`period_scope_${index}`) ?? '') || null) as 'consolidated' | 'parent' | null,
-        evidence_refs,
-      })) } : {}),
+      ...(correctPeriods ? { reporting_periods: buildReportingPeriodCorrections([...form.querySelectorAll<HTMLFieldSetElement>('[data-period-row]')].map(row => ({
+        start: row.querySelector<HTMLInputElement>('[data-period-start]')?.value || null,
+        end: row.querySelector<HTMLInputElement>('[data-period-end]')?.value || null,
+        period_kind: (row.querySelector<HTMLSelectElement>('[data-period-kind]')?.value || null) as 'annual' | 'interim' | null,
+        scope: (row.querySelector<HTMLSelectElement>('[data-period-scope]')?.value || null) as 'consolidated' | 'parent' | null,
+      })), evidence_refs) } : {}),
     };
     if (!Number.isSafeInteger(patch.profile_version) || patch.profile_version < 1 || !patch.reason) {
       if (message) message.textContent = '请填写校正原因后再保存。';
@@ -742,6 +748,30 @@ function bindMaterialWorkspace(projectId: string) {
     input.value = '';
   });
   host.addEventListener('click', event => {
+    const addPeriod = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-period-add]');
+    if (addPeriod) {
+      const form = addPeriod.closest<HTMLFormElement>('[data-source-correction]');
+      const list = form?.querySelector<HTMLElement>('[data-period-list]');
+      if (!form || !list) return;
+      list.querySelector('[data-no-periods]')?.remove();
+      const index = Number(form.dataset.periodNextIndex ?? 0);
+      form.dataset.periodNextIndex = String(index + 1);
+      list.insertAdjacentHTML('beforeend', renderReportingPeriodRow(index));
+      updatePeriodRowLabels(form);
+      list.querySelector<HTMLInputElement>(`[name="period_start_${index}"]`)?.focus();
+      return;
+    }
+    const removePeriod = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-period-remove]');
+    if (removePeriod) {
+      const form = removePeriod.closest<HTMLFormElement>('[data-source-correction]');
+      const list = removePeriod.closest<HTMLElement>('[data-period-list]');
+      removePeriod.closest('[data-period-row]')?.remove();
+      if (form && list) {
+        if (!list.querySelector('[data-period-row]')) list.innerHTML = '<p class="source-note" data-no-periods>报告期列表为空；保存后将按空列表提交。</p>';
+        updatePeriodRowLabels(form);
+      }
+      return;
+    }
     const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
     if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');

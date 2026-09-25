@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiClient, ApiError, type Dto } from './api.js';
-import { MaterialProcessing, materialProcessingKey } from './material-processing.js';
+import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow } from './material-processing.js';
 
 const material: Dto<'MaterialResponse'> = { material_id: 'material-a', material_version: 1, sha256: 'a'.repeat(64), role: 'historical', filename: 'synthetic.docx', upload_id: 'upload-a', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, state: 'persisted', persisted_at: '2026-09-25T00:00:00Z', error: null };
 const job: Dto<'MaterialParseJobResponse'> = { job_id: 'job-a', job_type: 'parse', subtype: 'material_parse', project_id: 'project-a', material_id: material.material_id, material_version: 1, material_sha256: material.sha256, parser_version: 'synthetic-v1', state: 'succeeded', stage: 'succeeded', completed_stages: ['parse_evidence', 'historical_profile'], attempts: 1, max_attempts: 3, error_code: null, outcome: 'parsed', parse_status: 'parsed', profile_version: 1, pending_capabilities: [], updated_at: material.persisted_at };
@@ -20,6 +20,7 @@ test('renders source and target separately, correction control, periods and esca
   const controller = setup(t); controller.sync([material]); await tick();
   const html = controller.render(material);
   for (const text of ['上交所', '普通私募公司债', '本次发行目标', '交易商协会 · MTN · 中期票据', '2025-01-01 至 2025-12-31', '合并口径', '校正历史稿源信息', 'profile_version', '&lt;script&gt;', '尚非核验事实']) assert.ok(html.includes(text), text);
+  assert.match(html, /data-period-add/); assert.match(html, /data-period-remove/);
   assert.ok(html.indexOf('历史稿信息') < html.indexOf('本次发行目标'));
   assert.ok(!html.includes('<script>'));
 });
@@ -29,6 +30,20 @@ test('unknown source values and reporting periods stay unknown with raw evidence
   const controller = setup(t, { sourceProfile: async () => uncertain }); controller.sync([material]); await tick();
   const html = controller.render(material);
   assert.match(html, /源信息待确认/); assert.match(html, /原文涉及多个市场/); assert.match(html, /未识别到有依据的报告期/);
+  assert.match(html, /尚未识别到报告期；可按原文逐期添加/); assert.match(html, /data-period-add/);
+});
+
+test('full period correction list can add a missed period and remove an extra period', () => {
+  const syntheticPeriod = (year: number) => ({ start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual' as const, scope: 'consolidated' as const });
+  const afterAddingMissedYear = buildReportingPeriodCorrections([syntheticPeriod(2022), syntheticPeriod(2023), syntheticPeriod(2024)], ['evidence-period']);
+  assert.deepEqual(afterAddingMissedYear.map(period => period.end), ['2022-12-31', '2023-12-31', '2024-12-31']);
+  assert.ok(afterAddingMissedYear.every(period => period.evidence_refs.includes('evidence-period')));
+
+  const afterRemovingExtraYear = buildReportingPeriodCorrections([syntheticPeriod(2022), syntheticPeriod(2024)], ['evidence-period']);
+  assert.deepEqual(afterRemovingExtraYear.map(period => period.end), ['2022-12-31', '2024-12-31']);
+  assert.ok(!afterRemovingExtraYear.some(period => period.end === '2023-12-31'));
+  assert.ok(afterRemovingExtraYear.every(period => !('latest_reporting_cutoff' in period)));
+  assert.match(renderReportingPeriodRow(3), /移除报告期 4/);
 });
 
 test('different material version/hash and foreign profile provenance cannot appear as current results', async t => {

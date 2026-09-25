@@ -11,6 +11,24 @@ type Entry = {
   controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
 };
 export const materialProcessingKey = (material: Material) => `${material.material_id}:${material.material_version}:${material.sha256}`;
+type PeriodValue = Recognition['reporting_periods'][number];
+export type ReportingPeriodCorrectionRow = { start: string | null; end: string | null; period_kind: PeriodValue['period_kind']; scope: PeriodValue['scope'] };
+
+/** Serializes every visible row. The latest cutoff remains a server-derived value. */
+export function buildReportingPeriodCorrections(rows: readonly ReportingPeriodCorrectionRow[], evidenceRefs: readonly string[]) {
+  return rows.map(row => ({ ...row, evidence_refs: [...new Set(evidenceRefs)] }));
+}
+
+export function renderReportingPeriodRow(index: number, period?: PeriodValue) {
+  return `<fieldset class="source-period-edit" data-period-row>
+    <legend>报告期 <span data-period-number>${index + 1}</span></legend>
+    <label>开始日期<input name="period_start_${index}" data-period-start type="date" value="${esc(period?.start ?? '')}"></label>
+    <label>截止日期<input name="period_end_${index}" data-period-end type="date" value="${esc(period?.end ?? '')}"></label>
+    <label>期间类型<select name="period_kind_${index}" data-period-kind><option value="">待确认</option><option value="annual" ${period?.period_kind === 'annual' ? 'selected' : ''}>年度</option><option value="interim" ${period?.period_kind === 'interim' ? 'selected' : ''}>中期</option></select></label>
+    <label>报表口径<select name="period_scope_${index}" data-period-scope><option value="">待确认</option><option value="consolidated" ${period?.scope === 'consolidated' ? 'selected' : ''}>合并口径</option><option value="parent" ${period?.scope === 'parent' ? 'selected' : ''}>母公司口径</option></select></label>
+    <button type="button" class="text-button" data-period-remove aria-label="移除报告期 ${index + 1}">移除本期</button>
+  </fieldset>`;
+}
 
 function readError(error: unknown) {
   if (error instanceof ApiError) {
@@ -60,12 +78,8 @@ function renderCorrection(profile: Recognition, key: string) {
   const fields = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
   const refs = [...new Set(fields.flatMap(field => field.provenance.evidence_refs))];
   const evidence = refs.length ? `<fieldset class="source-evidence"><legend>可引用的原文证据</legend><p class="source-note">只选择与你本次校正直接相关的材料锚点。引用锚点仍需人工核对，不会把校正变成已核验事实。</p>${refs.map((ref, index) => `<label><input type="checkbox" name="evidence_ref" value="${esc(ref)}"><span>证据 ${index + 1} · ${esc(ref)}</span></label>`).join('')}</fieldset>` : '<p class="source-note">当前没有可引用的识别锚点。提交内容仍会保存为用户提供、待人工确认。</p>';
-  const periods = profile.reporting_periods.map((period, index) => `<fieldset class="source-period-edit"><legend>报告期 ${index + 1}</legend>
-    <label>开始日期<input name="period_start_${index}" type="date" value="${esc(period.start ?? '')}"></label>
-    <label>截止日期<input name="period_end_${index}" type="date" value="${esc(period.end ?? '')}"></label>
-    <label>期间类型<select name="period_kind_${index}"><option value="">待确认</option><option value="annual" ${period.period_kind === 'annual' ? 'selected' : ''}>年度</option><option value="interim" ${period.period_kind === 'interim' ? 'selected' : ''}>中期</option></select></label>
-    <label>报表口径<select name="period_scope_${index}"><option value="">待确认</option><option value="consolidated" ${period.scope === 'consolidated' ? 'selected' : ''}>合并口径</option><option value="parent" ${period.scope === 'parent' ? 'selected' : ''}>母公司口径</option></select></label></fieldset>`).join('');
-  return `<details class="source-correction"><summary>校正历史稿源信息</summary><form data-source-correction="${esc(key)}">
+  const periods = profile.reporting_periods.map((period, index) => renderReportingPeriodRow(index, period)).join('');
+  return `<details class="source-correction"><summary>校正历史稿源信息</summary><form data-source-correction="${esc(key)}" data-period-next-index="${profile.reporting_periods.length}">
     <input type="hidden" name="profile_version" value="${profile.profile_version}">
     <p class="source-note">请对照原文件填写。校正只记录为“用户提供 · 尚非核验事实”，不会自动确认业务事实。</p>
     <label class="source-correction-toggle"><input type="checkbox" name="correct_market"><span>校正原发行市场</span></label>
@@ -74,7 +88,8 @@ function renderCorrection(profile: Recognition, key: string) {
     <label>原发行方式<select name="source_offering"><option value="">未知</option>${Object.entries(OFFERING_LABELS).map(([value, label]) => `<option value="${value}" ${profile.source_offering.value === value ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
     <p class="source-note">发行方式可用性会按所选原市场校验。</p>
     <label class="source-correction-toggle"><input type="checkbox" name="correct_periods"><span>校正完整原报告期列表及最新截止日</span></label>
-    <div class="source-period-edit-list">${periods || '<p class="source-note">当前没有报告期可校正；请先完成识别或补充材料。</p>'}</div>
+    <div class="source-period-edit-list" data-period-list>${periods || '<p class="source-note" data-no-periods>尚未识别到报告期；可按原文逐期添加。</p>'}</div>
+    <button type="button" class="text-button" data-period-add>添加报告期</button>
     ${evidence}
     <label>校正原因<textarea name="reason" required minlength="1" maxlength="500" rows="3"></textarea></label>
     <p class="source-correction-message" role="status">${''}</p>
