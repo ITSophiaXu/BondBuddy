@@ -11,7 +11,7 @@ import type { Readable } from 'node:stream';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
-import { executionKeyHash, recordLogicalJob, recordOperation, rejectOperation, validExecutionKey } from './observability.js';
+import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation, rejectOperation, validExecutionKey } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
@@ -116,7 +116,7 @@ export function createServer(settings: Settings = {}) {
     const submitted=request.body&&typeof request.body==='object'&&!Array.isArray(request.body)?request.body as Record<string,unknown>:{};
     const safeId=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
     const projectId=kind==='preflight'?param(request,'project_id'):submitted.project_id;
-    const inputRevision=typeof submitted.input_revision==='number'&&Number.isInteger(submitted.input_revision)&&submitted.input_revision>=1&&submitted.input_revision<=2147483647?submitted.input_revision:undefined;
+    const inputRevision=isPgInputRevision(submitted.input_revision)?submitted.input_revision:undefined;
     const inputHash=typeof submitted.input_hash==='string'&&/^[a-f0-9]{64}$/.test(submitted.input_hash)?submitted.input_hash:undefined;
     const requestId=request.id,traceId=uid();
     return transaction(db(),async client=>{
@@ -472,7 +472,17 @@ export function createServer(settings: Settings = {}) {
     const traceId=uid();
     const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
     const storedExecutionKey=executionKeyStorage(b.execution_request_id);
-    const logical=(errorCode:string,httpStatus:number,stage:string)=>({owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:b.input_revision,inputHash:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus});
+    const wideRevision=!isPgInputRevision(b.input_revision);
+    const logical=(errorCode:string,httpStatus:number,stage:string)=>({owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
+    const priorRejection=async(client:PoolClient,prior:any)=>{
+      if(wideRevision){
+        const same=prior.request_hash.trim()===requestHash;
+        await recordOperation(client,{owner:user,projectId:prior.project_id,jobId:prior.id,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:same?prior.error_code:'IDEMPOTENCY_CONFLICT'});
+        return {errorCode:same?prior.error_code as string:'IDEMPOTENCY_CONFLICT',httpStatus:same?prior.rejection_http_status as number:409};
+      }
+      const logged=await recordLogicalJob(client,logical(prior.error_code,prior.rejection_http_status,prior.stage));
+      return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
+    };
     if(!settings.enableRunStaging && !queueEnabled){
       const response=await transaction(db(),async client=>{
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
@@ -482,13 +492,11 @@ export function createServer(settings: Settings = {}) {
           await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
           return same?{run:runDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
         }
-        const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
-        if(prior.rows[0]){
-          const logged=await recordLogicalJob(client,logical(prior.rows[0].error_code,prior.rows[0].rejection_http_status,prior.rows[0].stage));
-          return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
-        }
+        const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
+        if(prior.rows[0])return priorRejection(client,prior.rows[0]);
         const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
         if(!owned.rowCount){await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});return {errorCode:'CAPABILITY_NOT_READY',httpStatus:501};}
+        if(wideRevision){const logged=await recordLogicalJob(client,logical('VALIDATION_FAILED',422,'revision_out_of_range'));return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};}
         const logged=await recordLogicalJob(client,logical('CAPABILITY_NOT_READY',501,'capability_not_ready'));
         return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
       });
@@ -504,12 +512,10 @@ export function createServer(settings: Settings = {}) {
         await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
         return same?runDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
       }
-      const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
-      if(prior.rows[0]){
-        const logged=await recordLogicalJob(client,logical(prior.rows[0].error_code,prior.rows[0].rejection_http_status,prior.rows[0].stage));
-        return {rejection:{errorCode:logged.errorCode!,httpStatus:logged.httpStatus!}};
-      }
+      const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
+      if(prior.rows[0])return {rejection:await priorRejection(client,prior.rows[0])};
       await project(client,user,b.project_id);
+      if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
@@ -539,7 +545,7 @@ export function createServer(settings: Settings = {}) {
           }
           const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
           if(owned.rowCount){
-            const logged=await recordLogicalJob(client,logical(error.code,error.status,'submission_rejected'));
+            const logged=await recordLogicalJob(client,logical(error.code,error.status,wideRevision?'revision_out_of_range':'submission_rejected'));
             return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!,replay:logged.replay};
           }
           await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
@@ -677,6 +683,7 @@ export function createServer(settings: Settings = {}) {
     try {
       return await transaction(db(),async client=>{
         await project(client,user,id);
+        if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
         const input=(await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,id,b.input_revision])).rows[0];
         if(!input)throw missing();
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
@@ -732,7 +739,7 @@ export function createServer(settings: Settings = {}) {
     } catch(error) {
       if(error instanceof Problem){
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
-        if(owned.rowCount)await transaction(db(),client=>recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'rejected',errorCode:error.code,inputRevision:b.input_revision,inputHash:b.input_hash,stage:'submission_rejected'}));
+        if(owned.rowCount)await transaction(db(),client=>recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'rejected',errorCode:error.code,inputRevision:isPgInputRevision(b.input_revision)?b.input_revision:undefined,inputHash:isPgInputRevision(b.input_revision)?b.input_hash:undefined,stage:isPgInputRevision(b.input_revision)?'submission_rejected':'revision_out_of_range',httpStatus:isPgInputRevision(b.input_revision)?undefined:422,revisionRejected:!isPgInputRevision(b.input_revision)}));
         else await rejectOperation(db(),{owner:user,projectId:null,requestId:request.id,traceId,kind:'preflight',status:'rejected',errorCode:error.code});
       }
       throw error;
