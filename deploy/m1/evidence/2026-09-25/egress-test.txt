@@ -1,0 +1,8 @@
+{
+ "direct_1_1_1_1_443": "ENETUNREACH",
+ "direct_example_com_443": "EAI_AGAIN",
+ "proxy_example_com": "HTTP/1.1 403 Forbidden",
+ "proxy_github_com": "HTTP/1.1 403 Forbidden",
+ "proxy_allowlisted_api_deepseek_com": "HTTP/1.1 200 Connection established"
+}
+EGRESS POLICY OK

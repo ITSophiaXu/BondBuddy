@@ -1,6 +1,6 @@
 {
  "base_url": "https://handed-rules-ant-bedding.trycloudflare.com",
- "generated_at": "2026-09-25T08:00:22.886Z",
+ "generated_at": "2026-09-25T08:11:55.388Z",
  "synthetic": true,
  "results": [
   {
@@ -57,14 +57,14 @@
      "stage": "queued",
      "attempts": 0,
      "error_code": null,
-     "updated_at": "2026-09-25T07:59:35.442Z"
+     "updated_at": "2026-09-25T08:10:58.311Z"
     },
     "after_reopen": {
      "state": "succeeded",
      "stage": "succeeded",
      "attempts": 1,
      "error_code": null,
-     "updated_at": "2026-09-25T07:59:38.327Z"
+     "updated_at": "2026-09-25T08:11:01.300Z"
     },
     "note": "worker paused during upload so the queued state is observable; job resumed after the browser context was closed"
    }
@@ -146,8 +146,8 @@
    "detail": {
     "snapshot_status": 201,
     "revision": 1,
-    "input_hash_before": "d907ec61aff32b788b485beaca10dc7b49db067c75a09fd31b5427c6b02b8398",
-    "input_hash_after_edit": "d907ec61aff32b788b485beaca10dc7b49db067c75a09fd31b5427c6b02b8398",
+    "input_hash_before": "ed85d920d89f8e5f425a44356998fc6dc28fe592b0dc18ae970aead7c7a4273c",
+    "input_hash_after_edit": "ed85d920d89f8e5f425a44356998fc6dc28fe592b0dc18ae970aead7c7a4273c",
     "edit_status": 200,
     "draft_revision_before": 1,
     "draft_revision_after": 2,
@@ -171,11 +171,11 @@
    "evidence": "08-duplicate-upload-reused.png, results.json",
    "detail": {
     "first": {
-     "material_id": "4b5dfd91-d87b-45e0-ad9f-eefe8cbaf54f",
+     "material_id": "1c59476e-7b37-49f1-b9ec-c94c062bd7dc",
      "version": "1"
     },
     "duplicate": {
-     "material_id": "4b5dfd91-d87b-45e0-ad9f-eefe8cbaf54f",
+     "material_id": "1c59476e-7b37-49f1-b9ec-c94c062bd7dc",
      "version": 1
     }
    }
@@ -200,6 +200,127 @@
     "replayed_read": 401,
     "replayed_download": 401,
     "replayed_refresh": 401
+   }
+  },
+  {
+   "issue": "#8",
+   "item": "backup -> restore drill preserves project, material bytes (sha256) and the locked snapshot",
+   "result": "pass",
+   "evidence": "08-restored-material.png, results.json",
+   "detail": {
+    "deleted_status": 204,
+    "read_after_delete": 404,
+    "read_after_restore": 200,
+    "sha256_before": "0f239970b8be14222c74949c421eb9439f63631b5d76f37e0b1c942c1906e37c",
+    "sha256_after_restore": "0f239970b8be14222c74949c421eb9439f63631b5d76f37e0b1c942c1906e37c",
+    "snapshot_hash_preserved": true,
+    "backup": "20260925T081112Z-acceptance-drill"
+   }
+  },
+  {
+   "issue": "#7",
+   "item": "failed logins and the rate-limit response are identical for existing and unknown usernames",
+   "result": "pass",
+   "evidence": "07-rate-limited-ui.png, results.json",
+   "detail": {
+    "existing_account": [
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 429,
+      "code": "RATE_LIMITED",
+      "message": "Please wait before trying again"
+     },
+     {
+      "status": 429,
+      "code": "RATE_LIMITED",
+      "message": "Please wait before trying again"
+     }
+    ],
+    "unknown_account": [
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 401,
+      "code": "UNAUTHENTICATED",
+      "message": "Invalid username or password"
+     },
+     {
+      "status": 429,
+      "code": "RATE_LIMITED",
+      "message": "Please wait before trying again"
+     },
+     {
+      "status": 429,
+      "code": "RATE_LIMITED",
+      "message": "Please wait before trying again"
+     }
+    ],
+    "note": "Staging traffic arrives through one tunnel, so all clients share a source address; per-account limits still apply."
+   }
+  },
+  {
+   "issue": "#79",
+   "item": "admin log routes reachable only with a grant (no grant -> 404; log_reader -> 200; prompt/operator routes still 404 without their own grants)",
+   "result": "pass",
+   "evidence": "results.json",
+   "detail": {
+    "anonymous": 401,
+    "without_grant": {
+     "/api/v1/admin/logs/events": 404,
+     "/api/v1/admin/metrics": 404,
+     "/api/v1/admin/alerts": 404,
+     "/api/v1/admin/evidence-gate": 404
+    },
+    "with_log_reader": {
+     "/api/v1/admin/logs/events": 200,
+     "/api/v1/admin/metrics": 200,
+     "/api/v1/admin/alerts": 200,
+     "/api/v1/admin/evidence-gate": 200
+    },
+    "prompt_view_without_prompt_viewer": 404,
+    "gate_resume_without_log_operator": 404
    }
   }
  ]
