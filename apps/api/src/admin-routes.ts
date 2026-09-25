@@ -26,13 +26,26 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
   });
   app.get('/api/v1/admin/jobs/:job_id/timeline', { schema: { response: { 200: schemas.AdminJobTimelineResponse } } }, async request =>
     adminJobTimeline(deps.db(), await operator(request, 'log_reader'), param(request, 'job_id')));
-  app.get('/api/v1/admin/prompts/:snapshot_id', { schema: { response: { 200: schemas.AdminPromptView } } }, async (request, reply) => {
+  const promptReleases = new WeakMap<FastifyRequest, () => Promise<void>>();
+  app.get('/api/v1/admin/prompts/:snapshot_id', { schema: { response: { 200: schemas.AdminPromptView } },
+    onResponse: async request => { await promptReleases.get(request)?.(); promptReleases.delete(request); }
+  }, async (request, reply) => {
     const actor = await operator(request, 'prompt_viewer');
     const query = request.query as Record<string, unknown>;
     if (Object.keys(query).some(key => key !== 'reason_code') || typeof query.reason_code !== 'string') throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
     reply.header('cache-control', 'no-store');
     let blobs: PrivateBlobs; try { blobs = deps.blobs(); } catch { throw unavailable(); }
-    return adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code);
+    let release: (() => Promise<void>) | undefined;
+    let disconnected = false;
+    const disconnect = () => { disconnected = true; void release?.(); };
+    // Register before Blob I/O: a client may disconnect while its read is pending.
+    request.raw.once('aborted', disconnect);
+    reply.raw.once('close', disconnect);
+    const result = await adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code);
+    release = result.release;
+    if (disconnected) { await release(); throw unavailable(); }
+    promptReleases.set(request, release);
+    return result.view;
   });
   app.get('/api/v1/admin/alerts', { schema: { response: { 200: schemas.AdminAlertsResponse } } }, async request => adminAlerts(deps.db(), await operator(request, 'log_reader')));
   app.get('/api/v1/admin/evidence-gate', { schema: { response: { 200: schemas.EvidenceGateResponse } } }, async request => { await operator(request, 'log_reader'); return gateState(deps.db()); });

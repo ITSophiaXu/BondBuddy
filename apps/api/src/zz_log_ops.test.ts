@@ -632,3 +632,72 @@ test('#79 retention purge and user-deletion reclamation keep accounting metadata
     await assert.rejects(pool.query('DELETE FROM bb_log_content_tombstones WHERE content_id=$1', [runless]), (e: any) => e.code === '23514');
   } finally { await f.app.close(); await pool.end(); }
 });
+
+test('#79 prompt response and purge serialize through delivery, with audit and owner boundary', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let releaseSend!: () => void;
+  const sendGate = new Promise<void>(resolve => { releaseSend = resolve; });
+  let enteredSend!: () => void;
+  const inSend = new Promise<void>(resolve => { enteredSend = resolve; });
+  let url = '';
+  try {
+    f.app.addHook('onSend', async (request, reply, payload) => {
+      if (request.url === url && reply.statusCode === 200) { enteredSend(); await sendGate; }
+      return payload;
+    });
+    const project = (await f.as(f.ownerB)('POST', '/api/v1/projects', { name: 'Synthetic purge race', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerB, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic prompt RACE_MARKER_79' });
+    url = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    assert.equal((await f.as(f.ownerA)('GET', url)).statusCode, 404, 'ordinary user cannot view another account');
+    const response = f.as(f.viewer)('GET', url);
+    await inSend; // Blob bytes have been read, but HTTP has not sent them.
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerB]);
+    let finished = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerB] }).then(result => { finished = true; return result; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge must wait for the unsent response');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [snapshot])).rows[0].n, 0);
+    releaseSend();
+    const sent = await response;
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.ok(sent.json().body.includes('RACE_MARKER_79'));
+    assert.deepEqual([ (await purge).purged, finished ], [1, true]);
+    assert.equal((await f.as(f.viewer)('GET', url)).statusCode, 404, 'after completed purge no body is returned');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 2, 'successful and denied reads are audited');
+  } finally { releaseSend(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 in-flight Blob purge blocks prompt read and failed delete remains replayable', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let allowDelete!: () => void;
+  const deleteGate = new Promise<void>(resolve => { allowDelete = resolve; });
+  let enteredDelete!: () => void;
+  const inDelete = new Promise<void>(resolve => { enteredDelete = resolve; });
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic expiry race', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic prompt PURGE_FIRST_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const later = () => new Date(Date.now() + 31 * 86_400_000);
+    const failingBlobs = { ...blobs, delete: async (_key: string) => { throw new Error('synthetic Blob outage'); } };
+    const failed = await purgeLogContent(pool, failingBlobs, { contentRetentionDays: 30, now: later, ownerScope: [f.ownerA] });
+    assert.deepEqual([failed.purged, failed.failed], [0, 1]);
+    assert.equal(await blobs.exists(key), true);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [snapshot])).rows[0].n, 0);
+    const pausedBlobs = { ...blobs, delete: async (objectKey: string) => { enteredDelete(); await deleteGate; await blobs.delete(objectKey); } };
+    const purge = purgeLogContent(pool, pausedBlobs, { contentRetentionDays: 30, now: later, ownerScope: [f.ownerA] });
+    await inDelete;
+    let delivered = false;
+    const response = f.as(f.viewer)('GET', `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`).then(result => { delivered = true; return result; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(delivered, false, 'read waits while purge holds the object lock');
+    allowDelete();
+    assert.equal((await purge).purged, 1);
+    assert.equal((await response).statusCode, 404);
+    assert.equal(await blobs.exists(key), false);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 1);
+  } finally { allowDelete(); await f.app.close(); await pool.end(); }
+});

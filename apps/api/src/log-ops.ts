@@ -162,6 +162,7 @@ export async function checkLogHealth(pool: Pool, thresholds: { maxBacklogAgeSeco
 
 // ---------------------------------------------------------------- retention
 
+class BlobPurgeError extends Error {}
 export type LogRetentionPolicy = { contentRetentionDays: number; policyVersion?: string; batchSize?: number; now?: () => Date;
   /** #6: content of a user-deleted project is purged this many days after deletion (the storage purge window). */ deletedProjectPurgeDays?: number;
   /** Test/restore-verifier scope only. The CLI never sets it. */ ownerScope?: string[] };
@@ -199,13 +200,25 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
     ORDER BY created_at,id LIMIT $2`, [cutoff, batch, policy.ownerScope ?? null, deletedCutoff])).rows;
   let purged = 0, failed = 0;
   for (const row of due) {
-    try { await blobs.delete(row.object_key); }
-    catch { failed++; await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } }); continue; }
-    await transaction(pool, async client => {
-      const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
-      if (inserted.rowCount) await emitInternal(client, internalEvent({ kind: 'log.content_purged', owner: row.owner_user_id, projectId: row.project_id, traceId: row.id, stage: row.reason, promptSnapshotRef: row.kind === 'prompt_snapshot' ? row.id : null }));
-    });
-    purged++;
+    try {
+      const deleted = await transaction(pool, async client => {
+        // The prompt view holds this same lock through response completion. Deletion and
+        // tombstoning must be one serialized operation, including the Blob I/O window.
+        if (row.kind === 'prompt_snapshot') await client.query("SELECT pg_advisory_xact_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [row.id]);
+        const existing = await client.query('SELECT 1 FROM bb_log_content_tombstones WHERE content_kind=$1 AND content_id=$2', [row.kind, row.id]);
+        if (existing.rowCount) return false;
+        try { await blobs.delete(row.object_key); }
+        catch { throw new BlobPurgeError('Private content deletion failed'); }
+        const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
+        if (inserted.rowCount) await emitInternal(client, internalEvent({ kind: 'log.content_purged', owner: row.owner_user_id, projectId: row.project_id, traceId: row.id, stage: row.reason, promptSnapshotRef: row.kind === 'prompt_snapshot' ? row.id : null }));
+        return !!inserted.rowCount;
+      });
+      if (deleted) purged++;
+    } catch (error) {
+      if (!(error instanceof BlobPurgeError)) throw error;
+      failed++;
+      await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } });
+    }
   }
   return { due: due.length, purged, failed };
 }
@@ -348,19 +361,37 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
   });
 }
 
-/** Plaintext is only returned after the audit row commits; a purged or foreign-looking ref is 404. */
+/** The caller must hold release until the HTTP response finishes or aborts. */
 export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string) {
   if (!validId(snapshotId)) throw missing();
   if (!safeCode.test(reasonCode)) throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
-  const { snapshot, auditId } = await transaction(pool, async client => {
-    const snapshot = (await client.query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id WHERE s.id=$1", [snapshotId])).rows[0];
-    const auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
-    return { snapshot, auditId };
-  });
-  if (!snapshot || snapshot.tombstone) throw missing();
-  const bytes = await blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
-  if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
-  return { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId };
+  const client = await pool.connect();
+  let releasePromise: Promise<void> | undefined;
+  const release = () => releasePromise ??= (async () => {
+    try {
+      await client.query('SELECT pg_advisory_unlock(hashtext($1::text),hashtext($2::text))', ['prompt_snapshot', snapshotId]);
+      client.release();
+    } catch (error) {
+      // Never return a connection with a possibly held session lock to the pool.
+      client.release(true);
+      throw error;
+    }
+  })();
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshotId]);
+    // Audit commits before any plaintext read. The session lock survives that commit.
+    await client.query('BEGIN');
+    let snapshot: any, auditId: string;
+    try {
+      snapshot = (await client.query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    if (!snapshot || snapshot.tombstone) throw missing();
+    const bytes = await blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
+    if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
+    return { view: { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId }, release };
+  } catch (error) { await release(); throw error; }
 }
 
 export async function adminAlerts(pool: Pool, actorId: string) {
