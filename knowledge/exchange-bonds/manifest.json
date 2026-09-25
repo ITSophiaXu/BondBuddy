@@ -1,0 +1,67 @@
+{
+  "version": "2026.09.25-draft.1",
+  "sources": 34,
+  "occurrences": 38,
+  "scopes": [
+    {
+      "scope": "sse-private",
+      "issue": 20,
+      "version": "2026.09.25-draft.1",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 25,
+      "chapters": 17,
+      "path": "drafts/sse-private"
+    },
+    {
+      "scope": "sse-public",
+      "issue": 21,
+      "version": "2026.09.25-draft.1",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 27,
+      "chapters": 17,
+      "path": "drafts/sse-public"
+    },
+    {
+      "scope": "sse-public_all",
+      "issue": 22,
+      "version": "2026.09.25-draft.1",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 28,
+      "chapters": 17,
+      "path": "drafts/sse-public_all"
+    },
+    {
+      "scope": "szse-private",
+      "issue": 23,
+      "version": "2026.09.25-draft.1",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 25,
+      "chapters": 14,
+      "path": "drafts/szse-private"
+    },
+    {
+      "scope": "szse-public",
+      "issue": 24,
+      "version": "2026.09.25-draft.1",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 27,
+      "chapters": 14,
+      "path": "drafts/szse-public"
+    },
+    {
+      "scope": "szse-public_all",
+      "issue": 25,
+      "version": "2026.09.25-draft.1",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 28,
+      "chapters": 14,
+      "path": "drafts/szse-public_all"
+    }
+  ]
+}

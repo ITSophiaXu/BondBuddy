@@ -1,5 +1,18 @@
 # BondBuddy domain rules (#19)
 
+## Exchange knowledge intake (#20–#25)
+
+The six exact-market/offering research bundles in
+[`knowledge/exchange-bonds`](../../knowledge/exchange-bonds/README.md) reuse this
+package's RulePack, ChapterTemplate and CoverageManifest schemas. The associated
+`exchange-knowledge.test.ts` validates original hashes, exact paragraph/page
+quotes, market/offering separation and publication gates. All rules remain
+disabled research candidates; checker IDs are unimplemented manual-review
+placeholders. Uploaded documents have not been attested as current official
+sources, so their pack source kind stays `unverified_lead`. Synthetic engineering
+gate cases do not satisfy authorized-real-sample or industry review requirements.
+No production registry, release, API or worker capability is enabled here.
+
 ## Internal reference matching foundation (#33)
 
 `reference-match.ts` conservatively compares reviewed, complete annual
