@@ -8,7 +8,7 @@ x-blob: &blob ${AZURE_STORAGE_CONNECTION_STRING:?set in .env}
 
 x-bb-policy-env: &bb-policy-env
   # Trial guard (#35, docs/runbooks/m1-trial-operations.md). NODE_ENV=production in the image turns the guard on.
-  BB_TRIAL_GUARD: ${BB_TRIAL_GUARD:-}
+  BB_TRIAL_GUARD: ${BB_TRIAL_GUARD:-on}
   BB_TRIAL_SOURCE_SALT: ${BB_TRIAL_SOURCE_SALT:?set a random per-environment value in .env}
   BB_TRIAL_KILL_SWITCH: ${BB_TRIAL_KILL_SWITCH:-}
   BB_TRIAL_DAY_TIME_ZONE: ${BB_TRIAL_DAY_TIME_ZONE:-Asia/Shanghai}
