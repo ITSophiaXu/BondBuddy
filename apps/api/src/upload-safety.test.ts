@@ -102,18 +102,23 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH');
 });
 
-test('upload inspection limits concurrent parser workers and releases capacity after use', async () => {
-  const first = verifiedMedia(textSample, TEXT);
-  const second = verifiedMedia(textSample, TEXT);
-  const rejected = verifiedMedia(textSample, TEXT);
-  await assert.rejects(rejected, (error: unknown) => {
-    assert.ok(error instanceof Error);
-    assert.equal((error as Error & { status: number }).status, 503);
-    assert.equal((error as Error & { code: string }).code, 'DATA_UNAVAILABLE');
-    return true;
-  });
-  assert.deepEqual(await Promise.all([first, second]), [TEXT, TEXT]);
-  assert.equal(await verifiedMedia(textSample, TEXT), TEXT);
+test('upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503', async () => {
+  // Queued inspections run one after another and all succeed.
+  assert.deepEqual(await Promise.all([verifiedMedia(textSample, TEXT), verifiedMedia(textSample, TEXT), verifiedMedia(textSample, TEXT)]), [TEXT, TEXT, TEXT]);
+  process.env.BB_UPLOAD_INSPECTION_QUEUE_MS = '1';
+  try {
+    const first = verifiedMedia(textSample, TEXT);
+    const rejected = verifiedMedia(textSample, TEXT);
+    await assert.rejects(rejected, (error: unknown) => {
+      assert.equal((error as Error & { status: number }).status, 503);
+      assert.equal((error as Error & { code: string }).code, 'DATA_UNAVAILABLE');
+      return true;
+    });
+    assert.equal(await first, TEXT);
+  } finally {
+    delete process.env.BB_UPLOAD_INSPECTION_QUEUE_MS;
+  }
+  assert.equal(await verifiedMedia(textSample, TEXT), TEXT, 'capacity is released after use');
 });
 
 test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owner 404 and retry idempotency', { skip: !connection || !blobConnection }, async () => {

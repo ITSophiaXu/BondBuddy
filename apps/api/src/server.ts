@@ -3,7 +3,11 @@ import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
+import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
+import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { Readable } from 'node:stream';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
@@ -59,7 +63,8 @@ export function createServer(settings: Settings = {}) {
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
-  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_BYTES }, (_request, value, done) => done(null, value));
+  // Upload bytes stay a stream here; the route authorises first, then spools to disk while hashing.
+  app.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
     if (error instanceof Error && 'validation' in error && error.validation) return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Request validation failed', retryable: false, field_errors: [], correlation_id: request.id });
@@ -210,31 +215,47 @@ export function createServer(settings: Settings = {}) {
   });
   app.put('/api/v1/projects/:project_id/materials/uploads/:upload_id/bytes',async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');await project(db(),user,id);
-    const bytes=request.body;if(!Buffer.isBuffer(bytes))throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
-    await transaction(db(),async client=>{
-      const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
-      if((await client.query('SELECT 1 FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND upload_id=$2',[user,uploadId])).rowCount)throw conflict('IDEMPOTENCY_CONFLICT','Upload already resolved; retry completion');
-      if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
-      if(u.state!=='uploading'&&u.state!=='received')throw missing();
-      if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
-      if(bytes.length!==Number(u.byte_size)||digest(bytes)!==u.sha256.trim())throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Bytes or hash mismatch');
-      await verifiedMedia(bytes,u.declared_media_type);
-      if(u.state==='received'){
-        if(u.received_sha256?.trim()!==digest(bytes)||Number(u.received_bytes)!==bytes.length)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload receipt is inconsistent');
-        const stored=await blob().getIfExists(u.object_key);
-        if(stored===null||stored.length!==bytes.length||digest(stored)!==u.sha256.trim()){
-          await blob().put(u.object_key,bytes,u.declared_media_type);
-          const restored=await blob().get(u.object_key);
-          if(restored.length!==bytes.length||digest(restored)!==u.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Upload bytes could not be restored');
+    const stream=request.body as Readable|undefined;if(!stream||typeof stream.pipe!=='function')throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
+    // Reject unknown, finished or expired uploads before accepting any bytes; the locked re-check below stays authoritative.
+    const pre=(await db().query('SELECT state,byte_size,expires_at FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
+    if(!pre)throw missing();
+    if(pre.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
+    if(pre.state!=='uploading'&&pre.state!=='received')throw missing();
+    if(new Date(pre.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
+    const declared=Number(pre.byte_size),length=request.headers['content-length'];
+    const mismatch=()=>new Problem(422,'MATERIAL_CONTENT_MISMATCH','Bytes or hash mismatch');
+    if(length!==undefined&&Number(length)!==declared)throw mismatch();
+    const release=reserveSpool(declared);let spooled:Spooled|undefined;
+    try{
+      spooled=await spoolStream(stream,declared,mismatch);
+      const bytes=spooled;
+      await transaction(db(),async client=>{
+        const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
+        if((await client.query('SELECT 1 FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND upload_id=$2',[user,uploadId])).rowCount)throw conflict('IDEMPOTENCY_CONFLICT','Upload already resolved; retry completion');
+        if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
+        if(u.state!=='uploading'&&u.state!=='received')throw missing();
+        if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
+        if(bytes.byteSize!==Number(u.byte_size)||bytes.sha256!==u.sha256.trim())throw mismatch();
+        await verifiedMediaFile(bytes.path,bytes.byteSize,u.declared_media_type);
+        if(u.state==='received'){
+          if(u.received_sha256?.trim()!==bytes.sha256||Number(u.received_bytes)!==bytes.byteSize)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload receipt is inconsistent');
+          const stored=await readBlobToFile(blob(),u.object_key,null,MAX_BYTES).catch(error=>{if(error instanceof Problem)return null;throw error;});
+          if(stored===null||stored.byteSize!==bytes.byteSize||stored.sha256!==u.sha256.trim()){
+            await putBlobFile(blob(),u.object_key,bytes.path,u.declared_media_type);
+            const restored=await readBlobToFile(blob(),u.object_key,null,MAX_BYTES);
+            if(!restored||restored.byteSize!==bytes.byteSize||restored.sha256!==u.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Upload bytes could not be restored');
+          }
+          return;
         }
-        return;
-      }
-      // The upload row lock is shared with completion and orphan cleanup. Keep it until Blob and DB state agree.
-      await blob().put(u.object_key,bytes,u.declared_media_type);
-      const updated=await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,digest(bytes),bytes.length]);
-      if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
-      await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.length}]);
-    });
+        // The upload row lock is shared with completion and orphan cleanup. Keep it until Blob and DB state agree.
+        await putBlobFile(blob(),u.object_key,bytes.path,u.declared_media_type);
+        const updated=await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,bytes.sha256,bytes.byteSize]);
+        if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
+        await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.byteSize}]);
+      });
+    }finally{
+      await discardSpool(spooled?.path);release();
+    }
     return reply.code(204).send();
   });
   app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async request=>{
@@ -254,8 +275,8 @@ export function createServer(settings: Settings = {}) {
       };
       const checkedMaterial=async (m:any)=>{
         if(!m)throw missing();
-        const stored=await blob().getIfExistsBounded(m.object_key,Number(m.byte_size));
-        if(!stored||stored.length!==Number(m.byte_size)||digest(stored)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
+        const stored=await readBlobToFile(blob(),m.object_key,null,Number(m.byte_size)).catch(error=>{if(error instanceof Problem)return null;throw error;});
+        if(!stored||stored.byteSize!==Number(m.byte_size)||stored.sha256!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
         return accepted(m);
       };
       if(receipt.rows[0]){
@@ -266,9 +287,16 @@ export function createServer(settings: Settings = {}) {
       if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);return checkedMaterial(existing.rows[0]);}
       if(u.state==='deleting'||u.state==='purged')throw missing();
       if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
-      const bytes=await blob().get(u.object_key);
-      if(bytes.length!==b.byte_size||digest(bytes)!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
-      const media=await verifiedMedia(bytes,u.declared_media_type);
+      // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
+      const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
+      let media:string;
+      try{
+        await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
+        const stored=await readBlobToFile(blob(),u.object_key,copy,MAX_BYTES).catch(error=>{if(error instanceof Problem&&error.status===413)return false as const;throw error;});
+        if(stored===null)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
+        if(!stored||stored.byteSize!==b.byte_size||stored.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
+        media=await verifiedMediaFile(copy,stored.byteSize,u.declared_media_type);
+      }finally{await discardSpool(copy);release();}
       const duplicate=await client.query(`SELECT * FROM bb_material_versions
         WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL
         ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,media]);
@@ -518,5 +546,7 @@ export function createServer(settings: Settings = {}) {
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const app=createServer(),port=Number(process.env.PORT??'3000');
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT');
+  // Spool files left by a killed process are never resumed; clear them before accepting uploads.
+  await clearSpoolDirectory();
   app.listen({host:process.env.HOST??'127.0.0.1',port}).catch(error=>{app.log.error(error);process.exitCode=1;});
 }
