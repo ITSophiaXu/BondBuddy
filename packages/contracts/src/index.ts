@@ -20,6 +20,7 @@ export const M1_MATERIAL_PARTITIONS = [
   { label: '经营、治理与行业', roles: [{ code: 'business', label: '业务经营资料' }, { code: 'governance', label: '章程、治理制度与组织架构' }, { code: 'personnel', label: '董监高及其他人员资料' }, { code: 'industry', label: '行业研究 / 行业统计资料' }, { code: 'other', label: '其他材料' }] }
 ] as const;
 export const M1_UPLOAD_MATERIAL_ROLES = M1_MATERIAL_PARTITIONS.flatMap(partition => partition.roles.map(role => role.code));
+export const M1_UPLOAD_LIMITS = { fileBytes: 100 * 1024 * 1024, projectBytes: 500 * 1024 * 1024, projectFiles: 60 } as const;
 export const M1_UPLOAD_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/pdf',

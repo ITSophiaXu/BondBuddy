@@ -2,6 +2,10 @@
 
 状态：供 M1 团队评审的技术方案。产品范围和验收以 `product-prototype/product-specs/`、GitHub M1 issue 为准；本文件固定实现方向和跨模块接口。若需改变选型或公共契约，先在同一个 PR 更新本文件及受影响的接口契约，再合并实现。
 
+## #12 上传后续实现（2026-09-25）
+
+新增迁移 `0018_m1_upload_reuse.sql`，通过 owner/project/role/hash/大小/MIME 和项目锁复用已保存材料版本；私有不可变完成凭证保存冗余 upload → 原材料精确版本关系。保留原 `MaterialResponse` 结构和材料事件格式，复用只写 `upload.reused` outbox，不重复写 `material.persisted`。冗余字节沿既有 received → deleting → purged 清理流程，完成凭证独立保留，清理后仍可重放；已删除材料不恢复、原对象缺失不报成功。公共 `M1_UPLOAD_LIMITS` 固定已保存版本 60 份 / 500 MiB，单份 100 MiB；临时上传空间由 #8 生命周期管理，尚不是预留配额。前端最多并行两份、真实字节进度、先核对旧 session 再续传。详见 [实现与验收记录](../apps/web/UPLOAD-ACCEPTANCE.md)；#8 生产存储/压测与 #76 消费识别闭环仍是交付条件。
+
 ## 1. 技术栈
 
 | 层 | M1 选型 | 采用方式 |

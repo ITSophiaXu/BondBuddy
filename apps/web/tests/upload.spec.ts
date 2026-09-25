@@ -11,6 +11,7 @@ type FixtureState = {
   materials: Map<string, Material>;
   sequence: number;
   failNextComplete: Set<string>;
+  dropNextComplete: Set<string>;
   releaseSlowComplete?: () => void;
   holdNextCreate: boolean;
   releaseCreate?: () => void;
@@ -87,15 +88,17 @@ async function installApi(page: Page, state: FixtureState) {
     if (completeMatch && request.method() === 'POST') {
       const upload = state.uploads.get(decodeURIComponent(completeMatch[1]));
       if (!upload || upload.owner !== state.owner) return json(route, 404, { code: 'NOT_FOUND' });
+      if (!upload.bytes) return json(route, 422, { code: 'MATERIAL_UNREADABLE' });
       if (state.failNextComplete.has(upload.filename)) {
         state.failNextComplete.delete(upload.filename);
         return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' });
       }
       if (upload.filename === 'slow-save.pdf' && state.releaseSlowComplete === undefined) await new Promise<void>(resolve => { state.releaseSlowComplete = resolve; });
       const body = request.postDataJSON() as { byte_size: number; sha256: string };
-      const material: Material = { material_id: randomUUID(), material_version: 1, upload_id: decodeURIComponent(completeMatch[1]), role: upload.role, filename: upload.filename, media_type: 'application/pdf', byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
+      const material: Material = [...state.materials.values()].find(item => item.role === upload.role && item.sha256 === body.sha256) ?? { material_id: randomUUID(), material_version: 1, upload_id: decodeURIComponent(completeMatch[1]), role: upload.role, filename: upload.filename, media_type: 'application/pdf', byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
       state.materials.set(material.material_id, material);
       state.sequence++;
+      if (state.dropNextComplete.delete(upload.filename)) return route.abort('failed');
       return json(route, 200, material);
     }
     return json(route, 404, { code: 'NOT_FOUND' });
@@ -103,7 +106,7 @@ async function installApi(page: Page, state: FixtureState) {
 }
 
 function state(): FixtureState {
-  return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, byteAttempts: [], putNames: [] };
+  return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, byteAttempts: [], putNames: [] };
 }
 
 async function login(page: Page, username: string, expectProject = true) {
@@ -166,6 +169,33 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   await expect(page.getByText(/slow-save\.pdf|failed-once\.pdf|survives\.pdf/)).toHaveCount(0);
   expect(fixture.putNames.filter(name => name === 'survives.pdf')).toHaveLength(1);
   expect(pageErrors).toEqual([]);
+});
+
+test('lost completion response reconciles the original upload without resending bytes', async ({ page }) => {
+  const fixture = state(); fixture.dropNextComplete.add('lost.pdf'); await installApi(page, fixture);
+  await login(page, 'owner_a');
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'lost.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic lost response') });
+  const row = page.locator('.material-file-row').filter({ hasText: 'lost.pdf' });
+  await expect(row).toContainText('保存结果尚未确认');
+  await row.getByRole('button', { name: '核对并继续保存' }).click();
+  await expect(row).toContainText('服务器已确认保存');
+  expect(fixture.uploads.size).toBe(1);
+  expect(fixture.putNames).toEqual(['lost.pdf']);
+  expect(fixture.materials.size).toBe(1);
+});
+
+test('renamed equal-content uploads display one saved material and survive reload', async ({ page }) => {
+  const fixture = state(); await installApi(page, fixture); await login(page, 'owner_a');
+  const buffer = Buffer.from('%PDF synthetic same history');
+  await page.getByLabel('为本企业历史募集书选择文件').setInputFiles([
+    { name: 'history.pdf', mimeType: 'application/pdf', buffer },
+    { name: 'renamed.pdf', mimeType: 'application/pdf', buffer }
+  ]);
+  await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传已复用原材料版本');
+  await expect(page.locator('.material-file-row')).toHaveCount(1);
+  expect(fixture.materials.size).toBe(1);
+  await page.reload();
+  await expect(page.locator('.persisted-material')).toHaveCount(1);
 });
 
 test('cancel before byte transfer and retry only that selected file', async ({ page }) => {

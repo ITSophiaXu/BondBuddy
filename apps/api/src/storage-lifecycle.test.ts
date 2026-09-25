@@ -52,7 +52,7 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
   };
   const startUpload = async (projectId: string, filename: string, complete: boolean) => {
     const upload = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
-      filename, media_type: PDF, byte_size: pdf.length, sha256: digest(pdf), role: 'audit'
+      filename, media_type: PDF, byte_size: pdf.length, sha256: digest(pdf), role: filename === 'retryable.pdf' ? 'notes' : 'audit'
     });
     assert.equal(upload.statusCode, 201, upload.body);
     const uploadId = upload.json().upload_id as string;
@@ -334,6 +334,7 @@ test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve 
     const projectId = created.json().project_id as string;
 
     const addMaterial = async (name: string) => {
+      const pdf = pdfSample({tag:name});
       const upload = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: name, media_type: PDF, byte_size: pdf.length, sha256: digest(pdf), role: 'audit' });
       assert.equal(upload.statusCode, 201, upload.body);
       assert.equal((await send('PUT', upload.json().upload_url, pdf, { 'content-type': 'application/octet-stream' })).statusCode, 204);

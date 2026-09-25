@@ -6,7 +6,7 @@ import { blankDraft, validateDraft } from './form-model';
 import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
 import { renderAccount, renderClosed, type AccountContext } from './account';
 import { date, esc, icon } from './ui';
-import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
 
@@ -24,8 +24,9 @@ let items: Dto<'ProjectListResponse'>['items'] = [];
 let nextCursor: string | null = null;
 let listBusy = false;
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
-type UploadPhase = 'hashing' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
-type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController };
+type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
+type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
+let runningUploads = 0;
 type MaterialRecovery = { state: 'loading' | 'ready' | 'unavailable'; message?: string };
 const localUploads = new Map<string, LocalUpload[]>();
 const recoveredMaterials = new Map<string, Dto<'MaterialResponse'>[]>();
@@ -244,11 +245,11 @@ function renderProject(project: Dto<'ProjectResponse'>) {
     <form id="draft-form" class="update-form"><div class="detail-layout"><section class="panel form-panel"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section>${supplementaryPanel(value)}</div></form>
-    <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按固定分区添加 DOCX、PDF、XLSX、CSV、TXT、PNG 或 JPEG。文件内容与哈希由服务器核验。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
+    <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-footnote">上传进度按文件字节显示。传输到 100% 后，仍需等待服务端保存和校验；文件准备完成不代表财务数据已核验。</p></section>`, 'projects');
+    <p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section>`, 'projects');
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
-  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); });
+  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); updateMaterialWorkspace(project.project_id); });
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的输入，是否继续？')) return;
@@ -286,9 +287,18 @@ function roleLabel(role: UploadRole) {
 }
 
 function roleGuidance(role: UploadRole) {
-  if (role === 'historical') return '有历史稿时请提供本发行人的历史募集书';
+  if (role === 'historical') return '必需：本发行人的历史募集书，优先提供 Word；PDF 将重建可编辑底稿，排版可能需要核对';
   if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
-  if (['audit', 'financial', 'interimFinancial', 'notes'].includes(role)) return '更新所需财务材料；可上传多份覆盖所需期间';
+  if (role === 'audit') return '必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传';
+  if (role === 'financial') return '按所需年度提供；已包含在审计报告中时无需另传';
+  if (role === 'interimFinancial') return '需要更新最近一期数据时提供对应报表';
+  if (role === 'notes') return '报表附注已包含在审计报告中时无需另传';
+  if (role === 'fundUse') {
+    const purposes = new Set(draft?.fields.update_details.funding_uses.map(use => use.purpose));
+    const hints = FUNDING_PURPOSES.filter(purpose => purposes.has(purpose.code)).map(purpose => purpose.materials);
+    return hints.length ? [...new Set(hints)].join(' ') : '按用途提供项目备案、土地及建设许可、基金备案许可或子公司股权投资相关材料';
+  }
+  if (role === 'feasibility') return '用于项目建设时，建议提供募投项目可行性研究报告';
   if (['fundUse', 'feasibility', 'priorFundUse', 'resolutions'].includes(role)) return '按本期用途与项目情况提供相关材料';
   return '选填，按项目核验需要添加';
 }
@@ -302,13 +312,15 @@ function formatBytes(bytes: number) {
 function uploadStatus(upload: LocalUpload) {
   const percent = upload.file.size ? Math.min(100, Math.floor(upload.sentBytes / upload.file.size * 100)) : 0;
   switch (upload.phase) {
-    case 'hashing': return '正在读取文件并计算 SHA-256…';
+    case 'queued': return '等待上传，已选文件将依次处理…';
+    case 'hashing': return '正在检查文件…';
+    case 'checking': return '正在核对上次保存结果…';
     case 'uploading': return percent >= 100 ? '已发送 100%，正在保存和核验…' : `正在传输 ${percent}%（${formatBytes(upload.sentBytes)} / ${formatBytes(upload.file.size)}）`;
     case 'saving': return '已发送 100%，正在保存和核验…';
-    case 'persisted': return `服务器已确认保存 · 材料版本 ${upload.material?.material_version ?? '—'}`;
+    case 'persisted': return `服务器已确认保存 · 材料版本 ${upload.material?.material_version ?? '—'}${upload.session && upload.material?.upload_id !== upload.session.upload_id ? ' · 已复用相同内容' : ''}`;
     case 'failed': return upload.error ?? '文件未保存。可以单独重试。';
     case 'cancelled': return '本次传输已取消；所选文件仍在此页面，可单独重试。';
-    case 'uncertain': return '保存结果尚未确认。请先刷新服务器材料记录，再决定是否重新选择文件。';
+    case 'uncertain': return '保存结果尚未确认。可核对并继续保存，将优先查询原上传记录。';
   }
 }
 
@@ -326,34 +338,45 @@ function materialStatus(material: Dto<'MaterialResponse'>) {
 }
 
 function renderUploadRow(upload: LocalUpload) {
-  const active = ['hashing', 'uploading', 'saving'].includes(upload.phase);
+  const active = ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase);
   const showProgress = ['uploading', 'saving'].includes(upload.phase);
   const progress = Math.min(upload.file.size, upload.sentBytes);
   const controls = upload.phase === 'failed' || upload.phase === 'cancelled'
     ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
     : upload.phase === 'uncertain'
-      ? `<button type="button" class="text-button" data-upload-action="reconcile" data-upload-key="${esc(upload.key)}">刷新服务器记录</button>`
+      ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">核对并继续保存</button>`
       : active
         ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= upload.file.size ? '停止等待并核对' : '取消此文件'}</button>`
         : '';
   const canRemove = ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status" role="status">${esc(uploadStatus(upload))}</p>${upload.phase === 'failed' ? `<p class="material-file-error" role="alert">${esc(upload.error)}</p>` : ''}</div><div class="material-file-actions">${controls}${canRemove}${upload.phase === 'persisted' && upload.material ? `<a class="text-button" href="#/projects/${encodeURIComponent(upload.projectId)}/materials/${encodeURIComponent(upload.material.material_id)}/ocr">核对识别内容</a>` : ''}</div></li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p></div><div class="material-file-actions">${controls}${canRemove}${upload.phase === 'persisted' && upload.material ? `<a class="text-button" href="#/projects/${encodeURIComponent(upload.projectId)}/materials/${encodeURIComponent(upload.material.material_id)}/ocr">核对识别内容</a>` : ''}</div></li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
-  const uploads = localUploads.get(projectId) ?? [];
+  const seen = new Set<string>();
+  const uploads = (localUploads.get(projectId) ?? []).filter(upload => {
+    if (upload.phase !== 'persisted' || !upload.material) return true;
+    if (seen.has(upload.material.material_id)) return false;
+    seen.add(upload.material.material_id); return true;
+  });
   const materials = recoveredMaterials.get(projectId) ?? [];
+  const history = draft?.fields.update_details.has_historical;
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
-  const groups = M1_MATERIAL_PARTITIONS.map((partition, index) => `<section class="material-partition" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3><ul class="material-role-list">${partition.roles.map(role => {
+  const groups = M1_MATERIAL_PARTITIONS.map((partition, index) => `<section class="material-partition" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3><ul class="material-role-list">${partition.roles.filter(role => {
+    const relevant = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
+    return relevant || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code);
+  }).map(role => {
+    const canAdd = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     const roleUploads = uploads.filter(upload => upload.role === role.code);
     const roleMaterials = materials.filter(material => material.role === role.code && !localMaterialIds.has(material.material_id));
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
     const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">${esc(materialStatus(material))}</p><a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a></div></li>`).join('');
-    return `<li class="material-role"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(roleGuidance(role.code))}</span></div><label class="button secondary material-picker" for="upload-${esc(role.code)}">选择文件<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label></div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
+    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">选择文件<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
+    return `<li class="material-role"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
   }).join('')}</ul></section>`).join('');
   return groups;
 }
@@ -367,13 +390,16 @@ function updateMaterialWorkspace(projectId: string) {
   if (state?.state === 'loading') status.textContent = '正在从服务器读取此项目已保存的材料记录…';
   else if (state?.state === 'unavailable') status.textContent = state.message ?? '暂时无法恢复已保存材料；当前页面不会把本地文件选择当作服务器保存记录。';
   else {
-    const count = (recoveredMaterials.get(projectId) ?? []).length;
-    const sessionCount = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.material).length;
+    const savedIds = new Set((recoveredMaterials.get(projectId) ?? []).map(material => material.material_id));
+    const count = savedIds.size;
+    const sessionCount = new Set((localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.material && !savedIds.has(upload.material.material_id)).map(upload => upload.material!.material_id)).size;
     status.textContent = count
       ? `已从服务器恢复 ${count} 份当前账号可访问的材料记录。${sessionCount ? `本次会话另有 ${sessionCount} 份材料已获服务端保存确认。` : ''}`
       : sessionCount
         ? `本次会话中 ${sessionCount} 份材料已获服务端保存确认；材料事件暂未列出其他可恢复记录。`
         : '材料事件中没有可恢复记录；重新选择本地文件不会代替服务器保存记录。';
+    const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.session && upload.material?.upload_id !== upload.session.upload_id).length;
+    if (reused) status.textContent += ` 本次 ${reused} 份重复上传已复用原材料版本。`;
   }
 }
 
@@ -381,9 +407,9 @@ function uploadErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
     if (error.code === 'MATERIAL_CONTENT_MISMATCH') return '服务器检测到文件内容与声明格式不符，材料未确认保存。请使用正确文件后重试。';
     if (error.code === 'MATERIAL_ENCRYPTED') return '服务器无法读取加密文件。请提供可读取的副本。';
-    if (error.code === 'MATERIAL_UNREADABLE') return '服务器未收到完整文件内容。请单独重试此文件。';
+    if (error.code === 'MATERIAL_UNREADABLE') return '文件无法完整读取，可能损坏或传输未完成。可先重试；仍失败时请检查原文件并重新导出。';
     if (error.code === 'MATERIAL_FORMAT_UNSUPPORTED') return '服务器暂不支持此文件格式。';
-    if (error.code === 'VALIDATION_FAILED') return '文件超出服务器限制或上传会话已过期。请检查文件后重试。';
+    if (error.code === 'VALIDATION_FAILED') return '请检查单份 100 MB、项目 60 份 / 500 MB 的限制；上传会话过期时请重试。';
   }
   return friendlyError(error);
 }
@@ -404,11 +430,20 @@ function sha256(bytes: ArrayBuffer) {
 
 function addUpload(projectId: string, role: UploadRole, file: File) {
   if (!identity) return;
-  const upload: LocalUpload = { key: crypto.randomUUID(), owner: identity, projectId, role, file, phase: 'hashing', sentBytes: 0 };
+  const upload: LocalUpload = { key: crypto.randomUUID(), owner: identity, projectId, role, file, phase: 'queued', sentBytes: 0 };
   const uploads = localUploads.get(projectId) ?? [];
   uploads.push(upload); localUploads.set(projectId, uploads);
   updateMaterialWorkspace(projectId);
-  void performUpload(upload);
+  pumpUploads();
+}
+
+function pumpUploads() {
+  for (const uploads of localUploads.values()) for (const upload of uploads) {
+    if (runningUploads >= 2) return;
+    if (upload.phase !== 'queued' || upload.controller || upload.owner !== identity) continue;
+    runningUploads++; upload.phase = 'hashing';
+    void performUpload(upload).finally(() => { runningUploads--; pumpUploads(); });
+  }
 }
 
 async function performUpload(upload: LocalUpload) {
@@ -418,20 +453,39 @@ async function performUpload(upload: LocalUpload) {
   try {
     const mediaType = declaredMediaType(upload.file, upload.role);
     if (!upload.file.size) throw new Error('空文件不能上传。');
-    const hash = await sha256(await upload.file.arrayBuffer());
+    if (upload.file.size > M1_UPLOAD_LIMITS.fileBytes) throw new Error('单份文件不能超过 100 MB，请拆分后上传。');
+    updateMaterialWorkspace(upload.projectId);
+    const hash = upload.hash ?? await sha256(await upload.file.arrayBuffer());
+    upload.hash = hash;
     if (controller.signal.aborted || !isCurrentOwner()) return;
-    const session = await api.createUpload(upload.projectId, { filename: upload.file.name, media_type: mediaType, byte_size: upload.file.size, sha256: hash, role: upload.role }, controller.signal);
+    const complete = () => api.completeUpload(upload.projectId, upload.session!.upload_id, { byte_size: upload.file.size, sha256: hash }, controller.signal);
+    let material: Dto<'MaterialResponse'> | undefined;
+    // A lost completion response must be reconciled before sending bytes again.
+    if (upload.session) {
+      upload.phase = 'checking'; updateMaterialWorkspace(upload.projectId);
+      try { material = await complete(); }
+      catch (error) {
+        if (!(error instanceof ApiError) || ![404, 422].includes(error.status)) throw error;
+        if (error.status !== 404 && error.code !== 'MATERIAL_UNREADABLE') throw error;
+        if (error.status === 404 || Date.parse(upload.session.expires_at) <= Date.now()) upload.session = undefined;
+      }
+    }
     if (controller.signal.aborted || !isCurrentOwner()) return;
-    upload.phase = 'uploading'; updateMaterialWorkspace(upload.projectId);
-    await api.uploadBytes(session.upload_url, upload.file, loaded => {
+    if (!material) {
+      const session = upload.session ?? await api.createUpload(upload.projectId, { filename: upload.file.name, media_type: mediaType, byte_size: upload.file.size, sha256: hash, role: upload.role }, controller.signal);
       if (!isCurrentOwner() || controller.signal.aborted) return;
-      upload.sentBytes = Math.min(upload.file.size, Math.max(0, loaded));
-      upload.phase = upload.sentBytes >= upload.file.size ? 'saving' : 'uploading';
-      updateMaterialWorkspace(upload.projectId);
-    }, controller.signal);
-    if (controller.signal.aborted || !isCurrentOwner()) return;
-    acceptedByByteEndpoint = true; upload.phase = 'saving'; upload.sentBytes = upload.file.size; updateMaterialWorkspace(upload.projectId);
-    const material = await api.completeUpload(upload.projectId, session.upload_id, { byte_size: upload.file.size, sha256: hash }, controller.signal);
+      upload.session = session;
+      upload.phase = 'uploading'; upload.sentBytes = 0; updateMaterialWorkspace(upload.projectId);
+      await api.uploadBytes(session.upload_url, upload.file, loaded => {
+        if (!isCurrentOwner() || controller.signal.aborted) return;
+        upload.sentBytes = Math.min(upload.file.size, Math.max(0, loaded));
+        upload.phase = upload.sentBytes >= upload.file.size ? 'saving' : 'uploading';
+        updateMaterialWorkspace(upload.projectId);
+      }, controller.signal);
+      if (controller.signal.aborted || !isCurrentOwner()) return;
+      acceptedByByteEndpoint = true; upload.phase = 'saving'; upload.sentBytes = upload.file.size; updateMaterialWorkspace(upload.projectId);
+      material = await complete();
+    }
     if (controller.signal.aborted || !isCurrentOwner()) return;
     upload.material = material; upload.phase = 'persisted'; upload.error = undefined;
     recoveryStates.set(upload.projectId, { state: 'ready' });
@@ -439,10 +493,12 @@ async function performUpload(upload: LocalUpload) {
     void refreshProjectMaterials(upload.projectId, epoch);
   } catch (error) {
     if (!isCurrentOwner()) return;
+    // A quick retry waits in the queue until the aborted attempt releases its slot.
+    if (controller.signal.aborted && upload.phase === 'queued') return;
     if (upload.phase === 'cancelled' || upload.phase === 'uncertain') return;
     const aborted = controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError');
     const explicitServerFailure = error instanceof ApiError && error.status > 0;
-    const uncertain = !explicitServerFailure && (aborted || upload.sentBytes >= upload.file.size || acceptedByByteEndpoint);
+    const uncertain = (!explicitServerFailure || error instanceof ApiError && error.status >= 500) && (upload.sentBytes >= upload.file.size || acceptedByByteEndpoint);
     upload.phase = aborted && !uncertain ? 'cancelled' : uncertain ? 'uncertain' : 'failed';
     upload.error = aborted && !uncertain ? undefined : uncertain ? '服务器可能已收到文件，但当前会话未取得保存凭证。请刷新服务器记录；请勿盲目重传。' : uploadErrorMessage(error);
     updateMaterialWorkspace(upload.projectId);
@@ -525,10 +581,10 @@ function bindMaterialWorkspace(projectId: string) {
         if (uncertain) void refreshProjectMaterials(projectId, epoch);
         break;
       }
-      case 'retry': upload.phase = 'hashing'; upload.sentBytes = 0; upload.error = undefined; updateMaterialWorkspace(projectId); void performUpload(upload); break;
+      case 'retry': upload.phase = 'queued'; upload.error = undefined; updateMaterialWorkspace(projectId); pumpUploads(); break;
       case 'reconcile': void refreshProjectMaterials(projectId, epoch); break;
       case 'remove': {
-        if (['hashing', 'uploading', 'saving'].includes(upload.phase)) upload.controller?.abort();
+        if (['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)) upload.controller?.abort();
         localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(item => item !== upload));
         updateMaterialWorkspace(projectId);
         if (upload.phase === 'uncertain') void refreshProjectMaterials(projectId, epoch);
@@ -544,7 +600,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
   event.preventDefault(); document.querySelector<HTMLElement>('#main')?.focus();
 });
 window.addEventListener('beforeunload', event => {
-  const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['hashing', 'uploading', 'saving'].includes(upload.phase)));
+  const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
   if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {

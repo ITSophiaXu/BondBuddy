@@ -47,7 +47,7 @@ function encryptedPdfValues(fileId: Buffer): { owner: Buffer; user: Buffer } {
   return { owner, user: rc4(fileKey, PDF_PASSWORD_PADDING) };
 }
 
-export function pdfSample(options: { encrypted?: boolean; javascript?: boolean; corrupt?: boolean } = {}): Buffer {
+export function pdfSample(options: { encrypted?: boolean; javascript?: boolean; corrupt?: boolean; tag?: string } = {}): Buffer {
   const objects = [
     options.javascript
       ? '1 0 obj\n<< /Type /Catalog /Pages 2 0 R /OpenAction 5 0 R >>\nendobj\n'
@@ -64,7 +64,7 @@ export function pdfSample(options: { encrypted?: boolean; javascript?: boolean; 
     objects.push(`${encryptionObjectNumber} 0 obj\n<< /Filter /Standard /V 1 /R 2 /Length 40 /O <${values.owner.toString('hex')}> /U <${values.user.toString('hex')}> /P -4 >>\nendobj\n`);
   }
 
-  let document = '%PDF-1.4\n% synthetic\n';
+  let document = `%PDF-1.4\n% synthetic ${options.tag ?? ''}\n`;
   const offsets = [0];
   for (const object of objects) {
     offsets.push(Buffer.byteLength(document, 'ascii'));
