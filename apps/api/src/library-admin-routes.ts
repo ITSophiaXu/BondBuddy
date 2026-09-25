@@ -1,11 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Value } from '@sinclair/typebox/value';
 import type { Pool } from 'pg';
-import { LibraryReviewActionRequestSchema, type LibraryReviewActionRequest } from '@bondbuddy/contracts';
+import { LibraryChapterMappingCreateRequestSchema, LibraryReviewActionRequestSchema, type LibraryChapterMappingCreateRequest, type LibraryReviewActionRequest } from '@bondbuddy/contracts';
 import { digest, missing, Problem, uid, type PrivateBlobs } from './data.js';
 import {
   enqueueLibraryRecordRerun, enqueueLibrarySync, libraryAlerts, libraryMissSummary, libraryOperatorRole, libraryOverview, libraryVersionDetail,
-  registerLibrarySource, reviewLibraryVersion, rollbackLibraryRelease, setLibrarySourceRights, LIBRARY_OWNER, OPERATOR_IMPORT_SOURCE,
+  recordChapterMappingVersion, registerLibrarySource, reviewLibraryVersion, withdrawChapterMappingVersion, rollbackLibraryRelease, setLibrarySourceRights, LIBRARY_OWNER, OPERATOR_IMPORT_SOURCE,
 } from './library.js';
 
 // #78 operator surface. Deny by default: a user without an active library grant gets the same 404 as an
@@ -57,6 +57,17 @@ export function installLibraryAdminRoutes(app: FastifyInstance, deps: Deps) {
     const reason = (request.body as { reason?: unknown } | undefined)?.reason;
     if (typeof reason !== 'string') throw new Problem(422, 'VALIDATION_FAILED', 'reason required');
     return rollbackLibraryRelease(deps.db(), param(request, 'release_id'), reason, actor);
+  });
+  app.post(`${base}/chapter-mappings`, async (request, reply) => {
+    const actor = await operator(request, 'library_operator');
+    if (!Value.Check(LibraryChapterMappingCreateRequestSchema, request.body)) throw new Problem(422, 'VALIDATION_FAILED', 'Invalid chapter mapping');
+    return reply.code(201).send(await recordChapterMappingVersion(deps.db(), request.body as LibraryChapterMappingCreateRequest, actor));
+  });
+  app.post(`${base}/chapter-mappings/:mapping_version_id/withdraw`, async request => {
+    const actor = await operator(request, 'library_operator');
+    const reason = (request.body as { reason?: unknown } | undefined)?.reason;
+    if (typeof reason !== 'string') throw new Problem(422, 'VALIDATION_FAILED', 'reason required');
+    return withdrawChapterMappingVersion(deps.db(), param(request, 'mapping_version_id'), reason, actor);
   });
   app.post(`${base}/sources/:source_id/sync`, async (request, reply) => {
     await operator(request, 'library_operator');
