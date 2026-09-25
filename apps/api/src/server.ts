@@ -27,9 +27,10 @@ import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './
 import { installFactReviewRoutes } from './fact-review.js';
 import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
+import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -189,7 +190,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[]}>(request);
+    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];rule_applicability_context_ref?:RuleApplicabilityContextRef}>(request);
     if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
@@ -206,7 +207,7 @@ export function createServer(settings: Settings = {}) {
           issuerIdentity=pendingIssuerIdentityBinding(historical.length===0?'historical_material_not_selected':'historical_material_selection_ambiguous',historicalMaterials);
         }else{
           const selected=historical[0]!;
-          const verified=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:selected.material_id,materialVersion:selected.material_version});
+          const verified=await loadVerifiedIssuerIdentitySourceRecord(client,{ownerUserId:user,projectId:id,materialId:selected.material_id,materialVersion:selected.material_version});
           if(!verified){
             issuerIdentity=pendingIssuerIdentityBinding('issuer_identity_source_missing_unreviewed_or_conflicting',historicalMaterials);
           }else{
@@ -221,8 +222,23 @@ export function createServer(settings: Settings = {}) {
       if(p.kind==='update'){
         Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
       }
-      const hash=digest(canonical(manifest));
-      const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]']);
+      const ruleBinding=await lockProductionRulePack(client,p,{draftRevision:p.draft_revision,materials:resolved},
+        issuerIdentity?.status==='verified'?issuerIdentity:undefined,b.rule_applicability_context_ref,settings.reviewedContextLoader);
+      Object.assign(manifest,{manifest_schema:'production_rule_pin_v1',rule_pack_selection:ruleBinding.status,
+        rule_pack_block_reasons:ruleBinding.status==='blocked'?ruleBinding.reasons:[],
+        rule_pack_pin:ruleBinding.status==='selected'?ruleBinding.pin:null,
+        rule_pack_context:ruleBinding.status==='selected'?ruleBinding.pin.applicabilityContext:null,
+        rule_applicability_pin:ruleBinding.status==='selected'?ruleBinding.applicability:null,
+        rule_pack_snapshot_refs:ruleBinding.status==='selected'?{
+          release_event_id:ruleBinding.pin.releaseEventId,
+          pack_id:ruleBinding.pin.packId,pack_version:ruleBinding.pin.version,pack_hash:ruleBinding.pin.contentHash,
+          template_id:ruleBinding.pin.templateId,template_version:ruleBinding.pin.templateVersion,template_hash:ruleBinding.pin.templateHash,
+          coverage_id:ruleBinding.pin.coverageId,coverage_version:ruleBinding.pin.coverageVersion,coverage_hash:ruleBinding.pin.coverageHash,
+        }:null,
+        rule_pack_version:ruleBinding.status==='selected'?ruleBinding.pin.version:null,
+        template_version:ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null});
+      const hash=inputManifestHash(manifest);
+      const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]',ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.input_locked',{project_id:id,input_revision:revision,input_hash:hash}]);
       return inputDto(q.rows[0]);
@@ -576,6 +592,9 @@ export function createServer(settings: Settings = {}) {
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
         const missingInputs:string[]=[],uncertainty:string[]=[];
         const manifest=input.manifest as Record<string,unknown>;
+        const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
+        if(ruleCheck.status!=='valid')missingInputs.push(ruleCheck.status==='tampered'&&ruleCheck.reason==='input_manifest_hash_mismatch'
+          ?ruleCheck.reason:`rule_pack:${ruleCheck.reason}`);
         if(manifest.kind==='update'){
           const binding=manifest.issuer_identity;
           if(!isVerifiedIssuerIdentityBinding(binding)){
@@ -589,7 +608,7 @@ export function createServer(settings: Settings = {}) {
             if(!material||material.role!=='historical'||material.deleted_at||material.sha256.trim()!==binding.source_content_sha256){
               missingInputs.push(`issuer_material_stale:${binding.material_id}:${binding.material_version}`);
             }else{
-              const current=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:binding.material_id,materialVersion:binding.material_version});
+              const current=await loadVerifiedIssuerIdentitySourceRecord(client,{ownerUserId:user,projectId:id,materialId:binding.material_id,materialVersion:binding.material_version});
               if(!current||!issuerIdentityBindingMatches(binding,current))missingInputs.push(`issuer_identity_stale:${binding.material_id}:${binding.material_version}`);
             }
           }
