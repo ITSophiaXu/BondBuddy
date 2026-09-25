@@ -132,6 +132,22 @@ test('hidden sheets and parser completion warnings/status fail closed', async ()
   assert.equal(warningResult.needs_review[0]?.reason_code, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION');
 });
 
+test('large parser warning results cap evidence refs at 32 in stable record-id order', async () => {
+  const records = [...sampleRecords(), ...Array.from({ length: 40 }, (_, index) =>
+    evidence(`bulk-${String(index).padStart(2, '0')}`, '辅助表', `A${index + 1}`, `value-${index}`))];
+  const warningExtractor = createNativeFinancialFactExtractor(async () => ({
+    status: 'needs_confirmation', warnings: [{ code: 'PARSER_WARNING', message: 'ambiguous workbook content' }],
+  }));
+
+  const result = await warningExtractor.extract(request(records));
+  const needsReview = result.needs_review[0];
+  assert.equal(result.facts.length, 0);
+  assert.ok(needsReview);
+  assert.equal(needsReview.reason_code, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION');
+  assert.equal(needsReview.evidence_refs.length, 32);
+  assert.deepEqual(needsReview.evidence_refs, records.map((record) => record.record_id).sort().slice(0, 32));
+});
+
 test('zero parse evidence raises a controlled fail-closed error', async () => {
   await assert.rejects(extractor.extract(request([])), /NATIVE_FINANCIAL_NO_PARSE_EVIDENCE/);
 });

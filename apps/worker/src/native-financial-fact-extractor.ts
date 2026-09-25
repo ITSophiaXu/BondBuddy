@@ -13,6 +13,7 @@ const SUPPORTED_PARSER_VERSION = 'bondbuddy-document-parser-1.0.3';
 const TARGET_SHEET = '合并利润表';
 const TARGET_METRIC = 'operating_revenue';
 const TARGET_PERIOD = { start: '2023-01-01', end: '2023-12-31' } as const;
+const MAX_REVIEW_EVIDENCE_REFS = 32;
 
 type CellRecord = SemanticFactExtractionRequest['records'][number] & {
   locator: { sheet: string; cell: string };
@@ -40,13 +41,38 @@ function inTargetSheet(records: readonly CellRecord[]): CellRecord[] {
   return records.filter((record) => record.locator.sheet === TARGET_SHEET);
 }
 
+function boundedEvidenceRefs(
+  request: SemanticFactExtractionRequest,
+  relevantEvidence: readonly SemanticFactExtractionRequest['records'][number][],
+): string[] {
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  const add = (record: SemanticFactExtractionRequest['records'][number]) => {
+    if (record.record_id && !seen.has(record.record_id) && refs.length < MAX_REVIEW_EVIDENCE_REFS) {
+      seen.add(record.record_id);
+      refs.push(record.record_id);
+    }
+  };
+
+  // Call-site anchors retain priority and their authored order.
+  relevantEvidence.forEach(add);
+  // If the anchor set is smaller than the cap, fill deterministically by ID; stable sort preserves
+  // the original parser-record order for duplicate IDs.
+  request.records
+    .map((record, index) => ({ record, index }))
+    .sort((left, right) => (left.record.record_id < right.record.record_id ? -1 :
+      left.record.record_id > right.record.record_id ? 1 : left.index - right.index))
+    .forEach(({ record }) => add(record));
+  return refs;
+}
+
 function reviewResult(
   request: SemanticFactExtractionRequest,
   reasonCode: string,
   evidence: readonly SemanticFactExtractionRequest['records'][number][],
 ): SemanticFactExtractionResult {
-  const fallback = evidence.length ? evidence : request.records.slice(0, 8);
-  if (fallback.length === 0) {
+  const evidenceRefs = boundedEvidenceRefs(request, evidence);
+  if (evidenceRefs.length === 0) {
     const error = new Error('NATIVE_FINANCIAL_NO_PARSE_EVIDENCE');
     error.name = 'NativeFinancialFactExtractorError';
     throw error;
@@ -63,7 +89,7 @@ function reviewResult(
       content_sha256: request.material_sha256,
     },
     facts: [],
-    needs_review: [{ evidence_refs: fallback.map((record) => record.record_id), reason_code: reasonCode }],
+    needs_review: [{ evidence_refs: evidenceRefs, reason_code: reasonCode }],
   };
 }
 
@@ -80,11 +106,11 @@ export function createNativeFinancialFactExtractor(
     async extract(request) {
       const completion = await resolveParseCompletion(request);
       if (completion.status !== 'parsed' || completion.warnings.length > 0) {
-        return reviewResult(request, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION', request.records);
+        return reviewResult(request, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION', []);
       }
       const cells = request.records.filter(isCellRecord);
       if (request.parser_version !== SUPPORTED_PARSER_VERSION || cells.length !== request.records.length) {
-        return reviewResult(request, 'UNSUPPORTED_NATIVE_FINANCIAL_PARSE', request.records);
+        return reviewResult(request, 'UNSUPPORTED_NATIVE_FINANCIAL_PARSE', []);
       }
 
       // XLSX parser warnings are reflected either on the affected cells or as hidden-sheet metadata.
@@ -92,7 +118,7 @@ export function createNativeFinancialFactExtractor(
       const uncertain = request.records.filter((record) => record.uncertainty.length > 0 ||
         record.formatting.sheet_state === 'hidden' || record.formatting.sheet_state === 'veryHidden');
       const sheet = inTargetSheet(cells);
-      if (uncertain.length > 0) return reviewResult(request, 'PARSER_EVIDENCE_NEEDS_CONFIRMATION', [...sheet, ...uncertain]);
+      if (uncertain.length > 0) return reviewResult(request, 'PARSER_EVIDENCE_NEEDS_CONFIRMATION', [...uncertain, ...sheet]);
       if (sheet.length === 0) return reviewResult(request, 'FINANCIAL_SHEET_MISSING', request.records);
 
       const sheetTitle = sheet.filter((record) => record.locator.cell === 'A1' && record.literal_quote === TARGET_SHEET);
