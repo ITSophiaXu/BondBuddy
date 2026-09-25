@@ -8,6 +8,7 @@ import {
   ensureCurrentUpdateDifficultySnapshotWithClient,
   getCurrentUpdateDifficultySnapshotWithClient,
   getUpdateDifficultySnapshotWithClient,
+  loadLockedUpdateDifficultyInputWithClient,
   type UpdateDifficultyClient,
   type TrustedUpdateDifficultyInput,
 } from './update-difficulty-repository.js';
@@ -86,6 +87,64 @@ test('preflight failures distinguish pending inputs from stale locks and persist
     { category: 'data_integrity', code: 'TARGET_INPUT_MANIFEST_INVALID' });
 });
 
+test('locked update loader verifies production-rule-pin v1 manifest digests and preserves legacy locks', async () => {
+  const materials = [
+    { material_id: input.source.materialId, material_version: 1, role: 'historical', sha256: 'a'.repeat(64) },
+    { material_id: input.financialMaterialVersions[0]!.materialId, material_version: 1, role: 'financial', sha256: 'b'.repeat(64) },
+  ];
+  const manifestFor = (schema?: string) => ({ kind: 'update', draft_revision: input.targetRevision, market: 'sse', offering: 'private',
+    materials, update_details: { target_reporting_periods: [] }, ...(schema === undefined ? {} : { manifest_schema: schema }) });
+  const run = async (manifest: Record<string, unknown>, storedHash: string) => {
+    let materialQueryCount = 0;
+    const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
+    const client: UpdateDifficultyClient = {
+      async query(sql) {
+        if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7 }] };
+        if (sql.includes('FROM bb_input_revisions')) return { rows: [{ input_hash: storedHash, draft_revision: input.targetRevision, manifest, material_versions: refs }] };
+        if (sql.includes('FROM bb_material_versions')) {
+          materialQueryCount++;
+          return { rows: materials.map(item => ({ id: item.material_id, version: item.material_version, role: item.role, sha256: item.sha256 })) };
+        }
+        if (sql.includes('FROM bb_historical_profiles')) return { rows: [{ profile_version: 1 }] };
+        throw new Error(`unexpected SQL: ${sql}`);
+      },
+    };
+    const loaded = await loadLockedUpdateDifficultyInputWithClient(client, {
+      ownerUserId: input.ownerUserId, projectId: input.projectId, inputRevision: 7, inputHash: storedHash, requestId: input.requestId,
+    });
+    return { loaded, materialQueryCount };
+  };
+
+  const validV1 = manifestFor('production_rule_pin_v1');
+  const validV1Hash = createHash('sha256').update(canonical(validV1), 'utf8').digest('hex');
+  const valid = await run(validV1, validV1Hash);
+  assert.equal(valid.loaded.inputHash, validV1Hash);
+  assert.equal(valid.materialQueryCount, 1);
+
+  const legacy = await run(manifestFor(), 'f'.repeat(64));
+  assert.equal(legacy.loaded.inputHash, 'f'.repeat(64));
+  assert.equal(legacy.materialQueryCount, 1);
+
+  const tamperedV1 = { ...validV1, market: 'szse' };
+  let tamperedMaterialQueryCount = 0;
+  const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
+  const tamperedClient: UpdateDifficultyClient = {
+    async query(sql) {
+      if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7 }] };
+      if (sql.includes('FROM bb_input_revisions')) return { rows: [{ input_hash: validV1Hash, draft_revision: input.targetRevision,
+        manifest: tamperedV1, material_versions: refs }] };
+      if (sql.includes('FROM bb_material_versions')) tamperedMaterialQueryCount++;
+      throw new Error(`unexpected SQL: ${sql}`);
+    },
+  };
+  await assert.rejects(loadLockedUpdateDifficultyInputWithClient(tamperedClient, {
+    ownerUserId: input.ownerUserId, projectId: input.projectId, inputRevision: 7, inputHash: validV1Hash, requestId: input.requestId,
+  }), /TARGET_INPUT_MANIFEST_INVALID/);
+  assert.equal(tamperedMaterialQueryCount, 0, 'tampering is rejected before the loader derives source or financial inputs');
+
+  await assert.rejects(run(manifestFor('future_manifest_v2'), 'f'.repeat(64)), /TARGET_INPUT_MANIFEST_INVALID/);
+});
+
 test('ensure-current is idempotent under concurrent PG16 calls and refreshes only for a changed lock/profile', {
   skip: !process.env.BB_TEST_DATABASE_URL && 'set BB_TEST_DATABASE_URL to migrated PostgreSQL 16 (including migration 0038)',
 }, async () => {
@@ -111,19 +170,21 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
       VALUES($1,1,$2,$3,$4,$5,$6,$7,10,$8,$9,'parsed')`,
     [id, owner, project, uploadId, role, `${id}.bin`, mediaType, digest, `users/${owner}/projects/${project}/${key}`]);
   };
-  const addInputLock = async (client: import('pg').PoolClient, revision: number, draftRevision: number, financeId: string, year: number) => {
-    const inputHash = createHash('sha256').update(`${suffix}:${revision}:${year}:${financeId}`).digest('hex');
+  const addInputLock = async (client: import('pg').PoolClient, revision: number, draftRevision: number, financeId: string, year: number,
+    manifestSchema?: string) => {
     const targetPeriod = { start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual', scope: 'consolidated',
       status: 'user_asserted', evidence_refs: [] };
     const materials = [
       { material_id: historical, material_version: 1, role: 'historical', sha256: digest },
       { material_id: financeId, material_version: 1, role: 'financial', sha256: digest },
     ];
+    const manifest = { kind: 'update', draft_revision: draftRevision, market: 'sse', offering: 'private', materials,
+      update_details: { target_reporting_periods: [targetPeriod] }, ...(manifestSchema === undefined ? {} : { manifest_schema: manifestSchema }) };
+    const inputHash = manifestSchema === 'production_rule_pin_v1' ? createHash('sha256').update(canonical(manifest), 'utf8').digest('hex')
+      : createHash('sha256').update(`${suffix}:${revision}:${year}:${financeId}`).digest('hex');
     await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'[]'::jsonb)`,
-    [project, revision, owner, draftRevision, inputHash,
-      JSON.stringify({ kind: 'update', draft_revision: draftRevision, market: 'sse', offering: 'private', materials,
-        update_details: { target_reporting_periods: [targetPeriod] } }),
+    [project, revision, owner, draftRevision, inputHash, JSON.stringify(manifest),
       JSON.stringify(materials.map(({ material_id, material_version }) => ({ material_id, material_version })))]);
     await client.query(`UPDATE bb_projects SET draft_revision=$3,latest_input_revision=$4 WHERE owner_user_id=$1 AND id=$2`,
       [owner, project, draftRevision, revision]);
@@ -194,6 +255,10 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
     assert.equal(await getCurrentUpdateDifficultySnapshotWithClient(makeClient(seed), { ownerUserId: owner, projectId: project, snapshotId: snapshot2.id }), null,
       'prior profile snapshot is no longer current');
     assert.equal((await getCurrentUpdateDifficultySnapshotWithClient(makeClient(seed), { ownerUserId: owner, projectId: project, snapshotId: snapshot3.id }))?.id, snapshot3.id);
+
+    const inputHash4 = await addInputLock(seed, 3, 3, finance2, 2026, 'production_rule_pin_v1');
+    const snapshot4 = await runEnsure(seed, 3, inputHash4);
+    assert.equal(snapshot4.inputHash, inputHash4, 'valid v1 manifests load when their canonical hash matches the input lock');
   } finally {
     seed.release();
     await pool.end();
