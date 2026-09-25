@@ -13,6 +13,10 @@ data.cases.push(...updateExamples.cases);
 const adminExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-logs.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(adminExamples.synthetic, true);
 data.cases.push(...adminExamples.cases);
+// #17 worker runtime stream examples.
+const runtimeExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/worker-runtime.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(runtimeExamples.synthetic, true);
+data.cases.push(...runtimeExamples.cases);
 assert.equal(data.synthetic, true);
 const ajv = new Ajv({ allErrors: true, strict: true });
 const byName = new Map<string, Example>();

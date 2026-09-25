@@ -1,0 +1,187 @@
+// #17 worker runtime process: `node apps/worker/dist/runtime.js` (container entrypoint).
+// N slots claim run and parse jobs through PostgreSQL leases; a sweep loop re-queues paused work
+// whose blocker cleared (parsed materials, reconciled provider calls, OCR availability) and can
+// forward #79 logs. SIGTERM/SIGINT stop claiming, drain in-flight work, then release leases so
+// another worker resumes from the durable checkpoint at once. Nothing here trusts a browser.
+import { Pool } from 'pg';
+import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
+import { forwardLogs, ndjsonFileSink, type LogSink } from '@bondbuddy/api/log-ops';
+import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
+import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
+import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
+import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
+import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } from './run-pipeline.js';
+
+export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
+export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
+/** Answers what really happened to an attempt whose outcome was not recorded (worker died mid-call). */
+export interface ProviderCallReconciler { name: string; query(attempt: PendingAttempt): Promise<ReconcileAnswer> }
+
+/**
+ * `codex exec` exposes no provider request ID or lookup API (#16: provider_request_id_status is
+ * always `unknown`), so the default reconciler cannot prove either outcome and leaves the run
+ * paused at `provider_reconcile` for an operator. It never guesses `confirmed_not_sent`.
+ */
+export const codexNoLookupReconciler: ProviderCallReconciler = { name: 'codex_no_lookup', query: async () => ({ outcome: 'unknown' }) };
+
+export type WorkerRuntimeOptions = {
+  pool: Pool; blobs: PrivateBlobs;
+  concurrency?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
+  kinds?: ('run' | 'parse')[];
+  runStages?: RunStage[];
+  parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
+  ocrEnabled?: boolean;
+  /** Back-off before a paused awaiting_ocr job is re-queued again. */
+  ocrRetrySeconds?: number;
+  reconciler?: ProviderCallReconciler;
+  logSink?: LogSink | null;
+  log?: (event: Record<string, unknown>) => void;
+};
+
+const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+});
+
+export class WorkerRuntime {
+  private stopping = false;
+  private readonly stopSignal = new AbortController();
+  private readonly workAbort = new AbortController();
+  private readonly runLeases = new Map<number, Lease>();
+  private readonly parseLeases = new Map<number, MaterialParseLease>();
+  private loops: Promise<void>[] = [];
+  readonly counters = { run: 0, parse: 0, idle: 0, sweeps: 0, errors: 0 };
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log'>> & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log'>;
+
+  constructor(options: WorkerRuntimeOptions) {
+    this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runStages: defaultRunStages(),
+      ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, ...options };
+    if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
+  }
+
+  start() {
+    for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
+    this.loops.push(this.sweepLoop());
+    return this;
+  }
+
+  private emit(event: Record<string, unknown>) { this.o.log?.({ at: new Date().toISOString(), ...event }); }
+
+  /** One bounded-concurrency slot: alternates job kinds so neither starves the other. */
+  private async slotLoop(slot: number) {
+    let turn = slot;
+    while (!this.stopping) {
+      let worked = false;
+      for (let i = 0; i < this.o.kinds.length && !this.stopping && !worked; i++) {
+        const kind = this.o.kinds[(turn + i) % this.o.kinds.length];
+        try {
+          const outcome = kind === 'run'
+            ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
+              onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
+            : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
+              onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
+          if (outcome !== 'idle') { worked = true; this.counters[kind]++; this.emit({ slot, kind, outcome }); }
+        } catch (error) {
+          this.counters.errors++;
+          this.emit({ slot, kind, outcome: 'error', error: error instanceof Error ? error.message.slice(0, 64).replace(/[^A-Za-z0-9_ .:-]/g, '') : 'unknown' });
+        }
+      }
+      turn++;
+      if (!worked) { this.counters.idle++; await sleep(this.o.pollMs, this.stopSignal.signal); }
+    }
+  }
+
+  private async sweepLoop() {
+    while (!this.stopping) {
+      try { await this.sweep(); } catch { this.counters.errors++; }
+      await sleep(this.o.sweepMs, this.stopSignal.signal);
+    }
+  }
+
+  /** One pass over paused work. Safe to run from several workers: every transition re-checks under row locks. */
+  async sweep() {
+    const { pool } = this.o;
+    this.counters.sweeps++;
+    for (const r of await pausedRuns(pool, 'awaiting_materials')) {
+      const run = (await pool.query('SELECT owner_user_id,project_id,input_revision FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [r.run_id, r.owner_user_id])).rows[0];
+      if (!run) continue;
+      const readiness = await materialsReadiness(pool, run);
+      // A failed material is decided on the next claim (the stage fails the run with its code).
+      if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
+    }
+    for (const r of await pausedRuns(pool, 'provider_reconcile')) await this.reconcileRun(r.owner_user_id, r.run_id, r.job_id);
+    if (this.o.ocrEnabled && this.o.parse?.ocr) await requeueAwaitingOcrParseJobs(pool, { minPausedSeconds: this.o.ocrRetrySeconds });
+    if (this.o.logSink) await forwardLogs(pool, this.o.logSink);
+  }
+
+  /** Queries every unresolved attempt first; only proven outcomes are recorded, then the run is re-queued. */
+  async reconcileRun(owner: string, runId: string, jobId: string) {
+    const { pool } = this.o;
+    const attempts = (await pool.query(`SELECT a.owner_user_id,r.project_id,r.id AS run_id,a.job_id,a.logical_call_id,a.attempt_no,a.id AS call_id,a.model_id,a.prompt_snapshot_id AS prompt_snapshot_ref,
+        EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id) AS observed
+      FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_runs r ON r.id=j.run_id
+      WHERE a.owner_user_id=$1 AND a.job_id=$2 AND r.id=$3 AND a.status='pending_reconcile' ORDER BY a.logical_call_id,a.attempt_no`, [owner, jobId, runId])).rows as PendingAttempt[];
+    for (const attempt of attempts) {
+      const answer = await this.o.reconciler.query(attempt);
+      this.emit({ kind: 'reconcile', run_id: runId, logical_call_id: attempt.logical_call_id, attempt_no: attempt.attempt_no, reconciler: this.o.reconciler.name, outcome: answer.outcome });
+      if (answer.outcome === 'confirmed_not_sent') await reconcilePausedCall(pool, owner, runId, attempt.logical_call_id, attempt.attempt_no, 'confirmed_not_sent');
+      else if (answer.outcome === 'completed') await reconcilePausedProviderCall(pool, this.o.blobs, answer.observation, answer.validate);
+      else return false;
+    }
+    return resumePausedRun(pool, owner, runId, 'provider_reconciled');
+  }
+
+  /** Stop claiming, let in-flight work finish for drainMs, then abort it and release held leases. */
+  async stop() {
+    if (this.stopping) return;
+    this.stopping = true;
+    this.stopSignal.abort();
+    const drained = await Promise.race([Promise.all(this.loops).then(() => true), sleep(this.o.drainMs).then(() => false)]);
+    if (!drained) {
+      this.workAbort.abort();
+      await Promise.race([Promise.all(this.loops), sleep(5000)]);
+    }
+    for (const lease of this.runLeases.values()) await releaseLease(this.o.pool, lease).catch(() => undefined);
+    for (const lease of this.parseLeases.values()) await releaseMaterialParse(this.o.pool, lease).catch(() => undefined);
+    this.emit({ kind: 'stopped', drained, released: this.runLeases.size + this.parseLeases.size });
+  }
+}
+
+function intEnv(name: string, fallback: number, min: number, max: number) {
+  const raw = process.env[name];
+  const value = raw === undefined ? fallback : Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}`);
+  return value;
+}
+
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING are required');
+  const kinds = (process.env.BB_WORKER_JOB_KINDS ?? 'run,parse').split(',').map(k => k.trim());
+  if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16) + 4 });
+  const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
+  const ocrEnabled = process.env.BB_OCR_ENABLED === '1';
+  const { processOcrMaterial } = await import('./ocr.js');
+  const runtime = new WorkerRuntime({
+    pool, blobs, kinds: kinds as ('run' | 'parse')[],
+    concurrency: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv('BB_WORKER_POLL_MS', 1000, 100, 60000),
+    leaseSeconds: intEnv('BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv('BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
+    drainMs: intEnv('BB_WORKER_DRAIN_MS', 20000, 0, 600000), ocrRetrySeconds: intEnv('BB_OCR_RETRY_SECONDS', 300, 0, 86400),
+    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) } }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
+      ocr: ocrEnabled ? input => processOcrMaterial(pool, blobs, { ...input, purpose: 'source_preflight' }) : undefined },
+    ocrEnabled,
+    logSink: process.env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(process.env.BB_LOG_NDJSON_PATH) : null,
+    log: event => process.stdout.write(`${JSON.stringify(event)}\n`),
+  }).start();
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds, ocr_enabled: ocrEnabled })}\n`);
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await runtime.stop();
+    await pool.end();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown());
+  process.on('SIGINT', () => void shutdown());
+}

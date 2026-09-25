@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "cases": [
+    { "name": "job-stream-parse-succeeded", "schema": "JobStreamEvent", "valid": true, "value": { "event_id": "synthetic-event-1", "schema_version": 1, "job_id": "synthetic-job-1", "job_type": "parse", "seq": 4, "occurred_at": "2026-09-25T08:00:00.000Z", "type": "material_parse.succeeded", "state": "succeeded", "stage": "succeeded", "payload": { "attempts": 1, "outcome": "parsed" } } },
+    { "name": "job-stream-ocr-resumed", "schema": "JobStreamEvent", "valid": true, "value": { "event_id": "synthetic-event-2", "schema_version": 1, "job_id": "synthetic-job-2", "job_type": "parse", "seq": 3, "occurred_at": "2026-09-25T08:00:01Z", "type": "material_parse.resumed", "state": "queued", "stage": "awaiting_ocr", "payload": { "attempts": 0, "reason": "ocr_available" } } },
+    { "name": "job-stream-rejects-parser-text", "schema": "JobStreamEvent", "valid": false, "value": { "event_id": "synthetic-event-3", "schema_version": 1, "job_id": "synthetic-job-3", "job_type": "parse", "seq": 1, "occurred_at": "2026-09-25T08:00:00Z", "type": "material_parse.enqueued", "state": "queued", "stage": "queued", "payload": { "literal_quote": "synthetic material text must never be streamed" } } },
+    { "name": "job-stream-rejects-run-job", "schema": "JobStreamEvent", "valid": false, "value": { "event_id": "synthetic-event-4", "schema_version": 1, "job_id": "synthetic-job-4", "job_type": "update", "seq": 1, "occurred_at": "2026-09-25T08:00:00Z", "type": "material_parse.enqueued", "state": "queued", "stage": null, "payload": {} } },
+    { "name": "stream-end-terminal", "schema": "StreamEnd", "valid": true, "value": { "reason": "terminal", "last_event_id": 12 } },
+    { "name": "stream-end-max-duration-empty", "schema": "StreamEnd", "valid": true, "value": { "reason": "max_duration", "last_event_id": null } },
+    { "name": "stream-end-rejects-unknown-reason", "schema": "StreamEnd", "valid": false, "value": { "reason": "browser_closed_cancels_run", "last_event_id": 3 } }
+  ]
+}
