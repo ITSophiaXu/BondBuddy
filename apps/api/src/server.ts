@@ -25,6 +25,8 @@ import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
+import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source.js';
+import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
@@ -188,9 +190,30 @@ export function createServer(settings: Settings = {}) {
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
-      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
+      if(p.kind==='update'){
+        const historical=resolved.filter(ref=>ref.role==='historical');
+        const historicalMaterials=historical.map(ref=>({material_id:ref.material_id,material_version:ref.material_version}));
+        if(historical.length!==1){
+          issuerIdentity=pendingIssuerIdentityBinding(historical.length===0?'historical_material_not_selected':'historical_material_selection_ambiguous',historicalMaterials);
+        }else{
+          const selected=historical[0]!;
+          const verified=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:selected.material_id,materialVersion:selected.material_version});
+          if(!verified){
+            issuerIdentity=pendingIssuerIdentityBinding('issuer_identity_source_missing_unreviewed_or_conflicting',historicalMaterials);
+          }else{
+            if(verified.materialId!==selected.material_id||verified.materialVersion!==selected.material_version)throw new Error('ISSUER_IDENTITY_SCOPE_MISMATCH');
+            issuerIdentity=verifiedIssuerIdentityBinding(verified);
+          }
+        }
+      }
       const revision=(p.latest_input_revision??0)+1;
-      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      // Update generation must only see the reviewed historical issuer name, never the browser draft label.
+      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      if(p.kind==='update'){
+        Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
+      }
       const hash=digest(canonical(manifest));
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]']);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
@@ -534,6 +557,25 @@ export function createServer(settings: Settings = {}) {
         if(!input)throw missing();
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
         const missingInputs:string[]=[],uncertainty:string[]=[];
+        const manifest=input.manifest as Record<string,unknown>;
+        if(manifest.kind==='update'){
+          const binding=manifest.issuer_identity;
+          if(!isVerifiedIssuerIdentityBinding(binding)){
+            const pending=binding&&typeof binding==='object'&&!Array.isArray(binding)?(binding as Record<string,unknown>).reason:null;
+            missingInputs.push(`issuer_identity_not_bound:${typeof pending==='string'?pending:'historical_issuer_identity_not_bound'}`);
+          }else if(manifest.issuer_entity_id!==binding.entity_id){
+            missingInputs.push('issuer_identity_pin_mismatch');
+          }else{
+            const material=(await client.query(`SELECT role,sha256,deleted_at FROM bb_material_versions
+              WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4`,[user,id,binding.material_id,binding.material_version])).rows[0];
+            if(!material||material.role!=='historical'||material.deleted_at||material.sha256.trim()!==binding.source_content_sha256){
+              missingInputs.push(`issuer_material_stale:${binding.material_id}:${binding.material_version}`);
+            }else{
+              const current=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:binding.material_id,materialVersion:binding.material_version});
+              if(!current||!issuerIdentityBindingMatches(binding,current))missingInputs.push(`issuer_identity_stale:${binding.material_id}:${binding.material_version}`);
+            }
+          }
+        }
         const refs=input.material_versions as {material_id:string;material_version:number}[];
         if(!refs.length)missingInputs.push('material_versions');
         for(const ref of refs){

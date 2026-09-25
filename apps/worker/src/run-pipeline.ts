@@ -9,6 +9,8 @@ import { MATERIAL_PARSE_JOB_TYPE, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } f
 import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
+import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
+import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
@@ -18,6 +20,8 @@ export type StageContext = {
   pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunRow; signal: AbortSignal;
   /** Checkpoint of completed stages, then values produced by stages in this attempt. */
   checkpoint: Record<string, Record<string, unknown>>; values: Map<string, unknown>;
+  /** Revalidate update issuer identity immediately before constructing a prompt and before each provider intent. */
+  validateBeforeModelCall?: () => Promise<InputBindingGate | null>;
 };
 export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown }
@@ -44,6 +48,51 @@ export type RunPipelineDependencies = {
 const lost = (error: unknown) => error instanceof Problem && (error.code === 'ALREADY_TERMINAL' || (error.status === 409 && /lease/i.test(error.message)));
 const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'stage_not_implemented' }) });
 
+type InputBindingGate = Extract<StageOutcome, { kind: 'pause' | 'fail' }>;
+type InputRevisionRow = { input_hash: string; manifest: Record<string, unknown> | null };
+
+async function verifyUpdateIssuerIdentityBinding(pool: Pool, run: RunRow, manifest: Record<string, unknown> | null): Promise<InputBindingGate | null> {
+  if (run.task_kind !== 'update') return null;
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest))
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_issuer_identity_not_bound' };
+  const binding = manifest.issuer_identity;
+  if (!isVerifiedIssuerIdentityBinding(binding)) {
+    const reason = binding && typeof binding === 'object' && !Array.isArray(binding) &&
+      typeof (binding as Record<string, unknown>).reason === 'string' ? String((binding as Record<string, unknown>).reason)
+      : 'historical_issuer_identity_not_bound';
+    return { kind: 'pause', stage: 'capability_not_ready', reason };
+  }
+  if (manifest.issuer_entity_id !== binding.entity_id)
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_issuer_identity_pin_mismatch' };
+  const materials = Array.isArray(manifest.materials) ? manifest.materials as Record<string, unknown>[] : [];
+  const historical = materials.filter(material => material.role === 'historical');
+  if (historical.length !== 1 || historical[0]?.material_id !== binding.material_id ||
+      historical[0]?.material_version !== binding.material_version)
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_issuer_material_selection_stale' };
+  const material = historical[0]!;
+  const currentMaterial = (await pool.query(`SELECT role,sha256 FROM bb_material_versions
+    WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,
+  [run.owner_user_id, run.project_id, binding.material_id, binding.material_version])).rows[0];
+  const manifestHash = typeof material.sha256 === 'string' ? material.sha256.trim() : '';
+  if (!currentMaterial || currentMaterial.role !== 'historical' || currentMaterial.sha256.trim() !== manifestHash ||
+      manifestHash !== binding.source_content_sha256)
+    return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+  const current = await loadVerifiedIssuerIdentitySourceRecord(pool, {
+    ownerUserId: run.owner_user_id, projectId: run.project_id,
+    materialId: binding.material_id, materialVersion: binding.material_version,
+  });
+  if (!current || !issuerIdentityBindingMatches(binding, current))
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_issuer_identity_stale' };
+  return null;
+}
+
+async function currentRunInput(pool: Pool, run: RunRow): Promise<InputRevisionRow | null> {
+  const result = await pool.query(`SELECT i.input_hash,i.manifest FROM bb_input_revisions i
+    JOIN bb_projects p ON p.id=i.project_id AND p.owner_user_id=i.owner_user_id AND p.deleted_at IS NULL
+    WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
+  return (result.rows[0] as InputRevisionRow | undefined) ?? null;
+}
+
 /** input_lock: the run is pinned to its immutable input revision and hash. */
 export const inputLockStage: RunStage = {
   name: 'input_lock',
@@ -57,6 +106,8 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
+    if (identityGate) return identityGate;
     const pin = manifest && typeof manifest === 'object' && !Array.isArray(manifest)
       ? manifest.rule_pack_pin as Record<string, unknown> | undefined : undefined;
     const completePin = typeof input.rule_pack_version === 'string' && input.rule_pack_version.length > 0 &&
@@ -124,6 +175,8 @@ export function codexModelStage(options: {
     replay: true,
     run: async ctx => {
       const { pool, blobs, lease, run } = ctx;
+      const initialGate = await ctx.validateBeforeModelCall?.();
+      if (initialGate) return initialGate;
       let snapshotId = ctx.checkpoint[promptStage]?.snapshot_id as string | undefined;
       if (!snapshotId) {
         const body = await options.buildPrompt(ctx);
@@ -143,6 +196,8 @@ export function codexModelStage(options: {
       const config = typeof options.config === 'function' ? options.config() : options.config;
       const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult: options.validate });
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
+      const callGate = await ctx.validateBeforeModelCall?.();
+      if (callGate) return callGate;
       const result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         output: { kind: 'json', schema: options.schema, validate: options.validate }, signal: ctx.signal }, journal, config);
@@ -188,7 +243,12 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   try {
     const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
-    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map() };
+    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), validateBeforeModelCall: async () => {
+      if (run.task_kind !== 'update') return null;
+      const input = await currentRunInput(pool, run);
+      if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      return verifyUpdateIssuerIdentityBinding(pool, run, input.manifest);
+    } };
     for (const stage of deps.stages) {
       currentStage = stage.name;
       const saved = checkpoint[stage.name];
