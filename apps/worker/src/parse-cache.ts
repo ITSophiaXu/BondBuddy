@@ -203,7 +203,11 @@ export async function saveParseCache(
   assertStrictCachedResponse(validated);
   const bytes = Buffer.from(JSON.stringify(validated), 'utf8');
   const objectSha256 = createHash('sha256').update(bytes).digest('hex');
-  const objectKey = `parse-cache/${randomUUID()}`;
+  // Keep the private object namespace account-scoped as a second boundary in
+  // addition to the owner predicate on bb_parse_cache. Hash the owner ID so
+  // storage keys do not expose account identifiers to operational tooling.
+  const ownerNamespace = createHash('sha256').update(context.ownerUserId).digest('hex');
+  const objectKey = `parse-cache/${ownerNamespace}/${randomUUID()}`;
   await dependencies.blobs.putPrivate(objectKey, bytes);
   const inserted = await dependencies.pool.query(
     `INSERT INTO bb_parse_cache

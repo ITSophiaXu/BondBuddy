@@ -125,22 +125,29 @@ length/hash and source response, then rebinds request and material IDs to the
 current authorized material before returning it. A missing or corrupt Blob is
 an error, not a successful miss. Staging paths are never stored.
 
-The authorized material bridge now optionally composes this cache after it
-checks the current owned material metadata and private bytes. A same-owner,
-same-content parse can therefore skip the Python subprocess even when the
+The authorized material bridge optionally composes this cache after it checks
+the current owned material metadata and private bytes. The production worker
+runtime now installs that composition for parse jobs using its private Azure
+Blob container and PostgreSQL pool. Cache Blob keys use a hashed owner
+namespace, and lookups also require the exact owner in `bb_parse_cache`. A
+same-owner, same-content parse can skip the Python subprocess when the
 filename, project or material ID changes; a hit is rebound to the new request.
-The caller must pass deployment-controlled parser/OCR/basis versions, and a
-cache failure is fail-closed rather than treated as a miss. Failed and
-page-limited parses are not cached. This integration is exercised with
-synthetic adapters and, when `MATERIAL_CACHE_TEST_DATABASE_URL` points to a
-disposable migrated PostgreSQL 16 database and `.venv` is installed, an
-actual Python subprocess plus database test. Its private Blob adapter remains
-in-memory; the production worker has not yet installed this optional
-composition.
+The parser identity comes from the shared `documentParserVersion()` setting
+used by parse jobs (`BB_DOCUMENT_PARSER_VERSION`, with its shared code
+default). Parse-enabled runtime startup requires `BB_PARSE_CACHE_OCR_VERSION`
+and `BB_PARSE_CACHE_BASIS_VERSION`; deployments must bump them when the OCR
+pipeline or evidence-basis correction logic changes. These versions are
+required explicitly because those components currently have no shared version
+configuration contract. Cache failures are fail-closed rather than treated
+as misses. Failed and page-limited parses are not cached. Synthetic bridge
+tests cover same-account rename reuse, account isolation and corruption; when
+`MATERIAL_CACHE_TEST_DATABASE_URL` points to a disposable migrated PostgreSQL
+16 database and `.venv` is installed, a test also runs the actual Python
+subprocess against synthetic material. Its Blob adapter remains in-memory.
 
 Blob insertion precedes the idempotent database insert. A crash or concurrent
 winner can leave an unreferenced private object; storage-lifecycle cleanup
-must cover those objects before the seam is wired into a production worker.
+must cover those objects now that the cache is used by the production worker.
 `fact-repository.ts` is another internal #15 seam. It stores each fact source
 as a separate immutable candidate, with an exact account/entity/scope/period/
 currency/unit/basis/version key. Inserts require a material version in the

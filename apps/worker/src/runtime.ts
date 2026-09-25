@@ -12,6 +12,7 @@ import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-gua
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } from './run-pipeline.js';
+import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -180,13 +181,14 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16) + 4 });
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
   const ocrEnabled = process.env.BB_OCR_ENABLED === '1';
+  const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions()) : undefined;
   const { processOcrMaterial } = await import('./ocr.js');
   const runtime = new WorkerRuntime({
     pool, blobs, kinds: kinds as ('run' | 'parse')[],
     concurrency: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv('BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv('BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv('BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv('BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv('BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv('BB_OCR_RETRY_SECONDS', 300, 0, 86400),
-    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) } }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
+    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
       ocr: ocrEnabled ? input => processOcrMaterial(pool, blobs, { ...input, purpose: 'source_preflight' }) : undefined },
     ocrEnabled,
     logSink: process.env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(process.env.BB_LOG_NDJSON_PATH) : null,

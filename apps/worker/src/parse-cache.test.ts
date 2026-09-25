@@ -199,6 +199,8 @@ test('save writes only a current response to a private object and inserts metada
 
   assert.equal(await saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req)), true);
   assert.equal(blobs.putCount, 1);
+  const ownerNamespace = createHash('sha256').update('owner-a').digest('hex');
+  assert.match([...blobs.objects.keys()][0] ?? '', new RegExp(`^parse-cache/${ownerNamespace}/`));
   assert.match(pool.calls[0]?.sql ?? '', /ON CONFLICT \(owner_user_id, content_sha256, parser_version, ocr_version, basis_version\) DO NOTHING/);
   assert.equal(JSON.stringify([...blobs.objects.values()].map((bytes) => JSON.parse(Buffer.from(bytes).toString('utf8')))).includes('authorized_local_path'), false);
 });
