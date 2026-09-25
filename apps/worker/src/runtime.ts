@@ -5,7 +5,7 @@
 // another worker resumes from the durable checkpoint at once. Nothing here trusts a browser.
 import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
-import { forwardLogs, ndjsonFileSink, type LogSink } from '@bondbuddy/api/log-ops';
+import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
 import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
 import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
@@ -226,7 +226,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
       ocr: ocrEnabled ? ocr?.(pool, blobs) : undefined },
     ocrEnabled,
-    logSink: env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(env.BB_LOG_NDJSON_PATH) : null,
+    logSink: env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(env.BB_LOG_NDJSON_PATH, 'ndjson_file', ndjsonSizeCapFromEnv(env)) : null,
     ...(platformProbe ? { platformProbe } : {}),
   };
 }

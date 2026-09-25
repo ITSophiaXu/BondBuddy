@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +12,7 @@ import { azureBlobs, uid } from './data.js';
 import { observeUsage } from './observability.js';
 import { action, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
-import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
+import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
 
 // Synthetic data only. No real provider, credential or customer material is used.
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -156,6 +156,42 @@ test('#79 replay of a complete pre-existing line still acknowledges only after f
     await writeFile(file, line, { mode: 0o600 }); // models a complete append before the prior writer's fsync
     await ndjsonFileSink(file).deliver([record]);
     assert.equal(await readFile(file, 'utf8'), line);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 size cap fails closed for new keys but permits replay of a full segment', async () => {
+  assert.equal(ndjsonSizeCapFromEnv({}), 64 * 1024 * 1024);
+  assert.throws(() => ndjsonSizeCapFromEnv({ BB_LOG_SINK_MAX_BYTES: '0' }));
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-cap-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const first = { delivery_key: 'a'.repeat(64), outbox_id: 'synthetic-a', event: { kind: 'synthetic.event', padding: 'x'.repeat(200) } };
+    const next = { delivery_key: 'b'.repeat(64), outbox_id: 'synthetic-b', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file, 'ndjson_file', 350);
+    await sink.deliver([first]);
+    const original = await readFile(file, 'utf8');
+    assert.ok(Buffer.byteLength(original) < 350);
+    await sink.deliver([first]);
+    assert.equal(await readFile(file, 'utf8'), original);
+    await assert.rejects(sink.deliver([next]));
+    assert.equal(await readFile(file, 'utf8'), original);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 replay also detects a key in a legacy rotated segment', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-archive-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'c'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file);
+    await sink.deliver([record]);
+    const original = await readFile(file, 'utf8');
+    await rename(file, `${file}.1`); // models a pre-fix scheduler rotation before PG acknowledgement
+    await sink.deliver([record]);
+    assert.equal(await readFile(`${file}.1`, 'utf8'), original);
+    assert.equal(await readFile(file, 'utf8'), '');
+    await writeFile(`${file}.1`, '{"delivery_key":"partial"', { mode: 0o600 });
+    await assert.rejects(sink.deliver([record]), 'an incomplete archive is not silently ignored');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

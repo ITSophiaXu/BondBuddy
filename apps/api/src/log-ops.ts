@@ -48,31 +48,39 @@ export type LogRecord = { delivery_key: string; outbox_id: string; event: Record
 /** A sink must treat delivery_key as an idempotency key: the same key may arrive again after a crash. */
 export interface LogSink { name: string; deliver(records: LogRecord[]): Promise<void> }
 
-/**
- * NDJSON file sink. The flock child holds an OS lock while it scans and fsyncs
- * the file; a process exit releases the lock. The file itself is the receipt
- * journal, so there is no second index whose crash ordering could lose events.
- */
-export function ndjsonFileSink(path: string, name = 'ndjson_file'): LogSink {
+export function ndjsonSizeCapFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.BB_LOG_SINK_MAX_BYTES;
+  const value = raw === undefined || raw === '' ? 64 * 1024 * 1024 : Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1024 || value > 1024 ** 3) throw new Error('Invalid BB_LOG_SINK_MAX_BYTES');
+  return value;
+}
+
+/** Run every file write under the same OS lock across processes. */
+async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: number): Promise<void> {
+  const lock = await open(`${path}.lock`, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+  try {
+    const stat = await lock.stat();
+    if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.uid !== process.getuid?.()) throw new Error('Unsafe NDJSON lock permissions');
+    const child = spawn('flock', ['-x', '-F', '/proc/self/fd/3', process.execPath, fileURLToPath(new URL('./ndjson-file-sink.js', import.meta.url)), path],
+      { stdio: ['pipe', 'ignore', 'pipe', lock.fd] });
+    let errorText = '';
+    child.stderr!.setEncoding('utf8');
+    child.stderr!.on('data', chunk => { errorText = (errorText + chunk).slice(0, 4096); });
+    const exited = new Promise<number>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', code => resolve(code ?? 1));
+    });
+    child.stdin!.on('error', () => undefined); // child failure is reported by its exit code
+    child.stdin!.end(JSON.stringify({ records, maxBytes }));
+    if (await exited !== 0) throw new Error(`NDJSON sink refused delivery: ${errorText || 'writer failed'}`);
+  } finally { await lock.close(); }
+}
+
+/** Active NDJSON and any legacy .1 segment are the key journal; new bytes obey the size cap. */
+export function ndjsonFileSink(path: string, name = 'ndjson_file', maxBytes?: number): LogSink {
   return { name, async deliver(records) {
     if (!records.length) return;
-    const lock = await open(`${path}.lock`, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
-    try {
-      const stat = await lock.stat();
-      if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.uid !== process.getuid?.()) throw new Error('Unsafe NDJSON lock permissions');
-      const child = spawn('flock', ['-x', '-F', '/proc/self/fd/3', process.execPath, fileURLToPath(new URL('./ndjson-file-sink.js', import.meta.url)), path],
-        { stdio: ['pipe', 'ignore', 'pipe', lock.fd] });
-      let errorText = '';
-      child.stderr!.setEncoding('utf8');
-      child.stderr!.on('data', chunk => { errorText = (errorText + chunk).slice(0, 4096); });
-      const exited = new Promise<number>((resolve, reject) => {
-        child.on('error', reject);
-        child.on('close', code => resolve(code ?? 1));
-      });
-      child.stdin!.on('error', () => undefined); // child failure is reported by its exit code
-      child.stdin!.end(JSON.stringify(records));
-      if (await exited !== 0) throw new Error(`NDJSON sink refused delivery: ${errorText || 'writer failed'}`);
-    } finally { await lock.close(); }
+    await lockedNdjsonWrite(path, records, maxBytes);
   } };
 }
 
@@ -359,7 +367,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
     if (command === 'forward') {
       if (!process.env.BB_LOG_SINK_FILE) throw new Error('BB_LOG_SINK_FILE required');
-      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, ndjsonFileSink(process.env.BB_LOG_SINK_FILE)))}\n`);
+      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, ndjsonFileSink(process.env.BB_LOG_SINK_FILE, 'ndjson_file', ndjsonSizeCapFromEnv())))}\n`);
     } else if (command === 'health') {
       process.stdout.write(`${JSON.stringify(await checkLogHealth(pool, { maxBacklogAgeSeconds: Number(process.env.BB_LOG_BACKLOG_ALERT_SECONDS ?? '300') }))}\n`);
     } else if (command === 'retention') {
