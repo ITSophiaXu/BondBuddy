@@ -3,11 +3,12 @@
 -- stay immutable; everything here only appends or points at them.
 
 -- Deny by default: a user without an active grant has no operator surface at all.
--- log_reader sees redacted metadata/metrics; prompt_viewer is a separate grant for plaintext.
+-- log_reader sees redacted metadata/metrics; log_operator may resume the evidence gate and append
+-- usage corrections; prompt_viewer is a separate grant for plaintext.
 CREATE TABLE bb_operator_grants (
  id text PRIMARY KEY,
  user_id text NOT NULL REFERENCES bb_users(id),
- role text NOT NULL CHECK (role IN ('log_reader','prompt_viewer')),
+ role text NOT NULL CHECK (role IN ('log_reader','log_operator','prompt_viewer')),
  granted_by text NOT NULL,
  reason_code text NOT NULL CHECK (reason_code ~ '^[a-z][a-z0-9_]{0,63}$'),
  granted_at timestamptz NOT NULL DEFAULT now(),
@@ -28,7 +29,7 @@ CREATE TRIGGER bb_operator_grant_guard BEFORE UPDATE OR DELETE ON bb_operator_gr
   FOR EACH ROW EXECUTE FUNCTION bb_guard_operator_grant();
 
 -- Access audit now records the actor role and the requested plaintext kind.
-ALTER TABLE bb_log_access_audit ADD COLUMN actor_role text CHECK (actor_role IS NULL OR actor_role IN ('log_reader','prompt_viewer','owner_service'));
+ALTER TABLE bb_log_access_audit ADD COLUMN actor_role text CHECK (actor_role IS NULL OR actor_role IN ('log_reader','log_operator','prompt_viewer','owner_service'));
 ALTER TABLE bb_log_access_audit ADD COLUMN target_ref text CHECK (target_ref IS NULL OR target_ref ~ '^[A-Za-z0-9_-]{1,128}$');
 ALTER TABLE bb_log_access_audit ADD COLUMN reason_code text CHECK (reason_code IS NULL OR reason_code ~ '^[a-z][a-z0-9_]{0,63}$');
 CREATE INDEX bb_log_access_actor_idx ON bb_log_access_audit(actor_id,accessed_at DESC);

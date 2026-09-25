@@ -303,7 +303,7 @@ export async function correctUsage(pool: Pool, actorId: string, attemptId: strin
   if (!safeCode.test(input.reason_code) || (input.usage_status === 'measured') !== (input.chosen_observation_id !== null) || (input.chosen_observation_id !== null && !validId(input.chosen_observation_id))) throw new Problem(422, 'VALIDATION_FAILED', 'A measured correction must choose one observation; unknown must not');
   return transaction(pool, async client => {
     const a = (await client.query('SELECT a.*,j.run_id,COALESCE(j.project_id,r.project_id) project_id FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id LEFT JOIN bb_runs r ON r.id=j.run_id WHERE a.id=$1 FOR UPDATE OF a', [attemptId])).rows[0];
-    await audit(client, { actorId, role: 'log_reader', owner: a?.owner_user_id, purpose: 'usage_correction', filter: input, target: attemptId, reason: input.reason_code });
+    await audit(client, { actorId, role: 'log_operator', owner: a?.owner_user_id, purpose: 'usage_correction', filter: input, target: attemptId, reason: input.reason_code });
     if (!a) throw missing();
     let counts: Array<number | null> = [null, null, null, null];
     if (input.chosen_observation_id) {

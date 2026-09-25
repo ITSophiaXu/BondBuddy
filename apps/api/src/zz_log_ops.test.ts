@@ -31,8 +31,9 @@ async function fixture(pool: Pool) {
   if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
   resetProcessGateForTests();
   const ownerA = await user(pool, 'logops-a'), ownerB = await user(pool, 'logops-b');
-  const reader = await user(pool, 'logops-reader'), viewer = await user(pool, 'logops-viewer'), nobody = await user(pool, 'logops-none');
+  const reader = await user(pool, 'logops-reader'), viewer = await user(pool, 'logops-viewer'), nobody = await user(pool, 'logops-none'), operatorUser = await user(pool, 'logops-op');
   await grantOperator(pool, { userId: reader, role: 'log_reader', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+  await grantOperator(pool, { userId: operatorUser, role: 'log_operator', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
   await grantOperator(pool, { userId: viewer, role: 'prompt_viewer', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
   let current = ownerA;
   const app = createServer({ pool, blobs: azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true });
@@ -51,7 +52,7 @@ async function fixture(pool: Pool) {
     const lease: Lease = { jobId: job.id, runId, owner, token, checkpoint: job.checkpoint, attempts: 1 };
     return { project, runId, lease, inputHash: input.input_hash as string };
   }
-  return { ownerA, ownerB, reader, viewer, nobody, app, as, runFor };
+  return { ownerA, ownerB, reader, viewer, nobody, operatorUser, app, as, runFor };
 }
 
 class MemorySink implements LogSink {
@@ -166,9 +167,15 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.ok(health.usage_conflicts >= 1);
     const providerObservation = (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1 AND source='provider'", [a2])).rows[0].id;
     const rawBefore = (await pool.query('SELECT * FROM bb_usage_observations WHERE attempt_id=$1 ORDER BY id', [a2])).rows;
-    assert.equal((await read('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: null, usage_status: 'measured', reason_code: 'x' })).statusCode, 422);
-    assert.equal((await read('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1", [a1])).rows[0].id, usage_status: 'measured', reason_code: 'x' })).statusCode, 409, 'observation of another attempt');
-    const corrected = await read('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: providerObservation, usage_status: 'measured', reason_code: 'provider_invoice_match' });
+    // Writes need log_operator: a read-only log_reader (and a prompt_viewer) gets the same 404.
+    const validCorrection = { chosen_observation_id: providerObservation, usage_status: 'measured', reason_code: 'provider_invoice_match' };
+    for (const who of [f.reader, f.viewer, f.nobody]) assert.equal((await f.as(who)('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, validCorrection)).statusCode, 404, who);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_usage_corrections WHERE attempt_id=$1', [a2])).rows[0].n, 0, 'denied write appended nothing');
+    const op = f.as(f.operatorUser);
+    assert.equal((await op('GET', '/api/v1/admin/logs/events')).statusCode, 404, 'log_operator alone has no read surface');
+    assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: null, usage_status: 'measured', reason_code: 'x' })).statusCode, 422);
+    assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1", [a1])).rows[0].id, usage_status: 'measured', reason_code: 'x' })).statusCode, 409, 'observation of another attempt');
+    const corrected = await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, validCorrection);
     assert.equal(corrected.statusCode, 201, corrected.body);
     const after = (await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`)).json();
     assert.equal(after.attempts[1].usage_status, 'measured');
@@ -189,7 +196,8 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.ok(!view.json().body.includes('482913') && !view.json().body.includes('abc123secret'));
     const auditRow = await pool.query("SELECT * FROM bb_log_access_audit WHERE id=$1", [view.json().audit_id]);
     assert.deepEqual([auditRow.rows[0].actor_id, auditRow.rows[0].owner_user_id, auditRow.rows[0].purpose, auditRow.rows[0].actor_role, auditRow.rows[0].target_ref, auditRow.rows[0].reason_code], [f.viewer, f.ownerA, 'prompt_view', 'prompt_viewer', snapshot, 'support_case']);
-    assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND purpose IN ('admin_events','admin_job_timeline','admin_metrics','usage_correction')", [f.reader])).rows[0].n >= 6, 'every operator read is audited');
+    assert.equal((await pool.query("SELECT actor_role FROM bb_log_access_audit WHERE actor_id=$1 AND purpose='usage_correction'", [f.operatorUser])).rows[0].actor_role, 'log_operator');
+    assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND purpose IN ('admin_events','admin_job_timeline','admin_metrics')", [f.reader])).rows[0].n >= 5, 'every operator read is audited');
     await assert.rejects(pool.query('DELETE FROM bb_log_access_audit WHERE actor_id=$1', [f.viewer]), (e: any) => e.code === '23514');
 
     // Revocation takes effect immediately.
@@ -271,10 +279,12 @@ test('#79 evidence gate: DB transaction failure pauses new external calls and ra
     await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 1), (e: any) => e.status === 503 && e.code === 'DATA_UNAVAILABLE');
     const gate = await f.as(f.reader)('GET', '/api/v1/admin/evidence-gate');
     assert.equal(gate.json().state, 'paused');
-    const resumed = await f.as(f.reader)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' });
+    for (const who of [f.reader, f.viewer]) assert.equal((await f.as(who)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' })).statusCode, 404, who);
+    assert.equal((await gateState(pool)).state, 'paused', 'denied resume changed nothing');
+    const resumed = await f.as(f.operatorUser)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' });
     assert.equal(resumed.statusCode, 200, resumed.body);
     assert.equal(resumed.json().state, 'open');
-    assert.equal((await f.as(f.reader)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' })).statusCode, 409);
+    assert.equal((await f.as(f.operatorUser)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' })).statusCode, 409);
     const attempt = await recordPotentialCall(pool, lease, 'gate-call', 1);
     assert.ok(attempt);
     // A logical conflict (wrong attempt number) is not an evidence outage.
@@ -289,7 +299,7 @@ test('#79 evidence gate: DB transaction failure pauses new external calls and ra
     await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 2), (e: any) => e.status === 503);
     assert.equal((await gateState(pool)).state, 'paused', 'held pause was persisted for other processes');
     assert.equal((await gateState(pool)).process_state, 'open');
-    await f.as(f.reader)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' });
+    await f.as(f.operatorUser)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' });
     assert.ok(await recordPotentialCall(pool, lease, 'gate-call', 2));
     await assert.rejects(pool.query('DELETE FROM bb_evidence_gate_events'), (e: any) => e.code === '23514');
     const alerts = await f.as(f.reader)('GET', '/api/v1/admin/alerts');

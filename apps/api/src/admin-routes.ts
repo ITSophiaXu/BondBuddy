@@ -37,9 +37,9 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
   app.get('/api/v1/admin/alerts', { schema: { response: { 200: schemas.AdminAlertsResponse } } }, async request => adminAlerts(deps.db(), await operator(request, 'log_reader')));
   app.get('/api/v1/admin/evidence-gate', { schema: { response: { 200: schemas.EvidenceGateResponse } } }, async request => { await operator(request, 'log_reader'); return gateState(deps.db()); });
   app.post('/api/v1/admin/evidence-gate/resume', { schema: { body: schemas.EvidenceGateResumeRequest, response: { 200: schemas.EvidenceGateResponse } } }, async request =>
-    resumeEvidenceGate(deps.db(), await operator(request, 'log_reader'), (request.body as { reason_code: string }).reason_code));
+    resumeEvidenceGate(deps.db(), await operator(request, 'log_operator'), (request.body as { reason_code: string }).reason_code));
   app.post('/api/v1/admin/attempts/:attempt_id/usage-corrections', { schema: { body: schemas.UsageCorrectionRequest, response: { 201: schemas.UsageCorrectionResponse } } }, async (request, reply) => {
-    const actor = await operator(request, 'log_reader');
+    const actor = await operator(request, 'log_operator');
     reply.code(201);
     return correctUsage(deps.db(), actor, param(request, 'attempt_id'), request.body as never);
   });

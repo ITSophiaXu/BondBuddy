@@ -243,8 +243,8 @@ export const operations: readonly Operation[] = [
   op('get', '/admin/prompts/{snapshot_id}', 'Audited plaintext view of a redacted prompt snapshot (prompt_viewer)', 'AdminPromptView', 200, undefined, [404, 422]),
   op('get', '/admin/alerts', 'List operational alerts (log_reader)', 'AdminAlertsResponse', 200, undefined, [404]),
   op('get', '/admin/evidence-gate', 'Read whether new external model calls are paused (log_reader)', 'EvidenceGateResponse', 200, undefined, [404]),
-  op('post', '/admin/evidence-gate/resume', 'Append an operator resume after evidence persistence is healthy (log_reader)', 'EvidenceGateResponse', 200, 'EvidenceGateResumeRequest', [404, 409]),
-  op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_reader)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422])
+  op('post', '/admin/evidence-gate/resume', 'Append an operator resume after evidence persistence is healthy (log_operator)', 'EvidenceGateResponse', 200, 'EvidenceGateResumeRequest', [404, 409]),
+  op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_operator)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422])
 ];
 
 const ref = (name: SchemaName) => ({ $ref: `#/components/schemas/${name}` });
