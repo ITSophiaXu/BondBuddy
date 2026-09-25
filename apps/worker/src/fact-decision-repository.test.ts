@@ -8,6 +8,7 @@ import { insertFactCandidate, type FactEvidenceAnchor } from './fact-repository.
 import {
   appendFactDecision,
   getLatestFactDecision,
+  getFactDecisionAtVersion,
   type FactDecisionClient,
   type FactDecisionDependencies,
   type FactDecisionInput,
@@ -85,7 +86,8 @@ class TransactionMock implements FactDecisionClient {
       return { rows: this.decisions.filter((row) => row.owner_user_id === values[0] && row.project_id === values[1] && row.request_id === values[2]) };
     }
     if (sql.includes('FROM bb_fact_decisions') && sql.includes('ORDER BY version DESC LIMIT 1')) {
-      const rows = this.decisions.filter((row) => row.owner_user_id === values[0] && row.project_id === values[1] && row.fact_key_hash === values[2])
+      const rows = this.decisions.filter((row) => row.owner_user_id === values[0] && row.project_id === values[1] && row.fact_key_hash === values[2] &&
+        (values[3] === undefined || row.version === values[3]))
         .sort((left, right) => Number(right.version) - Number(left.version));
       return { rows: rows.slice(0, 1) };
     }
@@ -223,6 +225,18 @@ test('latest decision reader is exact identity and owner/project scoped', async 
   assert.deepEqual(query.values, [context.ownerUserId, context.projectId, factKeyHash(identity)]);
   await assert.rejects(getLatestFactDecision(deps, { ...context, ownerUserId: 'other-owner' }, identity), /INVALID_FACT_DECISION_SCOPE/);
   assert.equal(first.version, 1);
+});
+
+test('pinned decision version survives a newer decision without a latest-version fallback', async () => {
+  const client = new TransactionMock(); const deps = dependencies(client);
+  const first = await appendFactDecision(deps, context, makeDecision());
+  await appendFactDecision(deps, context, makeDecision({ decisionId: 'decision-2', requestId: 'request-2', resolution: 'unresolved', selectedCandidateId: undefined }));
+  assert.equal((await getFactDecisionAtVersion(deps, context, identity, 1))?.decisionId, first.decisionId);
+  assert.equal(await getFactDecisionAtVersion(deps, context, identity, 3), null);
+  assert.equal(await getFactDecisionAtVersion(deps, { ...context, projectId: 'other-project' }, identity, 1), null);
+  await assert.rejects(getFactDecisionAtVersion(deps, context, identity, 0), /INVALID_FACT_DECISION_VERSION/);
+  const query = client.calls.find(call => call.sql.includes('AND version = $4'))!;
+  assert.deepEqual(query.values, [context.ownerUserId, context.projectId, factKeyHash(identity), 1]);
 });
 
 test('decision and outbox roll back atomically if the outbox insert fails', async () => {

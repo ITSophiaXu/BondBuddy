@@ -70,11 +70,14 @@ test('a v1-labelled or mismatched lock cannot authorize a v1.1 no-history model 
     selection_hash: 'c'.repeat(64), target: {} as never, index_release: { release_id: 'release-synthetic' },
     candidate_decisions: [], reasons: [],
     selected: { reference_id: 'reference-synthetic', document_version_id: 'document-synthetic', profile_id: 'profile-synthetic',
+      profile_version: 3, chapter_mapping_version: null,
       lock: { lock_id: 'lock-synthetic', query_schema_version: 'reference-library-query-v1',
         document_version_id: 'document-synthetic', profile_id: 'profile-synthetic', index_release_id: 'release-synthetic' } },
   } as unknown as LibrarySelectionSnapshot;
   for (const lock of [base.selected!.lock,
-    { ...base.selected!.lock, query_schema_version: 'reference-library-query-v1.1' as const, profile_id: 'other-profile' }]) {
+    { ...base.selected!.lock, query_schema_version: 'reference-library-query-v1.1' as const, profile_id: 'other-profile', profile_version: 3, chapter_mapping_version_id: null },
+    { ...base.selected!.lock, query_schema_version: 'reference-library-query-v1.1' as const, profile_version: 2, chapter_mapping_version_id: null },
+    { ...base.selected!.lock, query_schema_version: 'reference-library-query-v1.1' as const, profile_version: 3, chapter_mapping_version_id: 'other-mapping' }]) {
     const stage = noHistoryModelGenerationStage(adapters({ selectReference: async () =>
       ({ ...base, selected: { ...base.selected!, lock } }) as LibrarySelectionSnapshot }, counts));
     assert.deepEqual(await stage.run(context()), { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:reference_selection_exact' });

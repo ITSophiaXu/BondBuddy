@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { LibraryCandidate, LibraryCandidateV1_1, LibraryQueryRequest, LibraryQueryResponse, LibraryQueryResponseV1 } from '@bondbuddy/contracts';
+import { Value } from '@sinclair/typebox/value';
+import { LibrarySelectionLockRequestV1_1Schema, LibrarySelectionLockSchema, LibrarySelectionLockV1_1Schema, type LibraryCandidate, type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponse, type LibraryQueryResponseV1 } from '@bondbuddy/contracts';
 import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
 import { selectNoHistoryLibraryReference } from './reference-library-selection.js';
 
@@ -47,17 +48,41 @@ function adapters(result: LibraryQueryResponse) {
     calls,
     deps: {
       query: async (request: LibraryQueryRequest) => { calls.query++; calls.request = request; return result; },
-      lock: async (lockInput: { ownerUserId: string; projectId: string; runId: string; documentVersionId: string; profileId: string; indexReleaseId: string }) => {
+      lock: async (lockInput: { ownerUserId: string; projectId: string; runId: string; documentVersionId: string; profileId: string; indexReleaseId: string;
+        querySchemaVersion: 'reference-library-query-v1.1'; documentVersion: number; profileVersion: number; taxonomyVersion: string;
+        candidateScope: { market: string; offering: string; instrument: string };
+        targetScope: { market: string; offering: string; instrument: string; document_stage: string; rule_version: string };
+        comparability: NonNullable<LibraryCandidateV1_1['comparability']>; chapterMappingVersionId: string | null }) => {
         calls.lock++;
-        assert.deepEqual(lockInput, { ownerUserId: 'owner-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic',
-          documentVersionId: 'document-v3', profileId: 'profile-v2', indexReleaseId: 'release-12' });
-        return { lock_id: 'lock-synthetic', query_schema_version: 'reference-library-query-v1' as const, document_version_id: lockInput.documentVersionId,
-          profile_id: lockInput.profileId, taxonomy_version: 'bond-business-2026.1', index_release_id: lockInput.indexReleaseId, locked_at: '2026-09-25T00:00:00Z' };
+        assert.equal(lockInput.querySchemaVersion, 'reference-library-query-v1.1');
+        return { lock_id: 'lock-synthetic', query_schema_version: 'reference-library-query-v1.1' as const, document_version_id: lockInput.documentVersionId,
+          profile_id: lockInput.profileId, profile_version: lockInput.profileVersion, taxonomy_version: lockInput.taxonomyVersion,
+          index_release_id: lockInput.indexReleaseId, chapter_mapping_version_id: lockInput.chapterMappingVersionId, locked_at: '2026-09-25T00:00:00Z' };
       },
       persist: async () => { calls.persist++; },
     },
   };
 }
+
+test('selection lock contract keeps v1 shape and requires v1.1 identity and mapping fields', () => {
+  const v1 = { lock_id: 'lock-v1', query_schema_version: 'reference-library-query-v1', document_version_id: 'document-v1',
+    profile_id: 'profile-v1', taxonomy_version: 'taxonomy-v1', index_release_id: 'release-v1', locked_at: '2026-09-25T00:00:00Z' };
+  const v11 = { ...v1, query_schema_version: 'reference-library-query-v1.1', profile_version: 2, chapter_mapping_version_id: null };
+  assert.equal(Value.Check(LibrarySelectionLockSchema, v1), true);
+  assert.equal(Value.Check(LibrarySelectionLockSchema, v11), true);
+  assert.equal(Value.Check(LibrarySelectionLockV1_1Schema, { ...v11, profile_version: undefined }), false);
+  const reviewed = candidate();
+  const request = { owner_user_id: 'owner-synthetic', project_id: 'project-synthetic', run_id: 'run-synthetic',
+    query_schema_version: 'reference-library-query-v1.1', document_version_id: reviewed.document_version_id,
+    document_version: reviewed.document_version, profile_id: reviewed.profile_id, profile_version: reviewed.profile_version,
+    taxonomy_version: reviewed.taxonomy_version, index_release_id: 'release-synthetic',
+    candidate_scope: { market: reviewed.market, offering: reviewed.offering, instrument: reviewed.instrument },
+    target_scope: { market: target.market, offering: target.offering, instrument: target.instrument,
+      document_stage: target.documentStage, rule_version: target.ruleVersion }, comparability: reviewed.comparability,
+    chapter_mapping_version_id: null };
+  assert.equal(Value.Check(LibrarySelectionLockRequestV1_1Schema, request), true);
+  assert.equal(Value.Check(LibrarySelectionLockRequestV1_1Schema, { ...request, query_schema_version: 'reference-library-query-v1' }), false);
+});
 
 test('v1.1 validates comparability but waits for source completeness and tie proof before locking', async () => {
   const fixture = adapters(response([candidate()]));

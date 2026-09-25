@@ -9,7 +9,7 @@ import {
   recordChapterMappingVersion, rollbackLibraryRelease, setLibrarySourceRights, syncRunSummary, withdrawChapterMappingVersion, type ProfileDraft, type ProfileLine,
 } from '@bondbuddy/api/library';
 import { Ajv } from 'ajv';
-import { LibraryQueryResponseV1_1Schema, LibraryQueryResponseV1Schema, type LibraryQueryRequest, type LibraryQueryResponseV1_1 } from '@bondbuddy/contracts';
+import { LibraryQueryResponseV1_1Schema, LibraryQueryResponseV1Schema, type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponseV1_1 } from '@bondbuddy/contracts';
 import { conservativeClassifier, runLibraryOnce, type LibraryClassifier, type LibraryParser, type LibraryPipelineDependencies } from './library-pipeline.js';
 import { OperatorImportAdapter, SourceError, SseBondProjectAdapter, type DiscoveredItem, type LibrarySourceAdapter } from './library-sources.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -290,6 +290,122 @@ test('late old revisions never overwrite a newer published version', { skip }, a
     await assert.rejects(t.approve(v1.id), /pending review/);
     const hit = await t.query();
     assert.deepEqual(hit.candidates.map(c => c.document_version_id), [v2.id]);
+  } finally { await t.pool.end(); }
+});
+
+test('v1.1 lock validation stays fail-closed while v1 replay stays unchanged', { skip }, async () => {
+  const t = await setup();
+  const scope = { market: 'sse' as const, offering: 'public' as const, instrument: 'corporate_bond', document_stage: 'registration' as const, rule_version: 'lock-rule-v1' };
+  const targetScope = { market: 'szse' as const, offering: 'private' as const, instrument: 'corporate_bond', document_stage: 'registration' as const, rule_version: 'lock-rule-v1' };
+  const sharedInputHash = 'a'.repeat(64);
+  let inputRevisionCreated = false;
+  const createRun = async (suffix: string) => {
+    const runId = `library-lock-run-${suffix}-${randomUUID()}`;
+    const requestHash = 'b'.repeat(64);
+    if (!inputRevisionCreated) {
+      await t.pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,1,$2,1,$3,'{}','[]','[]')`, [t.project, t.owner, sharedInputHash]);
+      inputRevisionCreated = true;
+    }
+    await t.pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
+      VALUES($1,$2,$3,1,$4,$5,'generation',$6,'preparing')`, [runId, t.owner, t.project, sharedInputHash, `library-lock-exec-${randomUUID()}`, requestHash]);
+    return runId;
+  };
+  const lockRequest = (candidate: LibraryCandidateV1_1, releaseId: string, runId: string, mappingId: string | null,
+    requestedTarget: { market: 'sse' | 'szse' | 'nafmii'; offering: 'private' | 'public' | 'public_all' | 'ppn' | 'mtn' | 'cp' | 'scp' | 'dfi';
+      instrument: string; document_stage: 'registration' | 'issuance'; rule_version: string } = targetScope) => {
+    assert.ok(candidate.comparability, 'v1.1 query must return reviewed comparability for lock revalidation');
+    return { ownerUserId: t.owner, projectId: t.project, runId, querySchemaVersion: 'reference-library-query-v1.1' as const,
+      documentVersionId: candidate.document_version_id, documentVersion: candidate.document_version, profileId: candidate.profile_id,
+      profileVersion: candidate.profile_version, taxonomyVersion: candidate.taxonomy_version, indexReleaseId: releaseId,
+      candidateScope: { market: candidate.market, offering: candidate.offering, instrument: candidate.instrument }, targetScope: requestedTarget,
+      comparability: candidate.comparability, chapterMappingVersionId: mappingId };
+  };
+  const candidateFor = (hit: Awaited<ReturnType<typeof t.query>>, versionId: string): LibraryCandidateV1_1 => {
+    assert.equal(hit.schema_version, 'reference-library-query-v1.1');
+    const candidate = hit.candidates.find(item => item.document_version_id === versionId);
+    assert.ok(candidate && 'comparability' in candidate, 'published profile should appear in the v1.1 query');
+    return candidate as LibraryCandidateV1_1;
+  };
+  try {
+    t.source.add('LOCK', 1, 'lock-1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const firstVersion = await t.versionOf('LOCK', 1);
+    await reviewLibraryVersion(t.pool, firstVersion.id, { action: 'approve', reason: 'synthetic_review_ok', review_quality: 80,
+      applicable_scopes: [scope, targetScope] }, 'operator-syn');
+
+    const sameScopeHit = await t.query(TOP3, { ...scope, rule_version: scope.rule_version }, null, 'reference-library-query-v1.1');
+    const firstCandidate = candidateFor(sameScopeHit, firstVersion.id);
+    const v1Run = await createRun('v1-replay');
+    const v1Input = { ownerUserId: t.owner, projectId: t.project, runId: v1Run, documentVersionId: firstVersion.id,
+      profileId: firstCandidate.profile_id, indexReleaseId: sameScopeHit.index_release!.release_id };
+    const v1Lock = await lockReferenceSelection(t.pool, v1Input);
+    assert.equal(v1Lock.query_schema_version, 'reference-library-query-v1');
+    assert.equal((await lockReferenceSelection(t.pool, v1Input)).lock_id, v1Lock.lock_id, 'existing v1 run replay returns the same lock');
+
+    const v11Run = await createRun('v11-same-scope');
+    const v11Input = lockRequest(firstCandidate, sameScopeHit.index_release!.release_id, v11Run, null,
+      { market: 'sse', offering: 'public', instrument: 'corporate_bond', document_stage: 'registration', rule_version: 'lock-rule-v1' });
+    await assert.rejects(lockReferenceSelection(t.pool, v11Input), /requires persisted full-revenue-universe and third-place-tie proof/,
+      'an otherwise eligible reviewed profile still cannot lock without independent completeness/tie evidence');
+    await assert.rejects(lockReferenceSelection(t.pool, v11Input), /requires persisted full-revenue-universe and third-place-tie proof/,
+      'retry remains fail-closed and creates no replayable lock');
+    assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [v11Run])).rows[0].count), 0);
+    const wrongProfile = { ...v11Input, runId: await createRun('wrong-profile'), profileVersion: firstCandidate.profile_version + 1 };
+    await assert.rejects(lockReferenceSelection(t.pool, wrongProfile), /changed since the v1\.1 query/);
+    const wrongAttestation = { ...v11Input, runId: await createRun('wrong-attestation'), comparability: {
+      ...v11Input.comparability, attestation: { ...v11Input.comparability.attestation, review_id: 'other-review' } } };
+    await assert.rejects(lockReferenceSelection(t.pool, wrongAttestation), /changed since the v1\.1 query/);
+    await assert.rejects(lockReferenceSelection(t.pool, { ...v11Input, ownerUserId: 'other-owner', runId: undefined }), /does not exist/);
+
+    const mapping = await recordChapterMappingVersion(t.pool, { mapping_key: 'synthetic.lock.scope', source: scope,
+      target: { market: targetScope.market, offering: targetScope.offering, instrument: targetScope.instrument },
+      document_stage: targetScope.document_stage, rule_version: targetScope.rule_version, reason: 'synthetic_review_ok' }, 'operator-syn');
+    const wrongScopeMapping = await recordChapterMappingVersion(t.pool, { mapping_key: 'synthetic.lock.wrong-scope', source: scope,
+      target: { market: targetScope.market, offering: 'public', instrument: targetScope.instrument },
+      document_stage: targetScope.document_stage, rule_version: targetScope.rule_version, reason: 'synthetic_review_ok' }, 'operator-syn');
+    const crossScopeHit = await t.query(TOP3, { market: targetScope.market, offering: targetScope.offering, instrument: targetScope.instrument,
+      document_stage: targetScope.document_stage, rule_version: targetScope.rule_version }, null, 'reference-library-query-v1.1');
+    const crossScopeCandidate = candidateFor(crossScopeHit, firstVersion.id);
+    assert.deepEqual(crossScopeCandidate.chapter_mappings.map(item => item.mapping_version_id), [mapping.mapping_version_id]);
+    const wrongMappingRun = await createRun('wrong-mapping-scope');
+    const wrongMapping = lockRequest(crossScopeCandidate, crossScopeHit.index_release!.release_id, wrongMappingRun, wrongScopeMapping.mapping_version_id);
+    await assert.rejects(lockReferenceSelection(t.pool, wrongMapping), /accepted chapter mapping is no longer applicable/);
+    await withdrawChapterMappingVersion(t.pool, mapping.mapping_version_id, 'mapping_scope_review', 'operator-syn');
+    const withdrawnMappingRun = await createRun('withdrawn-mapping');
+    await assert.rejects(lockReferenceSelection(t.pool, lockRequest(crossScopeCandidate, crossScopeHit.index_release!.release_id, withdrawnMappingRun,
+      mapping.mapping_version_id)), /accepted chapter mapping is no longer applicable/);
+
+    const replacementMapping = await recordChapterMappingVersion(t.pool, { mapping_key: 'synthetic.lock.scope', source: scope,
+      target: { market: targetScope.market, offering: targetScope.offering, instrument: targetScope.instrument },
+      document_stage: targetScope.document_stage, rule_version: targetScope.rule_version, reason: 'mapping_corrected' }, 'operator-syn');
+    const refreshedHit = await t.query(TOP3, { market: targetScope.market, offering: targetScope.offering, instrument: targetScope.instrument,
+      document_stage: targetScope.document_stage, rule_version: targetScope.rule_version }, null, 'reference-library-query-v1.1');
+    const refreshedCandidate = candidateFor(refreshedHit, firstVersion.id);
+    const validMappedRun = await createRun('mapped-lock');
+    const validMappedRequest = lockRequest(refreshedCandidate, refreshedHit.index_release!.release_id, validMappedRun, replacementMapping.mapping_version_id);
+    await assert.rejects(lockReferenceSelection(t.pool, validMappedRequest), /requires persisted full-revenue-universe and third-place-tie proof/,
+      'an accepted exact mapping still cannot lock without independent completeness/tie evidence');
+    assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [validMappedRun])).rows[0].count), 0);
+
+    const staleReleaseRun = await createRun('stale-release');
+    t.source.add('LOCK', 2, 'lock-2');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const secondVersion = await t.versionOf('LOCK', 2);
+    await reviewLibraryVersion(t.pool, secondVersion.id, { action: 'approve', reason: 'synthetic_review_ok', review_quality: 80,
+      applicable_scopes: [scope, targetScope] }, 'operator-syn');
+    await assert.rejects(lockReferenceSelection(t.pool, { ...validMappedRequest, runId: staleReleaseRun }), /no longer selectable/);
+
+    const secondHit = await t.query(TOP3, { ...scope }, null, 'reference-library-query-v1.1');
+    const secondCandidate = candidateFor(secondHit, secondVersion.id);
+    const nonCommercialRun = await createRun('non-commercial-rights');
+    const rightsInput = lockRequest(secondCandidate, secondHit.index_release!.release_id, nonCommercialRun, null,
+      { market: 'sse', offering: 'public', instrument: 'corporate_bond', document_stage: 'registration', rule_version: 'lock-rule-v1' });
+    await setLibrarySourceRights(t.pool, t.sourceId, 'evaluation_only', 'license_scope_changed', 'operator-syn');
+    await assert.rejects(lockReferenceSelection(t.pool, rightsInput), /no longer selectable/);
+    const revokedRun = await createRun('revoked-rights');
+    await setLibrarySourceRights(t.pool, t.sourceId, 'revoked', 'license_revoked', 'operator-syn');
+    await assert.rejects(lockReferenceSelection(t.pool, { ...rightsInput, runId: revokedRun }), /no longer selectable/);
   } finally { await t.pool.end(); }
 });
 

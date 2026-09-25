@@ -269,6 +269,26 @@ export async function getLatestFactDecision(
   context: Pick<TrustedFactDecisionContext, 'ownerUserId' | 'projectId'>,
   identity: FactIdentity,
 ): Promise<StoredFactDecision | null> {
+  return readFactDecision(dependencies, context, identity);
+}
+
+/** Exact immutable version for an already pinned run; never falls back to a newer decision. */
+export async function getFactDecisionAtVersion(
+  dependencies: FactDecisionDependencies,
+  context: Pick<TrustedFactDecisionContext, 'ownerUserId' | 'projectId'>,
+  identity: FactIdentity,
+  version: number,
+): Promise<StoredFactDecision | null> {
+  if (!Number.isSafeInteger(version) || version < 1) throw fail('INVALID_FACT_DECISION_VERSION');
+  return readFactDecision(dependencies, context, identity, version);
+}
+
+async function readFactDecision(
+  dependencies: FactDecisionDependencies,
+  context: Pick<TrustedFactDecisionContext, 'ownerUserId' | 'projectId'>,
+  identity: FactIdentity,
+  version?: number,
+): Promise<StoredFactDecision | null> {
   if (!context.ownerUserId.trim() || !context.projectId.trim() || identity.accountId !== context.ownerUserId) {
     throw fail('INVALID_FACT_DECISION_SCOPE');
   }
@@ -278,14 +298,15 @@ export async function getLatestFactDecision(
   try {
     const result = await client.query(
       `SELECT ${DECISION_COLUMNS} FROM bb_fact_decisions
-        WHERE owner_user_id = $1 AND project_id = $2 AND fact_key_hash = $3
+        WHERE owner_user_id = $1 AND project_id = $2 AND fact_key_hash = $3 ${version === undefined ? '' : 'AND version = $4'}
         ORDER BY version DESC LIMIT 1`,
-      [context.ownerUserId, context.projectId, hashIdentity(identityKey)],
+      [context.ownerUserId, context.projectId, hashIdentity(identityKey), ...(version === undefined ? [] : [version])],
     );
     if (result.rows.length === 0) return null;
     const decision = mapDecision(result.rows[0]!, false);
     if (decision.ownerUserId !== context.ownerUserId || decision.projectId !== context.projectId ||
-      decision.factKeyHash !== hashIdentity(identityKey) || factIdentityKey(decision.identity) !== identityKey) {
+      decision.factKeyHash !== hashIdentity(identityKey) || factIdentityKey(decision.identity) !== identityKey ||
+      (version !== undefined && decision.version !== version)) {
       throw fail('FACT_DECISION_SCOPE_OR_IDENTITY_MISMATCH');
     }
     return decision;

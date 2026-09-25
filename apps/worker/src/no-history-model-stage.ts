@@ -219,8 +219,13 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     const selected = selection.status === 'exact' && selection.selected
       && (selection as unknown as { query_schema_version?: string }).query_schema_version === 'reference-library-query-v1.1'
       ? selection.selected : null;
+    const lockPinsV11Identity = selected?.lock?.query_schema_version === 'reference-library-query-v1.1'
+      && 'profile_version' in selected.lock
+      && selected.lock.profile_version === selected.profile_version
+      && selected.lock.chapter_mapping_version_id === selected.chapter_mapping_version;
     if (!selected?.lock || !selected.reference_id || !selected.document_version_id ||
       String(selected.lock.query_schema_version) !== 'reference-library-query-v1.1' ||
+      !lockPinsV11Identity ||
       selected.lock.document_version_id !== selected.document_version_id ||
       selected.lock.profile_id !== selected.profile_id ||
       selected.lock.index_release_id !== selection.index_release?.release_id) {

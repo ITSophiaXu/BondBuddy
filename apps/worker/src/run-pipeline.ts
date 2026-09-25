@@ -163,9 +163,9 @@ export function wordDeliveryStage(generate: (ctx: StageContext) => Promise<Buffe
 }
 
 /**
- * Production stage list. The update-generation prompt/template and the Word generator are not
- * implemented in the repository yet, so a run pauses at `capability_not_ready` after its inputs
- * are locked and its materials are parsed. Install real stages here as they land.
+ * Stage composition hook. WorkerRuntime installs the bounded historical model stage;
+ * tests and other task kinds may provide their own stages. Missing stages still pause
+ * at `capability_not_ready`; installation alone does not satisfy the production input gates.
  */
 export function defaultRunStages(installed: Partial<Record<'model_generation' | 'word_delivery', RunStage>> = {}): RunStage[] {
   return RUN_PIPELINE_STAGES.map(name => name === 'input_lock' ? inputLockStage : name === 'materials_ready' ? materialsReadyStage

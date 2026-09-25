@@ -3,7 +3,8 @@ import type { Pool, PoolClient } from 'pg';
 import {
   LIBRARY_ERROR_CODES, LIBRARY_QUERY_SCHEMA_VERSION, LIBRARY_QUERY_SCHEMA_VERSION_V1_1, LIBRARY_SYSTEM_OWNER, LibraryQueryRequestSchema, librarySetKey,
   type ErrorCode, type LibraryAlert, type LibraryCandidate, type LibraryCandidateV1_1, type LibraryChapterMapping, type LibraryChapterMappingCreateRequest, type LibraryErrorCode, type LibraryOverview, type LibraryQueryRequest,
-  type LibraryQueryResponse, type LibraryReviewActionRequest, type LibrarySelectionLock,
+  LibrarySelectionLockRequestV1_1Schema, type LibraryQueryResponse, type LibraryReviewActionRequest, type LibrarySelectionLock, type LibrarySelectionLockV1_1,
+  type LibraryComparability,
 } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
@@ -663,35 +664,153 @@ export async function withdrawChapterMappingVersion(pool: Pool, mappingVersionId
   return { mapping_version_id: mappingVersionId, status: 'withdrawn' as const };
 }
 
-/** Pins the selected versions for a task. The candidate must be in the stated release and still usable now. */
-export async function lockReferenceSelection(pool: Pool, input: { ownerUserId: string; projectId: string; runId?: string | null; documentVersionId: string; profileId: string; indexReleaseId: string }): Promise<LibrarySelectionLock> {
+type LibraryScope = { market: string; offering: string; instrument: string };
+type LibraryTargetScope = LibraryScope & { document_stage: string; rule_version: string };
+type V1SelectionLockInput = { ownerUserId: string; projectId: string; runId?: string | null; documentVersionId: string; profileId: string; indexReleaseId: string };
+type V1_1SelectionLockInput = V1SelectionLockInput & {
+  querySchemaVersion: typeof LIBRARY_QUERY_SCHEMA_VERSION_V1_1;
+  documentVersion: number;
+  profileVersion: number;
+  taxonomyVersion: string;
+  candidateScope: LibraryScope;
+  targetScope: LibraryTargetScope;
+  comparability: LibraryComparability;
+  chapterMappingVersionId: string | null;
+};
+type SelectionLockInput = V1SelectionLockInput | V1_1SelectionLockInput;
+
+function lockComparabilityMatches(row: any, expected: LibraryComparability, profileId: string, profileVersion: number): boolean {
+  const attestation = expected.attestation;
+  return expected.accounting_scope === 'consolidated'
+    && row.profile_version === profileVersion
+    && row.accounting_scope === expected.accounting_scope
+    && row.revenue_basis === expected.revenue_basis
+    && row.currency === expected.currency
+    && row.unit === expected.unit
+    && Number(row.fiscal_year) === expected.fiscal_year
+    && row.reviewed_review_id === attestation.review_id
+    && row.reviewed_by === attestation.reviewed_by
+    && date(row.reviewed_at) === date(attestation.reviewed_at)
+    && attestation.profile_id === profileId
+    && attestation.profile_version === profileVersion;
+}
+
+function targetIsApplicable(scopes: unknown, target: LibraryTargetScope): boolean {
+  if (!Array.isArray(scopes)) return false;
+  return scopes.some(scope => scope && typeof scope === 'object'
+    && scope.market === target.market && scope.offering === target.offering && scope.instrument === target.instrument
+    && scope.document_stage === target.document_stage && scope.rule_version === target.rule_version);
+}
+
+/** Pins a selected version. v1 callers retain their original request/response shape; v1.1 callers must
+ * supply the query's reviewed profile facts and exact target/mapping identity for transaction-time revalidation. */
+export async function lockReferenceSelection(pool: Pool, input: SelectionLockInput): Promise<LibrarySelectionLock> {
+  const isV11 = 'querySchemaVersion' in input && input.querySchemaVersion === LIBRARY_QUERY_SCHEMA_VERSION_V1_1;
+  if ('querySchemaVersion' in input && !isV11) throw new Problem(422, 'VALIDATION_FAILED', 'Unsupported reference selection lock schema');
+  if (isV11) {
+    const request = input as V1_1SelectionLockInput;
+    const contractRequest = {
+      owner_user_id: request.ownerUserId, project_id: request.projectId, run_id: request.runId ?? null,
+      query_schema_version: request.querySchemaVersion, document_version_id: request.documentVersionId,
+      document_version: request.documentVersion, profile_id: request.profileId, profile_version: request.profileVersion,
+      taxonomy_version: request.taxonomyVersion, index_release_id: request.indexReleaseId, candidate_scope: request.candidateScope,
+      target_scope: request.targetScope, comparability: request.comparability, chapter_mapping_version_id: request.chapterMappingVersionId,
+    };
+    if (!Value.Check(LibrarySelectionLockRequestV1_1Schema, contractRequest)) {
+      throw new Problem(422, 'VALIDATION_FAILED', 'Invalid v1.1 reference selection lock request');
+    }
+  }
   return transaction(pool, async client => {
     const project = await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL', [input.ownerUserId, input.projectId]);
     if (!project.rowCount) throw missing();
     if (input.runId && !(await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3', [input.ownerUserId, input.projectId, input.runId])).rowCount) throw missing();
     if (input.runId) {
-      const existing = (await client.query(`SELECT id, query_schema_version, document_version_id, profile_id, taxonomy_version, index_release_id, locked_at
-        FROM bb_library_selection_locks WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3 FOR UPDATE`, [input.ownerUserId, input.projectId, input.runId])).rows[0];
+      // Serialize first-lock creation too: SELECT FOR UPDATE alone cannot lock a row that does not exist yet.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [`library-selection:${input.ownerUserId}:${input.projectId}`, input.runId]);
+      const existing = (await client.query(`SELECT l.id, l.query_schema_version, l.document_version_id, l.profile_id, l.taxonomy_version, l.index_release_id,
+          l.chapter_mapping_version_id, l.locked_at, p.profile_version
+        FROM bb_library_selection_locks l JOIN bb_library_profiles p ON p.id=l.profile_id
+        WHERE l.owner_user_id=$1 AND l.project_id=$2 AND l.run_id=$3 FOR UPDATE OF l`, [input.ownerUserId, input.projectId, input.runId])).rows[0];
       if (existing) {
-        if (existing.document_version_id !== input.documentVersionId || existing.profile_id !== input.profileId || existing.index_release_id !== input.indexReleaseId) {
+        if (existing.document_version_id !== input.documentVersionId || existing.profile_id !== input.profileId || existing.index_release_id !== input.indexReleaseId
+          || existing.query_schema_version !== (isV11 ? LIBRARY_QUERY_SCHEMA_VERSION_V1_1 : LIBRARY_QUERY_SCHEMA_VERSION)
+          || (isV11 && (existing.profile_version !== input.profileVersion || existing.chapter_mapping_version_id !== input.chapterMappingVersionId))) {
           throw new Problem(409, 'ALREADY_TERMINAL', 'Run already has a different immutable reference selection');
         }
-        return { lock_id: existing.id, query_schema_version: existing.query_schema_version, document_version_id: existing.document_version_id,
-          profile_id: existing.profile_id, taxonomy_version: existing.taxonomy_version, index_release_id: existing.index_release_id,
-          locked_at: date(existing.locked_at) };
+        if (existing.query_schema_version === LIBRARY_QUERY_SCHEMA_VERSION_V1_1) {
+          throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'A v1.1 reference lock cannot be replayed without persisted full-revenue-universe and third-place-tie proof');
+        }
+        return { lock_id: existing.id, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION, document_version_id: existing.document_version_id,
+          profile_id: existing.profile_id, taxonomy_version: existing.taxonomy_version, index_release_id: existing.index_release_id, locked_at: date(existing.locked_at) };
       }
     }
-    const entry = (await client.query(`SELECT e.taxonomy_version FROM bb_library_index_entries e
-      JOIN bb_library_index_releases r ON r.id=e.release_id AND r.active
-      JOIN bb_library_document_versions v ON v.id=e.document_version_id AND v.state='published'
-      JOIN bb_library_profiles p ON p.id=e.profile_id AND p.state='published'
-      JOIN bb_library_documents d ON d.id=e.document_id JOIN bb_library_sources s ON s.id=d.source_id AND s.usage_rights='commercial_licensed'
-      WHERE e.release_id=$1 AND e.document_version_id=$2 AND e.profile_id=$3`, [input.indexReleaseId, input.documentVersionId, input.profileId])).rows[0];
+    const entry = isV11
+      ? (await client.query(`SELECT e.taxonomy_version, e.market, e.offering, e.instrument, e.document_stage, e.applicable_scopes,
+          v.version AS document_version, p.profile_version, p.completeness, p.fiscal_year, p.accounting_scope, p.revenue_basis, p.currency, p.unit,
+          p.reviewed_review_id, p.reviewed_by, p.reviewed_at, s.usage_rights, s.enabled
+        FROM bb_library_index_entries e
+        JOIN bb_library_index_releases r ON r.id=e.release_id AND r.active
+        JOIN bb_library_document_versions v ON v.id=e.document_version_id AND v.state='published'
+        JOIN bb_library_profiles p ON p.id=e.profile_id AND p.state='published'
+        JOIN bb_library_review_items ri ON ri.id=p.reviewed_review_id AND ri.profile_id=p.id AND ri.state='approved'
+        JOIN bb_library_documents d ON d.id=e.document_id
+        JOIN bb_library_sources s ON s.id=d.source_id AND s.usage_rights='commercial_licensed' AND s.enabled
+        WHERE e.release_id=$1 AND e.document_version_id=$2 AND e.profile_id=$3
+        FOR SHARE OF r,v,p,ri,s`, [input.indexReleaseId, input.documentVersionId, input.profileId])).rows[0]
+      : (await client.query(`SELECT e.taxonomy_version FROM bb_library_index_entries e
+        JOIN bb_library_index_releases r ON r.id=e.release_id AND r.active
+        JOIN bb_library_document_versions v ON v.id=e.document_version_id AND v.state='published'
+        JOIN bb_library_profiles p ON p.id=e.profile_id AND p.state='published'
+        JOIN bb_library_documents d ON d.id=e.document_id JOIN bb_library_sources s ON s.id=d.source_id AND s.usage_rights='commercial_licensed'
+        WHERE e.release_id=$1 AND e.document_version_id=$2 AND e.profile_id=$3`, [input.indexReleaseId, input.documentVersionId, input.profileId])).rows[0];
     if (!entry) throw new Problem(409, 'DATA_NOT_ENTITLED', 'Candidate is no longer selectable in the active release');
+    if (isV11 && (entry.completeness !== 'complete' || entry.accounting_scope !== 'consolidated')) {
+      throw new Problem(409, 'DATA_NOT_ENTITLED', 'Candidate profile is not a complete consolidated profile');
+    }
+    let mappingVersionId: string | null = null;
+    let querySchemaVersion: typeof LIBRARY_QUERY_SCHEMA_VERSION | typeof LIBRARY_QUERY_SCHEMA_VERSION_V1_1 = LIBRARY_QUERY_SCHEMA_VERSION;
+    if (isV11) {
+      const request = input as V1_1SelectionLockInput;
+      querySchemaVersion = LIBRARY_QUERY_SCHEMA_VERSION_V1_1;
+      const currentCandidateScope = { market: entry.market as string, offering: entry.offering as string, instrument: entry.instrument as string };
+      const sameCandidateScope = currentCandidateScope.market === request.candidateScope.market
+        && currentCandidateScope.offering === request.candidateScope.offering && currentCandidateScope.instrument === request.candidateScope.instrument;
+      if (!sameCandidateScope || currentCandidateScope.instrument !== request.targetScope.instrument || entry.document_stage !== request.targetScope.document_stage
+        || entry.document_version !== request.documentVersion || entry.profile_version !== request.profileVersion
+        || entry.taxonomy_version !== request.taxonomyVersion || !targetIsApplicable(entry.applicable_scopes, request.targetScope)
+        || !lockComparabilityMatches(entry, request.comparability, input.profileId, request.profileVersion)) {
+        throw new Problem(409, 'DATA_NOT_ENTITLED', 'Candidate or reviewed profile changed since the v1.1 query');
+      }
+      const scopeCrossesMarketOrOffering = currentCandidateScope.market !== request.targetScope.market
+        || currentCandidateScope.offering !== request.targetScope.offering;
+      if (scopeCrossesMarketOrOffering !== Boolean(request.chapterMappingVersionId)) {
+        throw new Problem(409, 'DATA_NOT_ENTITLED', 'The requested chapter mapping does not match the candidate scope');
+      }
+      if (request.chapterMappingVersionId) {
+        const mapping = (await client.query(`SELECT * FROM bb_library_chapter_mapping_versions
+          WHERE id=$1 AND state='accepted' FOR SHARE`, [request.chapterMappingVersionId])).rows[0];
+        if (!mapping || mapping.source_market !== currentCandidateScope.market || mapping.source_offering !== currentCandidateScope.offering
+          || mapping.source_instrument !== currentCandidateScope.instrument || mapping.target_market !== request.targetScope.market
+          || mapping.target_offering !== request.targetScope.offering || mapping.target_instrument !== request.targetScope.instrument
+          || mapping.document_stage !== request.targetScope.document_stage || mapping.rule_version !== request.targetScope.rule_version) {
+          throw new Problem(409, 'DATA_NOT_ENTITLED', 'The accepted chapter mapping is no longer applicable to this target');
+        }
+        mappingVersionId = mapping.id;
+      }
+      // v1.1 comparability attests only the stored top-three profile fields. There is no persisted,
+      // version-pinned review of the full same-basis revenue universe or third-place tie resolution yet.
+      // Never turn that missing evidence into a durable selection, even if all current row checks pass.
+      throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'A v1.1 reference lock requires persisted full-revenue-universe and third-place-tie proof');
+    }
     const id = uid();
-    const row = (await client.query(`INSERT INTO bb_library_selection_locks(id,owner_user_id,project_id,run_id,query_schema_version,document_version_id,profile_id,taxonomy_version,index_release_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING locked_at`, [id, input.ownerUserId, input.projectId, input.runId ?? null, LIBRARY_QUERY_SCHEMA_VERSION, input.documentVersionId, input.profileId, entry.taxonomy_version, input.indexReleaseId])).rows[0];
-    return { lock_id: id, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION, document_version_id: input.documentVersionId, profile_id: input.profileId, taxonomy_version: entry.taxonomy_version, index_release_id: input.indexReleaseId, locked_at: date(row.locked_at) };
+    const row = (await client.query(`INSERT INTO bb_library_selection_locks(id,owner_user_id,project_id,run_id,query_schema_version,document_version_id,profile_id,taxonomy_version,index_release_id,chapter_mapping_version_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING locked_at`, [id, input.ownerUserId, input.projectId, input.runId ?? null, querySchemaVersion, input.documentVersionId,
+      input.profileId, entry.taxonomy_version, input.indexReleaseId, mappingVersionId])).rows[0];
+    if (isV11) return { lock_id: id, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION_V1_1, document_version_id: input.documentVersionId,
+      profile_id: input.profileId, profile_version: (input as V1_1SelectionLockInput).profileVersion, taxonomy_version: entry.taxonomy_version,
+      index_release_id: input.indexReleaseId, chapter_mapping_version_id: mappingVersionId, locked_at: date(row.locked_at) } satisfies LibrarySelectionLockV1_1;
+    return { lock_id: id, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION, document_version_id: input.documentVersionId,
+      profile_id: input.profileId, taxonomy_version: entry.taxonomy_version, index_release_id: input.indexReleaseId, locked_at: date(row.locked_at) };
   });
 }
 
@@ -706,8 +825,12 @@ export async function readLockedReference(pool: Pool, blobs: PrivateBlobs, owner
     JOIN bb_library_documents d ON d.id=v.document_id JOIN bb_library_sources s ON s.id=d.source_id
     WHERE l.id=$1 AND l.owner_user_id=$2 AND l.project_id=$3`, [lockId, ownerUserId, projectId])).rows[0];
   if (!row) throw missing();
-  const lock = { lock_id: row.id, document_version_id: row.document_version_id, document_version: row.document_version, profile_id: row.profile_id, profile_version: row.profile_version,
-    taxonomy_version: row.taxonomy_version, index_release_id: row.index_release_id, version_state: row.version_state as string };
+  const lockBase = { lock_id: row.id, document_version_id: row.document_version_id, document_version: row.document_version,
+    profile_id: row.profile_id, profile_version: row.profile_version, taxonomy_version: row.taxonomy_version,
+    index_release_id: row.index_release_id, version_state: row.version_state as string };
+  const lock = row.query_schema_version === LIBRARY_QUERY_SCHEMA_VERSION_V1_1
+    ? { ...lockBase, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION_V1_1, chapter_mapping_version_id: row.chapter_mapping_version_id }
+    : lockBase;
   if (['withdrawn', 'license_revoked'].includes(row.version_state) || row.usage_rights !== 'commercial_licensed') {
     return { lock, access: 'denied' as const, reason: row.usage_rights !== 'commercial_licensed' ? 'source_rights_not_current' : `version_${row.version_state}`, bytes: null };
   }

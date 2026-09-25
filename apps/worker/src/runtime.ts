@@ -13,6 +13,7 @@ import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bond
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } from './run-pipeline.js';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
+import { historicalModelGenerationStage } from './historical-model-stage.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -58,7 +59,8 @@ export class WorkerRuntime {
   private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log'>> & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log'>;
 
   constructor(options: WorkerRuntimeOptions) {
-    this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runStages: defaultRunStages(),
+    this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
+      runStages: defaultRunStages({ model_generation: historicalModelGenerationStage() }),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
   }
