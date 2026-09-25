@@ -29,7 +29,7 @@ import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -106,7 +106,7 @@ export function createServer(settings: Settings = {}) {
     if(digest(bytes)!==artifact.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
     return bytes;
   }
-  installAdminRoutes(app,{db,blobs:blob,owner});
+  installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installEventStreams(app,{db,owner},settings.stream);
   const trial=settings.trial ?? trialConfigFromEnv();
   installTrialRoutes(app,{db,blobs,owner,config:trial});
