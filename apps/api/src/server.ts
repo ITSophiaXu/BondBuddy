@@ -71,9 +71,17 @@ export function createServer(settings: Settings = {}) {
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   // Upload bytes stay a stream here; the route authorises first, then spools to disk while hashing.
   app.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler(async (error, request, reply) => {
     if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
-    if (error instanceof Error && 'validation' in error && error.validation) return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Request validation failed', retryable: false, field_errors: [], correlation_id: request.id });
+    if (error instanceof Error && 'validation' in error && error.validation) {
+      let disposition:{status:number;code:string}={status:422,code:'VALIDATION_FAILED'};
+      if ('validationContext' in error && error.validationContext==='body' && request.method==='POST' &&
+          (request.routeOptions.url==='/api/v1/runs/execute'||request.routeOptions.url==='/api/v1/projects/:project_id/preflight')) {
+        try { disposition=await auditSchemaRejection(request); }
+        catch { return reply.code(503).send({code:'DATA_UNAVAILABLE',message:'Rejection evidence unavailable',retryable:true,field_errors:[],correlation_id:request.id}); }
+      }
+      return reply.code(disposition.status).send({ code: disposition.code, message: disposition.status===422?'Request validation failed':'Request key is bound to another input', retryable: false, field_errors: [], correlation_id: request.id });
+    }
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
@@ -90,6 +98,46 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
+  async function auditSchemaRejection(request:FastifyRequest):Promise<{status:number;code:string}> {
+    let user:string;
+    try { user=await owner(request); } catch(error) { if(error instanceof Problem && [401,403].includes(error.status))return {status:422,code:'VALIDATION_FAILED'}; throw error; }
+    const kind=request.routeOptions.url==='/api/v1/runs/execute'?'execute' as const:'preflight' as const;
+    const submitted=request.body&&typeof request.body==='object'&&!Array.isArray(request.body)?request.body as Record<string,unknown>:{};
+    const safeId=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
+    const projectId=kind==='preflight'?param(request,'project_id'):submitted.project_id;
+    const inputRevision=Number.isSafeInteger(submitted.input_revision)&&Number(submitted.input_revision)>0?Number(submitted.input_revision):undefined;
+    const inputHash=typeof submitted.input_hash==='string'&&/^[a-f0-9]{64}$/.test(submitted.input_hash)?submitted.input_hash:undefined;
+    const requestId=request.id,traceId=uid();
+    return transaction(db(),async client=>{
+      const owned=safeId(projectId)&&await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,projectId]);
+      if(!owned||!owned.rowCount){
+        await recordOperation(client,{owner:user,projectId:null,requestId,traceId,kind,status:'rejected',errorCode:'VALIDATION_FAILED'});
+        return {status:422,code:'VALIDATION_FAILED'};
+      }
+      if(kind==='preflight'){
+        await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'preflight',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',httpStatus:422,schemaRejected:true});
+        return {status:422,code:'VALIDATION_FAILED'};
+      }
+      // A bounded canonical fingerprint permits business-key replay without storing the body.
+      const json=JSON.stringify(request.body);
+      if(!json||json.length>16384){
+        await recordOperation(client,{owner:user,projectId,requestId,traceId,kind,status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash});
+        return {status:422,code:'VALIDATION_FAILED'};
+      }
+      const requestHash=digest(canonical(request.body));
+      const executionRequestId=safeId(submitted.execution_request_id)?submitted.execution_request_id:undefined;
+      if(executionRequestId){
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionRequestId}`]);
+        const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,executionRequestId]);
+        if(priorRun.rows[0]){
+          await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId,traceId,kind,status:'rejected',errorCode:'IDEMPOTENCY_CONFLICT'});
+          return {status:409,code:'IDEMPOTENCY_CONFLICT'};
+        }
+      }
+      const logged=await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'submission',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',executionRequestId,requestHash,httpStatus:422,schemaRejected:true});
+      return {status:logged.httpStatus!,code:logged.errorCode!};
+    });
+  }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
     let bytes:Buffer|null;
@@ -415,7 +463,7 @@ export function createServer(settings: Settings = {}) {
           await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
           return same?{run:runDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
         }
-        const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype='execute_rejected'",[user,b.execution_request_id]);
+        const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,b.execution_request_id]);
         if(prior.rows[0]){
           const logged=await recordLogicalJob(client,logical(prior.rows[0].error_code,prior.rows[0].rejection_http_status,prior.rows[0].stage));
           return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
@@ -437,7 +485,7 @@ export function createServer(settings: Settings = {}) {
         await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
         return same?runDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
       }
-      const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype='execute_rejected'",[user,b.execution_request_id]);
+      const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,b.execution_request_id]);
       if(prior.rows[0]){
         const logged=await recordLogicalJob(client,logical(prior.rows[0].error_code,prior.rows[0].rejection_http_status,prior.rows[0].stage));
         return {rejection:{errorCode:logged.errorCode!,httpStatus:logged.httpStatus!}};
