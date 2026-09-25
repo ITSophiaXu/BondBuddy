@@ -48,21 +48,26 @@ ALTER TABLE bb_jobs ADD CONSTRAINT bb_job_binding CHECK (
         OR (subtype='execute_schema_rejected' AND job_type='submission' AND state='rejected' AND error_code='VALIDATION_FAILED'))
       AND project_id IS NOT NULL AND trace_id IS NOT NULL AND request_id IS NOT NULL
       AND operation_id IS NOT NULL
-      AND (CASE WHEN subtype IN ('preflight_schema_rejected','execute_schema_rejected')
+      AND (CASE WHEN subtype IN ('preflight_rejected','execute_rejected') AND stage='revision_out_of_range'
+           THEN error_code='VALIDATION_FAILED' AND input_revision IS NULL AND input_hash IS NULL
+           WHEN subtype IN ('preflight_schema_rejected','execute_schema_rejected')
            THEN (input_revision IS NULL OR input_revision > 0) AND (input_hash IS NULL OR input_hash ~ '^[a-f0-9]{64}$')
            ELSE input_revision > 0 AND input_hash ~ '^[a-f0-9]{64}$' END)
       AND material_id IS NULL AND library_source_id IS NULL AND lease_token IS NULL
       AND attempts=0
       AND ((subtype='execute_rejected' AND execution_request_id IS NULL
             AND execution_request_key_hash ~ '^[a-f0-9]{64}$'
-            AND request_hash ~ '^[a-f0-9]{64}$' AND rejection_http_status BETWEEN 400 AND 599)
+            AND request_hash ~ '^[a-f0-9]{64}$' AND rejection_http_status BETWEEN 400 AND 599
+            AND (stage<>'revision_out_of_range' OR rejection_http_status=422))
         OR (subtype='execute_schema_rejected' AND execution_request_id IS NULL
             AND (execution_request_key_hash IS NULL OR execution_request_key_hash ~ '^[a-f0-9]{64}$')
             AND request_hash ~ '^[a-f0-9]{64}$' AND rejection_http_status=422)
         OR (subtype='preflight_schema_rejected' AND execution_request_id IS NULL
             AND execution_request_key_hash IS NULL AND request_hash IS NULL AND rejection_http_status=422)
         OR (subtype IN ('free_preflight','preflight_rejected') AND execution_request_id IS NULL
-            AND execution_request_key_hash IS NULL AND request_hash IS NULL AND rejection_http_status IS NULL)))
+            AND execution_request_key_hash IS NULL AND request_hash IS NULL
+            AND ((stage<>'revision_out_of_range' AND rejection_http_status IS NULL)
+              OR (subtype='preflight_rejected' AND stage='revision_out_of_range' AND rejection_http_status=422)))))
 );
 
 -- The terminal logical row cannot drift away from its immutable operation evidence.

@@ -7,6 +7,7 @@ import { guardEvidenceWrite } from './evidence-gate.js';
 const safeCode=/^[a-z][a-z0-9_]{0,63}$/;
 const validId=(value:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(value);
 export const validExecutionKey=(value:unknown):value is string=>typeof value==='string'&&[...value].length>=1&&[...value].length<=128;
+export const isPgInputRevision=(value:unknown):value is number=>typeof value==='number'&&Number.isInteger(value)&&value>=1&&value<=2147483647;
 // Hash UTF-16 code units. UTF-8 replacement would alias a lone surrogate with U+FFFD.
 export const executionKeyHash=(value:string)=>digest(Buffer.from(value,'utf16le'));
 export async function emitInternal(client:PoolClient,event:InternalObservabilityEvent) {
@@ -31,12 +32,15 @@ export async function recordOperation(client:PoolClient,input:{owner:string;proj
   return id;
 }
 /** A free preflight or an owned pre-run rejection has a terminal job, even without a run. */
-export async function recordLogicalJob(client:PoolClient,input:{owner:string;projectId:string;requestId:string;traceId:string;kind:'preflight'|'execute';jobType:'preflight'|'update'|'review'|'generation'|'qa'|'submission';status:'submitted'|'rejected';errorCode?:string;inputRevision?:number;inputHash?:string;stage:string;executionRequestId?:string;requestHash?:string;httpStatus?:number;schemaRejected?:boolean}) {
+export async function recordLogicalJob(client:PoolClient,input:{owner:string;projectId:string;requestId:string;traceId:string;kind:'preflight'|'execute';jobType:'preflight'|'update'|'review'|'generation'|'qa'|'submission';status:'submitted'|'rejected';errorCode?:string;inputRevision?:number;inputHash?:string;stage:string;executionRequestId?:string;requestHash?:string;httpStatus?:number;schemaRejected?:boolean;revisionRejected?:boolean}) {
   if(!validId(input.owner)||!validId(input.projectId)||!validId(input.requestId)||!validId(input.traceId)||
-     (input.inputRevision!==undefined&&(!Number.isSafeInteger(input.inputRevision)||input.inputRevision<1))||
+     (input.inputRevision!==undefined&&!isPgInputRevision(input.inputRevision))||
      (input.inputHash!==undefined&&!/^[a-f0-9]{64}$/.test(input.inputHash))||!safeCode.test(input.stage)||
      (input.status==='submitted'&&input.kind!=='preflight')||
-     (input.schemaRejected
+     (input.revisionRejected
+       ? input.schemaRejected||input.status!=='rejected'||input.errorCode!=='VALIDATION_FAILED'||input.httpStatus!==422||input.stage!=='revision_out_of_range'||input.inputRevision!==undefined||input.inputHash!==undefined||
+         (input.kind==='execute' ? input.jobType==='submission'||!input.executionRequestId||!/^[a-f0-9]{64}$/.test(input.requestHash??'') : input.jobType!=='preflight'||input.executionRequestId!==undefined||input.requestHash!==undefined)
+       : input.schemaRejected
        ? input.status!=='rejected'||input.errorCode!=='VALIDATION_FAILED'||input.httpStatus!==422||
          (input.kind==='execute' ? input.jobType!=='submission'||!/^[a-f0-9]{64}$/.test(input.requestHash??'') : input.jobType!=='preflight'||input.executionRequestId!==undefined||input.requestHash!==undefined)
        : input.inputRevision===undefined||input.inputHash===undefined||
