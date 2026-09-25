@@ -40,7 +40,7 @@ const Consumption = obj({ attempts: count, measured_attempts: count, unresolved_
 export const adminSchemas = {
   AdminLogEventsResponse: obj({ items: Type.Array(AdminLogEvent, { maxItems: ADMIN_LOG_PAGE_LIMIT }), truncated: Type.Boolean() }),
   AdminJobTimelineResponse: obj({
-    job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), operation_id: Type.Optional(nullable(id)), request_id: Type.Optional(nullable(id)), execution_request_id: Type.Optional(nullable(id)), trace_id: nullable(id), input_revision: Type.Optional(nullable(Type.Integer({ minimum: 1 }))), input_hash: Type.Optional(nullable(hash)), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
+    job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), operation_id: Type.Optional(nullable(id)), request_id: Type.Optional(nullable(id)), execution_request_id: Type.Optional(nullable(id)), execution_request_key_hash: Type.Optional(nullable(hash)), trace_id: nullable(id), input_revision: Type.Optional(nullable(Type.Integer({ minimum: 1 }))), input_hash: Type.Optional(nullable(hash)), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
     prompts: Type.Array(PromptRef),
     stages: Type.Array(Stage),
     attempts: Type.Array(Attempt),

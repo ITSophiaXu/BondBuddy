@@ -11,7 +11,7 @@ import type { Readable } from 'node:stream';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
-import { recordLogicalJob, recordOperation, rejectOperation } from './observability.js';
+import { executionKeyHash, recordLogicalJob, recordOperation, rejectOperation, validExecutionKey } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
@@ -37,6 +37,17 @@ const MAX_BYTES = M1_UPLOAD_LIMITS.fileBytes;
 const DEFAULT_PROJECT_EVENT_PAGE_SIZE = 50;
 const MAX_PROJECT_EVENT_PAGE_SIZE = 100;
 const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
+
+function stableJson(value:unknown):string {
+  if(Array.isArray(value))return `[${value.map(stableJson).join(',')}]`;
+  if(value!==null&&typeof value==='object'){
+    const fields=value as Record<string,unknown>;
+    return `{${Object.keys(fields).sort().map(key=>`${JSON.stringify(key)}:${stableJson(fields[key])}`).join(',')}}`;
+  }
+  const encoded=JSON.stringify(value);
+  if(encoded===undefined)throw new Error('Non-JSON request value');
+  return encoded;
+}
 
 async function appendProjectMaterialEvent(client: PoolClient, ownerId: string, projectId: string, materialId: string, byteSize: number) {
   const allocated = await client.query('UPDATE bb_projects SET event_cursor=event_cursor+1 WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING event_cursor', [ownerId, projectId]);
@@ -105,7 +116,7 @@ export function createServer(settings: Settings = {}) {
     const submitted=request.body&&typeof request.body==='object'&&!Array.isArray(request.body)?request.body as Record<string,unknown>:{};
     const safeId=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
     const projectId=kind==='preflight'?param(request,'project_id'):submitted.project_id;
-    const inputRevision=Number.isSafeInteger(submitted.input_revision)&&Number(submitted.input_revision)>0?Number(submitted.input_revision):undefined;
+    const inputRevision=typeof submitted.input_revision==='number'&&Number.isInteger(submitted.input_revision)&&submitted.input_revision>=1&&submitted.input_revision<=2147483647?submitted.input_revision:undefined;
     const inputHash=typeof submitted.input_hash==='string'&&/^[a-f0-9]{64}$/.test(submitted.input_hash)?submitted.input_hash:undefined;
     const requestId=request.id,traceId=uid();
     return transaction(db(),async client=>{
@@ -120,15 +131,16 @@ export function createServer(settings: Settings = {}) {
       }
       // A bounded canonical fingerprint permits business-key replay without storing the body.
       const json=JSON.stringify(request.body);
-      if(!json||json.length>16384){
+      if(!json||Buffer.byteLength(json,'utf8')>16384){
         await recordOperation(client,{owner:user,projectId,requestId,traceId,kind,status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash});
         return {status:422,code:'VALIDATION_FAILED'};
       }
-      const requestHash=digest(canonical(request.body));
-      const executionRequestId=safeId(submitted.execution_request_id)?submitted.execution_request_id:undefined;
+      const requestHash=digest(stableJson(request.body));
+      const executionRequestId=validExecutionKey(submitted.execution_request_id)?submitted.execution_request_id:undefined;
       if(executionRequestId){
-        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionRequestId}`]);
-        const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,executionRequestId]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(executionRequestId)}`]);
+        // PostgreSQL text cannot contain NUL; a run could never have persisted such a key.
+        const priorRun=executionRequestId.includes('\0')?{rows:[]}:await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,executionRequestId]);
         if(priorRun.rows[0]){
           await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId,traceId,kind,status:'rejected',errorCode:'IDEMPOTENCY_CONFLICT'});
           return {status:409,code:'IDEMPOTENCY_CONFLICT'};
@@ -463,14 +475,14 @@ export function createServer(settings: Settings = {}) {
     const logical=(errorCode:string,httpStatus:number,stage:string)=>({owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:b.input_revision,inputHash:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus});
     if(!settings.enableRunStaging && !queueEnabled){
       const response=await transaction(db(),async client=>{
-        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
         const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
         if(old.rows[0]){
           const same=old.rows[0].request_hash.trim()===requestHash;
           await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
           return same?{run:runDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
         }
-        const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,b.execution_request_id]);
+        const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
         if(prior.rows[0]){
           const logged=await recordLogicalJob(client,logical(prior.rows[0].error_code,prior.rows[0].rejection_http_status,prior.rows[0].stage));
           return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
@@ -485,14 +497,14 @@ export function createServer(settings: Settings = {}) {
     }
     let result;
     try {result=await transaction(db(),async client=>{
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
       const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
       if(old.rows[0]){
         const same=old.rows[0].request_hash.trim()===requestHash;
         await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
         return same?runDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
       }
-      const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,b.execution_request_id]);
+      const prior=await client.query("SELECT error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
       if(prior.rows[0]){
         const logged=await recordLogicalJob(client,logical(prior.rows[0].error_code,prior.rows[0].rejection_http_status,prior.rows[0].stage));
         return {rejection:{errorCode:logged.errorCode!,httpStatus:logged.httpStatus!}};
