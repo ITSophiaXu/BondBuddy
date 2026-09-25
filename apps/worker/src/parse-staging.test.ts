@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { lstat, mkdtemp, open, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, open, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createParseStaging, sweepParseStaging } from './parse-staging.js';
 
+// macOS tmpdir() may use /var/folders while the canonical path is /private/var/folders.
+const temporaryRoot = async (name: string): Promise<string> => realpath(await mkdtemp(join(tmpdir(), name)));
+
 test('SIGKILL leaves private staging; restart sweep reclaims only expired inactive managed files', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'bb-staging-test-'));
-  const outside = await mkdtemp(join(tmpdir(), 'bb-staging-outside-'));
+  const root = await temporaryRoot('bb-staging-test-');
+  const outside = await temporaryRoot('bb-staging-outside-');
   const child = spawn(process.execPath, ['--input-type=module', '-e',
     `import { createParseStaging } from ${JSON.stringify(new URL('./parse-staging.js', import.meta.url).href)};
      import { writeFile } from 'node:fs/promises';
@@ -68,7 +71,7 @@ test('SIGKILL leaves private staging; restart sweep reclaims only expired inacti
 });
 
 test('concurrent processes atomically admit only two 384 MiB reservations into a 1 GiB volume', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'bb-staging-concurrent-'));
+  const root = await temporaryRoot('bb-staging-concurrent-');
   const script = `import { createParseStaging } from ${JSON.stringify(new URL('./parse-staging.js', import.meta.url).href)};
     try { const s=await createParseStaging(process.argv[1]); process.stdout.write('ADMITTED\\n'); setInterval(()=>{},1000); }
     catch(e) { process.stdout.write(e.message+'\\n'); }`;
@@ -96,7 +99,7 @@ test('concurrent processes atomically admit only two 384 MiB reservations into a
 });
 
 test('staging admission caps accumulated orphan bytes and refuses a symlink root', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'bb-staging-budget-'));
+  const root = await temporaryRoot('bb-staging-budget-');
   const link = `${root}-link`;
   try {
     await symlink(root, link);
@@ -111,5 +114,24 @@ test('staging admission caps accumulated orphan bytes and refuses a symlink root
   } finally {
     await rm(link, { force: true });
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('canonicalized temporary aliases work while an aliased staging root is refused', async () => {
+  const parent = await temporaryRoot('bb-staging-alias-');
+  const canonicalParent = join(parent, 'real');
+  const aliasParent = join(parent, 'alias');
+  try {
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(canonicalParent, { mode: 0o700 });
+    await symlink(canonicalParent, aliasParent);
+    const aliased = await mkdtemp(join(aliasParent, 'bb-root-'));
+    await assert.rejects(createParseStaging(aliased), /PARSE_STAGING_UNSAFE_ROOT/);
+    const canonical = await realpath(aliased);
+    const stage = await createParseStaging(canonical);
+    await stage.cleanup();
+    assert.equal((await sweepParseStaging(canonical)).removed, 0);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
   }
 });

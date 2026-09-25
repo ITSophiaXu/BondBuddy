@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, realpath, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -49,7 +49,7 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
   const send = (method: string, url: string, payload?: unknown, contentType?: string) => app.inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
   let runtime: WorkerRuntime | undefined;
-  const root = await mkdtemp(join(tmpdir(), 'bb-entry-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'bb-entry-')));
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, BB_PARSE_CACHE_OCR_VERSION: 'synthetic-ocr-1', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic-basis-1',
     BB_WORKER_CONCURRENCY: '1', BB_WORKER_POLL_MS: '100', BB_WORKER_HEARTBEAT_MS: '1000', BB_WORKER_SWEEP_MS: '1000', BB_WORKER_DRAIN_MS: '2000',

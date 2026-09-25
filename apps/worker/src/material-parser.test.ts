@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,7 +77,7 @@ function responseFor(request: DocumentParseRequest): DocumentParseResponse {
 }
 
 async function temporaryRoot(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'bb-material-parser-test-'));
+  return realpath(await mkdtemp(join(tmpdir(), 'bb-material-parser-test-')));
 }
 
 function dependencies(options: {
