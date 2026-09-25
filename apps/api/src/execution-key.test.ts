@@ -31,6 +31,12 @@ test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolati
     assert.equal(legacyReplay.json().run_id,legacyRun);
     assert.equal(legacyReplay.json().execution_request_id,legacyKey);
 
+    const ordinaryKey='ordinary.key-1';
+    const ordinary=await execute(ordinaryKey);
+    assert.equal(ordinary.statusCode,202,ordinary.body);
+    assert.equal((await execute(ordinaryKey)).json().run_id,ordinary.json().run_id);
+    assert.equal((await pool.query('SELECT execution_request_id FROM bb_runs WHERE id=$1',[ordinary.json().run_id])).rows[0].execution_request_id,ordinaryKey);
+
     const disabled=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:first,csrfVerified:true})});
     try {
       const rejectedKey='disabled\0key',payload={execution_request_id:rejectedKey,...fields};
