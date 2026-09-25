@@ -155,7 +155,12 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const nested = (depth: number) => '{"v":'.repeat(depth - 1) + inside + '}'.repeat(depth - 1);
   const accepted = scrubSecrets(nested(64));
   assert.ok(!accepted.includes('SYN_DEEP_SECRET'));
-  for (const input of [nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{note: text, setCookie: SYN_LEAK_MARKER}', '{"session_cookie":"SYN_UNCLOSED"']) {
+  for (const input of [nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{note: text, setCookie: SYN_LEAK_MARKER}', '{"session_cookie":"SYN_UNCLOSED"',
+    '{] "Cookie":"SYN_LEAK_MARKER"}', '{] "setCookie":"SYN_LEAK_MARKER"}', '{] "otp":"SYN_LEAK_MARKER"}',
+    '{note: text, ] "Cookie":"SYN_LEAK_MARKER"}', '{"note":"ordinary",] "Cookie":"SYN_LEAK_MARKER"}',
+    '{"note":"ordinary"}{] "Cookie":"SYN_LEAK_MARKER"}', '{[} "Cookie":"SYN_LEAK_MARKER"}]',
+    '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
+    '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"']) {
     const start = performance.now();
     assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     assert.ok(performance.now() - start < 2000, 'rejection remains bounded for malformed or deep input');
@@ -176,6 +181,7 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const layered = Array.from({ length: 6 }).reduce<string>(value => JSON.stringify({ note: value }), '{"Cookie":"SYN_LAYERED_SECRET"}');
   assert.throws(() => scrubSecrets(layered), /Diagnostic body rejected/);
   assert.equal(scrubSecrets('普通正文未闭合 { 和 [\r\n下一段业务内容'), '普通正文未闭合 { 和 [\r\n下一段业务内容');
+  assert.equal(scrubSecrets('普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容'), '普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容');
   const mixed = scrubSecrets('普通正文未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_COOKIE","note":"SYN_MIXED_BUSINESS"}');
   assert.ok(mixed.includes('普通正文未闭合 { 和 [\r\n') && mixed.includes('SYN_MIXED_BUSINESS'));
   assert.ok(!mixed.includes('SYN_MIXED_COOKIE'));
@@ -272,6 +278,7 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       [noHistory, 'SYN_ORDINARY_NO_HISTORY', 'SYN_NO_HISTORY_COOKIE'],
       [nearLimit, 'A'.repeat(100), 'SYN_NEAR_LIMIT_OTP'],
       ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
+      ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
     ] as const).entries()) {
       assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
@@ -300,6 +307,11 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
     const dense = '[' + denseUnit.repeat(Math.floor(9 * 1024 * 1024 / denseUnit.length)).slice(0, -1) + ']';
     for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"',
       '{"\\u0043ookie":"SYN_BAD_UNICODE"', '{note: text, setCookie: SYN_LEAK_MARKER}', dense,
+      '{] "Cookie":"SYN_LEAK_MARKER"}', '{] "setCookie":"SYN_LEAK_MARKER"}', '{] "otp":"SYN_LEAK_MARKER"}',
+      '{note: text, ] "Cookie":"SYN_LEAK_MARKER"}', '{"note":"ordinary",] "Cookie":"SYN_LEAK_MARKER"}',
+      '{"note":"ordinary"}{] "Cookie":"SYN_LEAK_MARKER"}', '{[} "Cookie":"SYN_LEAK_MARKER"}]',
+      '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
+      '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"',
       'A'.repeat(10 * 1024 * 1024 + 1)]) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));

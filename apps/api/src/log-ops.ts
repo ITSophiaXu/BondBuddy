@@ -75,7 +75,10 @@ function candidateEnd(text: string, start: number, encoded: boolean): number {
       stack.push(char);
       if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
     } else if (char === '}' || char === ']') {
-      if (stack.pop() !== (char === '}' ? '{' : '[')) return i + 1;
+      // A mismatched closer is malformed content inside this candidate. Ending
+      // here would let later fields escape the known-key rejection scan.
+      if (stack[stack.length - 1] !== (char === '}' ? '{' : '[')) continue;
+      stack.pop();
       if (!stack.length) return i + 1;
     }
   }
@@ -91,7 +94,8 @@ function plainBracketEnd(text: string, start: number): { end: number; closed: bo
       stack.push(char);
       if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
     } else if (char === '}' || char === ']') {
-      if (stack.pop() !== (char === '}' ? '{' : '[')) return { end: i + 1, closed: true };
+      if (stack[stack.length - 1] !== (char === '}' ? '{' : '[')) continue;
+      stack.pop();
       if (!stack.length) return { end: i + 1, closed: true };
     }
   }
@@ -236,16 +240,22 @@ function scrubText(text: string, layer: number): string {
   let openPlain = false;
   for (let start = 0; start < text.length;) {
     if (text[start] !== '{' && text[start] !== '[') {
-      if (openPlain && (text[start] === '}' || text[start] === ']')) openPlain = false;
-      if (openPlain && text[start] === '\\' && text[start + 1] === 'u') throw new DiagnosticScrubError();
-      if (openPlain && /[A-Za-z_验校动短]/.test(text[start])) {
+      // An arbitrary closer cannot prove an earlier prose bracket was closed.
+      // Keep scanning known fields conservatively until the input ends.
+      if (text[start] === '\\' && text[start + 1] === 'u') {
+        if (openPlain || text[start - 1] === '"' && /^\\u[0-9a-f]{4}[^"\r\n]{0,128}"\s*:/i.test(text.slice(start, start + 144)))
+          throw new DiagnosticScrubError();
+      }
+      if (/[A-Za-z_验校动短]/.test(text[start])) {
         let end = start + 1;
         while (end < text.length && /[\p{L}\p{N}_-]/u.test(text[end])) end++;
         if (isSensitiveField(text.slice(start, end))) {
           while (text[end] === '\\') end++;
           if (text[end] === '"') end++;
           while (space(text[end])) end++;
-          if (text[end] === ':') throw new DiagnosticScrubError();
+          // Quoted fields outside a complete JSON candidate are still structured
+          // evidence. Never leave their values to the plain-text regexes.
+          if (text[end] === ':' && (openPlain || text[start - 1] === '"')) throw new DiagnosticScrubError();
         }
         start = end;
       } else start++;
