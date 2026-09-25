@@ -11,7 +11,7 @@ export type LibrarySelectionStatus = 'exact' | 'needs_evidence' | 'needs_review'
 /** Internal run checkpoint only. Never expose this object to a browser or include library body bytes. */
 export interface LibrarySelectionSnapshot {
   schema_version: 'reference-selection-v1';
-  query_schema_version: 'reference-library-query-v1';
+  query_schema_version: 'reference-library-query-v1.1';
   status: LibrarySelectionStatus;
   selection_hash: string;
   target: ReturnType<typeof matchBusinessReferences>['snapshot'];
@@ -58,7 +58,7 @@ function evidenceReferences(profile: AnnualBusinessProfile): string[] {
 }
 
 function snapshotBase(fields: Omit<LibrarySelectionSnapshot, 'schema_version' | 'query_schema_version' | 'selection_hash'>): LibrarySelectionSnapshot {
-  const unsigned = { schema_version: 'reference-selection-v1' as const, query_schema_version: 'reference-library-query-v1' as const, ...fields };
+  const unsigned = { schema_version: 'reference-selection-v1' as const, query_schema_version: 'reference-library-query-v1.1' as const, ...fields };
   return { ...unsigned, selection_hash: hash(unsigned) };
 }
 
@@ -83,7 +83,7 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
   }
   const codes = preflight.snapshot.targetBusinessProfile!.topThree.map(line => line.code);
   const request: LibraryQueryRequest = {
-    schema_version: 'reference-library-query-v1', service_identity: 'task_service',
+    schema_version: 'reference-library-query-v1.1', service_identity: 'task_service',
     audit: { owner_user_id: input.ownerUserId, project_id: input.projectId, run_id: input.runId, trace_id: input.traceId },
     target: { top3_codes: codes, taxonomy_version: input.targetProfile.taxonomyVersion, fiscal_year: input.targetProfile.fiscalYear,
       evidence_refs: evidenceRefs, market: input.target.market, offering: input.target.offering, instrument: input.target.instrument,
@@ -118,7 +118,7 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
     candidate_decisions: matched.decisions, selected: { reference_id: candidate.reference_id,
       document_version_id: candidate.document_version_id, document_version: candidate.document_version,
       profile_id: candidate.profile_id, profile_version: candidate.profile_version, taxonomy_version: candidate.taxonomy_version,
-      chapter_mapping_version: null, lock }, reasons: matched.reasons });
+      chapter_mapping_version: matched.selectedChapterMapping?.mapping_version_id ?? null, lock }, reasons: matched.reasons });
   await adapters.persist(result);
   return result;
 }

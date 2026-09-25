@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Market, Offering } from '@bondbuddy/contracts';
+import type { LibraryCandidateV1_1, LibraryQueryResponseV1, LibraryQueryResponseV1_1, Market, Offering } from '@bondbuddy/contracts';
 import {
   matchBusinessReferences,
+  matchLibraryQuery,
   type AnnualBusinessProfile,
   type ReferenceCandidate,
   type ReferenceMatchInput,
@@ -276,4 +277,90 @@ test('same reference ID across document versions has exactly one selected decisi
 test('distinguishes absent library and genuinely empty match set', () => {
   assert.equal(matchBusinessReferences(input({ libraryAvailable: false })).status, 'unavailable');
   assert.equal(matchBusinessReferences(input({ candidates: [] })).status, 'no_match');
+});
+
+function libraryCandidateV11(overrides: Partial<LibraryCandidateV1_1> = {}): LibraryCandidateV1_1 {
+  return {
+    reference_id: 'library-ref', document_version_id: 'document-v2', document_version: 2,
+    profile_id: 'library-profile-v2', profile_version: 2, taxonomy_version: 'bond-business-2026.1', fiscal_year: 2025,
+    market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance',
+    availability: 'published', readable: true, use_authorized: true, source_validity: 'valid',
+    applicable_scopes: [{ market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance', rule_version: 'rules-v4' }],
+    chapter_mapping_versions: [], review_quality: 90, disclosed_at: '2025-08-01',
+    top3_set_key: '["chemicals","equipment","logistics"]',
+    comparability: { accounting_scope: 'consolidated', revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
+      attestation: { review_id: 'review-v2', reviewed_by: 'operator-synthetic', reviewed_at: '2026-09-25T00:00:00Z', profile_id: 'library-profile-v2', profile_version: 2 } },
+    chapter_mappings: [],
+    ...overrides,
+  };
+}
+
+function libraryResponseV11(candidates: LibraryCandidateV1_1[]): LibraryQueryResponseV1_1 {
+  return { schema_version: 'reference-library-query-v1.1', status: 'candidates',
+    index_release: { release_id: 'library-index-v5', release_no: 5 }, candidates, reason: null };
+}
+
+test('v1.1 requires exact comparability and profile-bound review attestation, then still requires source completeness proof', () => {
+  const targetProfile = profile('issuer-123', { unit: 'ten_thousand_yuan' });
+  const validCandidate = libraryCandidateV11();
+  const matched = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([validCandidate]) });
+  assert.equal(matched.status, 'needs_review');
+  assert.equal(matched.selected, null);
+  assert.equal(matched.decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
+
+  for (const candidateWithBadFacts of [
+    libraryCandidateV11({ comparability: null }),
+    libraryCandidateV11({ comparability: { ...validCandidate.comparability!, currency: 'USD' } }),
+    libraryCandidateV11({ comparability: { ...validCandidate.comparability!, unit: 'yuan' } }),
+    libraryCandidateV11({ comparability: { ...validCandidate.comparability!, fiscal_year: 2024 } }),
+    libraryCandidateV11({ comparability: { ...validCandidate.comparability!, accounting_scope: 'parent' } }),
+    libraryCandidateV11({ comparability: { ...validCandidate.comparability!, attestation: {
+      ...validCandidate.comparability!.attestation, profile_version: 1,
+    } } }),
+  ]) {
+    const result = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([candidateWithBadFacts]) });
+    assert.equal(result.status, 'needs_review');
+    assert.equal(result.selected, null);
+    assert.notEqual(result.decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
+  }
+});
+
+test('v1.1 cross-scope chapter mapping must exactly bind source and target; v1 responses remain unchanged', () => {
+  const targetProfile = profile('issuer-123', { unit: 'ten_thousand_yuan' });
+  const crossScope = libraryCandidateV11({ market: 'szse', chapter_mapping_versions: ['map-version-3'],
+    chapter_mappings: [{ mapping_version_id: 'map-version-3', mapping_key: 'szse-to-sse-private', version: 3, status: 'accepted',
+      source: { market: 'szse', offering: 'private', instrument: 'corporate_bond' },
+      target: { market: 'sse', offering: 'private', instrument: 'corporate_bond' }, document_stage: 'issuance', rule_version: 'rules-v4' }] });
+  const accepted = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([crossScope]) });
+  assert.equal(accepted.status, 'needs_review');
+  assert.equal(accepted.decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
+  const wrongSource = libraryCandidateV11({ market: 'szse', chapter_mapping_versions: ['map-version-3'],
+    chapter_mappings: [{ ...crossScope.chapter_mappings[0]!, source: { market: 'sse', offering: 'private', instrument: 'corporate_bond' } }] });
+  const rejected = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([wrongSource]) });
+  assert.equal(rejected.status, 'needs_review');
+  assert.equal(rejected.decisions[0]?.reason, 'accepted_chapter_mapping_missing_or_mismatched');
+
+  const legacyCandidate: LibraryQueryResponseV1['candidates'][number] = {
+    reference_id: 'legacy-ref', document_version_id: 'document-v1', document_version: 1,
+    profile_id: 'legacy-profile', profile_version: 1, taxonomy_version: 'bond-business-2026.1', fiscal_year: 2025,
+    market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance',
+    availability: 'published', readable: true, use_authorized: true, source_validity: 'valid',
+    applicable_scopes: [{ market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance', rule_version: 'rules-v4' }],
+    chapter_mapping_versions: [], review_quality: 90, disclosed_at: null, top3_set_key: '["chemicals","equipment","logistics"]',
+  };
+  const legacy: LibraryQueryResponseV1 = { schema_version: 'reference-library-query-v1', status: 'candidates',
+    index_release: { release_id: 'library-index-v5', release_no: 5 }, candidates: [legacyCandidate], reason: null };
+  const oldResult = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: legacy });
+  assert.equal(oldResult.status, 'needs_review');
+  assert.equal(oldResult.decisions[0]?.reason, 'candidate_revenue_basis_not_exposed_by_query_v1');
+
+  const legacyCrossScope: LibraryQueryResponseV1 = { ...legacy, candidates: [
+    { ...legacyCandidate, reference_id: 'legacy-cross-market', market: 'szse' },
+    { ...legacyCandidate, reference_id: 'legacy-cross-offering', offering: 'public' },
+  ] };
+  const oldCrossScopeResult = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: legacyCrossScope });
+  assert.equal(oldCrossScopeResult.status, 'no_match');
+  assert.deepEqual(oldCrossScopeResult.decisions.map(decision => decision.reason), [
+    'cross_market_or_offering_mapping_details_missing', 'cross_market_or_offering_mapping_details_missing',
+  ]);
 });
