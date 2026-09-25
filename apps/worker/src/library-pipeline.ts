@@ -13,13 +13,15 @@ import { Problem } from '@bondbuddy/api/data';
 import { DEFAULT_DOCUMENT_PARSER_VERSION } from '@bondbuddy/api/material-jobs';
 import { DOCUMENT_PARSE_REQUEST_VERSION, runDocumentParser, type DocumentParseRecord, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
 import { SourceError, type DiscoveredItem, type LibrarySourceAdapter } from './library-sources.js';
+import type { ParserStderrDiagnostic } from './parser-diagnostics.js';
 
 // #78 pipeline: discover -> fetch -> dedupe by hash -> parse (existing Python parser bridge) -> classify/profile
 // -> review queue. Runs on the bb_jobs lease model; per-item progress is checkpointed so a crashed run resumes
 // after the last finished item, and publishing only ever happens through an operator review action.
 
 export type LibraryClassifier = (input: { title: string; records: DocumentParseRecord[]; market: 'sse' | 'szse' | 'nafmii' | null }) => { classification: Classification; profile: ProfileDraft };
-export type LibraryParser = (request: DocumentParseRequest) => Promise<DocumentParseResponse>;
+/** `hooks.onDiagnostic` receives the bounded, redacted parser stderr diagnostic for the attempt, if any. */
+export type LibraryParser = (request: DocumentParseRequest, hooks?: { onDiagnostic?: (diagnostic: ParserStderrDiagnostic | null) => void }) => Promise<DocumentParseResponse>;
 
 export interface LibraryPipelineDependencies {
   pool: Pool;
@@ -56,7 +58,7 @@ export const conservativeClassifier: LibraryClassifier = ({ title, market }) => 
   };
 };
 
-const defaultParser: LibraryParser = request => runDocumentParser(request, { pythonExecutable: process.env.BB_PYTHON ?? 'python3', repoRoot: process.env.BB_REPO_ROOT ?? process.cwd() });
+const defaultParser: LibraryParser = (request, hooks) => runDocumentParser(request, { pythonExecutable: process.env.BB_PYTHON ?? 'python3', repoRoot: process.env.BB_REPO_ROOT ?? process.cwd(), onDiagnostic: hooks?.onDiagnostic });
 
 class StageError extends Error { constructor(public code: LibraryErrorCode, public retryable: boolean) { super(code); } }
 
@@ -84,20 +86,29 @@ export async function processLibraryVersion(deps: LibraryPipelineDependencies, v
   const body = await readLibraryVersionBytes(pool, blobs, versionId);
   const dir = await mkdtemp(join(tmpdir(), 'bb-library-'));
   let parsed: DocumentParseResponse;
+  let diagnostic: ParserStderrDiagnostic | null = null;
+  let parseError: string | null = null;
   try {
     const path = join(dir, 'document');
     await writeFile(path, body.bytes, { mode: 0o600 });
     try {
       parsed = await parser({ schema_version: DOCUMENT_PARSE_REQUEST_VERSION, request_id: `library-${versionId}`,
-        material: { material_id: `library-${versionId}`, material_version: v.version, media_type: body.mediaType as any, sha256: body.sha256, authorized_local_path: path }, options: {} });
-    } catch { parsed = { status: 'failed', records: [] } as unknown as DocumentParseResponse; }
+        material: { material_id: `library-${versionId}`, material_version: v.version, media_type: body.mediaType as any, sha256: body.sha256, authorized_local_path: path }, options: {} }, { onDiagnostic: d => { diagnostic = d; } });
+    } catch (error) {
+      parseError = error instanceof Error && error.name === 'DocumentParserError' ? error.message : 'DOCUMENT_PARSER_FAILED';
+      parsed = { status: 'failed', records: [] } as unknown as DocumentParseResponse;
+    }
   } finally { await rm(dir, { recursive: true, force: true }); }
-  if (parsed.status === 'failed' || !parsed.records?.length) { await markLibraryVersionFailed(pool, versionId, 'LIBRARY_PARSE_FAILED'); return 'failed'; }
+  if (parsed.status === 'failed' || !parsed.records?.length) {
+    deps.log?.({ event: 'parse_failed', version: versionId, error: parseError ?? 'PARSER_REPORTED_FAILURE', stderr: diagnostic });
+    await markLibraryVersionFailed(pool, versionId, 'LIBRARY_PARSE_FAILED'); return 'failed';
+  }
   // Parser output (records with page locators) is evidence for review; kept private next to the bytes.
   const evidenceKey = `library/parse/${versionId}/${parsed.parser_version ?? DEFAULT_DOCUMENT_PARSER_VERSION}.json`;
   if (!(await blobs.exists(evidenceKey))) await blobs.put(evidenceKey, Buffer.from(JSON.stringify(parsed)), 'application/json');
   await markLibraryVersionParsed(pool, versionId, { parser_version: parsed.parser_version, status: parsed.status, record_count: parsed.records.length,
-    page_count: parsed.document?.page_count ?? null, warnings: (parsed.warnings ?? []).map(w => w.code), evidence_key: evidenceKey });
+    page_count: parsed.document?.page_count ?? null, warnings: (parsed.warnings ?? []).map(w => w.code), evidence_key: evidenceKey,
+    ...(diagnostic ? { parser_stderr: diagnostic } : {}) });
   v = await state();
   if (v.state !== 'pending_classify') return v.state as string;
   let result;
