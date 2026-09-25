@@ -1,4 +1,5 @@
 import type { Recognition } from '@bondbuddy/contracts';
+import { readOcr } from '@bondbuddy/api/ocr';
 import {
   parseAuthorizedMaterial,
   type AuthorizedMaterialParseInput,
@@ -17,10 +18,13 @@ import {
 } from './parse-evidence-repository.js';
 import {
   appendHistoricalRecognition,
+  appendHistoricalOcrRecognition,
   getLatestHistoricalProfile,
+  type HistoricalOcrProfileDependencies,
   type HistoricalProfileDependencies,
   type StoredHistoricalProfile,
 } from './historical-profile-repository.js';
+import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 
 /** Trusted worker context for an immutable historical-material precheck. */
 export interface HistoricalMaterialPrecheckInput extends Omit<AuthorizedMaterialParseInput, 'requiredRole'> {
@@ -111,4 +115,26 @@ export async function parsePersistAndRecognizeHistoricalMaterial(
   const recognition = recognizeHistoricalNativeText(parseSnapshot.response, { profileVersion: input.profileVersion });
   const profile = await appendHistoricalRecognition(dependencies.profiles, { ...profileContext, requestId: input.requestId }, recognition);
   return { parseSnapshot, profile };
+}
+
+export interface HistoricalOcrRecognitionDependencies {
+  profiles: HistoricalOcrProfileDependencies;
+}
+
+/** Consumes only the latest hash-verified persisted OCR snapshot for this active historical material version. */
+export async function recognizePersistedHistoricalOcr(
+  dependencies: HistoricalOcrRecognitionDependencies,
+  input: HistoricalMaterialPrecheckInput,
+): Promise<StoredHistoricalProfile> {
+  if (!Number.isSafeInteger(input.profileVersion) || input.profileVersion < 1) throw new Error('INVALID_PROFILE_VERSION');
+  const profileContext = { ownerUserId: input.ownerUserId, projectId: input.projectId,
+    materialId: input.materialId, materialVersion: input.version };
+  const existing = await getLatestHistoricalProfile(dependencies.profiles, profileContext);
+  if (existing?.writeKind === 'correction') return existing;
+  const review = await readOcr(dependencies.profiles.pool as import('pg').Pool, dependencies.profiles.blobs,
+    input.ownerUserId, input.projectId, input.materialId);
+  if (review.material_version !== input.version) throw new Error('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
+  const recognition = recognizeHistoricalOcr(review, { profileVersion: input.profileVersion });
+  return appendHistoricalOcrRecognition(dependencies.profiles,
+    { ...profileContext, requestId: input.requestId }, recognition);
 }

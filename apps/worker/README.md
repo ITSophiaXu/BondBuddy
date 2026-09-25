@@ -23,10 +23,20 @@ retries deduplicate by the trusted native-recognition/parser version, and the
 composition reuses a profile only when its deployment parser version and parse
 options match the stored snapshot. Failed parser snapshots with zero anchors
 remain failed. Parser failure, OCR gaps and ambiguous native evidence remain
-non-ready. This is still an internal function, not an upload-triggered job: it
-does not perform OCR/model fallback, record platform precheck cost or expose
-the source-profile API. A stored upload role is not independent proof that a
-document belongs to this issuer; that still needs evidence review.
+non-ready. The separate `recognizePersistedHistoricalOcr` path reads only the
+latest private OCR review for the active owner/project/material version. It
+retains OCR record IDs as anchors and binds `extractor_version` to both the
+immutable OCR snapshot ID and result SHA-256. Before append, the repository
+rereads and hash-checks that exact snapshot inside a transaction, verifies each
+reference and recomputes recognition to reject caller-supplied values.
+OCR-derived fields and periods always remain `needs_confirmation`; OCR user
+corrections stay `user_asserted` in their own append-only records and are not
+treated as recognized source facts. OCR profile corrections likewise append
+as `user_asserted` and cannot make the profile ready. This is still an internal
+function, not an upload-triggered job: it does not dispatch OCR, record
+platform precheck cost or expose the source-profile API. A stored upload role
+is not independent proof that a document belongs to this issuer; that still
+needs evidence review.
 
 `historical-profile-repository.ts` is the internal append-only #76 storage
 seam. Migration `0013_m1_historical_profiles.sql` binds snapshots to an
@@ -36,8 +46,9 @@ version fail closed. Corrections append a new version with actor, reason and
 evidence references, and an outbox event commits in the same transaction.
 Existing market/offering callers remain valid; callers can omit either source
 field and may instead provide a full replacement `reporting_periods` list with
-per-period evidence references. Every cited reference is checked against the
-exact owner's original material-version/parser snapshot. A period correction
+per-period evidence references. Native-text references are checked against
+the exact owner's original material-version/parser snapshot; OCR references
+are checked against the hash-verified OCR result bound in provenance. A period correction
 also replaces the derived latest cutoff, taking the maximum valid period end
 only; corrected periods and cutoff remain `user_asserted` with uncertainty even
 when anchors exist, and the profile remains `needs_confirmation`. Same-request

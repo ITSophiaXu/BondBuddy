@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
+import type { Pool } from 'pg';
 import { isMarketOffering, schemas, type Market, type Offering, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
+import { readOcr, readOcrPage } from '@bondbuddy/api/ocr';
+import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
+import { parseHistoricalOcrExtractorVersion, recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 
 export interface HistoricalProfileClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -16,6 +20,37 @@ export interface HistoricalProfilePool {
 export interface HistoricalProfileDependencies {
   pool: HistoricalProfilePool;
   newId?: () => string;
+}
+
+export interface HistoricalOcrProfileDependencies extends HistoricalProfileDependencies {
+  /** Private storage used by the owner-scoped reader to hash-check the immutable OCR result. */
+  blobs: PrivateBlobs;
+}
+
+async function verifyCitedOcrPages(
+  pool: HistoricalProfileClient,
+  dependencies: HistoricalOcrProfileDependencies,
+  context: TrustedHistoricalProfileContext,
+  review: Awaited<ReturnType<typeof readOcr>>,
+  refs: readonly string[],
+): Promise<void> {
+  const cited = new Set(refs);
+  const records = review.records.filter(record => cited.has(record.record_id));
+  if (records.length !== cited.size) throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
+  const pages = [...new Set(records.map(record => record.page))].sort((a, b) => a - b);
+  try {
+    for (const page of pages) {
+      // The existing reader checks the private rendered-page Blob against the immutable page hash.
+      const bytes = await readOcrPage(pool as unknown as Pool, dependencies.blobs, context.ownerUserId,
+        context.projectId, context.materialId, review.snapshot_id, String(page));
+      const expectedHash = review.pages.find(item => item.page === page)?.image_sha256;
+      if (!expectedHash || createHash('sha256').update(bytes).digest('hex') !== expectedHash) {
+        throw fail('HISTORICAL_OCR_PROFILE_PAGE_INTEGRITY_FAILED');
+      }
+    }
+  } catch {
+    throw fail('HISTORICAL_OCR_PROFILE_PAGE_INTEGRITY_FAILED');
+  }
 }
 
 export interface TrustedHistoricalProfileContext {
@@ -409,9 +444,96 @@ export async function appendHistoricalRecognition(
   } finally { client.release(); }
 }
 
+/** Persists OCR-derived recognition only after rereading the exact verified private OCR snapshot. */
+export async function appendHistoricalOcrRecognition(
+  dependencies: HistoricalOcrProfileDependencies,
+  context: TrustedHistoricalProfileContext,
+  recognitionInput: unknown,
+): Promise<StoredHistoricalProfile> {
+  validateContext(context);
+  const recognition = structuredClone(recognitionInput) as Recognition;
+  validateProfile(recognition);
+  if (recognition.material_id !== context.materialId || recognition.material_version !== context.materialVersion ||
+      recognition.state !== 'needs_confirmation') throw fail('INVALID_OCR_HISTORICAL_PROFILE');
+  const fields = [recognition.source_market, recognition.source_offering, recognition.latest_reporting_cutoff,
+    ...recognition.reporting_periods];
+  const identities = fields.map(field => parseHistoricalOcrExtractorVersion(field.provenance.extractor_version));
+  if (identities.some(identity => identity === null) || fields.some(field => field.provenance.method !== 'ocr' ||
+      field.status === 'recognized' ||
+      field.provenance.material_id !== context.materialId || field.provenance.material_version !== context.materialVersion)) {
+    throw fail('INVALID_OCR_HISTORICAL_PROFILE');
+  }
+  const identity = identities[0]!;
+  if (identities.some(candidate => candidate!.snapshotId !== identity.snapshotId || candidate!.resultSha256 !== identity.resultSha256)) {
+    throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_MISMATCH');
+  }
+  const requestHash = hashRequest({ kind: 'ocr-recognition', owner: context.ownerUserId, project: context.projectId,
+    material: context.materialId, materialVersion: context.materialVersion, snapshotId: identity.snapshotId,
+    resultSha256: identity.resultSha256, recognition: { ...recognition, profile_version: 1 } });
+  const client = await dependencies.pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query('BEGIN'); transactionOpen = true;
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `historical-profile:${context.ownerUserId}:${context.projectId}:${context.materialId}:${context.materialVersion}`,
+    ]);
+    await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',
+      [context.ownerUserId, context.projectId]);
+    await lockHistoricalMaterial(client, context);
+    // readOcr uses the same transaction connection and hash-checks the private result Blob.
+    const review = await readOcr(client as unknown as Pool, dependencies.blobs, context.ownerUserId,
+      context.projectId, context.materialId);
+    if (review.snapshot_id !== identity.snapshotId || review.result_sha256 !== identity.resultSha256 ||
+        review.material_version !== context.materialVersion || review.eligible_for_manuscript !== false) {
+      throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
+    }
+    const availableRefs = new Set(review.records.map(record => record.record_id));
+    if (fields.some(field => field.provenance.evidence_refs.some(ref => !availableRefs.has(ref)))) {
+      throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
+    }
+    await verifyCitedOcrPages(client, dependencies, context, review,
+      fields.flatMap(field => field.provenance.evidence_refs));
+    const expectedRecognition = recognizeHistoricalOcr(review, { profileVersion: 1 });
+    if (canonical(expectedRecognition) !== canonical({ ...recognition, profile_version: 1 })) {
+      throw fail('HISTORICAL_OCR_PROFILE_RECOGNITION_MISMATCH');
+    }
+    const existing = await priorRequest(client, context, requestHash);
+    if (existing) { await client.query('COMMIT'); transactionOpen = false; return existing; }
+    const latest = await client.query(
+      `SELECT COALESCE(max(profile_version), 0)::int AS profile_version,
+              COALESCE(bool_or(write_kind = 'correction'), false) AS has_correction
+         FROM bb_historical_profiles
+        WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4`,
+      [context.ownerUserId, context.projectId, context.materialId, context.materialVersion],
+    );
+    if (latest.rows[0]?.has_correction === true) throw fail('HISTORICAL_PROFILE_ALREADY_CORRECTED');
+    const sameSnapshot = await client.query(
+      `SELECT ${PROFILE_COLUMNS} FROM bb_historical_profiles
+        WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+          AND write_kind='recognition' AND recognition #>> '{source_market,provenance,extractor_version}'=$5`,
+      [context.ownerUserId, context.projectId, context.materialId, context.materialVersion,
+        recognition.source_market.provenance.extractor_version],
+    );
+    if (sameSnapshot.rows.length > 1) throw fail('HISTORICAL_PROFILE_EXTRACTOR_RESULT_CONFLICT');
+    if (sameSnapshot.rows.length === 1) {
+      const prior = mapProfile(sameSnapshot.rows[0]!, true);
+      if (canonical({ ...prior.recognition, profile_version: 1 }) !== canonical({ ...recognition, profile_version: 1 })) {
+        throw fail('HISTORICAL_PROFILE_EXTRACTOR_RESULT_CONFLICT');
+      }
+      await client.query('COMMIT'); transactionOpen = false; return prior;
+    }
+    recognition.profile_version = Number(latest.rows[0]?.profile_version ?? 0) + 1;
+    const profile = await appendSnapshot(dependencies, client, context, requestHash, 'recognition', recognition);
+    await client.query('COMMIT'); transactionOpen = false; return profile;
+  } catch (error) {
+    if (transactionOpen) { try { await client.query('ROLLBACK'); } catch { /* preserve original failure */ } }
+    throw error;
+  } finally { client.release(); }
+}
+
 /** Appends source-market/offering and/or reporting-period corrections. Previous snapshots remain intact. */
 export async function correctHistoricalRecognition(
-  dependencies: HistoricalProfileDependencies,
+  dependencies: HistoricalProfileDependencies | HistoricalOcrProfileDependencies,
   context: TrustedHistoricalCorrectionContext,
   patchInput: unknown,
 ): Promise<StoredHistoricalProfile> {
@@ -429,6 +551,8 @@ export async function correctHistoricalRecognition(
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
       `historical-profile:${context.ownerUserId}:${context.projectId}:${context.materialId}:${context.materialVersion}`,
     ]);
+    await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',
+      [context.ownerUserId, context.projectId]);
     await lockHistoricalMaterial(client, context);
     const existing = await priorRequest(client, context, requestHash);
     if (existing) {
@@ -445,10 +569,26 @@ export async function correctHistoricalRecognition(
     const latest = mapProfile(latestResult.rows[0]!, false);
     const periodEvidenceRefs = patch.reporting_periods?.flatMap(period => period.evidence_refs) ?? [];
     const citedEvidenceRefs = [...new Set([...patch.evidence_refs, ...periodEvidenceRefs])];
-    await validateCorrectionEvidenceReferences(client, context,
-      parserVersionFromRecognition(latest.recognition), citedEvidenceRefs);
-    if (latest.profileVersion !== patch.profile_version) throw fail('HISTORICAL_PROFILE_VERSION_CONFLICT');
     const prior = latest.recognition;
+    const ocrIdentity = parseHistoricalOcrExtractorVersion(prior.source_market.provenance.extractor_version);
+    if (ocrIdentity !== null) {
+      if (!('blobs' in dependencies)) throw fail('HISTORICAL_OCR_PROFILE_READER_REQUIRED');
+      const priorFields = [prior.source_market, prior.source_offering, prior.latest_reporting_cutoff, ...prior.reporting_periods];
+      if (priorFields.some(field => parseHistoricalOcrExtractorVersion(field.provenance.extractor_version)?.snapshotId !== ocrIdentity.snapshotId ||
+          parseHistoricalOcrExtractorVersion(field.provenance.extractor_version)?.resultSha256 !== ocrIdentity.resultSha256)) {
+        throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_MISMATCH');
+      }
+      const review = await readOcr(client as unknown as Pool, dependencies.blobs, context.ownerUserId,
+        context.projectId, context.materialId);
+      if (review.snapshot_id !== ocrIdentity.snapshotId || review.result_sha256 !== ocrIdentity.resultSha256 ||
+          review.material_version !== context.materialVersion) throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
+      const availableRefs = new Set(review.records.map(record => record.record_id));
+      if (citedEvidenceRefs.some(ref => !availableRefs.has(ref))) throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
+      await verifyCitedOcrPages(client, dependencies, context, review, citedEvidenceRefs);
+    } else {
+      await validateCorrectionEvidenceReferences(client, context, parserVersionFromRecognition(prior), citedEvidenceRefs);
+    }
+    if (latest.profileVersion !== patch.profile_version) throw fail('HISTORICAL_PROFILE_VERSION_CONFLICT');
     const resultingMarket = patch.source_market === undefined ? prior.source_market.value : patch.source_market;
     const resultingOffering = patch.source_offering === undefined ? prior.source_offering.value : patch.source_offering;
     if (resultingMarket !== null && resultingOffering !== null &&
