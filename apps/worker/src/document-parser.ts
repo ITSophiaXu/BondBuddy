@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
+export const DOCUMENT_PARSER_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 export const DOCUMENT_PARSER_MEDIA_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/pdf',
@@ -285,7 +286,7 @@ export async function runDocumentParser(request:DocumentParseRequest, options:{
 }={}):Promise<DocumentParseResponse> {
   validateRequest(request);
   const timeoutMs=options.timeoutMs??5*60_000;
-  const maxOutputBytes=options.maxOutputBytes??64*1024*1024;
+  const maxOutputBytes=options.maxOutputBytes??DOCUMENT_PARSER_MAX_OUTPUT_BYTES;
   if(!Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>30*60_000 || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes<1024 || maxOutputBytes>256*1024*1024) throw parserError('INVALID_PARSE_RUNNER_OPTIONS');
   const serialized=JSON.stringify(request);
   const output=await (options.invoke??invokePython)(serialized,{

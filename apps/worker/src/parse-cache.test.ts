@@ -93,14 +93,19 @@ class MockPool implements ParseCachePool {
 class MockBlobs implements PrivateParseBlobStore {
   objects = new Map<string, Uint8Array>();
   putCount = 0;
+  deletedKeys: string[] = [];
   async getPrivate(objectKey: string) { return this.objects.get(objectKey) ?? null; }
   async putPrivate(objectKey: string, bytes: Uint8Array) {
     this.putCount += 1;
     this.objects.set(objectKey, bytes);
   }
+  async deletePrivate(objectKey: string) {
+    this.deletedKeys.push(objectKey);
+    this.objects.delete(objectKey);
+  }
 }
 
-function dependencies(pool = new MockPool(), blobs = new MockBlobs()): ParseCacheDependencies {
+function dependencies(pool: ParseCachePool = new MockPool(), blobs = new MockBlobs()): ParseCacheDependencies {
   return { pool, blobs };
 }
 
@@ -199,8 +204,25 @@ test('save writes only a current response to a private object and inserts metada
 
   assert.equal(await saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req)), true);
   assert.equal(blobs.putCount, 1);
+  const ownerNamespace = createHash('sha256').update('owner-a').digest('hex');
+  assert.match([...blobs.objects.keys()][0] ?? '', new RegExp(`^parse-cache/${ownerNamespace}/`));
   assert.match(pool.calls[0]?.sql ?? '', /ON CONFLICT \(owner_user_id, content_sha256, parser_version, ocr_version, basis_version\) DO NOTHING/);
   assert.equal(JSON.stringify([...blobs.objects.values()].map((bytes) => JSON.parse(Buffer.from(bytes).toString('utf8')))).includes('authorized_local_path'), false);
+});
+
+test('oversized serialized cache responses remain valid but are not stored', async () => {
+  const req = request('current-material', 2, 'current-request');
+  const oversized = response(req);
+  oversized.records[0]!.formatting = { synthetic: 'x'.repeat(2048) };
+  const pool = new MockPool();
+  const blobs = new MockBlobs();
+
+  assert.equal(await saveParseCache(dependencies(pool, blobs), context('owner-a', req), oversized, 1024), false);
+  assert.equal(blobs.putCount, 0);
+  assert.equal(pool.calls.length, 0);
+  await assert.rejects(saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req), Number.MAX_SAFE_INTEGER), /INVALID_PARSE_CACHE_LIMIT/);
+  assert.equal(blobs.putCount, 0);
+  assert.equal(pool.calls.length, 0);
 });
 
 test('save rejects a response bound to another material before writing anything', async () => {
@@ -215,6 +237,59 @@ test('save rejects a response bound to another material before writing anything'
   await assert.rejects(saveParseCache(dependencies(pool, blobs), context('owner-a', req), oldResponse), /PARSE_MATERIAL_IDENTITY_MISMATCH/);
   assert.equal(pool.calls.length, 0);
   assert.equal(blobs.putCount, 0);
+});
+
+test('concurrent cache insert loser deletes only the Blob object created by its attempt', async () => {
+  const req = request('current-material', 2, 'current-request');
+  const pool = new MockPool();
+  const blobs = new MockBlobs();
+  blobs.objects.set('parse-cache/winning-object', Buffer.from('winner'));
+
+  assert.equal(await saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req)), false);
+  assert.equal(blobs.deletedKeys.length, 1);
+  assert.equal(blobs.objects.has(blobs.deletedKeys[0]!), false);
+  assert.equal(blobs.objects.has('parse-cache/winning-object'), true);
+});
+
+test('uncertain cache insert error preserves an object if metadata references it', async () => {
+  const req = request('current-material', 2, 'current-request');
+  let attemptObjectKey = '';
+  const pool = {
+    async query(sql: string, values: unknown[]) {
+      if (sql.includes('INSERT INTO bb_parse_cache')) {
+        attemptObjectKey = String(values[6]);
+        throw new Error('synthetic connection lost after commit');
+      }
+      assert.match(sql, /SELECT 1 FROM bb_parse_cache WHERE object_key = \$1/);
+      return { rows: [{ object_key: attemptObjectKey }] };
+    },
+  };
+  const blobs = new MockBlobs();
+
+  await assert.rejects(saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req)), /synthetic connection lost after commit/);
+  assert.ok(attemptObjectKey);
+  assert.equal(blobs.deletedKeys.includes(attemptObjectKey), false);
+  assert.equal(blobs.objects.has(attemptObjectKey), true);
+});
+
+test('cache insert error deletes its object when metadata confirms it is unreferenced', async () => {
+  const req = request('current-material', 2, 'current-request');
+  let attemptObjectKey = '';
+  const pool = {
+    async query(sql: string, values: unknown[]) {
+      if (sql.includes('INSERT INTO bb_parse_cache')) {
+        attemptObjectKey = String(values[6]);
+        throw new Error('synthetic database failure');
+      }
+      return { rows: [] };
+    },
+  };
+  const blobs = new MockBlobs();
+
+  await assert.rejects(saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req)), /synthetic database failure/);
+  assert.ok(attemptObjectKey);
+  assert.deepEqual(blobs.deletedKeys, [attemptObjectKey]);
+  assert.equal(blobs.objects.has(attemptObjectKey), false);
 });
 
 test('cached payloads containing a staged local path are rejected', async () => {

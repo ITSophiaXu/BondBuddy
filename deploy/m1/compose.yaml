@@ -88,6 +88,8 @@ services:
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
       BB_PARSE_JOB_BATCH: ${BB_PARSE_JOB_BATCH:-5}
+      BB_PARSE_CACHE_OCR_VERSION: ${BB_PARSE_CACHE_OCR_VERSION:?set in .env; see .env.example}
+      BB_PARSE_CACHE_BASIS_VERSION: ${BB_PARSE_CACHE_BASIS_VERSION:?set in .env; see .env.example}
       # Only route out: the allow-list proxy. The backend network has no internet gateway.
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
