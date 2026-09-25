@@ -26,6 +26,8 @@ export const OcrEngineResponseSchema = object({
   status: Type.Union([Type.Literal('needs_confirmation'),Type.Literal('failed')]),
   material: object({material_id:id,material_version:positive,media_type:Type.String(),sha256:hash}),
   page_count: Type.Integer({minimum:0,maximum:1500}), coverage: Type.Union(['none','partial','complete'].map(v=>Type.Literal(v))),
+  // Pages passed to the OCR engine, retained even when a later page fails.
+  attempted_pages: Type.Optional(Type.Integer({minimum:0,maximum:50})),
   pages: Type.Array(OcrPageSchema,{maxItems:50}), records: Type.Array(OcrRecordSchema,{maxItems:100000}), warnings,
   error: nullableText, eligible_for_manuscript: Type.Literal(false)
 });

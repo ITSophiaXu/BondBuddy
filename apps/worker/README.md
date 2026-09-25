@@ -1,5 +1,11 @@
 # M1 worker boundaries
 
+Free source-preflight parse/OCR attempts record measured document/page quantity and
+processing time in the parse job checkpoint and one transactional
+`platform.processing_cost` outbox event per `(job_id, stage, attempt)`. OCR pages
+that could not be measured after a failed subprocess remain `null`; price remains
+`unknown`, and these events never reserve or deduct user credits.
+
 ## Running the tests
 
 `npm test -w @bondbuddy/worker` builds and runs every `dist/*.test.js` with the

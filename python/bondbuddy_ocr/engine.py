@@ -237,7 +237,7 @@ def process(request):
     result = {'schema_version':'ocr-response-v1', 'request_id':request.get('request_id') if isinstance(request,dict) else None,
         'processor_version':VERSION, 'engine_version':'unknown', 'language':'unknown', 'language_data_sha256':{}, 'purpose':None,
         'status':'failed', 'material':{k:material.get(k) for k in ['material_id','material_version','media_type','sha256']} if isinstance(material,dict) else None,
-        'page_count':0, 'coverage':'none', 'pages':[], 'records':[], 'warnings':[], 'error':None, 'eligible_for_manuscript':False}
+        'page_count':0, 'attempted_pages':0, 'coverage':'none', 'pages':[], 'records':[], 'warnings':[], 'error':None, 'eligible_for_manuscript':False}
     document = None
     try:
         if request.get('schema_version') != 'ocr-request-v1' or not isinstance(material,dict):
@@ -293,6 +293,7 @@ def process(request):
                     if w <= 0 or h <= 0 or w*h*(250/72)**2 > MAX_PIXELS: raise Failure('OCR_PIXEL_LIMIT')
                     bitmap=page.render(scale=250/72); image=bitmap.to_pil().convert('RGB'); bitmap.close(); page.close()
                 else: image=images[i]
+                result['attempted_pages'] += 1
                 page_result, records=extract_page(image,language,directory,i+1)
                 result['pages'].append(page_result);result['records'].extend(records)
                 if sum(len(p['image_base64']) for p in result['pages']) > MAX_OUTPUT: raise Failure('OCR_OUTPUT_LIMIT')

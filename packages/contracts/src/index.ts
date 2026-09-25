@@ -1,4 +1,6 @@
 import { OcrReviewSchema, OcrCorrectionRequestSchema, OcrCorrectionSchema } from './ocr.js';
+// Internal #76/#79 platform-paid OCR/parse consumption event; separate from model usage.
+export * from './platform-processing-cost.js';
 export * from './ocr.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';

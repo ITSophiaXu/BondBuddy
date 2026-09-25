@@ -2,7 +2,7 @@ import { Ajv } from 'ajv';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, referenceLibrarySchemas, schemas, type SchemaName } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, type SchemaName } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -37,6 +37,15 @@ assert.equal(libraryExamples.synthetic, true);
   assert.ok(!Object.keys(schemas).some(name => name.startsWith('Library')), 'library schemas are not public schemas');
 }
 const ajv = new Ajv({ allErrors: true, strict: true });
+// Internal #76 platform-paid OCR/parse processing contract is validated separately and
+// stays out of the public OpenAPI/schema namespace.
+const processingCostExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/platform-processing-cost.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(processingCostExamples.synthetic, true);
+for (const example of processingCostExamples.cases) {
+  const validate = ajv.compile(platformProcessingCostSchemas[example.schema as keyof typeof platformProcessingCostSchemas]);
+  assert.equal(validate(example.value), example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
+}
+assert.ok(!JSON.stringify(openApiDocument()).includes('PlatformProcessingCost'), 'internal processing cost schemas are not public OpenAPI');
 const byName = new Map<string, Example>();
 for (const example of data.cases) {
   assert.ok(!byName.has(example.name), `duplicate example ${example.name}`);

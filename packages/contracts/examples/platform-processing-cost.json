@@ -1,0 +1,29 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "platform-ocr-cost-success",
+      "schema": "PlatformProcessingCostEvent",
+      "valid": true,
+      "value": { "kind": "platform.processing_cost", "payload": { "job_id": "synthetic-parse-job", "material_id": "synthetic-material", "material_version": 2, "stage": "ocr", "attempt": 1, "unit": "ocr_page", "quantity": 3, "processing_ms": 1842, "billable": false, "cost_payer": "platform", "pricing_status": "unknown", "unit_price_ref": null, "outcome": "succeeded", "ocr_pages": 3, "ocr_engine": "tesseract", "ocr_engine_version": "synthetic-only" } }
+    },
+    {
+      "name": "platform-ocr-cost-failed-quantity-unknown",
+      "schema": "PlatformProcessingCostEvent",
+      "valid": true,
+      "value": { "kind": "platform.processing_cost", "payload": { "job_id": "synthetic-parse-job", "material_id": "synthetic-material", "material_version": 2, "stage": "ocr", "attempt": 2, "unit": "ocr_page", "quantity": null, "processing_ms": 700, "billable": false, "cost_payer": "platform", "pricing_status": "unknown", "unit_price_ref": null, "outcome": "failed", "ocr_pages": null, "ocr_engine": null, "ocr_engine_version": null } }
+    },
+    {
+      "name": "platform-parse-document-cost",
+      "schema": "PlatformProcessingCostEvent",
+      "valid": true,
+      "value": { "kind": "platform.processing_cost", "payload": { "job_id": "synthetic-parse-job", "material_id": "synthetic-material", "material_version": 2, "stage": "parse", "attempt": 1, "unit": "document", "quantity": 1, "processing_ms": 84, "billable": false, "cost_payer": "platform", "pricing_status": "unknown", "unit_price_ref": null, "outcome": "succeeded" } }
+    },
+    {
+      "name": "invalid-platform-cost-fabricates-price",
+      "schema": "PlatformProcessingCostEvent",
+      "valid": false,
+      "value": { "kind": "platform.processing_cost", "payload": { "job_id": "synthetic-parse-job", "material_id": "synthetic-material", "material_version": 2, "stage": "ocr", "attempt": 1, "unit": "ocr_page", "quantity": 0, "processing_ms": 1, "billable": false, "cost_payer": "platform", "pricing_status": "unknown", "unit_price_ref": null, "unit_price": 0, "outcome": "failed" } }
+    }
+  ]
+}

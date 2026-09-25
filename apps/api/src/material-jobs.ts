@@ -3,6 +3,7 @@ import {
   ERROR_CODES, MATERIAL_PARSE_JOB_SUBTYPE, MATERIAL_PARSE_JOB_TYPE, MATERIAL_PARSE_OCR_STAGE, MATERIAL_PARSE_STAGES,
   type ERROR_CATEGORIES, type ErrorCode, type MATERIAL_PARSE_EVENT_TYPES, type MATERIAL_PARSE_RUNTIME_EVENT_TYPES, type MaterialParseJob,
 } from '@bondbuddy/contracts';
+import type { PlatformProcessingCostPayload } from '@bondbuddy/contracts';
 import { date, material, missing, Problem, transaction, uid } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
 
@@ -26,6 +27,10 @@ export type MaterialParseResult = {
   profile_version: number | null;
   pending_capabilities: 'ocr'[];
 };
+
+export type MaterialParseCostStage = 'ocr' | 'parse';
+export type MaterialParseCostInput = Omit<PlatformProcessingCostPayload,
+  'job_id' | 'material_id' | 'material_version' | 'attempt' | 'stage' | 'billable' | 'cost_payer' | 'pricing_status' | 'unit_price_ref'>;
 
 const finalStates = new Set(['succeeded', 'failed', 'cancelled']);
 const safeStage = /^[a-z][a-z0-9_]{0,63}$/;
@@ -129,6 +134,45 @@ export async function completeMaterialParseStage(pool: Pool, lease: MaterialPars
       WHERE id=$1 RETURNING *`, [job.id, stage, JSON.stringify(value)]);
     lease.checkpoint = updated.rows[0].checkpoint;
     await journal(client, updated.rows[0], 'material_parse.stage_completed', 'running', stage);
+  });
+}
+
+/**
+ * Persists one measured source-preflight OCR/parse attempt with its job checkpoint
+ * and #79 outbox event atomically. The job row lock plus the stable attempt key
+ * makes a repeated report idempotent without creating an accounting ledger.
+ */
+export async function recordMaterialParseProcessingCost(pool: Pool, lease: MaterialParseLease, stage: MaterialParseCostStage, input: MaterialParseCostInput) {
+  if (!Number.isSafeInteger(input.processing_ms) || input.processing_ms < 1 ||
+      !(input.quantity === null || (Number.isSafeInteger(input.quantity) && input.quantity >= 0)) ||
+      (stage === 'ocr' && input.unit !== 'ocr_page') || (stage === 'parse' && (input.unit !== 'document' || input.quantity !== 1)) ||
+      (stage === 'parse' && (input.ocr_pages !== undefined || input.ocr_engine !== undefined || input.ocr_engine_version !== undefined))) {
+    throw new Error('INVALID_PROCESSING_COST');
+  }
+  return transaction(pool, async client => {
+    const job = await lockedLease(client, lease);
+    const payload: PlatformProcessingCostPayload = {
+      job_id: job.id, material_id: job.material_id, material_version: job.material_version,
+      stage, attempt: lease.attempts, unit: input.unit, quantity: input.quantity,
+      processing_ms: input.processing_ms, billable: false, cost_payer: 'platform',
+      pricing_status: 'unknown', unit_price_ref: null, outcome: input.outcome,
+      ...(stage === 'ocr' ? { ocr_pages: input.ocr_pages ?? input.quantity, ocr_engine: input.ocr_engine ?? null, ocr_engine_version: input.ocr_engine_version ?? null } : {}),
+    };
+    const prior = await client.query(`SELECT payload FROM bb_outbox WHERE aggregate_type='material_parse_job'
+      AND aggregate_id=$1 AND event_type='platform.processing_cost'
+      AND payload->>'job_id'=$1 AND payload->>'stage'=$2 AND (payload->>'attempt')::integer=$3 LIMIT 1`,
+    [job.id, stage, lease.attempts]);
+    if (prior.rows[0]) return prior.rows[0].payload as PlatformProcessingCostPayload;
+
+    const checkpoint = { ...(job.checkpoint ?? {}) };
+    const costs = { ...((checkpoint.processing_costs as Record<string, unknown> | undefined) ?? {}) };
+    const key = `${stage}:${lease.attempts}`;
+    costs[key] = payload;
+    checkpoint.processing_costs = costs;
+    await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1', [job.id, checkpoint]);
+    await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+      VALUES($1,$2,'material_parse_job',$3,'platform.processing_cost',$4)`, [uid(), job.owner_user_id, job.id, payload]);
+    return payload;
   });
 }
 

@@ -12,6 +12,9 @@ import { appendHistoricalOcrRecognition, appendHistoricalRecognition, getLatestH
 import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 import { readOcr } from '@bondbuddy/api/ocr';
 import { recognizeHistoricalNativeText } from './historical-native-recognition.js';
+import { performance } from 'node:perf_hooks';
+import { OcrProcessingError, type OcrProcessingMetrics } from './ocr.js';
+import { recordMaterialParseProcessingCost } from '@bondbuddy/api/material-jobs';
 
 export interface MaterialParseJobDependencies {
   pool: Pool;
@@ -26,7 +29,9 @@ export interface MaterialParseJobDependencies {
    * #17 OCR hook: server-side OCR processor (production: `processOcrMaterial` from ./ocr.js with
    * purpose `source_preflight`). Absent => OCR-dependent jobs pause at `awaiting_ocr` as before.
    */
-  ocr?: (input: { owner: string; projectId: string; materialId: string; version: number; requestId: string }) => Promise<{ snapshot_id: string }>;
+  ocr?: (input: { owner: string; projectId: string; materialId: string; version: number; requestId: string }) => Promise<{
+    snapshot_id: string; ocr_pages?: number; pages?: number; ocr_engine?: string; ocr_engine_version?: string; processing_ms?: number;
+  }>;
   /** Private Blob access for turning a historical PDF's OCR snapshot into a recognition profile. */
   ocrProfiles?: HistoricalOcrProfileDependencies;
   /** Runtime hook: registers the active lease so graceful shutdown can release it. */
@@ -74,6 +79,7 @@ export function classifyMaterialParseError(error: unknown): { code: ErrorCode; r
 }
 
 const lostLease = (error: unknown) => error instanceof Problem && error.code === 'ALREADY_TERMINAL';
+const elapsedMs = (started: number) => Math.max(1, Math.ceil(performance.now() - started));
 
 async function activeMaterial(pool: Pool, lease: MaterialParseLease) {
   const q = await pool.query(`SELECT role, media_type, lower(btrim(sha256::text)) AS sha256 FROM bb_material_versions
@@ -114,12 +120,26 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
         snapshot = await getParseSnapshot(evidence, context, saved.snapshot_id);
         if (!snapshot) throw new Error('CHECKPOINT_SNAPSHOT_MISSING');
       } else {
-        snapshot = await parseAndPersistAuthorizedMaterial(dependencies.material, evidence, {
-          ownerUserId: lease.owner, projectId: lease.projectId, materialId: lease.materialId, version: lease.materialVersion,
-          requestId: `${lease.jobId}-parse`,
-        });
-        if (snapshot.parserVersion !== lease.parserVersion) throw new Error('PARSER_VERSION_MISMATCH');
-        if (snapshot.contentSha256 !== lease.materialSha256) throw new Error('PARSE_EVIDENCE_MATERIAL_MISMATCH');
+        const started = performance.now();
+        try {
+          snapshot = await parseAndPersistAuthorizedMaterial(dependencies.material, evidence, {
+            ownerUserId: lease.owner, projectId: lease.projectId, materialId: lease.materialId, version: lease.materialVersion,
+            requestId: `${lease.jobId}-parse`,
+          });
+          const failed = snapshot.response.status === 'failed' || snapshot.parserVersion !== lease.parserVersion || snapshot.contentSha256 !== lease.materialSha256;
+          await recordMaterialParseProcessingCost(pool, lease, 'parse', {
+            unit: 'document', quantity: 1, processing_ms: elapsedMs(started), outcome: failed ? 'failed' : 'succeeded',
+          });
+          if (snapshot.parserVersion !== lease.parserVersion) throw new Error('PARSER_VERSION_MISMATCH');
+          if (snapshot.contentSha256 !== lease.materialSha256) throw new Error('PARSE_EVIDENCE_MATERIAL_MISMATCH');
+        } catch (error) {
+          // Preserve a failed parser attempt (including a failed structured response) before
+          // the job retry/failure transition is committed.
+          await recordMaterialParseProcessingCost(pool, lease, 'parse', {
+            unit: 'document', quantity: 1, processing_ms: elapsedMs(started), outcome: 'failed',
+          });
+          throw error;
+        }
         await stage('parse_evidence', { snapshot_id: snapshot.snapshotId, parse_status: snapshot.response.status, parser_version: snapshot.parserVersion });
       }
       if (snapshot.response.status === 'failed') {
@@ -152,12 +172,28 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
       // #17 OCR hook: the OCR snapshot is a checkpointed stage; a resumed job never re-runs it.
       let snapshotId = (stages.ocr_evidence as { snapshot_id?: string } | undefined)?.snapshot_id;
       if (!snapshotId) {
-        try { snapshotId = (await dependencies.ocr({ owner: lease.owner, projectId: lease.projectId, materialId: lease.materialId, version: lease.materialVersion, requestId: `${lease.jobId}-ocr` })).snapshot_id; }
+        const started = performance.now();
+        try {
+          const result = await dependencies.ocr({ owner: lease.owner, projectId: lease.projectId, materialId: lease.materialId, version: lease.materialVersion, requestId: `${lease.jobId}-ocr` });
+          const pages = result.ocr_pages ?? result.pages ?? null;
+          await recordMaterialParseProcessingCost(pool, lease, 'ocr', {
+            unit: 'ocr_page', quantity: pages, ocr_pages: pages, ocr_engine: result.ocr_engine ?? null,
+            ocr_engine_version: result.ocr_engine_version ?? null, processing_ms: result.processing_ms ?? elapsedMs(started), outcome: 'succeeded',
+          });
+          snapshotId = result.snapshot_id;
+        }
         catch (error) {
           if (error instanceof Error && error.message === 'OCR_PROCESS_UNAVAILABLE') {
             await pauseMaterialParse(pool, lease, 'awaiting_ocr', pendingOcr, 'ocr_unavailable');
             return 'paused';
           }
+          const metrics: OcrProcessingMetrics = error instanceof OcrProcessingError ? error.processingMetrics : {
+            ocr_pages: null, ocr_engine: null, ocr_engine_version: null, processing_ms: elapsedMs(started),
+          };
+          await recordMaterialParseProcessingCost(pool, lease, 'ocr', {
+            unit: 'ocr_page', quantity: metrics.ocr_pages, ocr_pages: metrics.ocr_pages, ocr_engine: metrics.ocr_engine,
+            ocr_engine_version: metrics.ocr_engine_version, processing_ms: metrics.processing_ms, outcome: 'failed',
+          });
           throw error;
         }
         await stage('ocr_evidence', { snapshot_id: snapshotId });
