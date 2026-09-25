@@ -2,8 +2,8 @@
 
 This is a structural writer only. It does not select references, assess factual or
 professional correctness, run delivery checks, or participate in production runtime.
-Fact claim IDs are checked against the separately trusted allow-list, but this writer
-does not emit citations or anchor claims to evidence inside the DOCX.
+Fact claim IDs are checked against the separately trusted allow-list and emitted as
+explicit associations only; they are not evidence anchors or factual verification.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from docx import Document
 REQUEST_SCHEMA_VERSION = "no-history-manuscript-draft-render-request-v1"
 RESPONSE_SCHEMA_VERSION = "no-history-manuscript-draft-render-response-v1"
 DRAFT_SCHEMA_VERSION = "no-history-manuscript-draft-v1"
-WRITER_VERSION = "bondbuddy-no-history-draft-writer-1.0.0"
+WRITER_VERSION = "bondbuddy-no-history-draft-writer-1.1.0"
 OUTPUT_NAME = "no-history-manuscript-draft.docx"
 MAX_INPUT_BYTES = 2 * 1024 * 1024
 MAX_SECTIONS = 100
@@ -156,6 +156,37 @@ def _canonicalize_docx(path: Path) -> bytes:
         canonical_path.unlink(missing_ok=True)
 
 
+def _locate_claims(draft: dict[str, Any]) -> dict[tuple[int, int], list[tuple[int, int, dict[str, Any]]]]:
+    """Require each claim to occur once, verbatim, in one chapter paragraph."""
+    locations: dict[tuple[int, int], list[tuple[int, int, dict[str, Any]]]] = {}
+    claimed_spans: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for claim in draft["fact_claims"]:
+        matches: list[tuple[int, int, int]] = []
+        for section_index, section in enumerate(draft["sections"]):
+            for paragraph_index, paragraph_text in enumerate(section["body"].split("\n")):
+                search_from = 0
+                while True:
+                    start = paragraph_text.find(claim["claim"], search_from)
+                    if start < 0:
+                        break
+                    matches.append((section_index, paragraph_index, start))
+                    # Count overlapping occurrences too, so repeated or ambiguous text fails closed.
+                    search_from = start + 1
+        if len(matches) != 1:
+            _fail("CLAIM_TEXT_NOT_UNIQUE_IN_BODY")
+        section_index, paragraph_index, start = matches[0]
+        end = start + len(claim["claim"])
+        key = (section_index, paragraph_index)
+        spans = claimed_spans.setdefault(key, [])
+        if any(start < previous_end and previous_start < end for previous_start, previous_end in spans):
+            _fail("CLAIM_TEXT_OVERLAP_AMBIGUOUS")
+        spans.append((start, end))
+        locations.setdefault(key, []).append((start, end, claim))
+    for matches in locations.values():
+        matches.sort(key=lambda item: item[0])
+    return locations
+
+
 def render(request: Any, output_dir: str | os.PathLike[str]) -> dict[str, Any]:
     """Render to one fixed filename in an existing private staging directory."""
     try:
@@ -166,6 +197,7 @@ def render(request: Any, output_dir: str | os.PathLike[str]) -> dict[str, Any]:
     except (TypeError, ValueError, RecursionError):
         _fail("REQUEST_SHAPE_INVALID")
     draft, _ = validate_request(request)
+    claim_locations = _locate_claims(draft)
     requested_directory = Path(output_dir)
     if not requested_directory.is_absolute() or ".." in requested_directory.parts or requested_directory.is_symlink() or not requested_directory.is_dir():
         _fail("OUTPUT_DIRECTORY_UNSAFE")
@@ -190,10 +222,20 @@ def render(request: Any, output_dir: str | os.PathLike[str]) -> dict[str, Any]:
     document.core_properties.modified = FIXED_CORE_TIME
     document.core_properties.last_modified_by = "BondBuddy"
 
-    for section in draft["sections"]:
+    for section_index, section in enumerate(draft["sections"]):
         document.add_heading(section["heading"], level=1)
-        for paragraph_text in section["body"].split("\n"):
-            document.add_paragraph(paragraph_text)
+        for paragraph_index, paragraph_text in enumerate(section["body"].split("\n")):
+            paragraph = document.add_paragraph()
+            cursor = 0
+            for start, end, claim in claim_locations.get((section_index, paragraph_index), []):
+                paragraph.add_run(paragraph_text[cursor:start])
+                paragraph.add_run(paragraph_text[start:end])
+                encoded_ids = json.dumps(claim["target_fact_ids"], ensure_ascii=False, separators=(",", ":"))
+                paragraph.add_run(
+                    f"【claim 关联 ID（非证据定位、非事实核验）：[[BB_FACT_IDS_V1:{encoded_ids}]]】"
+                )
+                cursor = end
+            paragraph.add_run(paragraph_text[cursor:])
 
     if draft["open_questions"]:
         document.add_heading("待人工确认事项", level=1)
