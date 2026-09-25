@@ -1,12 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import { rename, stat } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import type { OpsScheduledTask } from '@bondbuddy/contracts';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { raiseAlert } from '@bondbuddy/api/evidence-gate';
-import { checkLogHealth, forwardLogs, ndjsonFileSink, retentionPolicyFromEnv } from '@bondbuddy/api/log-ops';
+import { checkLogHealth, forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, retentionPolicyFromEnv } from '@bondbuddy/api/log-ops';
 import { storageLifecyclePolicyFromEnv } from '@bondbuddy/api/storage-lifecycle';
 import { runUserDeletionLifecycle } from '@bondbuddy/api/deletion-lifecycle';
 import { checkTrialHealth, trialConfigFromEnv, trialHealthThresholdsFromEnv } from '@bondbuddy/api/trial-guard';
@@ -109,26 +108,18 @@ const intEnv = (env: NodeJS.ProcessEnv, name: string, fallback: number, min: num
 };
 const off = (value: string | undefined) => ['0', 'false', 'off', 'no'].includes((value ?? '').toLowerCase());
 
-/** Keeps the NDJSON sink bounded: past the size cap the file becomes `.1` (replacing the older one). */
-export async function rotateIfLarge(path: string, maxBytes: number) {
-  try { if ((await stat(path)).size < maxBytes) return false; } catch { return false; }
-  await rename(path, `${path}.1`);
-  return true;
-}
-
 export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string, container?: string) => PrivateBlobs = azureBlobs, backupsFactory = backupContainer,
   libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
   const sinkFile = env.BB_LOG_SINK_FILE;
   if (sinkFile && !off(env.BB_OPS_LOG_FORWARD)) {
-    const maxBytes = intEnv(env, 'BB_LOG_SINK_MAX_BYTES', 64 * 1024 * 1024, 1024, 1024 ** 3);
-    const sink = ndjsonFileSink(sinkFile);
+    const maxBytes = ndjsonSizeCapFromEnv(env);
+    const sink = ndjsonFileSink(sinkFile, 'ndjson_file', maxBytes);
     tasks.push({ name: 'log_forward', intervalMs: seconds('BB_OPS_LOG_FORWARD_SECONDS', 30), leaseMs: 120_000, run: async (): Promise<TaskOutcome> => {
       let delivered = 0, failed = 0;
       // Bounded drain: up to 10 batches of 100 per run.
       for (let i = 0; i < 10; i++) {
-        await rotateIfLarge(sinkFile, maxBytes);
         const r = await forwardLogs(pool, sink);
         delivered += r.delivered; failed += r.failed;
         if (r.failed || r.claimed < 100) break;
