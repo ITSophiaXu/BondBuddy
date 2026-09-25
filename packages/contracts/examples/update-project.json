@@ -14,6 +14,9 @@
         "update_details": {
           "has_historical": false,
           "reporting_cutoff": "2026-06-30",
+          "target_reporting_periods": [
+            { "start": "2026-01-01", "end": "2026-06-30", "period_kind": "interim", "scope": "consolidated", "status": "user_asserted", "evidence_refs": [] }
+          ],
           "registration_amount": null,
           "issuance_amount": null,
           "bond_terms": "统一注册覆盖 MTN、CP、SCP；各期金额和期限待定。",
