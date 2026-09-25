@@ -5,7 +5,7 @@
 // `succeeded` only via queue.finish after the Word artifact passed inspection and Blob readback.
 // A stage the pipeline needs but that is not implemented pauses the run (`capability_not_ready`).
 import type { Pool } from 'pg';
-import { MATERIAL_PARSE_JOB_TYPE, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
+import { MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
@@ -14,6 +14,7 @@ import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
+import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
 
 export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string };
 export type StageContext = {
@@ -123,35 +124,107 @@ export const inputLockStage: RunStage = {
   },
 };
 
-export type MaterialsReadiness = { status: 'ready' | 'pending' | 'failed'; code?: string; materials: { material_id: string; material_version: number; outcome: string | null }[]; pending: string[] };
+export type PinnedMaterialReadiness = { material_id: string; material_version: number; role: string; sha256: string;
+  outcome: string | null; parse_snapshot_id: string | null };
+export type MaterialsReadiness = { status: 'ready' | 'pending' | 'failed'; code?: string; materials: PinnedMaterialReadiness[]; pending: string[] };
+export type ParsedFactProducer = (context: FactCandidateProductionContext) => Promise<FactCandidateProductionResult>;
+const financialRoles: ReadonlySet<string> = new Set(M1_MATERIAL_PARTITIONS.find(partition => partition.roles.some(role => role.code === 'audit'))?.roles.map(role => role.code) ?? []);
 
-/** All pinned material versions must have a succeeded parse job for the deployed parser version. */
-export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_user_id' | 'project_id' | 'input_revision'>): Promise<MaterialsReadiness> {
-  const refs = (await pool.query('SELECT material_versions FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
-    [run.owner_user_id, run.project_id, run.input_revision])).rows[0]?.material_versions as { material_id: string; material_version: number }[] | undefined;
-  if (!refs) return { status: 'failed', code: 'NOT_FOUND', materials: [], pending: [] };
+/** Resolve the immutable manifest in order and verify exact material, parse job and snapshot pins. */
+export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_user_id' | 'project_id' | 'input_revision'> & Partial<Pick<RunRow, 'input_hash'>>): Promise<MaterialsReadiness> {
+  const input = (await pool.query('SELECT input_hash,material_versions,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+    [run.owner_user_id, run.project_id, run.input_revision])).rows[0];
+  if (!input) return { status: 'failed', code: 'NOT_FOUND', materials: [], pending: [] };
+  if (run.input_hash && String(input.input_hash).trim() !== run.input_hash.trim())
+    return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials: [], pending: [] };
+  const refs = input.material_versions as { material_id: string; material_version: number }[];
+  const manifest = input.manifest as { materials?: { material_id: string; material_version: number; role: string; sha256: string }[] } | null;
+  if (!Array.isArray(refs) || !Array.isArray(manifest?.materials) || refs.length !== manifest.materials.length)
+    return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials: [], pending: [] };
   const materials: MaterialsReadiness['materials'] = [], pending: string[] = [];
-  for (const ref of refs) {
-    const job = (await pool.query(`SELECT state,error_code,result FROM bb_jobs WHERE job_type=$1 AND owner_user_id=$2 AND project_id=$3 AND material_id=$4
+  for (const [index, ref] of refs.entries()) {
+    const pin = manifest.materials[index];
+    if (!pin || pin.material_id !== ref.material_id || pin.material_version !== ref.material_version)
+      return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials, pending };
+    const material = (await pool.query(`SELECT role,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,
+      [run.owner_user_id, run.project_id, ref.material_id, ref.material_version])).rows[0];
+    if (!material || material.role !== pin.role || String(material.sha256).trim() !== pin.sha256)
+      return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials, pending };
+    const job = (await pool.query(`SELECT state,error_code,result,material_sha256,parser_version,checkpoint FROM bb_jobs WHERE job_type=$1 AND owner_user_id=$2 AND project_id=$3 AND material_id=$4
       AND material_version=$5 AND subtype='material_parse' AND parser_version=$6`, [MATERIAL_PARSE_JOB_TYPE, run.owner_user_id, run.project_id, ref.material_id, ref.material_version, documentParserVersion()])).rows[0];
+    if (job && String(job.material_sha256).trim() !== pin.sha256)
+      return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials, pending };
     const key = `${ref.material_id}:${ref.material_version}`;
     if (job?.state === 'failed') return { status: 'failed', code: job.error_code ?? 'MATERIAL_UNREADABLE', materials, pending };
     if (job?.state === 'cancelled') return { status: 'failed', code: 'INPUT_REQUIRED', materials, pending };
     if (job?.state !== 'succeeded') { pending.push(key); continue; }
-    materials.push({ material_id: ref.material_id, material_version: ref.material_version, outcome: job.result?.outcome ?? null });
+    const snapshotId = job.checkpoint?.stages?.parse_evidence?.snapshot_id;
+    if (financialRoles.has(pin.role) && (typeof snapshotId !== 'string' || !snapshotId))
+      return { status: 'failed', code: 'DATA_UNAVAILABLE', materials, pending };
+    if (financialRoles.has(pin.role)) {
+      const snapshot = (await pool.query(`SELECT content_sha256,parser_version,response_status FROM bb_parse_snapshots
+        WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND material_id=$4 AND material_version=$5`,
+      [snapshotId, run.owner_user_id, run.project_id, ref.material_id, ref.material_version])).rows[0];
+      if (!snapshot || String(snapshot.content_sha256).trim() !== pin.sha256 || snapshot.parser_version !== job.parser_version || snapshot.response_status === 'failed')
+        return { status: 'failed', code: 'DATA_UNAVAILABLE', materials, pending };
+    }
+    materials.push({ material_id: ref.material_id, material_version: ref.material_version, role: pin.role, sha256: pin.sha256,
+      outcome: job.result?.outcome ?? null, parse_snapshot_id: typeof snapshotId === 'string' ? snapshotId : null });
   }
   return { status: pending.length ? 'pending' : 'ready', materials, pending };
 }
 
-export const materialsReadyStage: RunStage = {
+export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunStage {
+  return {
   name: 'materials_ready',
-  run: async ({ pool, run }) => {
+  replay: true,
+  run: async ({ pool, run, checkpoint }) => {
     const r = await materialsReadiness(pool, run);
     if (r.status === 'failed') return { kind: 'fail', code: r.code! };
     if (r.status === 'pending') return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };
-    return { kind: 'done', checkpoint: { materials: r.materials } };
+    const financial = r.materials.filter(material => financialRoles.has(material.role));
+    if (financial.length && !producer) return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidate_producer_unavailable' };
+    const extractions: { material_id: string; material_version: number; extraction_run_id: string; snapshot_id: string;
+      response_sha256: string; candidate_count: number; needs_review_count: number }[] = [];
+    for (const material of financial) {
+      const result = await producer!({ ownerUserId: run.owner_user_id, projectId: run.project_id,
+        inputRevision: run.input_revision, inputHash: run.input_hash.trim(), materialId: material.material_id,
+        materialVersion: material.material_version, snapshotId: material.parse_snapshot_id! });
+      if (result.snapshotId !== material.parse_snapshot_id || !result.extractionRunId || !/^[a-f0-9]{64}$/.test(result.responseSha256))
+        throw new Error('FACT_EXTRACTION_RESULT_INVALID');
+      const stored = (await pool.query(`SELECT input_hash,parse_response_sha256,candidate_ids,needs_review FROM bb_fact_extraction_runs
+        WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND input_revision=$4 AND material_id=$5 AND material_version=$6 AND snapshot_id=$7`,
+      [result.extractionRunId, run.owner_user_id, run.project_id, run.input_revision, material.material_id,
+        material.material_version, material.parse_snapshot_id])).rows[0];
+      if (!stored || String(stored.input_hash).trim() !== run.input_hash.trim() ||
+          String(stored.parse_response_sha256).trim() !== result.responseSha256 ||
+          !Array.isArray(stored.candidate_ids) || !Array.isArray(stored.needs_review) ||
+          stored.candidate_ids.length !== result.inserted.length + result.replayed.length ||
+          stored.needs_review.length !== result.needsReview.length)
+        throw new Error('FACT_EXTRACTION_RESULT_NOT_PERSISTED');
+      extractions.push({ material_id: material.material_id, material_version: material.material_version,
+        extraction_run_id: result.extractionRunId, snapshot_id: result.snapshotId, response_sha256: result.responseSha256,
+        candidate_count: stored.candidate_ids.length, needs_review_count: stored.needs_review.length });
+    }
+    if (financial.length && extractions.every(extraction => extraction.candidate_count === 0))
+      return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidates_unavailable' };
+    const saved = checkpoint?.materials_ready;
+    if (saved) {
+      const prior = Array.isArray(saved.extractions) ? saved.extractions : financial.length ? null : [];
+      if (!prior || prior.length !== extractions.length || extractions.some((item, index) => {
+        const recorded = prior[index] as Record<string, unknown> | undefined;
+        return !recorded || recorded.material_id !== item.material_id || recorded.material_version !== item.material_version ||
+          recorded.extraction_run_id !== item.extraction_run_id || recorded.snapshot_id !== item.snapshot_id ||
+          recorded.response_sha256 !== item.response_sha256 || recorded.candidate_count !== item.candidate_count ||
+          recorded.needs_review_count !== item.needs_review_count;
+      })) return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_extraction_checkpoint_mismatch' };
+    }
+    return { kind: 'done', checkpoint: { materials: r.materials.map(({ material_id, material_version, outcome }) =>
+      ({ material_id, material_version, outcome })), extractions } };
   },
-};
+  };
+}
+export const materialsReadyStage = createMaterialsReadyStage();
 
 async function nextSnapshotVersion(pool: Pool, owner: string, projectId: string) {
   const q = await pool.query("SELECT COALESCE(max(version),0)::int+1 AS v FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'", [owner, projectId]);
@@ -222,8 +295,8 @@ export function wordDeliveryStage(generate: (ctx: StageContext) => Promise<Buffe
  * tests and other task kinds may provide their own stages. Missing stages still pause
  * at `capability_not_ready`; installation alone does not satisfy the production input gates.
  */
-export function defaultRunStages(installed: Partial<Record<'model_generation' | 'word_delivery', RunStage>> = {}): RunStage[] {
-  return RUN_PIPELINE_STAGES.map(name => name === 'input_lock' ? inputLockStage : name === 'materials_ready' ? materialsReadyStage
+export function defaultRunStages(installed: Partial<Record<'model_generation' | 'word_delivery', RunStage>> = {}, factProducer?: ParsedFactProducer): RunStage[] {
+  return RUN_PIPELINE_STAGES.map(name => name === 'input_lock' ? inputLockStage : name === 'materials_ready' ? createMaterialsReadyStage(factProducer)
     : installed[name] ?? notImplemented(name));
 }
 
@@ -306,7 +379,10 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
     if (lost(error)) return 'lost';
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
-      if (lease.attempts < maxAttempts) { await releaseLease(pool, lease); return 'retry'; }
+      if (lease.attempts < maxAttempts) {
+        await releaseLease(pool, lease, currentStage === 'materials_ready' ? 'material_fact_stage_failed' : 'lease_released');
+        return 'retry';
+      }
       await finish(pool, lease, 'failed', { errorCode: 'DATA_UNAVAILABLE', failedStage: currentStage });
       return 'failed';
     } catch (finishError) { if (lost(finishError)) return 'lost'; throw finishError; }

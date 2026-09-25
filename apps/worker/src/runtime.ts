@@ -11,7 +11,7 @@ import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Le
 import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
-import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } from './run-pipeline.js';
+import { defaultRunStages, materialsReadiness, runPipelineOnce, type ParsedFactProducer, type RunStage } from './run-pipeline.js';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
@@ -36,6 +36,8 @@ export type WorkerRuntimeOptions = {
   concurrency?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   runStages?: RunStage[];
+  /** Trusted #15 producer binding. Production remains parked until the owner installs a reviewed extractor. */
+  factCandidateProducer?: ParsedFactProducer;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
   parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
@@ -67,13 +69,13 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters'>>
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer'>>
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters }),
-        word_delivery: historicalWordDeliveryStage() }),
+        word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
   }
@@ -149,7 +151,7 @@ export class WorkerRuntime {
     const { pool } = this.o;
     this.counters.sweeps++;
     for (const r of await pausedRuns(pool, 'awaiting_materials')) {
-      const run = (await pool.query('SELECT owner_user_id,project_id,input_revision FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [r.run_id, r.owner_user_id])).rows[0];
+      const run = (await pool.query('SELECT owner_user_id,project_id,input_revision,input_hash FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [r.run_id, r.owner_user_id])).rows[0];
       if (!run) continue;
       const readiness = await materialsReadiness(pool, run);
       // A failed material is decided on the next claim (the stage fails the run with its code).
