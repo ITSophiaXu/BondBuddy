@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { runDocumentParser, type DocumentParseRequest } from './document-parser.js';
+import { runDocumentParser, runDocumentParserToFile, type DocumentParseRequest } from './document-parser.js';
 
 const request:DocumentParseRequest={
   schema_version:'document-parse-request-v1',
@@ -34,8 +34,9 @@ const response={
 };
 
 test('worker validates the versioned parser response and material binding',async()=>{
-  const result=await runDocumentParser(request,{invoke:async serialized=>{
+  const result=await runDocumentParser(request,{invoke:async (serialized,options)=>{
     assert.deepEqual(JSON.parse(serialized),request);
+    assert.equal(options.timeoutMs,15*60_000,'large DOCX can exceed the previous five-minute bridge limit');
     return JSON.stringify(response);
   }});
   assert.equal(result.records[0]?.literal_quote,'synthetic');
@@ -115,4 +116,55 @@ test('worker accepts the actual Python subprocess response shape when the reposi
   assert.equal(result.status,'parsed');
   assert.equal(result.records[0]?.literal_quote,'synthetic parser contract evidence');
   assert.equal(result.document.page_count,null);
+});
+
+test('#17 a parser child killed by the kernel (SIGKILL, e.g. container OOM) reports DOCUMENT_PARSER_MEMORY_LIMIT', async (t) => {
+  const root=await mkdtemp(join(tmpdir(),'bb-parser-oom-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const fake=join(root,'python3');
+  await writeFile(fake,'#!/bin/sh\ncat >/dev/null\nkill -9 $$\n',{mode:0o700});
+  await assert.rejects(runDocumentParser(request,{pythonExecutable:fake,repoRoot:root}),/DOCUMENT_PARSER_MEMORY_LIMIT/);
+});
+
+test('#17 NDJSON parser bridge spools complete PDF evidence and rejects inconsistent stream summaries',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'bb-parser-stream-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const pdfRequest:DocumentParseRequest={...request,material:{...request.material,media_type:'application/pdf'}};
+  const record=(index:number,page:number)=>({record_id:`evidence-${String(index).padStart(6,'0')}`,material_id:pdfRequest.material.material_id,
+    material_version:pdfRequest.material.material_version,content_hash:pdfRequest.material.sha256,locator_type:'pdf_bbox',
+    locator:{page,line:1,bbox:{x0:10,top:20,x1:60,bottom:32},stable_ref:`pdf:p${String(page).padStart(4,'0')}:l0001`},
+    literal_quote:`Synthetic amount ${index}`,context:`PDF page ${page}`,extraction_method:'native_text',extractor_version:'bondbuddy-document-parser-1.0.4',
+    confidence:null,uncertainty:[],formatting:{fonts:[{font_name:'SyntheticSans',size:9,characters:10}],word_boxes:[{text:'Synthetic',x0:10,top:20,x1:44,bottom:32}]}});
+  const events=[
+    {type:'start',schema_version:'document-parse-stream-v1',request_id:pdfRequest.request_id,parser_version:'bondbuddy-document-parser-1.0.4',
+      material:{material_id:pdfRequest.material.material_id,material_version:pdfRequest.material.material_version,sha256:pdfRequest.material.sha256,media_type:'application/pdf'},document:{page_count:2}},
+    {type:'record',record:record(1,1)},
+    {type:'record',record:record(2,2)},
+    {type:'end',record_count:2,has_uncertainty:false,response:{schema_version:'document-parse-response-v1',request_id:pdfRequest.request_id,
+      parser_version:'bondbuddy-document-parser-1.0.4',status:'parsed',material:{material_id:pdfRequest.material.material_id,
+        material_version:pdfRequest.material.material_version,media_type:'application/pdf',sha256:pdfRequest.material.sha256},warnings:[],
+      document:{page_count:2,pages_without_native_text:[],pages_with_images:[]},error:null}},
+  ];
+  const quote=(value:string)=>`'${value.replaceAll("'","'\\''")}'`;
+  const fake=join(root,'python3');
+  await writeFile(fake,`#!/bin/sh\ncat >/dev/null\n${events.map(event=>`printf '%s\\n' ${quote(JSON.stringify(event))}`).join('\n')}\n`,{mode:0o700});
+  const recordsPath=join(root,'records.ndjson');
+  const result=await runDocumentParserToFile(pdfRequest,recordsPath,{pythonExecutable:fake,repoRoot:root});
+  assert.equal(result.recordCount,2);
+  assert.equal(result.response.document.page_count,2);
+  const rows=(await readFile(recordsPath,'utf8')).trim().split('\n').map(line=>JSON.parse(line) as Record<string,unknown>);
+  assert.deepEqual(rows.map(row=>(row.locator as Record<string,unknown>).stable_ref),['pdf:p0001:l0001','pdf:p0002:l0001']);
+  assert.equal(((rows[0]!.formatting as Record<string,unknown>).word_boxes as unknown[]).length,1);
+
+  const inconsistent=events.map(event=>structuredClone(event));
+  (inconsistent.at(-1)!.response as Record<string,unknown>).parser_version='bondbuddy-document-parser-1.0.5';
+  await writeFile(fake,`#!/bin/sh\ncat >/dev/null\n${inconsistent.map(event=>`printf '%s\\n' ${quote(JSON.stringify(event))}`).join('\n')}\n`,{mode:0o700});
+  await assert.rejects(runDocumentParserToFile(pdfRequest,join(root,'bad.ndjson'),{pythonExecutable:fake,repoRoot:root}),/INVALID_PARSE_RESPONSE/);
+
+  const oversized=events.map(event=>structuredClone(event));
+  (oversized[1]!.record as Record<string,unknown>).literal_quote='x'.repeat(4_096);
+  await writeFile(fake,`#!/bin/sh\ncat >/dev/null\n${oversized.map(event=>`printf '%s\\n' ${quote(JSON.stringify(event))}`).join('\n')}\n`,{mode:0o700});
+  const limitedPath=join(root,'limited.ndjson');
+  await assert.rejects(runDocumentParserToFile(pdfRequest,limitedPath,{pythonExecutable:fake,repoRoot:root,maxOutputBytes:1_024}),/DOCUMENT_PARSER_OUTPUT_LIMIT/);
+  assert.equal(existsSync(limitedPath),false,'an over-budget stream cannot leave partial evidence behind');
 });
