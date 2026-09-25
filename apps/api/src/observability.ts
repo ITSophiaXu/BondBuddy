@@ -2,6 +2,7 @@ import { Value } from '@sinclair/typebox/value';
 import { schemas, ERROR_CODES, ERROR_CATEGORIES, type InternalObservabilityEvent } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { digest, missing, transaction, uid, type PrivateBlobs } from './data.js';
+import { guardEvidenceWrite } from './evidence-gate.js';
 
 const safeCode=/^[a-z][a-z0-9_]{0,63}$/;
 const validId=(value:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -44,7 +45,7 @@ export async function saveSnapshotRef(pool:Pool,input:{owner:string;projectId:st
 export type UsageInput={owner:string;attemptId:string;source:'provider'|'gateway'|'framework'|'reconciliation';sourceEventId:string;status:'unknown'|'pending'|'measured';inputTokens?:number;outputTokens?:number;cachedInputTokens?:number;reasoningTokens?:number;evidenceRef?:string};
 export async function observeUsage(pool:Pool,input:UsageInput) {
   if(!validId(input.sourceEventId)|| (input.evidenceRef&&!validId(input.evidenceRef)))throw new Error('Invalid usage reference');
-  return transaction(pool,async client=>{
+  return guardEvidenceWrite(pool,'usage_not_persisted',()=>transaction(pool,async client=>{
     const q=await client.query('SELECT a.*,j.run_id,r.project_id FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_runs r ON r.id=j.run_id WHERE a.owner_user_id=$1 AND a.id=$2 FOR UPDATE OF a',[input.owner,input.attemptId]);
     const a=q.rows[0];if(!a)throw missing();
     const values=[input.inputTokens??null,input.outputTokens??null,input.cachedInputTokens??null,input.reasoningTokens??null];
@@ -60,7 +61,7 @@ export async function observeUsage(pool:Pool,input:UsageInput) {
     }
     await emitInternal(client,internalEvent({kind:'model.usage_observed',owner:input.owner,projectId:a.project_id,runId:a.run_id,jobId:a.job_id,traceId:a.run_id,logicalCallId:a.logical_call_id,attemptNo:a.attempt_no,usage:{status:input.status==='measured'?'reported':input.status==='pending'?'pending':'unavailable',input_tokens:values[0],output_tokens:values[1],cached_input_tokens:values[2],reasoning_tokens:values[3],evidence_ref:input.evidenceRef??null}}));
     return true;
-  });
+ }));
 }
 export async function recordStructuredError(pool:Pool,input:{owner:string;projectId?:string;jobId?:string;attemptId?:string;traceId:string;code:typeof ERROR_CODES[number];category:typeof ERROR_CATEGORIES[number];stage?:string;providerStatus?:number;retryCount?:number;fingerprint?:string;safeMessageCode?:string;recoveryStatus?:string}) {
   if(!ERROR_CODES.includes(input.code)||!ERROR_CATEGORIES.includes(input.category)||!validId(input.traceId)|| (input.fingerprint&&!/^[a-f0-9]{64}$/.test(input.fingerprint))||(input.safeMessageCode&&!safeCode.test(input.safeMessageCode))||(input.stage&&!safeCode.test(input.stage))||(input.recoveryStatus&&!safeCode.test(input.recoveryStatus)))throw new Error('Invalid structured error');

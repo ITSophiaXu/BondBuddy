@@ -1,0 +1,31 @@
+# Production profile for a small shared host (sized for openclaw-vm: 2 vCPU, ~1.3 GB RAM free,
+# ~5 GB free disk shared with other apps). Use with:
+#   docker compose -f compose.yaml -f compose.prod.yaml ...   (scripts do this when BB_PROFILE=prod)
+# Steady-state limits: postgres 256M + api 192M + worker 320M + web 32M + egress 48M = 848M
+# (migrate 128M runs to completion before api/worker start). No Azurite: Blob is Azure via env,
+# reached through the egress allow-list proxy, so BB_EGRESS_ALLOW must include the Blob host.
+services:
+  postgres:
+    image: postgres:16-alpine
+    command: ['postgres', '-c', 'shared_buffers=32MB', '-c', 'max_connections=30', '-c', 'work_mem=2MB', '-c', 'maintenance_work_mem=32MB', '-c', 'effective_cache_size=128MB']
+    deploy: {resources: {limits: {cpus: '0.75', memory: 256M}}}
+  migrate:
+    environment: {NODE_OPTIONS: --max-old-space-size=96}
+    deploy: {resources: {limits: {cpus: '0.5', memory: 128M}}}
+  api:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=128
+      HTTPS_PROXY: http://egress:3128
+      NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+    deploy: {resources: {limits: {cpus: '0.75', memory: 192M}}}
+  worker:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=160
+      BB_PARSE_JOB_BATCH: '1'
+      NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+      no_proxy: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+    deploy: {resources: {limits: {cpus: '0.75', memory: 320M}}}
+  egress:
+    deploy: {resources: {limits: {cpus: '0.25', memory: 48M}}}
+  web:
+    deploy: {resources: {limits: {cpus: '0.25', memory: 32M}}}

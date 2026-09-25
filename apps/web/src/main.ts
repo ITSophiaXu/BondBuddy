@@ -6,6 +6,8 @@ import { blankDraft, validateDraft } from './form-model';
 import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
 import { renderAccount, renderClosed, type AccountContext } from './account';
 import { date, esc, icon } from './ui';
+import { MaterialProcessing, materialProcessingKey } from './material-processing';
+import './material-processing.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
@@ -32,6 +34,7 @@ const localUploads = new Map<string, LocalUpload[]>();
 const recoveredMaterials = new Map<string, Dto<'MaterialResponse'>[]>();
 const recoveryStates = new Map<string, MaterialRecovery>();
 const recoveryControllers = new Map<string, AbortController>();
+let materialProcessing: MaterialProcessing | undefined;
 const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
   docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2],
   csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5],
@@ -51,6 +54,7 @@ const accountPage: AccountContext = {
 
 function clearPrivateState() {
   disposeOcrReview();
+  materialProcessing?.dispose(); materialProcessing = undefined;
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
@@ -150,6 +154,7 @@ async function renderRoute() {
   draft?.dispose(); draft = undefined;
   items = []; nextCursor = null; listBusy = false;
   disposeOcrReview();
+  materialProcessing?.dispose(); materialProcessing = undefined;
   currentRoute = requested;
   if (requested === '/new') { renderNew(); return; }
   if (requested === '/account') { await renderAccount(accountPage); return; }
@@ -175,7 +180,7 @@ function renderProjects() {
     <section class="panel" aria-labelledby="projects-title"><div class="panel-heading"><h2 id="projects-title">项目列表</h2><button class="text-button" id="refresh-projects">刷新列表</button></div>
     <div class="list-toolbar"><div class="search-field"><label for="project-search">搜索已加载的项目名称</label><input id="project-search" type="search" placeholder="输入项目名称" autocomplete="off"/></div><p class="muted" id="list-count" role="status">正在加载…</p></div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="project-list" aria-live="polite"></div><div class="list-footer"><button class="button secondary" id="load-more" hidden>加载更多项目</button></div></section>
-    <p class="page-footnote">当前可保存和恢复项目基本资料。材料上传与全文更新将在完成验证后开放。</p>`, 'projects');
+    <p class="page-footnote">可保存项目、上传材料并查看解析状态。全文更新将在完成验证后开放。</p>`, 'projects');
   document.querySelector('#project-search')!.addEventListener('input', renderItems);
   document.querySelector('#load-more')!.addEventListener('click', () => { void loadProjects(epoch); });
   document.querySelector('#refresh-projects')!.addEventListener('click', () => { void renderRoute(); });
@@ -240,6 +245,8 @@ function renderNew() {
 
 function renderProject(project: Dto<'ProjectResponse'>) {
   draft = new Draft(project, api, updateSaveState);
+  materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
+  materialProcessing.setVisible(document.visibilityState === 'visible');
   const value = { ...draft.fields, kind: 'update' as const, issuer_name: draft.fields.issuer_name || null };
   shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">填写本次更新的目标，已保存的资料可以随时回来继续。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></div>
     <form id="draft-form" class="update-form"><div class="detail-layout"><section class="panel form-panel"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
@@ -324,16 +331,26 @@ function uploadStatus(upload: LocalUpload) {
   }
 }
 
-function materialStatus(material: Dto<'MaterialResponse'>) {
-  switch (material.state) {
-    case 'uploading': return '上传尚未完成';
-    case 'persisted': return '服务器已保存，等待预检';
-    case 'prechecking': return '服务器正在预检';
-    case 'ready': return '预检状态已就绪；财务数字仍需核对';
-    case 'parsing': return '服务器正在解析';
-    case 'needs_confirmation': return '部分内容需要确认';
-    case 'parsed': return '解析完成；解析结果仍需核对';
-    case 'failed': return `服务器处理失败${material.error ? `：${material.error}` : ''}`;
+function confirmedMaterials(projectId: string) {
+  const materials = new Map((recoveredMaterials.get(projectId) ?? []).map(material => [material.material_id, material]));
+  for (const upload of localUploads.get(projectId) ?? []) if (upload.phase === 'persisted' && upload.material && !materials.has(upload.material.material_id)) materials.set(upload.material.material_id, upload.material);
+  return [...materials.values()];
+}
+
+function updateProcessingRows(projectId: string) {
+  if (currentRoute !== `/projects/${projectId}` || !materialProcessing) return;
+  const materials = new Map(confirmedMaterials(projectId).map(material => [materialProcessingKey(material), material]));
+  for (const element of document.querySelectorAll<HTMLElement>('[data-material-processing]')) {
+    const material = materials.get(element.dataset.materialProcessing!);
+    if (!material) continue;
+    const focused = element.contains(document.activeElement);
+    const template = document.createElement('template');
+    template.innerHTML = materialProcessing.render(material);
+    const replacement = template.content.firstElementChild!;
+    if (element.outerHTML !== replacement.outerHTML) {
+      element.replaceWith(replacement);
+      if (focused) replacement.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    }
   }
 }
 
@@ -351,7 +368,8 @@ function renderUploadRow(upload: LocalUpload) {
   const canRemove = ['failed', 'cancelled', 'uncertain'].includes(upload.phase)
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p></div><div class="material-file-actions">${controls}${canRemove}${upload.phase === 'persisted' && upload.material ? `<a class="text-button" href="#/projects/${encodeURIComponent(upload.projectId)}/materials/${encodeURIComponent(upload.material.material_id)}/ocr">核对识别内容</a>` : ''}</div></li>`;
+  const processing = upload.phase === 'persisted' && upload.material ? `${materialProcessing?.render(upload.material) ?? ''}<a class="text-button" href="#/projects/${encodeURIComponent(upload.projectId)}/materials/${encodeURIComponent(upload.material.material_id)}/ocr">核对识别内容</a>` : '';
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -374,16 +392,43 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">${esc(materialStatus(material))}</p><a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a></div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}<a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a></div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">选择文件<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
-    return `<li class="material-role"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
+    return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
   }).join('')}</ul></section>`).join('');
   return groups;
 }
 
 function updateMaterialWorkspace(projectId: string) {
+  if (currentRoute === `/projects/${projectId}`) materialProcessing?.sync(confirmedMaterials(projectId));
   const list = document.querySelector<HTMLElement>('#material-partitions');
-  if (list && currentRoute === `/projects/${projectId}`) list.innerHTML = renderMaterialPartitions(projectId);
+  if (list && currentRoute === `/projects/${projectId}`) {
+    // Keep file input nodes attached: rebuilding them during recovery/progress can swallow
+    // the native file chooser's change event. Only partition changes add/remove pickers.
+    const template = document.createElement('template'); template.innerHTML = renderMaterialPartitions(projectId);
+    const groups = list.querySelectorAll('.material-role-list');
+    template.content.querySelectorAll('.material-role-list').forEach((desired, index) => {
+      const group = groups[index]; if (!group) return;
+      const existing = new Map([...group.querySelectorAll<HTMLElement>(':scope > .material-role')].map(role => [role.dataset.materialRole!, role]));
+      let previous: Element | null = null;
+      for (const fresh of [...desired.children] as HTMLElement[]) {
+        const old = existing.get(fresh.dataset.materialRole!);
+        const role = old ?? fresh;
+        if (old) {
+          existing.delete(fresh.dataset.materialRole!);
+          const heading = old.querySelector('.material-role-heading')!;
+          heading.querySelector('div')!.innerHTML = fresh.querySelector('.material-role-heading > div')!.innerHTML;
+          const picker = fresh.querySelector('.material-picker'), oldPicker = heading.querySelector('.material-picker');
+          if (!picker) oldPicker?.remove(); else if (!oldPicker) heading.append(picker);
+          old.querySelector('.material-file-list')!.innerHTML = fresh.querySelector('.material-file-list')!.innerHTML;
+        }
+        const next: Element | null = previous ? previous.nextElementSibling : group.firstElementChild;
+        if (next !== role) group.insertBefore(role, next);
+        previous = role;
+      }
+      existing.forEach(role => role.remove());
+    });
+  }
   const status = document.querySelector<HTMLElement>('#material-recovery-status');
   if (!status || currentRoute !== `/projects/${projectId}`) return;
   const state = recoveryStates.get(projectId);
@@ -568,6 +613,8 @@ function bindMaterialWorkspace(projectId: string) {
     input.value = '';
   });
   host.addEventListener('click', event => {
+    const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
+    if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');
     if (!button) return;
     const upload = (localUploads.get(projectId) ?? []).find(item => item.key === button.dataset.uploadKey);
@@ -592,7 +639,10 @@ function bindMaterialWorkspace(projectId: string) {
       }
     }
   });
-  document.querySelector<HTMLButtonElement>('[data-refresh-materials]')!.addEventListener('click', () => { void refreshProjectMaterials(projectId, epoch); });
+  document.querySelector<HTMLButtonElement>('[data-refresh-materials]')!.addEventListener('click', () => {
+    const token = epoch;
+    void refreshProjectMaterials(projectId, token).then(() => { if (token === epoch) materialProcessing?.refresh(); });
+  });
 }
 
 window.addEventListener('hashchange', () => { void renderRoute(); });
@@ -604,9 +654,15 @@ window.addEventListener('beforeunload', event => {
   if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible' || !identity) return;
+  if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }
+  if (!identity) return;
   const expected = identity;
-  void api.me().then(me => { if (identity === expected && me.user_id !== expected) signedOut('账号已更改，请重新登录。'); }).catch(() => {});
+  const token = epoch;
+  void api.me().then(me => {
+    if (identity !== expected || token !== epoch) return;
+    if (me.user_id !== expected) signedOut('账号已更改，请重新登录。');
+    else materialProcessing?.setVisible(true);
+  }).catch(() => {});
 });
 
 async function start() {

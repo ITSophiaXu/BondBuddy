@@ -28,7 +28,7 @@ export async function runOnce(pool:Pool, processor:Processor, leaseSeconds=30, b
   return true;
 }
 
-// Production has no processor until #16 provider reconciliation, #79 logs, and Word delivery are integrated.
+// Synthetic one-shot helper kept for the queue tests. The production entrypoint is runtime.ts (#17).
 if(process.argv[1] && import.meta.url===new URL(`file://${process.argv[1]}`).href) {
   if(process.env.BB_SYNTHETIC_QUEUE_TEST!=='1' || !process.env.DATABASE_URL) throw new Error('No production processor is installed');
   const pool=new Pool({connectionString:process.env.DATABASE_URL});

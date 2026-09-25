@@ -1,0 +1,359 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Pool } from 'pg';
+import { Value } from '@sinclair/typebox/value';
+import { schemas } from '@bondbuddy/contracts';
+import { createServer } from './server.js';
+import { azureBlobs, uid } from './data.js';
+import { observeUsage } from './observability.js';
+import { action, recordPotentialCall, type Lease } from './queue.js';
+import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
+import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
+
+// Synthetic data only. No real provider, credential or customer material is used.
+const connection = process.env.BB_TEST_DATABASE_URL;
+const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
+const skip = !connection || !blobConnection;
+const ORIGIN = 'http://bondbuddy.test';
+const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913. Cookie: bb_session=abc123secret. api_key=sk-synthetictestkey000000000000. Authorization: Bearer syntheticbearertoken';
+
+async function user(pool: Pool, prefix: string) {
+  const id = `${prefix}-${uid().slice(0, 8)}`;
+  await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `u${id.replace(/-/g, '_').toLowerCase()}`.slice(0, 32)]);
+  return id;
+}
+
+async function fixture(pool: Pool) {
+  // A drill that failed midway may leave the shared gate paused; reopen it for a clean start.
+  if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+  resetProcessGateForTests();
+  const ownerA = await user(pool, 'logops-a'), ownerB = await user(pool, 'logops-b');
+  const reader = await user(pool, 'logops-reader'), viewer = await user(pool, 'logops-viewer'), nobody = await user(pool, 'logops-none'), operatorUser = await user(pool, 'logops-op');
+  await grantOperator(pool, { userId: reader, role: 'log_reader', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+  await grantOperator(pool, { userId: operatorUser, role: 'log_operator', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+  await grantOperator(pool, { userId: viewer, role: 'prompt_viewer', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+  let current = ownerA;
+  const app = createServer({ pool, blobs: azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true });
+  // Each handle binds its own user per request, so interleaved handles never act as each other.
+  const as = (userId: string) => (method: string, url: string, payload?: unknown) => { current = userId; return app.inject({ method: method as never, url, headers: { origin: ORIGIN }, payload: payload as never }); };
+  async function runFor(owner: string, name: string) {
+    const send = as(owner);
+    const project = (await send('POST', '/api/v1/projects', { name, kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const input = (await send('POST', `/api/v1/projects/${project}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] })).json();
+    const created = await send('POST', '/api/v1/runs/execute', { execution_request_id: `exec-${uid()}`, project_id: project, input_revision: 1, input_hash: input.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-workspace' });
+    assert.equal(created.statusCode, 202, created.body);
+    const runId = created.json().run_id;
+    // Take this run's lease directly: the global claim() would race other suites' leftover jobs.
+    const token = uid();
+    const job = (await pool.query("UPDATE bb_jobs SET state='running',stage='claimed',lease_token=$2,lease_until=now()+interval '60 seconds',attempts=attempts+1 WHERE run_id=$1 RETURNING id,checkpoint", [runId, token])).rows[0];
+    await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1", [runId]);
+    const lease: Lease = { jobId: job.id, runId, owner, token, checkpoint: job.checkpoint, attempts: 1 };
+    return { project, runId, lease, inputHash: input.input_hash as string };
+  }
+  return { ownerA, ownerB, reader, viewer, nobody, operatorUser, app, as, runFor };
+}
+
+class MemorySink implements LogSink {
+  name: string; seen = new Map<string, LogRecord>(); calls = 0; down = false;
+  constructor(name: string) { this.name = name; }
+  async deliver(records: LogRecord[]) { this.calls++; if (this.down) throw new Error('synthetic sink outage'); for (const r of records) this.seen.set(r.delivery_key, r); }
+}
+async function drain(pool: Pool, sink: LogSink, options = {}) {
+  let total = 0;
+  for (let i = 0; i < 50; i++) { const r = await forwardLogs(pool, sink, { batchSize: 500, ...options }); total += r.delivered; if (!r.claimed) break; }
+  return total;
+}
+
+test('#79 scrubber removes secrets, captcha codes and cookies', () => {
+  const out = scrubSecrets(SECRET_PROMPT + '\nset-cookie: x=1\npassword: hunter2hunter2\neyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U');
+  for (const leaked of ['482913', 'abc123secret', 'sk-synthetictestkey', 'syntheticbearertoken', 'hunter2hunter2', 'eyJhbGciOiJIUzI1NiJ9', 'x=1']) assert.ok(!out.includes(leaked), leaked);
+  assert.ok(out.includes('PLAINTEXT_MARKER_79'), 'ordinary prompt text survives');
+});
+
+test('#79 NDJSON sink cannot be split by log injection', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    await ndjsonFileSink(file).deliver([{ delivery_key: 'a'.repeat(64), outbox_id: 'o1', event: { kind: 'error.recorded', stage: 'x\n{"kind":"forged.event"}\r\n' } }]);
+    const lines = (await readFile(file, 'utf8')).split('\n').filter(Boolean);
+    assert.equal(lines.length, 1);
+    assert.equal(JSON.parse(lines[0]).kind, 'error.recorded');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project, runId, lease, inputHash } = await f.runFor(f.ownerA, 'Synthetic #79 ops');
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, runId, kind: 'user_prompt', version: 1, body: SECRET_PROMPT, inputRevision: 1, inputHash, templateVersion: 'synthetic_template_1', modelParametersVersion: 'synthetic_params_1' });
+    const stored = await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot]);
+    const storedBody = (await blobs.get(stored.rows[0].object_key)).toString('utf8');
+    assert.ok(!storedBody.includes('482913') && !storedBody.includes('abc123secret'), 'secrets never reach Blob');
+    assert.equal(stored.rows[0].redaction_version, 'scrub_v1');
+
+    // Retry pair: attempt 1 fails with measured usage, attempt 2 completes; plus a pending call.
+    const a1 = await recordPotentialCall(pool, lease, 'draft-call', 1, { modelId: 'synthetic-model-a', promptSnapshotId: snapshot });
+    const a2 = await recordPotentialCall(pool, lease, 'draft-call', 2, { modelId: 'synthetic-model-a', promptSnapshotId: snapshot });
+    const a3 = await recordPotentialCall(pool, lease, 'qa-call', 1, { modelId: 'synthetic-model-b', promptSnapshotId: snapshot });
+    await pool.query("UPDATE bb_model_call_attempts SET status='failed' WHERE id=$1", [a1]);
+    await pool.query("UPDATE bb_model_call_attempts SET status='completed',provider_request_id='synthetic-req-2' WHERE id=$1", [a2]);
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a1, source: 'provider', sourceEventId: 'u1', status: 'measured', inputTokens: 100, outputTokens: 10, cachedInputTokens: 40, reasoningTokens: 5 });
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'provider', sourceEventId: 'u2', status: 'measured', inputTokens: 200, outputTokens: 50, cachedInputTokens: 80, reasoningTokens: 20 });
+    // The same supplier call reported again by gateway and framework: counted once.
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'gateway', sourceEventId: 'g2', status: 'measured', inputTokens: 200, outputTokens: 50, cachedInputTokens: 80, reasoningTokens: 20 });
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'framework', sourceEventId: 'f2', status: 'measured', inputTokens: 200, outputTokens: 50, cachedInputTokens: 80, reasoningTokens: 20 });
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a3, source: 'provider', sourceEventId: 'u3', status: 'pending' });
+
+    // Deny by default: non-operators, owners and wrong-role operators all get 404.
+    const adminUrls = [`/api/v1/admin/logs/events`, `/api/v1/admin/metrics`, `/api/v1/admin/jobs/${lease.jobId}/timeline`, `/api/v1/admin/alerts`, `/api/v1/admin/evidence-gate`, `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`];
+    for (const who of [f.nobody, f.ownerA, f.ownerB]) for (const url of adminUrls) assert.equal((await f.as(who)('GET', url)).statusCode, 404, `${who} ${url}`);
+    assert.equal((await f.as(f.reader)('GET', adminUrls[5])).statusCode, 404, 'log_reader cannot read plaintext');
+    assert.equal((await f.as(f.viewer)('GET', adminUrls[0])).statusCode, 404, 'prompt_viewer is not a log_reader');
+    assert.equal((await f.as(f.nobody)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'x' })).statusCode, 404);
+    // Owner A still cannot see owner B's resources through user routes.
+    const other = await f.runFor(f.ownerB, 'Synthetic other owner');
+    assert.equal((await f.as(f.ownerA)('GET', `/api/v1/runs/${other.runId}`)).statusCode, 404);
+
+    const read = f.as(f.reader);
+    // Filter validation is the log-injection boundary for operator input.
+    for (const bad of ['?user_id=a%0d%0aforged', '?unknown=1', '?from=yesterday', '?limit=501', '?error_code=bad code', '?status=RUNNING\n'])
+      assert.equal((await read('GET', `/api/v1/admin/logs/events${bad}`)).statusCode, 422, bad);
+    const events = await read('GET', `/api/v1/admin/logs/events?user_id=${f.ownerA}&job_id=${lease.jobId}&model_id=synthetic-model-a&limit=500`);
+    assert.equal(events.statusCode, 200, events.body);
+    assert.ok(Value.Check(schemas.AdminLogEventsResponse, events.json()));
+    const kinds = events.json().items.map((e: any) => e.kind);
+    assert.ok(kinds.includes('model.call_started') && kinds.includes('model.usage_observed'));
+    assert.ok(events.json().items.every((e: any) => e.user_id === f.ownerA && e.job_id === lease.jobId));
+    assert.ok(!events.json().items.some((e: any) => e.logical_call_id === 'qa-call'), 'model filter excludes other model attempts');
+    const byTrace = await read('GET', `/api/v1/admin/logs/events?trace_id=${other.runId}`);
+    assert.ok(byTrace.json().items.length > 0 && byTrace.json().items.every((e: any) => e.user_id === f.ownerB));
+
+    const timeline = await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`);
+    assert.equal(timeline.statusCode, 200, timeline.body);
+    const t = timeline.json();
+    assert.ok(Value.Check(schemas.AdminJobTimelineResponse, t));
+    assert.equal(t.prompts[0].snapshot_id, snapshot);
+    assert.equal(t.prompts[0].content_state, 'available');
+    assert.equal(t.prompts[0].template_version, 'synthetic_template_1');
+    assert.deepEqual(t.attempts.map((a: any) => [a.logical_call_id, a.attempt_no, a.status, a.usage_status]), [['draft-call', 1, 'failed', 'measured'], ['draft-call', 2, 'completed', 'measured'], ['qa-call', 1, 'pending_reconcile', 'pending']]);
+    assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });
+    assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');
+    assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });
+    assert.ok(t.stages.length >= 2);
+    for (const body of [events.body, timeline.body]) for (const leaked of ['PLAINTEXT_MARKER_79', '482913', 'abc123secret']) assert.ok(!body.includes(leaked), 'normal views have no plaintext');
+
+    const metrics = await read('GET', `/api/v1/admin/metrics?user_id=${f.ownerA}&project_id=${project}`);
+    assert.equal(metrics.statusCode, 200, metrics.body);
+    const m = metrics.json();
+    assert.ok(Value.Check(schemas.AdminMetricsResponse, m));
+    assert.equal(m.jobs.total, 1);
+    assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], [3, 1, 1, 1]);
+    assert.equal(m.consumption.all_attempts.input_tokens, 300);
+    assert.equal(m.consumption.retry_attempts.input_tokens, 200);
+    assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });
+    assert.ok(m.operations.submitted >= 1);
+    assert.ok(!metrics.body.includes('PLAINTEXT_MARKER_79'));
+
+    // Conflicting report for the completed attempt: unresolved, contributes nothing until corrected.
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'framework', sourceEventId: 'f2-late', status: 'measured', inputTokens: 999, outputTokens: 50 });
+    const conflicted = (await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`)).json();
+    assert.equal(conflicted.attempts[1].usage_status, 'conflict');
+    assert.equal(conflicted.consumption.all_attempts.input_tokens, 100);
+    const health = await checkLogHealth(pool, { maxBacklogAgeSeconds: 86_400 });
+    assert.ok(health.usage_conflicts >= 1);
+    const providerObservation = (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1 AND source='provider'", [a2])).rows[0].id;
+    const rawBefore = (await pool.query('SELECT * FROM bb_usage_observations WHERE attempt_id=$1 ORDER BY id', [a2])).rows;
+    // Writes need log_operator: a read-only log_reader (and a prompt_viewer) gets the same 404.
+    const validCorrection = { chosen_observation_id: providerObservation, usage_status: 'measured', reason_code: 'provider_invoice_match' };
+    for (const who of [f.reader, f.viewer, f.nobody]) assert.equal((await f.as(who)('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, validCorrection)).statusCode, 404, who);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_usage_corrections WHERE attempt_id=$1', [a2])).rows[0].n, 0, 'denied write appended nothing');
+    const op = f.as(f.operatorUser);
+    assert.equal((await op('GET', '/api/v1/admin/logs/events')).statusCode, 404, 'log_operator alone has no read surface');
+    assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: null, usage_status: 'measured', reason_code: 'x' })).statusCode, 422);
+    assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1", [a1])).rows[0].id, usage_status: 'measured', reason_code: 'x' })).statusCode, 409, 'observation of another attempt');
+    const corrected = await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, validCorrection);
+    assert.equal(corrected.statusCode, 201, corrected.body);
+    const after = (await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`)).json();
+    assert.equal(after.attempts[1].usage_status, 'measured');
+    assert.equal(after.attempts[1].corrected, true);
+    assert.equal(after.consumption.all_attempts.input_tokens, 300);
+    assert.deepEqual((await pool.query('SELECT * FROM bb_usage_observations WHERE attempt_id=$1 ORDER BY id', [a2])).rows, rawBefore, 'raw rows untouched');
+    await assert.rejects(pool.query('UPDATE bb_usage_observations SET input_tokens=1 WHERE id=$1', [providerObservation]), (e: any) => e.code === '23514');
+    await assert.rejects(pool.query('DELETE FROM bb_usage_corrections WHERE attempt_id=$1', [a2]), (e: any) => e.code === '23514');
+
+    // Plaintext: separate grant, audited, scrubbed, no-store.
+    const viewerSend = f.as(f.viewer);
+    assert.equal((await viewerSend('GET', `/api/v1/admin/prompts/${snapshot}`)).statusCode, 422, 'reason required');
+    const view = await viewerSend('GET', `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`);
+    assert.equal(view.statusCode, 200, view.body);
+    assert.ok(Value.Check(schemas.AdminPromptView, view.json()));
+    assert.equal(view.headers['cache-control'], 'no-store');
+    assert.ok(view.json().body.includes('PLAINTEXT_MARKER_79'));
+    assert.ok(!view.json().body.includes('482913') && !view.json().body.includes('abc123secret'));
+    const auditRow = await pool.query("SELECT * FROM bb_log_access_audit WHERE id=$1", [view.json().audit_id]);
+    assert.deepEqual([auditRow.rows[0].actor_id, auditRow.rows[0].owner_user_id, auditRow.rows[0].purpose, auditRow.rows[0].actor_role, auditRow.rows[0].target_ref, auditRow.rows[0].reason_code], [f.viewer, f.ownerA, 'prompt_view', 'prompt_viewer', snapshot, 'support_case']);
+    assert.equal((await pool.query("SELECT actor_role FROM bb_log_access_audit WHERE actor_id=$1 AND purpose='usage_correction'", [f.operatorUser])).rows[0].actor_role, 'log_operator');
+    assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND purpose IN ('admin_events','admin_job_timeline','admin_metrics')", [f.reader])).rows[0].n >= 5, 'every operator read is audited');
+    await assert.rejects(pool.query('DELETE FROM bb_log_access_audit WHERE actor_id=$1', [f.viewer]), (e: any) => e.code === '23514');
+
+    // Revocation takes effect immediately.
+    await revokeOperator(pool, f.viewer, 'prompt_viewer');
+    assert.equal((await viewerSend('GET', `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`)).statusCode, 404);
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 forwarding drills: sink outage, process crash and replay never lose or double count', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const sink = new MemorySink(`drill_${uid().slice(0, 8).replace(/-/g, '')}`);
+    await drain(pool, new MemorySink('drill_baseline')); // clear older suites' backlog
+    const { lease } = await f.runFor(f.ownerA, 'Synthetic forwarding drill');
+    const a1 = await recordPotentialCall(pool, lease, 'drill-call', 1, { modelId: 'synthetic-model-a' });
+    await pool.query("UPDATE bb_model_call_attempts SET status='failed' WHERE id=$1", [a1]);
+    await observeUsage(pool, { owner: f.ownerA, attemptId: a1, source: 'provider', sourceEventId: 'd1', status: 'measured', inputTokens: 7, outputTokens: 3 });
+    await action(pool, f.ownerA, lease.runId, 'cancel'); // user cancel is a terminal state
+    const expected = (await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n;
+    assert.ok(expected >= 5);
+
+    // 1. Log sink outage: nothing is marked delivered, an alert is raised, business rows are intact.
+    sink.down = true;
+    const outage = await forwardLogs(pool, sink, { batchSize: 500, retrySeconds: 0 });
+    assert.equal(outage.delivered, 0);
+    assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='log_sink_unavailable' AND detail->>'sink'=$1", [sink.name])).rowCount);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL AND last_delivery_error='sink_unavailable'")).rows[0].n, expected);
+    assert.equal((await pool.query("SELECT state FROM bb_jobs WHERE id=$1", [lease.jobId])).rows[0].state, 'cancelled');
+    // Backlog that stays undelivered becomes a stale-backlog alert.
+    await pool.query("UPDATE bb_outbox SET created_at=created_at-interval '2 hours' WHERE aggregate_type='observability' AND delivered_at IS NULL");
+    const health = await checkLogHealth(pool, { maxBacklogAgeSeconds: 300 });
+    assert.ok(health.backlog >= expected && health.alerts.length >= 1);
+    assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='log_backlog_stale'")).rowCount);
+
+    // 2. Process crash after the sink accepted but before PostgreSQL recorded delivery.
+    sink.down = false;
+    await assert.rejects(forwardLogs(pool, sink, { batchSize: 500, afterSinkAccept: async () => { throw new Error('synthetic crash'); } }));
+    assert.equal(sink.seen.size, expected, 'sink accepted the batch');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE sink=$1', [sink.name])).rows[0].n, 0);
+    // Lease expiry models the crashed process; the backlog replays with the same delivery keys.
+    await pool.query("UPDATE bb_outbox SET lease_until=now()-interval '1 second' WHERE aggregate_type='observability' AND delivered_at IS NULL AND lease_token IS NOT NULL");
+    const replayed = await drain(pool, sink);
+    assert.equal(replayed, expected);
+    assert.ok(sink.calls >= 3);
+    assert.equal(sink.seen.size, expected, 'replay re-sent identical keys: no double count');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE sink=$1', [sink.name])).rows[0].n, expected);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n, 0);
+    const kinds = [...sink.seen.values()].filter(r => r.event.job_id === lease.jobId).map(r => r.event.kind);
+    for (const kind of ['model.call_started', 'model.usage_observed', 'job.state_changed']) assert.ok(kinds.includes(kind), kind);
+    assert.ok([...sink.seen.values()].some(r => r.event.job_id === lease.jobId && r.event.kind === 'job.state_changed' && r.event.status === 'cancelled'), 'terminal state forwarded');
+    assert.equal(await drain(pool, sink), 0, 'nothing left to replay');
+    await assert.rejects(pool.query('DELETE FROM bb_log_deliveries WHERE sink=$1', [sink.name]), (e: any) => e.code === '23514');
+    // Usage for the attempt is still counted exactly once after all replays.
+    assert.equal((await pool.query('SELECT input_tokens FROM bb_call_usage_effective WHERE attempt_id=$1', [a1])).rows[0].input_tokens, 7);
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 evidence gate: DB transaction failure pauses new external calls and raises an alert', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    resetProcessGateForTests();
+    const { lease } = await f.runFor(f.ownerA, 'Synthetic gate drill');
+    // Fault injection: the intent INSERT fails like a lost connection inside the transaction.
+    const faulty = new Proxy(pool, { get(target, key) {
+      if (key !== 'connect') return Reflect.get(target, key).bind?.(target) ?? Reflect.get(target, key);
+      return async () => { const client = await target.connect(); return new Proxy(client, { get(c, k) {
+        if (k !== 'query') { const v = Reflect.get(c, k); return typeof v === 'function' ? v.bind(c) : v; }
+        return (sql: any, ...rest: any[]) => typeof sql === 'string' && sql.startsWith('INSERT INTO bb_model_call_attempts') ? Promise.reject(Object.assign(new Error('synthetic connection loss'), { code: '08006' })) : (c.query as any)(sql, ...rest);
+      } }); };
+    } }) as Pool;
+    await assert.rejects(recordPotentialCall(faulty, lease, 'gate-call', 1), (e: any) => e.code === '08006');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 0, 'rolled back, nothing half-written');
+    assert.equal((await gateState(pool)).state, 'paused');
+    const alert = (await pool.query("SELECT a.* FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
+    assert.equal(alert.detail.reason_code, 'call_intent_not_persisted');
+    // Every process now refuses new calls, even with a healthy connection.
+    await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 1), (e: any) => e.status === 503 && e.code === 'DATA_UNAVAILABLE');
+    const gate = await f.as(f.reader)('GET', '/api/v1/admin/evidence-gate');
+    assert.equal(gate.json().state, 'paused');
+    for (const who of [f.reader, f.viewer]) assert.equal((await f.as(who)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' })).statusCode, 404, who);
+    assert.equal((await gateState(pool)).state, 'paused', 'denied resume changed nothing');
+    const resumed = await f.as(f.operatorUser)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' });
+    assert.equal(resumed.statusCode, 200, resumed.body);
+    assert.equal(resumed.json().state, 'open');
+    assert.equal((await f.as(f.operatorUser)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' })).statusCode, 409);
+    const attempt = await recordPotentialCall(pool, lease, 'gate-call', 1);
+    assert.ok(attempt);
+    // A logical conflict (wrong attempt number) is not an evidence outage.
+    await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 5), (e: any) => e.status === 409);
+    assert.equal((await gateState(pool)).state, 'open');
+
+    // Database fully unreachable: the pause is held in-process, then persisted once reachable.
+    const dead = new Pool({ connectionString: 'postgresql://nobody@127.0.0.1:1/none', connectionTimeoutMillis: 500 });
+    await tripEvidenceGate(dead, 'usage_not_persisted');
+    await dead.end();
+    assert.equal((await gateState(pool)).process_state, 'paused');
+    await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 2), (e: any) => e.status === 503);
+    assert.equal((await gateState(pool)).state, 'paused', 'held pause was persisted for other processes');
+    assert.equal((await gateState(pool)).process_state, 'open');
+    await f.as(f.operatorUser)('POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'db_recovered' });
+    assert.ok(await recordPotentialCall(pool, lease, 'gate-call', 2));
+    await assert.rejects(pool.query('DELETE FROM bb_evidence_gate_events'), (e: any) => e.code === '23514');
+    const alerts = await f.as(f.reader)('GET', '/api/v1/admin/alerts');
+    assert.ok(Value.Check(schemas.AdminAlertsResponse, alerts.json()));
+    assert.ok(alerts.json().items.some((a: any) => a.kind === 'evidence_persist_failed'));
+  } finally { resetProcessGateForTests(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 retention purge and user-deletion reclamation keep accounting metadata', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  try {
+    const active = await f.runFor(f.ownerA, 'Synthetic retention active');
+    const runBound = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: active.project, runId: active.runId, kind: 'user_prompt', version: 1, body: 'run-bound synthetic prompt' });
+    const runless = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: active.project, kind: 'structured_input', version: 1, body: 'run-less synthetic prompt' });
+    const attempt = await recordPotentialCall(pool, active.lease, 'retained-call', 1, { modelId: 'synthetic-model-a', promptSnapshotId: runBound });
+    await observeUsage(pool, { owner: f.ownerA, attemptId: attempt, source: 'provider', sourceEventId: 'r1', status: 'measured', inputTokens: 11, outputTokens: 2 });
+    const closedProject = (await f.as(f.ownerB)('POST', '/api/v1/projects', { name: 'Synthetic closing owner', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const closedSnapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerB, projectId: closedProject, kind: 'user_prompt', version: 1, body: 'closed owner synthetic prompt' });
+    const scope = [f.ownerA, f.ownerB];
+
+    // Nothing is due yet; only the closed account's content is reclaimed after closure.
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: scope })).due, 0);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerB]);
+    const closure = await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: scope });
+    assert.deepEqual([closure.due, closure.purged], [1, 1]);
+    const closedKey = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [closedSnapshot])).rows[0].object_key;
+    assert.equal(await blobs.exists(closedKey), false);
+    assert.equal((await pool.query('SELECT reason FROM bb_log_content_tombstones WHERE content_id=$1', [closedSnapshot])).rows[0].reason, 'user_deleted');
+
+    // Past retention: run-less content is purged; content of a non-terminal run is kept.
+    const later = () => new Date(Date.now() + 31 * 86_400_000);
+    const crashKey = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [runless])).rows[0].object_key;
+    await blobs.delete(crashKey); // models a crash after Blob delete, before the tombstone commit
+    const expired = await purgeLogContent(pool, blobs, { contentRetentionDays: 30, now: later, ownerScope: scope });
+    assert.deepEqual([expired.due, expired.purged], [1, 1]);
+    assert.equal((await pool.query('SELECT reason FROM bb_log_content_tombstones WHERE content_id=$1', [runless])).rows[0].reason, 'retention_expired');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [runBound])).rows[0].n, 0, 'active run content kept');
+    await action(pool, f.ownerA, active.runId, 'cancel');
+    const terminal = await purgeLogContent(pool, blobs, { contentRetentionDays: 30, now: later, ownerScope: scope });
+    assert.deepEqual([terminal.due, terminal.purged], [1, 1]);
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, now: later, ownerScope: scope })).due, 0, 'idempotent replay');
+
+    // Metadata needed for accounting survives; content refs read as purged; plaintext is gone.
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE id=ANY($1)', [[runBound, runless, closedSnapshot]])).rows[0].n, 3);
+    assert.equal((await pool.query('SELECT input_tokens FROM bb_call_usage_effective WHERE attempt_id=$1', [attempt])).rows[0].input_tokens, 11);
+    await grantOperator(pool, { userId: f.viewer, role: 'log_reader', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+    const timeline = (await f.as(f.viewer)('GET', `/api/v1/admin/jobs/${active.lease.jobId}/timeline`)).json();
+    assert.equal(timeline.prompts.find((p: any) => p.snapshot_id === runBound).content_state, 'purged');
+    assert.equal(timeline.attempts[0].usage.input_tokens, 11);
+    assert.equal((await f.as(f.viewer)('GET', `/api/v1/admin/prompts/${runBound}?reason_code=support_case`)).statusCode, 404);
+    assert.ok((await pool.query("SELECT 1 FROM bb_observability_events WHERE kind='log.content_purged' AND owner_user_id=$1", [f.ownerB])).rowCount);
+    await assert.rejects(pool.query('DELETE FROM bb_log_content_tombstones WHERE content_id=$1', [runless]), (e: any) => e.code === '23514');
+  } finally { await f.app.close(); await pool.end(); }
+});

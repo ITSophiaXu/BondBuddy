@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/dist-test
+**/.venv
+**/__pycache__
+.git
+.env
+.env.*
+*.pem
+*.key
+deploy/m1/evidence
+deploy/m1/backups
+outputs
+backend
+web
+product-prototype

@@ -3,6 +3,13 @@ export * from './ocr.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
+import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
+export * from './admin-logs.js';
+// --- #17 worker runtime (BB-M1-12-RUNTIME) ---
+import { runtimeSchemas } from './worker-runtime.js';
+export * from './worker-runtime.js';
+// --- end #17 worker runtime ---
+import { trialSchemas, TRIAL_GUARD_ERROR_CODES, TRIAL_ADMIN_OPERATIONS, trialOpenApiPaths } from './trial-guard.js'; export * from './trial-guard.js'; // #35 trial guard
 export * from './reference-library.js';
 
 // Public values live here. Consumers import these constants and inferred types.
@@ -31,7 +38,7 @@ export const M1_UPLOAD_MIME_TYPES = [
 export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'failed', 'cancelled'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED'] as const;
+export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -57,7 +64,7 @@ export const MATERIAL_PARSE_OUTCOMES = ['parsed', 'needs_confirmation', 'pending
 export const MATERIAL_PARSE_PENDING_CAPABILITIES = ['ocr'] as const;
 // Outbox event_type values; each commits in the same transaction as the job state change.
 export const MATERIAL_PARSE_EVENT_TYPES = ['material_parse.enqueued', 'material_parse.claimed', 'material_parse.stage_completed', 'material_parse.retry_scheduled', 'material_parse.paused', 'material_parse.succeeded', 'material_parse.failed', 'material_parse.cancelled'] as const;
-export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered'] as const;
+export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered', 'model.usage_corrected', 'log.content_purged'] as const;
 
 const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal<T[number]>(value)));
 const obj = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
@@ -102,6 +109,9 @@ const ObservabilityErrorSchema = obj({ error_id: id, code: errorCode, category: 
 const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), kind: observabilityEventKind, occurred_at: utc, operation_id: id, request_id: id, trace_id: id, span_id: id, parent_span_id: nullable(id), actor_type: enumOf(['user', 'system', 'operator'] as const), user_id: nullable(id), project_id: nullable(id), conversation_id: nullable(id), message_id: nullable(id), job_id: nullable(id), parent_job_id: nullable(id), run_id: nullable(id), work_item_id: nullable(id), logical_call_id: nullable(id), call_id: nullable(id), attempt_no: nullable(revision), job_kind: nullable(jobKind), stage: nullable(Type.String()), status: nullable(jobStatus), prompt_snapshot_ref: nullable(id), error: nullable(ObservabilityErrorSchema), usage: nullable(UsageObservationSchema) });
 
 export const schemas = {
+  ...adminSchemas,
+  ...runtimeSchemas, // #17 worker runtime
+  ...trialSchemas, // #35 trial guard
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
@@ -233,7 +243,21 @@ export const operations: readonly Operation[] = [
   op('post', '/runs/{run_id}/resume', 'Resume paused run after provider reconciliation (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),
   op('get', '/artifacts/{artifact_id}', 'Get authorized checked Word artifact', 'ArtifactResponse', 200, undefined, [404]),
   op('get', '/artifacts/{artifact_id}/download', 'Download checked owner Word artifact bytes', 'ArtifactResponse', 200, undefined, [404]),
-  op('post', '/conversations/{conversation_id}/messages', 'Submit and snapshot user message (contract only)', 'ConversationMessageResponse', 202, 'ConversationMessageRequest', [404, 409])
+  op('post', '/conversations/{conversation_id}/messages', 'Submit and snapshot user message (contract only)', 'ConversationMessageResponse', 202, 'ConversationMessageRequest', [404, 409]),
+  // #79 operator routes: deny by default; a session without an active operator grant gets 404.
+  op('get', '/admin/logs/events', 'Filter redacted observability events by user/project/job/trace/time/model/status/error_code (log_reader)', 'AdminLogEventsResponse', 200, undefined, [404, 422]),
+  op('get', '/admin/jobs/{job_id}/timeline', 'Job timeline: prompt refs, stages, model attempts with token breakdown, errors and artifact (log_reader)', 'AdminJobTimelineResponse', 200, undefined, [404]),
+  op('get', '/admin/metrics', 'Token, success/failure rate and duration aggregates; retries and final consumption kept apart (log_reader)', 'AdminMetricsResponse', 200, undefined, [404, 422]),
+  op('get', '/admin/prompts/{snapshot_id}', 'Audited plaintext view of a redacted prompt snapshot (prompt_viewer)', 'AdminPromptView', 200, undefined, [404, 422]),
+  op('get', '/admin/alerts', 'List operational alerts (log_reader)', 'AdminAlertsResponse', 200, undefined, [404]),
+  op('get', '/admin/evidence-gate', 'Read whether new external model calls are paused (log_reader)', 'EvidenceGateResponse', 200, undefined, [404]),
+  op('post', '/admin/evidence-gate/resume', 'Append an operator resume after evidence persistence is healthy (log_operator)', 'EvidenceGateResponse', 200, 'EvidenceGateResumeRequest', [404, 409]),
+  op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_operator)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422]),
+  // --- #17 worker runtime: owner-checked SSE streams of persisted state (text/event-stream) ---
+  op('get', '/runs/{run_id}/stream', 'SSE of persisted run events; resumes after Last-Event-ID; closing it never cancels the run', 'RunEvent', 200, undefined, [404, 422]),
+  op('get', '/projects/{project_id}/materials/{material_id}/parse-job/stream', 'SSE of persisted parse-job events; resumes after Last-Event-ID', 'JobStreamEvent', 200, undefined, [404, 422]),
+  // --- end #17 worker runtime ---
+  ...(TRIAL_ADMIN_OPERATIONS as unknown as Operation[]) // #35 trial guard
 ];
 
 const ref = (name: SchemaName) => ({ $ref: `#/components/schemas/${name}` });
@@ -263,10 +287,10 @@ export function openApiDocument() {
       responses[status] = { description, content: { 'application/json': { schema: ref('Error') } } };
     }
     for (const code of [401,403,501]) responses[code] = { description: code === 501 ? 'Capability not connected' : 'Session or CSRF/Origin check failed', content: { 'application/json': { schema: ref('Error') } } };
-    const queryParameters = operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
+    const queryParameters = ['/admin/logs/events','/admin/metrics'].includes(operation.path) ? ADMIN_LOG_FILTERS.map(name => ({ name, in: 'query', required: false, schema: name === 'limit' ? { type: 'integer', minimum: 1, maximum: 500 } : { type: 'string' } })) : operation.path === '/admin/prompts/{snapshot_id}' ? [{ name: 'reason_code', in: 'query', required: true, schema: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,63}$' }, description: 'Recorded in the access audit.' }] : operation.path === '/projects' ? [{ name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }] : operation.path === '/projects/{project_id}/events' ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0, maximum: 2147483647, default: 0 }, description: 'Last seen project-local sequence; returned events have greater seq.' }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 }, description: 'Maximum events in this page; requests above 100 are rejected.' }] : operation.path.endsWith('/events') ? [{ name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 }, description: 'Last seen per-run seq; returned events have greater seq.' }] : [];
     const ifMatch = operation.method === 'patch' && operation.path.includes('/projects/') ? [{ name: 'If-Match', in: 'header', required: true, schema: { type: 'string', description: 'Current draft or source-profile revision as decimal integer' } }] : [];
     const ready = ['/projects','/projects/{project_id}','/projects/{project_id}/input-revisions','/projects/{project_id}/input-revisions/{input_revision}','/projects/{project_id}/materials/uploads','/projects/{project_id}/materials/uploads/{upload_id}/complete','/projects/{project_id}/materials/{material_id}','/projects/{project_id}/materials/{material_id}/download','/projects/{project_id}/events','/projects/{project_id}/materials/{material_id}/parse-job','/projects/{project_id}/materials/{material_id}/parse-job/cancel','/projects/{project_id}/materials/{material_id}/source-profile','/projects/{project_id}/preflight','/runs/{run_id}','/runs/{run_id}/events','/artifacts/{artifact_id}','/artifacts/{artifact_id}/download'].includes(operation.path);
-    const status = operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
+    const status = operation.path.startsWith('/admin/') ? 'implemented; operator-grant-required; deny-by-default-404' : operation.path.includes('/ocr') ? 'implemented; requires-valid-session' : ['/auth/register','/auth/login'].includes(operation.path) ? 'implemented; PostgreSQL Argon2id credentials' : (['/auth/refresh','/auth/logout','/me'].includes(operation.path) || operation.path.startsWith('/account')) ? 'implemented; PostgreSQL session' : ['/runs/execute','/runs/{run_id}/cancel','/runs/{run_id}/resume'].includes(operation.path) ? 'test-only-durable-queue; production-501-until-provider-logging-and-delivery' : ready ? 'implemented; requires-valid-session' : 'contract-only-or-501';
     const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!['/auth/register','/auth/login'].includes(operation.path) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: ['/auth/register','/auth/login'].includes(operation.path) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
@@ -282,5 +306,16 @@ export function openApiDocument() {
     requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
     responses: { '204': { description: 'Bytes verified and received; call complete to register material' }, '404': { description: 'Unknown or foreign upload' }, '422': { description: 'Content mismatch or expired upload', content: { 'application/json': { schema: ref('Error') } } }, '503': { description: 'Temporary upload inspection capacity unavailable; retryable', content: { 'application/json': { schema: ref('Error') } } } }
   } };
+  // --- #17 worker runtime: SSE responses are text/event-stream frames whose `data:` matches the schema ---
+  for (const [path, schema] of [['/runs/{run_id}/stream', 'RunEvent'], ['/projects/{project_id}/materials/{material_id}/parse-job/stream', 'JobStreamEvent']] as const) {
+    const get = paths[`/api/v1${path}`].get as Record<string, any>;
+    get['x-implementation-status'] = 'implemented; requires-valid-session; owner-checked';
+    get.parameters = [...get.parameters, { name: 'Last-Event-ID', in: 'header', required: false, schema: { type: 'string', pattern: '^(0|[1-9][0-9]{0,9})$' } }, { name: 'after', in: 'query', required: false, schema: { type: 'string', pattern: '^(0|[1-9][0-9]{0,9})$' } }];
+    get.responses['200'] = { description: 'Server-sent events: `snapshot` (no id, only without a cursor), persisted events with `id: <seq>`, then `stream.end` (StreamEnd). Reconnect with Last-Event-ID.', content: { 'text/event-stream': { schema: ref(schema) } } };
+  }
+  for (const [path, method] of [['/runs/execute', 'post'], ['/runs/{run_id}/cancel', 'post'], ['/runs/{run_id}/resume', 'post']] as const)
+    (paths[`/api/v1${path}`][method] as Record<string, unknown>)['x-implementation-status'] = 'implemented; worker-runtime; production-501-unless-BB_RUN_RUNTIME_ENABLED; stages-without-implementation-pause-capability_not_ready';
+  // --- end #17 worker runtime ---
+  Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
 }

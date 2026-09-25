@@ -1,0 +1,7 @@
+2026-09-25T07:55:35Z	deploy	0dc68758e677 (previous none)
+2026-09-25T07:57:25Z	restore	backups/20260925T075648Z-acceptance-drill
+2026-09-25T07:58:58Z	restore	backups/20260925T075818Z-acceptance-drill
+2026-09-25T08:09:07Z	deploy	729a5aa71612 (previous 0dc68758e677)
+2026-09-25T08:09:51Z	rollback	0dc68758e677 (from 729a5aa71612)
+2026-09-25T08:10:36Z	deploy	729a5aa71612 (previous 0dc68758e677)
+2026-09-25T08:11:49Z	restore	backups/20260925T081112Z-acceptance-drill
