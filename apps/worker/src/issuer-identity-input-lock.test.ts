@@ -10,7 +10,7 @@ import {
   reviewIssuerIdentitySourceRecord,
 } from '@bondbuddy/api/issuer-identity-source';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
-import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { inputManifestHash, verifyRuleApplicabilitySourceLock } from '@bondbuddy/api/production-rule-pin';
 import type { ProductionRulePackRequest } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
@@ -117,6 +117,23 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       const contextRef = { context_id: `synthetic-context-${suffix}`, version: 1,
         content_hash: inputManifestHash(reviewedContextPin), source_input_revision: input.input_revision,
         source_input_hash: input.input_hash };
+      const sourceLock = { draftRevision: 1, materials: firstManifest.materials as {
+        material_id: string; material_version: number; role: string; sha256: string }[] };
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef, sourceLock), null);
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef,
+        { ...sourceLock, draftRevision: 2 }), 'rule_applicability_source_draft_mismatch');
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef,
+        { ...sourceLock, materials: [{ ...sourceLock.materials[0]!, sha256: 'f'.repeat(64) }] }),
+      'rule_applicability_source_material_mismatch');
+      await connection.query('SAVEPOINT changed_rule_material_sha');
+      await connection.query('UPDATE bb_material_versions SET sha256=$1 WHERE owner_user_id=$2 AND project_id=$3 AND id=$4 AND version=1',
+        ['f'.repeat(64), owner, projectId, materialId]);
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef, sourceLock),
+        'rule_applicability_source_material_stale');
+      await connection.query('ROLLBACK TO SAVEPOINT changed_rule_material_sha');
+      await connection.query('RELEASE SAVEPOINT changed_rule_material_sha');
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, 'foreign-owner', projectId, contextRef, sourceLock),
+        'rule_applicability_source_input_mismatch');
       const request: ProductionRulePackRequest = { market: 'sse', offering: 'private', instrument: 'synthetic-corporate-bond',
         documentStage: 'registration', issuerScope: 'synthetic-issuer-scope', investorScope: 'synthetic-investor-scope',
         industry: 'synthetic-industry', specialFeatures: [], asOf: '2026-09-25' };
@@ -132,6 +149,22 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
           return { request, contextPin: reviewedContextPin };
         } });
       try {
+        const extraUpload = `synthetic-extra-upload-${suffix}`, extraMaterial = `synthetic-extra-material-${suffix}`;
+        const extraSha = sha(`synthetic extra financial material ${suffix}`);
+        await connection.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state,received_sha256,received_bytes)
+          VALUES($1,$2,$3,'extra.pdf','application/pdf',10,$4,'financial',$5,now()+interval '1 hour','completed',$4,10)`,
+        [extraUpload, owner, projectId, extraSha, `synthetic/${extraUpload}`]);
+        await connection.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+          VALUES($1,1,$2,$3,$4,'financial','extra.pdf','application/pdf',10,$5,$6,'parsed')`,
+        [extraMaterial, owner, projectId, extraUpload, extraSha, `synthetic/${extraMaterial}`]);
+        const addedMaterial = await reviewedApp.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`,
+          headers: { origin }, payload: { draft_revision: 1,
+            material_versions: [{ material_id: materialId, material_version: 1 }, { material_id: extraMaterial, material_version: 1 }],
+            requirement_message_ids: [], rule_applicability_context_ref: contextRef } });
+        assert.equal(addedMaterial.statusCode, 201, addedMaterial.body);
+        const addedManifest = (await connection.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+          [projectId, addedMaterial.json().input_revision])).rows[0].manifest;
+        assert.deepEqual(addedManifest.rule_pack_block_reasons, ['rule_applicability_source_material_mismatch']);
         const noRegistry = await reviewedApp.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`,
           headers: { origin }, payload: { draft_revision: 1,
             material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [],
@@ -142,6 +175,18 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
         assert.deepEqual(pinnedAttempt.manifest.rule_pack_block_reasons, ['production_rule_pack_registry_empty']);
         assert.equal(inputManifestHash(pinnedAttempt.manifest), pinnedAttempt.input_hash.trim());
         assert.notEqual(noRegistry.json().input_hash, input.input_hash, 'exact context reference changes the canonical input hash');
+        await connection.query('SAVEPOINT changed_rule_draft');
+        await connection.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
+        const changedDraft = await reviewedApp.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`,
+          headers: { origin }, payload: { draft_revision: 2,
+            material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [],
+            rule_applicability_context_ref: contextRef } });
+        assert.equal(changedDraft.statusCode, 201, changedDraft.body);
+        const changedManifest = (await connection.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+          [projectId, changedDraft.json().input_revision])).rows[0].manifest;
+        assert.deepEqual(changedManifest.rule_pack_block_reasons, ['rule_applicability_source_draft_mismatch']);
+        await connection.query('ROLLBACK TO SAVEPOINT changed_rule_draft');
+        await connection.query('RELEASE SAVEPOINT changed_rule_draft');
       } finally { await reviewedApp.close(); }
       const noRelease = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
         payload: { draft_revision: 1, material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [] } });

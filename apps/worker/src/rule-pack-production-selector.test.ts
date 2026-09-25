@@ -15,6 +15,7 @@ import {
 } from '@bondbuddy/domain';
 import { isolatedTestDatabase } from './test-database.js';
 import { inputManifestHash, lockProductionRulePack } from '@bondbuddy/api/production-rule-pin';
+import { createServer } from '@bondbuddy/api';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
 import {
   revalidateProductionRulePackPin,
@@ -24,6 +25,35 @@ import {
 } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = await isolatedTestDatabase('PRODUCTION_RULE_PACK_SELECTOR_TEST_DATABASE_URL');
+
+function transactionalPool(client: PoolClient): Pool {
+  let serial = 0;
+  return {
+    query: (sql: string, values?: unknown[]) => client.query(sql, values),
+    connect: async () => {
+      const name = `rulepin_preflight_${++serial}`;
+      let active = false;
+      return { release: () => undefined, query: async (sql: string, values?: unknown[]) => {
+        if (sql === 'BEGIN') { await client.query(`SAVEPOINT ${name}`); active = true; return { rows: [] }; }
+        if (sql === 'COMMIT') { if (active) await client.query(`RELEASE SAVEPOINT ${name}`); active = false; return { rows: [] }; }
+        if (sql === 'ROLLBACK') { if (active) { await client.query(`ROLLBACK TO SAVEPOINT ${name}`); await client.query(`RELEASE SAVEPOINT ${name}`); } active = false; return { rows: [] }; }
+        return client.query(sql, values);
+      } };
+    },
+  } as unknown as Pool;
+}
+async function preflightRuleReasons(client: PoolClient, ownerUserId: string, projectId: string,
+  inputHash: string, selectionRequest: ProductionRulePackRequest, contextPin: Record<string, unknown>): Promise<string[]> {
+  const app = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
+    principal: async () => ({ userId: ownerUserId, csrfVerified: true }),
+    reviewedContextLoader: async () => ({ request: selectionRequest, contextPin }) });
+  try {
+    const response = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`,
+      headers: { origin: 'http://bondbuddy.test' }, payload: { input_revision: 2, input_hash: inputHash } });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json().missing_inputs;
+  } finally { await app.close(); }
+}
 const request: ProductionRulePackRequest = {
   market: 'sse', offering: 'public_all', instrument: 'synthetic-corporate-bond',
   documentStage: 'registration', issuerScope: 'synthetic_issuer', investorScope: 'synthetic-investor',
@@ -461,7 +491,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     // Synthetic loader seam only. This transaction is rolled back; no reviewed producer or
     // professional authorization is installed by this fixture.
     const projectId = `synthetic-rule-project-${suffix}`;
-    const sourceManifest = { kind: 'synthetic_rule_source', materials: [] };
+    const sourceManifest = { kind: 'synthetic_rule_source', draft_revision: 1, materials: [] };
     const sourceHash = inputManifestHash(sourceManifest);
     await client.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,market,offering,update_details)
       VALUES($1,$2,'Synthetic rule pin','update','sse','public_all','{}')`, [projectId, operator]);
@@ -479,18 +509,19 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       source_record_id: 'synthetic-record', source_record_sha256: 'b'.repeat(64),
       source_content_sha256: 'c'.repeat(64), reviewed_by: industry, reviewed_at: now.toISOString() };
     const scope = { owner_user_id: operator, id: projectId, market: 'sse', offering: 'public_all' };
-    assert.deepEqual(await lockProductionRulePack(client, scope, identity, ref),
+    const currentLock = { draftRevision: 1, materials: [] };
+    assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref),
       { status: 'blocked', reasons: ['rule_applicability_loader_unavailable'] });
-    assert.deepEqual(await lockProductionRulePack(client, scope, identity, { ...ref, source_input_hash: '0'.repeat(64) },
+    assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, { ...ref, source_input_hash: '0'.repeat(64) },
       async () => ({ request: selectionRequest, contextPin })),
     { status: 'blocked', reasons: ['rule_applicability_source_input_mismatch'] });
-    assert.deepEqual(await lockProductionRulePack(client, scope, identity, ref,
+    assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref,
       async () => ({ status: 'needs_review', reasons: ['rule_applicability_review_pending'] })),
     { status: 'blocked', reasons: ['rule_applicability_review_pending'] });
-    assert.deepEqual(await lockProductionRulePack(client, scope, identity, ref,
+    assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref,
       async () => ({ request: selectionRequest, contextPin: { ...contextPin, overall_review: null } })),
     { status: 'blocked', reasons: ['rule_applicability_context_hash_mismatch'] });
-    const locked = await lockProductionRulePack(client, scope, identity, ref,
+    const locked = await lockProductionRulePack(client, scope, currentLock, identity, ref,
       async (_db, args) => {
         assert.equal(args.contextId, ref.context_id);
         assert.equal(args.expectedSourceInputHash, sourceHash);
@@ -524,6 +555,36 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         reviewedContextLoader: async () => ({ request: selectionRequest, contextPin }) } as StageContext;
       gateCtx = ctx;
       assert.deepEqual(await inputLockStage.run(ctx), { kind: 'done' });
+      let reviewActive = true;
+      const app = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
+        principal: async () => ({ userId: operator, csrfVerified: true }),
+        reviewedContextLoader: async () => reviewActive
+          ? { request: selectionRequest, contextPin }
+          : { status: 'needs_review', reasons: ['rule_applicability_review_revoked'] } });
+      const preflight = async () => app.inject({ method: 'POST',
+        url: `/api/v1/projects/${projectId}/preflight`, headers: { origin: 'http://bondbuddy.test' },
+        payload: { input_revision: 2, input_hash: inputHash } });
+      try {
+        const initially = await preflight();
+        assert.equal(initially.statusCode, 200, initially.body);
+        assert.ok(!initially.json().missing_inputs.some((reason: string) => reason.startsWith('rule_pack:')));
+        reviewActive = false;
+        const revokedReview = await preflight();
+        assert.equal(revokedReview.statusCode, 200, revokedReview.body);
+        assert.ok(revokedReview.json().missing_inputs.includes('rule_pack:rule_applicability_review_revoked'));
+        assert.deepEqual(await inputLockStage.run({ ...ctx,
+          reviewedContextLoader: async () => ({ status: 'needs_review', reasons: ['rule_applicability_review_revoked'] }) }),
+        { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_review_revoked' });
+        reviewActive = true;
+        const foreign = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
+          principal: async () => ({ userId: admin, csrfVerified: true }) });
+        try {
+          const response = await foreign.inject({ method: 'POST',
+            url: `/api/v1/projects/${projectId}/preflight`, headers: { origin: 'http://bondbuddy.test' },
+            payload: { input_revision: 2, input_hash: inputHash } });
+          assert.equal(response.statusCode, 404, response.body);
+        } finally { await foreign.close(); }
+      } finally { await app.close(); }
       const tamperedManifest = { ...manifest, rule_pack_snapshot_refs: { ...snapshotRefs, pack_hash: '0'.repeat(64) } };
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
         VALUES($1,3,$2,1,$3,$4,'[]','[]',$5,$6)`, [projectId, operator, inputHash, tamperedManifest, locked.pin.version, locked.pin.templateVersion]);
@@ -545,6 +606,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
 
     await client.query(`UPDATE bb_rule_pack_production_reviewer_grants SET revoked_at=now() WHERE id=$1`, [industryGrant]);
     if (gateCtx) {
+      assert.ok((await preflightRuleReasons(client, operator, projectId, gateCtx.run.input_hash,
+        selectionRequest, contextPin)).includes('rule_pack:production_rule_pack_reviewer_grant_inactive'));
       const blocked = await inputLockStage.run(gateCtx);
       assert.deepEqual(blocked,
         { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_reviewer_grant_inactive' });
@@ -573,6 +636,10 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       sampleEvidenceIds, operator, operatorGrant, 'Synthetic PG16 withdrawal replay test only.', withdrawalAt]);
     assert.deepEqual(await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext),
       { status: 'blocked', reasons: ['production_rule_pack_withdrawn'] });
+    if (gateCtx) {
+      assert.ok((await preflightRuleReasons(client, operator, projectId, gateCtx.run.input_hash,
+        selectionRequest, contextPin)).includes('rule_pack:production_rule_pack_withdrawn'));
+    }
   } finally {
     await client.query('ROLLBACK');
     client.release();

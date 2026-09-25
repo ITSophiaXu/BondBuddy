@@ -11,8 +11,7 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
-import { canonicalInputManifest, inputManifestHash, loadExactReviewedContext, validContextRef, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
-import { revalidateProductionRulePackPin, type ProductionRulePackPin, type ProductionRulePackApplicabilityContext } from '@bondbuddy/rule-pack-registry';
+import { revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
@@ -54,51 +53,14 @@ const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ 
 type InputBindingGate = Extract<StageOutcome, { kind: 'pause' | 'fail' }>;
 type InputRevisionRow = { input_hash: string; manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
 
-async function verifyProductionRulePin(pool: Pool, run: RunRow, input: Record<string, unknown>, loader?: ReviewedContextLoader): Promise<InputBindingGate | null> {
-  const manifest = input.manifest;
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest))
-    return { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' };
-  const locked = manifest as Record<string, unknown>;
-  if (locked.manifest_schema !== 'production_rule_pin_v1')
-    return { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' };
-  if (inputManifestHash(locked) !== String(input.input_hash).trim() || String(input.input_hash).trim() !== run.input_hash.trim())
+async function verifyProductionRulePin(pool: Pool, run: RunRow, input: InputRevisionRow, loader?: ReviewedContextLoader): Promise<InputBindingGate | null> {
+  if (String(input.input_hash).trim() !== run.input_hash.trim())
     return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-  if (locked.rule_pack_selection !== 'selected') {
-    const reasons = locked.rule_pack_block_reasons;
-    const reason = Array.isArray(reasons) && typeof reasons[0] === 'string' ? reasons[0] : 'rule_pack_selection_blocked';
-    return { kind: 'pause', stage: 'capability_not_ready', reason };
-  }
-  const pin = locked.rule_pack_pin as ProductionRulePackPin | undefined;
-  const context = locked.rule_pack_context as ProductionRulePackApplicabilityContext | undefined;
-  const applicability = locked.rule_applicability_pin as Record<string, unknown> | undefined;
-  const ref = applicability?.ref;
-  const contextPin = applicability?.contextPin;
-  const refs = locked.rule_pack_snapshot_refs as Record<string, unknown> | undefined;
-  const identity = locked.issuer_identity;
-  if (!pin || !context || !applicability || !validContextRef(ref) || !contextPin || !refs ||
-      !isVerifiedIssuerIdentityBinding(identity) ||
-      input.rule_pack_version !== pin.version || input.template_version !== pin.templateVersion ||
-      locked.rule_pack_version !== pin.version || locked.template_version !== pin.templateVersion ||
-      locked.market !== pin.market || locked.offering !== pin.offering ||
-      refs.release_event_id !== pin.releaseEventId || refs.pack_id !== pin.packId || refs.pack_version !== pin.version || refs.pack_hash !== pin.contentHash ||
-      refs.template_id !== pin.templateId || refs.template_version !== pin.templateVersion || refs.template_hash !== pin.templateHash ||
-      refs.coverage_id !== pin.coverageId || refs.coverage_version !== pin.coverageVersion || refs.coverage_hash !== pin.coverageHash ||
-      canonicalInputManifest(context) !== canonicalInputManifest(pin.applicabilityContext) ||
-      inputManifestHash(contextPin) !== ref.content_hash)
-    return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-  const reviewed = await loadExactReviewedContext(pool, run.owner_user_id, run.project_id, ref, identity, loader);
-  if ('status' in reviewed) return { kind: 'pause', stage: 'capability_not_ready', reason: reviewed.reasons[0] ?? 'rule_applicability_needs_review' };
-  if (canonicalInputManifest(reviewed.contextPin) !== canonicalInputManifest(contextPin) ||
-      reviewed.request.market !== pin.market || reviewed.request.offering !== pin.offering ||
-      reviewed.request.instrument !== pin.instrument || reviewed.request.documentStage !== pin.documentStage ||
-      reviewed.request.asOf !== pin.asOf ||
-      canonicalInputManifest({issuerScope:reviewed.request.issuerScope,investorScope:reviewed.request.investorScope ?? null,
-        industry:reviewed.request.industry ?? null,specialFeatures:reviewed.request.specialFeatures ?? null}) !==
-      canonicalInputManifest(pin.applicabilityContext))
-    return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-  const result = await revalidateProductionRulePackPin(pool, pin, context);
-  if (result.status === 'blocked') return { kind: 'pause', stage: 'capability_not_ready', reason: result.reasons[0] ?? 'production_rule_pack_blocked' };
-  return null;
+  const result = await revalidateStoredProductionRulePin(pool,
+    { ownerUserId: run.owner_user_id, projectId: run.project_id }, input, loader);
+  if (result.status === 'valid') return null;
+  if (result.status === 'tampered') return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+  return { kind: 'pause', stage: 'capability_not_ready', reason: result.reason };
 }
 
 async function verifyUpdateIssuerIdentityBinding(pool: Pool, run: RunRow, manifest: Record<string, unknown> | null): Promise<InputBindingGate | null> {

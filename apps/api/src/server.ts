@@ -27,7 +27,7 @@ import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './
 import { installFactReviewRoutes } from './fact-review.js';
 import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
-import { inputManifestHash, lockProductionRulePack, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
+import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader };
@@ -222,7 +222,7 @@ export function createServer(settings: Settings = {}) {
       if(p.kind==='update'){
         Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
       }
-      const ruleBinding=await lockProductionRulePack(client,p,
+      const ruleBinding=await lockProductionRulePack(client,p,{draftRevision:p.draft_revision,materials:resolved},
         issuerIdentity?.status==='verified'?issuerIdentity:undefined,b.rule_applicability_context_ref,settings.reviewedContextLoader);
       Object.assign(manifest,{manifest_schema:'production_rule_pin_v1',rule_pack_selection:ruleBinding.status,
         rule_pack_block_reasons:ruleBinding.status==='blocked'?ruleBinding.reasons:[],
@@ -592,14 +592,9 @@ export function createServer(settings: Settings = {}) {
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
         const missingInputs:string[]=[],uncertainty:string[]=[];
         const manifest=input.manifest as Record<string,unknown>;
-        if(manifest.manifest_schema==='production_rule_pin_v1'){
-          if(inputManifestHash(manifest)!==input.input_hash.trim())missingInputs.push('input_manifest_hash_mismatch');
-          if(manifest.rule_pack_selection!=='selected'){
-            const reasons=Array.isArray(manifest.rule_pack_block_reasons)?manifest.rule_pack_block_reasons:[];
-            missingInputs.push(...reasons.filter((reason):reason is string=>typeof reason==='string').map(reason=>`rule_pack:${reason}`));
-            if(!reasons.length)missingInputs.push('rule_pack:selection_blocked');
-          }
-        }else missingInputs.push('rule_pack:legacy_input_not_pinned');
+        const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
+        if(ruleCheck.status!=='valid')missingInputs.push(ruleCheck.status==='tampered'&&ruleCheck.reason==='input_manifest_hash_mismatch'
+          ?ruleCheck.reason:`rule_pack:${ruleCheck.reason}`);
         if(manifest.kind==='update'){
           const binding=manifest.issuer_identity;
           if(!isVerifiedIssuerIdentityBinding(binding)){
@@ -613,7 +608,7 @@ export function createServer(settings: Settings = {}) {
             if(!material||material.role!=='historical'||material.deleted_at||material.sha256.trim()!==binding.source_content_sha256){
               missingInputs.push(`issuer_material_stale:${binding.material_id}:${binding.material_version}`);
             }else{
-              const current=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:binding.material_id,materialVersion:binding.material_version});
+              const current=await loadVerifiedIssuerIdentitySourceRecord(client,{ownerUserId:user,projectId:id,materialId:binding.material_id,materialVersion:binding.material_version});
               if(!current||!issuerIdentityBindingMatches(binding,current))missingInputs.push(`issuer_identity_stale:${binding.material_id}:${binding.material_version}`);
             }
           }
