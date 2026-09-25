@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
-import { M1_MATERIAL_PARTITIONS, schemas, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
-import { estimateUpdateDifficulty, type CutoffDecision, type UpdateDifficultyEstimate } from '@bondbuddy/domain/update-difficulty';
+import { M1_MATERIAL_PARTITIONS, emptyUpdateDetails, schemas, updateDetailsErrors, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
+import { estimateUpdateDifficulty, type CutoffDecision, type TargetReportingPeriod, type UpdateDifficultyEstimate, type UserAssertedTargetPeriod } from '@bondbuddy/domain/update-difficulty';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 
 export interface UpdateDifficultyClient {
@@ -29,7 +29,7 @@ export interface TrustedUpdateDifficultyInput {
   readonly inputHash?: string;
   readonly financialMaterialVersions: readonly { readonly materialId: string; readonly materialVersion: number }[];
   /** Periods and decisions come from a trusted server-side target/material workflow. */
-  readonly targetReportingPeriods: readonly ReportingPeriod[];
+  readonly targetReportingPeriods: readonly TargetReportingPeriod[];
   readonly replacements: readonly CutoffDecision[];
   readonly restatements: readonly CutoffDecision[];
   readonly requestId: string;
@@ -53,7 +53,7 @@ export interface StoredUpdateDifficultySnapshot {
   readonly inputHash: string | null;
   readonly financialMaterialVersions: readonly { materialId: string; materialVersion: number }[];
   readonly comparisonInput: {
-    readonly targetReportingPeriods: readonly ReportingPeriod[];
+    readonly targetReportingPeriods: readonly TargetReportingPeriod[];
     readonly replacements: readonly CutoffDecision[];
     readonly restatements: readonly CutoffDecision[];
   };
@@ -62,6 +62,16 @@ export interface StoredUpdateDifficultySnapshot {
   readonly estimate: UpdateDifficultyEstimate;
   readonly createdAt: string;
   readonly replayed: boolean;
+}
+
+export interface LockedUpdateDifficultyRequest {
+  readonly ownerUserId: string;
+  readonly projectId: string;
+  readonly inputRevision: number;
+  readonly inputHash: string;
+  readonly requestId: string;
+  readonly replacements?: readonly CutoffDecision[];
+  readonly restatements?: readonly CutoffDecision[];
 }
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -130,6 +140,117 @@ function mapRow(row: Record<string, unknown>, replayed: boolean): StoredUpdateDi
 function validateEstimate(value: Record<string, unknown>): boolean {
   return value.status === 'ready' || value.status === 'needs_confirmation';
 }
+
+function targetPeriodFromManifest(value: unknown): UserAssertedTargetPeriod {
+  if (!isRecord(value) || ![null, 'annual', 'interim'].includes(value.period_kind as string | null) ||
+      ![null, 'consolidated', 'parent'].includes(value.scope as string | null) ||
+      !['user_asserted', 'needs_confirmation'].includes(value.status as string) ||
+      !(value.start === null || typeof value.start === 'string') || !(value.end === null || typeof value.end === 'string') ||
+      !Array.isArray(value.evidence_refs) || value.evidence_refs.length !== 0 ||
+      Object.keys(value).some(key => !['start', 'end', 'period_kind', 'scope', 'status', 'evidence_refs'].includes(key))) {
+    throw fail('TARGET_INPUT_MANIFEST_INVALID');
+  }
+  return { start: value.start as string | null, end: value.end as string | null,
+    period_kind: value.period_kind as UserAssertedTargetPeriod['period_kind'],
+    scope: value.scope as UserAssertedTargetPeriod['scope'], status: value.status as UserAssertedTargetPeriod['status'], evidence_refs: [] };
+}
+
+function manifestTargetPeriods(manifest: Record<string, unknown>): UserAssertedTargetPeriod[] {
+  const details = manifest.update_details;
+  if (!isRecord(details)) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+  const raw = details.target_reporting_periods ?? [];
+  if (!Array.isArray(raw) || raw.length > 30) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+  const periods = raw.map(targetPeriodFromManifest);
+  const errors = updateDetailsErrors({ ...emptyUpdateDetails(), target_reporting_periods: periods.map(period => ({ ...period, evidence_refs: [] as string[] })) });
+  if (errors.some(error => error.field.startsWith('update_details.target_reporting_periods.'))) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+  return periods;
+}
+
+function targetPeriodMatches(left: readonly TargetReportingPeriod[], right: readonly TargetReportingPeriod[]): boolean {
+  const targetPeriodKeys = ['end', 'evidence_refs', 'period_kind', 'scope', 'start', 'status'];
+  const periodKey = (period: TargetReportingPeriod): unknown => ({ start: period.start, end: period.end,
+    period_kind: period.period_kind, scope: period.scope, status: period.status,
+    evidence_refs: 'evidence_refs' in period ? period.evidence_refs : [] });
+  return canonical(left.map(periodKey)) === canonical(right.map(periodKey)) &&
+    left.every(period => canonical(Object.keys(period).sort()) === canonical(targetPeriodKeys) &&
+      !('provenance' in period) && !('raw_value' in period));
+}
+
+/**
+ * Assembles the trusted #76 input from the immutable lock. Callers provide only
+ * the owner/project/lock identity and request key; materials, source profile,
+ * and target periods are derived from owner-scoped database rows.
+ */
+export async function loadLockedUpdateDifficultyInput(
+  dependencies: UpdateDifficultyDependencies,
+  request: LockedUpdateDifficultyRequest,
+): Promise<TrustedUpdateDifficultyInput> {
+  if (![request.ownerUserId, request.projectId, request.requestId].every(validId) ||
+      !Number.isSafeInteger(request.inputRevision) || request.inputRevision < 1 || !/^[a-f0-9]{64}$/.test(request.inputHash)) {
+    throw fail('INVALID_UPDATE_DIFFICULTY_CONTEXT');
+  }
+  const client = await dependencies.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const project = await client.query(`SELECT draft_revision,latest_input_revision FROM bb_projects
+      WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE`, [request.ownerUserId, request.projectId]);
+    if (project.rows.length !== 1) throw fail('PROJECT_NOT_FOUND');
+    if (Number(project.rows[0]!.latest_input_revision) !== request.inputRevision) throw fail('TARGET_INPUT_REVISION_STALE');
+    const lock = await client.query(`SELECT input_hash,draft_revision,manifest,material_versions FROM bb_input_revisions
+      WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [request.ownerUserId, request.projectId, request.inputRevision]);
+    const lockedManifest = lock.rows.length === 1 ? parseJson(lock.rows[0]!.manifest) : null;
+    if (lock.rows.length !== 1 || String(lock.rows[0]!.input_hash).trim() !== request.inputHash ||
+        Number(lock.rows[0]!.draft_revision) !== Number(project.rows[0]!.draft_revision)) throw fail('TARGET_INPUT_REVISION_MISMATCH');
+    const manifest = lockedManifest;
+    const refs = parseJson(lock.rows[0]!.material_versions);
+    if (!isRecord(manifest) || manifest.kind !== 'update' || Number(manifest.draft_revision) !== Number(project.rows[0]!.draft_revision) ||
+        !Array.isArray(manifest.materials) || !Array.isArray(refs)) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+    const manifestMaterials = manifest.materials.filter(isRecord).map(item => ({
+      material_id: item.material_id, material_version: item.material_version, role: item.role, sha256: item.sha256,
+    }));
+    const manifestRefs = refs.filter(isRecord).map(item => ({ material_id: item.material_id, material_version: item.material_version }));
+    const normalizeRefs = (items: { material_id: unknown; material_version: unknown }[]) => items
+      .map(item => ({ material_id: item.material_id, material_version: item.material_version }))
+      .sort((a, b) => String(a.material_id).localeCompare(String(b.material_id)) || Number(a.material_version) - Number(b.material_version));
+    if (manifestMaterials.length !== manifest.materials.length || manifestRefs.length !== refs.length ||
+        canonical(normalizeRefs(manifestMaterials)) !== canonical(normalizeRefs(manifestRefs)) ||
+        new Set(manifestMaterials.map(item => String(item.material_id))).size !== manifestMaterials.length ||
+        manifestMaterials.some(item => typeof item.material_id !== 'string' || !Number.isSafeInteger(item.material_version) ||
+          typeof item.role !== 'string' || typeof item.sha256 !== 'string')) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+    const historical = manifestMaterials.filter(item => item.role === 'historical');
+    if (historical.length !== 1) throw fail('HISTORICAL_MATERIAL_SELECTION_REQUIRED');
+    const finance = manifestMaterials.filter(item => FINANCIAL_ROLES.has(String(item.role)));
+    if (!finance.length) throw fail('FINANCIAL_MATERIALS_REQUIRED');
+    const materialRows = await client.query(`SELECT m.id,m.version,m.role,m.sha256 FROM bb_material_versions m
+      JOIN bb_projects p ON p.owner_user_id=m.owner_user_id AND p.id=m.project_id AND p.deleted_at IS NULL
+      WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM jsonb_to_recordset($3::jsonb) AS x(material_id text,material_version integer)
+          WHERE x.material_id=m.id AND x.material_version=m.version)`,
+    [request.ownerUserId, request.projectId, JSON.stringify(normalizeRefs(manifestMaterials))]);
+    if (materialRows.rows.length !== manifestMaterials.length || materialRows.rows.some(row => {
+      const pinned = manifestMaterials.find(item => item.material_id === row.id && Number(item.material_version) === Number(row.version));
+      return !pinned || String(row.role) !== pinned.role || String(row.sha256).trim().toLowerCase() !== String(pinned.sha256).trim().toLowerCase();
+    })) throw fail('LOCKED_MATERIAL_STALE');
+    const sourceMaterial = historical[0]!;
+    const profile = await client.query(`SELECT profile_version FROM bb_historical_profiles
+      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+      ORDER BY profile_version DESC LIMIT 1`,
+    [request.ownerUserId, request.projectId, sourceMaterial.material_id, sourceMaterial.material_version]);
+    if (profile.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
+    const targetReportingPeriods = manifestTargetPeriods(manifest);
+    const source = { materialId: String(sourceMaterial.material_id), materialVersion: Number(sourceMaterial.material_version),
+      profileVersion: Number(profile.rows[0]!.profile_version) };
+    const financialMaterialVersions = finance.map(item => ({ materialId: String(item.material_id), materialVersion: Number(item.material_version) }));
+    await client.query('COMMIT');
+    return { ownerUserId: request.ownerUserId, projectId: request.projectId, source,
+      targetRevision: Number(project.rows[0]!.draft_revision), inputRevision: request.inputRevision, inputHash: request.inputHash,
+      financialMaterialVersions, targetReportingPeriods,
+      replacements: request.replacements ?? [], restatements: request.restatements ?? [], requestId: request.requestId };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch { /* keep the original lock validation error */ }
+    throw error;
+  } finally { client.release(); }
+}
 const RETURNING_COLUMNS = ['id', 'owner_user_id', 'project_id', 'request_id', 'request_hash', 'source_material_id', 'source_material_version',
   'source_profile_version', 'target_revision', 'source_market', 'source_offering', 'target_market', 'target_offering', 'input_revision',
   'input_hash', 'financial_material_versions', 'comparison_input', 'old_profile_completeness', 'estimate', 'created_at'] as const;
@@ -144,7 +265,10 @@ async function fetchProfile(client: UpdateDifficultyClient, input: TrustedUpdate
        JOIN bb_material_versions m ON m.owner_user_id=p.owner_user_id AND m.project_id=p.project_id
         AND m.id=p.material_id AND m.version=p.material_version AND m.role='historical' AND m.deleted_at IS NULL
         AND m.media_type IN ('application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf')
-      WHERE p.owner_user_id=$1 AND p.project_id=$2 AND p.material_id=$3 AND p.material_version=$4 AND p.profile_version=$5`,
+      WHERE p.owner_user_id=$1 AND p.project_id=$2 AND p.material_id=$3 AND p.material_version=$4 AND p.profile_version=$5
+        AND NOT EXISTS (SELECT 1 FROM bb_historical_profiles newer WHERE newer.owner_user_id=p.owner_user_id
+          AND newer.project_id=p.project_id AND newer.material_id=p.material_id AND newer.material_version=p.material_version
+          AND newer.profile_version>p.profile_version)`,
     [input.ownerUserId, input.projectId, input.source.materialId, input.source.materialVersion, input.source.profileVersion]);
   if (result.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
   const recognition = activeRecognition(result.rows[0]!.recognition, input.source.materialId, input.source.materialVersion, input.source.profileVersion);
@@ -155,7 +279,7 @@ async function fetchProfile(client: UpdateDifficultyClient, input: TrustedUpdate
 }
 
 async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: TrustedUpdateDifficultyInput,
-  recognition: Recognition, targetPeriods: readonly ReportingPeriod[]): Promise<boolean> {
+  recognition: Recognition, targetPeriods: readonly TargetReportingPeriod[]): Promise<boolean> {
   for (const material of input.financialMaterialVersions) {
     const row = await client.query(
       `SELECT m.role FROM bb_material_versions m
@@ -167,17 +291,31 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
   const financialKeys = new Set(input.financialMaterialVersions.map(item => `${item.materialId}\0${item.materialVersion}`));
   if (input.inputRevision !== undefined) {
     const locked = await client.query(
-      `SELECT input_hash, draft_revision, material_versions FROM bb_input_revisions
+      `SELECT input_hash, draft_revision, material_versions, manifest FROM bb_input_revisions
         WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`,
       [input.ownerUserId, input.projectId, input.inputRevision]);
     if (locked.rows.length !== 1 || String(locked.rows[0]!.input_hash).trim() !== input.inputHash || Number(locked.rows[0]!.draft_revision) !== input.targetRevision) throw fail('TARGET_INPUT_REVISION_MISMATCH');
     const refs = parseJson(locked.rows[0]!.material_versions);
+    const manifest = parseJson(locked.rows[0]!.manifest);
+    if (!isRecord(manifest) || manifest.kind !== 'update' || Number(manifest.draft_revision) !== input.targetRevision) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+    const periods = manifestTargetPeriods(manifest);
+    if (!targetPeriodMatches(input.targetReportingPeriods, periods)) throw fail('TARGET_REPORTING_PERIODS_LOCK_MISMATCH');
+    const manifestMaterials = manifest.materials;
+    if (!Array.isArray(manifestMaterials) || !manifestMaterials.every(isRecord)) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+    const sourceMaterials = manifestMaterials.filter(ref => ref.role === 'historical');
+    if (sourceMaterials.length !== 1 || sourceMaterials[0]!.material_id !== input.source.materialId ||
+        Number(sourceMaterials[0]!.material_version) !== input.source.materialVersion) throw fail('HISTORICAL_MATERIAL_SELECTION_MISMATCH');
+    const manifestFinancial = manifestMaterials.filter(ref => FINANCIAL_ROLES.has(String(ref.role)))
+      .map(ref => `${String(ref.material_id)}\0${Number(ref.material_version)}`).sort();
+    const providedFinancial = input.financialMaterialVersions.map(ref => `${ref.materialId}\0${ref.materialVersion}`).sort();
+    if (canonical(manifestFinancial) !== canonical(providedFinancial)) throw fail('FINANCIAL_MATERIAL_NOT_IN_INPUT_REVISION');
     if (!Array.isArray(refs) || !refs.some(ref => isRecord(ref) &&
       ref.material_id === input.source.materialId && Number(ref.material_version) === input.source.materialVersion) ||
       input.financialMaterialVersions.some(item => !refs.some(ref => isRecord(ref) &&
       ref.material_id === item.materialId && Number(ref.material_version) === item.materialVersion))) throw fail('FINANCIAL_MATERIAL_NOT_IN_INPUT_REVISION');
   }
-  const targetRefs = targetPeriods.flatMap(period => period.provenance.evidence_refs);
+  const evidenceTargetPeriods = targetPeriods.filter((period): period is ReportingPeriod => 'provenance' in period);
+  const targetRefs = evidenceTargetPeriods.flatMap(period => period.provenance.evidence_refs);
   let allEvidenceBound = true;
   const sourceProvenance = [recognition.source_market.provenance, recognition.source_offering.provenance,
     recognition.latest_reporting_cutoff.provenance, ...recognition.reporting_periods.map(period => period.provenance)];
@@ -208,7 +346,7 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
       [input.ownerUserId, input.projectId, input.source.materialId, input.source.materialVersion, sourceParserVersion ?? '', ref]);
     if (result.rows.length !== 1) allEvidenceBound = false;
   }
-  for (const period of targetPeriods) {
+  for (const period of evidenceTargetPeriods) {
     const key = `${period.provenance.material_id}\0${period.provenance.material_version}`;
     if (!financialKeys.has(key)) { allEvidenceBound = false; continue; }
     for (const ref of period.provenance.evidence_refs) {
@@ -243,8 +381,8 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
       [input.ownerUserId, input.projectId, ref, JSON.stringify(allowedEvidenceMaterials)]);
     if (result.rows.length !== 1) allEvidenceBound = false;
   }
-  if (targetPeriods.length === 0 || targetRefs.length === 0) allEvidenceBound = false;
-  if (targetPeriods.some(period => period.status !== 'recognized' || period.uncertainty.length > 0 || period.provenance.evidence_refs.length === 0) ||
+  if (targetPeriods.length === 0 || targetRefs.length === 0 || evidenceTargetPeriods.length !== targetPeriods.length) allEvidenceBound = false;
+  if (evidenceTargetPeriods.some(period => period.status !== 'recognized' || period.uncertainty.length > 0 || period.provenance.evidence_refs.length === 0) ||
       recognition.reporting_periods.some(period => period.status !== 'recognized' || period.uncertainty.length > 0 || period.provenance.evidence_refs.length === 0) ||
       [recognition.source_market, recognition.source_offering, recognition.latest_reporting_cutoff]
         .some(field => field.status !== 'recognized' || field.uncertainty.length > 0 || field.provenance.evidence_refs.length === 0)) allEvidenceBound = false;
@@ -272,15 +410,10 @@ export async function createUpdateDifficultySnapshot(
     const prior = await client.query(
       `SELECT ${QUALIFIED_RETURNING}
          FROM bb_update_difficulty_snapshots s
-         JOIN bb_historical_profiles hp ON hp.owner_user_id=s.owner_user_id AND hp.project_id=s.project_id
-          AND hp.material_id=s.source_material_id AND hp.material_version=s.source_material_version AND hp.profile_version=s.source_profile_version
-         JOIN bb_material_versions source ON source.owner_user_id=s.owner_user_id AND source.project_id=s.project_id
-          AND source.id=s.source_material_id AND source.version=s.source_material_version AND source.role='historical' AND source.deleted_at IS NULL
-          AND source.media_type IN ('application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf')
+         JOIN bb_projects current_project ON current_project.owner_user_id=s.owner_user_id AND current_project.id=s.project_id
+          AND current_project.deleted_at IS NULL
         WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.request_id=$3
-          AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset(s.financial_material_versions) AS f("materialId" text,"materialVersion" integer)
-            LEFT JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id AND m.id=f."materialId" AND m.version=f."materialVersion"
-            WHERE m.id IS NULL OR m.deleted_at IS NOT NULL)`,
+        `,
       [input.ownerUserId, input.projectId, input.requestId]);
     if (prior.rows.length) {
       if (String(prior.rows[0]!.request_hash).trim() !== requestHash) throw fail('IDEMPOTENCY_CONFLICT');
@@ -288,10 +421,11 @@ export async function createUpdateDifficultySnapshot(
       return mapRow(prior.rows[0]!, true);
     }
     const project = await client.query(
-      `SELECT market, offering, draft_revision FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
+      `SELECT market, offering, draft_revision, latest_input_revision FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
       [input.ownerUserId, input.projectId]);
     if (project.rows.length !== 1) throw fail('PROJECT_NOT_FOUND');
     if (Number(project.rows[0]!.draft_revision) !== input.targetRevision) throw fail('TARGET_REVISION_STALE');
+    if (input.inputRevision !== undefined && Number(project.rows[0]!.latest_input_revision) !== input.inputRevision) throw fail('TARGET_INPUT_REVISION_STALE');
     const { recognition, state } = await fetchProfile(client, input);
     const evidenceBound = await verifyEvidenceRefs(client, input, recognition, input.targetReportingPeriods);
     const sameTarget = await client.query(
@@ -343,7 +477,7 @@ export async function createUpdateDifficultySnapshot(
   } finally { client.release(); }
 }
 
-/** Owner-scoped read hides deleted projects and any deleted pinned materials. */
+/** Owner-scoped immutable by-id read for audit and pinned historical consumers. */
 export async function getUpdateDifficultySnapshot(
   dependencies: UpdateDifficultyDependencies,
   context: { ownerUserId: string; projectId: string; snapshotId: string },
@@ -355,8 +489,38 @@ export async function getUpdateDifficultySnapshot(
        JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id AND p.deleted_at IS NULL
        JOIN bb_material_versions source ON source.owner_user_id=s.owner_user_id AND source.project_id=s.project_id
         AND source.id=s.source_material_id AND source.version=s.source_material_version AND source.role='historical' AND source.deleted_at IS NULL
-        AND source.media_type IN ('application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf')
+       AND source.media_type IN ('application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf')
        WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.id=$3
+         AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset(s.financial_material_versions) AS f("materialId" text,"materialVersion" integer)
+           LEFT JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id AND m.id=f."materialId" AND m.version=f."materialVersion"
+           WHERE m.id IS NULL OR m.deleted_at IS NOT NULL)`,
+    [context.ownerUserId, context.projectId, context.snapshotId]);
+  if (!result.rows.length) return null;
+  if (result.rows.length !== 1) throw fail('INVALID_UPDATE_DIFFICULTY_ROW');
+  return mapRow(result.rows[0]!, false);
+}
+
+/** Owner-scoped lookup that returns a snapshot only while its lock, draft, and source profile are current. */
+export async function getCurrentUpdateDifficultySnapshot(
+  dependencies: UpdateDifficultyDependencies,
+  context: { ownerUserId: string; projectId: string; snapshotId: string },
+): Promise<StoredUpdateDifficultySnapshot | null> {
+  if (![context.ownerUserId, context.projectId, context.snapshotId].every(validId)) throw fail('INVALID_UPDATE_DIFFICULTY_CONTEXT');
+  const result = await dependencies.pool.query(
+    `SELECT ${QUALIFIED_RETURNING}
+       FROM bb_update_difficulty_snapshots s
+       JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id AND p.deleted_at IS NULL
+       JOIN bb_material_versions source ON source.owner_user_id=s.owner_user_id AND source.project_id=s.project_id
+        AND source.id=s.source_material_id AND source.version=s.source_material_version AND source.role='historical' AND source.deleted_at IS NULL
+        AND source.media_type IN ('application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf')
+       WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.id=$3 AND p.draft_revision=s.target_revision
+         AND NOT EXISTS (SELECT 1 FROM bb_historical_profiles newer WHERE newer.owner_user_id=s.owner_user_id
+           AND newer.project_id=s.project_id AND newer.material_id=s.source_material_id
+           AND newer.material_version=s.source_material_version AND newer.profile_version>s.source_profile_version)
+         AND ((s.input_revision IS NULL AND p.latest_input_revision IS NULL) OR
+           (s.input_revision=p.latest_input_revision AND EXISTS (SELECT 1 FROM bb_input_revisions current_lock
+             WHERE current_lock.owner_user_id=s.owner_user_id AND current_lock.project_id=s.project_id
+               AND current_lock.revision=s.input_revision AND current_lock.input_hash=s.input_hash)))
          AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset(s.financial_material_versions) AS f("materialId" text,"materialVersion" integer)
            LEFT JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id AND m.id=f."materialId" AND m.version=f."materialVersion"
            WHERE m.id IS NULL OR m.deleted_at IS NOT NULL)`,
