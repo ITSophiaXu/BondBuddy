@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
+import { DEFAULT_DOCUMENT_PARSER_VERSION } from '@bondbuddy/api/material-jobs';
 import { adminJobTimeline, grantOperator } from '@bondbuddy/api/log-ops';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv } from './runtime.js';
@@ -32,10 +33,10 @@ const until = async <T>(read: () => Promise<T | undefined | null | false>, ms = 
 
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   const m = request.material;
-  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: 'bondbuddy-document-parser-1.0.3', status: 'parsed',
+  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: DEFAULT_DOCUMENT_PARSER_VERSION, status: 'parsed',
     material: { material_id: m.material_id, material_version: m.material_version, media_type: m.media_type, sha256: m.sha256 },
     records: [{ record_id: 'line-1', material_id: m.material_id, material_version: m.material_version, content_hash: m.sha256, locator_type: 'text_line', locator: { line: 1, stable_ref: 'text:l000001' },
-      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: 'bondbuddy-document-parser-1.0.3', confidence: 1, uncertainty: [], formatting: {} }],
+      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: DEFAULT_DOCUMENT_PARSER_VERSION, confidence: 1, uncertainty: [], formatting: {} }],
     warnings: [], document: { page_count: null, encoding: 'utf-8' }, error: null } as DocumentParseResponse;
 }
 
@@ -85,6 +86,7 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     // In-process runtime from the production options; only the parser is the synthetic stand-in.
     const options = workerRuntimeOptionsFromEnv(pool, blobs, env);
     assert.ok(options.platformProbe && options.concurrency === 1 && options.runStages!.length > 0);
+    assert.equal(typeof options.parse!.material.blobs.readToFile, 'function', 'production runtime stages Blob bytes to disk');
     assert.deepEqual(options.runStages!.map(stage => stage.name), ['input_lock', 'materials_ready', 'model_generation', 'word_delivery']);
     const workerId = `synthetic-entry-${randomUUID().slice(0, 8)}`;
     runtime = new WorkerRuntime({ ...options, workerId, parse: { ...options.parse, material: { ...options.parse!.material, parser: async r => syntheticParse(r) } } }).start();

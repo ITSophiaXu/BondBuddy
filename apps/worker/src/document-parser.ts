@@ -1,10 +1,15 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { open, rm } from 'node:fs/promises';
+import { once } from 'node:events';
 import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDiagnostic } from './parser-diagnostics.js';
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
 export const DOCUMENT_PARSER_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+export const DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
+export const DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES = 16 * 1024 * 1024;
+export const DOCUMENT_PARSER_STREAM_VERSION = 'document-parse-stream-v1' as const;
 export const DOCUMENT_PARSER_MEDIA_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/pdf',
@@ -159,6 +164,61 @@ function safeJson(value:unknown,authorizedPath:string):boolean {
   return false;
 }
 
+const expectedLocatorTypes:Record<ParserMediaType,DocumentParseRecord['locator_type']>={
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx_block',
+  'application/pdf':'pdf_bbox',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx_cell',
+  'text/csv':'csv_cell',
+  'text/plain':'text_line',
+};
+function expectedLocatorType(mediaType:ParserMediaType):DocumentParseRecord['locator_type'] { return expectedLocatorTypes[mediaType]; }
+
+export function validateDocumentParseRecord(value:unknown,request:DocumentParseRequest,pageCount:number|null):DocumentParseRecord {
+  if(!isObject(value) || !hasExactKeys(value,['record_id','material_id','material_version','content_hash','locator_type','locator','literal_quote','context','extraction_method','extractor_version','confidence','uncertainty','formatting']) ||
+    typeof value.record_id!=='string' || !safeId(value.record_id) || value.material_id!==request.material.material_id ||
+    value.material_version!==request.material.material_version || value.content_hash!==request.material.sha256 ||
+    value.locator_type!==expectedLocatorType(request.material.media_type) || !isObject(value.locator) ||
+    !validLocator(String(value.locator_type),value.locator,pageCount) || !nonEmptyString(value.literal_quote) ||
+    typeof value.context!=='string' || value.context.length>16_384 || value.extraction_method!=='native_text' ||
+    !validVersion(value.extractor_version) || !(value.confidence===null || (typeof value.confidence==='number' && Number.isFinite(value.confidence) && value.confidence>=0 && value.confidence<=1)) ||
+    !Array.isArray(value.uncertainty) || !value.uncertainty.every(item=>nonEmptyString(item,1024)) || !isObject(value.formatting) ||
+    !safeJson(value.locator,request.material.authorized_local_path) || !safeJson(value.formatting,request.material.authorized_local_path) ||
+    [value.record_id,value.literal_quote,value.context,value.extractor_version].some(item=>typeof item==='string' && item.includes(request.material.authorized_local_path))) {
+    throw parserError('INVALID_PARSE_RESPONSE');
+  }
+  return value as unknown as DocumentParseRecord;
+}
+
+export function validateDocumentParseSummary(value:unknown,request:DocumentParseRequest,recordCount:number,hasUncertainty:boolean):Omit<DocumentParseResponse,'records'> {
+  if(!isObject(value) || !hasExactKeys(value,['schema_version','request_id','parser_version','status','material','warnings','document','error']) ||
+    !Number.isSafeInteger(recordCount) || recordCount<0 || typeof hasUncertainty!=='boolean') throw parserError('INVALID_PARSE_RESPONSE');
+  const candidate={...value,records:[]} as unknown;
+  if(!isObject(candidate) || candidate.schema_version!==DOCUMENT_PARSE_RESPONSE_VERSION || candidate.request_id!==request.request_id) {
+    throw parserError('INVALID_PARSE_RESPONSE');
+  }
+  // Reuse the full envelope checks while supplying the streamed record facts instead of materializing records.
+  const summary={...candidate,records:recordCount>0?[{
+    record_id:'stream-summary-record', material_id:request.material.material_id, material_version:request.material.material_version,
+    content_hash:request.material.sha256, locator_type:expectedLocatorType(request.material.media_type),
+    locator:request.material.media_type==='application/pdf'
+      ? {page:1,line:1,bbox:{x0:0,top:0,x1:1,bottom:1},stable_ref:'pdf:p0001:l0001'}
+      : request.material.media_type==='text/plain' ? {line:1,stable_ref:'text:l000001'}
+        : request.material.media_type==='text/csv' ? {row:1,column:1,stable_ref:'csv:r000001:c0001'}
+          : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            ? {sheet:'S',cell:'A1',merged_range:null,stable_ref:'xlsx:S:cell:A1'}
+            : {path:[{paragraph:1}],stable_ref:'docx:p0001'},
+    literal_quote:'stream summary',context:'',extraction_method:'native_text',extractor_version:'bondbuddy-document-parser-1.0.4',
+    confidence:null,uncertainty:hasUncertainty?['streamed uncertainty']:[],formatting:{},
+  }]:[]};
+  const validated=validateDocumentParseResponse(summary,request);
+  if(recordCount===0 && validated.status!=='failed') throw parserError('INVALID_PARSE_RESPONSE');
+  if(validated.status==='failed' && recordCount!==0) throw parserError('INVALID_PARSE_RESPONSE');
+  if(validated.status==='parsed' && hasUncertainty) throw parserError('INVALID_PARSE_RESPONSE');
+  if(validated.status==='needs_confirmation' && validated.warnings.length===0 && !hasUncertainty) throw parserError('INVALID_PARSE_RESPONSE');
+  const {records:_records,...result}=validated;
+  return result;
+}
+
 export function validateDocumentParseResponse(value:unknown, request:DocumentParseRequest):DocumentParseResponse {
   if(!isObject(value) || !hasExactKeys(value,['schema_version','request_id','parser_version','status','material','records','warnings','document','error']) ||
     value.schema_version!==DOCUMENT_PARSE_RESPONSE_VERSION || value.request_id!==request.request_id ||
@@ -205,26 +265,11 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
       !nonEmptyString(warning.message,4096)) throw parserError('INVALID_PARSE_RESPONSE');
   }
   const recordIds=new Set<string>();
-  const expectedLocatorType:Record<ParserMediaType,DocumentParseRecord['locator_type']>={
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx_block',
-    'application/pdf':'pdf_bbox',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx_cell',
-    'text/csv':'csv_cell',
-    'text/plain':'text_line',
-  };
+  const pageCount=value.document.page_count as number|null;
   for(const record of value.records) {
-    if(!isObject(record) || !hasExactKeys(record,['record_id','material_id','material_version','content_hash','locator_type','locator','literal_quote','context','extraction_method','extractor_version','confidence','uncertainty','formatting']) ||
-      typeof record.record_id!=='string' || !safeId(record.record_id) || recordIds.has(record.record_id) || record.material_id!==request.material.material_id ||
-      record.material_version!==request.material.material_version || record.content_hash!==request.material.sha256 ||
-      record.locator_type!==expectedLocatorType[request.material.media_type] ||
-      !isObject(record.locator) || !validLocator(String(record.locator_type),record.locator, value.document.page_count as number|null) ||
-      !nonEmptyString(record.literal_quote) || typeof record.context!=='string' || record.extraction_method!=='native_text' ||
-      !validVersion(record.extractor_version) || !(record.confidence===null || (typeof record.confidence==='number' && Number.isFinite(record.confidence) && record.confidence>=0 && record.confidence<=1)) ||
-      !Array.isArray(record.uncertainty) || !record.uncertainty.every(item=>nonEmptyString(item,1024)) || !isObject(record.formatting) ||
-      !safeJson(record.formatting,request.material.authorized_local_path)) {
-      throw parserError('INVALID_PARSE_RESPONSE');
-    }
-    recordIds.add(record.record_id);
+    const validated=validateDocumentParseRecord(record,request,pageCount);
+    if(recordIds.has(validated.record_id)) throw parserError('INVALID_PARSE_RESPONSE');
+    recordIds.add(validated.record_id);
   }
   if([value.parser_version,...value.warnings.flatMap(warning=>isObject(warning)?[warning.message]:[]),
     ...value.records.flatMap(record=>isObject(record)?[record.literal_quote,record.context,record.extractor_version]:[]),
@@ -275,16 +320,171 @@ const invokePython:Invoke = (serializedRequest,{pythonExecutable,repoRoot,timeou
     if(room>0){const kept=chunk.subarray(0,room);stderr.push(kept);capturedStderr+=kept.length;}
   });
   child.on('error',()=>stop('DOCUMENT_PARSER_UNAVAILABLE'));
-  child.on('close',code=>{
+  child.on('close',(code,signal)=>{
     if(settled)return;
     settled=true;
     clearTimeout(timer);
+    // We only SIGKILL after settling, so a SIGKILL here came from the kernel: the container memory limit.
+    if(signal==='SIGKILL')return reject(parserError('DOCUMENT_PARSER_MEMORY_LIMIT',stderrSnapshot()));
     if(code!==0)return reject(parserError('DOCUMENT_PARSER_PROCESS_FAILED',stderrSnapshot()));
     resolveOutput({stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr),stderrBytes});
   });
   child.stdin.on('error',()=>stop('DOCUMENT_PARSER_PROCESS_FAILED'));
   child.stdin.end(serializedRequest);
 });
+
+export type DocumentParseSummary=Omit<DocumentParseResponse,'records'>;
+export type StreamedDocumentParse={response:DocumentParseSummary;recordsPath:string;recordCount:number;outputBytes:number};
+
+function parseStreamEvent(line:Buffer):unknown {
+  try { return JSON.parse(line.toString('utf8')) as unknown; }
+  catch { throw parserError('INVALID_PARSE_RESPONSE'); }
+}
+
+async function writeAll(handle:Awaited<ReturnType<typeof open>>,bytes:Buffer):Promise<void> {
+  let offset=0;
+  while(offset<bytes.length) {
+    const result=await handle.write(bytes,offset,bytes.length-offset);
+    if(result.bytesWritten<1)throw parserError('DOCUMENT_PARSER_SPOOL_FAILED');
+    offset+=result.bytesWritten;
+  }
+}
+
+/** Runs the Python NDJSON protocol with bounded stdout memory and spools validated evidence rows to disk. */
+export async function runDocumentParserToFile(request:DocumentParseRequest,recordsPath:string,options:{
+  pythonExecutable?:string;
+  repoRoot?:string;
+  timeoutMs?:number;
+  maxOutputBytes?:number;
+  onDiagnostic?:(diagnostic:ParserStderrDiagnostic|null)=>void;
+}={}):Promise<StreamedDocumentParse> {
+  validateRequest(request);
+  if(request.material.media_type!=='application/pdf' && request.material.media_type!=='text/plain')throw parserError('INVALID_PARSE_RUNNER_OPTIONS');
+  const timeoutMs=options.timeoutMs??5*60_000;
+  const maxOutputBytes=options.maxOutputBytes??DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES;
+  if(!Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>30*60_000 || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes<1024 || maxOutputBytes>1024*1024*1024) throw parserError('INVALID_PARSE_RUNNER_OPTIONS');
+  const repoRoot=options.repoRoot??process.cwd();
+  const privatePaths=[request.material.authorized_local_path,resolve(request.material.authorized_local_path,'..'),repoRoot];
+  const serialized=JSON.stringify(request);
+  const child=spawn(options.pythonExecutable??'python3',['-m','bondbuddy_document_parser','--stream'],{
+    cwd:repoRoot,env:{...process.env,PYTHONPATH:resolve(repoRoot,'python')},stdio:['pipe','pipe','pipe'],
+  });
+  const stderr:Buffer[]=[];
+  let stderrBytes=0,capturedStderr=0,outputBytes=0,textBytes=0,recordCount=0,hasUncertainty=false,pageCount:number|null=null;
+  let started=false,terminal=false,settledCode:string|null=null,streamParserVersion:string|null=null;
+  let diagnostic:ParserStderrDiagnostic|null=null;
+  const stderrSnapshot=()=>({captured:Buffer.concat(stderr),bytes:stderrBytes});
+  const closed=new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolveClose,rejectClose)=>{
+    child.once('error',()=>rejectClose(parserError('DOCUMENT_PARSER_UNAVAILABLE',stderrSnapshot())));
+    child.once('close',(code,signal)=>resolveClose({code,signal}));
+  });
+  const timer=setTimeout(()=>{settledCode='DOCUMENT_PARSER_TIMEOUT';child.kill('SIGKILL');},timeoutMs);
+  child.stdin.on('error',()=>{});
+  child.stderr.on('data',(chunk:Buffer)=>{
+    stderrBytes+=chunk.length;
+    const room=PARSER_STDERR_CAPTURE_BYTES-capturedStderr;
+    if(room>0){const kept=chunk.subarray(0,room);stderr.push(kept);capturedStderr+=kept.length;}
+  });
+  let spool:Awaited<ReturnType<typeof open>>|undefined;
+  let response:DocumentParseSummary|undefined;
+  const processLine=async(line:Buffer)=>{
+    if(line.length===0 || line.length>300*1024 || terminal)throw parserError('INVALID_PARSE_RESPONSE');
+    const event=parseStreamEvent(line);
+    if(!isObject(event) || typeof event.type!=='string')throw parserError('INVALID_PARSE_RESPONSE');
+    if(event.type==='start') {
+      if(started || !hasExactKeys(event,['type','schema_version','request_id','parser_version','material','document']) ||
+        event.schema_version!==DOCUMENT_PARSER_STREAM_VERSION || event.request_id!==request.request_id || !validVersion(event.parser_version) ||
+        !isObject(event.material) || !hasExactKeys(event.material,['material_id','material_version','sha256','media_type']) ||
+        event.material.material_id!==request.material.material_id || event.material.material_version!==request.material.material_version ||
+        event.material.sha256!==request.material.sha256 || event.material.media_type!==request.material.media_type || !isObject(event.document) ||
+        !Object.hasOwn(event.document,'page_count') || !(event.document.page_count===null || positiveInteger(event.document.page_count))) {
+        throw parserError('INVALID_PARSE_RESPONSE');
+      }
+      if(request.material.media_type==='application/pdf' && (!positiveInteger(event.document.page_count) || Number(event.document.page_count)>(request.options.max_pages??1500)) ||
+        request.material.media_type!=='application/pdf' && event.document.page_count!==null)throw parserError('INVALID_PARSE_RESPONSE');
+      pageCount=event.document.page_count as number|null;
+      streamParserVersion=event.parser_version;
+      started=true;
+      return;
+    }
+    if(event.type==='failure') {
+      if(!hasExactKeys(event,['type','response']))throw parserError('INVALID_PARSE_RESPONSE');
+      const failed=validateDocumentParseResponse(event.response,request);
+      if(failed.status!=='failed')throw parserError('INVALID_PARSE_RESPONSE');
+      if(spool)await spool.truncate(0);
+      recordCount=0;
+      response=(({records:_records,...meta})=>meta)(failed);
+      terminal=true;
+      return;
+    }
+    if(!started)throw parserError('INVALID_PARSE_RESPONSE');
+    if(event.type==='record') {
+      if(!hasExactKeys(event,['type','record']))throw parserError('INVALID_PARSE_RESPONSE');
+      const record=validateDocumentParseRecord(event.record,request,pageCount);
+      textBytes+=Buffer.byteLength(record.literal_quote,'utf8')+Buffer.byteLength(record.context,'utf8');
+      if(textBytes>DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES)throw parserError('DOCUMENT_PARSER_TEXT_LIMIT');
+      const bytes=Buffer.from(`${JSON.stringify(record)}\n`,'utf8');
+      if(bytes.length>256*1024)throw parserError('DOCUMENT_PARSER_OUTPUT_LIMIT');
+      if(!spool)throw parserError('DOCUMENT_PARSER_SPOOL_FAILED');
+      await writeAll(spool,bytes);
+      recordCount++;
+      hasUncertainty=hasUncertainty||record.uncertainty.length>0;
+      return;
+    }
+    if(event.type==='end') {
+      if(!hasExactKeys(event,['type','record_count','has_uncertainty','response']) || event.record_count!==recordCount ||
+        event.has_uncertainty!==hasUncertainty || recordCount===0 || !isObject(event.response) ||
+        event.response.parser_version!==streamParserVersion || !isObject(event.response.document) || event.response.document.page_count!==pageCount)throw parserError('INVALID_PARSE_RESPONSE');
+      response=validateDocumentParseSummary(event.response,request,recordCount,hasUncertainty);
+      terminal=true;
+      return;
+    }
+    throw parserError('INVALID_PARSE_RESPONSE');
+  };
+  let pending=Buffer.alloc(0);
+  try {
+    spool=await open(recordsPath,'wx',0o600);
+    child.stdin.end(serialized);
+    for await(const chunk of child.stdout) {
+      const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);
+      outputBytes+=bytes.length;
+      if(outputBytes>maxOutputBytes){settledCode='DOCUMENT_PARSER_OUTPUT_LIMIT';child.kill('SIGKILL');break;}
+      pending=pending.length===0?Buffer.from(bytes):Buffer.concat([pending,bytes]);
+      let newline:number;
+      let from=0;
+      while((newline=pending.indexOf(0x0a,from))>=0) {
+        const line=pending.subarray(from,newline);
+        await processLine(line);
+        from=newline+1;
+      }
+      pending=Buffer.from(pending.subarray(from));
+      if(pending.length>300*1024){settledCode='DOCUMENT_PARSER_OUTPUT_LIMIT';child.kill('SIGKILL');break;}
+    }
+    const result=await closed;
+    clearTimeout(timer);
+    if(settledCode)throw parserError(settledCode,stderrSnapshot());
+    if(result.signal==='SIGKILL')throw parserError('DOCUMENT_PARSER_MEMORY_LIMIT',stderrSnapshot());
+    if(result.code!==0 || pending.length!==0 || !terminal || !response)throw parserError('INVALID_PARSE_RESPONSE',stderrSnapshot());
+    await spool.sync();
+    await spool.close();
+    spool=undefined;
+    diagnostic=classifyParserStderr(stderrSnapshot().captured,stderrBytes,privatePaths);
+    return {response,recordsPath,recordCount,outputBytes};
+  } catch(error) {
+    clearTimeout(timer);
+    if(child.exitCode===null && child.signalCode===null)child.kill('SIGKILL');
+    try{await closed;}catch{/* retain the original parser boundary error */}
+    if(spool){try{await spool.close();}catch{/* best effort */}}
+    try{await rm(recordsPath,{force:true});}catch{/* best effort */}
+    const failure=(error instanceof Error && error.name==='DocumentParserError')?error as DocumentParserError:parserError('DOCUMENT_PARSER_PROCESS_FAILED');
+    if(failure.stderr)diagnostic=classifyParserStderr(failure.stderr.captured,failure.stderr.bytes,privatePaths);
+    delete failure.stderr;
+    failure.diagnostic=diagnostic;
+    throw failure;
+  } finally {
+    options.onDiagnostic?.(diagnostic);
+  }
+}
 
 export async function runDocumentParser(request:DocumentParseRequest, options:{
   pythonExecutable?:string;
@@ -296,7 +496,7 @@ export async function runDocumentParser(request:DocumentParseRequest, options:{
   onDiagnostic?:(diagnostic:ParserStderrDiagnostic|null)=>void;
 }={}):Promise<DocumentParseResponse> {
   validateRequest(request);
-  const timeoutMs=options.timeoutMs??5*60_000;
+  const timeoutMs=options.timeoutMs??15*60_000;
   const maxOutputBytes=options.maxOutputBytes??DOCUMENT_PARSER_MAX_OUTPUT_BYTES;
   if(!Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>30*60_000 || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes<1024 || maxOutputBytes>256*1024*1024) throw parserError('INVALID_PARSE_RUNNER_OPTIONS');
   const serialized=JSON.stringify(request);
