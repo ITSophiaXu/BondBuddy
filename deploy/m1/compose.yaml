@@ -111,6 +111,39 @@ services:
     cap_drop: [ALL]
     deploy: {resources: {limits: {cpus: '1.0', memory: 768M}}}
 
+  # #79/#35 ops scheduler: log forwarding + health, storage/deletion purge, trial-guard health and
+  # worker heartbeat staleness, each under a PostgreSQL lease (0028) so extra replicas never double-run.
+  # The staging log sink is NDJSON on the bounded `logsink` volume (rotates at BB_LOG_SINK_MAX_BYTES,
+  # keeps one .1 file, so at most 2x the cap). Sized for openclaw-vm: 64M hard limit.
+  ops:
+    image: bondbuddy-m1-worker:${BB_IMAGE_TAG:?set by deploy.sh}
+    restart: unless-stopped
+    command: ['node', 'apps/worker/dist/ops-scheduler.js']
+    environment:
+      <<: *bb-policy-env
+      DATABASE_URL: *db-url
+      AZURE_STORAGE_CONNECTION_STRING: *blob
+      NODE_OPTIONS: --max-old-space-size=40
+      BB_LOG_SINK_FILE: ${BB_LOG_SINK_FILE:-/var/lib/bb-logs/observability.ndjson}
+      BB_LOG_SINK_MAX_BYTES: ${BB_LOG_SINK_MAX_BYTES:-67108864}
+      BB_OPS_PARSE_BACKFILL: ${BB_OPS_PARSE_BACKFILL:-off}
+      # Production Blob is reached through the allow-list proxy, like the worker.
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: ${BB_NO_PROXY:-postgres,azurite,api,localhost,127.0.0.1}
+      no_proxy: ${BB_NO_PROXY:-postgres,azurite,api,localhost,127.0.0.1}
+    volumes: [logsink:/var/lib/bb-logs]
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      egress: {condition: service_started}
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy: {resources: {limits: {cpus: '0.25', memory: 64M}}}
+
   egress:
     image: bondbuddy-m1-egress:${BB_IMAGE_TAG:?set by deploy.sh}
     restart: unless-stopped
@@ -150,3 +183,4 @@ networks:
 volumes:
   pgdata:
   blobdata:
+  logsink:

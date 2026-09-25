@@ -86,7 +86,7 @@ Use these for the capacity, time and cost records in #35. Once a rate is confirm
 
 ## Alerts
 
-Run `npm run trial:health -w @bondbuddy/api` (or `node apps/api/dist/trial-guard.js health` with `DATABASE_URL` set) every minute from cron or a systemd timer, next to `log-ops.js health`. Each pass appends deduplicated rows to the #79 `bb_ops_alerts` table, which `GET /api/v1/admin/alerts` reads:
+Run `npm run trial:health -w @bondbuddy/api` (or `node apps/api/dist/trial-guard.js health` with `DATABASE_URL` set) manually if needed. In the Compose stack the `ops` scheduler runs it every 5 minutes and the heartbeat check every minute (see `m1-deploy.md`, Ops scheduler). Each pass appends deduplicated rows to the #79 `bb_ops_alerts` table, which `GET /api/v1/admin/alerts` reads:
 
 | Kind | Severity | Fires when | First response |
 |---|---|---|---|

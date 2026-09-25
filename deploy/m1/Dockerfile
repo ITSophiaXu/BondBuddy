@@ -50,6 +50,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/worker-loop.sh /usr/local/bin/worker-loop
+# Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.
+RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
 USER node
 CMD ["worker-loop"]
 

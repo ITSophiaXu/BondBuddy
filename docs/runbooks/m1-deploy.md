@@ -96,9 +96,39 @@ The web container speaks plain HTTP on loopback only. TLS terminates in front of
 
 Admin log routes return 404 unless the user has an active grant. Grant from a maintenance session only: `scripts/grant-operator.sh <username> log_reader|log_operator|prompt_viewer <reason_code>`; revoke by setting `revoked_at` on the grant row. See `docs/runbooks/log-alert-recovery.md` for forwarding and alerts.
 
+## Ops scheduler (#79, #35)
+
+The `ops` service (worker image, `node apps/worker/dist/ops-scheduler.js`, 64M limit, `--max-old-space-size=40`) replaces the host-cron one-shots. It ticks every `BB_OPS_TICK_SECONDS` (5 s, ±20 % jitter) and runs each task only after winning the lease row for that task in `bb_ops_schedule` (migration 0028): the task must be due and not leased. Two scheduler instances (for example a stray `compose run ops`) therefore never run the same due run twice; a crashed holder's lease expires and the next instance picks the task up. The next due time is the interval ±10 % jitter. Tasks run one at a time inside a process.
+
+| task | default interval (env, seconds) | what it runs | enabled when |
+|---|---|---|---|
+| `log_forward` | 30 (`BB_OPS_LOG_FORWARD_SECONDS`) | `forwardLogs` to NDJSON, up to 10×100 events per run | `BB_LOG_SINK_FILE` set (compose default `/var/lib/bb-logs/observability.ndjson`) |
+| `log_health` | 60 (`BB_OPS_LOG_HEALTH_SECONDS`) | `checkLogHealth` (backlog > `BB_LOG_BACKLOG_ALERT_SECONDS`, usage conflicts) | always |
+| `storage_purge` | 900 (`BB_OPS_STORAGE_PURGE_SECONDS`) | `runUserDeletionLifecycle`: orphan uploads, deleted material/project bytes, derived content, log content retention, using the published values above | `BB_STORAGE_PURGE_ENABLED=true` |
+| `trial_health` | 300 (`BB_OPS_TRIAL_HEALTH_SECONDS`) | `checkTrialHealth` (queue backlog, error rate, global quota, heartbeat) | always |
+| `worker_heartbeat` | 60 (`BB_OPS_WORKER_HEARTBEAT_SECONDS`) | raises `worker_heartbeat_stale` when no live worker heartbeat is newer than `BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS` (90) | always |
+| `parse_backfill` | 3600 (`BB_OPS_PARSE_BACKFILL_SECONDS`) | `backfillParseJobs` | `BB_OPS_PARSE_BACKFILL=on` |
+
+Any task can be switched off with `BB_OPS_<TASK>=off` (for example `BB_OPS_STORAGE_PURGE=off`). Every task is idempotent on its own, so a rerun after a lost lease is safe.
+
+**Failures.** A run that throws or reports failed items records `last_status='failed'` and `last_error_code` in `bb_ops_schedule` and appends a `scheduled_task_failed` (critical) row to `bb_ops_alerts`, deduplicated per task per hour. `GET /api/v1/admin/alerts` shows it. The task is retried at its next interval. The underlying tasks still raise their own alerts (`log_sink_unavailable`, `log_backlog_stale`, `worker_heartbeat_stale`, ...), see `log-alert-recovery.md` and `m1-trial-operations.md`.
+
+**Log sink (staging).** NDJSON lines go to the `logsink` named volume at `/var/lib/bb-logs/observability.ndjson`, mode 0600. Before each batch, a file over `BB_LOG_SINK_MAX_BYTES` (64 MiB) is renamed to `.1`, replacing the previous `.1`, so the volume holds at most about 128 MiB. PostgreSQL (`bb_observability_events`, `bb_log_deliveries`) stays the record; the file is a forwarded copy and consumers dedupe on `delivery_key`.
+
+**Checks.**
+
+```sh
+compose logs --tail 20 ops                   # one JSON line per task run
+compose exec postgres psql -U bondbuddy -d bondbuddy -c \
+  "SELECT task,last_status,last_error_code,last_finished_at,next_due_at,runs,failures FROM bb_ops_schedule ORDER BY task"
+```
+
+To run one task now, set its `next_due_at` to `now()`; the scheduler picks it up within one tick. On rollback to an image without the scheduler, `rollback.sh` does not touch `ops`, which keeps running the newer image against the same schema. Stop it with `compose stop ops` if needed.
+
 ## Known gaps
 
-- Log forwarding (`log-ops` forward/health) and storage purge are not scheduled by this Compose file yet; run them from cron on the host or add services once their sinks and retention values are decided.
+- The ops scheduler forwards logs to a local NDJSON file only (staging sink). A remote log store for production is not chosen yet; point `BB_LOG_SINK_FILE` at a shipped volume or add a sink when it is.
+- The parse backfill is wired but off by default (`BB_OPS_PARSE_BACKFILL=on` enables it hourly).
 - No model-backed run processor or Codex CLI is installed in the worker image; production execute stays not-ready until #17 wires it.
 - Staging uses Azurite; a production Blob backup/restore has not been exercised.
 
