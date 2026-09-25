@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import type { Recognition, ReportingPeriod } from '@bondbuddy/contracts';
 import {
-  createUpdateDifficultySnapshot, getUpdateDifficultySnapshot,
+  createUpdateDifficultySnapshot, getCurrentUpdateDifficultySnapshot, getUpdateDifficultySnapshot, loadLockedUpdateDifficultyInput,
   type UpdateDifficultyClient, type UpdateDifficultyDependencies, type UpdateDifficultyPool,
   type TrustedUpdateDifficultyInput,
 } from './update-difficulty-repository.js';
@@ -45,6 +45,9 @@ class TxMock implements UpdateDifficultyClient {
   readonly outbox: Record<string, unknown>[] = [];
   readonly active = true;
   readonly profile = recognition();
+  currentInputRevision: number | null = null;
+  lockedInput: Record<string, unknown> | null = null;
+  lockedMaterials: Record<string, unknown>[] = [];
   private backup: { snapshots: Record<string, unknown>[]; outbox: Record<string, unknown>[] } | null = null;
   released = false;
   async query(sql: string, values: unknown[] = []): Promise<{ rows: Record<string, unknown>[] }> {
@@ -55,8 +58,12 @@ class TxMock implements UpdateDifficultyClient {
       if (this.backup) { this.snapshots.splice(0, this.snapshots.length, ...this.backup.snapshots); this.outbox.splice(0, this.outbox.length, ...this.backup.outbox); }
       this.backup = null; return { rows: [] };
     }
-    if (sql.includes('FROM bb_projects') && sql.includes('draft_revision')) return { rows: [{ market: 'sse', offering: 'private', draft_revision: 4 }] };
+    if (sql.includes('SELECT draft_revision,latest_input_revision FROM bb_projects')) return { rows: [{ draft_revision: 4, latest_input_revision: this.currentInputRevision }] };
+    if (sql.includes('FROM bb_projects') && sql.includes('draft_revision')) return { rows: [{ market: 'sse', offering: 'private', draft_revision: 4, latest_input_revision: this.currentInputRevision }] };
     if (sql.includes('FROM bb_projects') && sql.includes('FOR UPDATE')) return { rows: this.active && values[0] === owner && values[1] === project ? [{ id: project }] : [] };
+    if (sql.includes('FROM bb_input_revisions') && sql.includes('SELECT input_hash')) return { rows: this.lockedInput ? [this.lockedInput] : [] };
+    if (sql.includes('SELECT m.id,m.version,m.role,m.sha256')) return { rows: this.lockedMaterials };
+    if (sql.includes('SELECT profile_version FROM bb_historical_profiles')) return { rows: [{ profile_version: 1 }] };
     if (sql.includes('FROM bb_update_difficulty_snapshots') && sql.includes('request_id=$3')) return {
       rows: this.snapshots.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] && row.request_id === values[2]),
     };
@@ -146,11 +153,87 @@ test('uncertain source or unanchored target periods retain a null estimate', asy
 
 test('input revision hash/draft/material binding is checked before an estimate', async () => {
   const client = new TxMock();
+  client.currentInputRevision = 2;
   client.query = async (sql, values: unknown[] = []) => {
-    if (sql.includes('FROM bb_input_revisions')) return { rows: [{ input_hash: 'b'.repeat(64), draft_revision: 4, material_versions: [{ material_id: finance, material_version: 1 }] }] };
+    if (sql.includes('FROM bb_input_revisions') && sql.includes('SELECT input_hash')) return { rows: [{ input_hash: 'b'.repeat(64), draft_revision: 4, material_versions: [{ material_id: finance, material_version: 1 }] }] };
     return TxMock.prototype.query.call(client, sql, values) as Promise<{ rows: Record<string, unknown>[] }>;
   };
   await assert.rejects(createUpdateDifficultySnapshot(dependencies(client), input({ inputRevision: 2, inputHash: hash })), /TARGET_INPUT_REVISION_MISMATCH/);
+});
+
+test('locked input assembler derives source, financial materials and user asserted target periods from the owner scoped manifest', async () => {
+  const client = new TxMock();
+  const manifest = { draft_revision: 4, kind: 'update', materials: [
+    { material_id: historical, material_version: 1, role: 'historical', sha256: hash },
+    { material_id: finance, material_version: 1, role: 'financial', sha256: hash },
+  ], update_details: { target_reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
+    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }] } };
+  client.currentInputRevision = 2;
+  client.lockedInput = { input_hash: hash, draft_revision: 4, manifest, material_versions: [
+    { material_id: historical, material_version: 1 }, { material_id: finance, material_version: 1 },
+  ] };
+  client.lockedMaterials = [
+    { id: historical, version: 1, role: 'historical', sha256: hash },
+    { id: finance, version: 1, role: 'financial', sha256: hash },
+  ];
+  const assembled = await loadLockedUpdateDifficultyInput(dependencies(client), {
+    ownerUserId: owner, projectId: project, inputRevision: 2, inputHash: hash, requestId: 'locked-request-synthetic',
+  });
+  assert.deepEqual(assembled.source, { materialId: historical, materialVersion: 1, profileVersion: 1 });
+  assert.deepEqual(assembled.financialMaterialVersions, [{ materialId: finance, materialVersion: 1 }]);
+  assert.deepEqual(assembled.targetReportingPeriods, [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
+    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }]);
+  const snapshot = await createUpdateDifficultySnapshot(dependencies(client), assembled);
+  assert.equal(snapshot.estimate.status, 'needs_confirmation');
+  assert.equal(snapshot.estimate.estimatedN, null);
+  assert.ok(snapshot.estimate.confirmationReasons.includes('period_evidence_missing_or_unverified'));
+});
+
+test('locked snapshot callers cannot substitute target periods', async () => {
+  const client = new TxMock();
+  const manifest = { draft_revision: 4, kind: 'update', materials: [
+    { material_id: historical, material_version: 1, role: 'historical', sha256: hash },
+    { material_id: finance, material_version: 1, role: 'financial', sha256: hash },
+  ], update_details: { target_reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
+    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }] } };
+  client.currentInputRevision = 2;
+  client.lockedInput = { input_hash: hash, draft_revision: 4, manifest, material_versions: [
+    { material_id: historical, material_version: 1 }, { material_id: finance, material_version: 1 },
+  ] };
+  const lockedPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual' as const,
+    scope: 'consolidated' as const, status: 'user_asserted' as const, evidence_refs: [] as const };
+  await assert.rejects(createUpdateDifficultySnapshot(dependencies(client), input({ inputRevision: 2, inputHash: hash,
+    targetReportingPeriods: [{ ...lockedPeriod, end: '2026-12-31' }] })), /TARGET_REPORTING_PERIODS_LOCK_MISMATCH/);
+});
+
+test('locked assembler rejects non-update and malformed target period manifests', async () => {
+  const validPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] };
+  const invalidCases = [
+    { manifest: { kind: 'review', update_details: { target_reporting_periods: [validPeriod] } }, expected: /TARGET_INPUT_MANIFEST_INVALID/ },
+    { manifest: { kind: 'update', update_details: { target_reporting_periods: [{ ...validPeriod, start: '2026-12-31', end: '2025-12-31' }] } }, expected: /TARGET_INPUT_MANIFEST_INVALID/ },
+    { manifest: { kind: 'update', update_details: { target_reporting_periods: [{ ...validPeriod, end: '2025-02-30' }] } }, expected: /TARGET_INPUT_MANIFEST_INVALID/ },
+    { manifest: { kind: 'update', update_details: { target_reporting_periods: [validPeriod, validPeriod] } }, expected: /TARGET_INPUT_MANIFEST_INVALID/ },
+    { manifest: { kind: 'update', update_details: { target_reporting_periods: [{ ...validPeriod, status: undefined }] } }, expected: /TARGET_INPUT_MANIFEST_INVALID/ },
+  ];
+  for (const [index, invalid] of invalidCases.entries()) {
+    const client = new TxMock();
+    client.currentInputRevision = 2;
+    const materials = [
+      { material_id: historical, material_version: 1, role: 'historical', sha256: hash },
+      { material_id: finance, material_version: 1, role: 'financial', sha256: hash },
+    ];
+    client.lockedInput = { input_hash: hash, draft_revision: 4, manifest: {
+      draft_revision: 4, materials, ...invalid.manifest,
+    }, material_versions: [
+      { material_id: historical, material_version: 1 }, { material_id: finance, material_version: 1 },
+    ] };
+    client.lockedMaterials = [
+      { id: historical, version: 1, role: 'historical', sha256: hash },
+      { id: finance, version: 1, role: 'financial', sha256: hash },
+    ];
+    await assert.rejects(loadLockedUpdateDifficultyInput(dependencies(client), { ownerUserId: owner, projectId: project,
+      inputRevision: 2, inputHash: hash, requestId: `invalid-lock-${index}` }), invalid.expected);
+  }
 });
 
 test('live PostgreSQL 16 persists snapshot plus outbox, enforces immutability and scopes reads', {
@@ -169,7 +252,8 @@ test('live PostgreSQL 16 persists snapshot plus outbox, enforces immutability an
       return connection.query(sql, values) as unknown as Promise<{ rows: Record<string, unknown>[] }>;
     }, release: () => undefined,
   };
-  const scoped: UpdateDifficultyDependencies = { pool: { connect: async () => wrapped, query: (sql, values) => wrapped.query(sql, values) }, newId: () => `difficulty-live-${suffix}` };
+  let idSequence = 0;
+  const scoped: UpdateDifficultyDependencies = { pool: { connect: async () => wrapped, query: (sql, values) => wrapped.query(sql, values) }, newId: () => `difficulty-live-${suffix}-${++idSequence}` };
   const liveOwner = `difficulty-owner-${suffix}`, liveProject = `difficulty-project-${suffix}`;
   const histUpload = `difficulty-h-upload-${suffix}`, hist = `difficulty-history-${suffix}`;
   const finUpload = `difficulty-f-upload-${suffix}`, fin = `difficulty-financial-${suffix}`;
@@ -226,6 +310,69 @@ test('live PostgreSQL 16 persists snapshot plus outbox, enforces immutability an
     await connection.query(`RELEASE SAVEPOINT difficulty_immutable_check`);
     assert.equal((await getUpdateDifficultySnapshot(scoped, { ownerUserId: 'foreign-owner', projectId: liveProject, snapshotId: saved.id })), null);
     assert.equal((await connection.query(`SELECT count(*)::int AS count FROM bb_outbox WHERE aggregate_id=$1 AND event_type='project.update_difficulty_snapshotted'`, [liveProject])).rows[0]!.count, 1);
+
+    const lockedTarget = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated',
+      status: 'user_asserted', evidence_refs: [] };
+    const lockManifest = (financeId: string, target: typeof lockedTarget) => ({ draft_revision: 1, kind: 'update', market: 'sse', offering: 'private',
+      materials: [
+        { material_id: hist, material_version: 1, role: 'historical', sha256: hash },
+        { material_id: financeId, material_version: 1, role: 'financial', sha256: hash },
+      ], update_details: { target_reporting_periods: [target] } });
+    const lockRefs = (financeId: string) => JSON.stringify([
+      { material_id: hist, material_version: 1 }, { material_id: financeId, material_version: 1 },
+    ]);
+    await connection.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
+      [liveProject, liveOwner, 'b'.repeat(64), JSON.stringify(lockManifest(fin, lockedTarget)), lockRefs(fin)]);
+    await connection.query(`UPDATE bb_projects SET latest_input_revision=1 WHERE owner_user_id=$1 AND id=$2`, [liveOwner, liveProject]);
+    assert.equal(await getUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: saved.id }) !== null, true,
+      'historical by-id reads retain an immutable prior snapshot');
+    assert.equal(await getCurrentUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: saved.id }), null);
+    const assembled = await loadLockedUpdateDifficultyInput(scoped, { ownerUserId: liveOwner, projectId: liveProject,
+      inputRevision: 1, inputHash: 'b'.repeat(64), requestId: `locked-request-${suffix}` });
+    assert.deepEqual(assembled.targetReportingPeriods, [{ ...lockedTarget }]);
+    const lockedSnapshot = await createUpdateDifficultySnapshot(scoped, assembled);
+    assert.equal(lockedSnapshot.estimate.status, 'needs_confirmation');
+    assert.equal(lockedSnapshot.estimate.estimatedN, null);
+    assert.equal(await getUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: lockedSnapshot.id }) !== null, true);
+
+    const replacementUpload = `difficulty-f2-upload-${suffix}`, replacementFinance = `difficulty-financial-v2-${suffix}`;
+    await connection.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'financial-replacement.pdf','application/pdf',10,$4,'financial',$5,now()+interval '1 hour','completed')`,
+      [replacementUpload, liveOwner, liveProject, hash, `synthetic/${suffix}/f2`]);
+    await connection.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'financial','financial-replacement.pdf','application/pdf',10,$5,$6,'parsed')`,
+      [replacementFinance, liveOwner, liveProject, replacementUpload, hash, `users/${liveOwner}/projects/${liveProject}/f2`]);
+    const replacementTarget = { ...lockedTarget, end: '2026-12-31', start: '2026-01-01' };
+    await connection.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,2,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
+      [liveProject, liveOwner, 'c'.repeat(64), JSON.stringify(lockManifest(replacementFinance, replacementTarget)), lockRefs(replacementFinance)]);
+    await connection.query(`UPDATE bb_projects SET latest_input_revision=2 WHERE owner_user_id=$1 AND id=$2`, [liveOwner, liveProject]);
+    assert.equal(await getUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: lockedSnapshot.id }) !== null, true,
+      'the immutable row remains readable by id');
+    assert.equal(await getCurrentUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: lockedSnapshot.id }), null,
+      'a replacement material and changed target lock make the old snapshot unavailable as current');
+    assert.equal((await connection.query(`SELECT count(*)::int AS count FROM bb_update_difficulty_snapshots WHERE id=$1`, [lockedSnapshot.id])).rows[0]!.count, 1,
+      'stale immutable snapshot remains retained');
+
+    const replacementInput = await loadLockedUpdateDifficultyInput(scoped, { ownerUserId: liveOwner, projectId: liveProject,
+      inputRevision: 2, inputHash: 'c'.repeat(64), requestId: `replacement-request-${suffix}` });
+    const profileBoundSnapshot = await createUpdateDifficultySnapshot(scoped, replacementInput);
+    assert.equal(profileBoundSnapshot.sourceProfileVersion, 1);
+
+    const nextProfile = structuredClone(liveRecognition);
+    nextProfile.profile_version = 2;
+    await connection.query(`INSERT INTO bb_historical_profiles(owner_user_id,project_id,material_id,material_version,profile_version,request_id,request_hash,write_kind,recognition)
+      VALUES($1,$2,$3,1,2,$4,$5,'recognition',$6::jsonb)`,
+      [liveOwner, liveProject, hist, `profile-v2-${suffix}`, '1'.repeat(64), JSON.stringify(nextProfile)]);
+    assert.equal(await getCurrentUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: profileBoundSnapshot.id }), null,
+      'a newer source profile makes the prior profile-bound snapshot unavailable as current');
+    assert.equal(await getUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: profileBoundSnapshot.id }) !== null, true);
+    assert.equal((await connection.query(`SELECT count(*)::int AS count FROM bb_update_difficulty_snapshots WHERE id=$1`, [profileBoundSnapshot.id])).rows[0]!.count, 1);
+    assert.equal(await loadLockedUpdateDifficultyInput(scoped, { ownerUserId: liveOwner, projectId: liveProject,
+      inputRevision: 2, inputHash: 'c'.repeat(64), requestId: `stale-profile-${suffix}` }).then(value => value.source.profileVersion), 2);
+    assert.equal((await getUpdateDifficultySnapshot(scoped, { ownerUserId: 'foreign-owner', projectId: liveProject, snapshotId: lockedSnapshot.id })), null,
+      'snapshot reads remain owner scoped');
   } finally {
     await connection.query('ROLLBACK'); connection.release(); await pool.end();
   }

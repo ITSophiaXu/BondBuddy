@@ -8,6 +8,19 @@ export interface CutoffDecision {
   readonly reason: string;
 }
 
+/** A user-entered target period copied from a locked update draft. It deliberately
+ * has no evidence provenance: these dates are assertions that still need review. */
+export interface UserAssertedTargetPeriod {
+  readonly start: string | null;
+  readonly end: string | null;
+  readonly period_kind: ReportingPeriod['period_kind'];
+  readonly scope: ReportingPeriod['scope'];
+  readonly status: 'user_asserted' | 'needs_confirmation';
+  readonly evidence_refs: readonly [];
+}
+
+export type TargetReportingPeriod = ReportingPeriod | UserAssertedTargetPeriod;
+
 export interface UpdateDifficultyEstimateInput {
   readonly profileVersion: number;
   readonly targetRevision: number;
@@ -19,7 +32,7 @@ export interface UpdateDifficultyEstimateInput {
   readonly target: {
     readonly market: Market | null;
     readonly offering: Offering | null;
-    readonly reportingPeriods: readonly ReportingPeriod[];
+    readonly reportingPeriods: readonly TargetReportingPeriod[];
   };
   /** Same-cutoff material replacement decisions. */
   readonly replacements: readonly CutoffDecision[];
@@ -33,7 +46,7 @@ export interface UpdateDifficultyEstimate {
   readonly status: 'ready' | 'needs_confirmation';
   readonly estimatedN: number | null;
   readonly sourceReportingPeriods: readonly ReportingPeriod[];
-  readonly targetReportingPeriods: readonly ReportingPeriod[];
+  readonly targetReportingPeriods: readonly TargetReportingPeriod[];
   readonly latestConfirmedSourceCutoff: string | null;
   readonly retainedCutoffs: readonly string[];
   readonly newCutoffs: readonly string[];
@@ -55,7 +68,7 @@ function sorted(values: Iterable<string>): string[] {
   return [...values].sort((a, b) => a.localeCompare(b));
 }
 
-function inspectPeriods(label: string, periods: readonly ReportingPeriod[], reasons: string[]): Set<string> {
+function inspectPeriods(label: string, periods: readonly (ReportingPeriod | UserAssertedTargetPeriod)[], reasons: string[]): Set<string> {
   const cutoffs = new Set<string>();
   if (periods.length === 0) reasons.push(`${label}_periods_missing`);
 
@@ -65,12 +78,16 @@ function inspectPeriods(label: string, periods: readonly ReportingPeriod[], reas
       reasons.push(`${label}_period_end_missing_or_invalid`);
       continue;
     }
+    if (period.status === 'user_asserted') {
+      reasons.push(`${label}_period_needs_confirmation:${cutoff}`);
+      continue;
+    }
     if (!period.start || !validDate(period.start)
       || period.period_kind === null
       || period.scope === null
       || period.status === 'unknown'
       || period.status === 'needs_confirmation'
-      || period.uncertainty.length > 0) {
+      || ('uncertainty' in period && period.uncertainty.length > 0)) {
       reasons.push(`${label}_period_needs_confirmation:${cutoff}`);
       continue;
     }
