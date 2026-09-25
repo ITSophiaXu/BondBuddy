@@ -42,6 +42,14 @@ case " $* " in
   *' image inspect '*)
     if [ "$TEST_IMAGES" = all ]; then exit 0; fi
     if [ "$TEST_IMAGES" = partial ] && [[ "$*" = *'bondbuddy-m1-api:'* ]]; then exit 0; fi
+    if [[ "$TEST_IMAGES" = vanish-* ]]; then
+      count="$(cat "$TEST_INSPECT_COUNT")"
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$TEST_INSPECT_COUNT"
+      if [ "$TEST_IMAGES" = vanish-api ] && [ "$count" -eq 5 ]; then exit 1; fi
+      if [ "$TEST_IMAGES" = vanish-egress ] && [ "$count" -eq 8 ]; then exit 1; fi
+      exit 0
+    fi
     exit 1
     ;;
   *' image ls '*)
@@ -62,7 +70,7 @@ echo df >> "$TEST_CALLS"
 printf ' Avail\n%s\n' "$TEST_FREE_BYTES"
 SH
 chmod +x "$test_dir/bin/"*
-export TEST_ROOT="$test_dir" TEST_CALLS="$test_dir/calls"
+export TEST_ROOT="$test_dir" TEST_CALLS="$test_dir/calls" TEST_INSPECT_COUNT="$test_dir/inspect-count"
 export BB_ENV_FILE="$test_dir/deploy/m1/.env" BB_STATE_DIR="$test_dir/state"
 export PATH="$test_dir/bin:$PATH" TEST_ROOT_MODE=valid TEST_DF_MODE=valid
 unset DOCKER_HOST DOCKER_CONTEXT
@@ -70,13 +78,21 @@ unset DOCKER_HOST DOCKER_CONTEXT
 run_case() {
   local label="$1" expected="$2" result=0
   : > "$TEST_CALLS"
+  printf '0\n' > "$TEST_INSPECT_COUNT"
   printf 'old-release\n' > "$test_dir/state/current"
   "$test_dir/deploy/m1/scripts/deploy.sh" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     > "$test_dir/output" 2> "$test_dir/error" || result=$?
-  if [ "$expected" = reject ]; then
+  if [[ "$expected" = reject* ]]; then
     [ "$result" -ne 0 ] || { echo "$label: expected rejection" >&2; exit 1; }
     [ "$(cat "$test_dir/state/current")" = old-release ] || exit 1
-    if rg -q 'archive|tar|build|compose|backup|image rm|smoke' "$TEST_CALLS"; then
+    [ "$(cat "$test_dir/state/previous")" = old-release ] || exit 1
+    if [ "$expected" = reject_after_archive ]; then
+      rg -q '^archive$' "$TEST_CALLS"
+      forbidden='build|compose|backup|image rm|smoke'
+    else
+      forbidden='archive|tar|build|compose|backup|image rm|smoke'
+    fi
+    if rg -q "$forbidden" "$TEST_CALLS"; then
       echo "$label: side effect before rejection" >&2; exit 1
     fi
   else
@@ -105,9 +121,19 @@ rg -q 'df failed.*2684354560 bytes.*preloaded' "$test_dir/error"
 export TEST_DF_MODE=valid TEST_FREE_BYTES=unknown
 run_case 'malformed df output rejects' reject
 rg -q 'cannot read free bytes' "$test_dir/error"
+export TEST_FREE_BYTES=18446744073709551616
+run_case 'out-of-range df output rejects' reject
+rg -q '18446744073709551616 bytes outside shell integer range; required 2684354560 bytes' "$test_dir/error"
 export TEST_DF_MODE=valid TEST_ROOT_MODE=fail
 run_case 'unknown Docker data-root rejects' reject
 rg -q 'cannot determine Docker data-root' "$test_dir/error"
 export TEST_ROOT_MODE=valid DOCKER_HOST=tcp://remote:2375
 run_case 'remote Docker endpoint rejects' reject
 rg -q 'not a local Unix socket' "$test_dir/error"
+unset DOCKER_HOST
+export TEST_IMAGES=vanish-api TEST_FREE_BYTES=2684354560
+run_case 'preloaded api disappears before build' reject_after_archive
+rg -q 'requires 4294967296 bytes.*api image missing' "$test_dir/error"
+export TEST_IMAGES=vanish-egress
+run_case 'preloaded egress disappears before build' reject_after_archive
+rg -q 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"
