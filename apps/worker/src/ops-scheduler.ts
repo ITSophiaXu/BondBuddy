@@ -11,6 +11,7 @@ import { storageLifecyclePolicyFromEnv } from '@bondbuddy/api/storage-lifecycle'
 import { runUserDeletionLifecycle } from '@bondbuddy/api/deletion-lifecycle';
 import { checkTrialHealth, trialConfigFromEnv, trialHealthThresholdsFromEnv } from '@bondbuddy/api/trial-guard';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
+import { backupContainer, pruneOffhostBackups } from './backup-retention.js';
 
 // #79/#35 ops scheduler: one small process that runs the periodic operations jobs which used to be
 // host-cron one-shots. Every task is itself idempotent and bounded; the scheduler only decides when,
@@ -38,7 +39,7 @@ export async function claimTask(pool: Pool, task: string, owner: string, leaseMs
 export async function finishTask(pool: Pool, task: string, lease: string, outcome: TaskOutcome, nextInMs: number) {
   const code = outcome.ok ? null : (outcome.errorCode && safeCode.test(outcome.errorCode) ? outcome.errorCode : 'task_failed');
   const q = await pool.query(`UPDATE bb_ops_schedule SET lease_token=NULL,lease_owner=NULL,lease_until=NULL,last_finished_at=now(),
-      next_due_at=now()+make_interval(secs=>$4::double precision/1000),last_status=$3,last_error_code=$5,runs=runs+1,failures=failures+CASE WHEN $3='failed' THEN 1 ELSE 0 END
+      next_due_at=now()+make_interval(secs=>$4::double precision/1000),last_status=$3,last_succeeded_at=CASE WHEN $3='succeeded' THEN now() ELSE last_succeeded_at END,last_error_code=$5,runs=runs+1,failures=failures+CASE WHEN $3='failed' THEN 1 ELSE 0 END
     WHERE task=$1 AND lease_token=$2`, [task, lease, outcome.ok ? 'succeeded' : 'failed', Math.max(0, Math.round(nextInMs)), code]);
   if (!outcome.ok) await raiseAlert(pool, { kind: 'scheduled_task_failed', severity: 'critical', scope: task, detail: { task, error_code: code!, ...(outcome.detail ?? {}) } });
   return q.rowCount === 1;
@@ -112,7 +113,7 @@ export async function rotateIfLarge(path: string, maxBytes: number) {
   return true;
 }
 
-export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string) => PrivateBlobs = azureBlobs): ScheduledTask[] {
+export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string) => PrivateBlobs = azureBlobs, backupsFactory = backupContainer): ScheduledTask[] {
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
   const sinkFile = env.BB_LOG_SINK_FILE;
@@ -154,6 +155,19 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
   if (!off(env.BB_OPS_WORKER_HEARTBEAT)) {
     const maxAge = intEnv(env, 'BB_READY_WORKER_HEARTBEAT_MAX_AGE_SECONDS', 90, 5, 86400);
     tasks.push({ name: 'worker_heartbeat', intervalMs: seconds('BB_OPS_WORKER_HEARTBEAT_SECONDS', 60), leaseMs: 60_000, run: async (): Promise<TaskOutcome> => ({ ok: true, detail: await checkWorkerHeartbeat(pool, maxAge) }) });
+  }
+  // #35: deletes off-host backups (bb-backups container) past BB_BACKUP_RETENTION_DAYS; the newest is always kept.
+  // Backups themselves are taken by scripts/backup.sh from host cron (docs/runbooks/m1-deploy.md).
+  if (env.AZURE_STORAGE_CONNECTION_STRING && !off(env.BB_OPS_BACKUP_RETENTION)) {
+    const days = intEnv(env, 'BB_BACKUP_RETENTION_DAYS', 30, 1, 3650);
+    const connection = env.AZURE_STORAGE_CONNECTION_STRING;
+    let container: ReturnType<typeof backupContainer> | null = null;
+    tasks.push({ name: 'backup_retention', intervalMs: seconds('BB_OPS_BACKUP_RETENTION_SECONDS', 21600), leaseMs: 900_000, run: async (): Promise<TaskOutcome> => {
+      container ??= backupsFactory(connection);
+      const r = await pruneOffhostBackups(container, days);
+      const detail = { backups: r.backups, deleted: r.deleted, kept: r.kept, failed: r.failed, retention_days: days };
+      return r.failed ? { ok: false, errorCode: 'backup_delete_failed', detail } : { ok: true, detail };
+    } });
   }
   // Opt-in: re-enqueues parse jobs for materials that never got one (idempotent, bounded batch).
   if (['1', 'true', 'on', 'yes'].includes((env.BB_OPS_PARSE_BACKFILL ?? '').toLowerCase()))

@@ -1,6 +1,7 @@
 // Usage (inside the api image): node deploy/m1/scripts/blob-snapshot.mjs export|import <dir>
 // Exports every blob of every container in AZURE_STORAGE_CONNECTION_STRING to <dir>/<container>/<name>
 // with a manifest (sha256, content type); import re-uploads and verifies the hashes.
+// The off-host backup container (bb-backups, #35) holds backups themselves and is never exported.
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,11 +12,13 @@ if (!['export', 'import'].includes(mode) || !root) throw new Error('usage: blob-
 if (!process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('AZURE_STORAGE_CONNECTION_STRING required');
 const service = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+const BACKUPS = process.env.BB_BACKUP_CONTAINER || 'bb-backups';
 const safe = name => { if (name.split('/').some(p => p === '..' || p === '')) throw new Error(`unsafe blob name ${name}`); return name; };
 
 if (mode === 'export') {
   const manifest = [];
   for await (const c of service.listContainers()) {
+    if (c.name === BACKUPS) continue;
     const container = service.getContainerClient(c.name);
     for await (const b of container.listBlobsFlat()) {
       const bytes = await container.getBlobClient(b.name).downloadToBuffer();
@@ -30,6 +33,7 @@ if (mode === 'export') {
 } else {
   const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'));
   for (const entry of manifest) {
+    if (entry.container === BACKUPS) continue;
     const bytes = readFileSync(join(root, entry.container, safe(entry.name)));
     if (sha(bytes) !== entry.sha256) throw new Error(`hash mismatch for ${entry.container}/${entry.name}`);
     const container = service.getContainerClient(entry.container);
