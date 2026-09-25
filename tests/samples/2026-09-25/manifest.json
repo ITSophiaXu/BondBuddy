@@ -38,7 +38,7 @@
       },
       "focus": "旧稿含 2022/2023 年及 2024 年前三季度；补入 2024 年度与 2025 年半年度材料，测试多期间差异、合并/母公司口径与期间冲突提示。",
       "known_issues": [
-        "六月附注按用户指定和文件名作为 2025 年半年度材料提供，但正文仍有 2025-03-31、2025-04-20，并出现无效日期“2025年6月31日”。保留原件，标为 needs_confirmation；不得直接视为日期一致的通过样本。",
+        "六月附注原文含2025-03-31、2025-04-20及无效日期“2025年6月31日”。用户于2026-09-25确认前两处保留，第三处按2025-06-30更正，并确认附注财务数据截至六月末；详见rq-202506/DATE-QUESTIONS.md。原件保留，三项处理已确认，财务数值及成果仍待验收。",
         "本组未单独提供带审计意见的 2024 年度审计报告，不能仅凭报表/附注认定审计意见或完整审计包。"
       ],
       "scenario": "historical_prospectus_update",
@@ -209,8 +209,49 @@
           ],
           "period": {
             "supplied_cutoff": "2025-06-30",
+            "description": "用户确认财务数据截至2025年6月末；保留3月31日及4月20日原文，期末6月31日按6月30日解释和更正，比较期及年初数据按原列头保留",
+            "status": "user_confirmed"
+          },
+          "intake_period_observation": {
+            "supplied_cutoff": "2025-06-30",
             "description": "用户指定为 2025 年半年度，但正文日期冲突且有无效日期",
             "status": "needs_confirmation"
+          },
+          "business_confirmation": {
+            "status": "confirmed",
+            "confirmed_by": "ITSophiaXu / Maxy",
+            "confirmed_on": "2026-09-25",
+            "source_kind": "user_asserted",
+            "record_path": "rq-202506/DATE-QUESTIONS.md",
+            "financial_data_cutoff": "2025-06-30",
+            "current_reporting_period": "2025-01/2025-06",
+            "financial_values_verified": false,
+            "date_decisions": [
+              {
+                "locator": "word/document.xml//w:p[13]",
+                "semantic_role": "consolidation_scope_as_of",
+                "original_value": "2025年3月31日",
+                "confirmed_value": "2025年3月31日",
+                "action": "retain_original",
+                "decision": "保留3月31日及原文13家子公司描述，不影响六月更新，不将该描述改称六月末事实"
+              },
+              {
+                "locator": "word/document.xml//w:p[15]",
+                "semantic_role": "financial_report_approval_date",
+                "original_value": "2025年4月20日",
+                "confirmed_value": "2025年4月20日",
+                "action": "retain_original",
+                "decision": "按用户确认保留批准报出日期原文，不用该日期判断财务报告期"
+              },
+              {
+                "locator": "word/document.xml//w:p[530]",
+                "semantic_role": "current_balance_sheet_cutoff",
+                "original_value": "2025年6月31日",
+                "confirmed_value": "2025年6月30日",
+                "action": "correct_working_value",
+                "decision": "提取和工作稿使用确认后的期末日期，保留原件、原值和来源；不全局替换其他日期"
+              }
+            ]
           }
         },
         {
