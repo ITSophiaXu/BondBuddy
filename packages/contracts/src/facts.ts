@@ -76,6 +76,7 @@ export const factSchemas = {
   FactDecisionRequest: Type.Object({
     decision_id: id,
     request_id: id,
+    expected_version: Type.Integer({ minimum: 0, description: 'Latest decision version observed by the reviewer; 0 when no decision exists.' }),
     identity: FactIdentityInputSchema,
     resolution: Type.Union([Type.Literal('selected'), Type.Literal('unresolved')]),
     selected_candidate_id: Type.Optional(id),

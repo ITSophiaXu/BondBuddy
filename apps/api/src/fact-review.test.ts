@@ -44,7 +44,12 @@ test('fact review API scopes candidates and appends idempotent decisions without
     const spec = await send('GET', '/openapi.json');
     assert.equal(spec.statusCode, 200);
     assert.ok(spec.json().paths['/api/v1/projects/{project_id}/facts/candidates'].get);
-    assert.ok(spec.json().paths['/api/v1/projects/{project_id}/facts/decisions'].post);
+    const decisionOperation = spec.json().paths['/api/v1/projects/{project_id}/facts/decisions'].post;
+    assert.ok(decisionOperation);
+    assert.ok(decisionOperation.responses['409'], 'OpenAPI documents stale decision conflicts');
+    const decisionRequestSchema = spec.json().components.schemas.FactDecisionRequest;
+    assert.ok(decisionRequestSchema.required.includes('expected_version'));
+    assert.equal(decisionRequestSchema.properties.expected_version.minimum, 0);
     const projectId = await createProject(`Fact review Alice ${suffix}`);
     const otherProjectId = await createProject(`Fact review Alice other project ${suffix}`);
     await insertCandidate(projectId, ref('fr-audited-1'), identity, 'audited', 'needs_confirmation', '100.00');
@@ -68,7 +73,7 @@ test('fact review API scopes candidates and appends idempotent decisions without
     assert.equal(items.find((item) => item.candidate_id === ref('fr-no-observed'))?.observed_at, null, 'missing observation time remains null');
     assert.equal(ocr.identity && (ocr.identity as Record<string, unknown>).account_id, active);
 
-    const request = { decision_id: ref('fr-decision-1'), request_id: ref('fr-request-1'), identity: {
+    const request = { decision_id: ref('fr-decision-1'), request_id: ref('fr-request-1'), expected_version: 0, identity: {
       entity_id: identity.entityId, scope: identity.scope, metric: identity.metric,
       period: { start: identity.period.start, end: identity.period.end }, currency: identity.currency,
       unit: identity.unit, basis: identity.basis, data_version: identity.dataVersion,
@@ -82,21 +87,43 @@ test('fact review API scopes candidates and appends idempotent decisions without
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(replay.json().replayed, true);
     assert.equal(replay.json().version, 1);
+    const missingVersion = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, {
+      decision_id: ref('fr-decision-no-version'), request_id: ref('fr-request-no-version'), identity: request.identity,
+      resolution: 'selected', selected_candidate_id: ref('fr-audited-1'), reason: 'Missing optimistic version',
+    });
+    assert.equal(missingVersion.statusCode, 422);
+    const concurrent = await Promise.all([
+      send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, decision_id: ref('fr-race-a'), request_id: ref('fr-race-a-request'), expected_version: 1, reason: 'Concurrent page A' }),
+      send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, decision_id: ref('fr-race-b'), request_id: ref('fr-race-b-request'), expected_version: 1, reason: 'Concurrent page B' }),
+    ]);
+    assert.equal(concurrent.filter((response) => response.statusCode === 201).length, 1, concurrent.map((response) => response.body).join('\n'));
+    assert.equal(concurrent.filter((response) => response.statusCode === 409 && response.json().code === 'INPUT_REVISION_CONFLICT').length, 1);
+    const afterRace = await pool.query('SELECT count(*)::int AS count, max(version)::int AS version FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND fact_key_hash=$3', [active, projectId, factHash]);
+    assert.deepEqual([afterRace.rows[0]!.count, afterRace.rows[0]!.version], [2, 2], 'stale concurrent submit adds neither a decision nor a version');
+    const originalReplayAfterNewerDecision = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, request);
+    assert.equal(originalReplayAfterNewerDecision.statusCode, 200, originalReplayAfterNewerDecision.body);
+    assert.equal(originalReplayAfterNewerDecision.json().decision_id, ref('fr-decision-1'));
+    assert.equal(originalReplayAfterNewerDecision.json().version, 1);
+    const stale = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, {
+      ...request, decision_id: ref('fr-stale'), request_id: ref('fr-stale-request'), expected_version: 0,
+    });
+    assert.equal(stale.statusCode, 409);
+    assert.equal(stale.json().code, 'INPUT_REVISION_CONFLICT');
     const changedReplay = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, reason: 'changed' });
     assert.equal(changedReplay.statusCode, 409);
     assert.equal(changedReplay.json().code, 'IDEMPOTENCY_CONFLICT');
     const callerOwner = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, request_id: ref('fr-request-owner'), decision_id: ref('fr-decision-owner'), identity: { ...request.identity, account_id: active } });
     assert.equal(callerOwner.statusCode, 422, 'body cannot supply an owner/account identity');
 
-    const mismatch = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, request_id: ref('fr-request-wrong-identity'), decision_id: ref('fr-decision-wrong-identity'), selected_candidate_id: ref('fr-other-identity') });
+    const mismatch = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, expected_version: 2, request_id: ref('fr-request-wrong-identity'), decision_id: ref('fr-decision-wrong-identity'), selected_candidate_id: ref('fr-other-identity') });
     assert.equal(mismatch.statusCode, 409);
     assert.equal(mismatch.json().code, 'FACT_CONFLICT');
-    const crossProject = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, request_id: ref('fr-request-other-project'), decision_id: ref('fr-decision-other-project'), selected_candidate_id: ref('fr-other-project') });
+    const crossProject = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, expected_version: 2, request_id: ref('fr-request-other-project'), decision_id: ref('fr-decision-other-project'), selected_candidate_id: ref('fr-other-project') });
     assert.equal(crossProject.statusCode, 404);
 
-    const unresolved = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, request_id: ref('fr-request-unresolved'), decision_id: ref('fr-decision-unresolved'), resolution: 'unresolved', selected_candidate_id: undefined, reason: 'Evidence conflict remains unresolved' });
+    const unresolved = await send('POST', `/api/v1/projects/${projectId}/facts/decisions`, { ...request, expected_version: 2, request_id: ref('fr-request-unresolved'), decision_id: ref('fr-decision-unresolved'), resolution: 'unresolved', selected_candidate_id: undefined, reason: 'Evidence conflict remains unresolved' });
     assert.equal(unresolved.statusCode, 201, unresolved.body);
-    assert.equal(unresolved.json().version, 2);
+    assert.equal(unresolved.json().version, 3);
     const statuses = await pool.query('SELECT id,status FROM bb_fact_candidates WHERE owner_user_id=$1 AND project_id=$2 ORDER BY id', [active, projectId]);
     assert.deepEqual(statuses.rows.filter((row) => [ref('fr-audited-1'), ref('fr-user-1')].includes(String(row.id))).map((row) => [row.id, row.status]),
       [[ref('fr-audited-1'), 'needs_confirmation'], [ref('fr-user-1'), 'user_asserted']]);
