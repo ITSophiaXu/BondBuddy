@@ -27,8 +27,9 @@ test('grouping refuses inconsistent identities and decision request omits server
   expect(groupFactCandidates([first, second])[0].candidates).toHaveLength(2);
   expect(() => groupFactCandidates([first, { ...second, identity: { ...identity, entity_id: 'other' } }])).toThrow();
   const request = decisionInput(identity, { resolution: 'selected', candidateId: 'candidate-a' }, '核对原文',
-    { requestId: 'request-1', decisionId: 'decision-1' });
+    { requestId: 'request-1', decisionId: 'decision-1' }, 0);
   expect(request.identity).not.toHaveProperty('account_id');
+  expect(request.expected_version).toBe(0);
   expect(request.identity.period).toEqual({ as_of: '2025-09-30' });
   expect(request.selected_candidate_id).toBe('candidate-a');
 });
@@ -88,6 +89,7 @@ test('project fact review loads all pages, keeps a retry ID, and never labels a 
   expect(state.requests).toHaveLength(2);
   expect(state.requests[0].request_id).toBe(state.requests[1].request_id);
   expect(state.requests[0].decision_id).toBe(state.requests[1].decision_id);
+  expect(state.requests[0].expected_version).toBe(0);
   expect(state.requests[0].selected_candidate_id).toBe('candidate-a');
   await expect(page.locator('.fact-review')).toContainText('用户提供，未核验');
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -97,6 +99,11 @@ test('project fact review loads all pages, keeps a retry ID, and never labels a 
   await page.screenshot({ path: join(tmpdir(), 'bondbuddy-fact-review-mobile.png'), fullPage: true });
   await page.locator('.fact-review').screenshot({ path: join(tmpdir(), 'bondbuddy-fact-review-panel-mobile.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  await page.locator('input[value="unresolved"]').check();
+  await page.getByLabel('决定原因').fill('重新核对后保留待确认');
+  await page.getByRole('button', { name: '保存决定' }).click();
+  await expect(page.locator('.fact-result')).toContainText('来源核验状态未改变');
+  expect(state.requests[2].expected_version).toBe(2);
   expect(errors.filter(message => !message.includes(`/api/v1/projects/${projectId}/facts/decisions`) || !message.includes('503'))).toEqual([]);
 });
 
@@ -118,6 +125,7 @@ test('409 keeps input, disables stale submission, and allows deliberate refresh'
   await page.getByRole('button', { name: '保存决定' }).click();
   await expect(page.locator('.fact-result')).toContainText('来源核验状态未改变');
   expect(state.requests[0].request_id).not.toBe(state.requests[1].request_id);
+  expect(state.requests[0].expected_version).toBe(0);
 });
 
 test('incomplete candidate pagination never opens the decision form', async ({ page }) => {

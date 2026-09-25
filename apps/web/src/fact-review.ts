@@ -43,9 +43,9 @@ export function groupFactCandidates(items: readonly FactCandidate[]): FactGroup[
 }
 
 export function decisionInput(identity: FactCandidate['identity'], choice: Choice, reason: string,
-  ids: { requestId: string; decisionId: string }): FactDecisionRequest {
+  ids: { requestId: string; decisionId: string }, expectedVersion: number): FactDecisionRequest {
   const period = Object.fromEntries(Object.entries(identity.period).filter(([, value]) => value !== null));
-  return { decision_id: ids.decisionId, request_id: ids.requestId,
+  return { decision_id: ids.decisionId, request_id: ids.requestId, expected_version: expectedVersion,
     identity: { entity_id: identity.entity_id, scope: identity.scope, metric: identity.metric,
       period, currency: identity.currency, unit: identity.unit, basis: identity.basis, data_version: identity.data_version },
     resolution: choice.resolution, ...(choice.resolution === 'selected' ? { selected_candidate_id: choice.candidateId } : {}),
@@ -200,9 +200,10 @@ export class FactReview {
     if (!group || this.disposed || this.loading || !this.loaded || draft.submitting || draft.conflict || !draft.choice || !draft.reason.trim()) return;
     if (draft.choice.resolution === 'selected' && !group.candidates.some(item => item.candidate_id === draft.choice?.candidateId && selectable(item))) return;
     const reason = draft.reason.trim();
-    const signature = JSON.stringify([draft.choice, reason]);
+    const expectedVersion = group.latest?.version ?? 0;
+    const signature = JSON.stringify([draft.choice, reason, expectedVersion]);
     if (draft.pending?.signature !== signature) draft.pending = { signature, requestId: crypto.randomUUID(), decisionId: crypto.randomUUID() };
-    const request = decisionInput(group.identity, draft.choice, reason, draft.pending);
+    const request = decisionInput(group.identity, draft.choice, reason, draft.pending, expectedVersion);
     draft.submitting = true;
     const form = this.root?.querySelector<HTMLFormElement>(`[data-fact-form="${hash}"]`);
     const submit = form?.querySelector<HTMLButtonElement>('[data-fact-submit]');
