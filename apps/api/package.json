@@ -68,6 +68,10 @@
       "types": "./dist/issuer-identity-binding.d.ts",
       "default": "./dist/issuer-identity-binding.js"
     },
+    "./update-difficulty-repository": {
+      "types": "./dist/update-difficulty-repository.d.ts",
+      "default": "./dist/update-difficulty-repository.js"
+    },
     "./library": {
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"

@@ -1,23 +1,10 @@
 import type { Recognition, ReportingPeriod } from '@bondbuddy/contracts';
+import { parseHistoricalNativeExtractorVersion } from '@bondbuddy/domain/historical-native-extractor-version';
 import type { DocumentParseResponse, DocumentParseRecord } from './document-parser.js';
 
 /** Conservative native-text subset of historical prospectus recognition. */
 export const HISTORICAL_NATIVE_RECOGNITION_VERSION = 'historical-native-recognition-v2' as const;
-const SUPPORTED_HISTORICAL_NATIVE_RECOGNITION_VERSIONS = new Set([
-  'historical-native-recognition-v1',
-  HISTORICAL_NATIVE_RECOGNITION_VERSION,
-]);
-
-export function parseHistoricalNativeExtractorVersion(value: unknown): { algorithmVersion: string; parserVersion: string } | null {
-  if (typeof value !== 'string') return null;
-  const separator = value.indexOf('/');
-  if (separator < 1) return null;
-  const algorithmVersion = value.slice(0, separator);
-  const parserVersion = value.slice(separator + 1);
-  if (!SUPPORTED_HISTORICAL_NATIVE_RECOGNITION_VERSIONS.has(algorithmVersion) ||
-      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(parserVersion) || parserVersion === 'unknown-parser') return null;
-  return { algorithmVersion, parserVersion };
-}
+export { parseHistoricalNativeExtractorVersion };
 
 type Market = NonNullable<Recognition['source_market']['value']>;
 type Offering = NonNullable<Recognition['source_offering']['value']>;
