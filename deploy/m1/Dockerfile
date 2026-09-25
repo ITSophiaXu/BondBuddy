@@ -76,7 +76,7 @@ CMD ["node","apps/api/dist/server.js"]
 FROM node-runtime AS worker
 ARG BB_RELEASE_SHA=unknown
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates util-linux \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=codex --chown=root:root /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version

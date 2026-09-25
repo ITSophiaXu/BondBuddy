@@ -204,7 +204,7 @@ test('bridge rejects blob hash or size mismatch before staging or parsing', asyn
     parser,
   }), input), /MATERIAL_INTEGRITY_MISMATCH/);
   assert.equal(parserCalls, 0);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('unsupported media types are rejected without fetching bytes or invoking parser', async (t) => {
@@ -240,7 +240,7 @@ test('#17 capacity: oversized materials fail before any byte is read, and over-b
   await assert.rejects(parseAuthorizedMaterial(overBudget, input), /MATERIAL_PARSE_OUTPUT_LIMIT/);
   const oomKilled = dependencies({ tempRoot: root, parser: async () => { throw new Error('DOCUMENT_PARSER_MEMORY_LIMIT'); } });
   await assert.rejects(parseAuthorizedMaterial(oomKilled, input), /MATERIAL_PARSE_MEMORY_LIMIT/);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('#17 bridge streams bytes to the staging file when the store supports it and still verifies them', async (t) => {
@@ -266,7 +266,7 @@ test('#17 bridge streams bytes to the staging file when the store supports it an
   assert.equal(response.status, 'parsed');
   assert.deepEqual(limits, [bytes.byteLength]);
   await assert.rejects(parseAuthorizedMaterial(streaming(Buffer.from('tampered')), input), /MATERIAL_INTEGRITY_MISMATCH/);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('bridge binds parser request and response to the authorized immutable material and cleans up', async (t) => {
@@ -298,7 +298,7 @@ test('bridge binds parser request and response to the authorized immutable mater
   assert.equal(JSON.stringify(result).includes(String(row.object_key)), false);
   assert.equal(JSON.stringify(result).includes(stagedPath), false);
   assert.equal(existsSync(stagedPath), false);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('staged bytes are cleaned when parser throws and the private error text is hidden', async (t) => {
@@ -320,7 +320,7 @@ test('staged bytes are cleaned when parser throws and the private error text is 
   });
   assert.notEqual(stagedPath, '');
   assert.equal(existsSync(stagedPath), false);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('bridge refuses parser output that contains the private blob key or staging path', async (t) => {
@@ -352,7 +352,7 @@ test('bridge rejects parser responses rebound to another material', async (t) =>
     },
   });
   await assert.rejects(parseAuthorizedMaterial(deps, input), /MATERIAL_PARSE_FAILED/);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('private cache reuses same-owner content across renamed materials and rebinds the current request', async (t) => {
@@ -506,7 +506,7 @@ test('bridge parses synthetic text through the actual Python subprocess when the
   const result = await parseAuthorizedMaterial(deps, input);
   assert.equal(result.status, 'parsed');
   assert.equal(result.records.some((record) => record.literal_quote.includes('synthetic authorized material')), true);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('opt-in authorized historical DOCX parses through Python and reuses owner-scoped cache by content', {
@@ -594,7 +594,7 @@ test('opt-in authorized historical DOCX parses through Python and reuses owner-s
   assert.equal(cache.size(), 2);
   assert.deepEqual([...cache.rows.values()].map((entry) => entry.owner_user_id).sort(),
     ['authorized-owner-alice', 'authorized-owner-bob']);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('migrated PostgreSQL and actual Python reuse content only within the owner account', {
@@ -677,7 +677,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
     const cacheRows = await client.query('SELECT owner_user_id FROM bb_parse_cache WHERE owner_user_id = ANY($1::text[])',
       [[ownerA, ownerB]]);
     assert.deepEqual(cacheRows.rows.map((record) => record.owner_user_id).sort(), [ownerA, ownerB].sort());
-    assert.deepEqual(await readdir(root), []);
+    assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
   } finally {
     await client.query('ROLLBACK');
     client.release();

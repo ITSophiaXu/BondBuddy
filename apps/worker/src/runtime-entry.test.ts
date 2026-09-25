@@ -4,7 +4,7 @@
 // `codex` (no provider is called), and SIGTERM on the real `dist/runtime.js` process. Claims are
 // global, so the file runs in its own clone of the migrated template (see test-database.ts).
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -119,11 +119,15 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
 
     // The real entry point: node dist/runtime.js, then SIGTERM -> drained, stopped heartbeat, exit 0.
     const stagingRoot = join(root, 'parse-staging');
-    const orphan = join(stagingRoot, 'bb-material-ABC123');
-    await mkdir(orphan, { recursive: true, mode: 0o700 });
+    await mkdir(stagingRoot, { mode: 0o700 });
+    const staged = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import {createParseStaging} from ${JSON.stringify(new URL('./parse-staging.js', import.meta.url).href)};
+       const s=await createParseStaging(process.argv[1]); process.stdout.write(s.directory,()=>process.exit(0));`, stagingRoot], { encoding: 'utf8' });
+    assert.equal(staged.status, 0, staged.stderr);
+    const orphan = staged.stdout;
     await writeFile(join(orphan, 'source'), 'synthetic stale source', { mode: 0o600 });
     const expired = new Date(Date.now() - 31 * 60 * 1000);
-    await utimes(orphan, expired, expired);
+    await utimes(join(orphan, '.owner.json'), expired, expired);
     const child = spawn(process.execPath, [entry], { env: { ...env, BB_PARSE_STAGING_DIR: stagingRoot,
       DATABASE_URL: connection, AZURE_STORAGE_CONNECTION_STRING: blobConnection }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
