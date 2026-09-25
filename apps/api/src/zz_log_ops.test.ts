@@ -177,6 +177,20 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD']) assert.ok(!plainKeys.includes(secret));
   assert.ok(plainKeys.endsWith('业务正文'));
   assert.ok(!scrubSecrets('{"\\u0043ookie":"SYN_ENCODED_KEY"}').includes('SYN_ENCODED_KEY'));
+  for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} "\\u0043ookie":"SYN_LEAK_MARKER"',
+    '{} "Cookie":"SYN_LEAK_MARKER"', '{} "\\uD800":"SYN_INVALID_KEY"',
+    '{"\\uD800":"SYN_INVALID_KEY"}', '{} "\\u00ZZ":"SYN_INVALID_ESCAPE"'])
+    assert.throws(() => scrubSecrets(body), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_ORDINARY_UNICODE"'),
+    '业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_ORDINARY_UNICODE"');
+  let layeredOutside = '"Co\\u006Fkie":"SYN_LAYERED_OUTSIDE"';
+  let ordinaryOutside = '"债券名称":"SYN_LAYERED_BUSINESS"';
+  for (let layer = 0; layer <= 5; layer++) {
+    assert.throws(() => scrubSecrets(`{} ${layeredOutside}`), /Diagnostic body rejected/);
+    if (layer <= 4) assert.equal(scrubSecrets(`{} ${ordinaryOutside}`), `{} ${ordinaryOutside}`);
+    layeredOutside = JSON.stringify(layeredOutside).slice(1, -1);
+    ordinaryOutside = JSON.stringify(ordinaryOutside).slice(1, -1);
+  }
   assert.throws(() => scrubSecrets('{"\\u0043ookie":"SYN_MALFORMED_UNICODE"'), /Diagnostic body rejected/);
   const layered = Array.from({ length: 6 }).reduce<string>(value => JSON.stringify({ note: value }), '{"Cookie":"SYN_LAYERED_SECRET"}');
   assert.throws(() => scrubSecrets(layered), /Diagnostic body rejected/);
@@ -279,6 +293,7 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       [nearLimit, 'A'.repeat(100), 'SYN_NEAR_LIMIT_OTP'],
       ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
+      ['业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_UNICODE_BUSINESS"', 'SYN_UNICODE_BUSINESS', 'SYN_NONE'],
       ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
     ] as const).entries()) {
       assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
@@ -316,6 +331,26 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
+    const keys = ['Cookie', 'CoOkIe', 'setCookie', 'SET-COOKIE', 'otp', 'OtP', 'secret', 'SECRET',
+      'session_cookie', 'SESSION-COOKIE', 'x-api-key', 'X_API_KEY', 'one_time_password', 'ONE-TIME-PASSWORD',
+      'Authorization', 'AUTHORIZATION', 'token', 'password'];
+    const prefixes = ['{} ', '[] ', '{] } ', '{"note":"ordinary"} ', '业务 ] '];
+    for (const key of keys) for (const prefix of prefixes) for (const position of [0, Math.floor(key.length / 2), key.length - 1]) {
+      const escaped = key.slice(0, position) + `\\u${key.charCodeAt(position).toString(16).padStart(4, '0')}` + key.slice(position + 1);
+      const body = `${prefix}"${escaped}":"SYN_LEAK_MARKER"`;
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} \\"Co\\\\u006Fkie\\":\\"SYN_LEAK_MARKER\\"',
+      '{} "\\uD800":"SYN_INVALID_KEY"', '{"\\uD800":"SYN_INVALID_KEY"}', '{} "\\u00ZZ":"SYN_INVALID_ESCAPE"'])
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    let layeredField = '"Co\\u006Fkie":"SYN_LAYERED_LEAK"';
+    for (let layer = 0; layer <= 5; layer++) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body: `{} ${layeredField}` }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+      layeredField = JSON.stringify(layeredField).slice(1, -1);
+    }
     assert.equal(puts, 0, 'scrub rejects before Blob put');
     const after = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
     assert.equal(after, before, 'no partial snapshot reference');
@@ -351,6 +386,34 @@ test('#79 wide JSON arrays stay bounded in 128/256 MiB child heaps', async t => 
     assert.equal(metrics.accepted, true);
     assert.ok(metrics.elapsedMs < 2000, 'wide input parses without object-tree allocation');
     t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 repeated non-delimiting escaped quotes have linear bounded work', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = String.fromCharCode(92).repeat(3) + String.fromCharCode(34);
+      const body = unit.repeat(1024 * 1024);
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({ accepted: result === body, elapsedMs: Math.round(performance.now() - started),
+        peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (result !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 2000);
+    t.diagnostic(`${heapMiB} MiB heap / 4 MiB quote runs: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
   }
 });
 

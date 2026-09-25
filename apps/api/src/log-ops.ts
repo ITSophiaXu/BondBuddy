@@ -46,6 +46,62 @@ const addEdit = (edits: Edits, start: number, end: number, value: string) => {
 };
 const space = (char: string) => char === ' ' || char === '\n' || char === '\r' || char === '\t';
 
+function hasUnpairedSurrogate(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      if (++i >= value.length || value.charCodeAt(i) < 0xdc00 || value.charCodeAt(i) > 0xdfff) return true;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return true;
+  }
+  return false;
+}
+
+/** Decode a complete quoted field followed by ':' outside a JSON candidate.
+ * Invalid JSON escapes and lone surrogates are rejected before any Blob write. */
+function quotedFieldAt(text: string, start: number): string | null {
+  let layers = 0;
+  let openingEnd = start + 1;
+  if (text[start] === '\\' && text[start - 1] !== '\\') {
+    let quote = start + 1;
+    while (text[quote] === '\\') quote++;
+    const run = quote - start;
+    if (text[quote] !== '"' || !Number.isInteger(Math.log2(run + 1))) return null;
+    layers = Math.log2(run + 1);
+    openingEnd = quote + 1;
+  } else if (text[start] === '"') {
+    let precedingSlashes = 0;
+    while (text[start - precedingSlashes - 1] === '\\') precedingSlashes++;
+    if (precedingSlashes % 2 === 1) return null;
+  } else return null;
+  // Only the first slash in a delimiter run starts a candidate. This and the
+  // quote parity below keep repeated escaped quotes at linear work.
+  let end = -1;
+  const delimiter = 2 ** layers - 1;
+  const period = 2 ** (layers + 1);
+  for (let i = openingEnd; i < text.length; i++) {
+    if (text[i] === '\\') {
+      let next = i + 1;
+      while (text[next] === '\\') next++;
+      if (text[next] === '"') {
+        if ((next - i) % period === delimiter) { end = next + 1; break; }
+        i = next;
+      } else i = next - 1;
+    } else if (!layers && text[i] === '"') { end = i + 1; break; }
+  }
+  if (end < 0) return null;
+  let after = end;
+  while (space(text[after])) after++;
+  if (text[after] !== ':') return null;
+  try {
+    if (layers > MAX_JSON_STRING_LAYERS) throw new DiagnosticScrubError();
+    let decoded = text.slice(start, end);
+    for (let layer = 0; layer < layers; layer++) decoded = JSON.parse(`"${decoded}"`) as string;
+    const key = JSON.parse(decoded) as string;
+    if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
+    return key;
+  } catch { throw new DiagnosticScrubError(); }
+}
+
 /** Find a candidate's boundary once. An unclosed prose bracket is ordinary text
  * unless a known field occurs inside it. This scan never retries inner brackets. */
 function candidateEnd(text: string, start: number, encoded: boolean): number {
@@ -208,6 +264,7 @@ function parseCandidate(text: string, layer: number, markSensitive: () => void):
         const start = stringEnd();
         let key = '';
         try { key = JSON.parse(text.slice(start, i)) as string; } catch { throw new DiagnosticScrubError(); }
+        if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
         frame.sensitive = !frame.suppressed && isSensitiveField(key);
         if (frame.sensitive) markSensitive();
         frame.state = 1;
@@ -242,10 +299,9 @@ function scrubText(text: string, layer: number): string {
     if (text[start] !== '{' && text[start] !== '[') {
       // An arbitrary closer cannot prove an earlier prose bracket was closed.
       // Keep scanning known fields conservatively until the input ends.
-      if (text[start] === '\\' && text[start + 1] === 'u') {
-        if (openPlain || text[start - 1] === '"' && /^\\u[0-9a-f]{4}[^"\r\n]{0,128}"\s*:/i.test(text.slice(start, start + 144)))
-          throw new DiagnosticScrubError();
-      }
+      if (text[start] === '\\' && text[start + 1] === 'u' && openPlain) throw new DiagnosticScrubError();
+      const quotedKey = quotedFieldAt(text, start);
+      if (quotedKey !== null && isSensitiveField(quotedKey)) throw new DiagnosticScrubError();
       if (/[A-Za-z_验校动短]/.test(text[start])) {
         let end = start + 1;
         while (end < text.length && /[\p{L}\p{N}_-]/u.test(text[end])) end++;
