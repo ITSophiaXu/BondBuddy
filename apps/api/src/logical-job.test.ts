@@ -24,6 +24,11 @@ test('run-less preflight and execute rejection retain atomic owned job timelines
     const request={execution_request_id:uid(),project_id:project,input_revision:1,input_hash:input.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'};
     const execute=await send('POST','/api/v1/runs/execute',request);
     assert.equal(execute.statusCode,501,execute.body);
+    const executeReplay=await send('POST','/api/v1/runs/execute',request);
+    assert.equal(executeReplay.statusCode,501,executeReplay.body);
+    const executeConflict=await send('POST','/api/v1/runs/execute',{...request,input_manifest_ref:'changed-manifest'});
+    assert.equal(executeConflict.statusCode,409,executeConflict.body);
+    assert.equal(executeConflict.json().code,'IDEMPOTENCY_CONFLICT');
     const jobs=(await pool.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND subtype IN ('free_preflight','preflight_rejected','execute_rejected') ORDER BY created_at,id",[owner,project])).rows;
     assert.equal(jobs.length,3);
     assert.deepEqual(new Set(jobs.map(j=>j.subtype)),new Set(['free_preflight','preflight_rejected','execute_rejected']));
@@ -36,11 +41,28 @@ test('run-less preflight and execute rejection retain atomic owned job timelines
       const timeline=await adminJobTimeline(pool,'synthetic-operator',job.id);
       assert.equal(timeline.job.operation_id,operation.id);assert.equal(timeline.job.input_revision,1);
       assert.equal(timeline.job.input_hash,job.input_hash.trim());assert.equal(timeline.job.run_id,null);
-      assert.deepEqual(timeline.stages.map(s=>s.type),[operation.status==='rejected'?'operation.rejected':'operation.submitted','job.state_changed']);
+      const stages=timeline.stages.map(s=>s.type);
+      assert.deepEqual(stages.slice(0,2),[operation.status==='rejected'?'operation.rejected':'operation.submitted','job.state_changed']);
+      if(job.subtype==='execute_rejected')assert.deepEqual(stages.slice(2),['operation.rejected','operation.rejected']);
+      else assert.equal(stages.length,2);
       assert.equal(timeline.attempts.length,0);assert.equal(timeline.consumption.all_attempts.attempts,0);
       assert.equal(timeline.consumption.all_attempts.input_tokens,null);
-      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type=$1 AND aggregate_id IN (SELECT id FROM bb_observability_events WHERE job_id=$2)', ['observability',job.id])).rows[0].n,2);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type=$1 AND aggregate_id IN (SELECT id FROM bb_observability_events WHERE job_id=$2)', ['observability',job.id])).rows[0].n,job.subtype==='execute_rejected'?4:2);
     }
+    const executeJob=jobs.find(j=>j.subtype==='execute_rejected')!;
+    assert.equal(executeJob.execution_request_id,request.execution_request_id);
+    assert.equal(executeJob.request_hash.trim().length,64);
+    const executeAudits=(await pool.query("SELECT id,request_id,error_code FROM bb_operations WHERE owner_user_id=$1 AND operation_kind='execute' AND project_id=$2 ORDER BY created_at,id",[owner,project])).rows;
+    assert.equal(executeAudits.length,3);
+    assert.equal(new Set(executeAudits.map(o=>o.request_id)).size,3,'each HTTP request has its own audit link');
+    assert.equal(executeAudits.filter(o=>o.error_code==='IDEMPOTENCY_CONFLICT').length,1);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2",[owner,request.execution_request_id])).rows[0].n,1);
+    const queueApp=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+    try {
+      const queueReplay=await queueApp.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:request});
+      assert.equal(queueReplay.statusCode,501,queueReplay.body);
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2",[owner,request.execution_request_id])).rows[0].n,0);
+    } finally {await queueApp.close();}
     assert.equal(jobs.find(j=>j.subtype==='free_preflight')!.state,'succeeded');
     assert.equal(jobs.filter(j=>j.state==='rejected').length,2);
     await assert.rejects(pool.query('UPDATE bb_jobs SET input_hash=$1 WHERE id=$2',['b'.repeat(64),jobs[0].id]),(error:any)=>error.code==='23514');
@@ -58,12 +80,19 @@ test('run-less preflight and execute rejection retain atomic owned job timelines
     assert.equal(metrics.jobs.rejected,2);
     assert.equal(metrics.jobs.succeeded,1);
     assert.equal(metrics.attempts.total,0);
+    const secondPreflight=await send('POST',`/api/v1/projects/${project}/preflight`,{input_revision:1,input_hash:input.input_hash});
+    assert.equal(secondPreflight.statusCode,200);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND subtype='free_preflight'",[owner,project])).rows[0].n,2,'preflight has no business idempotency key; a new HTTP submit is a new assessment');
 
     const foreignProject=(await send('POST','/api/v1/projects',{name:'Synthetic foreign',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
     owner=other;
+    const otherProject=(await send('POST','/api/v1/projects',{name:'Other account',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
+    const otherExecute=await send('POST','/api/v1/runs/execute',{...request,project_id:otherProject});
+    assert.equal(otherExecute.statusCode,501,otherExecute.body);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2",[other,request.execution_request_id])).rows[0].n,1,'business keys are scoped by owner');
     const foreign=await send('POST',`/api/v1/projects/${project}/preflight`,{input_revision:1,input_hash:input.input_hash});
     assert.equal(foreign.statusCode,404);
-    const foreignExecute=await send('POST','/api/v1/runs/execute',request);
+    const foreignExecute=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:uid()});
     assert.equal(foreignExecute.statusCode,501);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2',[other,project])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2',[other,project])).rows[0].n,0);
@@ -71,8 +100,8 @@ test('run-less preflight and execute rejection retain atomic owned job timelines
     owner=jobs[0].owner_user_id;
     const stable={owner,projectId:project,requestId:uid(),traceId:uid(),kind:'preflight' as const,jobType:'preflight' as const,status:'submitted' as const,inputRevision:1,inputHash:input.input_hash,stage:'blocked'};
     const first=await transaction(pool,c=>recordLogicalJob(c,stable));
-    assert.equal(await transaction(pool,c=>recordLogicalJob(c,stable)),first);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_observability_events WHERE job_id=$1',[first])).rows[0].n,2);
+    assert.equal((await transaction(pool,c=>recordLogicalJob(c,stable))).jobId,first.jobId);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_observability_events WHERE job_id=$1',[first.jobId])).rows[0].n,2);
     await assert.rejects(transaction(pool,c=>recordLogicalJob(c,{...stable,inputHash:'0'.repeat(64)})),/Conflicting logical job replay/);
     await pool.query("CREATE FUNCTION bb_logical_fail_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='job.state_changed' THEN RAISE EXCEPTION 'synthetic rollback'; END IF; RETURN NEW; END $$");
     await pool.query('CREATE TRIGGER bb_logical_fail_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_logical_fail_outbox()');

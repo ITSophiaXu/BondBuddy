@@ -3,6 +3,9 @@ ALTER TABLE bb_jobs ADD COLUMN operation_id text;
 ALTER TABLE bb_jobs ADD COLUMN request_id text;
 ALTER TABLE bb_jobs ADD COLUMN input_revision integer;
 ALTER TABLE bb_jobs ADD COLUMN input_hash char(64);
+ALTER TABLE bb_jobs ADD COLUMN execution_request_id text;
+ALTER TABLE bb_jobs ADD COLUMN request_hash char(64);
+ALTER TABLE bb_jobs ADD COLUMN rejection_http_status integer;
 ALTER TABLE bb_operations ADD CONSTRAINT bb_operations_owner_project_id UNIQUE(owner_user_id,project_id,id);
 ALTER TABLE bb_jobs ADD CONSTRAINT bb_logical_job_operation_fk
   FOREIGN KEY(owner_user_id,project_id,operation_id) REFERENCES bb_operations(owner_user_id,project_id,id);
@@ -10,6 +13,8 @@ CREATE UNIQUE INDEX bb_logical_job_request_key ON bb_jobs(owner_user_id,request_
   WHERE run_id IS NULL AND subtype IN ('free_preflight','preflight_rejected','execute_rejected');
 CREATE INDEX bb_logical_job_trace_idx ON bb_jobs(owner_user_id,trace_id)
   WHERE run_id IS NULL AND subtype IN ('free_preflight','preflight_rejected','execute_rejected');
+CREATE UNIQUE INDEX bb_rejected_execute_business_key ON bb_jobs(owner_user_id,execution_request_id)
+  WHERE run_id IS NULL AND subtype='execute_rejected';
 
 ALTER TABLE bb_jobs DROP CONSTRAINT bb_jobs_state_check;
 ALTER TABLE bb_jobs ADD CONSTRAINT bb_jobs_state_check
@@ -41,7 +46,11 @@ ALTER TABLE bb_jobs ADD CONSTRAINT bb_job_binding CHECK (
       AND project_id IS NOT NULL AND trace_id IS NOT NULL AND request_id IS NOT NULL
       AND operation_id IS NOT NULL AND input_revision > 0 AND input_hash ~ '^[a-f0-9]{64}$'
       AND material_id IS NULL AND library_source_id IS NULL AND lease_token IS NULL
-      AND attempts=0)
+      AND attempts=0
+      AND ((subtype='execute_rejected' AND execution_request_id IS NOT NULL
+            AND request_hash ~ '^[a-f0-9]{64}$' AND rejection_http_status BETWEEN 400 AND 599)
+        OR (subtype<>'execute_rejected' AND execution_request_id IS NULL
+            AND request_hash IS NULL AND rejection_http_status IS NULL)))
 );
 
 -- The terminal logical row cannot drift away from its immutable operation evidence.

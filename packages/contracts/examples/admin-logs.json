@@ -13,6 +13,7 @@
           "run_id": "run_syn_1",
           "operation_id": null,
           "request_id": null,
+          "execution_request_id": null,
           "trace_id": "run_syn_1",
           "input_revision": null,
           "input_hash": null,
@@ -146,7 +147,7 @@
       "schema": "AdminJobTimelineResponse",
       "valid": true,
       "value": {
-        "job": {"job_id":"job_preflight_syn","user_id":"user_syn_1","project_id":"proj_syn_1","run_id":null,"operation_id":"op_preflight_syn","request_id":"req_preflight_syn","trace_id":"trace_preflight_syn","input_revision":1,"input_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","job_type":"preflight","subtype":"preflight_rejected","state":"rejected","stage":"submission_rejected","attempts":0,"error_code":"INPUT_REVISION_CONFLICT","created_at":"2026-09-25T08:00:00Z","updated_at":"2026-09-25T08:00:00Z","duration_ms":0},
+        "job": {"job_id":"job_preflight_syn","user_id":"user_syn_1","project_id":"proj_syn_1","run_id":null,"operation_id":"op_preflight_syn","request_id":"req_preflight_syn","execution_request_id":null,"trace_id":"trace_preflight_syn","input_revision":1,"input_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","job_type":"preflight","subtype":"preflight_rejected","state":"rejected","stage":"submission_rejected","attempts":0,"error_code":"INPUT_REVISION_CONFLICT","created_at":"2026-09-25T08:00:00Z","updated_at":"2026-09-25T08:00:00Z","duration_ms":0},
         "prompts": [],
         "stages": [
           {"seq":1,"type":"operation.rejected","state":"rejected","stage":null,"reason":"input_revision_conflict","occurred_at":"2026-09-25T08:00:00Z"},

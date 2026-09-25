@@ -17,39 +17,49 @@ export function internalEvent(input:{kind:InternalObservabilityEvent['kind'];own
   if(input.stage&&!safeCode.test(input.stage))throw new Error('Unsafe event stage');
   return {event_id:uid(),schema_version:1,kind:input.kind,occurred_at:new Date().toISOString(),operation_id:input.operationId??input.runId??uid(),request_id:input.requestId??uid(),trace_id:input.traceId,span_id:uid(),parent_span_id:null,actor_type:input.actorType??'system',user_id:input.owner,project_id:input.projectId??null,conversation_id:null,message_id:null,job_id:input.jobId??null,parent_job_id:null,run_id:input.runId??null,work_item_id:null,logical_call_id:input.logicalCallId??null,call_id:null,attempt_no:input.attemptNo??null,job_kind:input.jobKind??null,stage:input.stage??null,status:input.status??null,prompt_snapshot_ref:input.promptSnapshotRef??null,error:input.error??null,usage:input.usage??null};
 }
-export async function recordOperation(client:PoolClient,input:{owner:string;projectId?:string|null;runId?:string|null;requestId:string;traceId:string;kind:string;status:'submitted'|'rejected';errorCode?:string;inputRevision?:number;inputHash?:string;emitEvent?:boolean}) {
+export async function recordOperation(client:PoolClient,input:{owner:string;projectId?:string|null;runId?:string|null;jobId?:string|null;requestId:string;traceId:string;kind:string;status:'submitted'|'rejected';errorCode?:string;inputRevision?:number;inputHash?:string;emitEvent?:boolean}) {
   if(!validId(input.requestId)||!validId(input.traceId)||!safeCode.test(input.kind))throw new Error('Invalid operation identifiers');
   if(input.errorCode&&!ERROR_CODES.includes(input.errorCode as typeof ERROR_CODES[number]))throw new Error('Invalid error code');
   if(input.runId){const r=await client.query('SELECT 1 FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3',[input.runId,input.owner,input.projectId]);if(!r.rowCount)throw missing();}
+  if(input.jobId){const j=await client.query('SELECT 1 FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3',[input.jobId,input.owner,input.projectId]);if(!j.rowCount)throw missing();}
   const id=uid();
   await client.query('INSERT INTO bb_operations(id,owner_user_id,project_id,run_id,request_id,trace_id,operation_kind,status,error_code,input_revision,input_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[id,input.owner,input.projectId??null,input.runId??null,input.requestId,input.traceId,input.kind,input.status,input.errorCode??null,input.inputRevision??null,input.inputHash??null]);
-  if(input.emitEvent!==false)await emitInternal(client,internalEvent({kind:input.status==='rejected'?'operation.rejected':'operation.submitted',owner:input.owner,actorType:'user',projectId:input.projectId,runId:input.runId,traceId:input.traceId,operationId:id,requestId:input.requestId,status:input.status==='rejected'?'rejected':'created',error:input.errorCode?{error_id:uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false}:undefined}));
+  if(input.emitEvent!==false)await emitInternal(client,internalEvent({kind:input.status==='rejected'?'operation.rejected':'operation.submitted',owner:input.owner,actorType:'user',projectId:input.projectId,runId:input.runId,jobId:input.jobId,traceId:input.traceId,operationId:id,requestId:input.requestId,status:input.status==='rejected'?'rejected':'created',error:input.errorCode?{error_id:uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false}:undefined}));
   return id;
 }
 /** A free preflight or an owned pre-run rejection has a terminal job, even without a run. */
-export async function recordLogicalJob(client:PoolClient,input:{owner:string;projectId:string;requestId:string;traceId:string;kind:'preflight'|'execute';jobType:'preflight'|'update'|'review'|'generation'|'qa';status:'submitted'|'rejected';errorCode?:string;inputRevision:number;inputHash:string;stage:string}) {
+export async function recordLogicalJob(client:PoolClient,input:{owner:string;projectId:string;requestId:string;traceId:string;kind:'preflight'|'execute';jobType:'preflight'|'update'|'review'|'generation'|'qa';status:'submitted'|'rejected';errorCode?:string;inputRevision:number;inputHash:string;stage:string;executionRequestId?:string;requestHash?:string;httpStatus?:number}) {
   if(!validId(input.owner)||!validId(input.projectId)||!validId(input.requestId)||!validId(input.traceId)||
      !Number.isSafeInteger(input.inputRevision)||input.inputRevision<1||!/^[a-f0-9]{64}$/.test(input.inputHash)||!safeCode.test(input.stage)||
      (input.status==='submitted'&&input.kind!=='preflight')||
-     (input.kind==='preflight')!==(input.jobType==='preflight'))throw new Error('Invalid logical job');
+     (input.kind==='preflight')!==(input.jobType==='preflight')||
+     (input.kind==='execute' ? !input.executionRequestId||!validId(input.executionRequestId)||!/^[a-f0-9]{64}$/.test(input.requestHash??'')||!Number.isInteger(input.httpStatus)||(input.httpStatus??0)<400||(input.httpStatus??0)>599 : input.executionRequestId!==undefined||input.requestHash!==undefined||input.httpStatus!==undefined))throw new Error('Invalid logical job');
   const subtype=input.kind==='execute'?'execute_rejected':input.status==='rejected'?'preflight_rejected':'free_preflight';
-  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`logical-job:${input.owner}:${input.requestId}`]);
-  const old=await client.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND request_id=$2 AND subtype IN ('free_preflight','preflight_rejected','execute_rejected') AND run_id IS NULL",[input.owner,input.requestId]);
+  // Execute shares #17's per-owner business key; preflight has no public idempotency key.
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[input.kind==='execute'?`${input.owner}:${input.executionRequestId}`:`logical-job:${input.owner}:${input.requestId}`]);
+  const old=input.kind==='execute'
+    ? await client.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2 AND subtype='execute_rejected'",[input.owner,input.executionRequestId])
+    : await client.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND request_id=$2 AND subtype IN ('free_preflight','preflight_rejected') AND run_id IS NULL",[input.owner,input.requestId]);
   if(old.rows[0]){
     const j=old.rows[0];
+    if(input.kind==='execute'){
+      const same=j.request_hash.trim()===input.requestHash;
+      if(j.request_id!==input.requestId)await recordOperation(client,{owner:input.owner,projectId:j.project_id,jobId:j.id,requestId:input.requestId,traceId:input.traceId,kind:'execute',status:'rejected',errorCode:same?j.error_code:'IDEMPOTENCY_CONFLICT',inputRevision:input.projectId===j.project_id?input.inputRevision:undefined,inputHash:input.projectId===j.project_id?input.inputHash:undefined});
+      return {jobId:j.id as string,replay:true,conflict:!same,errorCode:same?j.error_code as string:'IDEMPOTENCY_CONFLICT',httpStatus:same?j.rejection_http_status as number:409};
+    }
     if(j.subtype!==subtype||j.project_id!==input.projectId||j.trace_id!==input.traceId||j.job_type!==input.jobType||j.input_revision!==input.inputRevision||j.input_hash.trim()!==input.inputHash||j.error_code!==(input.errorCode??null)||j.stage!==input.stage)throw new Error('Conflicting logical job replay');
-    return j.id as string;
+    return {jobId:j.id as string,replay:true,conflict:false,errorCode:j.error_code as string|null,httpStatus:null};
   }
   const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[input.owner,input.projectId]);
   if(!owned.rowCount)throw missing();
   const operationId=await recordOperation(client,{...input,emitEvent:false});
   const jobId=uid(),state=input.status==='rejected'?'rejected':'succeeded';
-  await client.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,project_id,trace_id,error_code,operation_id,request_id,input_revision,input_hash)
-    VALUES($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [jobId,input.owner,input.jobType,subtype,state,input.stage,input.projectId,input.traceId,input.errorCode??null,operationId,input.requestId,input.inputRevision,input.inputHash]);
+  await client.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,project_id,trace_id,error_code,operation_id,request_id,input_revision,input_hash,execution_request_id,request_hash,rejection_http_status)
+    VALUES($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [jobId,input.owner,input.jobType,subtype,state,input.stage,input.projectId,input.traceId,input.errorCode??null,operationId,input.requestId,input.inputRevision,input.inputHash,input.executionRequestId??null,input.requestHash??null,input.httpStatus??null]);
   await emitInternal(client,internalEvent({kind:input.status==='rejected'?'operation.rejected':'operation.submitted',owner:input.owner,actorType:'user',projectId:input.projectId,jobId,traceId:input.traceId,operationId,requestId:input.requestId,status:input.status==='rejected'?'rejected':'created',error:input.errorCode?{error_id:uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false}:undefined}));
   await emitInternal(client,internalEvent({kind:'job.state_changed',owner:input.owner,actorType:'system',projectId:input.projectId,jobId,traceId:input.traceId,operationId,requestId:input.requestId,jobKind:input.jobType,status:state,stage:input.stage,error:input.errorCode?{error_id:uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false}:undefined}));
-  return jobId;
+  return {jobId,replay:false,conflict:false,errorCode:input.errorCode??null,httpStatus:input.httpStatus??null};
 }
 export async function rejectOperation(pool:Pool,input:Parameters<typeof recordOperation>[1]) {
   await transaction(pool,client=>recordOperation(client,{...input,status:'rejected'}));
