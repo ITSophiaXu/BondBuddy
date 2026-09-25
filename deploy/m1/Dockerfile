@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # M1 images. Build context is the repository root at an exact commit (deploy.sh uses `git archive <sha>`).
-# Targets: api (also runs migrations and blob backup), worker (Node + Python 3.11 parser), web (nginx + static build).
+# Targets: api (also runs migrations and blob backup), worker (Node + Python 3.11 parser + pinned codex-cli), web (nginx + static build).
 ARG NODE_IMAGE=node:22-bookworm-slim
 
 FROM ${NODE_IMAGE} AS build
@@ -22,6 +22,33 @@ COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/worker-loop.sh deploy
 COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
 # Normalise permissions regardless of the build host's umask; the runtime user only reads.
 RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + ; chmod -R a+rX,go-w /app && chmod 0755 deploy/m1/scripts/worker-loop.sh
+
+# Pinned codex-cli for the #16 contained adapter (same version as the #16 live probes).
+# Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
+# against the npm registry sha512 integrity. Credentials come from env only (never auth.json).
+FROM ${NODE_IMAGE} AS codex
+ARG CODEX_VERSION=0.154.0
+ARG CODEX_INTEGRITY_LINUX_X64=sha512-a4FI3A8sGtwGrOqltrPbrS2hajrHQG591EwmRfiRoLMb10VxdBtUGW4gu6IJVYENiYGA7k3P4jlRHEoCZU/s9Q==
+ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-KmTCB6ST484zeYlPpKP/K5P/gRaYmt6TihVD+zotoe6O9q0JSBP+FYvCz4A/zZXR7xDOHURTSjHp0sD8wWS0YQ==
+ARG TARGETARCH
+WORKDIR /tmp/codex
+RUN set -eu; \
+ case "${TARGETARCH:-amd64}" in \
+   amd64) pkg=linux-x64; triple=x86_64-unknown-linux-musl; want="$CODEX_INTEGRITY_LINUX_X64" ;; \
+   arm64) pkg=linux-arm64; triple=aarch64-unknown-linux-musl; want="$CODEX_INTEGRITY_LINUX_ARM64" ;; \
+   *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
+ esac; \
+ npm pack "@openai/codex@${CODEX_VERSION}-${pkg}" --silent >/dev/null; \
+ tgz="openai-codex-${CODEX_VERSION}-${pkg}.tgz"; \
+ got="sha512-$(node -e "process.stdout.write(require('crypto').createHash('sha512').update(require('fs').readFileSync(process.argv[1])).digest('base64'))" "$tgz")"; \
+ [ "$got" = "$want" ] || { echo "codex tarball integrity mismatch" >&2; exit 1; }; \
+ tar xzf "$tgz"; v="package/vendor/$triple"; \
+ install -d -m 0755 /opt/codex/bin /opt/codex/codex-resources; \
+ install -m 0755 "$v/bin/codex" /opt/codex/bin/codex; \
+ install -m 0755 "$v/codex-resources/bwrap" /opt/codex/codex-resources/bwrap; \
+ install -m 0644 "$v/codex-package.json" /opt/codex/codex-package.json; \
+ [ "$(/opt/codex/bin/codex --version)" = "codex-cli ${CODEX_VERSION}" ]; \
+ rm -rf /tmp/codex /root/.npm
 
 FROM ${NODE_IMAGE} AS node-runtime
 ENV NODE_ENV=production
@@ -47,8 +74,10 @@ CMD ["node","apps/api/dist/server.js"]
 FROM node-runtime AS worker
 ARG BB_RELEASE_SHA=unknown
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+COPY --from=codex --chown=root:root /opt/codex /opt/codex
+RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/worker-loop.sh /usr/local/bin/worker-loop

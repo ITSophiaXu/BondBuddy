@@ -10,7 +10,9 @@ let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
 const reask = prompt.includes('[bb-reask]');
 const pick = (re) => prompt.match(re)?.[1];
-const name = (reask && pick(/REASK_SCENARIO:([a-z_]+)/)) || pick(/SCENARIO:([a-z_]+)/) || 'plain';
+// A fixed-prompt caller (the platform probe) selects the scenario with a leading --fake-scenario=<name> argument.
+const forced = argv.find(a => a.startsWith('--fake-scenario='))?.slice('--fake-scenario='.length);
+const name = forced || (reask && pick(/REASK_SCENARIO:([a-z_]+)/)) || pick(/SCENARIO:([a-z_]+)/) || 'plain';
 const sentinel = pick(/SENTINEL:(\S+)/);
 const out = (v) => process.stdout.write(JSON.stringify(v) + '\n');
 const cwd = process.cwd();

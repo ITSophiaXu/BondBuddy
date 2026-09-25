@@ -31,7 +31,20 @@ export type CodexAdapterConfig = {
   max_schema_reasks: number;
   disabled_features: string[];
   path_env: string;
+  /** Egress proxy variables handed to the child (HTTPS_PROXY/NO_PROXY and lower-case forms). No userinfo allowed. */
+  proxy_env?: Record<string, string>;
 };
+
+// codex honours HTTPS_PROXY for its supplier requests; the worker only reaches the internet
+// through the allow-list egress proxy, so these (and only these) are passed to the child.
+export const CODEX_PROXY_ENV_NAMES = ['HTTPS_PROXY', 'https_proxy', 'NO_PROXY', 'no_proxy'] as const;
+const proxyUrl = (v: string) => /^https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?\/?$/.test(v);
+const noProxyList = (v: string) => /^[A-Za-z0-9.*,:_-]{0,1024}$/.test(v);
+export function codexProxyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of CODEX_PROXY_ENV_NAMES) { const value = env[name]; if (value) out[name] = value; }
+  return out;
+}
 
 // Every Codex feature that exposes a tool, plugin, connector, browser or sub-agent surface.
 // The CTO live check confirms the list against the deployed codex version.
@@ -69,6 +82,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     max_schema_reasks: Number(env.BB_CODEX_MAX_SCHEMA_REASKS ?? 1),
     disabled_features: DEFAULT_DISABLED_FEATURES,
     path_env: env.BB_CODEX_PATH ?? '/usr/local/bin:/usr/bin:/bin',
+    proxy_env: codexProxyEnv(env),
   };
   assertCodexConfig(config);
   return config;
@@ -80,7 +94,8 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     c.wire_api === 'responses' && safeVersion(c.model_config_version) && (c.reasoning_effort === null || /^[a-z]{1,16}$/.test(c.reasoning_effort)) &&
     (c.credential.kind === 'env' ? envName(c.credential.name) : isAbsolute(c.credential.path)) && isAbsolute(c.work_root) &&
     count(c.timeout_ms) && c.timeout_ms > 0 && count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
-    count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0;
+    count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
+    Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
 }
 
@@ -145,7 +160,7 @@ export type CodexProcessResult = {
 // One codex process. Stdout is parsed incrementally; stderr is drained and discarded because it
 // may echo provider or environment details.
 export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
-  const env: Record<string, string> = { PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
+  const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
     if (value) env[c.credential.name] = value;
