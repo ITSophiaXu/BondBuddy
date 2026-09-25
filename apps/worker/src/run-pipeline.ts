@@ -47,15 +47,28 @@ const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ 
 /** input_lock: the run is pinned to its immutable input revision and hash. */
 export const inputLockStage: RunStage = {
   name: 'input_lock',
+  // Recovery must re-check the production rule pin before any later stage can run.
+  replay: true,
   run: async ({ pool, run }) => {
-    const q = await pool.query(`SELECT i.input_hash,i.material_versions,i.rule_pack_version,i.template_version,i.reference_release FROM bb_input_revisions i
+    const q = await pool.query(`SELECT i.input_hash,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
       JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id AND p.deleted_at IS NULL
       WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
     const input = q.rows[0];
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-    return { kind: 'done', checkpoint: { input_revision: run.input_revision, input_hash: run.input_hash.trim(), material_versions: input.material_versions,
-      rule_pack_version: input.rule_pack_version ?? null, template_version: input.template_version ?? null, reference_release: input.reference_release ?? null } };
+    const manifest = input.manifest as Record<string, unknown> | null;
+    const pin = manifest && typeof manifest === 'object' && !Array.isArray(manifest)
+      ? manifest.rule_pack_pin as Record<string, unknown> | undefined : undefined;
+    const completePin = typeof input.rule_pack_version === 'string' && input.rule_pack_version.length > 0 &&
+      pin && typeof pin === 'object' && !Array.isArray(pin) &&
+      typeof pin.pack_id === 'string' && pin.pack_id.length > 0 &&
+      pin.version === input.rule_pack_version && typeof pin.content_hash === 'string' && /^[a-f0-9]{64}$/.test(pin.content_hash);
+    if (!completePin) return { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' };
+    // 0018 persists test-channel events only. There is no authenticated production release
+    // registry/selector yet, so a manifest pin (including one that claims production) cannot
+    // establish reviewer authority, active status, exact scope, or current rule/source validity.
+    // Keep the run parked until a trusted selector can resolve and verify that exact hash.
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_selector_unavailable' };
   },
 };
 
