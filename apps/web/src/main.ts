@@ -10,6 +10,8 @@ import { date, esc, icon } from './ui';
 import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USERNAME_PATTERN, validateRegister } from './register';
 import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow, selectCorrectionEditorForRender } from './material-processing';
 import './material-processing.css';
+import { FactReview } from './fact-review';
+import './fact-review.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
@@ -37,6 +39,7 @@ const recoveredMaterials = new Map<string, Dto<'MaterialResponse'>[]>();
 const recoveryStates = new Map<string, MaterialRecovery>();
 const recoveryControllers = new Map<string, AbortController>();
 let materialProcessing: MaterialProcessing | undefined;
+let factReview: FactReview | undefined;
 const mimeByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = {
   docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2],
   csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5],
@@ -57,6 +60,7 @@ const accountPage: AccountContext = {
 function clearPrivateState() {
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
+  factReview?.dispose(); factReview = undefined;
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
@@ -237,6 +241,7 @@ async function renderRoute() {
   items = []; nextCursor = null; listBusy = false;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
+  factReview?.dispose(); factReview = undefined;
   currentRoute = requested;
   if (requested === '/new') { renderNew(); return; }
   if (requested === '/account') { await renderAccount(accountPage); return; }
@@ -337,7 +342,9 @@ function renderProject(project: Dto<'ProjectResponse'>) {
     <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section>${supplementaryPanel(value)}</div></form>
     <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section>`, 'projects');
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section><div id="fact-review-root"></div>`, 'projects');
+  factReview = new FactReview(api, project.project_id);
+  factReview.mount(document.querySelector<HTMLElement>('#fact-review-root')!);
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); materialProcessing?.setTarget({ market: value.market, offering: value.offering }); updateMaterialWorkspace(project.project_id); });
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
