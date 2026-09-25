@@ -269,9 +269,18 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const profile = baseline.profile;
   if (profile.material_id !== baseline.materialId || profile.material_version !== baseline.materialVersion) throw new Error('UPDATE_PROFILE_BASELINE_MISMATCH');
   if (baseline.format !== 'docx_effective') flag('UPDATE_PDF_RECONSTRUCTION_REQUIRED');
-  if (baseline.parseStatus !== 'parsed' || baseline.warnings.length || baseline.blocks.some(block => block.uncertainty.length)) flag('UPDATE_BASELINE_UNCERTAIN');
+  const uncertainBlocks = baseline.blocks.filter(block => block.uncertainty.length > 0);
+  // The parser contract permits needs_confirmation with no document warnings when
+  // uncertainty is attached to individual records. Keep every document warning,
+  // failed parse, or inconsistent status/record combination as a global gate.
+  const localizedUncertainty = baseline.parseStatus === 'needs_confirmation' && baseline.warnings.length === 0 && uncertainBlocks.length > 0;
+  if (baseline.parseStatus === 'failed' || baseline.warnings.length > 0 ||
+    (baseline.parseStatus === 'parsed' && uncertainBlocks.length > 0) ||
+    (baseline.parseStatus === 'needs_confirmation' && uncertainBlocks.length === 0)) flag('UPDATE_BASELINE_UNCERTAIN');
+  const localizedUncertainRecordIds = new Set<string>();
   const sourceFields = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
   const recordIds = new Set(baseline.blocks.map(block => block.recordId));
+  const uncertainBlockIds = new Set(uncertainBlocks.map(block => block.recordId));
   if (profile.state !== 'ready' || !profile.reporting_periods.length ||
     !profile.source_market.value || !profile.source_offering.value || !isMarketOffering(profile.source_market.value, profile.source_offering.value) ||
     !profile.latest_reporting_cutoff.value || !date(profile.latest_reporting_cutoff.value) ||
@@ -280,9 +289,13 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
       period.start > period.end || !period.period_kind || !period.scope) ||
     sourceFields.some(field => field.status !== 'recognized' || field.uncertainty.length ||
       field.provenance.material_id !== baseline.materialId || field.provenance.material_version !== baseline.materialVersion ||
-      !field.provenance.evidence_refs.length || field.provenance.evidence_refs.some(id => !recordIds.has(id)))) flag('UPDATE_PROFILE_UNCONFIRMED');
+      !field.provenance.evidence_refs.length || field.provenance.evidence_refs.some(id => !recordIds.has(id) || uncertainBlockIds.has(id)))) flag('UPDATE_PROFILE_UNCONFIRMED');
   if (profile.source_market.value !== context.targetMarket || profile.source_offering.value !== context.targetOffering) flag('UPDATE_STRUCTURE_MAPPING_REQUIRED');
   const globalBlocked = findings.length > 0;
+  if (localizedUncertainty) for (const block of uncertainBlocks) {
+    localizedUncertainRecordIds.add(block.recordId);
+    flag('UPDATE_BASELINE_BLOCK_UNCERTAIN', [block.recordId]);
+  }
   const blockById = new Map(baseline.blocks.map(block => [block.recordId, block]));
   const bindingById = new Map(bindings.map(binding => [binding.bindingId, binding]));
   if (bindingById.size !== bindings.length) throw new Error('UPDATE_DUPLICATE_BINDING');
@@ -297,6 +310,7 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const reviews = new Map(coverage.map(item => [item.recordId, item]));
   if (reviews.size !== coverage.length || coverage.some(item => !blockById.has(item.recordId) || !item.reason.trim() || !['retain', 'update', 'needs_evidence'].includes(item.disposition))) throw new Error('UPDATE_INVALID_COVERAGE');
   const pendingRecords = new Set<string>();
+  for (const recordId of localizedUncertainRecordIds) pendingRecords.add(recordId);
   for (const block of baseline.blocks) {
     const review = reviews.get(block.recordId);
     if (!review || review.disposition === 'needs_evidence') { pendingRecords.add(block.recordId); flag('UPDATE_COVERAGE_INCOMPLETE', [block.recordId]); }
@@ -311,6 +325,7 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
       block.text.slice(occurrence.start, occurrence.end) !== occurrence.before) {
       failedBindings.add(binding.bindingId); flag('UPDATE_STALE_ANCHOR', [block.recordId], [binding.bindingId]); continue;
     }
+    if (localizedUncertainRecordIds.has(block.recordId)) continue;
     if (reviews.get(block.recordId)?.disposition !== 'update') { failedBindings.add(binding.bindingId); flag('UPDATE_COVERAGE_CONFLICT', [block.recordId], [binding.bindingId]); continue; }
     const resolved = values.get(binding.bindingId);
     if (!resolved) continue;
@@ -355,6 +370,12 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
       if (rows.some((row, index) => row !== index + 1) || new Set(widths).size !== 1 ||
         columnNumbers.some((column, index) => column !== index + 1) || new Set(grid.map(cell => `${cell!.row}:${cell!.column}`)).size !== grid.length ||
         request.cells.length !== rows.length || new Set(positions.map(position => position!.row)).size !== rows.length) throw new Error('UPDATE_TABLE_COVERAGE_INCOMPLETE');
+      if (request.cells.some(cell => !bindingById.has(cell.bindingId))) throw new Error('UPDATE_UNKNOWN_BINDING_OR_ANCHOR');
+      const uncertainAnchors = request.cells.filter(cell => localizedUncertainRecordIds.has(cell.afterRecordId));
+      if (uncertainAnchors.length) {
+        for (const cell of uncertainAnchors) flag('UPDATE_BASELINE_BLOCK_UNCERTAIN', [cell.afterRecordId], [cell.bindingId]);
+        continue;
+      }
       const columnContexts: string[] = [];
       const cells = request.cells.map((cell, index) => {
         const value = values.get(cell.bindingId); const binding = bindingById.get(cell.bindingId);
@@ -382,8 +403,9 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const validReplacements = globalBlocked ? [] : replacements.filter(change => !failedBindings.has(change.bindingId));
   const validColumns = globalBlocked ? [] : plannedColumns.filter(column => column.cells.every(cell => !failedBindings.has(cell.bindingId)));
   const failedRecordIds = new Set(occurrences.filter(item => failedBindings.has(item.bindingId)).map(item => item.recordId)
-    .concat(columns.filter(column => column.cells.some(cell => failedBindings.has(cell.bindingId))).flatMap(column => column.cells.map(cell => cell.afterRecordId))));
-  const addressedRecords = new Set(occurrences.filter(item => !failedBindings.has(item.bindingId)).map(item => item.recordId)
+    .concat(columns.filter(column => column.cells.some(cell => failedBindings.has(cell.bindingId))).flatMap(column => column.cells.map(cell => cell.afterRecordId)),
+      [...localizedUncertainRecordIds]));
+  const addressedRecords = new Set(occurrences.filter(item => !failedBindings.has(item.bindingId) && !localizedUncertainRecordIds.has(item.recordId)).map(item => item.recordId)
     .concat(validColumns.flatMap(column => column.cells.map(cell => cell.anchorRecordId))));
   for (const block of baseline.blocks) if (reviews.get(block.recordId)?.disposition === 'update' && (!addressedRecords.has(block.recordId) || failedRecordIds.has(block.recordId) || globalBlocked)) {
     pendingRecords.add(block.recordId); flag('UPDATE_RECORD_NOT_RESOLVED', [block.recordId]);
@@ -402,7 +424,7 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
       priorRevisions: baseline.priorRevisions, format: baseline.format }, sourceProfile: profile,
     status: findings.length ? 'needs_confirmation' : 'planned', deliverable: false,
     replacements: validReplacements, columns: validColumns, textPreview, findings,
-    coverage: { total: baseline.blocks.length, retained: coverage.filter(item => item.disposition === 'retain').length,
+    coverage: { total: baseline.blocks.length, retained: coverage.filter(item => item.disposition === 'retain' && !pendingRecords.has(item.recordId)).length,
       updated: [...addressedRecords].filter(id => !pendingRecords.has(id)).length, pending: pendingRecords.size },
   };
   return { ...result, planHash: updateContentHash(result) };

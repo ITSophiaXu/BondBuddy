@@ -148,10 +148,48 @@ test('missing coverage and mixed resolved/unresolved changes stay pending', () =
   const plan = planHistoricalUpdate(mixed); assert.equal(plan.coverage.pending, 1); assert.equal(plan.coverage.updated, 3);
 });
 
-for (const scenario of ['pdf', 'uncertain', 'profile', 'foreign_evidence', 'missing_date', 'cross_market'] as const) test(`baseline ${scenario} blocks all edits`, () => {
+test('record-local uncertainty leaves independent supported updates available and marks only that record pending', () => {
+  const input = fixture();
+  input.baseline.parseStatus = 'needs_confirmation';
+  input.baseline.blocks.find(block => block.recordId === 'p2')!.uncertainty = ['OCR_VALUE_REQUIRES_CONFIRMATION'];
+  const result = planHistoricalUpdate(input);
+  assert.equal(result.status, 'needs_confirmation'); assert.equal(result.deliverable, false);
+  assert.deepEqual(result.replacements.map(change => change.recordId), ['p1']);
+  assert.equal(result.textPreview.find(block => block.recordId === 'p2')!.after, result.textPreview.find(block => block.recordId === 'p2')!.before);
+  assert.equal(result.columns.length, 1);
+  assert.equal(result.coverage.pending, 1);
+  assert.ok(result.findings.some(finding => finding.code === 'UPDATE_BASELINE_BLOCK_UNCERTAIN' && finding.recordIds.includes('p2')));
+  assert.ok(!result.findings.some(finding => finding.code === 'UPDATE_BASELINE_UNCERTAIN'));
+});
+
+test('record-local uncertainty does not bypass malformed occurrence or table-column anchors', () => {
+  const occurrence = fixture();
+  occurrence.baseline.parseStatus = 'needs_confirmation';
+  occurrence.baseline.blocks.find(block => block.recordId === 'p2')!.uncertainty = ['OCR_VALUE_REQUIRES_CONFIRMATION'];
+  occurrence.occurrences[1]!.start = 999;
+  occurrence.occurrences[1]!.end = 1003;
+  const occurrencePlan = planHistoricalUpdate(occurrence);
+  assert.ok(occurrencePlan.findings.some(finding => finding.code === 'UPDATE_STALE_ANCHOR' && finding.recordIds.includes('p2')));
+  assert.equal(occurrencePlan.replacements.length, 0);
+
+  const column = fixture();
+  column.baseline.parseStatus = 'needs_confirmation';
+  const uncertainCell = column.baseline.blocks.find(block => block.recordId === 't1r2c3')!;
+  uncertainCell.uncertainty = ['OCR_CELL_REQUIRES_CONFIRMATION'];
+  (uncertainCell.locator.path as Array<Record<string, number>>)[1]!.paragraph = 2;
+  const columnPlan = planHistoricalUpdate(column);
+  assert.ok(columnPlan.findings.some(finding => finding.code === 'UPDATE_COMPLEX_TABLE_REQUIRES_MAPPING'));
+  assert.equal(columnPlan.columns.length, 0);
+  assert.equal(columnPlan.replacements.length, 0);
+});
+
+for (const scenario of ['pdf', 'uncertain', 'warning', 'failed', 'unlocalized_confirmation', 'profile', 'foreign_evidence', 'missing_date', 'cross_market'] as const) test(`baseline ${scenario} blocks all edits`, () => {
   const input = fixture();
   if (scenario === 'pdf') input.baseline.format = 'pdf_requires_reconstruction';
-  if (scenario === 'uncertain') input.baseline.blocks[0]!.uncertainty = ['UNSUPPORTED_REVISION'];
+  if (scenario === 'uncertain') { input.baseline.parseStatus = 'needs_confirmation'; input.baseline.blocks[0]!.uncertainty = ['UNSUPPORTED_REVISION']; input.baseline.warnings = ['DOCX_UNSUPPORTED_REVISION_MARKERS']; }
+  if (scenario === 'warning') { input.baseline.parseStatus = 'needs_confirmation'; input.baseline.warnings = ['DOCX_AUXILIARY_PARTS']; }
+  if (scenario === 'failed') input.baseline.parseStatus = 'failed';
+  if (scenario === 'unlocalized_confirmation') input.baseline.parseStatus = 'needs_confirmation';
   if (scenario === 'profile') input.baseline.profile.source_market.status = 'user_asserted';
   if (scenario === 'foreign_evidence') input.baseline.profile.source_market.provenance.evidence_refs = ['foreign-record'];
   if (scenario === 'missing_date') input.baseline.profile.reporting_periods[0]!.end = null;
