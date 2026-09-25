@@ -2,6 +2,8 @@
 
 This is a structural writer only. It does not select references, assess factual or
 professional correctness, run delivery checks, or participate in production runtime.
+Fact claim IDs are checked against the separately trusted allow-list, but this writer
+does not emit citations or anchor claims to evidence inside the DOCX.
 """
 from __future__ import annotations
 
@@ -164,9 +166,18 @@ def render(request: Any, output_dir: str | os.PathLike[str]) -> dict[str, Any]:
     except (TypeError, ValueError, RecursionError):
         _fail("REQUEST_SHAPE_INVALID")
     draft, _ = validate_request(request)
-    directory = Path(output_dir)
-    if not directory.is_absolute() or ".." in directory.parts or directory.is_symlink() or not directory.is_dir():
+    requested_directory = Path(output_dir)
+    if not requested_directory.is_absolute() or ".." in requested_directory.parts or requested_directory.is_symlink() or not requested_directory.is_dir():
         _fail("OUTPUT_DIRECTORY_UNSAFE")
+    # The absolute path is worker configuration, never request/model data. Resolve ancestor
+    # symlinks once, then require the resulting existing stage to be private and worker-owned.
+    directory = requested_directory.resolve(strict=True)
+    if not directory.is_dir():
+        _fail("OUTPUT_DIRECTORY_UNSAFE")
+    if os.name == "posix":
+        stage_stat = directory.stat()
+        if stage_stat.st_uid != os.geteuid() or stage_stat.st_mode & 0o077:
+            _fail("OUTPUT_DIRECTORY_UNSAFE")
     output_path = directory / OUTPUT_NAME
     if output_path.is_symlink() or output_path.exists():
         _fail("OUTPUT_PATH_UNSAFE")

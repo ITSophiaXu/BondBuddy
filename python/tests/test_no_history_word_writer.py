@@ -87,6 +87,9 @@ class NoHistoryWordWriterTest(unittest.TestCase):
                     root = etree.fromstring(package.read(part))
                     names = {element.tag.rsplit("}", 1)[-1] for element in root.iter()}
                     self.assertTrue(names.isdisjoint({"ins", "del", "moveFrom", "moveTo"}), part)
+            text = "\n".join(paragraph.text for paragraph in readback.paragraphs)
+            self.assertNotIn("target-fact-a", text)
+            self.assertNotIn("发行人主营业务收入按已核验材料列示。", text)
 
     def test_output_bytes_are_stable(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
@@ -137,8 +140,18 @@ class NoHistoryWordWriterTest(unittest.TestCase):
             target.symlink_to(Path(temp), target_is_directory=True)
             with self.assertRaisesRegex(DraftError, "OUTPUT_DIRECTORY_UNSAFE"):
                 render(sample_request(), target)
+            stage = Path(temp) / "stage"
+            stage.mkdir(mode=0o700)
+            alias_stage = target / "stage"
+            result = render(sample_request(), alias_stage)
+            self.assertTrue((stage / OUTPUT_NAME).is_file())
+            self.assertEqual(result["output_sha256"], hashlib.sha256((stage / OUTPUT_NAME).read_bytes()).hexdigest())
         with self.assertRaisesRegex(DraftError, "OUTPUT_DIRECTORY_UNSAFE"):
             render(sample_request(), "../unsafe")
+        with tempfile.TemporaryDirectory() as temp:
+            os.chmod(temp, 0o755)
+            with self.assertRaisesRegex(DraftError, "OUTPUT_DIRECTORY_UNSAFE"):
+                render(sample_request(), temp)
 
 
 if __name__ == "__main__":
