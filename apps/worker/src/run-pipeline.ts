@@ -51,7 +51,8 @@ const lost = (error: unknown) => error instanceof Problem && (error.code === 'AL
 const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'stage_not_implemented' }) });
 
 type InputBindingGate = Extract<StageOutcome, { kind: 'pause' | 'fail' }>;
-type InputRevisionRow = { input_hash: string; manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
+type InputRevisionRow = { input_hash: string; draft_revision: number; material_versions: unknown;
+  manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
 
 async function verifyProductionRulePin(pool: Pool, run: RunRow, input: InputRevisionRow, loader?: ReviewedContextLoader): Promise<InputBindingGate | null> {
   if (String(input.input_hash).trim() !== run.input_hash.trim())
@@ -99,7 +100,7 @@ async function verifyUpdateIssuerIdentityBinding(pool: Pool, run: RunRow, manife
 }
 
 async function currentRunInput(pool: Pool, run: RunRow): Promise<InputRevisionRow | null> {
-  const result = await pool.query(`SELECT i.input_hash,i.manifest,i.rule_pack_version,i.template_version FROM bb_input_revisions i
+  const result = await pool.query(`SELECT i.input_hash,i.draft_revision,i.material_versions,i.manifest,i.rule_pack_version,i.template_version FROM bb_input_revisions i
     JOIN bb_projects p ON p.id=i.project_id AND p.owner_user_id=i.owner_user_id AND p.deleted_at IS NULL
     WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
   return (result.rows[0] as InputRevisionRow | undefined) ?? null;
@@ -111,7 +112,7 @@ export const inputLockStage: RunStage = {
   // Recovery must re-check the production rule pin before any later stage can run.
   replay: true,
   run: async ({ pool, run, reviewedContextLoader }) => {
-    const q = await pool.query(`SELECT i.input_hash,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
+    const q = await pool.query(`SELECT i.input_hash,i.draft_revision,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
       JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id AND p.deleted_at IS NULL
       WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
     const input = q.rows[0];
