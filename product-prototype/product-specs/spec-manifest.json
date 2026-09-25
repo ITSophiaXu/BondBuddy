@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-25T10:29:37.229Z",
+  "assembled_at": "2026-09-25T11:48:45.513Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -33,7 +33,7 @@
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "7920b374073a03e5d404114e372f87e80ab00d7fa91f7f842c5f02238d8a0996"
+      "sha256": "0e067787941d16a9484f5cbec8dea9281916fd774317abc0694a02719ab0af50"
     },
     {
       "file": "06-复核募集书.md",
@@ -93,7 +93,7 @@
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "b8b44f025e694eb497292153055148028e680f6252770249a6decf51b15d54d8"
+      "sha256": "5254617ef52177c988383dd893b40af4bed5eaef8757272ecc36db1bf942efb8"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -105,52 +105,52 @@
     {
       "relative_path": "product-prototype/product-specs/references/BondBuddy详细积分方案-v1.1-来源快照.md",
       "sha256": "76ff33f66847742d330189708ebca104d5e55e958f0546795a5ce33a56482066",
-      "observed_mtime": "2026-09-25T09:57:12.826Z"
+      "observed_mtime": "2026-09-25T11:45:30.382Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/积分参数-v1.1-来源快照.json",
       "sha256": "db50cd1335c5dd6112e661e514ae25c31b5af84a94edf6e22e4768308123b787",
-      "observed_mtime": "2026-09-25T09:57:12.828Z"
+      "observed_mtime": "2026-09-25T11:45:30.384Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/本地规格来源指纹-v1.1.json",
       "sha256": "51b69c0545b1b9ce4a2ea7687827a9ce20a36587998df65c5d0458977c4b3d01",
-      "observed_mtime": "2026-09-25T09:57:12.827Z"
+      "observed_mtime": "2026-09-25T11:45:30.383Z"
     },
     {
       "relative_path": "product-prototype/package.json",
       "sha256": "979fe857fe0cf376f5acf182b52747b21c6e1a7989e2dff310a9d4ea7340635c",
-      "observed_mtime": "2026-09-25T09:57:12.735Z"
+      "observed_mtime": "2026-09-25T11:45:30.292Z"
     },
     {
       "relative_path": "product-prototype/server.mjs",
       "sha256": "be63308d49de645458491314aa3b98f380041acb88edda668f48c79371a25a50",
-      "observed_mtime": "2026-09-25T09:57:12.881Z"
+      "observed_mtime": "2026-09-25T11:45:30.437Z"
     },
     {
       "relative_path": "product-prototype/docs/PROJECT-WORKSPACE.md",
       "sha256": "5a50f4c1bade760d6d44b5613695073c24bb724ace804b231e971bb67f391463",
-      "observed_mtime": "2026-09-25T09:57:12.658Z"
+      "observed_mtime": "2026-09-25T11:45:30.214Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-pricing.mjs",
       "sha256": "f52ed2bbde736786f9953e494bbf645de90d7c88b9c0805f45cfae767ac5bc9b",
-      "observed_mtime": "2026-09-25T09:57:12.722Z"
+      "observed_mtime": "2026-09-25T11:45:30.278Z"
     },
     {
       "relative_path": "product-prototype/public/markets.js",
       "sha256": "3e59b309472e0c6707b539988ff27b5468abd05b4ceb5787bc20a848f77479a9",
-      "observed_mtime": "2026-09-25T09:57:12.843Z"
+      "observed_mtime": "2026-09-25T11:45:30.398Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-wallet.mjs",
       "sha256": "4e6cd1564665476ae5a175a7cf10855abb7a8f561b9fc2613ff938d4b8561b21",
-      "observed_mtime": "2026-09-25T09:57:12.724Z"
+      "observed_mtime": "2026-09-25T11:45:30.280Z"
     },
     {
       "relative_path": "product-prototype/public/credit-account.js",
       "sha256": "b4ddbe0736d40e81a6b1b39c3035f4d5b2c0056bfb37cd770eb5cf93fa4b7d66",
-      "observed_mtime": "2026-09-25T09:57:12.835Z"
+      "observed_mtime": "2026-09-25T11:45:30.391Z"
     }
   ],
   "acceptance_ids": [
@@ -335,7 +335,7 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 57570,
+    "han_characters": 57672,
     "local_links_checked": 130,
     "tables_checked": 129,
     "json_examples_checked": 4,
