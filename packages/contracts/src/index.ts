@@ -5,6 +5,10 @@ import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
+// --- #17 worker runtime (BB-M1-12-RUNTIME) ---
+import { runtimeSchemas } from './worker-runtime.js';
+export * from './worker-runtime.js';
+// --- end #17 worker runtime ---
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -104,6 +108,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 
 export const schemas = {
   ...adminSchemas,
+  ...runtimeSchemas, // #17 worker runtime
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
@@ -244,7 +249,11 @@ export const operations: readonly Operation[] = [
   op('get', '/admin/alerts', 'List operational alerts (log_reader)', 'AdminAlertsResponse', 200, undefined, [404]),
   op('get', '/admin/evidence-gate', 'Read whether new external model calls are paused (log_reader)', 'EvidenceGateResponse', 200, undefined, [404]),
   op('post', '/admin/evidence-gate/resume', 'Append an operator resume after evidence persistence is healthy (log_operator)', 'EvidenceGateResponse', 200, 'EvidenceGateResumeRequest', [404, 409]),
-  op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_operator)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422])
+  op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_operator)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422]),
+  // --- #17 worker runtime: owner-checked SSE streams of persisted state (text/event-stream) ---
+  op('get', '/runs/{run_id}/stream', 'SSE of persisted run events; resumes after Last-Event-ID; closing it never cancels the run', 'RunEvent', 200, undefined, [404, 422]),
+  op('get', '/projects/{project_id}/materials/{material_id}/parse-job/stream', 'SSE of persisted parse-job events; resumes after Last-Event-ID', 'JobStreamEvent', 200, undefined, [404, 422])
+  // --- end #17 worker runtime ---
 ];
 
 const ref = (name: SchemaName) => ({ $ref: `#/components/schemas/${name}` });
@@ -293,5 +302,15 @@ export function openApiDocument() {
     requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
     responses: { '204': { description: 'Bytes verified and received; call complete to register material' }, '404': { description: 'Unknown or foreign upload' }, '422': { description: 'Content mismatch or expired upload', content: { 'application/json': { schema: ref('Error') } } }, '503': { description: 'Temporary upload inspection capacity unavailable; retryable', content: { 'application/json': { schema: ref('Error') } } } }
   } };
+  // --- #17 worker runtime: SSE responses are text/event-stream frames whose `data:` matches the schema ---
+  for (const [path, schema] of [['/runs/{run_id}/stream', 'RunEvent'], ['/projects/{project_id}/materials/{material_id}/parse-job/stream', 'JobStreamEvent']] as const) {
+    const get = paths[`/api/v1${path}`].get as Record<string, any>;
+    get['x-implementation-status'] = 'implemented; requires-valid-session; owner-checked';
+    get.parameters = [...get.parameters, { name: 'Last-Event-ID', in: 'header', required: false, schema: { type: 'string', pattern: '^(0|[1-9][0-9]{0,9})$' } }, { name: 'after', in: 'query', required: false, schema: { type: 'string', pattern: '^(0|[1-9][0-9]{0,9})$' } }];
+    get.responses['200'] = { description: 'Server-sent events: `snapshot` (no id, only without a cursor), persisted events with `id: <seq>`, then `stream.end` (StreamEnd). Reconnect with Last-Event-ID.', content: { 'text/event-stream': { schema: ref(schema) } } };
+  }
+  for (const [path, method] of [['/runs/execute', 'post'], ['/runs/{run_id}/cancel', 'post'], ['/runs/{run_id}/resume', 'post']] as const)
+    (paths[`/api/v1${path}`][method] as Record<string, unknown>)['x-implementation-status'] = 'implemented; worker-runtime; production-501-unless-BB_RUN_RUNTIME_ENABLED; stages-without-implementation-pause-capability_not_ready';
+  // --- end #17 worker runtime ---
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
 }

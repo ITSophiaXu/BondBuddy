@@ -8,7 +8,9 @@ import {
 import { DOCUMENT_PARSER_MEDIA_TYPES } from './document-parser.js';
 import type { MaterialParserDependencies } from './material-parser.js';
 import { getParseSnapshot, parseAndPersistAuthorizedMaterial, type ParseEvidenceDependencies, type StoredParseSnapshot } from './parse-evidence-repository.js';
-import { appendHistoricalRecognition, getLatestHistoricalProfile, type HistoricalProfileDependencies } from './historical-profile-repository.js';
+import { appendHistoricalOcrRecognition, appendHistoricalRecognition, getLatestHistoricalProfile, type HistoricalOcrProfileDependencies, type HistoricalProfileDependencies } from './historical-profile-repository.js';
+import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
+import { readOcr } from '@bondbuddy/api/ocr';
 import { recognizeHistoricalNativeText } from './historical-native-recognition.js';
 
 export interface MaterialParseJobDependencies {
@@ -20,6 +22,15 @@ export interface MaterialParseJobDependencies {
   leaseSeconds?: number;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: MaterialParseLease) => Promise<void>;
+  /**
+   * #17 OCR hook: server-side OCR processor (production: `processOcrMaterial` from ./ocr.js with
+   * purpose `source_preflight`). Absent => OCR-dependent jobs pause at `awaiting_ocr` as before.
+   */
+  ocr?: (input: { owner: string; projectId: string; materialId: string; version: number; requestId: string }) => Promise<{ snapshot_id: string }>;
+  /** Private Blob access for turning a historical PDF's OCR snapshot into a recognition profile. */
+  ocrProfiles?: HistoricalOcrProfileDependencies;
+  /** Runtime hook: registers the active lease so graceful shutdown can release it. */
+  onLease?: (lease: MaterialParseLease | null) => void;
 }
 
 export type MaterialParseRunOutcome = 'idle' | 'succeeded' | 'paused' | 'retry_scheduled' | 'failed' | 'lost';
@@ -32,6 +43,15 @@ const TERMINAL: Record<string, ErrorCode> = {
   UNSUPPORTED_MEDIA_TYPE: 'MATERIAL_FORMAT_UNSUPPORTED', PARSER_VERSION_MISMATCH: 'VALIDATION_FAILED',
   PARSER_RESULT_CONTAINS_PRIVATE_REFERENCE: 'VALIDATION_FAILED',
 };
+// #17 OCR processor failures (apps/worker/src/ocr.ts). OCR_PROCESS_UNAVAILABLE pauses instead (engine not installed).
+const OCR_TERMINAL: Record<string, ErrorCode> = {
+  OCR_UNSUPPORTED_FORMAT: 'MATERIAL_FORMAT_UNSUPPORTED', OCR_INPUT_LIMIT: 'VALIDATION_FAILED', OCR_SOURCE_INTEGRITY_FAILED: 'MATERIAL_CONTENT_MISMATCH',
+  OCR_PRIVATE_PATH_IN_RESULT: 'VALIDATION_FAILED', INVALID_OCR_BUDGET: 'VALIDATION_FAILED',
+};
+const OCR_RETRYABLE: Record<string, ErrorCode> = {
+  OCR_PROCESS_TIMEOUT: 'MATERIAL_UNREADABLE', OCR_PROCESS_FAILED: 'MATERIAL_UNREADABLE', OCR_INVALID_RESPONSE: 'MATERIAL_UNREADABLE', OCR_OUTPUT_LIMIT: 'MATERIAL_UNREADABLE', OCR_FAILED: 'MATERIAL_UNREADABLE',
+};
+const OCR_MEDIA = ['application/pdf', 'image/png', 'image/jpeg'];
 const RETRYABLE: Record<string, ErrorCode> = {
   MATERIAL_BYTES_UNAVAILABLE: 'DATA_UNAVAILABLE', MATERIAL_LOOKUP_FAILED: 'DATA_UNAVAILABLE', MATERIAL_PARSE_CACHE_FAILED: 'DATA_UNAVAILABLE',
   MATERIAL_TEMP_CLEANUP_FAILED: 'DATA_UNAVAILABLE', MATERIAL_PARSE_FAILED: 'MATERIAL_UNREADABLE', CHECKPOINT_SNAPSHOT_MISSING: 'DATA_UNAVAILABLE',
@@ -42,11 +62,13 @@ class StageFailure extends Error {
 }
 
 /** Maps repository error codes to the public error enum; unknown failures are retryable infrastructure errors. */
-export function classifyMaterialParseError(error: unknown): { code: ErrorCode; retryable: boolean; category: 'material_parse' | 'internal' } {
+export function classifyMaterialParseError(error: unknown): { code: ErrorCode; retryable: boolean; category: 'material_parse' | 'ocr' | 'internal' } {
   if (error instanceof StageFailure) return { code: error.code, retryable: error.retryable, category: 'material_parse' };
   const message = error instanceof Error ? error.message : '';
   if (TERMINAL[message]) return { code: TERMINAL[message], retryable: false, category: 'material_parse' };
   if (RETRYABLE[message]) return { code: RETRYABLE[message], retryable: true, category: 'material_parse' };
+  if (OCR_TERMINAL[message]) return { code: OCR_TERMINAL[message], retryable: false, category: 'ocr' };
+  if (OCR_RETRYABLE[message]) return { code: OCR_RETRYABLE[message], retryable: true, category: 'ocr' };
   if (/^(INVALID_|HISTORICAL_PROFILE_)/.test(message)) return { code: 'VALIDATION_FAILED', retryable: false, category: 'material_parse' };
   return { code: 'DATA_UNAVAILABLE', retryable: true, category: 'internal' };
 }
@@ -73,10 +95,11 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
   const evidence = dependencies.evidence ?? { pool };
   const profiles = dependencies.profiles ?? { pool };
   const lease = await claimMaterialParse(pool, leaseSeconds);
+  dependencies.onLease?.(lease);
   if (!lease) return 'idle';
   const heartbeat = setInterval(() => { void renewMaterialParse(pool, lease, leaseSeconds).catch(() => clearInterval(heartbeat)); }, Math.max(1000, leaseSeconds * 400));
   const context = { ownerUserId: lease.owner, projectId: lease.projectId, materialId: lease.materialId, materialVersion: lease.materialVersion };
-  const stage = async (name: 'parse_evidence' | 'historical_profile', value: Record<string, unknown>) => {
+  const stage = async (name: 'parse_evidence' | 'historical_profile' | 'ocr_evidence', value: Record<string, unknown>) => {
     await completeMaterialParseStage(pool, lease, name, value);
     await dependencies.afterStage?.(name, lease);
   };
@@ -121,9 +144,39 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
     const needsOcr = !parseable || snapshot!.response.warnings.some(warning => OCR_WARNINGS.has(warning.code));
     const parseStatus = snapshot?.response.status ?? null;
     if (needsOcr) {
-      const result: MaterialParseResult = { outcome: 'pending_ocr', parse_status: parseStatus, profile_version: profile?.profile_version ?? null, pending_capabilities: ['ocr'] };
-      await pauseMaterialParse(pool, lease, 'awaiting_ocr', result);
-      return 'paused';
+      const pendingOcr: MaterialParseResult = { outcome: 'pending_ocr', parse_status: parseStatus, profile_version: profile?.profile_version ?? null, pending_capabilities: ['ocr'] };
+      if (!dependencies.ocr || !OCR_MEDIA.includes(material.media_type)) {
+        await pauseMaterialParse(pool, lease, 'awaiting_ocr', pendingOcr);
+        return 'paused';
+      }
+      // #17 OCR hook: the OCR snapshot is a checkpointed stage; a resumed job never re-runs it.
+      let snapshotId = (stages.ocr_evidence as { snapshot_id?: string } | undefined)?.snapshot_id;
+      if (!snapshotId) {
+        try { snapshotId = (await dependencies.ocr({ owner: lease.owner, projectId: lease.projectId, materialId: lease.materialId, version: lease.materialVersion, requestId: `${lease.jobId}-ocr` })).snapshot_id; }
+        catch (error) {
+          if (error instanceof Error && error.message === 'OCR_PROCESS_UNAVAILABLE') {
+            await pauseMaterialParse(pool, lease, 'awaiting_ocr', pendingOcr, 'ocr_unavailable');
+            return 'paused';
+          }
+          throw error;
+        }
+        await stage('ocr_evidence', { snapshot_id: snapshotId });
+      }
+      if (dependencies.ocrProfiles && material.role === 'historical' && material.media_type === 'application/pdf') {
+        const review = await readOcr(pool, dependencies.ocrProfiles.blobs, lease.owner, lease.projectId, lease.materialId);
+        if (review.snapshot_id === snapshotId) {
+          try {
+            const stored = await appendHistoricalOcrRecognition(dependencies.ocrProfiles, { ...context, requestId: `${lease.jobId}-ocr-profile` }, recognizeHistoricalOcr(review, { profileVersion: 1 }));
+            profile = { profile_version: stored.profileVersion, state: stored.recognition.state };
+          } catch (error) {
+            // A user correction stays authoritative; the OCR evidence is still recorded.
+            if (!(error instanceof Error && error.message === 'HISTORICAL_PROFILE_ALREADY_CORRECTED')) throw error;
+          }
+        }
+      }
+      // OCR text is evidence to review, never a confirmed fact.
+      await succeedMaterialParse(pool, lease, { outcome: 'needs_confirmation', parse_status: parseStatus, profile_version: profile?.profile_version ?? null, pending_capabilities: [] });
+      return 'succeeded';
     }
     const confirmed = parseStatus === 'parsed' && (profile === null || profile.state === 'ready');
     await succeedMaterialParse(pool, lease, { outcome: confirmed ? 'parsed' : 'needs_confirmation', parse_status: parseStatus,
@@ -134,7 +187,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
     if (lostLease(error)) return 'lost';
     try { return await failMaterialParse(pool, lease, classifyMaterialParseError(error)); }
     catch (finishError) { if (lostLease(finishError)) return 'lost'; throw finishError; }
-  } finally { clearInterval(heartbeat); }
+  } finally { clearInterval(heartbeat); dependencies.onLease?.(null); }
 }
 
 // Operational one-shot drain: processes at most BB_PARSE_JOB_BATCH jobs with the versioned Python parser, then exits.

@@ -1,7 +1,7 @@
 import { Pool, type PoolClient } from 'pg';
 import {
-  ERROR_CODES, MATERIAL_PARSE_JOB_SUBTYPE, MATERIAL_PARSE_JOB_TYPE, MATERIAL_PARSE_STAGES,
-  type ERROR_CATEGORIES, type ErrorCode, type MATERIAL_PARSE_EVENT_TYPES, type MaterialParseJob,
+  ERROR_CODES, MATERIAL_PARSE_JOB_SUBTYPE, MATERIAL_PARSE_JOB_TYPE, MATERIAL_PARSE_OCR_STAGE, MATERIAL_PARSE_STAGES,
+  type ERROR_CATEGORIES, type ErrorCode, type MATERIAL_PARSE_EVENT_TYPES, type MATERIAL_PARSE_RUNTIME_EVENT_TYPES, type MaterialParseJob,
 } from '@bondbuddy/contracts';
 import { date, material, missing, Problem, transaction, uid } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
@@ -11,8 +11,8 @@ export const DEFAULT_DOCUMENT_PARSER_VERSION = 'bondbuddy-document-parser-1.0.3'
 export const DEFAULT_MATERIAL_PARSE_MAX_ATTEMPTS = 3;
 export const documentParserVersion = () => process.env.BB_DOCUMENT_PARSER_VERSION ?? DEFAULT_DOCUMENT_PARSER_VERSION;
 
-type Stage = typeof MATERIAL_PARSE_STAGES[number];
-type EventType = typeof MATERIAL_PARSE_EVENT_TYPES[number];
+type Stage = typeof MATERIAL_PARSE_STAGES[number] | typeof MATERIAL_PARSE_OCR_STAGE;
+type EventType = typeof MATERIAL_PARSE_EVENT_TYPES[number] | typeof MATERIAL_PARSE_RUNTIME_EVENT_TYPES[number];
 type Category = typeof ERROR_CATEGORIES[number];
 export type MaterialParseCheckpoint = { stages?: Partial<Record<Stage, Record<string, unknown>>> };
 export type MaterialParseLease = {
@@ -37,6 +37,11 @@ async function journal(client: PoolClient, job: any, type: EventType, state: str
       material_version: job.material_version, parser_version: job.parser_version, state, stage, attempts: job.attempts, ...extra }]);
   await emitInternal(client, internalEvent({ kind: 'job.state_changed', owner: job.owner_user_id, projectId: job.project_id, jobId: job.id,
     traceId: job.trace_id, jobKind: 'parse', status: state as any, stage: stage && safeStage.test(stage) ? stage : null }));
+  // #17 runtime: ordered per-job event for the resumable stream. Every caller holds the job row lock.
+  const payload: Record<string, unknown> = { attempts: job.attempts };
+  for (const key of ['reason', 'error_code', 'outcome'] as const) if (typeof extra[key] === 'string') payload[key] = extra[key];
+  await client.query(`INSERT INTO bb_job_events(id,owner_user_id,job_id,seq,type,state,stage,payload)
+    SELECT $1,$2,$3,COALESCE(max(seq),0)+1,$4,$5,$6,$7 FROM bb_job_events WHERE job_id=$3`, [uid(), job.owner_user_id, job.id, type, state, stage, payload]);
 }
 
 async function structuredError(client: PoolClient, job: any, code: ErrorCode, category: Category, stage: string | null, recovery: 'retry_scheduled' | 'terminal') {
@@ -128,11 +133,11 @@ export async function completeMaterialParseStage(pool: Pool, lease: MaterialPars
 }
 
 /** Result depends on an unconnected capability (OCR): keep the checkpoint and wait, never report success. */
-export async function pauseMaterialParse(pool: Pool, lease: MaterialParseLease, stage: 'awaiting_ocr', result: MaterialParseResult) {
+export async function pauseMaterialParse(pool: Pool, lease: MaterialParseLease, stage: 'awaiting_ocr', result: MaterialParseResult, reason: 'ocr_not_connected' | 'ocr_unavailable' = 'ocr_not_connected') {
   await transaction(pool, async client => {
     const job = await lockedLease(client, lease);
     const updated = await client.query("UPDATE bb_jobs SET state='paused',stage=$2,result=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 RETURNING *", [job.id, stage, result]);
-    await journal(client, updated.rows[0], 'material_parse.paused', 'paused', stage, { reason: 'ocr_not_connected' });
+    await journal(client, updated.rows[0], 'material_parse.paused', 'paused', stage, { reason });
   });
 }
 
@@ -193,3 +198,39 @@ export async function cancelMaterialParse(client: PoolClient, owner: string, pro
   await journal(client, updated.rows[0], 'material_parse.cancelled', 'cancelled', 'cancelled', { reason: 'user_cancelled' });
   return updated.rows[0];
 }
+
+// ---------------------------------------------------------------- #17 worker runtime
+
+/** Graceful shutdown: expire our lease now so another worker resumes from the checkpoint immediately. */
+export async function releaseMaterialParse(pool: Pool, lease: MaterialParseLease) {
+  await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1 AND job_type='parse' AND state='running' AND lease_token=$2", [lease.jobId, lease.token]);
+}
+
+/**
+ * Re-queues paused `awaiting_ocr` parse jobs once a server-side OCR processor is configured.
+ * The completed stages stay in the checkpoint; only the OCR stage runs on the next claim.
+ */
+export async function requeueAwaitingOcrParseJobs(pool: Pool, options: { limit?: number; minPausedSeconds?: number } = {}) {
+  const limit = options.limit ?? 20, minPaused = options.minPausedSeconds ?? 0;
+  return transaction(pool, async client => {
+    // minPausedSeconds backs off jobs that just paused again (e.g. OCR engine still unavailable).
+    const q = await client.query(`SELECT * FROM bb_jobs WHERE job_type='parse' AND state='paused' AND stage='awaiting_ocr'
+      AND updated_at <= now()-($2::integer * interval '1 second') ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT $1`, [limit, minPaused]);
+    for (const job of q.rows) {
+      // A pause is not a failure: the claim that ended in the pause does not count against max_attempts.
+      const updated = await client.query("UPDATE bb_jobs SET state='queued',attempts=GREATEST(attempts-1,0),updated_at=now() WHERE id=$1 RETURNING *", [job.id]);
+      await journal(client, updated.rows[0], 'material_parse.resumed', 'queued', 'awaiting_ocr', { reason: 'ocr_available' });
+    }
+    return q.rows.length;
+  });
+}
+
+/** Owner-scoped ordered events of one parse job after a cursor (the SSE source). */
+export async function readMaterialParseJobEvents(pool: Pool, owner: string, jobId: string, after: number, limit = 100) {
+  const q = await pool.query(`SELECT id,job_id,seq,type,state,stage,payload,occurred_at FROM bb_job_events
+    WHERE owner_user_id=$1 AND job_id=$2 AND seq>$3 ORDER BY seq LIMIT $4`, [owner, jobId, after, limit]);
+  return q.rows.map(e => ({ event_id: e.id as string, schema_version: 1 as const, job_id: e.job_id as string, job_type: 'parse' as const, seq: Number(e.seq),
+    occurred_at: date(e.occurred_at), type: e.type as string, state: e.state as string, stage: e.stage as string | null, payload: e.payload as Record<string, unknown> }));
+}
+
+export { currentJob as currentMaterialParseJob };

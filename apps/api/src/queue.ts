@@ -1,6 +1,7 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { ERROR_CODES, RUN_PAUSE_STAGES, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 
@@ -38,8 +39,8 @@ async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) 
   return !!q.rowCount;
 }
 
-export async function enqueue(client:PoolClient, r:any) {
-  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage) VALUES($1,$2,$3,$4,$5,'queued','queued')",[uid(),r.owner_user_id,r.id,r.task_kind,'default']);
+export async function enqueue(client:PoolClient, r:any, subtype='default') {
+  await client.query("INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage) VALUES($1,$2,$3,$4,$5,'queued','queued')",[uid(),r.owner_user_id,r.id,r.task_kind,subtype]);
   await event(client,{...r,event_cursor:0},'queued','queued','submitted');
 }
 
@@ -293,7 +294,7 @@ async function revokeWordArtifactAfterReadbackFailure(pool:Pool,lease:Lease,arti
   });
 }
 
-export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',options:{errorCode?:string;artifactId?:string;artifactVersion?:number;blobs?:PrivateBlobs}={}) {
+export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',options:{errorCode?:string;artifactId?:string;artifactVersion?:number;blobs?:PrivateBlobs;failedStage?:string}={}) {
   // Verify bytes before the terminal transaction; re-check immutable metadata inside it.
   let artifact:any;
   if(outcome==='succeeded'){
@@ -351,6 +352,7 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',
       await client.query('UPDATE bb_runs SET artifact_id=$2,artifact_version=$3 WHERE id=$1',[r.id,artifact.id,artifact.version]);
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[lease.jobId,outcome]);
+    if(outcome==='failed')await recordRunFailure(client,r,lease.jobId,options.errorCode,options.failedStage);
     await event(client,r,outcome,outcome,outcome==='failed'?'processor_failed':'word_delivered',options.errorCode);
     return runDto({...r,artifact_id:artifact?.id??null,updated_at:new Date()});
   });
@@ -359,4 +361,75 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',
 export async function jobSnapshot(pool:Pool,owner:string,runId:string) {
   const q=await pool.query('SELECT j.id,j.state,j.stage,j.checkpoint,j.attempts,j.lease_until FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE r.owner_user_id=$1 AND r.id=$2',[owner,runId]);
   if(!q.rows[0])throw missing();return {...q.rows[0],lease_until:q.rows[0].lease_until?date(q.rows[0].lease_until):null};
+}
+
+// ---------------------------------------------------------------- #17 worker runtime
+
+// A failed run keeps its checkpoint, input revision and materials; this adds the #79 structured
+// error so the admin timeline shows why. Internal codes (e.g. WORD_QUALITY_REJECTED) map to a public one.
+async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:string|undefined,stage:string|undefined) {
+  const code:ErrorCode=(ERROR_CODES as readonly string[]).includes(errorCode??'')?errorCode as ErrorCode:errorCode?.startsWith('WORD_')?'DELIVERY_FAILED':'DATA_UNAVAILABLE';
+  const category:typeof ERROR_CATEGORIES[number]=errorCode?.startsWith('MODEL_')?'model_provider':code==='DELIVERY_FAILED'?'delivery':code==='CAPABILITY_NOT_READY'?'queue':code.startsWith('MATERIAL_')?'material_parse':'internal';
+  const safeStage=stage&&/^[a-z][a-z0-9_]{0,63}$/.test(stage)?stage:null;
+  const attempts=(await client.query('SELECT attempts FROM bb_jobs WHERE id=$1',[jobId])).rows[0]?.attempts??0;
+  await client.query('UPDATE bb_jobs SET error_code=$2 WHERE id=$1',[jobId,code]);
+  const id=uid();
+  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'terminal')`,[id,r.owner_user_id,r.project_id,jobId,r.id,code,category,safeStage,attempts]);
+  await emitInternal(client,internalEvent({kind:'error.recorded',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId,traceId:r.id,stage:safeStage,error:{error_id:id,code,category,retryable:false}}));
+}
+
+/** Merges one completed stage into checkpoint.stages without touching provider_results written by #16. */
+export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:Record<string,unknown>) {
+  if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
+  await transaction(pool,async client=>{
+    const {r}=await lockedLease(client,lease);
+    const q=await client.query(`UPDATE bb_jobs SET stage=$2,updated_at=now(),
+      checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
+      WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
+    lease.checkpoint=q.rows[0].checkpoint;
+    await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
+  });
+}
+
+/**
+ * Parks a run that cannot progress yet (a stage is not implemented, pinned materials are still
+ * parsing). It keeps its checkpoint and is never reported as success; resume re-queues it.
+ */
+export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAGES[number],reason:string) {
+  if(!RUN_PAUSE_STAGES.includes(stage)||!/^[a-z][a-z0-9_]{0,63}$/.test(reason))throw new Problem(422,'VALIDATION_FAILED','Invalid pause');
+  await transaction(pool,async client=>{
+    const {r}=await lockedLease(client,lease);
+    await client.query("UPDATE bb_jobs SET state='paused',stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId,stage]);
+    await event(client,r,'paused',stage,reason);
+  });
+}
+
+/** Trusted runtime resume (never a browser principal): re-queues a paused run whose blocker cleared. */
+export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled') {
+  return transaction(pool,async client=>{
+    const r=await run(client,owner,runId,true);
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
+    if(!j||r.state!=='paused'||j.state!=='paused')return false;
+    if(await providerCallNeedsReconciliation(client,j.id))return false;
+    await client.query("UPDATE bb_jobs SET state='queued',updated_at=now() WHERE id=$1",[j.id]);
+    await event(client,r,'queued',j.stage,reason);
+    return true;
+  });
+}
+
+/** Paused runs at a stage, oldest first; the runtime sweeps them after their blocker may have cleared. */
+export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20) {
+  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND r.state='paused' ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit]);
+  return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
+}
+
+/** Graceful shutdown: expire our lease now so the next claim resumes from the checkpoint without waiting. */
+export async function releaseLease(pool:Pool,lease:Lease) {
+  await transaction(pool,async client=>{
+    let locked;
+    try { locked=await lockedLease(client,lease); } catch { return; }
+    await client.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1",[lease.jobId]);
+    await event(client,locked.r,'running',locked.j.stage,'lease_released',undefined,'run.progress');
+  });
 }
