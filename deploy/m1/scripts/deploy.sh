@@ -5,11 +5,41 @@
 source "$(dirname "$0")/lib.sh"
 sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?usage: deploy.sh <git-sha>}^{commit}")"
 tag="${sha:0:12}"
-ctx="$(mktemp -d)"; trap 'rm -rf "$ctx"' EXIT
-git -C "$BB_REPO" archive "$sha" | tar -x -C "$ctx"
 # Images already present (e.g. loaded with `docker load` from scripts/export-images.sh on a build
 # host, to spare a small target disk the ~2 GB build cache) are reused, not rebuilt.
 have() { docker image inspect "$1" >/dev/null 2>&1; }
+space_error() { echo "deploy space preflight: $*" >&2; exit 1; }
+image_count=0
+for target in api worker web egress; do
+  if have "bondbuddy-m1-$target:$tag"; then
+    image_count=$((image_count + 1))
+  fi
+done
+if [ "$image_count" -eq 4 ]; then
+  required_bytes=$(( 5 * 1024 * 1024 * 1024 / 2 ))
+  threshold_reason="all four release images preloaded (2.5 GiB minimum)"
+else
+  required_bytes=$(( 4 * 1024 * 1024 * 1024 ))
+  threshold_reason="local Docker build required ($image_count/4 release images preloaded; 4 GiB minimum)"
+fi
+# Docker may use a separate filesystem from the checkout. Measure its actual data-root.
+if [ -n "${DOCKER_HOST:-}" ] && [ -z "${DOCKER_CONTEXT:-}" ]; then
+  docker_endpoint="$DOCKER_HOST"
+else
+  docker_endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)" || space_error "cannot determine Docker endpoint; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+fi
+[[ "$docker_endpoint" = unix:///* ]] || space_error "Docker endpoint is not a local Unix socket; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" || space_error "cannot determine Docker data-root; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+[[ "$docker_root" = /* && "$docker_root" != *$'\n'* ]] || space_error "cannot determine Docker data-root; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+docker_root="$(readlink -e -- "$docker_root" 2>/dev/null)" || space_error "cannot resolve Docker data-root; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+df_output="$(df -B1 --output=avail -- "$docker_root" 2>/dev/null)" || space_error "df failed for Docker data-root; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+available_bytes="$(printf '%s\n' "$df_output" | awk 'NR == 2 { print $1 }')"
+[[ "$available_bytes" =~ ^[0-9]+$ ]] || space_error "cannot read free bytes for Docker data-root; available bytes unknown, required ${required_bytes} bytes: $threshold_reason"
+if [ "$available_bytes" -lt "$required_bytes" ]; then
+  space_error "Docker data-root has ${available_bytes} bytes available; requires ${required_bytes} bytes: $threshold_reason"
+fi
+ctx="$(mktemp -d)"; trap 'rm -rf "$ctx"' EXIT
+git -C "$BB_REPO" archive "$sha" | tar -x -C "$ctx"
 for target in api worker web; do
   have "bondbuddy-m1-$target:$tag" && continue
   docker build -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" \
