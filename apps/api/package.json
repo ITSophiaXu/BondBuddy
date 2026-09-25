@@ -72,6 +72,10 @@
       "types": "./dist/production-rule-pin.d.ts",
       "default": "./dist/production-rule-pin.js"
     },
+    "./update-difficulty-repository": {
+      "types": "./dist/update-difficulty-repository.d.ts",
+      "default": "./dist/update-difficulty-repository.js"
+    },
     "./library": {
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"
