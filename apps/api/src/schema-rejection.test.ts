@@ -19,12 +19,14 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     const invalid=await send(`/api/v1/projects/${project}/preflight`,{input_revision:1,input_hash:'Cookie fake-secret'});
     assert.equal(invalid.statusCode,422,invalid.body);
     assert.equal(invalid.json().code,'VALIDATION_FAILED');
+    const repeatedPreflight=await send(`/api/v1/projects/${project}/preflight`,{input_revision:1,input_hash:'Cookie fake-secret'});
+    assert.equal(repeatedPreflight.statusCode,422,repeatedPreflight.body);
     const missing=await send(`/api/v1/projects/${project}/preflight`,{input_hash:input.input_hash});
     assert.equal(missing.statusCode,422,missing.body);
     const pre=(await pool.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND subtype='preflight_schema_rejected' ORDER BY created_at,id",[first])).rows;
-    assert.equal(pre.length,2);
-    assert.equal(pre[0].input_revision,1);assert.equal(pre[0].input_hash,null);
-    assert.equal(pre[1].input_revision,null);assert.equal(pre[1].input_hash.trim(),input.input_hash);
+    assert.equal(pre.length,3);
+    assert.equal(pre.filter(x=>x.input_revision===1&&x.input_hash===null).length,2);
+    assert.equal(pre.filter(x=>x.input_revision===null&&x.input_hash?.trim()===input.input_hash).length,1);
     const key=uid();
     const bad={execution_request_id:key,project_id:project,input_revision:1,input_hash:'invalid-hash',task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',extra:'Cookie fake-secret'};
     const firstBad=await send('/api/v1/runs/execute',bad);
@@ -68,7 +70,7 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     assert.equal(timeline.json().attempts.length,0);assert.equal(timeline.json().consumption.all_attempts.input_tokens,null);
     const metrics=await app.inject({method:'GET',url:`/api/v1/admin/metrics?user_id=${first}&project_id=${project}`});
     assert.equal(metrics.statusCode,200,metrics.body);
-    assert.equal(metrics.json().jobs.rejected,3);assert.equal(metrics.json().operations.rejected,7);
+    assert.equal(metrics.json().jobs.rejected,4);assert.equal(metrics.json().operations.rejected,8);
     actor=first;
     const foreignProject=(await send('/api/v1/projects',{name:'Other account project',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
     actor=second;
