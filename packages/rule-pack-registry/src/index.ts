@@ -21,6 +21,13 @@ export type ProductionRulePackRequest = {
   readonly asOf: string;
 };
 
+export type ProductionRulePackApplicabilityContext = {
+  readonly issuerScope: string;
+  readonly investorScope: string | null;
+  readonly industry: string | null;
+  readonly specialFeatures: readonly string[] | null;
+};
+
 export type ProductionRulePackPin = {
   readonly releaseEventId: string;
   readonly packId: string;
@@ -39,6 +46,7 @@ export type ProductionRulePackPin = {
   readonly instrument: string;
   readonly documentStage: 'registration' | 'issuance';
   readonly asOf: string;
+  readonly applicabilityContext: ProductionRulePackApplicabilityContext;
 };
 
 export type ProductionRulePackSelection =
@@ -56,6 +64,9 @@ export type ProductionRulePackBlockReason =
   | 'production_rule_pack_capability_not_ready'
   | 'production_rule_pack_snapshot_invalid'
   | 'production_rule_pack_scope_mismatch'
+  | 'production_rule_pack_pin_not_found'
+  | 'production_rule_pack_pin_mismatch'
+  | 'production_rule_pack_pin_superseded'
   | 'production_rule_pack_ambiguous';
 
 type ProductionRulePackRow = Record<string, unknown> & {
@@ -85,6 +96,8 @@ type ProductionRulePackRow = Record<string, unknown> & {
   technical_reviewer_grant_id: string | null;
   template_snapshot: unknown;
   coverage_snapshot: unknown;
+  has_later_event?: boolean;
+  has_target_withdrawal?: boolean;
 };
 
 const HASH = /^[a-f0-9]{64}$/;
@@ -108,7 +121,11 @@ function snapshotHash(value: unknown): string {
 
 function dateText(value: string | Date | null): string | null {
   if (value === null) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    // node-postgres maps SQL DATE to local midnight; formatting that instant
+    // as UTC can shift the calendar day in non-UTC process timezones.
+    return `${value.getFullYear().toString().padStart(4, '0')}-${(value.getMonth() + 1).toString().padStart(2, '0')}-${value.getDate().toString().padStart(2, '0')}`;
+  }
   return value.slice(0, 10);
 }
 
@@ -144,6 +161,55 @@ function validContext(input: ProductionRulePackRequest): boolean {
     && validDate(input.asOf);
 }
 
+function pinApplicabilityContext(input: ProductionRulePackRequest): ProductionRulePackApplicabilityContext {
+  return {
+    issuerScope: input.issuerScope,
+    investorScope: input.investorScope ?? null,
+    industry: input.industry ?? null,
+    specialFeatures: input.specialFeatures == null ? null : [...input.specialFeatures],
+  };
+}
+
+function validPin(pin: ProductionRulePackPin): boolean {
+  if (!pin || typeof pin !== 'object' || !pin.applicabilityContext || typeof pin.applicabilityContext !== 'object') return false;
+  const context = pin.applicabilityContext;
+  if (typeof context.issuerScope !== 'string' || context.issuerScope.trim() === ''
+    || (context.investorScope !== null && typeof context.investorScope !== 'string')
+    || (context.industry !== null && typeof context.industry !== 'string')
+    || (context.specialFeatures !== null && (!Array.isArray(context.specialFeatures)
+      || context.specialFeatures.some((feature) => typeof feature !== 'string')))) return false;
+  return validContext({
+    market: pin.market,
+    offering: pin.offering,
+    instrument: pin.instrument,
+    documentStage: pin.documentStage,
+    issuerScope: context.issuerScope,
+    investorScope: context.investorScope,
+    industry: context.industry,
+    specialFeatures: context.specialFeatures,
+    asOf: pin.asOf,
+  }) && typeof pin.releaseEventId === 'string' && pin.releaseEventId.length > 0
+    && HASH.test(pin.contentHash) && HASH.test(pin.templateHash) && HASH.test(pin.coverageHash)
+    && Array.isArray(pin.sourceCheckIds) && Array.isArray(pin.sampleEvidenceIds)
+    && pin.sourceCheckIds.every((id) => typeof id === 'string' && id.length > 0)
+    && pin.sampleEvidenceIds.every((id) => typeof id === 'string' && id.length > 0);
+}
+
+function domainContext(input: ProductionRulePackRequest | ProductionRulePackPin) {
+  const context = 'applicabilityContext' in input ? input.applicabilityContext : pinApplicabilityContext(input);
+  return {
+    market: input.market,
+    offering: input.offering,
+    document_stage: input.documentStage,
+    issuer_scope: context.issuerScope,
+    instrument: input.instrument,
+    investor_scope: context.investorScope,
+    industry: context.industry,
+    special_features: context.specialFeatures == null ? null : [...context.specialFeatures],
+    as_of: input.asOf,
+  } as const;
+}
+
 function mapAndValidate(row: ProductionRulePackRow): RulePack | null {
   const coverage = parseJson(row.coverage_snapshot) as CoverageManifest;
   const checked = validateRulePackCompanions(parseJson(row.pack_snapshot),
@@ -173,30 +239,84 @@ function mapAndValidate(row: ProductionRulePackRow): RulePack | null {
   return pack;
 }
 
+function pinForRow(row: ProductionRulePackRow, input: ProductionRulePackRequest): ProductionRulePackPin {
+  const template = parseJson(row.template_snapshot) as ChapterTemplate;
+  const coverage = parseJson(row.coverage_snapshot) as CoverageManifest;
+  return {
+    releaseEventId: row.id,
+    packId: row.pack_id,
+    version: row.pack_version,
+    contentHash: row.content_hash,
+    templateId: template.template_id,
+    templateVersion: row.template_version,
+    templateHash: row.template_hash,
+    coverageId: coverage.manifest_id,
+    coverageVersion: row.coverage_version,
+    coverageHash: row.coverage_hash,
+    sourceCheckIds: [...row.source_check_ids],
+    sampleEvidenceIds: [...row.sample_evidence_ids],
+    market: input.market,
+    offering: input.offering,
+    instrument: input.instrument,
+    documentStage: input.documentStage,
+    asOf: input.asOf,
+    applicabilityContext: pinApplicabilityContext(input),
+  };
+}
+
+function samePin(actual: ProductionRulePackPin, expected: ProductionRulePackPin): boolean {
+  return actual.releaseEventId === expected.releaseEventId
+    && actual.packId === expected.packId && actual.version === expected.version
+    && actual.contentHash === expected.contentHash
+    && actual.templateId === expected.templateId && actual.templateVersion === expected.templateVersion
+    && actual.templateHash === expected.templateHash
+    && actual.coverageId === expected.coverageId && actual.coverageVersion === expected.coverageVersion
+    && actual.coverageHash === expected.coverageHash
+    && JSON.stringify(actual.sourceCheckIds) === JSON.stringify(expected.sourceCheckIds)
+    && JSON.stringify(actual.sampleEvidenceIds) === JSON.stringify(expected.sampleEvidenceIds)
+    && actual.market === expected.market && actual.offering === expected.offering
+    && actual.instrument === expected.instrument && actual.documentStage === expected.documentStage
+    && actual.asOf === expected.asOf
+    && actual.applicabilityContext.issuerScope === expected.applicabilityContext.issuerScope
+    && actual.applicabilityContext.investorScope === expected.applicabilityContext.investorScope
+    && actual.applicabilityContext.industry === expected.applicabilityContext.industry
+    && JSON.stringify(actual.applicabilityContext.specialFeatures) === JSON.stringify(expected.applicabilityContext.specialFeatures);
+}
+
 /**
  * Resolves a production release from the append-only production registry only.
  * Test-channel events are never queried or accepted. All release evidence is
  * rechecked for the requested as-of date so an old pin cannot revive stale rules.
  */
-export async function selectProductionRulePack(
+async function resolveProductionRulePack(
   pool: Pick<Pool, 'query'>,
   input: ProductionRulePackRequest,
+  expectedPin?: ProductionRulePackPin,
 ): Promise<ProductionRulePackSelection> {
   if (!validContext(input)) return { status: 'blocked', reasons: ['invalid_selection_context'] };
 
-  const result = await pool.query<ProductionRulePackRow>(`
-    WITH latest AS (
-      SELECT DISTINCT ON (pack_id) id,pack_id,action,pack_version,content_hash,market,offering,
-        instruments,document_stages,effective_from,effective_to,pack_snapshot,template_snapshot,coverage_snapshot,
-        source_check_ids,sample_evidence_ids,template_version,template_hash,coverage_version,coverage_hash,
-        operator_user_id,operator_grant_id,industry_reviewer_user_id,industry_reviewer_grant_id,
-        technical_reviewer_user_id,technical_reviewer_grant_id
-      FROM bb_rule_pack_production_release_events
-      ORDER BY pack_id,sequence DESC
-    )
-    SELECT * FROM latest`, []);
+  const result = expectedPin
+    ? await pool.query<ProductionRulePackRow>(`
+        SELECT e.*,
+          EXISTS (SELECT 1 FROM bb_rule_pack_production_release_events later
+            WHERE later.pack_id=e.pack_id AND later.sequence>e.sequence) AS has_later_event,
+          EXISTS (SELECT 1 FROM bb_rule_pack_production_release_events withdrawal
+            WHERE withdrawal.pack_id=e.pack_id AND withdrawal.action='production_withdrawal'
+              AND withdrawal.target_event_id=e.id AND withdrawal.sequence>e.sequence) AS has_target_withdrawal
+        FROM bb_rule_pack_production_release_events e WHERE e.id=$1`, [expectedPin.releaseEventId])
+    : await pool.query<ProductionRulePackRow>(`
+        WITH latest AS (
+          SELECT DISTINCT ON (pack_id) id,pack_id,action,pack_version,content_hash,market,offering,
+            instruments,document_stages,effective_from,effective_to,pack_snapshot,template_snapshot,coverage_snapshot,
+            source_check_ids,sample_evidence_ids,template_version,template_hash,coverage_version,coverage_hash,
+            operator_user_id,operator_grant_id,industry_reviewer_user_id,industry_reviewer_grant_id,
+            technical_reviewer_user_id,technical_reviewer_grant_id
+          FROM bb_rule_pack_production_release_events
+          ORDER BY pack_id,sequence DESC
+        )
+        SELECT * FROM latest`, []);
   const rows = result.rows;
-  if (rows.length === 0) return { status: 'blocked', reasons: ['production_rule_pack_registry_empty'] };
+  if (rows.length === 0) return { status: 'blocked', reasons: [expectedPin ? 'production_rule_pack_pin_not_found' : 'production_rule_pack_registry_empty'] };
 
   let withdrawn = false;
   let notEffective = false;
@@ -206,9 +326,14 @@ export async function selectProductionRulePack(
   let capabilityNotReady = false;
   let snapshotInvalid = false;
   let scopeMismatch = false;
+  let pinMismatch = false;
+  let pinSuperseded = false;
   const matches: Array<{ row: ProductionRulePackRow; pack: RulePack }> = [];
 
   for (const row of rows) {
+    if (expectedPin && row.id !== expectedPin.releaseEventId) { pinMismatch = true; continue; }
+    if (expectedPin && row.has_target_withdrawal) { withdrawn = true; continue; }
+    if (expectedPin && row.has_later_event) { pinSuperseded = true; continue; }
     if (row.action === 'production_withdrawal') {
       if (row.market === input.market && row.offering === input.offering) withdrawn = true;
       continue;
@@ -216,6 +341,7 @@ export async function selectProductionRulePack(
     if (row.market !== input.market || row.offering !== input.offering) continue;
     const pack = mapAndValidate(row);
     if (!pack) { snapshotInvalid = true; continue; }
+    if (expectedPin && !samePin(pinForRow(row, input), expectedPin)) { pinMismatch = true; continue; }
     if (input.asOf < pack.validity.effective_from || (pack.validity.effective_to && input.asOf > pack.validity.effective_to)) {
       notEffective = true;
       continue;
@@ -251,6 +377,7 @@ export async function selectProductionRulePack(
             JOIN bb_rule_pack_production_reviewer_grants g ON g.id=s.verifier_grant_id AND g.user_id=s.verifier_user_id
             WHERE s.id=ANY($1::text[]) AND s.pack_id=$2 AND s.pack_version=$3 AND s.pack_hash=$4
               AND s.market=$5 AND s.offering=$6 AND s.source_id=src->>'source_id'
+              AND s.verifier_user_id=src->>'verified_by'
               AND s.authority=src->>'authority' AND s.official_url=src->>'official_url'
               AND s.source_version=src->>'source_version' AND s.document_hash IS NOT DISTINCT FROM NULLIF(src->>'document_hash','')::char(64)
               AND s.clause_locator=src->>'clause_locator' AND s.exact_quote=src->>'exact_quote'
@@ -295,7 +422,32 @@ export async function selectProductionRulePack(
             JOIN bb_rule_pack_production_reviewer_grants ag ON ag.id=a.authorizer_grant_id AND ag.user_id=a.authorized_by_user_id
             WHERE s.id=ANY($9::text[]) AND s.pack_id=$2 AND s.pack_version=$3 AND s.pack_hash=$4
               AND s.market=$5 AND s.offering=$6 AND s.sample_case_id=c->>'case_id' AND s.polarity=c->>'polarity'
-              AND s.expected_outcome=c->>'expected_outcome' AND c->>'result'='passed'
+              AND c->>'result'='passed'
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements($8::jsonb->'rules') AS r
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  CASE c->>'polarity'
+                    WHEN 'positive' THEN COALESCE(r->'positive_examples','[]'::jsonb)
+                    WHEN 'negative' THEN COALESCE(r->'negative_examples','[]'::jsonb)
+                    WHEN 'boundary' THEN COALESCE(r->'boundary_examples','[]'::jsonb)
+                    ELSE '[]'::jsonb
+                  END
+                ) AS example
+                WHERE example->>'evidence_ref'=c->>'evidence_ref'
+                  AND example->>'expected_outcome'=s.expected_outcome
+              )
+              AND (SELECT count(*)
+                FROM jsonb_array_elements($8::jsonb->'rules') AS r
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  CASE c->>'polarity'
+                    WHEN 'positive' THEN COALESCE(r->'positive_examples','[]'::jsonb)
+                    WHEN 'negative' THEN COALESCE(r->'negative_examples','[]'::jsonb)
+                    WHEN 'boundary' THEN COALESCE(r->'boundary_examples','[]'::jsonb)
+                    ELSE '[]'::jsonb
+                  END
+                ) AS example
+                WHERE example->>'evidence_ref'=c->>'evidence_ref')=1
               AND s.reviewer_user_id=c->>'reviewed_by' AND g.role IN ('rule_pack_industry_reviewer','rule_pack_technical_reviewer')
               AND g.market=$5 AND g.offering=$6 AND g.revoked_at IS NULL
               AND a.authorization_scope='rule_pack_validation' AND a.revoked_at IS NULL
@@ -314,17 +466,7 @@ export async function selectProductionRulePack(
     if (!verified?.sources_current) { sourceNotCurrent = true; continue; }
     if (!verified.samples_complete) { evidenceMissing = true; continue; }
 
-    const decision = evaluateRulePackCapability(pack, {
-      market: input.market,
-      offering: input.offering,
-      document_stage: input.documentStage,
-      issuer_scope: input.issuerScope,
-      instrument: input.instrument,
-      investor_scope: input.investorScope,
-      industry: input.industry,
-      special_features: input.specialFeatures == null ? null : [...input.specialFeatures],
-      as_of: input.asOf,
-    });
+    const decision = evaluateRulePackCapability(pack, domainContext(input));
     const template = parseJson(row.template_snapshot) as ChapterTemplate;
     if (!template.document_stages.includes(input.documentStage)) {
       scopeMismatch = true;
@@ -351,25 +493,7 @@ export async function selectProductionRulePack(
     status: 'selected',
     template: parseJson(selected.row.template_snapshot) as ChapterTemplate,
     coverage: parseJson(selected.row.coverage_snapshot) as CoverageManifest,
-    pin: {
-      releaseEventId: selected.row.id,
-      packId: selected.row.pack_id,
-      version: selected.row.pack_version,
-      contentHash: selected.row.content_hash,
-      templateId: (parseJson(selected.row.template_snapshot) as ChapterTemplate).template_id,
-      templateVersion: (parseJson(selected.row.template_snapshot) as ChapterTemplate).version,
-      templateHash: snapshotHash(parseJson(selected.row.template_snapshot)),
-      coverageId: (parseJson(selected.row.coverage_snapshot) as CoverageManifest).manifest_id,
-      coverageVersion: (parseJson(selected.row.coverage_snapshot) as CoverageManifest).version,
-      coverageHash: snapshotHash(parseJson(selected.row.coverage_snapshot)),
-      sourceCheckIds: [...selected.row.source_check_ids],
-      sampleEvidenceIds: [...selected.row.sample_evidence_ids],
-      market: input.market,
-      offering: input.offering,
-      instrument: input.instrument,
-      documentStage: input.documentStage,
-      asOf: input.asOf,
-    },
+    pin: pinForRow(selected.row, input),
     pack: selected.pack,
   };
 
@@ -382,5 +506,48 @@ export async function selectProductionRulePack(
   if (capabilityNotReady) reasons.push('production_rule_pack_capability_not_ready');
   if (snapshotInvalid) reasons.push('production_rule_pack_snapshot_invalid');
   if (scopeMismatch) reasons.push('production_rule_pack_scope_mismatch');
+  if (pinMismatch) reasons.push('production_rule_pack_pin_mismatch');
+  if (pinSuperseded) reasons.push('production_rule_pack_pin_superseded');
   return { status: 'blocked', reasons: reasons.length ? reasons : ['production_rule_pack_scope_mismatch'] };
+}
+
+/** Selects only the current active event for each pack. */
+export function selectProductionRulePack(
+  db: Pick<Pool, 'query'>,
+  input: ProductionRulePackRequest,
+): Promise<ProductionRulePackSelection> {
+  return resolveProductionRulePack(db, input);
+}
+
+/**
+ * Rechecks the exact pinned event and evidence without resolving a replacement
+ * release. `lockedApplicabilityContext` must come from the hash-verified input
+ * manifest, so changes to any capability dimension are rejected on replay.
+ */
+export function revalidateProductionRulePackPin(
+  db: Pick<Pool, 'query'>,
+  pin: ProductionRulePackPin,
+  lockedApplicabilityContext: ProductionRulePackApplicabilityContext,
+): Promise<ProductionRulePackSelection> {
+  if (!validPin(pin) || !samePinContext(pin.applicabilityContext, lockedApplicabilityContext)) {
+    return Promise.resolve({ status: 'blocked', reasons: ['production_rule_pack_pin_mismatch'] });
+  }
+  return resolveProductionRulePack(db, {
+    market: pin.market,
+    offering: pin.offering,
+    instrument: pin.instrument,
+    documentStage: pin.documentStage,
+    issuerScope: lockedApplicabilityContext.issuerScope,
+    investorScope: lockedApplicabilityContext.investorScope,
+    industry: lockedApplicabilityContext.industry,
+    specialFeatures: lockedApplicabilityContext.specialFeatures,
+    asOf: pin.asOf,
+  }, pin);
+}
+
+function samePinContext(actual: ProductionRulePackApplicabilityContext, expected: ProductionRulePackApplicabilityContext): boolean {
+  return Boolean(expected) && actual.issuerScope === expected.issuerScope
+    && actual.investorScope === expected.investorScope
+    && actual.industry === expected.industry
+    && JSON.stringify(actual.specialFeatures) === JSON.stringify(expected.specialFeatures);
 }

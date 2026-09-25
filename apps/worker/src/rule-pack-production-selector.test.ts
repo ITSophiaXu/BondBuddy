@@ -7,17 +7,25 @@ import {
   nafmiiMtnChapterTemplate,
   nafmiiMtnCoverageManifest,
   publishRulePack,
+  publishRulePackBundle,
+  withdrawRulePack,
   rulePackContentHash,
   type ReviewAttestation,
   type RulePack,
 } from '@bondbuddy/domain';
 import { isolatedTestDatabase } from './test-database.js';
-import { selectProductionRulePack, type ProductionRulePackRequest } from './rule-pack-production-selector.js';
+import {
+  revalidateProductionRulePackPin,
+  selectProductionRulePack,
+  type ProductionRulePackPin,
+  type ProductionRulePackRequest,
+} from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = await isolatedTestDatabase('PRODUCTION_RULE_PACK_SELECTOR_TEST_DATABASE_URL');
 const request: ProductionRulePackRequest = {
   market: 'sse', offering: 'public_all', instrument: 'synthetic-corporate-bond',
-  documentStage: 'registration', issuerScope: 'synthetic_issuer', asOf: '2026-09-25',
+  documentStage: 'registration', issuerScope: 'synthetic_issuer', investorScope: 'synthetic-investor',
+  industry: 'synthetic-industry', specialFeatures: [], asOf: '2026-09-25',
 };
 const reviews: ReviewAttestation[] = [
   { reviewer_id: 'synthetic-industry-reviewer', reviewer_role: 'industry_reviewer', reviewed_at: '2026-09-24T01:00:00Z', source_verified: true, scope_verified: true, samples_verified: true, notes: 'Synthetic selector fixture only.' },
@@ -39,8 +47,15 @@ function fixture(): { pack: RulePack; template: typeof nafmiiMtnChapterTemplate;
   draft.scope = { market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], document_stages: ['registration'], issuer_scopes: ['synthetic_issuer'] };
   draft.validity = { published_on: null, effective_from: '2026-01-01', effective_to: null, transition_terms: [] };
   draft.sources = [{ ...draft.sources[0]!, source_id: 'synthetic-source', kind: 'formal_rule', official_url: 'https://example.invalid/source', document_hash: 'a'.repeat(64), published_on: '2025-01-01', effective_from: '2026-01-01', effective_to: null, verified_by: 'synthetic-reviewer', verified_at: '2026-09-24T00:00:00Z' }];
-  draft.rules = [{ ...draft.rules[0]!, rule_id: 'synthetic-rule', source_ref_ids: ['synthetic-source'], enabled: true, enforcement: 'hard_block', outputs: { when_met: 'pass', when_not_met: 'issue', severity: 'blocking' } }];
-  draft.sample_suite = { suite_id: 'synthetic-samples', version: 'synthetic.1', data_classification: 'authorized_real', cases: draft.sample_suite.cases.map((item, index) => ({ ...item, case_id: `synthetic-case-${index}`, evidence_ref: 'synthetic:test-only', result: 'passed', reviewed_by: 'synthetic-reviewer', reviewed_at: '2026-09-24T00:00:00Z' })) };
+  draft.rules = [{ ...draft.rules[0]!, rule_id: 'synthetic-rule', source_ref_ids: ['synthetic-source'],
+    applicability: { ...draft.rules[0]!.applicability, issuer_scopes: ['synthetic_issuer'], investor_scopes: ['synthetic-investor'], industries: ['synthetic-industry'], special_features: [] },
+    enabled: true, enforcement: 'hard_block', outputs: { when_met: 'pass', when_not_met: 'issue', severity: 'blocking' } }];
+  const examplesByPolarity: Record<string, RulePack['rules'][number]['positive_examples']> = {
+    positive: draft.rules[0]!.positive_examples,
+    negative: draft.rules[0]!.negative_examples,
+    boundary: draft.rules[0]!.boundary_examples,
+  };
+  draft.sample_suite = { suite_id: 'synthetic-samples', version: 'synthetic.1', data_classification: 'authorized_real', cases: draft.sample_suite.cases.map((item, index) => ({ ...item, case_id: `synthetic-case-${index}`, evidence_ref: examplesByPolarity[item.polarity][0]!.evidence_ref, result: 'passed', reviewed_by: 'synthetic-reviewer', reviewed_at: '2026-09-24T00:00:00Z' })) };
   draft.reviews = [];
   draft.release = null;
   draft.withdrawal = null;
@@ -112,6 +127,7 @@ test('synthetic reviewer or evidence claims cannot produce a production pin', as
   assert.deepEqual(result, { status: 'blocked', reasons: ['production_rule_pack_reviewer_grant_inactive'] });
   assert.equal(calls.length, 2);
   assert.match(calls[1]!, /bb_rule_pack_production_source_checks/);
+  assert.match(calls[1]!, /s\.verifier_user_id=src->>'verified_by'/);
   assert.match(calls[1]!, /bb_rule_pack_production_sample_evidence/);
 });
 
@@ -169,8 +185,42 @@ test('selector delegates applicability and blocks when investor, industry, or fe
   let call = 0;
   const result = await selectProductionRulePack({ query: async () => (++call === 1
     ? { rows: [registryRow()] }
-    : { rows: [{ reviewers_active: true, sources_current: true, samples_complete: true }] }) } as never, request);
+    : { rows: [{ reviewers_active: true, sources_current: true, samples_complete: true }] }) } as never,
+  { ...request, investorScope: null, industry: null, specialFeatures: null });
   assert.deepEqual(result, { status: 'blocked', reasons: ['production_rule_pack_capability_not_ready'] });
+});
+
+test('shared selector pins full context and exact-event revalidation never resolves latest', async () => {
+  const expectedContext = {
+    issuerScope: 'synthetic_issuer', investorScope: 'synthetic-investor',
+    industry: 'synthetic-industry', specialFeatures: [],
+  };
+  const calls: Array<{ sql: string; values?: unknown[] }> = [];
+  const pool = { query: async (sql: string, values?: unknown[]) => {
+    calls.push({ sql, values });
+    return calls.length % 2 === 1
+      ? { rows: [registryRow()] }
+      : { rows: [{ reviewers_active: true, sources_current: true, samples_complete: true }] };
+  } };
+  const selected = await selectProductionRulePack(pool as never, request);
+  assert.equal(selected.status, 'selected');
+  if (selected.status !== 'selected') return;
+  assert.deepEqual(selected.pin.applicabilityContext, expectedContext);
+
+  const verified = await revalidateProductionRulePackPin(pool as never, selected.pin, expectedContext);
+  assert.equal(verified.status, 'selected');
+  assert.equal(calls[2]!.values?.[0], selected.pin.releaseEventId);
+  assert.match(calls[2]!.sql, /FROM bb_rule_pack_production_release_events e WHERE e\.id=\$1/);
+  assert.doesNotMatch(calls[2]!.sql, /WITH latest AS/);
+
+  const contextMismatch = await revalidateProductionRulePackPin(pool as never, selected.pin,
+    { ...expectedContext, specialFeatures: ['changed-feature'] });
+  assert.deepEqual(contextMismatch, { status: 'blocked', reasons: ['production_rule_pack_pin_mismatch'] });
+
+  const tamperedPin = { ...selected.pin, templateHash: 'f'.repeat(64) } satisfies ProductionRulePackPin;
+  const tampered = await revalidateProductionRulePackPin(pool as never, tamperedPin, expectedContext);
+  assert.deepEqual(tampered, { status: 'blocked', reasons: ['production_rule_pack_pin_mismatch'] });
+  assert.equal(calls[4]!.values?.[0], selected.pin.releaseEventId);
 });
 
 test('selector requires a covered coverage item for the requested document stage', async () => {
@@ -213,6 +263,234 @@ test('live PostgreSQL 16 migration creates empty production registry and rejects
        'sse','public_all',ARRAY['synthetic-instrument'],ARRAY['registration'],'2026-01-01','{}'::jsonb,
        'synthetic-user','synthetic-grant','negative guard test',now())`, ['a'.repeat(64)]), /active scoped production operator grant|required|production/i);
   } finally { await pool.end(); }
+});
+
+test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates its exact immutable pin', {
+  skip: !databaseUrl && 'set PRODUCTION_RULE_PACK_SELECTOR_TEST_DATABASE_URL to a migrated PostgreSQL 16 template',
+}, async () => {
+  const pool = new Pool({ connectionString: databaseUrl });
+  const client = await pool.connect();
+  const suffix = Math.random().toString(16).slice(2, 10);
+  const operator = `positive_operator_${suffix}`;
+  const industry = `positive_industry_${suffix}`;
+  const technical = `positive_technical_${suffix}`;
+  const admin = `positive_admin_${suffix}`;
+  const operatorGrant = `positive_gop_${suffix}`;
+  const industryGrant = `positive_gin_${suffix}`;
+  const technicalGrant = `positive_gte_${suffix}`;
+  const packId = `synthetic-positive-${suffix}`;
+  const sourceId = `synthetic-source-${suffix}`;
+  const sourceCheckId = `synthetic-source-check-${suffix}`;
+  const releaseEventId = `synthetic-release-${suffix}`;
+  try {
+    await client.query('BEGIN');
+    const now = new Date();
+    const releaseAt = new Date(now.getTime() + 120_000).toISOString();
+    const effectiveTo = new Date(Date.parse(releaseAt) + 86_400_000).toISOString().slice(0, 10);
+    for (const [id, username] of [[operator, operator], [industry, industry], [technical, technical], [admin, admin]]) {
+      await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, username]);
+    }
+    await client.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
+      VALUES ($1,$2,'rule_pack_operator','sse','public_all',$5,'test_fixture'),
+             ($3,$4,'rule_pack_industry_reviewer','sse','public_all',$5,'test_fixture'),
+             ($6,$7,'rule_pack_technical_reviewer','sse','public_all',$5,'test_fixture')`,
+    [operatorGrant, operator, industryGrant, industry, admin, technicalGrant, technical]);
+
+    const draft = structuredClone(nafmiiMtnDraftRulePack) as RulePack;
+    draft.pack_id = packId;
+    draft.version = 'synthetic.positive.1';
+    draft.scope = { market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], document_stages: ['registration'], issuer_scopes: ['synthetic_issuer'] };
+    draft.validity = { published_on: null, effective_from: '2026-01-01', effective_to: effectiveTo, transition_terms: [] };
+    const source = { ...draft.sources[0]!, source_id: sourceId, kind: 'formal_rule' as const,
+      official_url: 'https://example.invalid/synthetic-rule', document_hash: 'a'.repeat(64), source_version: 'synthetic-v1',
+      clause_locator: 'synthetic clause 1', exact_quote: 'Synthetic test-only official source evidence.',
+      published_on: '2025-01-01', effective_from: '2026-01-01', effective_to: null,
+      verified_by: industry, verified_at: now.toISOString() };
+    draft.sources = [source];
+    const firstRule = draft.rules[0]!;
+    draft.rules = [{ ...firstRule, rule_id: 'synthetic-rule', source_ref_ids: [sourceId],
+      applicability: { ...firstRule.applicability, document_stages: ['registration'], issuer_scopes: ['synthetic_issuer'],
+        investor_scopes: ['synthetic-investor'], industries: ['synthetic-industry'], special_features: [] } }];
+    const rule = draft.rules[0]!;
+    const sampleExamples = [
+      ['positive', rule.positive_examples[0]!],
+      ['negative', rule.negative_examples[0]!],
+      ['boundary', rule.boundary_examples[0]!],
+    ] as const;
+    draft.sample_suite = { suite_id: 'synthetic-positive-suite', version: 'synthetic.positive.1', data_classification: 'authorized_real',
+      cases: sampleExamples.map(([polarity, example], index) => ({ case_id: `synthetic-case-${index}`, polarity,
+        evidence_ref: example.evidence_ref, result: 'passed', reviewed_by: industry, reviewed_at: now.toISOString() })) };
+    const positiveReviews: ReviewAttestation[] = [
+      { reviewer_id: industry, reviewer_role: 'industry_reviewer', reviewed_at: now.toISOString(), source_verified: true, scope_verified: true, samples_verified: true, notes: 'Synthetic PG16 test only.' },
+      { reviewer_id: technical, reviewer_role: 'technical_reviewer', reviewed_at: now.toISOString(), source_verified: true, scope_verified: true, samples_verified: true, notes: 'Synthetic PG16 test only.' },
+    ];
+    const pack = publishRulePack(draft, { channel: 'production', reviews: positiveReviews, released_by: operator,
+      released_at: releaseAt, reason: 'Synthetic PG16 test fixture only; not production evidence.' });
+    const contentHash = rulePackContentHash(pack);
+    await client.query(`INSERT INTO bb_rule_pack_production_source_checks
+      (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,$13,$14)`,
+    [sourceCheckId, packId, pack.version, contentHash, sourceId, source.authority, source.official_url, source.source_version,
+      source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
+
+    const sampleEvidenceIds: string[] = [];
+    for (const [index, [polarity, example]] of sampleExamples.entries()) {
+      const authorizationId = `synthetic-auth-${suffix}-${index}`;
+      const evidenceId = `synthetic-evidence-${suffix}-${index}`;
+      const materialHash = (index + 1).toString(16).repeat(64);
+      await client.query(`INSERT INTO bb_rule_pack_sample_authorizations
+        (id,material_sha256,authorization_document_sha256,authorization_scope,market,offering,authorized_by_user_id,authorizer_grant_id,authorized_at)
+        VALUES ($1,$2,$3,'rule_pack_validation','sse','public_all',$4,$5,$6)`,
+      [authorizationId, materialHash, (index + 4).toString(16).repeat(64), operator, operatorGrant, now.toISOString()]);
+      await client.query(`INSERT INTO bb_rule_pack_production_sample_evidence
+        (id,sample_case_id,pack_id,pack_version,pack_hash,polarity,material_sha256,authorization_id,market,offering,
+         expected_outcome,observed_outcome,source_anchor,reviewer_user_id,reviewer_grant_id,reviewed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$9,$10,$11,$12,$13)`,
+      [evidenceId, `synthetic-case-${index}`, packId, pack.version, contentHash, polarity, materialHash, authorizationId,
+        example.expected_outcome, `synthetic:${polarity}:test-only`, industry, industryGrant, now.toISOString()]);
+      sampleEvidenceIds.push(evidenceId);
+    }
+
+    const template = structuredClone(nafmiiMtnChapterTemplate);
+    template.rule_pack_id = packId;
+    template.template_id = `synthetic-template-${suffix}`;
+    template.version = pack.version;
+    template.market = 'sse';
+    template.offering = 'public_all';
+    template.document_stages = ['registration'];
+    for (const chapter of template.chapters) chapter.source_ref_ids = [sourceId];
+    const coverage = structuredClone(nafmiiMtnCoverageManifest);
+    coverage.rule_pack_id = packId;
+    coverage.manifest_id = `synthetic-coverage-${suffix}`;
+    coverage.version = pack.version;
+    coverage.items = coverage.items.map((item) => ({ ...item, disposition: 'covered', document_stages: ['registration'], source_ref_ids: [sourceId] }));
+    coverage.open_blockers = [];
+    const bundledPack = publishRulePackBundle(draft, template, coverage, { channel: 'production', reviews: positiveReviews,
+      released_by: operator, released_at: releaseAt, reason: 'Synthetic PG16 test fixture only; not production evidence.' });
+    assert.equal(rulePackContentHash(bundledPack), contentHash);
+
+    // A self-consistent, hash-pinned bundle still cannot use an ambiguous
+    // polarity/evidence_ref whose examples disagree on the expected outcome.
+    // This exercises the real 0037 trigger with synthetic test rows only.
+    const misboundPack = structuredClone(bundledPack);
+    const positiveExample = misboundPack.rules[0]!.positive_examples[0]!;
+    misboundPack.rules[0]!.positive_examples.push({ ...positiveExample, example_id: 'synthetic-conflicting-example', expected_outcome: 'issue' });
+    misboundPack.release!.content_hash = rulePackContentHash(misboundPack);
+    const misboundHash = misboundPack.release!.content_hash;
+    const misboundSourceId = `misbound-source-check-${suffix}`;
+    await client.query(`INSERT INTO bb_rule_pack_production_source_checks
+      (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,$13,$14)`,
+    [misboundSourceId, packId, misboundPack.version, misboundHash, sourceId, source.authority, source.official_url,
+      source.source_version, source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
+    const misboundEvidenceIds: string[] = [];
+    for (const [index, [polarity, example]] of sampleExamples.entries()) {
+      const materialHash = (index + 1).toString(16).repeat(64);
+      const evidenceId = `misbound-evidence-${suffix}-${index}`;
+      await client.query(`INSERT INTO bb_rule_pack_production_sample_evidence
+        (id,sample_case_id,pack_id,pack_version,pack_hash,polarity,material_sha256,authorization_id,market,offering,
+         expected_outcome,observed_outcome,source_anchor,reviewer_user_id,reviewer_grant_id,reviewed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$9,$10,$11,$12,$13)`,
+      [evidenceId, `synthetic-case-${index}`, packId, misboundPack.version, misboundHash, polarity, materialHash,
+        `synthetic-auth-${suffix}-${index}`, example.expected_outcome, `synthetic:${polarity}:wrong-binding-test-only`, industry, industryGrant, now.toISOString()]);
+      misboundEvidenceIds.push(evidenceId);
+    }
+    const releaseInsert = `INSERT INTO bb_rule_pack_production_release_events
+      (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
+       coverage_version,coverage_hash,market,offering,instruments,document_stages,effective_from,effective_to,
+       pack_snapshot,template_snapshot,coverage_snapshot,source_check_ids,sample_evidence_ids,operator_user_id,operator_grant_id,
+       industry_reviewer_user_id,industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at)
+      VALUES ($1,$2,$3,$4,1,'production_release',$5,$6,$7,$8,$9,$10,'sse','public_all',ARRAY['synthetic-corporate-bond'],
+       ARRAY['registration'],'2026-01-01',$24,$11::jsonb,$12::jsonb,$13::jsonb,ARRAY[$14]::text[],$15::text[],$16,$17,$18,$19,$20,$21,$22,$23)`;
+    const wrongSourcePack = structuredClone(bundledPack);
+    wrongSourcePack.sources[0]!.verified_by = `unbound_source_reviewer_${suffix}`;
+    wrongSourcePack.release!.content_hash = rulePackContentHash(wrongSourcePack);
+    const wrongSourceHash = wrongSourcePack.release!.content_hash;
+    const wrongSourceCheckId = `wrong-source-check-${suffix}`;
+    await client.query('SAVEPOINT wrong_source_reviewer');
+    await client.query(`INSERT INTO bb_rule_pack_production_source_checks
+      (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,$13,$14)`,
+    [wrongSourceCheckId, packId, wrongSourcePack.version, wrongSourceHash, sourceId, source.authority, source.official_url,
+      source.source_version, source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
+    await assert.rejects(client.query(releaseInsert, [
+      `wrong-source-release-${suffix}`, packId, `wrong-source-request-${suffix}`, 'e'.repeat(64), wrongSourcePack.version, wrongSourceHash,
+      template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), JSON.stringify(wrongSourcePack),
+      JSON.stringify(template), JSON.stringify(coverage), wrongSourceCheckId, sampleEvidenceIds, operator, operatorGrant,
+      industry, industryGrant, technical, technicalGrant, bundledPack.release!.reason, releaseAt, effectiveTo,
+    ]), /each pack source requires exact current verification evidence/);
+    await client.query('ROLLBACK TO SAVEPOINT wrong_source_reviewer');
+    await client.query('RELEASE SAVEPOINT wrong_source_reviewer');
+
+    await client.query('SAVEPOINT conflicting_example');
+    await assert.rejects(client.query(releaseInsert, [
+      `misbound-release-${suffix}`, packId, `misbound-request-${suffix}`, 'd'.repeat(64), misboundPack.version, misboundHash,
+      template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), JSON.stringify(misboundPack),
+      JSON.stringify(template), JSON.stringify(coverage), misboundSourceId, misboundEvidenceIds, operator, operatorGrant,
+      industry, industryGrant, technical, technicalGrant, bundledPack.release!.reason, releaseAt, effectiveTo,
+    ]), /every positive negative and boundary pack sample requires exact authorized material and reviewer evidence/);
+    await client.query('ROLLBACK TO SAVEPOINT conflicting_example');
+    await client.query('RELEASE SAVEPOINT conflicting_example');
+
+    await client.query(releaseInsert, [releaseEventId, packId, `synthetic-request-${suffix}`, 'b'.repeat(64), bundledPack.version, contentHash,
+      template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), JSON.stringify(bundledPack),
+      JSON.stringify(template), JSON.stringify(coverage), sourceCheckId, sampleEvidenceIds, operator, operatorGrant,
+      industry, industryGrant, technical, technicalGrant, 'Synthetic PG16 test fixture only; not production evidence.', releaseAt, effectiveTo]);
+
+    const selectionRequest: ProductionRulePackRequest = {
+      market: 'sse', offering: 'public_all', instrument: 'synthetic-corporate-bond', documentStage: 'registration',
+      issuerScope: 'synthetic_issuer', investorScope: 'synthetic-investor', industry: 'synthetic-industry',
+      specialFeatures: [], asOf: now.toISOString().slice(0, 10),
+    };
+    const selected = await selectProductionRulePack(client, selectionRequest);
+    assert.equal(selected.status, 'selected', JSON.stringify(selected));
+    if (selected.status !== 'selected') return;
+    assert.equal(selected.pin.releaseEventId, releaseEventId);
+    assert.deepEqual(selected.pin.applicabilityContext, {
+      issuerScope: selectionRequest.issuerScope, investorScope: selectionRequest.investorScope,
+      industry: selectionRequest.industry, specialFeatures: [],
+    });
+    const replay = await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext);
+    assert.equal(replay.status, 'selected', JSON.stringify(replay));
+
+    const expiredPin = { ...selected.pin, asOf: new Date(Date.parse(`${effectiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) };
+    assert.deepEqual(await revalidateProductionRulePackPin(client, expiredPin, expiredPin.applicabilityContext),
+      { status: 'blocked', reasons: ['production_rule_pack_not_effective'] });
+
+    const tampered = { ...selected.pin, contentHash: 'f'.repeat(64) };
+    assert.deepEqual(await revalidateProductionRulePackPin(client, tampered, selected.pin.applicabilityContext),
+      { status: 'blocked', reasons: ['production_rule_pack_pin_mismatch'] });
+    assert.deepEqual(await revalidateProductionRulePackPin(client, selected.pin,
+      { ...selected.pin.applicabilityContext, industry: 'other-industry' }),
+    { status: 'blocked', reasons: ['production_rule_pack_pin_mismatch'] });
+
+    await client.query(`UPDATE bb_rule_pack_production_reviewer_grants SET revoked_at=now() WHERE id=$1`, [industryGrant]);
+    assert.deepEqual(await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext),
+      { status: 'blocked', reasons: ['production_rule_pack_reviewer_grant_inactive'] });
+
+    const withdrawalAt = new Date(Date.parse(releaseAt) + 60_000).toISOString();
+    const withdrawn = withdrawRulePack(bundledPack, { withdrawn_by: operator, withdrawn_at: withdrawalAt, reason: 'Synthetic PG16 withdrawal replay test only.' });
+    await client.query(`INSERT INTO bb_rule_pack_production_release_events
+      (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
+       coverage_version,coverage_hash,target_event_id,market,offering,instruments,document_stages,effective_from,effective_to,
+       pack_snapshot,template_snapshot,coverage_snapshot,source_check_ids,sample_evidence_ids,operator_user_id,operator_grant_id,reason,occurred_at)
+      VALUES ($1,$2,$3,$4,2,'production_withdrawal',$5,$6,$7,$8,$9,$10,$11,'sse','public_all',
+       ARRAY['synthetic-corporate-bond'],ARRAY['registration'],'2026-01-01',$12,$13::jsonb,$14::jsonb,$15::jsonb,
+       ARRAY[$16]::text[],$17::text[],$18,$19,$20,$21)`,
+    [`synthetic-withdrawal-${suffix}`, packId, `synthetic-withdraw-request-${suffix}`, 'c'.repeat(64), pack.version,
+      contentHash, template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), releaseEventId,
+      effectiveTo, JSON.stringify(withdrawn), JSON.stringify(template), JSON.stringify(coverage), sourceCheckId,
+      sampleEvidenceIds, operator, operatorGrant, 'Synthetic PG16 withdrawal replay test only.', withdrawalAt]);
+    assert.deepEqual(await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext),
+      { status: 'blocked', reasons: ['production_rule_pack_withdrawn'] });
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+    await pool.end();
+  }
 });
 
 test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample authority or reviewer grants', {
