@@ -78,6 +78,13 @@ export interface LockedUpdateDifficultyRequest {
   readonly restatements?: readonly CutoffDecision[];
 }
 
+export type UpdateDifficultyFailureCategory = 'pending_input' | 'stale_input' | 'not_found' | 'data_integrity' | 'invalid_request' | 'internal';
+
+export interface ClassifiedUpdateDifficultyFailure {
+  readonly category: UpdateDifficultyFailureCategory;
+  readonly code: string;
+}
+
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateRecognition = ajv.compile(schemas.RecognitionResponse);
 const FINANCIAL_ROLES: ReadonlySet<string> = new Set(M1_MATERIAL_PARTITIONS.find(partition => partition.label === '财务与审计')?.roles.map(role => role.code) ?? []);
@@ -91,6 +98,56 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 function sha256(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
+
+/**
+ * Classifies repository errors for the future preflight route. Missing inputs
+ * and profiles are ordinary pending work; malformed persisted manifests and
+ * rows indicate data integrity problems and must not be shown as a user action.
+ */
+export function classifyUpdateDifficultyFailure(error: unknown): ClassifiedUpdateDifficultyFailure {
+  const code = error instanceof Error ? error.message : 'UNKNOWN_UPDATE_DIFFICULTY_ERROR';
+  const categories: Readonly<Record<string, UpdateDifficultyFailureCategory>> = {
+    HISTORICAL_MATERIAL_SELECTION_REQUIRED: 'pending_input',
+    FINANCIAL_MATERIALS_REQUIRED: 'pending_input',
+    HISTORICAL_PROFILE_NOT_FOUND: 'pending_input',
+    FINANCIAL_MATERIAL_NOT_FOUND: 'pending_input',
+    TARGET_INPUT_REVISION_STALE: 'stale_input',
+    TARGET_INPUT_REVISION_MISMATCH: 'stale_input',
+    TARGET_REVISION_STALE: 'stale_input',
+    TARGET_REVISION_ALREADY_SNAPSHOTTED: 'stale_input',
+    LOCKED_MATERIAL_STALE: 'stale_input',
+    IDEMPOTENCY_CONFLICT: 'stale_input',
+    PROJECT_NOT_FOUND: 'not_found',
+    INVALID_UPDATE_DIFFICULTY_CONTEXT: 'invalid_request',
+    TARGET_INPUT_MANIFEST_INVALID: 'data_integrity',
+    INVALID_HISTORICAL_PROFILE_ROW: 'data_integrity',
+    INVALID_UPDATE_DIFFICULTY_ROW: 'data_integrity',
+    INVALID_FINANCIAL_MATERIAL_VERSIONS: 'data_integrity',
+    FINANCIAL_MATERIAL_NOT_IN_INPUT_REVISION: 'data_integrity',
+    HISTORICAL_MATERIAL_SELECTION_MISMATCH: 'data_integrity',
+    TARGET_REPORTING_PERIODS_LOCK_MISMATCH: 'data_integrity',
+  };
+  return { category: categories[code] ?? 'internal', code };
+}
+
+function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput): string {
+  const financialMaterialVersions = [...input.financialMaterialVersions]
+    .map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
+    .sort((left, right) => left.materialId.localeCompare(right.materialId) || left.materialVersion - right.materialVersion);
+  const identity = {
+    ownerUserId: input.ownerUserId,
+    projectId: input.projectId,
+    targetRevision: input.targetRevision,
+    inputRevision: input.inputRevision ?? null,
+    inputHash: input.inputHash ?? null,
+    source: input.source,
+    financialMaterialVersions,
+    targetReportingPeriods: input.targetReportingPeriods,
+    replacements: input.replacements,
+    restatements: input.restatements,
+  };
+  return `update-difficulty-${sha256(identity).slice(0, 56)}`;
+}
 function validId(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value); }
 function safeContext(input: TrustedUpdateDifficultyInput): void {
   if (![input.ownerUserId, input.projectId, input.source.materialId, input.requestId].every(validId) ||
@@ -246,6 +303,36 @@ export async function loadLockedUpdateDifficultyInputWithClient(
       targetRevision: Number(project.rows[0]!.draft_revision), inputRevision: request.inputRevision, inputHash: request.inputHash,
       financialMaterialVersions, targetReportingPeriods,
       replacements: request.replacements ?? [], restatements: request.restatements ?? [], requestId: request.requestId };
+}
+
+/**
+ * Ensures that the caller's current immutable input lock has a difficulty
+ * snapshot. The caller owns the transaction. Locking the project before
+ * assembling the input serializes target edits and source-profile corrections
+ * with snapshot creation; the stable key includes the exact source/profile,
+ * target-period and financial-material tuple returned by the locked loader.
+ */
+export async function ensureCurrentUpdateDifficultySnapshotWithClient(
+  client: UpdateDifficultyClient,
+  request: Pick<LockedUpdateDifficultyRequest, 'ownerUserId' | 'projectId' | 'inputRevision' | 'inputHash'>,
+  options: UpdateDifficultyClientOptions = {},
+): Promise<StoredUpdateDifficultySnapshot> {
+  if (![request.ownerUserId, request.projectId].every(validId) ||
+      !Number.isSafeInteger(request.inputRevision) || request.inputRevision < 1 || !/^[a-f0-9]{64}$/.test(request.inputHash)) {
+    throw fail('INVALID_UPDATE_DIFFICULTY_CONTEXT');
+  }
+  const project = await client.query(
+    `SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
+    [request.ownerUserId, request.projectId]);
+  if (project.rows.length !== 1) throw fail('PROJECT_NOT_FOUND');
+
+  // The loader requires a request key, but this preliminary key is only used
+  // while loading. The persisted idempotency key below is derived from the
+  // complete owner-locked snapshot tuple, never from an HTTP request id.
+  const loaderRequestId = `difficulty-load-${sha256({ ownerUserId: request.ownerUserId, projectId: request.projectId,
+    inputRevision: request.inputRevision, inputHash: request.inputHash }).slice(0, 48)}`;
+  const loaded = await loadLockedUpdateDifficultyInputWithClient(client, { ...request, requestId: loaderRequestId });
+  return createUpdateDifficultySnapshotWithClient(client, { ...loaded, requestId: stableSnapshotRequestId(loaded) }, options);
 }
 
 /** Pool-owning worker compatibility wrapper; API callers should pass their transaction client directly. */
