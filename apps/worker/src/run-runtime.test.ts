@@ -15,7 +15,7 @@ import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
-import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
+import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
@@ -37,10 +37,10 @@ const PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD
 
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   const m = request.material;
-  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: DEFAULT_DOCUMENT_PARSER_VERSION, status: 'parsed',
+  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: documentParserVersion(), status: 'parsed',
     material: { material_id: m.material_id, material_version: m.material_version, media_type: m.media_type, sha256: m.sha256 },
     records: [{ record_id: 'line-1', material_id: m.material_id, material_version: m.material_version, content_hash: m.sha256, locator_type: 'text_line', locator: { line: 1, stable_ref: 'text:l000001' },
-      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: DEFAULT_DOCUMENT_PARSER_VERSION, confidence: 1, uncertainty: [], formatting: {} }],
+      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: documentParserVersion(), confidence: 1, uncertainty: [], formatting: {} }],
     warnings: [], document: { page_count: null, encoding: 'utf-8' }, error: null } as DocumentParseResponse;
 }
 
