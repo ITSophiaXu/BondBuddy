@@ -55,7 +55,7 @@ services:
       BB_ALLOWED_ORIGIN: ${BB_PUBLIC_ORIGIN:?set in .env}
       BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
       BB_SUPPORT_CONTACT: ${BB_SUPPORT_CONTACT:-}
-      BB_TRUSTED_PROXY_CIDR: 10.231.0.10/32
+      BB_TRUSTED_PROXY_CIDR: ${BB_WEB_IP:-10.231.0.10}/32
     networks: [backend]
     depends_on:
       postgres: {condition: service_healthy}
@@ -110,7 +110,7 @@ services:
     restart: unless-stopped
     ports: ['${BB_BIND_ADDR:-127.0.0.1}:${BB_HTTP_PORT:-18080}:8080']
     networks:
-      backend: {ipv4_address: 10.231.0.10}
+      backend: {ipv4_address: "${BB_WEB_IP:-10.231.0.10}"}
       edge: {}
     depends_on:
       api: {condition: service_healthy}
@@ -126,7 +126,8 @@ services:
 networks:
   backend:
     internal: true
-    ipam: {config: [{subnet: 10.231.0.0/24}]}
+    # Must not overlap other Docker networks on the host (set BB_BACKEND_SUBNET/BB_WEB_IP).
+    ipam: {config: [{subnet: "${BB_BACKEND_SUBNET:-10.231.0.0/24}"}]}
   edge: {}
 
 volumes:
