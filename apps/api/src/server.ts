@@ -24,6 +24,7 @@ import { installTrialRoutes } from './trial-routes.js';
 import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
+import { installFactReviewRoutes } from './fact-review.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
@@ -117,6 +118,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/health', { schema: { response: { 200: schemas.HealthResponse } } }, async () => ({ status: 'ok' as const, service: 'bondbuddy-m1-api-skeleton' as const, implementation: 'health-and-contract-only' as const }));
   app.get('/openapi.json', async () => openApiDocument());
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
+  installFactReviewRoutes(app,{db,owner});
   app.get('/api/v1/projects', async request => {
     const user = await owner(request); const cursor = (request.query as {cursor?:string}).cursor;
     const rows = await db().query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND deleted_at IS NULL AND ($2::text IS NULL OR id>$2) ORDER BY id LIMIT 51',[user,cursor ?? null]);
