@@ -210,14 +210,17 @@ test('save writes only a current response to a private object and inserts metada
   assert.equal(JSON.stringify([...blobs.objects.values()].map((bytes) => JSON.parse(Buffer.from(bytes).toString('utf8')))).includes('authorized_local_path'), false);
 });
 
-test('oversized serialized cache responses fail before any Blob or database write', async () => {
+test('oversized serialized cache responses remain valid but are not stored', async () => {
   const req = request('current-material', 2, 'current-request');
   const oversized = response(req);
   oversized.records[0]!.formatting = { synthetic: 'x'.repeat(2048) };
   const pool = new MockPool();
   const blobs = new MockBlobs();
 
-  await assert.rejects(saveParseCache(dependencies(pool, blobs), context('owner-a', req), oversized, 1024), /PARSE_CACHE_OBJECT_TOO_LARGE/);
+  assert.equal(await saveParseCache(dependencies(pool, blobs), context('owner-a', req), oversized, 1024), false);
+  assert.equal(blobs.putCount, 0);
+  assert.equal(pool.calls.length, 0);
+  await assert.rejects(saveParseCache(dependencies(pool, blobs), context('owner-a', req), response(req), Number.MAX_SAFE_INTEGER), /INVALID_PARSE_CACHE_LIMIT/);
   assert.equal(blobs.putCount, 0);
   assert.equal(pool.calls.length, 0);
 });

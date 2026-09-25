@@ -227,7 +227,7 @@ export async function saveParseCache(
   if (validated.status === 'failed') return false;
   assertStrictCachedResponse(validated);
   const bytes = Buffer.from(JSON.stringify(validated), 'utf8');
-  if (bytes.byteLength > maxObjectBytes) throw cacheError('PARSE_CACHE_OBJECT_TOO_LARGE');
+  if (bytes.byteLength > maxObjectBytes) return false;
   const objectSha256 = createHash('sha256').update(bytes).digest('hex');
   // Keep the private object namespace account-scoped as a second boundary in
   // addition to the owner predicate on bb_parse_cache. Hash the owner ID so
