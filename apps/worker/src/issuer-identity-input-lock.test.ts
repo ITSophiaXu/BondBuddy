@@ -10,6 +10,8 @@ import {
   reviewIssuerIdentitySourceRecord,
 } from '@bondbuddy/api/issuer-identity-source';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import type { ProductionRulePackRequest } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const origin = 'http://bondbuddy.test';
@@ -106,13 +108,60 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
         payload: { draft_revision: 1, material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [] } });
       assert.equal(response.statusCode, 201, response.body);
       const input = response.json();
+      const firstManifest = (await connection.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+        [projectId, input.input_revision])).rows[0].manifest;
+      assert.equal(firstManifest.rule_pack_selection, 'blocked');
+      assert.deepEqual(firstManifest.rule_pack_block_reasons, ['rule_applicability_reference_missing']);
+      const reviewedContextPin = { schema_version: 'synthetic-loader-seam-only', source_input_revision: input.input_revision,
+        source_input_hash: input.input_hash, fields: { instrument: { value: 'synthetic-corporate-bond', status: 'synthetic_only' } } };
+      const contextRef = { context_id: `synthetic-context-${suffix}`, version: 1,
+        content_hash: inputManifestHash(reviewedContextPin), source_input_revision: input.input_revision,
+        source_input_hash: input.input_hash };
+      const request: ProductionRulePackRequest = { market: 'sse', offering: 'private', instrument: 'synthetic-corporate-bond',
+        documentStage: 'registration', issuerScope: 'synthetic-issuer-scope', investorScope: 'synthetic-investor-scope',
+        industry: 'synthetic-industry', specialFeatures: [], asOf: '2026-09-25' };
+      const reviewedApp = createServer({ pool: scopedPool, allowedOrigin: origin,
+        principal: async () => ({ userId: owner, csrfVerified: true }),
+        reviewedContextLoader: async (db, args) => {
+          assert.ok(db !== pool, 'reviewed context and input revision use the transaction client');
+          assert.equal(args.ownerUserId, owner); assert.equal(args.projectId, projectId);
+          assert.equal(args.contextId, contextRef.context_id);
+          assert.equal(args.expectedSourceInputRevision, input.input_revision);
+          assert.equal(args.expectedSourceInputHash, input.input_hash);
+          assert.equal(args.expectedIssuerBinding.entity_id, 'entity-synthetic-reviewed');
+          return { request, contextPin: reviewedContextPin };
+        } });
+      try {
+        const noRegistry = await reviewedApp.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`,
+          headers: { origin }, payload: { draft_revision: 1,
+            material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [],
+            rule_applicability_context_ref: contextRef } });
+        assert.equal(noRegistry.statusCode, 201, noRegistry.body);
+        const pinnedAttempt = (await connection.query('SELECT manifest,input_hash FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+          [projectId, noRegistry.json().input_revision])).rows[0];
+        assert.deepEqual(pinnedAttempt.manifest.rule_pack_block_reasons, ['production_rule_pack_registry_empty']);
+        assert.equal(inputManifestHash(pinnedAttempt.manifest), pinnedAttempt.input_hash.trim());
+        assert.notEqual(noRegistry.json().input_hash, input.input_hash, 'exact context reference changes the canonical input hash');
+      } finally { await reviewedApp.close(); }
+      const noRelease = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
+        payload: { draft_revision: 1, material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [] } });
+      assert.equal(noRelease.statusCode, 201, noRelease.body);
+      assert.equal(noRelease.json().input_hash, input.input_hash, 'same blocked business input keeps the same canonical hash');
+      const noReleaseManifest = (await connection.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+        [projectId, noRelease.json().input_revision])).rows[0].manifest;
+      assert.deepEqual(noReleaseManifest.rule_pack_block_reasons, ['rule_applicability_reference_missing']);
+      const preflight = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`, headers: { origin },
+        payload: { input_revision: noRelease.json().input_revision, input_hash: noRelease.json().input_hash } });
+      assert.equal(preflight.statusCode, 200, preflight.body);
+      assert.equal(preflight.json().status, 'blocked');
+      assert.ok(preflight.json().missing_inputs.includes('rule_pack:rule_applicability_reference_missing'));
       const run = { id: `run-${suffix}`, owner_user_id: owner, project_id: projectId, input_revision: input.input_revision,
         input_hash: input.input_hash, task_kind: 'update' };
       const ctx = { pool: scopedPool, blobs: {} as never, lease: {} as never, run, signal: new AbortController().signal,
         checkpoint: {}, values: new Map() } as StageContext;
       const trusted = await inputLockStage.run(ctx);
-      assert.deepEqual(trusted, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' },
-        'a current verified pin passes issuer binding and reaches the independent rule selector gate');
+      assert.deepEqual(trusted, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
+        'a current verified identity still needs independently reviewed rule applicability');
 
       await connection.query('UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1', [grantId]);
       const revoked = await inputLockStage.run(ctx);
@@ -125,7 +174,7 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       assert.deepEqual(deleted, { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' }, 'a deleted historical version cannot reach model generation');
 
       const otherTask = await inputLockStage.run({ ...ctx, run: { ...run, task_kind: 'review' } });
-      assert.deepEqual(otherTask, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' },
+      assert.deepEqual(otherTask, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
         'non-update task kinds retain their existing input-lock path');
     } finally {
       await app.close();

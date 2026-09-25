@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import {
   nafmiiMtnDraftRulePack,
   nafmiiMtnChapterTemplate,
@@ -14,6 +14,8 @@ import {
   type RulePack,
 } from '@bondbuddy/domain';
 import { isolatedTestDatabase } from './test-database.js';
+import { inputManifestHash, lockProductionRulePack } from '@bondbuddy/api/production-rule-pin';
+import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
 import {
   revalidateProductionRulePackPin,
   selectProductionRulePack,
@@ -456,6 +458,80 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     const replay = await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext);
     assert.equal(replay.status, 'selected', JSON.stringify(replay));
 
+    // Synthetic loader seam only. This transaction is rolled back; no reviewed producer or
+    // professional authorization is installed by this fixture.
+    const projectId = `synthetic-rule-project-${suffix}`;
+    const sourceManifest = { kind: 'synthetic_rule_source', materials: [] };
+    const sourceHash = inputManifestHash(sourceManifest);
+    await client.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,market,offering,update_details)
+      VALUES($1,$2,'Synthetic rule pin','update','sse','public_all','{}')`, [projectId, operator]);
+    await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,$4,'[]','[]')`, [projectId, operator, sourceHash, sourceManifest]);
+    const contextPin = { schema_version: 'synthetic-reviewed-context-v1', source_input_revision: 1, source_input_hash: sourceHash,
+      fields: Object.fromEntries(Object.entries(selectionRequest).map(([key, value]) =>
+        [key, { value, source: 'synthetic_test_only', status: 'reviewed', reviewer: industry, version: 1,
+          hash: hashSnapshot({ key, value }) }])), overall_review: { reviewer: industry, version: 1, status: 'synthetic_test_only' } };
+    const ref = { context_id: `synthetic-context-${suffix}`, version: 1, content_hash: inputManifestHash(contextPin),
+      source_input_revision: 1, source_input_hash: sourceHash };
+    const identity = { status: 'verified' as const, record_id: 'synthetic-identity', version: 1,
+      content_hash: 'a'.repeat(64), entity_id: 'synthetic-entity', issuer_display_name: 'Synthetic issuer',
+      material_id: 'synthetic-material', material_version: 1, source_snapshot_id: 'synthetic-snapshot',
+      source_record_id: 'synthetic-record', source_record_sha256: 'b'.repeat(64),
+      source_content_sha256: 'c'.repeat(64), reviewed_by: industry, reviewed_at: now.toISOString() };
+    const scope = { owner_user_id: operator, id: projectId, market: 'sse', offering: 'public_all' };
+    assert.deepEqual(await lockProductionRulePack(client, scope, identity, ref),
+      { status: 'blocked', reasons: ['rule_applicability_loader_unavailable'] });
+    assert.deepEqual(await lockProductionRulePack(client, scope, identity, { ...ref, source_input_hash: '0'.repeat(64) },
+      async () => ({ request: selectionRequest, contextPin })),
+    { status: 'blocked', reasons: ['rule_applicability_source_input_mismatch'] });
+    assert.deepEqual(await lockProductionRulePack(client, scope, identity, ref,
+      async () => ({ status: 'needs_review', reasons: ['rule_applicability_review_pending'] })),
+    { status: 'blocked', reasons: ['rule_applicability_review_pending'] });
+    assert.deepEqual(await lockProductionRulePack(client, scope, identity, ref,
+      async () => ({ request: selectionRequest, contextPin: { ...contextPin, overall_review: null } })),
+    { status: 'blocked', reasons: ['rule_applicability_context_hash_mismatch'] });
+    const locked = await lockProductionRulePack(client, scope, identity, ref,
+      async (_db, args) => {
+        assert.equal(args.contextId, ref.context_id);
+        assert.equal(args.expectedSourceInputHash, sourceHash);
+        assert.equal(args.expectedIssuerBinding, identity);
+        return { request: selectionRequest, contextPin };
+      });
+    assert.equal(locked.status, 'selected', JSON.stringify(locked));
+    let gateCtx: StageContext | undefined;
+    if (locked.status === 'selected') {
+      assert.deepEqual(locked.pin, selected.pin);
+      assert.deepEqual(locked.applicability, { ref, contextPin });
+      assert.notEqual(inputManifestHash({ pin: locked.pin, contextPin }),
+        inputManifestHash({ pin: { ...locked.pin, releaseEventId: 'tampered' }, contextPin }));
+      const snapshotRefs = { release_event_id: locked.pin.releaseEventId,
+        pack_id: locked.pin.packId, pack_version: locked.pin.version, pack_hash: locked.pin.contentHash,
+        template_id: locked.pin.templateId, template_version: locked.pin.templateVersion, template_hash: locked.pin.templateHash,
+        coverage_id: locked.pin.coverageId, coverage_version: locked.pin.coverageVersion, coverage_hash: locked.pin.coverageHash };
+      const manifest = { manifest_schema: 'production_rule_pin_v1', kind: 'review', draft_revision: 1,
+        market: 'sse', offering: 'public_all', materials: [], issuer_identity: identity,
+        rule_pack_selection: 'selected', rule_pack_block_reasons: [], rule_pack_pin: locked.pin,
+        rule_pack_context: locked.pin.applicabilityContext, rule_applicability_pin: locked.applicability,
+        rule_pack_snapshot_refs: snapshotRefs, rule_pack_version: locked.pin.version,
+        template_version: locked.pin.templateVersion };
+      const inputHash = inputManifestHash(manifest);
+      await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+        VALUES($1,2,$2,1,$3,$4,'[]','[]',$5,$6)`, [projectId, operator, inputHash, manifest, locked.pin.version, locked.pin.templateVersion]);
+      const run = { id: `synthetic-rule-run-${suffix}`, owner_user_id: operator, project_id: projectId,
+        input_revision: 2, input_hash: inputHash, task_kind: 'review' };
+      const ctx = { pool: client as never, blobs: {} as never, lease: {} as never, run,
+        signal: new AbortController().signal, checkpoint: {}, values: new Map(),
+        reviewedContextLoader: async () => ({ request: selectionRequest, contextPin }) } as StageContext;
+      gateCtx = ctx;
+      assert.deepEqual(await inputLockStage.run(ctx), { kind: 'done' });
+      const tamperedManifest = { ...manifest, rule_pack_snapshot_refs: { ...snapshotRefs, pack_hash: '0'.repeat(64) } };
+      await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+        VALUES($1,3,$2,1,$3,$4,'[]','[]',$5,$6)`, [projectId, operator, inputHash, tamperedManifest, locked.pin.version, locked.pin.templateVersion]);
+      assert.deepEqual(await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 3 } }),
+        { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+      assert.deepEqual(await inputLockStage.run({ ...ctx, reviewedContextLoader: undefined }),
+        { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_loader_unavailable' });
+    }
     const expiredPin = { ...selected.pin, asOf: new Date(Date.parse(`${effectiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) };
     assert.deepEqual(await revalidateProductionRulePackPin(client, expiredPin, expiredPin.applicabilityContext),
       { status: 'blocked', reasons: ['production_rule_pack_not_effective'] });
@@ -468,6 +544,17 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     { status: 'blocked', reasons: ['production_rule_pack_pin_mismatch'] });
 
     await client.query(`UPDATE bb_rule_pack_production_reviewer_grants SET revoked_at=now() WHERE id=$1`, [industryGrant]);
+    if (gateCtx) {
+      const blocked = await inputLockStage.run(gateCtx);
+      assert.deepEqual(blocked,
+        { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_reviewer_grant_inactive' });
+      let promptBuilt = false;
+      const model = codexModelStage({ name: 'model_generation', logicalCallId: 'synthetic-rule-gate',
+        config: {} as never, schema: {}, validate: () => true, resultSchemaVersion: 'synthetic-v1',
+        buildPrompt: async () => { promptBuilt = true; return 'must not reach provider'; } });
+      assert.deepEqual(await model.run({ ...gateCtx, validateBeforeModelCall: async () => blocked as never }), blocked);
+      assert.equal(promptBuilt, false, 'revoked pin has zero prompt construction and model calls');
+    }
     assert.deepEqual(await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext),
       { status: 'blocked', reasons: ['production_rule_pack_reviewer_grant_inactive'] });
 
