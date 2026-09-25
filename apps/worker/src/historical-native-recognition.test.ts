@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import type { DocumentParseRecord, DocumentParseResponse } from './document-parser.js';
+import { runDocumentParser } from './document-parser.js';
+import { parseAuthorizedMaterial } from './material-parser.js';
 import { recognizeHistoricalNativeText } from './historical-native-recognition.js';
 
 const material = { material_id: 'historical-synthetic', material_version: 3, media_type: 'text/plain' as const, sha256: 'a'.repeat(64) };
@@ -217,6 +224,125 @@ test('does not treat cover and signing or issuance dates, or nonfinancial half-y
   assert.deepEqual(value.reporting_periods, []);
   assert.equal(value.latest_reporting_cutoff.value, null);
   assert.deepEqual(value.latest_reporting_cutoff.provenance.evidence_refs, []);
+});
+
+type AuthorizedManifest = {
+  cases: Array<{
+    case_id: string;
+    market: string;
+    offering: string;
+    source_reporting_periods: string[];
+    files: Array<{ path: string; upload_role: string; media_type: string; sha256: string; bytes: number }>;
+  }>;
+};
+
+const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const localPython = join(sourceRoot, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+const sampleParserPython = process.env.BB_PYTHON?.trim() || (existsSync(localPython)
+  ? localPython
+  : process.platform === 'win32' ? 'python' : 'python3');
+
+function expectedPeriodKeys(periods: string[]): string[] {
+  return periods.map((period) => {
+    const annual = /^(20\d{2})$/.exec(period);
+    if (annual) return `${annual[1]}-01-01/${annual[1]}-12-31`;
+    const interim = /^(20\d{2})-(\d{2})\/(20\d{2})-(\d{2})$/.exec(period);
+    assert.ok(interim, 'manifest period must use a supported year or month-range form');
+    const year = Number(interim[3]);
+    const month = Number(interim[4]);
+    const endDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return `${interim[1]}-${interim[2]}-01/${interim[3]}-${interim[4]}-${String(endDay).padStart(2, '0')}`;
+  }).sort();
+}
+
+// Opt in with BB_RUN_AUTHORIZED_SAMPLE_TESTS=1; set BB_PYTHON to a Python
+// interpreter with python/requirements.txt installed when no worktree .venv exists.
+test('recognizes the four authorized historical DOCX files through the Python bridge', {
+  skip: process.env.BB_RUN_AUTHORIZED_SAMPLE_TESTS === '1' ? false : 'set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 to run the real-material bridge check',
+}, async () => {
+  const manifestPath = join(sourceRoot, 'tests/samples/2026-09-25/manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as AuthorizedManifest;
+  const historical = manifest.cases.flatMap((sample) => sample.files
+    .filter((file) => file.upload_role === 'historical')
+    .map((file) => ({ sample, file })));
+  assert.equal(historical.length, 4);
+
+  for (const [index, { sample, file }] of historical.entries()) {
+    const bytes = await readFile(join(sourceRoot, 'tests/samples/2026-09-25', file.path));
+    const actualHash = createHash('sha256').update(bytes).digest('hex');
+    assert.equal(bytes.byteLength, file.bytes, `${sample.case_id}: manifest byte size mismatch`);
+    assert.equal(actualHash, file.sha256, `${sample.case_id}: manifest hash mismatch`);
+
+    const materialId = `authorized-historical-${index + 1}`;
+    const ownerUserId = 'sample-validation-owner';
+    const projectId = `sample-validation-${sample.case_id}`;
+    const row = {
+      owner_user_id: ownerUserId,
+      project_id: projectId,
+      id: materialId,
+      version: 1,
+      media_type: file.media_type,
+      byte_size: bytes.byteLength,
+      sha256: actualHash,
+      object_key: `authorized-sample/${sample.case_id}/${materialId}`,
+      role: 'historical',
+    };
+    const parsed = await parseAuthorizedMaterial({
+      pool: { query: async () => ({ rows: [row] }) },
+      blobs: { getPrivate: async () => bytes },
+      parser: (request) => runDocumentParser(request, {
+        pythonExecutable: sampleParserPython,
+        repoRoot: sourceRoot,
+      }),
+    }, {
+      ownerUserId,
+      projectId,
+      materialId,
+      version: 1,
+      requestId: `sample-parse-${index + 1}`,
+      requiredRole: 'historical',
+    });
+    assert.notEqual(parsed.status, 'failed', `${sample.case_id}: parser failed`);
+    const recognition = recognizeHistoricalNativeText(parsed, { profileVersion: 1 });
+    const actualPeriodKeys = [...new Set(recognition.reporting_periods
+      .filter((period) => period.start !== null && period.end !== null)
+      .map((period) => `${period.start}/${period.end}`))].sort();
+    const expectedPeriods = expectedPeriodKeys(sample.source_reporting_periods);
+    const unexpectedPeriods = actualPeriodKeys.filter((period) => !expectedPeriods.includes(period));
+
+    // The manifest is independent comparison evidence only. Recognition receives
+    // solely the version/hash-bound result returned by the parser bridge.
+    assert.equal(recognition.source_market.value, sample.market, `${sample.case_id}: source market mismatch`);
+    assert.equal(recognition.source_offering.value, sample.offering, `${sample.case_id}: source offering mismatch`);
+    assert.ok(recognition.source_market.provenance.evidence_refs.length >= 2,
+      `${sample.case_id}: market requires independent anchored evidence`);
+    assert.ok(recognition.source_offering.provenance.evidence_refs.length >= 2,
+      `${sample.case_id}: offering requires independent anchored evidence`);
+    for (const expectedPeriod of expectedPeriods) {
+      assert.ok(actualPeriodKeys.includes(expectedPeriod), `${sample.case_id}: missing expected source period`);
+    }
+    for (const unexpectedPeriod of unexpectedPeriods) {
+      const candidates = recognition.reporting_periods.filter((period) =>
+        period.start !== null && period.end !== null && `${period.start}/${period.end}` === unexpectedPeriod);
+      assert.ok(candidates.length > 0 && candidates.every((period) => period.status === 'needs_confirmation'),
+        `${sample.case_id}: unsupported extra period must remain unconfirmed`);
+    }
+    const expectedLatestCutoff = sample.source_reporting_periods.reduce((latest, period) => {
+      const key = expectedPeriodKeys([period])[0]!;
+      return key.slice(key.indexOf('/') + 1) > latest ? key.slice(key.indexOf('/') + 1) : latest;
+    }, '0000-00-00');
+    const hasUnconfirmedPeriod = recognition.reporting_periods.some((period) => period.status !== 'recognized');
+    assert.equal(recognition.latest_reporting_cutoff.value, hasUnconfirmedPeriod ? null : expectedLatestCutoff,
+      `${sample.case_id}: latest cutoff must match or remain unconfirmed with ambiguous periods`);
+    if (parsed.status === 'needs_confirmation') {
+      assert.equal(recognition.state, 'needs_confirmation', `${sample.case_id}: incomplete parser result must not produce a ready profile`);
+      assert.equal(recognition.source_market.status, 'needs_confirmation', `${sample.case_id}: parser uncertainty must propagate`);
+      assert.equal(recognition.source_offering.status, 'needs_confirmation', `${sample.case_id}: parser uncertainty must propagate`);
+    } else {
+      assert.equal(recognition.source_market.status, 'recognized', `${sample.case_id}: source market needs confirmation`);
+      assert.equal(recognition.source_offering.status, 'recognized', `${sample.case_id}: source offering needs confirmation`);
+    }
+  }
 });
 
 test('keeps an anchored half-year label awaiting confirmation when its statement scope is unknown', () => {
