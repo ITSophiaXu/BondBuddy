@@ -38,10 +38,40 @@ export function scrubSecrets(text: string) {
 export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string }) {
   const scrubbed = scrubSecrets(input.body);
   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
-  await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
+  const intentId = uid();
+  // This commit is the recovery address. No Blob write is allowed before it exists.
+  await pool.query('INSERT INTO bb_prompt_blob_intents(id,owner_user_id,project_id,object_key) VALUES($1,$2,$3,$4)', [intentId, input.owner, input.projectId, objectKey]);
   try {
-    return await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: SCRUB_VERSION, blobs });
-  } catch (error) { await blobs.delete(objectKey).catch(() => undefined); throw error; }
+    return await transaction(pool, async client => {
+      // Keep the intent locked across Blob IO and reference commit. The sweeper
+      // cannot delete an in-flight write even when it passes its grace period.
+      await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
+      await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
+      const id = await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: SCRUB_VERSION, blobs }, client);
+      await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
+      return id;
+    });
+  } catch (error) {
+    // A failed compensation still leaves the committed intent for the next
+    // retention run. A COMMIT whose acknowledgement was lost might have saved
+    // a valid reference, so never delete without checking under the same lock.
+    try {
+      await transaction(pool, async client => {
+        const intent = (await client.query('SELECT * FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId])).rows[0];
+        if (!intent || intent.registered_at || intent.cleared_at) return;
+        const ref = await client.query('SELECT 1 FROM bb_snapshot_refs WHERE object_key=$1', [objectKey]);
+        if (ref.rowCount) {
+          await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
+          return;
+        }
+        await blobs.delete(objectKey);
+        await client.query('UPDATE bb_prompt_blob_intents SET cleared_at=now() WHERE id=$1', [intentId]);
+      });
+    } catch {
+      await pool.query('UPDATE bb_prompt_blob_intents SET cleanup_after=now() WHERE id=$1 AND registered_at IS NULL AND cleared_at IS NULL', [intentId]).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------- forwarding
@@ -207,7 +237,34 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
     });
     purged++;
   }
-  return { due: due.length, purged, failed };
+  // Intents are bounded, private object addresses, never a broad prefix scan.
+  // Registered objects remain governed by the retention query above.
+  const orphanIds = (await pool.query(`SELECT i.id FROM bb_prompt_blob_intents i
+    WHERE i.registered_at IS NULL AND i.cleared_at IS NULL AND i.cleanup_after<=$1
+      AND ($3::text[] IS NULL OR i.owner_user_id=ANY($3))
+    ORDER BY i.cleanup_after,i.id LIMIT $2`, [now, batch, policy.ownerScope ?? null])).rows;
+  let orphanPurged = 0, orphanFailed = 0;
+  for (const { id } of orphanIds) {
+    try {
+      const cleared = await transaction(pool, async client => {
+        const intent = (await client.query('SELECT * FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [id])).rows[0];
+        if (!intent || intent.registered_at || intent.cleared_at || new Date(intent.cleanup_after) > now) return false;
+        const ref = await client.query('SELECT 1 FROM bb_snapshot_refs WHERE object_key=$1', [intent.object_key]);
+        if (ref.rowCount) {
+          await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [id]);
+          return false;
+        }
+        await blobs.delete(intent.object_key);
+        await client.query('UPDATE bb_prompt_blob_intents SET cleared_at=now() WHERE id=$1', [id]);
+        return true;
+      });
+      if (cleared) orphanPurged++;
+    } catch {
+      orphanFailed++;
+      await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: 'orphan_prompt_snapshot' } });
+    }
+  }
+  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed };
 }
 
 // ---------------------------------------------------------------- operator access

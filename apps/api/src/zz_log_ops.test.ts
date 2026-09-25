@@ -632,3 +632,42 @@ test('#79 retention purge and user-deletion reclamation keep accounting metadata
     await assert.rejects(pool.query('DELETE FROM bb_log_content_tombstones WHERE content_id=$1', [runless]), (e: any) => e.code === '23514');
   } finally { await f.app.close(); await pool.end(); }
 });
+
+test('#79 orphan prompt Blob intent survives failed compensation, restart and delete retry', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  let retryPool: Pool | undefined;
+  try {
+    const owner = f.ownerA;
+    const projectId = (await f.as(owner)('POST', '/api/v1/projects', { name: 'Synthetic orphan prompt', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const valid = await savePromptSnapshot(pool, realBlobs, { owner, projectId, kind: 'user_prompt', version: 1, body: 'authorized synthetic prompt' });
+    const validKey = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [valid])).rows[0].object_key;
+    // Even a stale/misclassified intent cannot delete an authorized reference.
+    await pool.query("UPDATE bb_prompt_blob_intents SET registered_at=NULL,cleanup_after=now()-interval '1 second' WHERE object_key=$1", [validKey]);
+    const protectedRun = await purgeLogContent(pool, realBlobs, { contentRetentionDays: 180, ownerScope: [owner] });
+    assert.equal(protectedRun.orphanPurged, 0);
+    assert.equal(await realBlobs.exists(validKey), true);
+    assert.equal((await pool.query('SELECT registered_at IS NOT NULL AS registered FROM bb_prompt_blob_intents WHERE object_key=$1', [validKey])).rows[0].registered, true);
+    let deleteFails = true;
+    const failingBlobs = { ...realBlobs, async delete(key: string) { if (deleteFails) throw new Error('synthetic Blob delete outage'); return realBlobs.delete(key); } };
+    await assert.rejects(savePromptSnapshot(pool, failingBlobs, { owner, projectId, kind: 'user_prompt', version: 1, body: 'orphan synthetic prompt' }), /duplicate key/);
+    const orphan = (await pool.query('SELECT object_key FROM bb_prompt_blob_intents WHERE owner_user_id=$1 AND registered_at IS NULL AND cleared_at IS NULL', [owner])).rows[0];
+    assert.ok(orphan, 'pre-write intent persisted after failed reference and compensation');
+    assert.equal(await realBlobs.exists(orphan.object_key), true);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [owner]);
+    const failed = await purgeLogContent(pool, failingBlobs, { contentRetentionDays: 180, ownerScope: [owner] });
+    assert.equal(failed.orphanFailed, 1);
+    assert.equal(await realBlobs.exists(orphan.object_key), true);
+    // A new pool models process restart. Deletion is replayable with only PG state.
+    deleteFails = false;
+    retryPool = new Pool({ connectionString: connection });
+    const replay = await purgeLogContent(retryPool, realBlobs, { contentRetentionDays: 180, ownerScope: [owner] });
+    assert.equal(replay.orphanPurged, 1);
+    assert.equal(await realBlobs.exists(orphan.object_key), false);
+    assert.equal((await retryPool.query('SELECT cleared_at IS NOT NULL AS cleared FROM bb_prompt_blob_intents WHERE object_key=$1', [orphan.object_key])).rows[0].cleared, true);
+    assert.equal((await purgeLogContent(retryPool, realBlobs, { contentRetentionDays: 180, ownerScope: [owner] })).orphanDue, 0);
+    assert.notEqual(validKey, orphan.object_key);
+    assert.equal((await retryPool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE id=$1', [valid])).rows[0].n, 1);
+  } finally { await f.app.close(); await retryPool?.end(); await pool.end(); }
+});
