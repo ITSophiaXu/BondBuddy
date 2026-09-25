@@ -156,7 +156,7 @@ async function appendDecision(db: Pool, owner: string, projectId: string, reques
     await client.query('BEGIN'); transactionOpen = true;
     const project = await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR KEY SHARE', [owner, projectId]);
     if (!project.rows[0]) throw missing();
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-review-request:${owner}:${projectId}:${request.request_id}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-decision-request:${owner}:${projectId}:${request.request_id}`]);
     const previous = await client.query(
       `SELECT id,request_id,owner_user_id,project_id,fact_key_hash,fact_key,version,resolution,selected_candidate_id,reason,actor_kind,actor_id,created_at
          FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND request_id=$3`, [owner, projectId, request.request_id]);
@@ -170,7 +170,7 @@ async function appendDecision(db: Pool, owner: string, projectId: string, reques
       await client.query('COMMIT'); transactionOpen = false;
       return { row, identity: oldIdentity, keyHash: String(row.fact_key_hash).trim(), replayed: true };
     }
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-review-identity:${owner}:${projectId}:${keyHash}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-decision-identity:${owner}:${projectId}:${keyHash}`]);
     const versionResult = await client.query('SELECT COALESCE(max(version),0)::int AS version FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND fact_key_hash=$3', [owner, projectId, keyHash]);
     const latestVersion = Number(versionResult.rows[0]?.version ?? 0);
     if (request.expected_version !== latestVersion) throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Fact decision changed; reload the latest candidates and review again');
