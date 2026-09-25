@@ -1,5 +1,5 @@
 import type { Static } from '@sinclair/typebox';
-import type { schemas, SchemaName } from '@bondbuddy/contracts';
+import type { schemas, SchemaName, DataPolicy } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
@@ -18,6 +18,7 @@ export function friendlyError(error: unknown): string {
     case 'CAPABILITY_NOT_READY': return '这项功能暂未开放，请稍后再试。';
     case 'PASSWORD_INVALID': return '当前密码不正确。';
     case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
+    case 'PROJECT_DELETE_BLOCKED': return '项目中还有任务尚未结束，暂时不能删除。';
     default: return '暂时无法完成操作，请稍后重试。';
   }
 }
@@ -83,6 +84,9 @@ export class ApiClient {
   closurePreview() { return this.request<Dto<'AccountClosurePreviewResponse'>>('GET', '/account/closure'); }
   closeAccount(input: Dto<'AccountClosureRequest'>) { return this.request<Dto<'AccountClosureResponse'>>('POST', '/account/closure', input); }
   projects(cursor?: string) { return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
+  dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
+  deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
+  deleteMaterial(id: string, materialId: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }
   project(id: string) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`); }
   material(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, signal);

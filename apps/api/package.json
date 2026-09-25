@@ -46,7 +46,8 @@
     "start": "node dist/server.js",
     "test": "node --test --test-concurrency=1 dist/*.test.js",
     "storage:lifecycle": "node dist/storage-lifecycle.js",
-    "log:ops": "node dist/log-ops.js"
+    "log:ops": "node dist/log-ops.js",
+    "deletion:lifecycle": "node dist/deletion-lifecycle.js"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",

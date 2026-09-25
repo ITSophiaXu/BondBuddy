@@ -5,6 +5,7 @@ import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
 import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
 import { renderAccount, renderClosed, type AccountContext } from './account';
+import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
@@ -105,8 +106,8 @@ function shell(content: string, section: string) {
     <div class="workspace-tag"><span class="workspace-symbol">B</span><div><strong>我的工作区</strong><small>募集书项目管理</small></div></div>
     <p class="nav-label">工作空间</p><nav aria-label="主导航"><a class="nav-item ${section === 'projects' ? 'active' : ''}" href="#/" ${section === 'projects' ? 'aria-current="page"' : ''}>${folder}我的项目</a>
     <a class="nav-item ${section === 'new' ? 'active' : ''}" href="#/new" ${section === 'new' ? 'aria-current="page"' : ''}>${plus}新建更新项目</a></nav>
-    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><nav aria-label="账号"><a class="nav-item ${section === 'account' ? 'active' : ''}" href="#/account" ${section === 'account' ? 'aria-current="page"' : ''}>${person}账号设置</a></nav><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : section === 'account' ? '账号设置' : '我的项目'}</span><span class="trial">受控试用</span></header>
+    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><nav aria-label="账号"><a class="nav-item ${section === 'account' ? 'active' : ''}" href="#/account" ${section === 'account' ? 'aria-current="page"' : ''}>${person}账号设置</a><a class="nav-item ${section === 'policy' ? 'active' : ''}" href="#/data-policy" ${section === 'policy' ? 'aria-current="page"' : ''}>数据保存与删除</a></nav><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : '我的项目'}</span><span class="trial">受控试用</span></header>
     <main id="main" tabindex="-1">${content}</main></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
 }
@@ -158,6 +159,7 @@ async function renderRoute() {
   currentRoute = requested;
   if (requested === '/new') { renderNew(); return; }
   if (requested === '/account') { await renderAccount(accountPage); return; }
+  if (requested === '/data-policy') { await renderDataPolicyPage(api, shell, () => token === epoch); return; }
   if (requested === '/') { renderProjects(); await loadProjects(token); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
   if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
@@ -248,13 +250,13 @@ function renderProject(project: Dto<'ProjectResponse'>) {
   materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
   materialProcessing.setVisible(document.visibilityState === 'visible');
   const value = { ...draft.fields, kind: 'update' as const, issuer_name: draft.fields.issuer_name || null };
-  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">填写本次更新的目标，已保存的资料可以随时回来继续。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></div>
+  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">填写本次更新的目标，已保存的资料可以随时回来继续。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
     <form id="draft-form" class="update-form"><div class="detail-layout"><section class="panel form-panel"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section>${supplementaryPanel(value)}</div></form>
     <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section>`, 'projects');
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section>`, 'projects');
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); updateMaterialWorkspace(project.project_id); });
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
@@ -263,6 +265,12 @@ function renderProject(project: Dto<'ProjectResponse'>) {
     draft?.dispose(); draft = undefined; void renderRoute();
   });
   bindMaterialWorkspace(project.project_id);
+  void renderUploadPolicyNote(api, document.querySelector('#upload-policy-note'));
+  bindDeletionActions(api, project.project_id, {
+    material: () => { void refreshProjectMaterials(project.project_id, epoch); },
+    project: () => { draft?.dispose(); draft = undefined; location.hash = '/'; },
+    error: showError
+  });
   void refreshProjectMaterials(project.project_id, epoch);
 }
 
@@ -392,7 +400,7 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}<a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a></div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}<a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a><button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">选择文件<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
   }).join('')}</ul></section>`).join('');

@@ -1,5 +1,7 @@
 # Web material data lifecycle: product copy template and release decisions
 
+> **2026-09-25 (#6):** the shipped copy is now rendered by `apps/web/src/data-policy-copy.ts` from `GET /api/v1/data-policy` (`src/data-lifecycle.ts`), whose numbers come from the same server config as the purge jobs. The template below is kept as background; production values, encryption and backup operations still need release evidence.
+
 **Template status:** review draft for product/security and affected maintainers. It is not a currently deployed policy. Replace every `[release decision]` with an approved value and implementation evidence before publishing to users. M1 now has owner-scoped upload and soft-delete routes plus a separately gated Blob cleanup slice; this does not establish production encryption, approved retention, backup expiry/replay operations, or a live deletion deadline.
 
 ## Suggested user-facing copy

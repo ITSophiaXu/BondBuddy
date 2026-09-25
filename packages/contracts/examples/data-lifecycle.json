@@ -1,0 +1,137 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "data-policy-configured",
+      "schema": "DataPolicyResponse",
+      "valid": true,
+      "value": {
+        "policy_version": "data_policy_m1_v1",
+        "storage_location": "platform_private_cloud",
+        "server_side_processing": true,
+        "model_provider_processing": true,
+        "active_retention": "until_user_deletes",
+        "purge_enabled": true,
+        "deleted_content_purge_days": 30,
+        "orphan_upload_purge_hours": 24,
+        "log_content_retention_days": 180,
+        "backup_retention_days": 30,
+        "pinned_by_active_run": "retained_until_run_ends",
+        "purged_content": [
+          "material_bytes",
+          "parse_evidence_text",
+          "ocr_objects",
+          "parse_cache_objects",
+          "word_artifacts",
+          "prompt_snapshots",
+          "provider_results"
+        ],
+        "retained_metadata": [
+          "hashes_and_sizes",
+          "run_and_job_states",
+          "model_call_attempts_and_usage",
+          "audit_and_purge_receipts"
+        ]
+      }
+    },
+    {
+      "name": "data-policy-purge-unconfigured-is-null-not-zero",
+      "schema": "DataPolicyResponse",
+      "valid": true,
+      "value": {
+        "policy_version": "data_policy_m1_v1",
+        "storage_location": "platform_private_cloud",
+        "server_side_processing": true,
+        "model_provider_processing": true,
+        "active_retention": "until_user_deletes",
+        "purge_enabled": false,
+        "deleted_content_purge_days": null,
+        "orphan_upload_purge_hours": null,
+        "log_content_retention_days": 180,
+        "backup_retention_days": null,
+        "pinned_by_active_run": "retained_until_run_ends",
+        "purged_content": [
+          "material_bytes",
+          "parse_evidence_text",
+          "ocr_objects",
+          "parse_cache_objects",
+          "word_artifacts",
+          "prompt_snapshots",
+          "provider_results"
+        ],
+        "retained_metadata": [
+          "hashes_and_sizes",
+          "run_and_job_states",
+          "model_call_attempts_and_usage",
+          "audit_and_purge_receipts"
+        ]
+      }
+    },
+    {
+      "name": "data-policy-rejects-browser-only-claim",
+      "schema": "DataPolicyResponse",
+      "valid": false,
+      "value": {
+        "policy_version": "data_policy_m1_v1",
+        "storage_location": "browser_only",
+        "server_side_processing": true,
+        "model_provider_processing": true,
+        "active_retention": "until_user_deletes",
+        "purge_enabled": true,
+        "deleted_content_purge_days": 30,
+        "orphan_upload_purge_hours": 24,
+        "log_content_retention_days": 180,
+        "backup_retention_days": 30,
+        "pinned_by_active_run": "retained_until_run_ends",
+        "purged_content": [
+          "material_bytes",
+          "parse_evidence_text",
+          "ocr_objects",
+          "parse_cache_objects",
+          "word_artifacts",
+          "prompt_snapshots",
+          "provider_results"
+        ],
+        "retained_metadata": [
+          "hashes_and_sizes",
+          "run_and_job_states",
+          "model_call_attempts_and_usage",
+          "audit_and_purge_receipts"
+        ]
+      }
+    },
+    {
+      "name": "data-policy-rejects-zero-log-retention",
+      "schema": "DataPolicyResponse",
+      "valid": false,
+      "value": {
+        "policy_version": "data_policy_m1_v1",
+        "storage_location": "platform_private_cloud",
+        "server_side_processing": true,
+        "model_provider_processing": true,
+        "active_retention": "until_user_deletes",
+        "purge_enabled": true,
+        "deleted_content_purge_days": 30,
+        "orphan_upload_purge_hours": 24,
+        "log_content_retention_days": 0,
+        "backup_retention_days": 30,
+        "pinned_by_active_run": "retained_until_run_ends",
+        "purged_content": [
+          "material_bytes",
+          "parse_evidence_text",
+          "ocr_objects",
+          "parse_cache_objects",
+          "word_artifacts",
+          "prompt_snapshots",
+          "provider_results"
+        ],
+        "retained_metadata": [
+          "hashes_and_sizes",
+          "run_and_job_states",
+          "model_call_attempts_and_usage",
+          "audit_and_purge_receipts"
+        ]
+      }
+    }
+  ]
+}

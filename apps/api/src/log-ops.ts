@@ -95,6 +95,7 @@ export async function checkLogHealth(pool: Pool, thresholds: { maxBacklogAgeSeco
 // ---------------------------------------------------------------- retention
 
 export type LogRetentionPolicy = { contentRetentionDays: number; policyVersion?: string; batchSize?: number; now?: () => Date;
+  /** #6: content of a user-deleted project is purged this many days after deletion (the storage purge window). */ deletedProjectPurgeDays?: number;
   /** Test/restore-verifier scope only. The CLI never sets it. */ ownerScope?: string[] };
 export function retentionPolicyFromEnv(env = process.env): LogRetentionPolicy {
   const days = Number(env.BB_LOG_CONTENT_RETENTION_DAYS ?? '180');
@@ -110,19 +111,24 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
   const now = policy.now?.() ?? new Date(), batch = policy.batchSize ?? 100, version = policy.policyVersion ?? 'log_retention_v1';
   if (!Number.isInteger(policy.contentRetentionDays) || policy.contentRetentionDays < 1) throw new Error('Invalid retention policy');
   const cutoff = new Date(now.getTime() - policy.contentRetentionDays * 86_400_000);
+  const deletedDays = policy.deletedProjectPurgeDays;
+  if (deletedDays !== undefined && (!Number.isInteger(deletedDays) || deletedDays < 0)) throw new Error('Invalid deleted-project purge window');
+  const deletedCutoff = deletedDays === undefined ? null : new Date(now.getTime() - deletedDays * 86_400_000);
   const due = (await pool.query(`
     SELECT * FROM (
       SELECT 'prompt_snapshot' kind,s.id,s.owner_user_id,s.project_id,s.object_key,s.created_at,
-        CASE WHEN u.status='closed' THEN 'user_deleted' ELSE 'retention_expired' END reason
+        CASE WHEN u.status='closed' OR p.deleted_at<$4 THEN 'user_deleted' ELSE 'retention_expired' END reason
       FROM bb_snapshot_refs s JOIN bb_users u ON u.id=s.owner_user_id LEFT JOIN bb_runs r ON r.id=s.run_id
-      WHERE (u.status='closed' OR (s.created_at<$1 AND (r.id IS NULL OR r.state IN ('succeeded','failed','cancelled','rejected'))))
+      JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id
+      WHERE (u.status='closed' OR p.deleted_at<$4 OR (s.created_at<$1 AND (r.id IS NULL OR r.state IN ('succeeded','failed','cancelled','rejected'))))
       UNION ALL
       SELECT 'provider_result',p.id,p.owner_user_id,p.project_id,p.result_ref,p.created_at,
-        CASE WHEN u.status='closed' THEN 'user_deleted' ELSE 'retention_expired' END
+        CASE WHEN u.status='closed' OR pj.deleted_at<$4 THEN 'user_deleted' ELSE 'retention_expired' END
       FROM bb_provider_result_refs p JOIN bb_users u ON u.id=p.owner_user_id JOIN bb_runs r ON r.id=p.run_id
-      WHERE (u.status='closed' OR (p.created_at<$1 AND r.state IN ('succeeded','failed','cancelled','rejected')))
+      JOIN bb_projects pj ON pj.owner_user_id=p.owner_user_id AND pj.id=p.project_id
+      WHERE (u.status='closed' OR pj.deleted_at<$4 OR (p.created_at<$1 AND r.state IN ('succeeded','failed','cancelled','rejected')))
     ) c WHERE ($3::text[] IS NULL OR c.owner_user_id=ANY($3)) AND NOT EXISTS (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind=c.kind AND t.content_id=c.id)
-    ORDER BY created_at,id LIMIT $2`, [cutoff, batch, policy.ownerScope ?? null])).rows;
+    ORDER BY created_at,id LIMIT $2`, [cutoff, batch, policy.ownerScope ?? null, deletedCutoff])).rows;
   let purged = 0, failed = 0;
   for (const row of due) {
     try { await blobs.delete(row.object_key); }

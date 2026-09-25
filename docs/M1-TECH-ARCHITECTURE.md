@@ -83,6 +83,12 @@ deploy/              # Compose、Nginx、部署与回滚
 
 #6 契约修订采用规格 04 的七类普通材料格式及现有 `project-fields.js` 的 M1 更新材料分区；声明 MIME 不可信，服务端核对真实内容。历史稿识别响应逐字段保留来源、不确定性和报告期集合；公开的项目材料 `ProjectEvent`、运行 `RunEvent` 与仅供受信服务使用的 `InternalObservabilityEvent` 分开。草稿 PATCH 在服务端合并旧值后校验市场/发行方式组合，不能只校验局部 JSON。具体值、错误码与交接说明仍以 `packages/contracts/` 为唯一公共定义；#79 的日志持久化不因本次 DTO 定义而视为完成。
 
+### #6 用户删除与数据说明（2026-09-25）
+
+保存与删除期限只有一个来源：服务器配置 `BB_STORAGE_MATERIAL_RETENTION_DAYS`（删除后清理天数）、`BB_STORAGE_ORPHAN_GRACE_HOURS`、`BB_LOG_CONTENT_RETENTION_DAYS` 和部署负责的 `BB_BACKUP_RETENTION_DAYS`。清理任务读取这些变量，公开的 `GET /api/v1/data-policy`（`DataPolicyResponse`，定义在 `packages/contracts/src/data-lifecycle.ts`）也从同一组变量生成；未配置时返回 `null`，不写成 0。上传区和 `#/data-policy` 页面只根据这个接口渲染文案，不会声称原件只存在浏览器里。
+
+`DELETE /api/v1/projects/{id}` 与已有的材料删除一样只做墓碑：在同一事务里软删除全部材料版本（沿用 0006 触发器写入存储墓碑）、撤销成果下载、写 `project.deleted` outbox；项目仍有未结束的 run 时返回 409 `PROJECT_DELETE_BLOCKED`。删除之后项目、材料、run 和输入快照都返回 owner-safe 404，删除不可撤销。迁移 `0026` 用 `bb_material_bytes_pinned` 替换原来“被任意输入快照引用就一直保留”的规则：只有项目未删除、且引用该版本的 run 尚未结束时才保留字节。`deletion-lifecycle.ts` 负责按批串联三步：0006 原件清理、0026 衍生内容清理（解析证据正文、OCR 页面与结果、没有其他在用材料的解析缓存、项目的 Word 成果）、#79 `purgeLogContent`（已删除项目的提示词与模型返回，原因记为 `user_deleted`）。Blob 删除可以重放，并且都发生在 PostgreSQL 写回执之前，所以中途崩溃后再跑一次即可补齐；回执 `bb_deleted_content_purges` 只增不改。哈希、大小、run/任务状态、模型调用与用量、审计记录会保留。命令：`npm run deletion:lifecycle -w @bondbuddy/api`，未启用 `BB_STORAGE_PURGE_ENABLED` 时不做任何改动。验收映射见 [docs/acceptance/M1-01.md](acceptance/M1-01.md)。
+
 ### #11 更新项目表单与草稿持久化切片（2026-09-24）
 
 在 #10/#12 已有的 `apps/web/` 中扩展新建及编辑表单，保留同源 API client、登录/会话隔离、项目列表、串行自动保存和材料上传。新增历史稿有/没有、展开的选填信息、市场/发行方式联动、灵活债券与机构描述、多项资金用途和右侧补充说明。DFI 仅属于交易商协会下的发行方式，未定金额为 null；不增加注册模式问卷。409 保留本页输入，用户可自行复制后明确放弃并加载服务器新版；不自动覆盖。嵌套值比较忽略 JSONB 对象键顺序，资金用途数组顺序仍影响草稿变化。运行与测试说明见 `apps/web/README.md`。

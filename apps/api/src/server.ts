@@ -10,6 +10,8 @@ import { recordOperation, rejectOperation } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
+import { dataPolicyFromEnv } from './deletion-lifecycle.js';
+import { dataLifecycleSchemas } from '@bondbuddy/contracts';
 import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 
@@ -128,6 +130,29 @@ export function createServer(settings: Settings = {}) {
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.draft_updated',{project_id:id,draft_revision:result.rows[0].draft_revision}]);
       return projectDto(result.rows[0]);
     });
+  });
+  // #6: public, unauthenticated policy numbers rendered by the upload area and the data-policy page.
+  app.get('/api/v1/data-policy',{schema:{response:{200:dataLifecycleSchemas.DataPolicyResponse}}},async (_request,reply)=>{
+    let policy;
+    try { policy=dataPolicyFromEnv(); } catch { throw new Problem(503,'DATA_UNAVAILABLE','Data policy configuration is invalid'); }
+    return reply.header('cache-control','public, max-age=300').send(policy);
+  });
+  app.delete('/api/v1/projects/:project_id',async (request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id');
+    await transaction(db(),async client=>{
+      const found=await client.query('SELECT deleted_at FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,id]);
+      if(!found.rows[0])throw missing();
+      if(found.rows[0].deleted_at!==null)return; // Owned repeat deletion is idempotent.
+      const active=await client.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND state NOT IN ('succeeded','failed','cancelled','rejected') LIMIT 1",[user,id]);
+      if(active.rows[0])throw conflict('PROJECT_DELETE_BLOCKED','Cancel or finish active runs before deleting the project');
+      // Material soft deletion writes 0006 storage tombstones; 0026 purges derived content after the same window.
+      const materials=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id]);
+      const artifacts=await client.query("UPDATE bb_artifact_versions a SET delivery_status='revoked' FROM bb_runs r WHERE r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.owner_user_id=$1 AND r.project_id=$2 AND a.delivery_status<>'revoked' RETURNING a.id,a.version",[user,id]);
+      for(const a of artifacts.rows)await client.query('DELETE FROM bb_artifact_download_grants WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[user,a.id,a.version]);
+      await client.query('UPDATE bb_projects SET deleted_at=now(),updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id]);
+      await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'project.deleted',$4)",[uid(),user,id,{material_versions_deleted:materials.rowCount??0,artifacts_revoked:artifacts.rowCount??0}]);
+    });
+    return reply.code(204).send();
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');

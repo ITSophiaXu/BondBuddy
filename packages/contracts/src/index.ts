@@ -5,6 +5,7 @@ import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
+export * from './data-lifecycle.js';
 // --- #17 worker runtime (BB-M1-12-RUNTIME) ---
 import { runtimeSchemas } from './worker-runtime.js';
 export * from './worker-runtime.js';
@@ -36,7 +37,7 @@ export const M1_UPLOAD_MIME_TYPES = [
 export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'failed', 'cancelled'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED'] as const;
+export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED'] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -219,6 +220,7 @@ export const operations: readonly Operation[] = [
   op('get', '/projects', 'List owner projects with cursor (contract only)', 'ProjectListResponse'),
   op('post', '/projects', 'Create project draft (contract only)', 'ProjectResponse', 201, 'ProjectCreateRequest'),
   op('get', '/projects/{project_id}', 'Read owner project (contract only)', 'ProjectResponse', 200, undefined, [404]),
+  op('delete', '/projects/{project_id}', 'Delete an owned project: access ends now; bytes and derived content purge after the published window', 'ProjectResponse', 204, undefined, [404, 409]),
   op('patch', '/projects/{project_id}', 'Patch draft with If-Match revision (contract only)', 'ProjectResponse', 200, 'ProjectPatchRequest', [404, 409]),
   op('post', '/projects/{project_id}/input-revisions', 'Lock verified owner material and draft versions; server computes hash (contract only)', 'InputRevisionResponse', 201, 'InputRevisionCreateRequest', [404, 409]),
   op('get', '/projects/{project_id}/input-revisions/{input_revision}', 'Read immutable input snapshot (contract only)', 'InputRevisionResponse', 200, undefined, [404]),
