@@ -23,6 +23,14 @@ AUTHOR = "BondBuddy"
 WRITER_VERSION = "bondbuddy-word-delivery-1.0.0"
 COMMENT_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 COMMENT_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
+MAX_SOURCE_PARTS = 2048
+MAX_SOURCE_PART = 32 * 1024 * 1024
+MAX_SOURCE_EXPANDED = 128 * 1024 * 1024
+XML_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+
+
+def parse_xml(data):
+    return etree.fromstring(data, parser=XML_PARSER)
 
 
 def fail(code: str):
@@ -280,7 +288,7 @@ def add_comments(parts, root, notes, by_record, tracked=False, next_id=None, sta
     if not notes:
         return
     existing = parts.get("word/comments.xml")
-    comments = etree.fromstring(existing) if existing else etree.Element(Q("comments"), nsmap={"w": W})
+    comments = parse_xml(existing) if existing else etree.Element(Q("comments"), nsmap={"w": W})
     current = [int(node.get(Q("id"))) for node in comments.findall(Q("comment")) if (node.get(Q("id")) or "").isdigit()]
     new_id = max(current, default=-1) + 1
     for note in notes:
@@ -315,7 +323,7 @@ def add_comments(parts, root, notes, by_record, tracked=False, next_id=None, sta
         new_id += 1
     parts["word/comments.xml"] = etree.tostring(comments, encoding="UTF-8", xml_declaration=True)
     rels_name = "word/_rels/document.xml.rels"
-    rels = etree.fromstring(parts[rels_name]) if rels_name in parts else etree.Element(f"{{{R}}}Relationships", nsmap={None: R})
+    rels = parse_xml(parts[rels_name]) if rels_name in parts else etree.Element(f"{{{R}}}Relationships", nsmap={None: R})
     if not any(item.get("Type") == COMMENT_REL for item in rels):
         used = {item.get("Id") for item in rels}
         index = 1
@@ -323,7 +331,7 @@ def add_comments(parts, root, notes, by_record, tracked=False, next_id=None, sta
             index += 1
         etree.SubElement(rels, f"{{{R}}}Relationship", Id=f"rId{index}", Type=COMMENT_REL, Target="comments.xml")
     parts[rels_name] = etree.tostring(rels, encoding="UTF-8", xml_declaration=True)
-    types = etree.fromstring(parts["[Content_Types].xml"])
+    types = parse_xml(parts["[Content_Types].xml"])
     if not any(item.get("PartName") == "/word/comments.xml" for item in types):
         etree.SubElement(types, f"{{{CT}}}Override", PartName="/word/comments.xml", ContentType=COMMENT_CT)
     parts["[Content_Types].xml"] = etree.tostring(types, encoding="UTF-8", xml_declaration=True)
@@ -395,19 +403,23 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
     if plan["source"]["format"] != "docx_effective" or plan["deliverable"] is not False:
         fail("WORD_PLAN_NOT_SUPPORTED")
     with zipfile.ZipFile(source_path) as original:
+        infos = original.infolist()
+        if len(infos) > MAX_SOURCE_PARTS or any(info.file_size > MAX_SOURCE_PART or info.file_size < 0 for info in infos) or \
+           sum(info.file_size for info in infos) > MAX_SOURCE_EXPANDED:
+            fail("WORD_SOURCE_SIZE_LIMIT")
         if len(set(original.namelist())) != len(original.namelist()):
             fail("WORD_DUPLICATE_ZIP_ENTRY")
         base_parts = {name: original.read(name) for name in original.namelist()}
-        document = etree.fromstring(base_parts["word/document.xml"])
+        document = parse_xml(base_parts["word/document.xml"])
         revised_names = [name for name in base_parts if name.startswith("word/") and name.endswith(".xml") and
                          (name == "word/document.xml" or name.startswith(("word/header", "word/footer", "word/footnotes", "word/endnotes")))]
         def comment_references():
             return Counter((name, node.tag, node.get(Q("id"))) for name in revised_names
-                           for node in etree.fromstring(base_parts[name]).iter()
+                           for node in parse_xml(base_parts[name]).iter()
                            if node.tag in (Q("commentReference"), Q("commentRangeStart"), Q("commentRangeEnd")))
         original_comments = comment_references()
         for name in revised_names:
-            root = etree.fromstring(base_parts[name])
+            root = parse_xml(base_parts[name])
             normalize_old_revisions(root)
             base_parts[name] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
             if name == "word/document.xml":
@@ -415,7 +427,7 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
         if original_comments != comment_references():
             fail("WORD_EXISTING_COMMENT_ANCHOR_LOST")
         if "word/settings.xml" in base_parts:
-            settings = etree.fromstring(base_parts["word/settings.xml"])
+            settings = parse_xml(base_parts["word/settings.xml"])
             for marker in settings.findall(Q("trackRevisions")):
                 settings.remove(marker)
             base_parts["word/settings.xml"] = etree.tostring(settings, encoding="UTF-8", xml_declaration=True)
@@ -456,7 +468,7 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
         generated_roots = {}
         for tracked, output in ((True, revision_path), (False, clean_path)):
             parts = dict(base_parts)
-            root = etree.fromstring(base_parts["word/document.xml"])
+            root = parse_xml(base_parts["word/document.xml"])
             mapped = paragraph_map(root)
             rows = {p["recordId"]: mapped[stable_ref(p["locator"])] for p in previews}
             counter = max([int(item.get(Q("id"))) for item in root.iter() if item.tag in (Q("ins"), Q("del"), Q("moveTo"), Q("moveFrom")) and (item.get(Q("id")) or "").isdigit()], default=0) + 1
@@ -479,7 +491,7 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
             add_comments(parts, root, notes, rows, tracked, next_id, stamp)
             parts["word/document.xml"] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
             if tracked:
-                settings = etree.fromstring(parts.get("word/settings.xml", f'<w:settings xmlns:w="{W}"/>'.encode()))
+                settings = parse_xml(parts.get("word/settings.xml", f'<w:settings xmlns:w="{W}"/>'.encode()))
                 if settings.find(Q("trackRevisions")) is None:
                     settings.append(etree.Element(Q("trackRevisions")))
                 parts["word/settings.xml"] = etree.tostring(settings, encoding="UTF-8", xml_declaration=True)
