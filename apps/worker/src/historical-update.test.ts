@@ -163,6 +163,29 @@ test('unresolved or non-frozen selections remain pending and foreign decisions a
   await assert.rejects(prepareHistoricalUpdate(s.dependencies, s.locked, s.readers), /UPDATE_FACT_DECISION_SCOPE_MISMATCH/);
 });
 
+test('a latest unresolved or stale selection keeps even a single candidate pending', async () => {
+  const s = setup(); const candidate = s.facts[0]!;
+  const unresolved = decisionFor(candidate);
+  s.decisions[0]!.decision = { ...unresolved, resolution: 'unresolved', selectedCandidateId: null, selectedCandidateProvenance: null };
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const unresolvedPlan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(unresolvedPlan.status, 'needs_confirmation'); assert.equal(unresolvedPlan.replacements.length, 0);
+  s.decisions[0]!.decision = { ...unresolved, selectedCandidateId: 'stale-candidate-id' };
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const stalePlan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(stalePlan.status, 'needs_confirmation'); assert.equal(stalePlan.replacements.length, 0);
+});
+
+test('invalid competing candidate provenance fails before a valid selection can filter it out', async () => {
+  const s = setup(); const selected = s.facts[0]!;
+  s.facts.push({ ...selected, candidate: { ...selected.candidate, candidateId: 'malformed-competitor' },
+    provenance: { ...selected.provenance, materialId: 'outside-frozen-material' } });
+  s.locked.factCandidateIds = s.facts.map(item => item.candidate.candidateId);
+  s.decisions[0]!.decision = decisionFor(selected);
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  await assert.rejects(prepareHistoricalUpdate(s.dependencies, s.locked, s.readers), /UPDATE_FACT_MATERIAL_MISMATCH/);
+});
+
 test('even value-equal competing candidates require a selected decision', async () => {
   const s = setup();
   s.facts.push({ ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate, candidateId: 'same-value-candidate' } });

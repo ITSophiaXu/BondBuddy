@@ -1,6 +1,6 @@
 import { Ajv } from 'ajv';
 import { schemas, type Material } from '@bondbuddy/contracts';
-import { factIdentityKey, type FactIdentity } from '@bondbuddy/domain/facts';
+import { factCandidateStatus, factIdentityKey, type FactIdentity } from '@bondbuddy/domain/facts';
 import { planHistoricalUpdate, updateContentHash, type HistoricalUpdateInput, type HistoricalUpdatePlan, type UpdateFact } from '@bondbuddy/domain/historical-update';
 import { getParseSnapshot, type ParseEvidenceDependencies, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { listHistoricalProfileHistory, type StoredHistoricalProfile } from './historical-profile-repository.js';
@@ -140,6 +140,16 @@ export async function prepareHistoricalUpdate(
   }
   if (stored.length !== selectedIds.size || new Set(stored.map(row => row.candidate.candidateId)).size !== stored.length ||
     historicalUpdateFactsHash(stored, decisionSnapshots) !== locked.factsHash) fail('UPDATE_FACT_SNAPSHOT_CHANGED');
+  // Check every frozen candidate before applying a decision filter, so an invalid
+  // competing row cannot disappear merely because another candidate was selected.
+  for (const { candidate, provenance } of stored) {
+    const source = materials.get(materialKey(provenance.materialId, provenance.materialVersion));
+    if (candidate.identity.accountId !== context.ownerUserId || candidate.identity.entityId !== context.issuerEntityId ||
+      provenance.status !== factCandidateStatus(candidate) || !source || !auditedRoles.has(source.role) || !provenance.evidence.length ||
+      provenance.evidence.some(anchor => anchor.material_id !== source.materialId || anchor.material_version !== source.materialVersion || anchor.content_hash !== source.contentHash)) {
+      fail('UPDATE_FACT_MATERIAL_MISMATCH');
+    }
+  }
   const selectedByIdentity = new Map<string, string>();
   for (const { identity, decision } of decisionSnapshots) {
     if (!decision) continue;
@@ -154,14 +164,14 @@ export async function prepareHistoricalUpdate(
   const facts: UpdateFact[] = stored.filter(row => {
     const key = factIdentityKey(row.candidate.identity);
     const selected = selectedByIdentity.get(key);
+    const latestDecision = decisionSnapshots.find(snapshot => factIdentityKey(snapshot.identity) === key)?.decision;
     // Any competing exact-key candidates stay out of fact evaluation until a
-    // current decision selects one of the frozen candidates.
-    if ((candidateCounts.get(key) ?? 0) > 1 && !selected) return false;
+    // current decision selects one of the frozen candidates. An explicit
+    // unresolved or stale/mismatched selection also stays pending for a singleton.
+    if (!selected && ((candidateCounts.get(key) ?? 0) > 1 || latestDecision !== null && latestDecision !== undefined)) return false;
     return !selected || selected === row.candidate.candidateId;
   }).map(({ candidate, provenance }) => {
-    const source = materials.get(materialKey(provenance.materialId, provenance.materialVersion));
-    if (!source || !auditedRoles.has(source.role) || provenance.uncertainty.length || !provenance.evidence.length ||
-      provenance.evidence.some(anchor => anchor.material_id !== source.materialId || anchor.material_version !== source.materialVersion || anchor.content_hash !== source.contentHash)) fail('UPDATE_FACT_MATERIAL_MISMATCH');
+    if (provenance.uncertainty.length) fail('UPDATE_FACT_MATERIAL_MISMATCH');
     const decisionVersion = decisionSnapshots.find(snapshot => factIdentityKey(snapshot.identity) === factIdentityKey(candidate.identity))?.decision?.version;
     return { candidate, status: provenance.status, ...(decisionVersion === undefined ? {} : { decisionVersion }), evidence: provenance.evidence.map(anchor => ({
       materialId: anchor.material_id, materialVersion: anchor.material_version, contentHash: anchor.content_hash,

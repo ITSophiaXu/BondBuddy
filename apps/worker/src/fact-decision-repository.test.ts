@@ -333,6 +333,10 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
       selectedCandidateId: secondCandidate.candidate.candidateId, reason: '合成样本：后续改选第二个候选',
     }));
     assert.equal(secondDecision.version, 2);
+    const latestRead = await getLatestFactDecision(decisionDeps, liveContext, liveIdentity);
+    assert.equal(latestRead?.decisionId, secondDecision.decisionId);
+    assert.equal(latestRead?.version, 2);
+    assert.equal(await getLatestFactDecision(decisionDeps, liveContext, { ...liveIdentity, scope: 'parent_company' }), null);
 
     await assert.rejects(appendFactDecision(decisionDeps, liveContext, makeDecision({
       decisionId: `decision-wrong-owner-${suffix}`, requestId: `request-wrong-owner-${suffix}`, identity: liveIdentity,
