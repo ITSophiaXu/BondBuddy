@@ -1,0 +1,135 @@
+# BondBuddy M1 stack: PostgreSQL 16, private Blob (Azurite in staging), migrate job, api, worker,
+# allow-list egress proxy and nginx. Sized for a 2 vCPU / 3 GB VM. Secrets come only from the
+# untracked .env next to this file (see .env.example for names). Images are built by scripts/deploy.sh.
+name: ${COMPOSE_PROJECT_NAME:-bb-m1}
+
+x-db-url: &db-url postgresql://bondbuddy:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/bondbuddy
+x-blob: &blob ${AZURE_STORAGE_CONNECTION_STRING:?set in .env}
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bondbuddy
+      POSTGRES_DB: bondbuddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bondbuddy -d bondbuddy']
+      interval: 5s
+      retries: 30
+    deploy: {resources: {limits: {cpus: '1.0', memory: 768M}}}
+
+  # STAGING ONLY: Azurite stands in for the private Azure Blob account. Production omits this
+  # service (compose --profile) and points AZURE_STORAGE_CONNECTION_STRING at Azure Blob.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    profiles: [staging-blob]
+    restart: unless-stopped
+    command: azurite-blob --blobHost 0.0.0.0 --location /data --skipApiVersionCheck --disableProductStyleUrl
+    volumes: [blobdata:/data]
+    networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z 127.0.0.1 10000 || exit 1']
+      interval: 5s
+      retries: 30
+    deploy: {resources: {limits: {cpus: '0.5', memory: 256M}}}
+
+  migrate:
+    image: bondbuddy-m1-api:${BB_IMAGE_TAG:?set by deploy.sh}
+    command: ['node', 'db/migrate.mjs']
+    environment: {DATABASE_URL: *db-url}
+    networks: [backend]
+    depends_on: {postgres: {condition: service_healthy}}
+    restart: 'no'
+    deploy: {resources: {limits: {cpus: '0.5', memory: 256M}}}
+
+  api:
+    image: bondbuddy-m1-api:${BB_IMAGE_TAG:?set by deploy.sh}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: *db-url
+      AZURE_STORAGE_CONNECTION_STRING: *blob
+      BB_ALLOWED_ORIGIN: ${BB_PUBLIC_ORIGIN:?set in .env}
+      BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
+      BB_SUPPORT_CONTACT: ${BB_SUPPORT_CONTACT:-}
+      BB_TRUSTED_PROXY_CIDR: ${BB_WEB_IP:-10.231.0.10}/32
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy: {resources: {limits: {cpus: '1.0', memory: 512M}}}
+
+  worker:
+    image: bondbuddy-m1-worker:${BB_IMAGE_TAG:?set by deploy.sh}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: *db-url
+      AZURE_STORAGE_CONNECTION_STRING: *blob
+      BB_PARSE_JOB_BATCH: ${BB_PARSE_JOB_BATCH:-5}
+      # Only route out: the allow-list proxy. The backend network has no internet gateway.
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: postgres,azurite,api,localhost,127.0.0.1
+      no_proxy: postgres,azurite,api,localhost,127.0.0.1
+      # Model adapter (env credential mode only; no auth.json). Empty in staging = model disabled.
+      BB_CODEX_CREDENTIAL_ENV: ${BB_CODEX_CREDENTIAL_ENV:-DEEPSEEK_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      BB_CODEX_BASE_URL: ${BB_CODEX_BASE_URL:-https://api.deepseek.com}
+      BB_CODEX_MODEL: ${BB_CODEX_MODEL:-}
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      egress: {condition: service_started}
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy: {resources: {limits: {cpus: '1.0', memory: 768M}}}
+
+  egress:
+    image: bondbuddy-m1-egress:${BB_IMAGE_TAG:?set by deploy.sh}
+    restart: unless-stopped
+    environment:
+      BB_EGRESS_ALLOW: ${BB_EGRESS_ALLOW:-api.deepseek.com}
+    networks: [backend, edge]
+    read_only: true
+    tmpfs: [/tmp, /var/run/squid, /var/cache/squid, /var/log/squid]
+    security_opt: [no-new-privileges:true]
+    deploy: {resources: {limits: {cpus: '0.25', memory: 96M}}}
+
+  web:
+    image: bondbuddy-m1-web:${BB_IMAGE_TAG:?set by deploy.sh}
+    restart: unless-stopped
+    ports: ['${BB_BIND_ADDR:-127.0.0.1}:${BB_HTTP_PORT:-18080}:8080']
+    networks:
+      backend: {ipv4_address: "${BB_WEB_IP:-10.231.0.10}"}
+      edge: {}
+    depends_on:
+      api: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1']
+      interval: 10s
+      retries: 6
+    deploy: {resources: {limits: {cpus: '0.5', memory: 128M}}}
+
+networks:
+  backend:
+    internal: true
+    # Must not overlap other Docker networks on the host (set BB_BACKEND_SUBNET/BB_WEB_IP).
+    ipam: {config: [{subnet: "${BB_BACKEND_SUBNET:-10.231.0.0/24}"}]}
+  edge: {}
+
+volumes:
+  pgdata:
+  blobdata:
