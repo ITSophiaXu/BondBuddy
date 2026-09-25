@@ -43,13 +43,18 @@ function transactionalPool(client: PoolClient): Pool {
   } as unknown as Pool;
 }
 async function preflightRuleReasons(client: PoolClient, ownerUserId: string, projectId: string,
-  inputHash: string, selectionRequest: ProductionRulePackRequest, contextPin: Record<string, unknown>): Promise<string[]> {
+  inputHash: string, selectionRequest: ProductionRulePackRequest, contextPin: Record<string, unknown>,
+  revision = 2): Promise<string[]> {
   const app = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
     principal: async () => ({ userId: ownerUserId, csrfVerified: true }),
-    reviewedContextLoader: async () => ({ request: selectionRequest, contextPin }) });
+    reviewedContextLoader: async (_db, args) => {
+      assert.equal(args.currentDraftRevision, 1);
+      assert.deepEqual(args.currentMaterialVersions, []);
+      return { request: selectionRequest, contextPin };
+    } });
   try {
     const response = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`,
-      headers: { origin: 'http://bondbuddy.test' }, payload: { input_revision: 2, input_hash: inputHash } });
+      headers: { origin: 'http://bondbuddy.test' }, payload: { input_revision: revision, input_hash: inputHash } });
     assert.equal(response.statusCode, 200, response.body);
     return response.json().missing_inputs;
   } finally { await app.close(); }
@@ -526,6 +531,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         assert.equal(args.contextId, ref.context_id);
         assert.equal(args.expectedSourceInputHash, sourceHash);
         assert.equal(args.expectedIssuerBinding, identity);
+        assert.equal(args.currentDraftRevision, 1);
+        assert.deepEqual(args.currentMaterialVersions, []);
         return { request: selectionRequest, contextPin };
       });
     assert.equal(locked.status, 'selected', JSON.stringify(locked));
@@ -552,15 +559,22 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         input_revision: 2, input_hash: inputHash, task_kind: 'review' };
       const ctx = { pool: client as never, blobs: {} as never, lease: {} as never, run,
         signal: new AbortController().signal, checkpoint: {}, values: new Map(),
-        reviewedContextLoader: async () => ({ request: selectionRequest, contextPin }) } as StageContext;
+        reviewedContextLoader: async (_db, args) => {
+          assert.equal(args.currentDraftRevision, 1);
+          assert.deepEqual(args.currentMaterialVersions, []);
+          return { request: selectionRequest, contextPin };
+        } } as StageContext;
       gateCtx = ctx;
       assert.deepEqual(await inputLockStage.run(ctx), { kind: 'done' });
       let reviewActive = true;
       const app = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
         principal: async () => ({ userId: operator, csrfVerified: true }),
-        reviewedContextLoader: async () => reviewActive
-          ? { request: selectionRequest, contextPin }
-          : { status: 'needs_review', reasons: ['rule_applicability_review_revoked'] } });
+        reviewedContextLoader: async (_db, args) => {
+          assert.equal(args.currentDraftRevision, 1);
+          assert.deepEqual(args.currentMaterialVersions, []);
+          return reviewActive ? { request: selectionRequest, contextPin }
+            : { status: 'needs_review', reasons: ['rule_applicability_review_revoked'] };
+        } });
       const preflight = async () => app.inject({ method: 'POST',
         url: `/api/v1/projects/${projectId}/preflight`, headers: { origin: 'http://bondbuddy.test' },
         payload: { input_revision: 2, input_hash: inputHash } });
@@ -592,6 +606,24 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
       assert.deepEqual(await inputLockStage.run({ ...ctx, reviewedContextLoader: undefined }),
         { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_loader_unavailable' });
+      await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+        VALUES($1,4,$2,2,$3,$4,'[]','[]',$5,$6)`,
+      [projectId, operator, inputHash, manifest, locked.pin.version, locked.pin.templateVersion]);
+      assert.ok((await preflightRuleReasons(client, operator, projectId, inputHash,
+        selectionRequest, contextPin, 4)).includes('rule_pack:rule_pack_pin_mismatch'));
+      const driftGate = await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 4 } });
+      assert.deepEqual(driftGate, { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
+      let driftPromptBuilt = false;
+      const driftModel = codexModelStage({ name: 'model_generation', logicalCallId: 'synthetic-rule-drift',
+        config: {} as never, schema: {}, validate: () => true, resultSchemaVersion: 'synthetic-v1',
+        buildPrompt: async () => { driftPromptBuilt = true; return 'must not reach provider'; } });
+      assert.deepEqual(await driftModel.run({ ...ctx, validateBeforeModelCall: async () => driftGate as never }), driftGate);
+      assert.equal(driftPromptBuilt, false, 'mirrored draft drift has zero prompt construction and model calls');
+      await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+        VALUES($1,5,$2,1,$3,$4,'[{"material_id":"synthetic-other","material_version":1}]'::jsonb,'[]',$5,$6)`,
+      [projectId, operator, inputHash, manifest, locked.pin.version, locked.pin.templateVersion]);
+      assert.deepEqual(await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 5 } }),
+        { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
     }
     const expiredPin = { ...selected.pin, asOf: new Date(Date.parse(`${effectiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) };
     assert.deepEqual(await revalidateProductionRulePackPin(client, expiredPin, expiredPin.applicabilityContext),

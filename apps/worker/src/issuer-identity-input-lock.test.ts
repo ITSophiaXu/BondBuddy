@@ -10,12 +10,16 @@ import {
   reviewIssuerIdentitySourceRecord,
 } from '@bondbuddy/api/issuer-identity-source';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
-import { inputManifestHash, verifyRuleApplicabilitySourceLock } from '@bondbuddy/api/production-rule-pin';
+import { inputManifestHash, lockProductionRulePack, verifyRuleApplicabilitySourceLock,
+  type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import type { ProductionRulePackRequest } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const origin = 'http://bondbuddy.test';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+const ownerLoaderContract: ReviewedContextLoader = loadReviewedRuleApplicabilityContext;
+void ownerLoaderContract;
 
 test('a resumed model stage rechecks the identity gate before constructing a prompt', async () => {
   let promptBuilt = false;
@@ -125,6 +129,16 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef,
         { ...sourceLock, materials: [{ ...sourceLock.materials[0]!, sha256: 'f'.repeat(64) }] }),
       'rule_applicability_source_material_mismatch');
+      const v2Upload = `synthetic-v2-upload-${suffix}`, v2Sha = sha(`synthetic material v2 ${suffix}`);
+      await connection.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state,received_sha256,received_bytes)
+        VALUES($1,$2,$3,'historical-v2.pdf','application/pdf',10,$4,'historical',$5,now()+interval '1 hour','completed',$4,10)`,
+      [v2Upload, owner, projectId, v2Sha, `synthetic/${v2Upload}`]);
+      await connection.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+        VALUES($1,2,$2,$3,$4,'historical','historical-v2.pdf','application/pdf',10,$5,$6,'parsed')`,
+      [materialId, owner, projectId, v2Upload, v2Sha, `users/${owner}/projects/${projectId}/materials/${materialId}/2`]);
+      const v2Lock = { ...sourceLock, materials: [{ ...sourceLock.materials[0]!, material_version: 2, sha256: v2Sha }] };
+      assert.equal(await verifyRuleApplicabilitySourceLock(connection, owner, projectId, contextRef, v2Lock),
+        'rule_applicability_source_material_mismatch');
       await connection.query('SAVEPOINT changed_rule_material_sha');
       await connection.query('UPDATE bb_material_versions SET sha256=$1 WHERE owner_user_id=$2 AND project_id=$3 AND id=$4 AND version=1',
         ['f'.repeat(64), owner, projectId, materialId]);
@@ -137,6 +151,14 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       const request: ProductionRulePackRequest = { market: 'sse', offering: 'private', instrument: 'synthetic-corporate-bond',
         documentStage: 'registration', issuerScope: 'synthetic-issuer-scope', investorScope: 'synthetic-investor-scope',
         industry: 'synthetic-industry', specialFeatures: [], asOf: '2026-09-25' };
+      let staleLoaderCalled = false;
+      assert.deepEqual(await lockProductionRulePack(connection,
+        { owner_user_id: owner, id: projectId, market: 'sse', offering: 'private' }, v2Lock,
+        firstManifest.issuer_identity, contextRef, async () => {
+          staleLoaderCalled = true;
+          return { request, contextPin: reviewedContextPin };
+        }), { status: 'blocked', reasons: ['rule_applicability_source_material_mismatch'] });
+      assert.equal(staleLoaderCalled, false, 'A(v2) never reaches the loader or selector');
       const reviewedApp = createServer({ pool: scopedPool, allowedOrigin: origin,
         principal: async () => ({ userId: owner, csrfVerified: true }),
         reviewedContextLoader: async (db, args) => {
@@ -146,6 +168,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
           assert.equal(args.expectedSourceInputRevision, input.input_revision);
           assert.equal(args.expectedSourceInputHash, input.input_hash);
           assert.equal(args.expectedIssuerBinding.entity_id, 'entity-synthetic-reviewed');
+          assert.equal(args.currentDraftRevision, 1);
+          assert.deepEqual(args.currentMaterialVersions, [{ materialId, materialVersion: 1, sha256: contentHash }]);
           return { request, contextPin: reviewedContextPin };
         } });
       try {
