@@ -30,8 +30,8 @@ def sample_request() -> dict:
         "draft": {
             "schema_version": DRAFT_SCHEMA_VERSION,
             "sections": [
-                {"heading": "第一章 发行人情况", "body": "发行人基本信息。\n主营业务情况。"},
-                {"heading": "第二章 财务情况", "body": "财务信息依据目标发行人材料。"},
+                {"heading": "第一章 发行人情况", "body": "发行人基本信息。\n发行人主营业务收入按已核验材料列示。"},
+                {"heading": "第二章 财务情况", "body": "报告期财务数据来自本发行人材料。"},
             ],
             "fact_claims": [
                 {"claim": "发行人主营业务收入按已核验材料列示。", "target_fact_ids": ["target-fact-a"]},
@@ -77,19 +77,39 @@ class NoHistoryWordWriterTest(unittest.TestCase):
             readback = Document(path)
             paragraphs = [paragraph.text for paragraph in readback.paragraphs]
             self.assertEqual(paragraphs, [
-                "第一章 发行人情况", "发行人基本信息。", "主营业务情况。",
-                "第二章 财务情况", "财务信息依据目标发行人材料。", "待人工确认事项",
+                "第一章 发行人情况", "发行人基本信息。",
+                "发行人主营业务收入按已核验材料列示。【claim 关联 ID（非证据定位、非事实核验）：[[BB_FACT_IDS_V1:[\"target-fact-a\"]]]】",
+                "第二章 财务情况",
+                "报告期财务数据来自本发行人材料。【claim 关联 ID（非证据定位、非事实核验）：[[BB_FACT_IDS_V1:[\"target-fact-b\"]]]】",
+                "待人工确认事项",
                 "【待人工确认：请补充本期发行期限。】", "【待人工确认：请确认募集资金用途明细。】",
             ])
             with zipfile.ZipFile(path) as package:
+                document_xml = etree.fromstring(package.read("word/document.xml"))
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                xml_paragraphs = [
+                    "".join(paragraph.xpath(".//w:t/text()", namespaces=ns))
+                    for paragraph in document_xml.xpath("/w:document/w:body/w:p", namespaces=ns)
+                ]
+                self.assertIn(
+                    "发行人主营业务收入按已核验材料列示。"
+                    "【claim 关联 ID（非证据定位、非事实核验）：[[BB_FACT_IDS_V1:[\"target-fact-a\"]]]】",
+                    xml_paragraphs,
+                )
+                self.assertIn(
+                    "报告期财务数据来自本发行人材料。"
+                    "【claim 关联 ID（非证据定位、非事实核验）：[[BB_FACT_IDS_V1:[\"target-fact-b\"]]]】",
+                    xml_paragraphs,
+                )
                 xml_parts = [name for name in package.namelist() if name.endswith(".xml")]
                 for part in xml_parts:
                     root = etree.fromstring(package.read(part))
                     names = {element.tag.rsplit("}", 1)[-1] for element in root.iter()}
                     self.assertTrue(names.isdisjoint({"ins", "del", "moveFrom", "moveTo"}), part)
             text = "\n".join(paragraph.text for paragraph in readback.paragraphs)
-            self.assertNotIn("target-fact-a", text)
-            self.assertNotIn("发行人主营业务收入按已核验材料列示。", text)
+            self.assertIn("target-fact-a", text)
+            self.assertIn("发行人主营业务收入按已核验材料列示。", text)
+            self.assertNotIn("reference_id", text)
 
     def test_output_bytes_are_stable(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
@@ -108,6 +128,30 @@ class NoHistoryWordWriterTest(unittest.TestCase):
             mutate(request)
             with self.subTest(expected=expected), self.assertRaisesRegex(DraftError, expected):
                 validate_request(request)
+
+    def test_claims_must_be_unique_verbatim_chapter_text(self):
+        cases = (
+            (lambda request: request["draft"]["sections"][0].update(body="无关正文。"), "CLAIM_TEXT_NOT_UNIQUE_IN_BODY"),
+            (lambda request: request["draft"]["sections"][0].update(
+                body=request["draft"]["sections"][0]["body"] + "\n发行人主营业务收入按已核验材料列示。"
+            ), "CLAIM_TEXT_NOT_UNIQUE_IN_BODY"),
+        )
+        for mutate, expected in cases:
+            request = sample_request()
+            mutate(request)
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as temp:
+                with self.assertRaisesRegex(DraftError, expected):
+                    render(request, temp)
+
+    def test_overlapping_claim_text_is_rejected(self):
+        request = sample_request()
+        request["draft"]["sections"][0]["body"] = "这是合成主张文本。"
+        request["draft"]["fact_claims"] = [
+            {"claim": "合成主张文本", "target_fact_ids": ["target-fact-a"]},
+            {"claim": "这是合成主张文本。", "target_fact_ids": ["target-fact-b"]},
+        ]
+        with tempfile.TemporaryDirectory() as temp, self.assertRaisesRegex(DraftError, "CLAIM_TEXT_OVERLAP_AMBIGUOUS"):
+            render(request, temp)
 
     def test_rejects_unknown_keys_malformed_text_and_oversized_input(self):
         request = sample_request()

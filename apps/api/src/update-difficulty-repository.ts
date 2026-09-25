@@ -98,6 +98,13 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 function sha256(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
+function validateLockedManifestDigest(manifest: Record<string, unknown>, inputHash: string): void {
+  const schema = manifest.manifest_schema;
+  if (schema === undefined) return; // Legacy locks predate canonical manifest hashes.
+  if (schema !== 'production_rule_pin_v1' || sha256(manifest) !== inputHash) {
+    throw fail('TARGET_INPUT_MANIFEST_INVALID');
+  }
+}
 
 /**
  * Classifies repository errors for the future preflight route. Missing inputs
@@ -263,6 +270,7 @@ export async function loadLockedUpdateDifficultyInputWithClient(
     const refs = parseJson(lock.rows[0]!.material_versions);
     if (!isRecord(manifest) || manifest.kind !== 'update' || Number(manifest.draft_revision) !== Number(project.rows[0]!.draft_revision) ||
         !Array.isArray(manifest.materials) || !Array.isArray(refs)) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+    validateLockedManifestDigest(manifest, String(lock.rows[0]!.input_hash).trim());
     const manifestMaterials = manifest.materials.filter(isRecord).map(item => ({
       material_id: item.material_id, material_version: item.material_version, role: item.role, sha256: item.sha256,
     }));
@@ -398,6 +406,7 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
     const refs = parseJson(locked.rows[0]!.material_versions);
     const manifest = parseJson(locked.rows[0]!.manifest);
     if (!isRecord(manifest) || manifest.kind !== 'update' || Number(manifest.draft_revision) !== input.targetRevision) throw fail('TARGET_INPUT_MANIFEST_INVALID');
+    validateLockedManifestDigest(manifest, String(locked.rows[0]!.input_hash).trim());
     const periods = manifestTargetPeriods(manifest);
     if (!targetPeriodMatches(input.targetReportingPeriods, periods)) throw fail('TARGET_REPORTING_PERIODS_LOCK_MISMATCH');
     const manifestMaterials = manifest.materials;
