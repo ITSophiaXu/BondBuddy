@@ -88,7 +88,7 @@ export async function runPlatformProbeOnce(deps: PlatformProbeDependencies): Pro
   } finally { clearInterval(heartbeat); }
 }
 
-// One-shot drain used by deploy/m1/scripts/worker-loop.sh when BB_PLATFORM_PROBE_ENABLED=1.
+// Manual one-shot drain for operators; the worker container runs the same probe inside runtime.ts when BB_PLATFORM_PROBE_ENABLED=1.
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const { Pool: PgPool } = await import('pg');
   const { azureBlobs } = await import('@bondbuddy/api/data');

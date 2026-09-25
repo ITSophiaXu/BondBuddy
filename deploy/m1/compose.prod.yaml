@@ -25,7 +25,8 @@ services:
   worker:
     environment:
       NODE_OPTIONS: --max-old-space-size=160
-      BB_PARSE_JOB_BATCH: '1'
+      # One slot: a parse (pdf.js/Python) and a run never share the 320M budget.
+      BB_WORKER_CONCURRENCY: '1'
       NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
       no_proxy: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
     deploy: {resources: {limits: {cpus: '0.75', memory: 320M}}}

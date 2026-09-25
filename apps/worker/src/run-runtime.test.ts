@@ -267,13 +267,22 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal((await send('GET', `/api/v1/projects/${p5.projectId}/input-revisions/${p5.inputRevision}`)).statusCode, 200, 'input revision still readable');
 
     // 7. An update without a reviewed historical identity remains pending before rule/model stages.
-    const p6 = await project('not-ready', [], undefined, false);
+    const p6MissingIdentity = await project('missing-identity', [], undefined, false);
+    const missingIdentityRun = (await execute(p6MissingIdentity)).json().run_id as string;
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
+    row = await runRow(missingIdentityRun);
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(row.job_error, null); assert.equal(row.artifact_id, null);
+    assert.equal((await pool.query("SELECT payload->>'reason' reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [missingIdentityRun])).rows[0].reason,
+      'historical_material_not_selected');
+    assert.equal((await send('POST', `/api/v1/runs/${missingIdentityRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
+
+    // A reviewed identity passes the identity gate; a missing production rule pin still pauses.
+    const p6 = await project('not-ready');
     const notReadyRun = (await execute(p6)).json().run_id as string;
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
     row = await runRow(notReadyRun);
-    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(row.job_error, null); assert.equal(row.artifact_id, null);
-    assert.equal((await pool.query("SELECT payload->>'reason' reason FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1", [notReadyRun])).rows[0].reason,
-      'historical_material_not_selected');
+    const pauseReason = (await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [notReadyRun])).rows[0].reason;
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_pack_pin_missing'); assert.equal(row.artifact_id, null);
     assert.equal((await send('POST', `/api/v1/runs/${notReadyRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
 
     // 8. Pinned materials still parsing -> awaiting_materials; the runtime sweep re-queues after parse succeeds.

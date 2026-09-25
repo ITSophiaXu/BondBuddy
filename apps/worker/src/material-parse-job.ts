@@ -227,7 +227,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
 }
 
 // Operational one-shot drain: processes at most BB_PARSE_JOB_BATCH jobs with the versioned Python parser, then exits.
-// Deployment scheduling (Compose service / timer) is not part of this slice.
+// Compose runs parse claims through WorkerRuntime; this CLI remains available for an operator-triggered drain.
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const { Pool: PgPool } = await import('pg');
   const { azureBlobs } = await import('@bondbuddy/api/data');
