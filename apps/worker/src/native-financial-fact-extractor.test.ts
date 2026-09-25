@@ -100,6 +100,20 @@ test('maps only the exact consolidated 2023 operating revenue row and keeps pare
   assert.ok(result.facts[0]!.evidence_refs.every((id) => !id.startsWith('parent-')));
 });
 
+test('accepts the explicitly supported parser 1.0.5 and rejects unknown parser versions', async () => {
+  const parser105Records = sampleRecords().map((record) => ({
+    ...record,
+    extractor_version: 'bondbuddy-document-parser-1.0.5',
+  }));
+  const parser105Result = await extractor.extract(request(parser105Records, 'bondbuddy-document-parser-1.0.5'));
+  assert.equal(parser105Result.facts.length, 1);
+  assert.equal(parser105Result.facts[0]?.identity.metric, 'operating_revenue');
+
+  const unknownResult = await extractor.extract(request(sampleRecords(), 'bondbuddy-document-parser-9.9.9'));
+  assert.equal(unknownResult.facts.length, 0);
+  assert.equal(unknownResult.needs_review[0]?.reason_code, 'UNSUPPORTED_NATIVE_FINANCIAL_PARSE');
+});
+
 test('duplicate metric rows and unsupported units return anchored needs_review instead of a fact', async () => {
   const duplicated = [...sampleRecords(), evidence('metric-duplicate', '合并利润表', 'A6', '其中：营业收入'),
     evidence('value-duplicate', '合并利润表', 'C6', '777.00')];
@@ -213,4 +227,32 @@ test('real authorized zq XLSX parses through Python and maps A5/C5 with manifest
   assert.deepEqual(fact.evidence_refs.map((id) => refs.get(id)?.locator.cell), ['A1', 'B2', 'C2', 'E2', 'C3', 'A5', 'C5']);
   assert.equal(refs.get(fact.evidence_refs[5]!)?.literal_quote, '其中：营业收入');
   assert.equal(refs.get(fact.evidence_refs[6]!)?.literal_quote, '3894631419.08');
+
+  const parser105Root = process.env.BB_PARSER_105_SOURCE_ROOT?.trim();
+  if (parser105Root) {
+    const parser105Result = spawnSync(sampleParserPython, ['-m', 'bondbuddy_document_parser'], {
+      cwd: parser105Root,
+      env: { ...process.env, PYTHONPATH: join(parser105Root, 'python') },
+      input: JSON.stringify(parseRequest),
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    assert.ifError(parser105Result.error);
+    assert.equal(parser105Result.status, 0, `Python 1.0.5 parser failed: ${parser105Result.stderr}`);
+    const parsed105 = JSON.parse(parser105Result.stdout) as DocumentParseResponse;
+    assert.equal(parsed105.parser_version, 'bondbuddy-document-parser-1.0.5');
+    assert.equal(parsed105.status, parsed.status);
+    assert.deepEqual(parsed105.warnings, parsed.warnings);
+    assert.deepEqual(parsed105.document, parsed.document);
+    assert.deepEqual(parsed105.records.map(({ extractor_version: _version, ...record }) => record),
+      parsed.records.map(({ extractor_version: _version, ...record }) => record));
+
+    const mapped105 = await createNativeFinancialFactExtractor(async () => ({ status: parsed105.status, warnings: parsed105.warnings }))
+      .extract(request(parsed105.records, parsed105.parser_version));
+    assert.equal(mapped105.facts.length, 1);
+    assert.equal(mapped105.facts[0]?.identity.metric, 'operating_revenue');
+    const refs105 = new Map(parsed105.records.map((record) => [record.record_id, record]));
+    assert.deepEqual(mapped105.facts[0]!.evidence_refs.map((id) => refs105.get(id)?.locator.cell),
+      ['A1', 'B2', 'C2', 'E2', 'C3', 'A5', 'C5']);
+  }
 });
