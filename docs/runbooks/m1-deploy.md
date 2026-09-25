@@ -101,3 +101,16 @@ Admin log routes return 404 unless the user has an active grant. Grant from a ma
 - Log forwarding (`log-ops` forward/health) and storage purge are not scheduled by this Compose file yet; run them from cron on the host or add services once their sinks and retention values are decided.
 - No model-backed run processor or Codex CLI is installed in the worker image; production execute stays not-ready until #17 wires it.
 - Staging uses Azurite; a production Blob backup/restore has not been exercised.
+
+## Trial guard and data-lifecycle environment (2026-09-25)
+
+`compose.yaml` passes the trial-guard (#35) and data-lifecycle (#6/#79) settings to `api` and `worker` through the `x-bb-policy-env` anchor. `BB_TRIAL_SOURCE_SALT` is required: generate it on the target host (`openssl rand -hex 24`) and keep it there. The **published M1 trial policy** (CTO decision, 2026-09-25, under the owner's delegation) is the default:
+
+| setting | value |
+|---|---|
+| deleted material / project bytes purged after | 7 days (`BB_STORAGE_MATERIAL_RETENTION_DAYS`) |
+| orphan upload grace | 24 hours (`BB_STORAGE_ORPHAN_GRACE_HOURS`) |
+| prompt / log content retention | 180 days (`BB_LOG_CONTENT_RETENTION_DAYS`) |
+| backup retention | 30 days (`BB_BACKUP_RETENTION_DAYS`) |
+
+The web data-policy copy renders these values from the API, so changing them in `.env` changes both behaviour and copy.
