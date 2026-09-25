@@ -3,9 +3,9 @@
 // uploads N copies of a generated file concurrently through create -> PUT bytes -> complete.
 // Usage: node upload-probe.mjs <base-url> <origin> <terms-version> <bytes> [count=1] [type=txt|pdf|docx|xlsx]
 // docx/xlsx need BB_PROBE_FILE (see office-sample.mjs). BB_PROBE_DOWNLOAD=1 downloads each saved material
-// again and checks its streamed sha256.
+// again and checks its streamed sha256; BB_PROBE_DOWNLOAD_GATE delays that download until a file exists.
 import { createHash, randomBytes } from 'node:crypto';
-import { createReadStream, createWriteStream, readFileSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -96,7 +96,7 @@ try {
   const projectId = proj.data.project_id;
   const mediaType = { txt: 'text/plain', pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }[type];
   if (!mediaType || ((type === 'docx' || type === 'xlsx') && !process.env.BB_PROBE_FILE)) throw new Error(`unsupported probe type ${type}`);
-  const role = type === 'txt' ? 'audit' : 'historical';
+  const role = { txt: 'audit', xlsx: 'accountDetails' }[type] ?? 'historical';
   const one = async i => {
     const started = Date.now();
     const created = await call('POST', `/api/v1/projects/${projectId}/materials/uploads`, { json: { filename: `probe-${i}.${type}`, media_type: mediaType, byte_size: size, sha256, role } });
@@ -107,6 +107,9 @@ try {
     const done = await call('POST', `/api/v1/projects/${projectId}/materials/uploads/${created.data.upload_id}/complete`, { json: { byte_size: size, sha256 } });
     let download;
     if (process.env.BB_PROBE_DOWNLOAD && (done.status === 200 || done.status === 201)) {
+      // BB_PROBE_DOWNLOAD_GATE=<path>: wait for that file first (lets an operator reset memory counters).
+      if (process.env.BB_PROBE_DOWNLOAD_GATE) writeFileSync(`${process.env.BB_PROBE_DOWNLOAD_GATE}.waiting`, '');
+      while (process.env.BB_PROBE_DOWNLOAD_GATE && !existsSync(process.env.BB_PROBE_DOWNLOAD_GATE)) await new Promise(resolve => setTimeout(resolve, 500));
       const began = Date.now();
       const r = await fetch(`${base}/api/v1/projects/${projectId}/materials/${done.data.material_id}/download`, { headers: { Origin: origin, Cookie: cookieHeader() } });
       const hash = createHash('sha256');
