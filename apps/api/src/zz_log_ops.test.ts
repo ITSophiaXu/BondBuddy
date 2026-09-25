@@ -859,3 +859,133 @@ for (const firstOutcome of ['success', 'failure'] as const) test(`#79 disconnect
     await app?.close(); await f.app.close(); await pool.end();
   }
 });
+
+test('#79 prompt deadline ends a live TCP Blob read and permits purge', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>(), held = deferred<Buffer | null>();
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline Blob', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_BLOB_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    const blobs = { ...realBlobs, getIfExistsBounded: async () => { entered.resolve(); return held.promise; } };
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    let received = '';
+    socket.on('data', chunk => { received += chunk.toString(); });
+    await entered.promise;
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const result = await Promise.race([purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('deadline failed to release pending Blob lock')), 1500))]);
+    assert.equal(result.purged, 1);
+    assert.ok(!received.includes('DEADLINE_BLOB_MARKER_79'));
+    assert.equal(pool.idleCount, pool.totalCount);
+    held.resolve(original); // A late Blob result must not send plaintext.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+  } finally { held.resolve(null); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt deadline stops a connected lock waiter without retaining its PG connection', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  const holder = await pool.connect();
+  let holderReleased = false;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline waiter', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_WAIT_MARKER_79' });
+    await holder.query("SELECT pg_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(pool.totalCount - pool.idleCount, 1, 'only the external holder uses a connection');
+    assert.equal(pool.waitingCount, 0);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    await holder.query("SELECT pg_advisory_unlock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
+    holder.release();
+    holderReleased = true;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] })).purged, 1);
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { socket?.destroy(); if (!holderReleased) { await holder.query('SELECT pg_advisory_unlock_all()').catch(() => undefined); holder.release(); } await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const readMode of ['unread', 'trickle'] as const) test(`#79 prompt deadline closes a ${readMode} live TCP response and releases purge`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  let drip: NodeJS.Timeout | undefined;
+  let drippedBytes = 0;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline unread', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'UNREAD_MARKER_79' + 'x'.repeat(9 * 1024 * 1024) });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 250, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    socket.pause();
+    if (readMode === 'trickle') drip = setInterval(() => { if (socket?.read(1)) drippedBytes++; }, 10);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let completed = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { completed = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(completed, false, 'unread response retains the lock before the deadline');
+    const result = await Promise.race([purge, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('unread response held prompt lock past deadline')), 2000))]);
+    assert.equal(result.purged, 1);
+    if (readMode === 'trickle') assert.ok(drippedBytes > 0, 'client actually read response bytes in small increments');
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    assert.equal(pool.idleCount, pool.totalCount);
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+  } finally { if (drip) clearInterval(drip); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt deadline allows a normal TCP response and ends a stuck onSend', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline onSend', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const normal = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_NORMAL_MARKER_79' });
+    const stuck = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 2, body: 'synthetic DEADLINE_ONSEND_MARKER_79' });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 350, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(stuck)) { sendEntered.resolve(); await sendGate.promise; }
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const normalPath = `/api/v1/admin/prompts/${normal}?reason_code=support_case`;
+    const normalResponse = await fetch(`${address}${normalPath}`);
+    assert.equal(normalResponse.status, 200);
+    assert.ok((await normalResponse.text()).includes('DEADLINE_NORMAL_MARKER_79'));
+    for (let i = 0; i < 20 && pool.idleCount !== pool.totalCount; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(pool.idleCount, pool.totalCount);
+    const stuckPath = `/api/v1/admin/prompts/${stuck}?reason_code=support_case`;
+    socket = await rawGetSocket(address, stuckPath);
+    let received = '';
+    socket.on('data', chunk => { received += chunk.toString(); });
+    await sendEntered.promise;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const purged = await Promise.race([purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('onSend held lock past deadline')), 2000))]);
+    assert.equal(purged.purged, 2);
+    sendGate.resolve();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.ok(!received.includes('DEADLINE_ONSEND_MARKER_79'));
+    assert.equal((await fetch(`${address}${stuckPath}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { sendGate.resolve(); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
