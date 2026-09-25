@@ -3,7 +3,7 @@ import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
+import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -139,8 +139,7 @@ export function createServer(settings: Settings = {}) {
       const executionRequestId=validExecutionKey(submitted.execution_request_id)?submitted.execution_request_id:undefined;
       if(executionRequestId){
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(executionRequestId)}`]);
-        // PostgreSQL text cannot contain NUL; a run could never have persisted such a key.
-        const priorRun=executionRequestId.includes('\0')?{rows:[]}:await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,executionRequestId]);
+        const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,executionKeyStorage(executionRequestId)]);
         if(priorRun.rows[0]){
           await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId,traceId,kind,status:'rejected',errorCode:'IDEMPOTENCY_CONFLICT'});
           return {status:409,code:'IDEMPOTENCY_CONFLICT'};
@@ -472,11 +471,12 @@ export function createServer(settings: Settings = {}) {
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);
     const traceId=uid();
     const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
+    const storedExecutionKey=executionKeyStorage(b.execution_request_id);
     const logical=(errorCode:string,httpStatus:number,stage:string)=>({owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:b.input_revision,inputHash:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus});
     if(!settings.enableRunStaging && !queueEnabled){
       const response=await transaction(db(),async client=>{
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
-        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
+        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
         if(old.rows[0]){
           const same=old.rows[0].request_hash.trim()===requestHash;
           await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
@@ -498,7 +498,7 @@ export function createServer(settings: Settings = {}) {
     let result;
     try {result=await transaction(db(),async client=>{
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
-      const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
+      const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
       if(old.rows[0]){
         const same=old.rows[0].request_hash.trim()===requestHash;
         await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
@@ -515,7 +515,7 @@ export function createServer(settings: Settings = {}) {
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
-      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,b.execution_request_id,b.task_kind,requestHash,queueEnabled?'queued':'paused']);
+      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused']);
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
         await enqueue(client,q.rows[0],runRuntime?RUN_PIPELINE_SUBTYPE:'default');
@@ -530,8 +530,8 @@ export function createServer(settings: Settings = {}) {
         const disposition=await transaction(db(),async client=>{
           // The validation transaction released its lock on rollback. Recheck under
           // the same business-key lock before recording a terminal rejection.
-          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
-          const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
+          const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
           if(priorRun.rows[0]){
             const same=priorRun.rows[0].request_hash.trim()===requestHash;
             await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});

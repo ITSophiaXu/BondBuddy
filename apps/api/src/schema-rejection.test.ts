@@ -4,7 +4,8 @@ import {test} from 'node:test';
 import {Pool} from 'pg';
 import {createServer} from './server.js';
 import {grantOperator} from './log-ops.js';
-import {digest,uid} from './data.js';
+import {uid} from './data.js';
+import {executionKeyHash} from './observability.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
 test('authenticated schema rejections retain bounded owned evidence and atomic outbox', {skip:!connection},async()=>{
@@ -50,7 +51,7 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
       assert.equal(altered.statusCode,409,altered.body);
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_id=$2',[first,runRequest.execution_request_id])).rows[0].n,0);
     } finally {await staged.close();}
-    const job=(await pool.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2",[first,digest(key)])).rows;
+    const job=(await pool.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2",[first,executionKeyHash(key)])).rows;
     assert.equal(job.length,1);assert.equal(job[0].subtype,'execute_schema_rejected');
     assert.equal(job[0].execution_request_id,null,'untrusted opaque key is not stored as log text');
     assert.equal(job[0].input_hash,null);assert.equal(job[0].run_id,null);
@@ -70,7 +71,7 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     const timeline=await app.inject({method:'GET',url:`/api/v1/admin/jobs/${job[0].id}/timeline`});
     assert.equal(timeline.statusCode,200,timeline.body);
     assert.equal(timeline.json().job.input_hash,null);assert.equal(timeline.json().job.execution_request_id,null);
-    assert.equal(timeline.json().job.execution_request_key_hash,digest(key));
+    assert.equal(timeline.json().job.execution_request_key_hash,executionKeyHash(key));
     assert.equal(timeline.json().attempts.length,0);assert.equal(timeline.json().consumption.all_attempts.input_tokens,null);
     const metrics=await app.inject({method:'GET',url:`/api/v1/admin/metrics?user_id=${first}&project_id=${project}`});
     assert.equal(metrics.statusCode,200,metrics.body);
@@ -83,7 +84,7 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     const wideKey='large.revision';
     const wideExecute=await send('/api/v1/runs/execute',{...bad,execution_request_id:wideKey,input_revision:2147483648});
     assert.equal(wideExecute.statusCode,422,wideExecute.body);
-    const wideExecuteJob=(await pool.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2",[first,digest(wideKey)])).rows[0];
+    const wideExecuteJob=(await pool.query("SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2",[first,executionKeyHash(wideKey)])).rows[0];
     assert.equal(wideExecuteJob.input_revision,null);assert.equal(wideExecuteJob.input_hash,null);
     assert.equal((await pool.query('SELECT input_revision FROM bb_operations WHERE id=$1',[wideExecuteJob.operation_id])).rows[0].input_revision,null);
     const opaqueKey='k.1\0Cookie fake-secret';
@@ -91,16 +92,23 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     const nestedReordered={...bad,execution_request_id:opaqueKey,extra:{a:1,z:'fake-secret'}};
     const simultaneous=await Promise.all([send('/api/v1/runs/execute',nestedBad),send('/api/v1/runs/execute',nestedReordered)]);
     assert.deepEqual(simultaneous.map(x=>x.statusCode),[422,422]);
-    const opaqueJobs=(await pool.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',[first,digest(opaqueKey)])).rows;
+    const opaqueJobs=(await pool.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',[first,executionKeyHash(opaqueKey)])).rows;
     assert.equal(opaqueJobs.length,1);assert.equal(opaqueJobs[0].execution_request_id,null);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_observability_events WHERE job_id=$1",[opaqueJobs[0].id])).rows[0].n,3);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND aggregate_id IN (SELECT id FROM bb_observability_events WHERE job_id=$1)",[opaqueJobs[0].id])).rows[0].n,3);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND request_id=ANY($3)',[first,project,simultaneous.map(x=>x.json().correlation_id)])).rows[0].n,2);
+    const loneSurrogate='\ud800',replacement='\ufffd';
+    assert.notEqual(executionKeyHash(loneSurrogate),executionKeyHash(replacement));
+    assert.equal((await send('/api/v1/runs/execute',{...bad,execution_request_id:loneSurrogate})).statusCode,422);
+    assert.equal((await send('/api/v1/runs/execute',{...bad,execution_request_id:replacement})).statusCode,422);
+    const distinctKeys=(await pool.query("SELECT execution_request_key_hash,execution_request_id FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=ANY($2)",[first,[executionKeyHash(loneSurrogate),executionKeyHash(replacement)]])).rows;
+    assert.equal(distinctKeys.length,2,'different JS strings cannot collapse into one logical job');
+    assert.ok(distinctKeys.every(x=>x.execution_request_id===null));
     const foreignProject=(await send('/api/v1/projects',{name:'Other account project',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
     actor=second;
     const secondProject=(await send('/api/v1/projects',{name:'Second account project',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
     assert.equal((await send('/api/v1/runs/execute',{...bad,project_id:secondProject})).statusCode,422);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',[second,digest(key)])).rows[0].n,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',[second,executionKeyHash(key)])).rows[0].n,1);
     assert.equal((await send(`/api/v1/projects/${project}/preflight`,{input_hash:'bad'})).statusCode,422);
     assert.equal((await send('/api/v1/runs/execute',{...bad,execution_request_id:uid(),project_id:project})).statusCode,422);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2',[second,project])).rows[0].n,0);

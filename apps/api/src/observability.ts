@@ -7,7 +7,8 @@ import { guardEvidenceWrite } from './evidence-gate.js';
 const safeCode=/^[a-z][a-z0-9_]{0,63}$/;
 const validId=(value:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(value);
 export const validExecutionKey=(value:unknown):value is string=>typeof value==='string'&&[...value].length>=1&&[...value].length<=128;
-export const executionKeyHash=(value:string)=>digest(value);
+// Hash UTF-16 code units. UTF-8 replacement would alias a lone surrogate with U+FFFD.
+export const executionKeyHash=(value:string)=>digest(Buffer.from(value,'utf16le'));
 export async function emitInternal(client:PoolClient,event:InternalObservabilityEvent) {
   if(!Value.Check(schemas.InternalObservabilityEvent,event))throw new Error('Invalid internal observability event');
   const {event_id,user_id,project_id,job_id,run_id,trace_id,kind}=event;
