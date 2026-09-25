@@ -26,11 +26,33 @@ from bondbuddy_document_parser.parser import (
     MEDIA_TEXT,
     MEDIA_XLSX,
     parse_request,
+    stream_parse_request,
 )
 
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class EventSink:
+    """Consumes protocol lines as they are written, retaining only small test observations."""
+
+    def __init__(self) -> None:
+        self.pending = ""
+        self.events: list[dict] = []
+        self.records: list[dict] = []
+
+    def write(self, value: str) -> None:
+        self.pending += value
+        while "\n" in self.pending:
+            line, self.pending = self.pending.split("\n", 1)
+            if not line:
+                continue
+            event = json.loads(line)
+            self.events.append({"type": event["type"], **({key: event[key] for key in ("record_count", "has_uncertainty", "response")} if event["type"] == "end" else {}),
+                                **({"response": event["response"]} if event["type"] == "failure" else {})})
+            if event["type"] == "record":
+                self.records.append(event["record"])
 
 
 class DocumentParserTests(unittest.TestCase):
@@ -42,7 +64,10 @@ class DocumentParserTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def request(self, path: Path, media_type: str, **options):
-        return parse_request({
+        return parse_request(self.request_payload(path, media_type, **options))
+
+    def request_payload(self, path: Path, media_type: str, **options):
+        return {
             "schema_version": "document-parse-request-v1",
             "request_id": "parse-synthetic",
             "material": {
@@ -53,7 +78,7 @@ class DocumentParserTests(unittest.TestCase):
                 "authorized_local_path": str(path.resolve()),
             },
             "options": options,
-        })
+        }
 
     def test_docx_effective_revisions_tables_and_no_fake_page(self):
         path = self.root / "synthetic.docx"
@@ -95,6 +120,26 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(Document(path).tables[0].cell(1, 1).text, amount["literal_quote"])
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
+
+    def test_docx_table_cells_are_not_lost_to_reused_object_ids(self):
+        path = self.root / "many-cells.docx"
+        document = Document()
+        table = document.add_table(rows=32, cols=4)
+        for row in range(32):
+            for col in range(4):
+                table.cell(row, col).text = f"cell-{row:02d}-{col}"
+        table.cell(0, 0).merge(table.cell(0, 1)).text = "cell-00-0"
+        document.save(path)
+
+        expected = {f"cell-{row:02d}-{col}" for row in range(32) for col in range(4)} - {"cell-00-1"}
+        first = self.request(path, MEDIA_DOCX)
+        second = self.request(path, MEDIA_DOCX)
+        for parsed in (first, second):
+            quotes = [record["literal_quote"] for record in parsed["records"]]
+            self.assertEqual(len(quotes), 127)
+            self.assertEqual(set(quotes), expected)
+            self.assertEqual(len({record["locator"]["stable_ref"] for record in parsed["records"]}), 127)
+        self.assertEqual(first["records"], second["records"])
 
     def test_docx_move_revisions_use_current_amount_and_preserve_order(self):
         path = self.root / "moved-amount.docx"
@@ -227,6 +272,60 @@ class DocumentParserTests(unittest.TestCase):
             bbox = record["locator"]["bbox"]
             recovered = page.crop((bbox["x0"], bbox["top"], bbox["x1"], bbox["bottom"])).extract_text()
         self.assertEqual(recovered, record["literal_quote"])
+
+    def test_streamed_pdf_keeps_text_anchors_word_boxes_and_uncovered_pages(self):
+        path = self.root / "streamed.pdf"
+        pdf = canvas.Canvas(str(path), pagesize=(300, 300))
+        pdf.drawString(50, 250, "Synthetic proceeds 123.45")
+        pdf.showPage()
+        pdf.drawString(50, 250, "Synthetic review anchor")
+        pdf.showPage()
+        pdf.showPage()
+        pdf.save()
+
+        sink = EventSink()
+        stream_parse_request(self.request_payload(path, MEDIA_PDF), sink)
+        self.assertEqual([event["type"] for event in sink.events], ["start", "record", "record", "end"])
+        self.assertEqual(sink.events[-1]["record_count"], 2)
+        self.assertEqual(sink.events[-1]["has_uncertainty"], False)
+        self.assertEqual([record["locator"]["stable_ref"] for record in sink.records], ["pdf:p0001:l0001", "pdf:p0002:l0001"])
+        self.assertEqual(sink.records[0]["material_id"], "material-synthetic")
+        self.assertEqual(sink.records[0]["content_hash"], digest(path))
+        self.assertTrue(sink.records[0]["formatting"]["word_boxes"])
+        self.assertEqual(sink.records[0]["formatting"]["word_boxes"][0]["text"], "Synthetic")
+        end = sink.events[-1]
+        self.assertEqual(end["type"], "end")
+        response = next(event["response"] for event in sink.events if event["type"] == "end")
+        self.assertEqual(response["status"], "needs_confirmation")
+        self.assertEqual(response["document"]["page_count"], 3)
+        self.assertEqual(response["document"]["pages_without_native_text"], [3])
+
+    def test_streamed_text_parser_crosses_read_chunks_without_losing_line_anchors(self):
+        path = self.root / "streamed.txt"
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            for index in range(20_000):
+                if index and index % 100 == 0:
+                    stream.write("\n")
+                stream.write(f"Synthetic line {index:05d} with native amount 123.45\n")
+
+        sink = EventSink()
+        stream_parse_request(self.request_payload(path, MEDIA_TEXT), sink)
+        self.assertEqual([event["type"] for event in sink.events[:2]], ["start", "record"])
+        self.assertEqual(sink.events[-1]["type"], "end")
+        self.assertEqual(sink.events[-1]["record_count"], 20_000)
+        self.assertEqual(sink.records[0]["locator"], {"line": 1, "stable_ref": "text:l000001"})
+        self.assertEqual(sink.records[-1]["locator"], {"line": 20_199, "stable_ref": "text:l020199"})
+        self.assertEqual(sink.records[-1]["record_id"], "evidence-020000")
+        self.assertEqual(sink.records[0]["literal_quote"], "Synthetic line 00000 with native amount 123.45")
+
+    def test_streamed_text_overlong_line_has_terminal_limit_without_success_summary(self):
+        path = self.root / "overlong.txt"
+        path.write_text("first safe line\n" + "x" * (16 * 1024 + 1) + "\n", encoding="utf-8")
+        sink = EventSink()
+        stream_parse_request(self.request_payload(path, MEDIA_TEXT), sink)
+        self.assertEqual([event["type"] for event in sink.events], ["start", "record", "failure"])
+        self.assertNotIn("end", [event["type"] for event in sink.events])
+        self.assertEqual(sink.events[-1]["response"]["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
 
     def test_pdf_with_unreadable_page_requires_confirmation(self):
         path = self.root / "text-and-blank.pdf"

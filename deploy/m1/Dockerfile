@@ -84,6 +84,8 @@ COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 # Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.
 RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
+# #17 disk-backed parse staging (BB_PARSE_STAGING_DIR); also inherited by a fresh named volume.
+RUN mkdir -p /var/lib/bondbuddy/parse-staging && chown node:node /var/lib/bondbuddy/parse-staging && chmod 0700 /var/lib/bondbuddy/parse-staging
 USER node
 # #17 long-lived WorkerRuntime: leased parse/run slots, sweep, heartbeat (readiness) and, only with
 # BB_PLATFORM_PROBE_ENABLED=1, the operator probe loop. PID 1 is node, so SIGTERM drains and releases leases.

@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { MaterialParserDependencies } from './material-parser.js';
+import type { MaterialParserDependencies, StreamedAuthorizedMaterialParse } from './material-parser.js';
 import {
   getParseSnapshot,
+  getParseSnapshotForMaterialJob,
   parseAndPersistAuthorizedMaterial,
   persistParseSnapshot,
+  persistStreamedParseSnapshot,
   type ParseEvidenceClient,
   type ParseEvidenceDependencies,
   type TrustedParseEvidenceContext,
@@ -55,6 +57,7 @@ class MemoryPool implements ParseEvidenceClient {
   readonly materialSha = hash;
   materialMediaType = 'text/plain';
   failOutbox = false;
+  onInsertSnapshot?: () => Promise<void>;
   private before: State | null = null;
 
   async query(sql: string, values: unknown[] = []): Promise<{ rows: Record<string, unknown>[] }> {
@@ -94,6 +97,7 @@ class MemoryPool implements ParseEvidenceClient {
       return { rows: rows.sort((a, b) => Number(a.ordinal) - Number(b.ordinal)) };
     }
     if (sql.startsWith('INSERT INTO bb_parse_snapshots')) {
+      await this.onInsertSnapshot?.();
       const row = {
         id: values[0], owner_user_id: values[1], project_id: values[2], material_id: values[3], material_version: values[4],
         content_sha256: values[5], parser_version: values[6], request_hash: values[7],
@@ -104,6 +108,13 @@ class MemoryPool implements ParseEvidenceClient {
       this.state.snapshots.push(row); return { rows: [row] };
     }
     if (sql.startsWith('INSERT INTO bb_parse_evidence')) {
+      if (sql.includes('jsonb_to_recordset')) {
+        for (const row of JSON.parse(String(values[5])) as Record<string, unknown>[]) {
+          this.state.evidence.push({ owner_user_id: values[0], project_id: values[1], material_id: values[2],
+            material_version: values[3], snapshot_id: values[4], ...row });
+        }
+        return { rows: [] };
+      }
       this.state.evidence.push({ owner_user_id: values[0], project_id: values[1], material_id: values[2], material_version: values[3],
         snapshot_id: values[4], record_id: values[5], content_sha256: values[6], locator_type: values[7], locator: JSON.parse(String(values[8])),
         literal_quote: values[9], context: values[10], extraction_method: values[11], extractor_version: values[12], confidence: values[13],
@@ -123,6 +134,32 @@ class MemoryPool implements ParseEvidenceClient {
   }
   release(): void {}
 }
+
+test('stream spool changed between hash and same-count insert rolls back snapshot, evidence and event', async () => {
+  const pool = new MemoryPool();
+  const root = await mkdtemp(join(tmpdir(), 'bb-stream-integrity-'));
+  const path = join(root, 'records.ndjson');
+  const original = response().records[0]!;
+  const record = { ...original, record_id: 'evidence-000001' };
+  const changed = { ...record, literal_quote: 'synthetic changed content' };
+  const write = (value: typeof record) => writeFile(path, `${JSON.stringify(value)}\n`);
+  await write(record);
+  pool.onInsertSnapshot = () => write(changed);
+  const { records: _records, ...summary } = response();
+  const request: DocumentParseRequest = {
+    schema_version: 'document-parse-request-v1', request_id: context.requestId,
+    material: { material_id: materialId, material_version: 1, media_type: 'text/plain', sha256: hash, authorized_local_path: join(root, 'source') },
+    options: {},
+  };
+  const input = { row: { media_type: 'text/plain', sha256: hash, role: 'audit' }, request,
+    stream: { response: summary, recordsPath: path, recordCount: 1, outputBytes: 0 }, directory: root,
+    cleanup: async () => undefined } as StreamedAuthorizedMaterialParse;
+  try {
+    await assert.rejects(persistStreamedParseSnapshot(dependencies(pool), input, context), /PARSE_EVIDENCE_INTEGRITY_MISMATCH/);
+    assert.deepEqual(pool.state, { snapshots: [], requests: [], evidence: [], outbox: [] });
+    assert.ok(pool.calls.some(call => call.sql === 'ROLLBACK'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 function dependencies(pool: MemoryPool): ParseEvidenceDependencies {
   let id = 0;
@@ -313,7 +350,40 @@ test('PostgreSQL 16: immutable snapshots, request aliases, access scope and tran
     assert.equal(second.snapshotId, first.snapshotId);
     assert.equal(second.replayed, true);
     assert.equal((await getParseSnapshot(liveDeps, liveContext, first.snapshotId))?.evidence[0]?.literal_quote, 'synthetic line one');
+    const compact=await getParseSnapshotForMaterialJob(liveDeps,liveContext,first.snapshotId,false);
+    assert.equal(compact?.evidenceComplete,false);
+    assert.equal(compact?.evidenceRecordCount,1);
+    assert.deepEqual(compact?.response.records,[]);
     assert.equal(await getParseSnapshot(liveDeps, { ...liveContext, ownerUserId: `${liveOwner}-other` }, first.snapshotId), null);
+    const spoolRoot = await mkdtemp(join(tmpdir(), 'bb-pg-stream-integrity-'));
+    try {
+      const spool = join(spoolRoot, 'records.ndjson');
+      const liveRecord = { ...response(liveContext.requestId, 'parsed', liveTarget).records[0]!,
+        record_id: 'evidence-000001', extractor_version: 'parser-synthetic-stream-1' };
+      await writeFile(spool, `${JSON.stringify(liveRecord)}\n`);
+      const { records: _ignored, ...streamSummary } = response(liveContext.requestId, 'parsed', liveTarget);
+      streamSummary.parser_version = 'parser-synthetic-stream-1';
+      const streamRequest: DocumentParseRequest = { schema_version: 'document-parse-request-v1', request_id: `stream-${suffix}`,
+        material: { material_id: liveMaterial, material_version: 1, media_type: 'text/plain', sha256: hash,
+          authorized_local_path: join(spoolRoot, 'source') }, options: {} };
+      const streamInput = { row: { media_type: 'text/plain', sha256: hash, role: 'audit' }, request: streamRequest,
+        stream: { response: { ...streamSummary, request_id: streamRequest.request_id }, recordsPath: spool, recordCount: 1, outputBytes: 0 },
+        directory: spoolRoot, cleanup: async () => undefined } as StreamedAuthorizedMaterialParse;
+      const mutateOnInsert: ParseEvidenceDependencies = { ...liveDeps, newId: randomUUID,
+        pool: { ...liveDeps.pool, connect: async () => {
+          const inner = await liveDeps.pool.connect();
+          return { ...inner, query: async (sql, values = []) => {
+            const result = await inner.query(sql, values);
+            if (sql.startsWith('INSERT INTO bb_parse_snapshots')) await writeFile(spool,
+              `${JSON.stringify({ ...liveRecord, literal_quote: 'synthetic changed after first hash' })}\n`);
+            return result;
+          } };
+        } } };
+      await assert.rejects(persistStreamedParseSnapshot(mutateOnInsert, streamInput,
+        { ...liveContext, requestId: streamRequest.request_id }), /PARSE_EVIDENCE_INTEGRITY_MISMATCH/);
+      assert.equal((await client.query('SELECT count(*)::int n FROM bb_parse_snapshots WHERE owner_user_id=$1', [liveOwner])).rows[0].n, 1);
+      assert.equal((await client.query('SELECT count(*)::int n FROM bb_outbox WHERE owner_user_id=$1', [liveOwner])).rows[0].n, 1);
+    } finally { await rm(spoolRoot, { recursive: true, force: true }); }
     await client.query(`SAVEPOINT ${savepoint}_immutable`);
     await assert.rejects(client.query(`UPDATE bb_parse_snapshots SET response_status='failed' WHERE id=$1`, [first.snapshotId]));
     await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}_immutable`);
