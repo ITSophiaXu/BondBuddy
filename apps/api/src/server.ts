@@ -150,7 +150,14 @@ export function createServer(settings: Settings = {}) {
       const b=body<Record<string,unknown>>(request);
       const next={name:b.name ?? old.name,issuer_name:'issuer_name' in b?b.issuer_name:old.issuer_name,market:'market' in b?b.market:old.market,offering:'offering' in b?b.offering:old.offering};
       checkedPair(next.market as Market|null,next.offering as Offering|null);
-      const details={...emptyUpdateDetails(),...('update_details' in b ? b.update_details as UpdateDetails : old.update_details)};
+      const submittedDetails='update_details' in b ? b.update_details as UpdateDetails : undefined;
+      const priorDetails={...emptyUpdateDetails(),...old.update_details};
+      const details={...emptyUpdateDetails(),...(submittedDetails ?? priorDetails),
+        // Compatibility for browsers predating target periods: omission preserves the server value;
+        // an explicit [] is the only way to clear the list.
+        ...(!submittedDetails || !Object.hasOwn(submittedDetails,'target_reporting_periods')
+          ? (priorDetails.target_reporting_periods === undefined ? {} : {target_reporting_periods:priorDetails.target_reporting_periods})
+          : {})};
       const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
       const result=await client.query('UPDATE bb_projects SET name=$3,issuer_name=$4,market=$5,offering=$6,update_details=$7,draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING *',[user,id,next.name,next.issuer_name,next.market,next.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.draft_updated',{project_id:id,draft_revision:result.rows[0].draft_revision}]);

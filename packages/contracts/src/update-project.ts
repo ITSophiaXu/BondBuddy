@@ -21,9 +21,21 @@ export const MoneySchema = Type.Object({
   value: Type.String({ maxLength: 40, pattern: '^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,6})?$' }),
   unit: Type.Union(MONEY_UNITS.map(unit => Type.Literal(unit.code)))
 }, { additionalProperties: false });
+/** A user-entered target period is not a recognized or audited financial fact. */
+export const TargetReportingPeriodSchema = Type.Object({
+  start: nullable(Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+  end: nullable(Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+  period_kind: Type.Union([Type.Literal('annual'), Type.Literal('interim'), Type.Null()]),
+  scope: Type.Union([Type.Literal('consolidated'), Type.Literal('parent'), Type.Null()]),
+  status: Type.Union([Type.Literal('user_asserted'), Type.Literal('needs_confirmation')]),
+  // Evidence references are reserved until this project input can validate them against owned materials.
+  evidence_refs: Type.Array(Type.String({ minLength: 1, maxLength: 128 }), { maxItems: 0 })
+}, { additionalProperties: false, description: 'User-entered target period; never evidence-verified by the project draft API.' });
 export const UpdateDetailsSchema = Type.Object({
   has_historical: nullable(Type.Boolean()),
   reporting_cutoff: nullable(Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+  // Optional for older clients. On PATCH, omission preserves the saved period set; [] explicitly clears it.
+  target_reporting_periods: Type.Optional(Type.Array(TargetReportingPeriodSchema, { maxItems: 30 })),
   registration_amount: Type.Union([MoneySchema, Type.Null()]),
   issuance_amount: Type.Union([MoneySchema, Type.Null()]),
   bond_terms: note(), underwriting: note(), other_agencies: note(), rating_enhancement: note(),
@@ -33,7 +45,8 @@ export const UpdateDetailsSchema = Type.Object({
     details: note(), target: note()
   }, { additionalProperties: false }), { maxItems: PROJECT_FIELD_LIMITS.fundingUses }),
   other_information: note(), supplementary_notes: note()
-}, { additionalProperties: false, description: 'User-provided update draft, not extracted or audited facts. PATCH replaces this complete object; omission preserves it.' });
+}, { additionalProperties: false, description: 'User-provided update draft, not extracted or audited facts. PATCH replaces legacy fields in this object; omitted target_reporting_periods preserves the saved list for older clients, while [] explicitly clears it.' });
+export type TargetReportingPeriod = Static<typeof TargetReportingPeriodSchema>;
 export type UpdateDetails = Static<typeof UpdateDetailsSchema>;
 export type Money = Static<typeof MoneySchema>;
 export function emptyUpdateDetails(): UpdateDetails {
@@ -53,6 +66,32 @@ export function updateDetailsErrors(details: UpdateDetails): Array<{ field: stri
     if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== details.reporting_cutoff) {
       errors.push({ field: 'update_details.reporting_cutoff', code: 'invalid_date', message: '请填写有效的财务截止日。' });
     }
+  }
+  const seenPeriods = new Set<string>();
+  for (const [index, period] of (details.target_reporting_periods ?? []).entries()) {
+    const dates = [period.start, period.end];
+    for (const [name, value] of [['start', period.start], ['end', period.end]] as const) {
+      if (value) {
+        const parsed = new Date(`${value}T00:00:00Z`);
+        if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+          errors.push({ field: `update_details.target_reporting_periods.${index}.${name}`, code: 'invalid_date', message: '请填写有效的目标报告期日期。' });
+        }
+      }
+    }
+    if (period.start && period.end && period.start > period.end) {
+      errors.push({ field: `update_details.target_reporting_periods.${index}`, code: 'invalid_range', message: '目标报告期起始日不能晚于截止日。' });
+    }
+    if ((!period.start || !period.end || !period.period_kind || !period.scope) && period.status !== 'needs_confirmation') {
+      errors.push({ field: `update_details.target_reporting_periods.${index}.status`, code: 'confirmation_required', message: '日期、期间类型或报表口径不完整的目标报告期必须标为待确认。' });
+    }
+    if (period.evidence_refs.length > 0) {
+      errors.push({ field: `update_details.target_reporting_periods.${index}.evidence_refs`, code: 'evidence_unavailable', message: '目标报告期证据引用尚未接入校验，不能保存为已核验证据。' });
+    }
+    const key = JSON.stringify([period.period_kind, ...dates, period.scope]);
+    if (seenPeriods.has(key)) {
+      errors.push({ field: `update_details.target_reporting_periods.${index}`, code: 'duplicate_period', message: '目标报告期中存在完全重复的期间、类型和报表口径。' });
+    }
+    seenPeriods.add(key);
   }
   if (details.registration_amount && details.issuance_amount && moneyInMicroYuan(details.issuance_amount) > moneyInMicroYuan(details.registration_amount)) {
     errors.push({ field: 'update_details.issuance_amount', code: 'exceeds_registration', message: '本期发行金额超过申报／注册总额，请核对金额和单位；未确定的金额可留空。' });
