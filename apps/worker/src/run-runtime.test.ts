@@ -20,7 +20,7 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
-import { codexModelStage, defaultRunStages, inputLockStage, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage } from './run-pipeline.js';
+import { codexModelStage, defaultRunStages, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage } from './run-pipeline.js';
 import { WorkerRuntime, type ProviderCallReconciler } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -57,7 +57,18 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   const model = (extra: { wrapJournal?: (j: CodexJournal) => CodexJournal } = {}) => codexModelStage({ name: 'model_generation', logicalCallId: 'update-generation', config, schema, validate: isAnswer, resultSchemaVersion: 'answer-v1',
     buildPrompt: async ctx => `SYNTHETIC update prompt for run ${ctx.run.id}. SCENARIO:structured`, ...extra });
   const word = (gate?: () => Promise<void>) => wordDeliveryStage(async ctx => { assert.deepEqual(ctx.values.get('model_generation'), { answer: 'OK', n: 16 }); await gate?.(); return docx; });
-  const stages = (extra: Partial<Record<'model' | 'word', RunStage>> = {}): RunStage[] => [inputLockStage, materialsReadyStage, extra.model ?? model(), extra.word ?? word()];
+  // This integration suite exercises generic worker mechanics with synthetic inputs only.
+  // The real inputLockStage has a separate fail-closed test because no production rule selector exists.
+  const syntheticInputLockStage: RunStage = { name: 'input_lock', run: async ({ pool: db, run }) => {
+    const q = await db.query(`SELECT input_hash,material_versions,rule_pack_version,template_version,reference_release FROM bb_input_revisions
+      WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
+    const input = q.rows[0];
+    if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
+    if (String(input.input_hash).trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+    return { kind: 'done', checkpoint: { input_revision: run.input_revision, input_hash: run.input_hash.trim(), material_versions: input.material_versions,
+      rule_pack_version: input.rule_pack_version ?? null, template_version: input.template_version ?? null, reference_release: input.reference_release ?? null } };
+  } };
+  const stages = (extra: Partial<Record<'model' | 'word', RunStage>> = {}): RunStage[] => [syntheticInputLockStage, materialsReadyStage, extra.model ?? model(), extra.word ?? word()];
   const expire = (jobId: string) => pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [jobId]);
   const runRow = async (runId: string) => (await pool.query('SELECT r.*,j.id AS job_id,j.state AS job_state,j.stage AS job_stage,j.checkpoint,j.error_code AS job_error FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1', [runId])).rows[0];
   const terminalEvents = async (runId: string) => (await pool.query("SELECT state FROM bb_run_events WHERE run_id=$1 AND state IN ('succeeded','failed','cancelled','rejected')", [runId])).rows.map(r => r.state);
@@ -216,12 +227,12 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.ok(row.checkpoint.stages.input_lock && row.checkpoint.stages.model_generation, 'checkpoint survives failure');
     assert.equal((await send('GET', `/api/v1/projects/${p5.projectId}/input-revisions/${p5.inputRevision}`)).statusCode, 200, 'input revision still readable');
 
-    // 7. Production stage list: the generation stage is not implemented -> explicit pause, never success.
+    // 7. Production stage list: rule selection is not available -> explicit pause, never success.
     const p6 = await project('not-ready');
     const notReadyRun = (await execute(p6)).json().run_id as string;
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
     row = await runRow(notReadyRun);
-    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(row.artifact_id, null);
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(row.job_error, 'production_rule_pack_selector_unavailable'); assert.equal(row.artifact_id, null);
     assert.equal((await send('POST', `/api/v1/runs/${notReadyRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
 
     // 8. Pinned materials still parsing -> awaiting_materials; the runtime sweep re-queues after parse succeeds.
