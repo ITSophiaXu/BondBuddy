@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { LibraryQueryRequest, LibraryQueryResponse, LibrarySelectionLock } from '@bondbuddy/contracts';
+import { LIBRARY_QUERY_SCHEMA_VERSION, type LibraryQueryRequest, type LibraryQueryResponse, type LibrarySelectionLock } from '@bondbuddy/contracts';
 import { matchBusinessReferences, matchLibraryQuery, type AnnualBusinessProfile, type ReferenceTarget } from '@bondbuddy/domain/reference-match';
 import type { Pool } from 'pg';
 import { checkpointStage, type Lease } from '@bondbuddy/api/queue';
@@ -127,7 +127,11 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
 export function createNoHistoryLibrarySelector(pool: Pool, lease: Lease) {
   return (input: NoHistoryLibrarySelectionInput) => selectNoHistoryLibraryReference(input, {
     query: request => queryReferenceLibrary(pool, request),
-    lock: lockInput => lockReferenceSelection(pool, lockInput),
+    // The shared lock transaction still writes a v1 lock. Do not create that durable lock
+    // for a v1.1 query; the #77/#78 lock contract must be upgraded first.
+    lock: lockInput => String(LIBRARY_QUERY_SCHEMA_VERSION) === 'reference-library-query-v1.1'
+      ? lockReferenceSelection(pool, lockInput)
+      : Promise.reject(new Problem(409, 'DATA_NOT_ENTITLED', 'v1.1 reference lock is not installed')),
     persist: snapshot => checkpointStage(pool, lease, 'reference_selection', snapshot as unknown as Record<string, unknown>),
   });
 }

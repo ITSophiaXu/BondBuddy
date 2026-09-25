@@ -63,6 +63,25 @@ test('non-exact or unlocked v1.1 reference selection pauses after target facts b
   assert.deepEqual(counts, { config: 0, rules: 1, select: 1, facts: 1 });
 });
 
+test('a v1-labelled or mismatched lock cannot authorize a v1.1 no-history model call', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const base = {
+    schema_version: 'reference-selection-v1', query_schema_version: 'reference-library-query-v1.1', status: 'exact',
+    selection_hash: 'c'.repeat(64), target: {} as never, index_release: { release_id: 'release-synthetic' },
+    candidate_decisions: [], reasons: [],
+    selected: { reference_id: 'reference-synthetic', document_version_id: 'document-synthetic', profile_id: 'profile-synthetic',
+      lock: { lock_id: 'lock-synthetic', query_schema_version: 'reference-library-query-v1',
+        document_version_id: 'document-synthetic', profile_id: 'profile-synthetic', index_release_id: 'release-synthetic' } },
+  } as unknown as LibrarySelectionSnapshot;
+  for (const lock of [base.selected!.lock,
+    { ...base.selected!.lock, query_schema_version: 'reference-library-query-v1.1' as const, profile_id: 'other-profile' }]) {
+    const stage = noHistoryModelGenerationStage(adapters({ selectReference: async () =>
+      ({ ...base, selected: { ...base.selected!, lock } }) as LibrarySelectionSnapshot }, counts));
+    assert.deepEqual(await stage.run(context()), { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:reference_selection_exact' });
+  }
+  assert.equal(counts.config, 0);
+});
+
 test('stage cannot process an update run through the no-history generation path', async () => {
   const counts = { config: 0, rules: 0, select: 0, facts: 0 };
   const stage = noHistoryModelGenerationStage(adapters({}, counts));

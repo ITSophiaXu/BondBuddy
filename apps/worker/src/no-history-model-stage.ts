@@ -219,7 +219,13 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     const selected = selection.status === 'exact' && selection.selected
       && (selection as unknown as { query_schema_version?: string }).query_schema_version === 'reference-library-query-v1.1'
       ? selection.selected : null;
-    if (!selected?.lock || !selected.reference_id || !selected.document_version_id) throw new Error(`NO_HISTORY_REFERENCE_NEEDS_REVIEW:${selection.status}`);
+    if (!selected?.lock || !selected.reference_id || !selected.document_version_id ||
+      String(selected.lock.query_schema_version) !== 'reference-library-query-v1.1' ||
+      selected.lock.document_version_id !== selected.document_version_id ||
+      selected.lock.profile_id !== selected.profile_id ||
+      selected.lock.index_release_id !== selection.index_release?.release_id) {
+      throw new Error(`NO_HISTORY_REFERENCE_NEEDS_REVIEW:${selection.status}`);
+    }
     const outline = await adapters.loadReferenceOutline({ ownerUserId: scope.ownerUserId, projectId: scope.projectId, runId: scope.runId, selection: selected });
     if (!outline || !sameScope(outline, scope) || outline.referenceId !== selected.reference_id || outline.documentVersionId !== selected.document_version_id
       || !outline.chapters.length || outline.chapters.some(chapter => !Number.isSafeInteger(chapter.order) || chapter.order < 1 || !chapter.heading.trim())) {
