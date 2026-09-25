@@ -116,3 +116,11 @@ test('worker accepts the actual Python subprocess response shape when the reposi
   assert.equal(result.records[0]?.literal_quote,'synthetic parser contract evidence');
   assert.equal(result.document.page_count,null);
 });
+
+test('#17 a parser child killed by the kernel (SIGKILL, e.g. container OOM) reports DOCUMENT_PARSER_MEMORY_LIMIT', async (t) => {
+  const root=await mkdtemp(join(tmpdir(),'bb-parser-oom-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const fake=join(root,'python3');
+  await writeFile(fake,'#!/bin/sh\ncat >/dev/null\nkill -9 $$\n',{mode:0o700});
+  await assert.rejects(runDocumentParser(request,{pythonExecutable:fake,repoRoot:root}),/DOCUMENT_PARSER_MEMORY_LIMIT/);
+});

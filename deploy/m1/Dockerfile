@@ -84,6 +84,8 @@ RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r pyt
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/worker-loop.sh /usr/local/bin/worker-loop
 # Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.
 RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
+# #17 disk-backed parse staging (BB_PARSE_STAGING_DIR); also inherited by a fresh named volume.
+RUN mkdir -p /var/lib/bondbuddy/parse-staging && chown node:node /var/lib/bondbuddy/parse-staging && chmod 0700 /var/lib/bondbuddy/parse-staging
 USER node
 CMD ["worker-loop"]
 

@@ -188,7 +188,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     concurrency: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv('BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv('BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv('BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv('BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv('BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv('BB_OCR_RETRY_SECONDS', 300, 0, 86400),
-    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
+    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), ...(blobs.readToFile ? { readToFile: (key: string, path: string, max: number) => blobs.readToFile!(key, path, max) } : {}) }, ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
       ocr: ocrEnabled ? input => processOcrMaterial(pool, blobs, { ...input, purpose: 'source_preflight' }) : undefined },
     ocrEnabled,
     logSink: process.env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(process.env.BB_LOG_NDJSON_PATH) : null,

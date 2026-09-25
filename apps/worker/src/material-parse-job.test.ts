@@ -8,7 +8,7 @@ import { azureBlobs } from '@bondbuddy/api/data';
 import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, recordMaterialParseProcessingCost, requeueAwaitingOcrParseJobs, succeedMaterialParse } from '@bondbuddy/api/material-jobs';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
-import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
+import { classifyMaterialParseError, runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { OcrProcessingError } from './ocr.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -49,6 +49,13 @@ function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
 test('synthetic parser version matches the deployed Python parser identity', () => {
   const python = readFileSync(new URL('../../../python/bondbuddy_document_parser/parser.py', import.meta.url), 'utf8');
   assert.match(python, new RegExp(`PARSER_VERSION = "${DEFAULT_DOCUMENT_PARSER_VERSION.replaceAll('.', '\\.')}"`));
+});
+
+test('#17 capacity failures are terminal MATERIAL_TOO_LARGE; infrastructure failures stay retryable', () => {
+  for (const code of ['MATERIAL_PARSE_SIZE_LIMIT', 'MATERIAL_PARSE_OUTPUT_LIMIT', 'MATERIAL_PARSE_MEMORY_LIMIT']) {
+    assert.deepEqual(classifyMaterialParseError(new Error(code)), { code: 'MATERIAL_TOO_LARGE', retryable: false, category: 'material_parse' });
+  }
+  assert.deepEqual(classifyMaterialParseError(new Error('MATERIAL_BYTES_UNAVAILABLE')), { code: 'DATA_UNAVAILABLE', retryable: true, category: 'material_parse' });
 });
 
 test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, cancel race, owner 404 and #79 rows', { skip: !connection || !blobConnection }, async () => {

@@ -23,7 +23,27 @@ export interface MaterialParserPool {
 /** Private object store adapter. It must never grant public access to material bytes. */
 export interface MaterialParserBlobStore {
   getPrivate(objectKey: string): Promise<Uint8Array | null>;
+  /**
+   * Streams the object into `path` while hashing it, so a 100 MiB material never sits in the worker
+   * heap. Preferred when present; null when the object is absent.
+   */
+  readToFile?(objectKey: string, path: string, maxBytes: number): Promise<{ byteSize: number; sha256: string } | null>;
 }
+
+/**
+ * #17 parse capacity on the M1 production worker profile (320M container, 160 MiB V8 heap, shared by
+ * the staged file on the /tmp tmpfs and the Python child). Measured in docs/acceptance/m1-capacity-2026-09-25.md.
+ * Materials above the per-type byte limit, or whose parser output exceeds the output budget, fail
+ * deterministically with MATERIAL_TOO_LARGE instead of crashing the worker and being retried.
+ */
+export const M1_PARSE_BYTE_LIMITS: Readonly<Record<typeof DOCUMENT_PARSER_MEDIA_TYPES[number], number>> = {
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 100 * 1024 * 1024,
+  'application/pdf': 100 * 1024 * 1024,
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 20 * 1024 * 1024,
+  'text/csv': 2 * 1024 * 1024,
+  'text/plain': 2 * 1024 * 1024,
+};
+export const M1_PARSE_OUTPUT_BUDGET_BYTES = 16 * 1024 * 1024;
 
 export interface AuthorizedMaterialParseInput {
   /** Trusted worker identity, never copied from an HTTP request body. */
@@ -48,8 +68,20 @@ export interface MaterialParserDependencies {
   parser?: AuthorizedMaterialParser;
   /** Optional private cache. Callers must supply deployment-controlled parser/OCR/basis versions. */
   parseCache?: { dependencies: ParseCacheDependencies; versions: ParseCacheVersions };
-  /** Test seam only; production uses the OS private temporary directory. */
+  /** Private staging directory; defaults to BB_PARSE_STAGING_DIR, then the OS temporary directory. */
   tempRoot?: string;
+  /** Overrides M1_PARSE_BYTE_LIMITS (e.g. a worker with a larger memory limit). */
+  byteLimits?: Partial<Record<string, number>>;
+  /** Parser stdout budget for the default Python bridge; defaults to BB_PARSE_MAX_OUTPUT_BYTES or M1_PARSE_OUTPUT_BUDGET_BYTES. */
+  maxOutputBytes?: number;
+}
+
+function envBytes(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1024 || value > 256 * 1024 * 1024) throw bridgeError('INVALID_MATERIAL_PARSE_CAPACITY');
+  return value;
 }
 
 type MaterialRow = {
@@ -112,6 +144,29 @@ function containsPrivateReference(value: unknown, references: string[]): boolean
   return false;
 }
 
+/** Copies the private object to the staging file and verifies its immutable size and SHA-256. */
+async function stageMaterial(blobs: MaterialParserBlobStore, row: MaterialRow, path: string): Promise<void> {
+  let digest: { byteSize: number; sha256: string } | null;
+  try {
+    if (blobs.readToFile) digest = await blobs.readToFile(row.object_key, path, row.byte_size);
+    else {
+      const stored = await blobs.getPrivate(row.object_key);
+      if (stored === null) digest = null;
+      else {
+        const bytes = Buffer.from(stored);
+        digest = { byteSize: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') };
+        if (digest.byteSize === row.byte_size && digest.sha256 === row.sha256) await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+      }
+    }
+  } catch (error) {
+    // A bounded read that overflows means the stored object grew: an integrity failure, not an outage.
+    if (error instanceof Error && 'status' in error && (error as { status?: number }).status === 413) throw bridgeError('MATERIAL_INTEGRITY_MISMATCH');
+    throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
+  }
+  if (digest === null) throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
+  if (digest.byteSize !== row.byte_size || digest.sha256 !== row.sha256) throw bridgeError('MATERIAL_INTEGRITY_MISMATCH');
+}
+
 /**
  * Resolves and parses one immutable, owner-authorized material version. This is an
  * internal worker capability and must not be called directly from an HTTP route.
@@ -145,17 +200,9 @@ export async function parseAuthorizedMaterial(
   if (input.requiredRole === 'historical' && row.media_type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
       row.media_type !== 'application/pdf') throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
   if (!supportedMediaType(row.media_type)) throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
-
-  let storedBytes: Uint8Array | null;
-  try {
-    storedBytes = await dependencies.blobs.getPrivate(row.object_key);
-  } catch {
-    throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
-  }
-  if (storedBytes === null) throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
-  const bytes = Buffer.from(storedBytes);
-  if (bytes.byteLength !== row.byte_size || createHash('sha256').update(bytes).digest('hex') !== row.sha256) {
-    throw bridgeError('MATERIAL_INTEGRITY_MISMATCH');
+  // Deterministic capacity gate before any byte is read: a retry would fail the same way.
+  if (row.byte_size > (dependencies.byteLimits?.[row.media_type] ?? M1_PARSE_BYTE_LIMITS[row.media_type])) {
+    throw bridgeError('MATERIAL_PARSE_SIZE_LIMIT');
   }
 
   const request: DocumentParseRequest = {
@@ -178,36 +225,40 @@ export async function parseAuthorizedMaterial(
     request,
     versions: dependencies.parseCache!.versions,
   } : undefined;
-  if (cacheContext !== undefined) {
-    try {
-      const cached = await lookupParseCache(dependencies.parseCache!.dependencies, cacheContext);
-      if (cached !== null) {
-        if (containsPrivateReference(cached, [row.object_key, cacheLookupPath])) {
-          throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
-        }
-        return cached;
-      }
-    } catch {
-      // Cache metadata and object integrity failures are not cache misses. Keep private cache details hidden.
-      throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
-    }
-  }
-
   let directory: string | undefined;
   try {
-    directory = await mkdtemp(join(dependencies.tempRoot ?? tmpdir(), 'bb-material-'));
+    directory = await mkdtemp(join(dependencies.tempRoot ?? (process.env.BB_PARSE_STAGING_DIR || tmpdir()), 'bb-material-'));
     const authorizedPath = join(directory, 'source');
-    await writeFile(authorizedPath, bytes, { flag: 'wx', mode: 0o600 });
+    await stageMaterial(dependencies.blobs, row, authorizedPath);
+    // Bytes are verified before a cache hit is trusted, as before streaming.
+    if (cacheContext !== undefined) {
+      try {
+        const cached = await lookupParseCache(dependencies.parseCache!.dependencies, cacheContext);
+        if (cached !== null) {
+          if (containsPrivateReference(cached, [row.object_key, cacheLookupPath])) {
+            throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
+          }
+          return cached;
+        }
+      } catch {
+        // Cache metadata and object integrity failures are not cache misses. Keep private cache details hidden.
+        throw bridgeError('MATERIAL_PARSE_CACHE_FAILED');
+      }
+    }
     request.material.authorized_local_path = authorizedPath;
     let response: DocumentParseResponse;
+    const maxOutputBytes = dependencies.maxOutputBytes ?? envBytes('BB_PARSE_MAX_OUTPUT_BYTES', M1_PARSE_OUTPUT_BUDGET_BYTES);
     try {
-      const raw = await (dependencies.parser ?? runDocumentParser)(request);
+      const raw = await (dependencies.parser ?? (parseRequest => runDocumentParser(parseRequest, { maxOutputBytes })))(request);
       if (containsPrivateReference(raw, [row.object_key, authorizedPath, directory])) {
         throw bridgeError('PARSER_RESULT_CONTAINS_PRIVATE_REFERENCE');
       }
       response = validateDocumentParseResponse(raw, request);
     } catch (error) {
       if (error instanceof Error && error.name === 'MaterialParserError') throw error;
+      // The same document always produces the same output: over budget is terminal, not a retry.
+      if (error instanceof Error && error.message === 'DOCUMENT_PARSER_OUTPUT_LIMIT') throw bridgeError('MATERIAL_PARSE_OUTPUT_LIMIT');
+      if (error instanceof Error && error.message === 'DOCUMENT_PARSER_MEMORY_LIMIT') throw bridgeError('MATERIAL_PARSE_MEMORY_LIMIT');
       throw bridgeError('MATERIAL_PARSE_FAILED');
     }
     if (containsPrivateReference(response, [row.object_key, authorizedPath, directory])) {

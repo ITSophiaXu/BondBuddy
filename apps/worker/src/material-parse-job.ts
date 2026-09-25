@@ -47,7 +47,11 @@ const TERMINAL: Record<string, ErrorCode> = {
   MATERIAL_INTEGRITY_MISMATCH: 'MATERIAL_CONTENT_MISMATCH', PARSE_EVIDENCE_MATERIAL_MISMATCH: 'MATERIAL_CONTENT_MISMATCH',
   UNSUPPORTED_MEDIA_TYPE: 'MATERIAL_FORMAT_UNSUPPORTED', PARSER_VERSION_MISMATCH: 'VALIDATION_FAILED',
   PARSER_RESULT_CONTAINS_PRIVATE_REFERENCE: 'VALIDATION_FAILED',
+  // #17 capacity: deterministic for the same bytes, so never retried (a retry only repeats the failure).
+  MATERIAL_PARSE_SIZE_LIMIT: 'MATERIAL_TOO_LARGE', MATERIAL_PARSE_OUTPUT_LIMIT: 'MATERIAL_TOO_LARGE', MATERIAL_PARSE_MEMORY_LIMIT: 'MATERIAL_TOO_LARGE',
 };
+// Structured Python parser failures that are not public codes themselves.
+const PARSER_FAILURE: Record<string, ErrorCode> = { MATERIAL_LIMIT_EXCEEDED: 'MATERIAL_TOO_LARGE' };
 // #17 OCR processor failures (apps/worker/src/ocr.ts). OCR_PROCESS_UNAVAILABLE pauses instead (engine not installed).
 const OCR_TERMINAL: Record<string, ErrorCode> = {
   OCR_UNSUPPORTED_FORMAT: 'MATERIAL_FORMAT_UNSUPPORTED', OCR_INPUT_LIMIT: 'VALIDATION_FAILED', OCR_SOURCE_INTEGRITY_FAILED: 'MATERIAL_CONTENT_MISMATCH',
@@ -145,7 +149,7 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
       if (snapshot.response.status === 'failed') {
         // The failed snapshot stays as evidence; the job ends with the parser's structured code.
         const code = snapshot.response.error?.code;
-        throw new StageFailure(code && (ERROR_CODES as readonly string[]).includes(code) ? code as ErrorCode : 'MATERIAL_UNREADABLE', false);
+        throw new StageFailure(code && PARSER_FAILURE[code] ? PARSER_FAILURE[code] : code && (ERROR_CODES as readonly string[]).includes(code) ? code as ErrorCode : 'MATERIAL_UNREADABLE', false);
       }
     }
     let profile: { profile_version: number; state: string } | null = null;
@@ -238,7 +242,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
   try {
     for (let i = 0; i < batch; i++) {
-      const outcome = await runMaterialParseOnce({ pool, material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) } } });
+      const outcome = await runMaterialParseOnce({ pool, material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), readToFile: (key, path, max) => blobs.readToFile!(key, path, max) } } });
       process.stdout.write(`${JSON.stringify({ outcome })}\n`);
       if (outcome === 'idle') break;
     }

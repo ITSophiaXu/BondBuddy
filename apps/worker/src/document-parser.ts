@@ -275,10 +275,12 @@ const invokePython:Invoke = (serializedRequest,{pythonExecutable,repoRoot,timeou
     if(room>0){const kept=chunk.subarray(0,room);stderr.push(kept);capturedStderr+=kept.length;}
   });
   child.on('error',()=>stop('DOCUMENT_PARSER_UNAVAILABLE'));
-  child.on('close',code=>{
+  child.on('close',(code,signal)=>{
     if(settled)return;
     settled=true;
     clearTimeout(timer);
+    // We only SIGKILL after settling, so a SIGKILL here came from the kernel: the container memory limit.
+    if(signal==='SIGKILL')return reject(parserError('DOCUMENT_PARSER_MEMORY_LIMIT',stderrSnapshot()));
     if(code!==0)return reject(parserError('DOCUMENT_PARSER_PROCESS_FAILED',stderrSnapshot()));
     resolveOutput({stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr),stderrBytes});
   });

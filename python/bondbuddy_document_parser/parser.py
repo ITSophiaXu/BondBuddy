@@ -327,47 +327,52 @@ def _parse_pdf(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]
             if page_count > max_pages:
                 raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", f"PDF has {page_count} pages; parser limit is {max_pages}")
             for page_number, page in enumerate(pdf.pages, 1):
-                if page.images:
-                    image_pages.append(page_number)
-                words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False, extra_attrs=["fontname", "size"]) or []
-                if not words:
-                    blank_pages.append(page_number)
-                    continue
-                lines: list[list[dict[str, Any]]] = []
-                for word in sorted(words, key=lambda item: (round(float(item["top"]), 1), float(item["x0"]))):
-                    if not lines or abs(float(word["top"]) - float(lines[-1][0]["top"])) > 3:
-                        lines.append([word])
-                    else:
-                        lines[-1].append(word)
-                for line_number, line in enumerate(lines, 1):
-                    line.sort(key=lambda item: float(item["x0"]))
-                    text = " ".join(str(item["text"]) for item in line).strip()
-                    if not text:
+                # pdfplumber caches layout objects per page; without closing each page a 50-page text PDF
+                # peaked at ~700 MiB, above the 320M production worker limit (#17 capacity).
+                try:
+                    if page.images:
+                        image_pages.append(page_number)
+                    words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False, extra_attrs=["fontname", "size"]) or []
+                    if not words:
+                        blank_pages.append(page_number)
                         continue
-                    bbox = {
-                        "x0": round(min(float(item["x0"]) for item in line), 3),
-                        "top": round(min(float(item["top"]) for item in line), 3),
-                        "x1": round(max(float(item["x1"]) for item in line), 3),
-                        "bottom": round(max(float(item["bottom"]) for item in line), 3),
-                    }
-                    locator = {"page": page_number, "line": line_number, "bbox": bbox, "stable_ref": f"pdf:p{page_number:04d}:l{line_number:04d}"}
-                    fonts: dict[tuple[str, float], int] = {}
-                    word_boxes: list[dict[str, Any]] = []
-                    for item in line:
-                        font_key = (str(item.get("fontname") or ""), round(float(item.get("size") or 0), 3))
-                        fonts[font_key] = fonts.get(font_key, 0) + len(str(item["text"]))
-                        word_boxes.append({
-                            "text": str(item["text"]),
-                            "x0": round(float(item["x0"]), 3),
-                            "top": round(float(item["top"]), 3),
-                            "x1": round(float(item["x1"]), 3),
-                            "bottom": round(float(item["bottom"]), 3),
-                        })
-                    formatting = {
-                        "fonts": [{"font_name": key[0], "size": key[1], "characters": count} for key, count in fonts.items()],
-                        "word_boxes": word_boxes,
-                    }
-                    records.append(_record(len(records) + 1, "pdf_bbox", locator, text, context=f"PDF page {page_number}", formatting=formatting))
+                    lines: list[list[dict[str, Any]]] = []
+                    for word in sorted(words, key=lambda item: (round(float(item["top"]), 1), float(item["x0"]))):
+                        if not lines or abs(float(word["top"]) - float(lines[-1][0]["top"])) > 3:
+                            lines.append([word])
+                        else:
+                            lines[-1].append(word)
+                    for line_number, line in enumerate(lines, 1):
+                        line.sort(key=lambda item: float(item["x0"]))
+                        text = " ".join(str(item["text"]) for item in line).strip()
+                        if not text:
+                            continue
+                        bbox = {
+                            "x0": round(min(float(item["x0"]) for item in line), 3),
+                            "top": round(min(float(item["top"]) for item in line), 3),
+                            "x1": round(max(float(item["x1"]) for item in line), 3),
+                            "bottom": round(max(float(item["bottom"]) for item in line), 3),
+                        }
+                        locator = {"page": page_number, "line": line_number, "bbox": bbox, "stable_ref": f"pdf:p{page_number:04d}:l{line_number:04d}"}
+                        fonts: dict[tuple[str, float], int] = {}
+                        word_boxes: list[dict[str, Any]] = []
+                        for item in line:
+                            font_key = (str(item.get("fontname") or ""), round(float(item.get("size") or 0), 3))
+                            fonts[font_key] = fonts.get(font_key, 0) + len(str(item["text"]))
+                            word_boxes.append({
+                                "text": str(item["text"]),
+                                "x0": round(float(item["x0"]), 3),
+                                "top": round(float(item["top"]), 3),
+                                "x1": round(float(item["x1"]), 3),
+                                "bottom": round(float(item["bottom"]), 3),
+                            })
+                        formatting = {
+                            "fonts": [{"font_name": key[0], "size": key[1], "characters": count} for key, count in fonts.items()],
+                            "word_boxes": word_boxes,
+                        }
+                        records.append(_record(len(records) + 1, "pdf_bbox", locator, text, context=f"PDF page {page_number}", formatting=formatting))
+                finally:
+                    page.close()
     except ParseFailure:
         raise
     except Exception as exc:
