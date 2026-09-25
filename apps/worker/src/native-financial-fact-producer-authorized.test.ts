@@ -42,6 +42,10 @@ type AuthorizedManifest = { cases: Array<{ case_id: string; files: AuthorizedFil
 type PythonXlsxParseResponse = DocumentParseResponse & {
   document: DocumentParseResponse['document'] & { cached_formula_results: number };
 };
+const SUPPORTED_PARSER_VERSIONS = new Set([
+  'bondbuddy-document-parser-1.0.3',
+  'bondbuddy-document-parser-1.0.5',
+]);
 
 test('authorized zq XLSX flows through the native producer into pending PG candidates with owner isolation', {
   skip: !runAuthorized
@@ -86,7 +90,8 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
   assert.ifError(python.error);
   assert.equal(python.status, 0, `actual Python parser failed: ${python.stderr}`);
   const parsed = JSON.parse(python.stdout) as PythonXlsxParseResponse;
-  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.3');
+  assert.ok(SUPPORTED_PARSER_VERSIONS.has(parsed.parser_version),
+    `authorized mapper supports only verified parser versions, received ${parsed.parser_version}`);
   assert.equal(parsed.status, 'parsed');
   assert.deepEqual(parsed.warnings, []);
   assert.equal(parsed.document.worksheet_count, 8);
@@ -128,7 +133,7 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     [file.file_id, owner, projectId, uploadId, file.original_filename, file.media_type, file.bytes, contentHash,
       `synthetic-test/material/${file.file_id}`]);
 
-    // Python 1.0.3 emits cached_formula_results; the current TypeScript snapshot contract has not
+    // Python 1.0.3 and 1.0.5 emit cached_formula_results; the current TypeScript snapshot contract has not
     // adopted that metadata field yet. Assert its safe zero value above, project only that zero-only
     // count out, then still pass all real parser records through the repository's strict validation.
     const { cached_formula_results: _zeroCachedResults, ...contractDocument } = parsed.document;
@@ -137,7 +142,7 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1, requestId,
     }, { mediaType: file.media_type as DocumentParseRequest['material']['media_type'], sha256: contentHash },
     responseForCurrentSnapshotContract);
-    assert.equal(savedSnapshot.parserVersion, 'bondbuddy-document-parser-1.0.3');
+    assert.equal(savedSnapshot.parserVersion, parsed.parser_version);
     assert.equal(savedSnapshot.evidence.length, 1392);
 
     const issuerEvidence = parsed.records.find((record) => record.literal_quote.includes('济南章丘控股集团有限公司'));
