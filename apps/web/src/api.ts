@@ -1,5 +1,5 @@
 import type { Static } from '@sinclair/typebox';
-import type { schemas, SchemaName, DataPolicy } from '@bondbuddy/contracts';
+import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
@@ -47,7 +47,7 @@ export class ApiClient {
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
     const signal = signalOverride ?? this.controller.signal;
     let response = await this.send(method, path, body, headers, signal);
-    const authenticated = !['/auth/login', '/auth/register'].includes(path);
+    const authenticated = !['/auth/login', '/auth/register', '/auth/agreement'].includes(path);
     if (response.status === 401 && authenticated && document.cookie.includes('bb_csrf=')) {
       if (!this.refresh) {
         const pending = this.send('POST', '/auth/refresh', undefined, {}, signal).then(async res => {
@@ -75,6 +75,8 @@ export class ApiClient {
 
   me() { return this.request<Dto<'MeResponse'>>('GET', '/me'); }
   login(input: Dto<'LoginRequest'>) { return this.request<Dto<'SessionResponse'>>('POST', '/auth/login', input); }
+  register(input: Dto<'RegisterRequest'>) { return this.request<Dto<'SessionResponse'>>('POST', '/auth/register', input); }
+  agreement() { return this.request<AgreementResponse>('GET', '/auth/agreement'); }
   logout() { return this.request<void>('POST', '/auth/logout'); }
   account() { return this.request<Dto<'AccountResponse'>>('GET', '/account'); }
   sessions() { return this.request<Dto<'AccountSessionListResponse'>>('GET', '/account/sessions'); }

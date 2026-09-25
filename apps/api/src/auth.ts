@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as argon2 from 'argon2';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
-import { CLOSURE_RETAINED_RECORDS, RUN_STATES, schemas } from '@bondbuddy/contracts';
+import { AGREEMENT_SUMMARY_PATH, AGREEMENT_TITLE, CLOSURE_RETAINED_RECORDS, RUN_STATES, schemas } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, transaction, uid, unavailable } from './data.js';
 
 export type AuthConfig = { pool: Pool; allowedOrigin?: string; termsVersion?: string; supportContact?: string };
@@ -107,6 +107,11 @@ export function installAuth(app: FastifyInstance, config: AuthConfig) {
     await client.query('INSERT INTO bb_auth_sessions(id,user_id,access_hash,refresh_hash,csrf_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[uid(),userId,digest(access),digest(refresh),digest(csrfToken),accessExpiry,refreshExpiry]);
     return {userId,access,refresh,csrfToken,accessExpiry,refreshExpiry};
   }
+  // Public: the register form must show and submit exactly this version. No version means registration is closed.
+  app.get('/api/v1/auth/agreement',{schema:{response:{200:schemas.AgreementResponse}}},async(_request,reply)=>{
+    if(!config.termsVersion)throw new Problem(503,'CAPABILITY_NOT_READY','Registration agreement is not configured');
+    return reply.header('cache-control','public, max-age=60').send({terms_version:config.termsVersion,title:AGREEMENT_TITLE,summary_url_or_path:AGREEMENT_SUMMARY_PATH,support_contact:config.supportContact || null});
+  });
   app.post('/api/v1/auth/register',{schema:{body:schemas.RegisterRequest}},async(request,reply)=>{
     origin(request,config.allowedOrigin);json(request);
     if(!config.termsVersion)throw unavailable();

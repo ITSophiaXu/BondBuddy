@@ -33,7 +33,7 @@ npm run migrate:api   # 使用独立开发数据库的 DATABASE_URL
 npm run start:api
 ```
 
-API 按 `apps/api/README.md` 配置 `DATABASE_URL`、`BB_ALLOWED_ORIGIN` 与 `BB_TERMS_VERSION`。`BB_ALLOWED_ORIGIN` 必须精确等于浏览器 origin（协议/主机/端口）。这里使用已有账号；注册和找回 UI 不属于该切片。不要使用旧原型的演示账号。
+API 按 `apps/api/README.md` 配置 `DATABASE_URL`、`BB_ALLOWED_ORIGIN` 与 `BB_TERMS_VERSION`。`BB_ALLOWED_ORIGIN` 必须精确等于浏览器 origin（协议/主机/端口）。登录页可切换到注册表单：先读取公开的 `GET /api/v1/auth/agreement`（未配置 `BB_TERMS_VERSION` 时返回 503 `CAPABILITY_NOT_READY`，注册保持关闭），提交时带上该协议版本，成功后直接进入工作区。找回 UI 属于 #9。不要使用旧原型的演示账号。
 
 另一个终端启动前端：
 
@@ -73,7 +73,7 @@ BB_E2E_REAL_API=1 BB_E2E_LIVE=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
 - 完整表单由 #11 接入持久化；原稿识别只读展示见上文 #12，源目标难度计算与执行门禁仍待完整联调。上传页面使用 `/projects/{id}/events` 的项目游标发现当前材料，再通过 owner-scoped material read 读取明细。服务端只在材料字节校验并持久化后写入终态 `material.upload_progress`；分页最多 100 条，已删除材料不出现在恢复结果中，缺失 Blob 的材料读取返回 404。若恢复失败，页面清除恢复列表而不保留过期的“已保存”状态。默认 browser fixture 拦截 API，是合成 UI 验证；`project-events.integration.spec.ts` 在本地 PostgreSQL/Azurite API 下关闭浏览器上下文并重新登录，验证真实 API/Blob 恢复与删除隐藏。
 - 服务端上传会话、原始字节 PUT 和完成登记已有 API 路由。上传去重与格式边界证据见 `UPLOAD-ACCEPTANCE.md`，原生 DOCX 上传后识别/去重/恢复证据见 `MATERIAL-PROCESSING-ACCEPTANCE.md`。真实缺页/缺附注判断、扫描件 OCR 自动接入、大文件压测及授权材料准确率仍未完整验收；不宣称杀毒或扫描认证，也不启动全文更新。
 - 识别结果已接入只读展示；源信息校正、多轮对话和真实执行尚未开放，页面没有可执行的占位按钮。用户端不出现募集书库、相似稿推荐、充值或演示账务。
-- 登录页使用已有账号，不提供未经验证的找回流程。会话彻底失效后清除页面内个人数据，只有已保存内容能够恢复。
+- 登录页提供登录与注册，不提供未经验证的找回流程。会话彻底失效后清除页面内个人数据，只有已保存内容能够恢复。
 - #10/#8/#12 保持开放。合成上传 UI 测试不等于真实账号、Blob、保留期限、事件恢复、备份或完整 M1 上线验收。
 
 ## #9 账号设置页

@@ -39,6 +39,20 @@ async function register(page: Page, user: { username: string; password: string }
   await page.goto('/');
   return api(page, 'POST', '/api/v1/auth/register', { username: user.username, password: user.password, accepted_terms_version: terms });
 }
+// #7: the browser registration form, not only the API, must reach a logged-in workspace.
+async function uiRegister(page: Page, user: { username: string; password: string }) {
+  await page.goto('/#/register');
+  await expect(page.locator('#terms-version')).toHaveText(terms);
+  await page.getByLabel('用户名', { exact: true }).fill(user.username);
+  await page.getByLabel('密码', { exact: true }).fill(user.password);
+  await page.getByLabel('确认密码', { exact: true }).fill(user.password);
+  await page.getByRole('checkbox').check();
+  const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v1/auth/register');
+  await page.getByRole('button', { name: '注册并进入工作区' }).click();
+  const status = (await response).status();
+  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  return { status };
+}
 async function uiLogin(page: Page, user: { username: string; password: string }) {
   await page.goto('/');
   await page.getByLabel('用户名', { exact: true }).fill(user.username);
@@ -81,7 +95,8 @@ test.afterAll(async () => {
 
 test('#7 register, login, cookie flags over TLS', async () => {
   ctxA = await freshContext(browserRef); pageA = await ctxA.newPage();
-  const reg = await register(pageA, a);
+  const reg = await uiRegister(pageA, a);
+  await shot(pageA, '07-register-workspace');
   const dup = await api(pageA, 'POST', '/api/v1/auth/register', { username: a.username.toUpperCase(), password: a.password, accepted_terms_version: terms });
   await api(pageA, 'POST', '/api/v1/auth/logout', {});
   await ctxA.clearCookies();
@@ -91,7 +106,7 @@ test('#7 register, login, cookie flags over TLS', async () => {
   const session = cookies.filter(c => c.name !== 'bb_csrf');
   const ok = reg.status === 201 && session.length >= 1 && session.every(c => c.secure && c.httpOnly && c.sameSite === 'Strict')
     && cookies.every(c => c.secure && c.sameSite === 'Strict');
-  record({ issue: '#7', item: 'username/password register + UI login over HTTPS; Secure/HttpOnly/SameSite=Strict session cookies', result: ok ? 'pass' : 'fail', evidence: '07-login-projects.png, results.json', detail: { register_status: reg.status, cookies, csrf_cookie_note: 'bb_csrf is intentionally readable by JS (double-submit), still Secure+Strict' } });
+  record({ issue: '#7', item: 'username/password UI register lands in workspace + UI login over HTTPS; Secure/HttpOnly/SameSite=Strict session cookies', result: ok ? 'pass' : 'fail', evidence: '07-register-workspace.png, 07-login-projects.png, results.json', detail: { register_status: reg.status, cookies, csrf_cookie_note: 'bb_csrf is intentionally readable by JS (double-submit), still Secure+Strict' } });
   record({ issue: '#7', item: 'duplicate username (case-normalised) is rejected with a stable code', result: dup.status === 409 && dup.json?.code === 'IDEMPOTENCY_CONFLICT' ? 'pass' : 'fail', evidence: 'results.json', detail: { status: dup.status, code: dup.json?.code } });
   expect(ok).toBe(true);
 });
