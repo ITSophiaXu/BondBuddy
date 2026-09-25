@@ -36,6 +36,11 @@ test('#79 PG16/Azurite archive survives two rotations, delayed replay and crash 
   process.env.BB_LOG_ARCHIVE_CONTAINER = containerName;
   process.env.NODE_ENV = 'test';
   await container.createIfNotExists();
+  // This file owns a private clone, but earlier suites may have written pending rows into
+  // the migrated template before the clone was made. Start with an empty delivery queue:
+  // forwardLogs claims globally, so batchSize=1 must never select another suite's event.
+  await pool.query('DELETE FROM bb_outbox WHERE delivered_at IS NULL');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE delivered_at IS NULL')).rows[0].n, 0);
   const sink = (file: string) => ndjsonFileSink(file, runPrefix + file.split('/').at(-1)!.replace('.ndjson', ''), 1024, { localBudget: 3072 });
   const receipt = async (r: LogRecord, sinkName: string) => {
     await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,delivered_at)
@@ -68,6 +73,7 @@ test('#79 PG16/Azurite archive survives two rotations, delayed replay and crash 
       assert.deepEqual(before, [c.delivery_key]);
     });
     await t.test('expired process A resumes after process B rotates twice', async () => {
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE delivered_at IS NULL')).rows[0].n, 0);
       const file = join(dir, 'stale.ndjson'), marker = join(dir, 'stale.ready'), release = join(dir, 'stale.release');
       const writer = ndjsonFileSink(file, `${runPrefix}stale`, 2048, { localBudget: 6144 });
       const owner = `archive-${randomUUID()}`;
