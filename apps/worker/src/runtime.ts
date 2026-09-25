@@ -8,6 +8,7 @@ import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
 import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
+import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } from './run-pipeline.js';
@@ -36,6 +37,8 @@ export type WorkerRuntimeOptions = {
   reconciler?: ProviderCallReconciler;
   logSink?: LogSink | null;
   log?: (event: Record<string, unknown>) => void;
+  /** #35 heartbeat row (bb_worker_heartbeats) for readiness and the stale-worker alert. */
+  workerId?: string; heartbeatMs?: number;
 };
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
@@ -55,13 +58,14 @@ export class WorkerRuntime {
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'], runStages: defaultRunStages(),
-      ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, ...options };
+      ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
   }
 
   start() {
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     this.loops.push(this.sweepLoop());
+    this.loops.push(this.heartbeatLoop());
     return this;
   }
 
@@ -95,6 +99,20 @@ export class WorkerRuntime {
     while (!this.stopping) {
       try { await this.sweep(); } catch { this.counters.errors++; }
       await sleep(this.o.sweepMs, this.stopSignal.signal);
+    }
+  }
+
+  private readonly startedAt = new Date();
+  /** Upserts this process's heartbeat; a failed write only counts as an error (readiness will show it stale). */
+  async heartbeat(stopped = false) {
+    try { await recordWorkerHeartbeat(this.o.pool, { workerId: this.o.workerId, startedAt: this.startedAt, kinds: this.o.kinds, concurrency: this.o.concurrency, stopped }); }
+    catch { this.counters.errors++; }
+  }
+
+  private async heartbeatLoop() {
+    while (!this.stopping) {
+      await this.heartbeat();
+      await sleep(this.o.heartbeatMs, this.stopSignal.signal);
     }
   }
 
@@ -143,6 +161,7 @@ export class WorkerRuntime {
     }
     for (const lease of this.runLeases.values()) await releaseLease(this.o.pool, lease).catch(() => undefined);
     for (const lease of this.parseLeases.values()) await releaseMaterialParse(this.o.pool, lease).catch(() => undefined);
+    await this.heartbeat(true);
     this.emit({ kind: 'stopped', drained, released: this.runLeases.size + this.parseLeases.size });
   }
 }
@@ -166,7 +185,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     pool, blobs, kinds: kinds as ('run' | 'parse')[],
     concurrency: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv('BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv('BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv('BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
-    drainMs: intEnv('BB_WORKER_DRAIN_MS', 20000, 0, 600000), ocrRetrySeconds: intEnv('BB_OCR_RETRY_SECONDS', 300, 0, 86400),
+    drainMs: intEnv('BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv('BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv('BB_OCR_RETRY_SECONDS', 300, 0, 86400),
     parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) } }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
       ocr: ocrEnabled ? input => processOcrMaterial(pool, blobs, { ...input, purpose: 'source_preflight' }) : undefined },
     ocrEnabled,
