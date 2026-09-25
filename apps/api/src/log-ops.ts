@@ -3,8 +3,9 @@ import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
+import { Value } from '@sinclair/typebox/value';
 import { Pool, type PoolClient } from 'pg';
-import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, type OperatorRole } from '@bondbuddy/contracts';
+import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
 import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
@@ -107,10 +108,12 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
   if (claimed.some(r => {
     const source = events.get(r.aggregate_id);
     return !source || source.owner_user_id !== r.owner_user_id || source.kind !== r.event_type ||
-      r.payload?.event_id !== r.aggregate_id || source.event?.event_id !== r.aggregate_id ||
+      !isDeepStrictEqual(r.payload, { event_id: r.aggregate_id, schema_version: 1 }) ||
+      !Value.Check(schemas.InternalObservabilityEvent, source.event) ||
+      source.event.event_id !== r.aggregate_id ||
       source.event?.user_id !== r.owner_user_id || source.event?.kind !== r.event_type;
   })) {
-    // bb_outbox.aggregate_id has no FK. Missing or mismatched source evidence blocks the whole batch.
+    // The source and the complete outbox envelope must match the immutable v1 write contract.
     await tripEvidenceGate(pool, 'log_event_missing');
     await pool.query("UPDATE bb_outbox SET lease_token=NULL,lease_until=NULL,last_delivery_error='evidence_missing',next_attempt_at=now()+($3::integer*interval '1 second') WHERE id=ANY($1) AND lease_token=$2", [claimed.map(r => r.id), token, retry]);
     return { claimed: claimed.length, delivered: 0, failed: claimed.length };

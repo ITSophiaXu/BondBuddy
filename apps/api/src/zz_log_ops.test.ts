@@ -428,6 +428,58 @@ test('#79 a missing source event blocks the whole claimed batch before sink or P
   }
 });
 
+test('#79 malformed outbox envelope or source event blocks the entire PG batch', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const owner = `synthetic-contract-${uid().slice(0, 8)}`;
+  const cases: Array<{ name: string; payload?: (id: string) => unknown; source?: (event: ReturnType<typeof internalEvent>) => unknown; mixed: boolean }> = [
+    { name: 'unknown payload schema version', payload: id => ({ event_id: id, schema_version: 2 }), mixed: false },
+    { name: 'mixed valid and wrong-version payload', payload: id => ({ event_id: id, schema_version: 2 }), mixed: true },
+    { name: 'missing payload field', payload: id => ({ event_id: id }), mixed: false },
+    { name: 'extra payload field', payload: id => ({ event_id: id, schema_version: 1, untrusted: true }), mixed: false },
+    { name: 'wrong payload value', payload: id => ({ event_id: `${id}-wrong`, schema_version: 1 }), mixed: false },
+    { name: 'invalid source schema version', source: event => ({ ...event, schema_version: 2 }), mixed: false },
+    { name: 'extra source field', source: event => ({ ...event, untrusted: true }), mixed: false },
+    { name: 'missing source field', source: event => { const { occurred_at: _removed, ...rest } = event; return rest; }, mixed: false }
+  ];
+  try {
+    for (const variant of cases) {
+      const sink = new MemorySink(`contract_${uid().slice(0, 8)}`);
+      const bad = internalEvent({ kind: 'error.recorded', owner, traceId: uid(), stage: 'synthetic_stage' });
+      const good = variant.mixed ? internalEvent({ kind: 'error.recorded', owner, traceId: uid(), stage: 'synthetic_stage' }) : null;
+      const outboxIds = [uid(), ...(good ? [uid()] : [])];
+      await pool.query(`INSERT INTO bb_observability_events(id,owner_user_id,trace_id,kind,event)
+        VALUES($1,$2,$3,$4,$5)`, [bad.event_id, owner, bad.trace_id, bad.kind, variant.source?.(bad) ?? bad]);
+      if (good) await pool.query(`INSERT INTO bb_observability_events(id,owner_user_id,trace_id,kind,event)
+        VALUES($1,$2,$3,$4,$5)`, [good.event_id, owner, good.trace_id, good.kind, good]);
+      await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+        VALUES($1,$2,'observability',$3,$4,$5,now()-interval '3 days')`,
+        [outboxIds[0], owner, bad.event_id, bad.kind, variant.payload?.(bad.event_id) ?? { event_id: bad.event_id, schema_version: 1 }]);
+      if (good) await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+        VALUES($1,$2,'observability',$3,$4,$5,now()-interval '2 days')`,
+        [outboxIds[1], owner, good.event_id, good.kind, { event_id: good.event_id, schema_version: 1 }]);
+      try {
+        assert.deepEqual(await forwardLogs(pool, sink, { batchSize: outboxIds.length, retrySeconds: 0 }),
+          { claimed: outboxIds.length, delivered: 0, failed: outboxIds.length }, variant.name);
+        assert.equal(sink.calls, 0, variant.name);
+        const rows = (await pool.query('SELECT delivered_at,last_delivery_error,lease_token FROM bb_outbox WHERE id=ANY($1)', [outboxIds])).rows;
+        assert.equal(rows.length, outboxIds.length, variant.name);
+        for (const row of rows) {
+          assert.equal(row.delivered_at, null, variant.name);
+          assert.equal(row.last_delivery_error, 'evidence_missing', variant.name);
+          assert.equal(row.lease_token, null, variant.name);
+        }
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=ANY($1)', [outboxIds])).rows[0].n, 0, variant.name);
+        assert.equal((await gateState(pool)).state, 'paused', variant.name);
+        assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='evidence_persist_failed' AND detail->>'reason_code'='log_event_missing'")).rowCount, variant.name);
+      } finally {
+        await pool.query('DELETE FROM bb_outbox WHERE id=ANY($1)', [outboxIds]);
+        if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+        resetProcessGateForTests();
+      }
+    }
+  } finally { await pool.end(); }
+});
+
 test('#79 a conflicting existing receipt cannot ACK a different outbox event', { skip: !connection }, async () => {
   const pool = new Pool({ connectionString: connection });
   const sink = new MemorySink(`conflict_${uid().slice(0, 8)}`);
