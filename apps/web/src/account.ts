@@ -25,7 +25,7 @@ const runStateLabels: Record<typeof RUN_STATES[number], string> = {
 };
 // DTO enums infer as string; the Record keys above still make the label tables track the contract values.
 const labelOf = (labels: Record<string, string>, code: string) => labels[code] ?? code;
-const purgeNote = '注销后以上内容立即无法访问，文件由存储清理流程另行删除；已被任务输入快照引用的材料，在释放机制上线前会继续保留。';
+const purgeNote = '注销后以上内容立即无法访问，原件和衍生内容按“数据保存与删除”说明中的时限从平台存储中清理。';
 const exportsNote = '你已下载或导出到本机的文件不在平台管理范围内，注销不会删除它们，平台也不会将其视为已远程删除。';
 // Same rule as the API (apps/api/src/auth.ts) so the form can explain it before submitting.
 const passwordValid = (value: string) => value.length >= 12 && value.length <= 128 && new TextEncoder().encode(value).length <= 512 && !/[\u0000-\u001f\u007f]/.test(value);
@@ -68,7 +68,7 @@ export async function renderAccount(ctx: AccountContext) {
     <p id="sessions-message" class="form-message session-message" role="status" hidden></p><ul class="session-list" id="session-list"></ul></section>
     <section class="panel form-panel" aria-labelledby="password-title"><h2 id="password-title">修改密码</h2>${username ? passwordForm(username) : legacyNote}</section>
     <section class="panel form-panel danger-panel" aria-labelledby="closure-title"><h2 id="closure-title">注销账号</h2><p class="muted">注销会关闭账号，并停止访问账号下的全部项目、材料和成果。完成后无法恢复。</p><div id="closure-body">${username ? closureStart : legacyNote}</div></section>
-    </div><aside class="context-panel"><h2>数据服务说明</h2><p>上传的材料会在平台服务器保存一份账号隔离的副本，用于核验和你发起的处理；浏览器中的文件不是唯一副本。</p><p>注销账号后，项目、材料和成果会立即停止访问。保存期限、删除时限与备份清理规则尚待正式发布，发布后会在这里说明。</p><p>下载到本机的 Word 或其他文件由你自行保管，不受平台删除影响。</p>
+    </div><aside class="context-panel"><h2>数据服务说明</h2><p>上传的材料会在平台服务器保存一份账号隔离的副本，用于核验和你发起的处理；浏览器中的文件不是唯一副本。</p><p>注销账号后，项目、材料和成果会立即停止访问。保存期限、删除时限与备份清理规则见<a href="#/data-policy">数据保存与删除说明</a>。</p><p>下载到本机的 Word 或其他文件由你自行保管，不受平台删除影响。</p>
     <div class="context-divider"></div><h3>当前为受控试用</h3><p>试用期间不涉及积分、充值或退款。</p></aside></div>`, 'account');
 
   const paintInfo = () => {

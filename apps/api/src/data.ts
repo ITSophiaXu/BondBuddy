@@ -30,7 +30,9 @@ export async function project(pool: Pool | PoolClient, owner: string, id: string
   return result.rows[0];
 }
 export async function run(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
-  const result = await pool.query(`SELECT * FROM bb_runs WHERE owner_user_id=$1 AND id=$2 ${lock ? 'FOR UPDATE' : ''}`, [owner,id]);
+  // Runs of a deleted project are owner-safe 404, like the project itself.
+  const result = await pool.query(`SELECT r.* FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
+    WHERE r.owner_user_id=$1 AND r.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF r' : ''}`, [owner,id]);
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }

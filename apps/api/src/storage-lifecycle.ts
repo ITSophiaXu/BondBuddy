@@ -163,14 +163,9 @@ async function isPinned(client: Pool | PoolClient, tombstone: Pick<Tombstone, 'o
   if (!tombstone.material_id || tombstone.material_version === null) return false;
   // input_revision is the canonical immutable material snapshot. Runs, artifacts and bound observability
   // snapshots point back to it, so retaining the revision also retains every material byte it names.
-  const result = await client.query(`SELECT EXISTS (
-    SELECT 1 FROM bb_input_revisions i
-     WHERE i.owner_user_id=$1 AND i.project_id=$2
-       AND (
-         i.material_versions @> jsonb_build_array(jsonb_build_object('material_id',$3::text,'material_version',$4::integer))
-         OR i.manifest->'materials' @> jsonb_build_array(jsonb_build_object('material_id',$3::text,'material_version',$4::integer))
-       )
-  ) AS pinned`, [tombstone.owner_user_id, tombstone.project_id, tombstone.material_id, tombstone.material_version]);
+  // 0026 bb_material_bytes_pinned: a live project with a non-terminal run on a revision naming this version.
+  const result = await client.query('SELECT bb_material_bytes_pinned($1,$2,$3,$4) AS pinned',
+    [tombstone.owner_user_id, tombstone.project_id, tombstone.material_id, tombstone.material_version]);
   return result.rows[0]?.pinned === true;
 }
 
@@ -184,14 +179,7 @@ async function countEligiblePinnedTombstones(pool: Pool, policy: StorageLifecycl
          AND (t.retry_after IS NULL OR t.retry_after <= $1::timestamptz)
          AND t.requested_at + ($2::integer * interval '1 day') <= $1::timestamptz
          AND ($3::text IS NULL OR t.owner_user_id=$3)
-         AND EXISTS (
-           SELECT 1 FROM bb_input_revisions i
-            WHERE i.owner_user_id=t.owner_user_id AND i.project_id=t.project_id
-              AND (
-                i.material_versions @> jsonb_build_array(jsonb_build_object('material_id',t.material_id,'material_version',t.material_version))
-                OR i.manifest->'materials' @> jsonb_build_array(jsonb_build_object('material_id',t.material_id,'material_version',t.material_version))
-              )
-         )
+         AND bb_material_bytes_pinned(t.owner_user_id,t.project_id,t.material_id,t.material_version)
        ORDER BY t.eligible_at,t.requested_at,t.id
        LIMIT $4
     ) AS bounded_pins`, [now, policy.materialRetentionDays, scopeParam(policy.ownerScope), batchSize]);
@@ -217,14 +205,7 @@ async function claimReadyTombstones(
          AND (
            (t.object_kind='material'
             AND t.requested_at + ($3::integer * interval '1 day') <= $1::timestamptz
-            AND NOT EXISTS (
-             SELECT 1 FROM bb_input_revisions i
-               WHERE i.owner_user_id=t.owner_user_id AND i.project_id=t.project_id
-                 AND (
-                   i.material_versions @> jsonb_build_array(jsonb_build_object('material_id',t.material_id,'material_version',t.material_version))
-                   OR i.manifest->'materials' @> jsonb_build_array(jsonb_build_object('material_id',t.material_id,'material_version',t.material_version))
-                 )
-            ))
+            AND NOT bb_material_bytes_pinned(t.owner_user_id,t.project_id,t.material_id,t.material_version))
            OR
            (t.object_kind='orphan_upload' AND u.expires_at + ($4::integer * interval '1 hour') <= $1::timestamptz)
          )
