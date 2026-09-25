@@ -38,7 +38,6 @@ async function writeLocked(path: string, records: LogRecord[]) {
         }
       } finally { lines.close(); }
     }
-    let appended = false;
     for (const record of records) {
       const value = { delivery_key: record.delivery_key, ...record.event };
       if (seen.has(record.delivery_key)) {
@@ -49,9 +48,10 @@ async function writeLocked(path: string, records: LogRecord[]) {
       let offset = 0;
       while (offset < bytes.length) offset += (await file.write(bytes, offset, bytes.length - offset)).bytesWritten;
       seen.set(record.delivery_key, value);
-      appended = true;
     }
-    if (appended || stat.size === 0) await file.sync();
+    // A prior process may have written a complete line then died before fsync.
+    // Even a replay that appends nothing must flush those observed bytes before PG ack.
+    await file.sync();
     // Also persist the directory entry when the log file was newly created.
     if (stat.size === 0) {
       const directory = await open(dirname(path), constants.O_RDONLY | constants.O_DIRECTORY);

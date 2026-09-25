@@ -147,6 +147,18 @@ test('#79 file sink fails closed on torn/corrupt lines and unsafe permissions', 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('#79 replay of a complete pre-existing line still acknowledges only after file sync', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-complete-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'e'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const line = JSON.stringify({ delivery_key: record.delivery_key, ...record.event }) + '\n';
+    await writeFile(file, line, { mode: 0o600 }); // models a complete append before the prior writer's fsync
+    await ndjsonFileSink(file).deliver([record]);
+    assert.equal(await readFile(file, 'utf8'), line);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('#79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
