@@ -647,13 +647,17 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
         VALUES($1,6,$2,1,$3,$4,'[]','[]',$5,$6)`,
       [projectId, operator, expiredHash, expiredManifest, expiredPin.version, expiredPin.templateVersion]);
-      assert.ok((await preflightRuleReasons(client, operator, projectId, expiredHash,
-        expiredRequest, expiredContextPin, 6)).includes('rule_pack:production_rule_pack_not_effective'));
-      const expiredGate = await inputLockStage.run({ ...gateCtx,
+      for (let retry = 0; retry < 2; retry++)
+        assert.ok((await preflightRuleReasons(client, operator, projectId, expiredHash,
+          expiredRequest, expiredContextPin, 6)).includes('rule_pack:production_rule_pack_not_effective'));
+      const expiredCtx = { ...gateCtx,
         run: { ...gateCtx.run, input_revision: 6, input_hash: expiredHash },
-        reviewedContextLoader: async () => ({ request: expiredRequest, contextPin: expiredContextPin }) });
+        reviewedContextLoader: async () => ({ request: expiredRequest, contextPin: expiredContextPin }) };
+      const expiredGate = await inputLockStage.run(expiredCtx);
       assert.deepEqual(expiredGate,
         { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_not_effective' });
+      assert.deepEqual(await inputLockStage.run(expiredCtx), expiredGate,
+        'retry must keep the same exact expired pin and pause reason');
       let promptBuilt = false;
       const model = codexModelStage({ name: 'model_generation', logicalCallId: 'synthetic-expired-pin',
         config: {} as never, schema: {}, validate: () => true, resultSchemaVersion: 'synthetic-v1',
