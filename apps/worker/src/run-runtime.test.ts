@@ -300,7 +300,12 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const parseStream1 = sse((await send('GET', `/api/v1/projects/${p7Project}/materials/${m.material_id}/parse-job/stream`)).body);
     assert.equal(parseStream1[0].event, 'snapshot'); assert.equal(parseStream1.at(-1)!.data.reason, 'max_duration');
     const lastParseSeq = parseStream1.filter(f => f.id !== undefined).at(-1)!.id!;
-    assert.equal(await runMaterialParseOnce(parseDeps), 'succeeded');
+    const parseOutcome = await runMaterialParseOnce(parseDeps);
+    if (parseOutcome !== 'succeeded') {
+      const diagnosis = await pool.query('SELECT state,stage,error_code,attempts FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND job_type=$4 ORDER BY created_at DESC LIMIT 1',
+        [alice, p7Project, m.material_id, 'parse']);
+      assert.equal(parseOutcome, 'succeeded', `parse job before rule gate: ${JSON.stringify(diagnosis.rows[0] ?? null)}`);
+    }
     const parseStream2 = sse((await send('GET', `/api/v1/projects/${p7Project}/materials/${m.material_id}/parse-job/stream`, undefined, { headers: { 'last-event-id': String(lastParseSeq) } })).body);
     assert.deepEqual(parseStream2.filter(f => f.id !== undefined).map(f => f.data.type), ['material_parse.claimed', 'material_parse.stage_completed', 'material_parse.succeeded']);
     assert.equal(parseStream2.at(-1)!.data.reason, 'terminal');
