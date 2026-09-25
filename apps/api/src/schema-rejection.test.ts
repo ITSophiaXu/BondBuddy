@@ -114,12 +114,13 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2',[second,project])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations WHERE owner_user_id=$1 AND project_id IS NULL AND error_code=$2',[second,'VALIDATION_FAILED'])).rows[0].n,2);
     actor=null;
+    const unauthenticatedOperations=(await pool.query('SELECT count(*)::int n FROM bb_operations')).rows[0].n;
     const noAuth=await send(`/api/v1/projects/${foreignProject}/preflight`,{input_hash:'bad'});
     assert.equal(noAuth.statusCode,422);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations WHERE request_id=$1',[noAuth.json().correlation_id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations')).rows[0].n,unauthenticatedOperations);
     const noAuthExecute=await send('/api/v1/runs/execute',{...bad,execution_request_id:uid()});
     assert.equal(noAuthExecute.statusCode,422);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations WHERE request_id=$1',[noAuthExecute.json().correlation_id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_operations')).rows[0].n,unauthenticatedOperations);
     actor=first;
     await pool.query("CREATE FUNCTION bb_schema_fail_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='job.state_changed' THEN RAISE EXCEPTION 'synthetic rollback'; END IF; RETURN NEW; END $$");
     await pool.query('CREATE TRIGGER bb_schema_fail_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_schema_fail_outbox()');
