@@ -48,6 +48,10 @@
       "types": "./dist/material-jobs.d.ts",
       "default": "./dist/material-jobs.js"
     },
+    "./historical-profile-corrections": {
+      "types": "./dist/historical-profile-corrections.d.ts",
+      "default": "./dist/historical-profile-corrections.js"
+    },
     "./storage-lifecycle": {
       "types": "./dist/storage-lifecycle.d.ts",
       "default": "./dist/storage-lifecycle.js"
@@ -73,6 +77,7 @@
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",
     "@bondbuddy/contracts": "0.1.0",
+    "@bondbuddy/domain": "0.1.0",
     "@sinclair/typebox": "^0.34.41",
     "argon2": "^0.44.0",
     "fast-xml-parser": "^5.11.1",

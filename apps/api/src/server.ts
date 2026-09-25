@@ -23,6 +23,7 @@ import { admitProjectCreate, admitRunSubmit, admitUploadCreate, reportTrialRejec
 import { installTrialRoutes } from './trial-routes.js';
 import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
+import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
@@ -495,7 +496,33 @@ export function createServer(settings: Settings = {}) {
     if(job?.state==='failed')throw new Problem(409,job.error_code,'Source profile parse job failed');
     throw new Problem(409,'CAPABILITY_NOT_READY','Source profile is pending its durable parse job');
   });
-  app.patch(sourceProfile,async request=>{await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));throw unavailable();});
+  app.patch(sourceProfile,{schema:{body:schemas.RecognitionPatchRequest,response:{200:schemas.RecognitionResponse}}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id');
+    const m=await material(db(),user,id,materialId);
+    if(m.role!=='historical'||![DOCX_MEDIA_TYPE,PDF_MEDIA_TYPE].includes(m.media_type))throw missing();
+    const traceId=uid();
+    try {
+      const header=request.headers['if-match'];
+      if(typeof header!=='string'||!/^(?:[1-9][0-9]{0,9})$/.test(header))throw new Problem(422,'VALIDATION_FAILED','If-Match profile version required');
+      const expected=Number(header),patch=body<{profile_version:number;reason:string;source_market?:Market|null;source_offering?:Offering|null;evidence_refs:string[];reporting_periods?:unknown[]}>(request);
+      if(!Number.isSafeInteger(expected)||expected>2147483647)throw new Problem(422,'VALIDATION_FAILED','If-Match profile version is out of range');
+      if(patch.profile_version!==expected)throw conflict('INPUT_REVISION_CONFLICT','If-Match and profile_version must match');
+      const result=await transaction(db(),async client=>{
+        const corrected=await correctHistoricalProfile(client,blobs,{owner:user,projectId:id,materialId,materialVersion:m.version,actorId:user,requestId:request.id},patch);
+        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'source_profile_correction',status:'submitted'});
+        return corrected.recognition;
+      });
+      return reply.header('cache-control','private, no-store').send(result);
+    } catch(error) {
+      const mapped=historicalProfileCorrectionProblem(error);
+      if(mapped)error=mapped;
+      if(error instanceof Problem){
+        const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'source_profile_correction',status:'rejected',errorCode:error.code});
+      }
+      throw error;
+    }
+  });
   app.post('/api/v1/projects/:project_id/preflight',{schema:{body:schemas.PreflightRequest,response:{200:schemas.PreflightResponse}}},async request=>{
     const user=await owner(request),id=param(request,'project_id'),b=body<{input_revision:number;input_hash:string}>(request),traceId=uid();
     try {

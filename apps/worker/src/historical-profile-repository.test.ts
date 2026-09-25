@@ -101,7 +101,7 @@ class ProfileMock implements HistoricalProfileClient {
     if (sql.includes('FROM bb_material_versions')) {
       return { rows: values[0] === owner && values[1] === project && values[2] === material && values[3] === 2 ? [{ ok: 1 }] : [] };
     }
-    if (sql.includes('FROM bb_historical_profiles') && sql.includes('request_id = $5')) {
+    if (sql.includes('FROM bb_historical_profiles') && (sql.includes('request_id = $5') || sql.includes('request_id=$5'))) {
       return { rows: this.rows.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] &&
         row.material_id === values[2] && row.material_version === values[3] && row.request_id === values[4]) };
     }
@@ -122,11 +122,14 @@ class ProfileMock implements HistoricalProfileClient {
       return { rows: matching.slice(0, 1) };
     }
     if (sql.startsWith('INSERT INTO bb_historical_profiles')) {
+      const apiCorrection = sql.includes("VALUES ($1,$2,$3,$4,$5,$6,$7,'correction'");
       const row = {
         owner_user_id: values[0], project_id: values[1], material_id: values[2], material_version: values[3],
-        profile_version: values[4], request_id: values[5], request_hash: values[6], write_kind: values[7],
-        recognition: JSON.parse(String(values[8])) as Recognition, actor_id: values[9], correction_reason: values[10],
-        correction_evidence_refs: JSON.parse(String(values[11])) as string[], created_at: new Date('2026-09-24T00:00:00Z'),
+        profile_version: values[4], request_id: values[5], request_hash: values[6],
+        write_kind: apiCorrection ? 'correction' : values[7],
+        recognition: JSON.parse(String(values[apiCorrection ? 7 : 8])) as Recognition,
+        actor_id: values[apiCorrection ? 8 : 9], correction_reason: values[apiCorrection ? 9 : 10],
+        correction_evidence_refs: JSON.parse(String(values[apiCorrection ? 10 : 11])) as string[], created_at: new Date('2026-09-24T00:00:00Z'),
       };
       this.rows.push(row); return { rows: [row] };
     }
@@ -372,6 +375,18 @@ test('correction requires latest profile version and empty refs cannot create re
   await assert.rejects(correctHistoricalRecognition(deps, { ...context, requestId: 'correction-forged-ref' }, {
     profile_version: 1, source_market: 'sse', source_offering: 'private', reason: '伪造引用', evidence_refs: ['arbitrary-id'],
   }), /HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND/);
+});
+
+test('source correction rejects mixed native recognition algorithms across profile fields', async () => {
+  const client = new ProfileMock();
+  const recognition = makeRecognition();
+  recognition.source_offering.provenance.extractor_version = 'historical-native-recognition-v2/parser-synthetic-1';
+  client.rows.push({ owner_user_id: owner, project_id: project, material_id: material, material_version: 2,
+    profile_version: 1, request_id: 'seed-mixed-profile', request_hash: 'a'.repeat(64), write_kind: 'recognition',
+    recognition, actor_id: null, correction_reason: null, correction_evidence_refs: [], created_at: new Date('2026-09-24T00:00:00Z') });
+  await assert.rejects(correctHistoricalRecognition(dependencies(client), { ...context, requestId: 'mixed-profile-correction' }, {
+    profile_version: 1, source_market: 'szse', reason: 'synthetic correction', evidence_refs: ['evidence-market'],
+  }), /HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE/);
 });
 
 test('period-only correction replaces 2022-2024 with 2022-2025 Q1 and keeps source recognition unchanged', async () => {

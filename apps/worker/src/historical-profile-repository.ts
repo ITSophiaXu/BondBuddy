@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
 import type { Pool } from 'pg';
-import { isMarketOffering, schemas, type Market, type Offering, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
+import { schemas, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
+import { validateHistoricalRecognitionProfile } from '@bondbuddy/domain/historical-profile-correction';
 import { readOcr, readOcrPage } from '@bondbuddy/api/ocr';
-import type { PrivateBlobs } from '@bondbuddy/api/data';
+import { Problem, type PrivateBlobs } from '@bondbuddy/api/data';
+import { correctHistoricalProfile } from '@bondbuddy/api/historical-profile-corrections';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 import { parseHistoricalOcrExtractorVersion, recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 
@@ -114,45 +116,10 @@ function parseJson(value: unknown): unknown {
   try { return JSON.parse(value) as unknown; } catch { throw fail('INVALID_HISTORICAL_PROFILE_ROW'); }
 }
 
-function fieldReady(field: Recognition['source_market' | 'source_offering' | 'latest_reporting_cutoff']): boolean {
-  return field.value !== null && field.status === 'recognized' &&
-    field.uncertainty.length === 0 && field.provenance.evidence_refs.length > 0;
-}
-
-function validDate(value: string | null): value is string {
-  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-function isReadySupported(recognition: Recognition): boolean {
-  const periodsSupported = recognition.reporting_periods.length > 0 && recognition.reporting_periods.every(period =>
-      validDate(period.start) && validDate(period.end) && period.start <= period.end &&
-      period.period_kind !== null && period.scope !== null &&
-      period.status === 'recognized' &&
-      period.uncertainty.length === 0 && period.provenance.evidence_refs.length > 0);
-  const latestSupportedEnd = periodsSupported
-    ? recognition.reporting_periods.reduce((latest, period) => period.end! > latest ? period.end! : latest, '')
-    : null;
-  return fieldReady(recognition.source_market) && fieldReady(recognition.source_offering) &&
-    fieldReady(recognition.latest_reporting_cutoff) && periodsSupported &&
-    recognition.latest_reporting_cutoff.value === latestSupportedEnd;
-}
-
 function validateProfile(value: unknown): asserts value is Recognition {
   if (!validateRecognition(value)) throw fail('INVALID_RECOGNITION_SCHEMA');
-  const recognition = value as Recognition;
-  const provenance = [recognition.source_market.provenance, recognition.source_offering.provenance,
-    recognition.latest_reporting_cutoff.provenance, ...recognition.reporting_periods.map(period => period.provenance)];
-  if (provenance.some(source => source.material_id !== recognition.material_id ||
-      source.material_version !== recognition.material_version)) {
-    throw fail('HISTORICAL_PROFILE_EVIDENCE_MATERIAL_MISMATCH');
-  }
-  if (recognition.source_market.value !== null && recognition.source_offering.value !== null &&
-      !isMarketOffering(recognition.source_market.value as Market, recognition.source_offering.value as Offering)) {
-    throw fail('INVALID_SOURCE_MARKET_OFFERING');
-  }
-  if (recognition.state === 'ready' && !isReadySupported(recognition)) throw fail('UNSUPPORTED_READY_PROFILE');
+  try { validateHistoricalRecognitionProfile(value); }
+  catch (error) { throw fail(error instanceof Error ? error.message : 'INVALID_RECOGNITION_SCHEMA'); }
 }
 
 function validateContext(context: TrustedHistoricalProfileContext): void {
@@ -542,137 +509,25 @@ export async function correctHistoricalRecognition(
   if (!validatePatch(patchInput)) throw fail('INVALID_RECOGNITION_PATCH_SCHEMA');
   const patch = patchInput as RecognitionPatchRequest;
   if (patch.reason.trim().length === 0) throw fail('INVALID_RECOGNITION_PATCH_REASON');
-  const requestHash = hashRequest({ kind: 'correction', owner: context.ownerUserId, project: context.projectId,
-    material: context.materialId, materialVersion: context.materialVersion, actorId: context.actorId, patch });
   const client = await dependencies.pool.connect();
   let transactionOpen = false;
   try {
     await client.query('BEGIN'); transactionOpen = true;
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-      `historical-profile:${context.ownerUserId}:${context.projectId}:${context.materialId}:${context.materialVersion}`,
-    ]);
-    await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',
-      [context.ownerUserId, context.projectId]);
-    await lockHistoricalMaterial(client, context);
-    const existing = await priorRequest(client, context, requestHash);
-    if (existing) {
-      await client.query('COMMIT'); transactionOpen = false;
-      return existing;
-    }
-    const latestResult = await client.query(
-      `SELECT ${PROFILE_COLUMNS} FROM bb_historical_profiles
-        WHERE owner_user_id = $1 AND project_id = $2 AND material_id = $3 AND material_version = $4
-        ORDER BY profile_version DESC LIMIT 1 FOR UPDATE`,
-      [context.ownerUserId, context.projectId, context.materialId, context.materialVersion],
-    );
-    if (latestResult.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
-    const latest = mapProfile(latestResult.rows[0]!, false);
-    const periodEvidenceRefs = patch.reporting_periods?.flatMap(period => period.evidence_refs) ?? [];
-    const citedEvidenceRefs = [...new Set([...patch.evidence_refs, ...periodEvidenceRefs])];
-    const prior = latest.recognition;
-    const ocrIdentity = parseHistoricalOcrExtractorVersion(prior.source_market.provenance.extractor_version);
-    if (ocrIdentity !== null) {
-      if (!('blobs' in dependencies)) throw fail('HISTORICAL_OCR_PROFILE_READER_REQUIRED');
-      const priorFields = [prior.source_market, prior.source_offering, prior.latest_reporting_cutoff, ...prior.reporting_periods];
-      if (priorFields.some(field => parseHistoricalOcrExtractorVersion(field.provenance.extractor_version)?.snapshotId !== ocrIdentity.snapshotId ||
-          parseHistoricalOcrExtractorVersion(field.provenance.extractor_version)?.resultSha256 !== ocrIdentity.resultSha256)) {
-        throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_MISMATCH');
-      }
-      const review = await readOcr(client as unknown as Pool, dependencies.blobs, context.ownerUserId,
-        context.projectId, context.materialId);
-      if (review.snapshot_id !== ocrIdentity.snapshotId || review.result_sha256 !== ocrIdentity.resultSha256 ||
-          review.material_version !== context.materialVersion) throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
-      const availableRefs = new Set(review.records.map(record => record.record_id));
-      if (citedEvidenceRefs.some(ref => !availableRefs.has(ref))) throw fail('HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND');
-      await verifyCitedOcrPages(client, dependencies, context, review, citedEvidenceRefs);
-    } else {
-      await validateCorrectionEvidenceReferences(client, context, parserVersionFromRecognition(prior), citedEvidenceRefs);
-    }
-    if (latest.profileVersion !== patch.profile_version) throw fail('HISTORICAL_PROFILE_VERSION_CONFLICT');
-    const resultingMarket = patch.source_market === undefined ? prior.source_market.value : patch.source_market;
-    const resultingOffering = patch.source_offering === undefined ? prior.source_offering.value : patch.source_offering;
-    if (resultingMarket !== null && resultingOffering !== null &&
-        !isMarketOffering(resultingMarket as Market, resultingOffering as Offering)) {
-      throw fail('INVALID_SOURCE_MARKET_OFFERING');
-    }
-    const corrected = structuredClone(prior) as Recognition;
-    corrected.profile_version = latest.profileVersion + 1;
-    const correctionField = <T extends Market | Offering>(
-      current: Recognition['source_market'] | Recognition['source_offering'], value: T | null,
-    ): Recognition['source_market'] | Recognition['source_offering'] => ({
-      value,
-      raw_value: current.raw_value,
-      provenance: {
-        material_id: context.materialId,
-        material_version: context.materialVersion,
-        method: 'user_correction',
-        extractor_version: current.provenance.extractor_version,
-        evidence_refs: [...new Set(patch.evidence_refs)],
-      },
-      uncertainty: patch.evidence_refs.length === 0
-        ? ['用户校正缺少来源锚点']
-        : ['锚点存在但不证明所校正值，需人工核对原文语义'],
-      status: 'user_asserted',
-    });
-    if (patch.source_market !== undefined) {
-      corrected.source_market = correctionField(prior.source_market, patch.source_market as Market | null) as Recognition['source_market'];
-    }
-    if (patch.source_offering !== undefined) {
-      corrected.source_offering = correctionField(prior.source_offering, patch.source_offering as Offering | null) as Recognition['source_offering'];
-    }
-    if (patch.reporting_periods !== undefined) {
-      corrected.reporting_periods = patch.reporting_periods.map((period, index) => {
-        const current = prior.reporting_periods[index];
-        return {
-          start: period.start,
-          end: period.end,
-          period_kind: period.period_kind,
-          scope: period.scope,
-          raw_value: null,
-          provenance: {
-            material_id: context.materialId,
-            material_version: context.materialVersion,
-            method: 'user_correction',
-            extractor_version: current?.provenance.extractor_version ?? prior.latest_reporting_cutoff.provenance.extractor_version,
-            evidence_refs: [...new Set(period.evidence_refs)],
-          },
-          uncertainty: period.evidence_refs.length === 0
-            ? ['用户校正的报告期间缺少来源锚点，需人工核对']
-            : ['用户校正的报告期间尚未人工核验'],
-          status: 'user_asserted',
-        };
-      });
-      const allPeriodsValid = corrected.reporting_periods.length > 0 && corrected.reporting_periods.every(period =>
-        validDate(period.start) && validDate(period.end) && period.start <= period.end);
-      const validEnds = allPeriodsValid ? corrected.reporting_periods.map(period => period.end!) : [];
-      const latestEnd = validEnds.length ? validEnds.reduce((latestEnd, end) => end > latestEnd ? end : latestEnd) : null;
-      const cutoffRefs = [...new Set(corrected.reporting_periods.flatMap(period => period.provenance.evidence_refs))];
-      corrected.latest_reporting_cutoff = {
-        value: latestEnd,
-        raw_value: null,
-        provenance: {
-          material_id: context.materialId,
-          material_version: context.materialVersion,
-          method: 'user_correction',
-          extractor_version: prior.latest_reporting_cutoff.provenance.extractor_version,
-          evidence_refs: cutoffRefs,
-        },
-        uncertainty: latestEnd === null
-          ? ['用户校正期间没有有效截止日，需人工核对']
-          : ['最新截止日由用户校正期间推导，尚未人工核验'],
-        status: 'user_asserted',
-      };
-    }
-    // A user assertion is never sufficient confirmation, even when it cites valid anchors.
-    corrected.state = 'needs_confirmation';
-    validateProfile(corrected);
-    const profile = await appendSnapshot(dependencies, client, context, requestHash, 'correction', corrected, {
-      actorId: context.actorId, reason: patch.reason, evidenceRefs: citedEvidenceRefs,
-    });
+    const result = await correctHistoricalProfile(client as unknown as import('pg').PoolClient,
+      'blobs' in dependencies ? dependencies.blobs : null, {
+        owner: context.ownerUserId, projectId: context.projectId, materialId: context.materialId,
+        materialVersion: context.materialVersion, actorId: context.actorId, requestId: context.requestId,
+      }, patch);
     await client.query('COMMIT'); transactionOpen = false;
-    return profile;
+    return { ownerUserId: result.ownerUserId, projectId: result.projectId, materialId: result.materialId,
+      materialVersion: result.materialVersion, profileVersion: result.profileVersion, requestId: result.requestId,
+      writeKind: 'correction', recognition: result.recognition, actorId: result.actorId,
+      correctionReason: result.correctionReason, correctionEvidenceRefs: result.correctionEvidenceRefs,
+      createdAt: result.createdAt, replayed: result.replayed };
   } catch (error) {
     if (transactionOpen) { try { await client.query('ROLLBACK'); } catch { /* preserve original failure */ } }
+    if (error instanceof Error && error.name === 'HistoricalProfileCorrectionError') throw fail(error.message);
+    if (error instanceof Problem && error.status === 404) throw fail('HISTORICAL_OCR_PROFILE_SNAPSHOT_STALE');
     throw error;
   } finally { client.release(); }
 }
