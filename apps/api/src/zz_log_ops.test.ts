@@ -173,8 +173,8 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const placeholderStart = performance.now();
   assert.equal(scrubSecrets(businessPlaceholders), businessPlaceholders);
   assert.ok(performance.now() - placeholderStart < 2000, 'many business placeholders stay bounded and unchanged');
-  const plainKeys = scrubSecrets('session_cookie=SYN_PLAIN_COOKIE\r\nx_api_key=SYN_PLAIN_KEY\r\none_time_password=SYN_PLAIN_PASSWORD\r\n业务正文');
-  for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD']) assert.ok(!plainKeys.includes(secret));
+  const plainKeys = scrubSecrets('session_cookie=SYN_PLAIN_COOKIE\r\nx_api_key=SYN_PLAIN_KEY\r\none_time_password=SYN_PLAIN_PASSWORD\r\notp=SYN_PLAIN_OTP\r\n业务正文');
+  for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD', 'SYN_PLAIN_OTP']) assert.ok(!plainKeys.includes(secret));
   assert.ok(plainKeys.endsWith('业务正文'));
   assert.ok(!scrubSecrets('{"\\u0043ookie":"SYN_ENCODED_KEY"}').includes('SYN_ENCODED_KEY'));
   for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} "\\u0043ookie":"SYN_LEAK_MARKER"',
@@ -201,6 +201,8 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   let wrappedBrackets = layeredBrackets;
   for (let layer = 0; layer < 4; layer++) wrappedBrackets = JSON.stringify({ note: wrappedBrackets });
   assert.equal(scrubSecrets(wrappedBrackets), wrappedBrackets);
+  assert.equal(scrubSecrets(JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' })),
+    JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }));
   const mixed = scrubSecrets('普通正文未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_COOKIE","note":"SYN_MIXED_BUSINESS"}');
   assert.ok(mixed.includes('普通正文未闭合 { 和 [\r\n') && mixed.includes('SYN_MIXED_BUSINESS'));
   assert.ok(!mixed.includes('SYN_MIXED_COOKIE'));
@@ -299,8 +301,12 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_UNICODE_BUSINESS"', 'SYN_UNICODE_BUSINESS', 'SYN_NONE'],
+      [JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }), 'SYN_ORDINARY quoted', 'SYN_NONE'],
+      [JSON.stringify({ note: 'SYN_ORDINARY Cookie 政策；\\uD83D\\uDE00债券名称: 正文' }), 'SYN_ORDINARY Cookie 政策', 'SYN_NONE'],
+      [JSON.stringify({ note: '{"Cookie":"SYN_INNER_COOKIE","note":"SYN_INNER_BUSINESS"}' }), 'SYN_INNER_BUSINESS', 'SYN_INNER_COOKIE'],
       [wrappedOrdinaryBrackets(), 'SYN_ORDINARY_FOUR_LAYERS', 'SYN_NONE'],
       ['普通正文\r\n{} setCookie=SYN_PLAIN_COOKIE\r\n后文', '后文', 'SYN_PLAIN_COOKIE'],
+      ['普通正文\r\notp=SYN_PLAIN_OTP\r\n后文', '后文', 'SYN_PLAIN_OTP'],
       ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
     ] as const).entries()) {
       assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
@@ -316,7 +322,7 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
 });
 
 function wrappedOrdinaryBrackets(): string {
-  let body = JSON.stringify({ note: 'SYN_ORDINARY_FOUR_LAYERS { [ \r\n' });
+  let body = JSON.stringify({ note: 'SYN_ORDINARY_FOUR_LAYERS { [ "business": text\r\n' });
   for (let layer = 0; layer < 4; layer++) body = JSON.stringify({ note: body });
   return body;
 }
@@ -359,6 +365,37 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
     for (const key of keys) for (const prefix of ['{} ', '[] ', '{] } ']) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
         kind: 'structured_input', version: 1, body: `${prefix}${key}:SYN_LEAK_MARKER` }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    // Complete outer JSON can conceal a key/value fragment in an ordinary
+    // string value, without any inner object or array bracket.
+    for (const key of ['Cookie', 'Authorization', 'setCookie', 'Co\\u006Fkie']) {
+      let fragment = `"${key}":"SYN_LEAK_MARKER"`;
+      for (let layer = 1; layer <= 4; layer++) {
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        fragment = JSON.stringify(fragment);
+      }
+    }
+    for (const key of ['Cookie', 'Authorization', 'setCookie', 'otp', 'x_api_key', 'one_time_password']) {
+      for (const position of [0, Math.floor(key.length / 2), key.length - 1]) {
+        const escaped = key.slice(0, position) + `\\u${key.charCodeAt(position).toString(16).padStart(4, '0')}` + key.slice(position + 1);
+        let fragment = `"${escaped}":"SYN_LEAK_MARKER"`;
+        for (let layer = 1; layer <= 5; layer++) {
+          await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+            kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+          error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+          fragment = JSON.stringify(fragment);
+        }
+      }
+    }
+    for (const fragment of ['otp:SYN_LEAK_MARKER', 'setCookie=SYN_LEAK_MARKER', 'secret:SYN_LEAK_MARKER',
+      'Co\\u006Fkie:SYN_LEAK_MARKER', '\\u0043ookie=SYN_LEAK_MARKER',
+      '"\\uD800":"SYN_LEAK_MARKER"', '"\\u00ZZ":"SYN_LEAK_MARKER"',
+      '\\uD800:SYN_LEAK_MARKER', 'Co\\u00ZZkie:SYN_LEAK_MARKER']) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
       error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
     for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} \\"Co\\\\u006Fkie\\":\\"SYN_LEAK_MARKER\\"',
@@ -491,6 +528,34 @@ test('#79 densely redacted valid 10 MiB arrays fit bounded child heaps', async t
     assert.equal(metrics.safe, true);
     assert.ok(metrics.elapsedMs < 2000);
     t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B dense valid input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 dense ordinary colon strings stay bounded when every value is scanned', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"note":"synthetic: content"},';
+      const body = '[' + unit.repeat(Math.floor((10 * 1024 * 1024 - 2) / unit.length)).slice(0, -1) + ']';
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({ accepted: result === body, inputBytes: body.length,
+        elapsedMs: Math.round(performance.now() - started), peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (result !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 2500);
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B dense colon input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
   }
 });
 

@@ -35,6 +35,7 @@ const scrubRules: Array<[RegExp, string]> = [
   [/\b(sk|rk|pk)-[A-Za-z0-9_-]{16,}/g, '[REDACTED_KEY]'],
   [/\b(set[_-]?cookie|session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
   [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
+  [/\b(otp(?:[_-]?code)?|captcha|verification[_ -]?code)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
   [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
 type Edits = { starts: number[]; ends: number[]; values: string[]; resultLength: number };
@@ -100,6 +101,30 @@ function quotedFieldAt(text: string, start: number): string | null {
     if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
     return key;
   } catch { throw new DiagnosticScrubError(); }
+}
+
+/** Read a loose field name using the same JSON Unicode decoding as quoted
+ * keys. Escaped spellings outside valid JSON are rejected when sensitive. */
+function bareFieldAt(text: string, start: number): { key: string; end: number; encoded: boolean } | null {
+  if (!/[\p{L}_]/u.test(text[start] ?? '') && !(text[start] === '\\' && text[start + 1] === 'u')) return null;
+  let end = start, encoded = false;
+  while (end < text.length) {
+    if (/[\p{L}\p{N}_-]/u.test(text[end])) { end++; continue; }
+    if (text[end] === '\\' && text[end + 1] === 'u') {
+      if (!/^[0-9a-fA-F]{4}$/.test(text.slice(end + 2, end + 6))) throw new DiagnosticScrubError();
+      encoded = true;
+      end += 6;
+      continue;
+    }
+    break;
+  }
+  const raw = text.slice(start, end);
+  let key = raw;
+  if (encoded) {
+    try { key = JSON.parse(`"${raw}"`) as string; } catch { throw new DiagnosticScrubError(); }
+    if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
+  }
+  return { key, end, encoded };
 }
 
 /** Find a candidate's boundary once. An unclosed prose bracket is ordinary text
@@ -176,6 +201,29 @@ function hasKnownSensitiveKey(fragment: string): boolean {
   return false;
 }
 
+/** Inspect the final decoded string layer without descending again. This sees
+ * field syntax even when there is no surrounding object or array delimiter. */
+function hasEmbeddedSensitiveField(text: string): boolean {
+  for (let i = 0; i < text.length;) {
+    if (text[i] === '"' || text[i] === '\\') {
+      const key = quotedFieldAt(text, i);
+      if (key !== null && isSensitiveField(key)) return true;
+    }
+    const bare = bareFieldAt(text, i);
+    if (bare !== null) {
+      let end = bare.end;
+      if (isSensitiveField(bare.key)) {
+        while (text[end] === '\\') end++;
+        if (text[end] === '"') end++;
+        while (space(text[end])) end++;
+        if (text[end] === ':' || text[end] === '=') return true;
+      }
+      i = bare.end;
+    } else i++;
+  }
+  return false;
+}
+
 function applyEdits(text: string, edits: Edits): string {
   if (!edits.starts.length) return text;
   const chunks: string[] = [];
@@ -232,17 +280,15 @@ function parseCandidate(text: string, layer: number, markSensitive: () => void):
       let decoded: string;
       try { decoded = JSON.parse(raw) as string; } catch { throw new DiagnosticScrubError(); }
       const frame = stack[stack.length - 1];
-      const inspectString = !frame?.suppressed && !(frame?.kind === '{' && frame.sensitive) && (decoded.includes('{') || decoded.includes('['));
-      if (layer >= MAX_JSON_STRING_LAYERS && inspectString) {
-        // A business sentence may contain brackets even after several JSON
-        // string encodings. Reject only when another structured field can be
-        // hiding behind this final decoding layer.
-        if (hasKnownSensitiveKey(decoded) || /[\[{]\s*(?:\\+)?"/.test(decoded) || /\\+"/.test(decoded)) {
+      const inspectString = !frame?.suppressed && !(frame?.kind === '{' && frame.sensitive);
+      if (inspectString && layer >= MAX_JSON_STRING_LAYERS) {
+        // Every decoded value reaches the same field classifier at this last
+        // layer. A field hidden behind another encoding fails closed.
+        if (hasEmbeddedSensitiveField(decoded) || hasKnownSensitiveKey(decoded)) {
           markSensitive();
           throw new DiagnosticScrubError();
         }
-      }
-      if (inspectString && layer < MAX_JSON_STRING_LAYERS) {
+      } else if (inspectString) {
         let cleaned: string;
         try { cleaned = scrubText(decoded, layer + 1); }
         catch { markSensitive(); throw new DiagnosticScrubError(); }
@@ -307,22 +353,23 @@ function scrubText(text: string, layer: number): string {
       if (text[start] === '\\' && text[start + 1] === 'u' && openPlain) throw new DiagnosticScrubError();
       const quotedKey = quotedFieldAt(text, start);
       if (quotedKey !== null && isSensitiveField(quotedKey)) throw new DiagnosticScrubError();
-      if (/[A-Za-z_验校动短]/.test(text[start])) {
-        let end = start + 1;
-        while (end < text.length && /[\p{L}\p{N}_-]/u.test(text[end])) end++;
-        if (isSensitiveField(text.slice(start, end))) {
+      const bare = bareFieldAt(text, start);
+      if (bare !== null) {
+        let end = bare.end;
+        if (isSensitiveField(bare.key)) {
           while (text[end] === '\\') end++;
           if (text[end] === '"') end++;
           while (space(text[end])) end++;
           // Quoted fields outside a complete JSON candidate are still structured
           // evidence. Never leave their values to the plain-text regexes.
-          if (text[end] === ':') {
+          if (text[end] === ':' || text[end] === '=') {
             let before = start - 1;
             while (before >= 0 && space(text[before])) before--;
-            if (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? '')) throw new DiagnosticScrubError();
+            if (layer > 0 || bare.encoded || text[end] === ':' &&
+                (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? ''))) throw new DiagnosticScrubError();
           }
         }
-        start = end;
+        start = bare.end;
       } else start++;
       continue;
     }
