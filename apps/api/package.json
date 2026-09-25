@@ -60,6 +60,14 @@
       "types": "./dist/deletion-lifecycle.d.ts",
       "default": "./dist/deletion-lifecycle.js"
     },
+    "./issuer-identity-source": {
+      "types": "./dist/issuer-identity-source.d.ts",
+      "default": "./dist/issuer-identity-source.js"
+    },
+    "./issuer-identity-binding": {
+      "types": "./dist/issuer-identity-binding.d.ts",
+      "default": "./dist/issuer-identity-binding.js"
+    },
     "./library": {
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"

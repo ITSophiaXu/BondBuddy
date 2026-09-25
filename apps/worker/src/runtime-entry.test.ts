@@ -104,7 +104,7 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     const run = await until(async () => (await pool.query("SELECT r.state,j.id AS job_id,j.stage,j.error_code,j.state AS job_state FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1 AND j.stage='capability_not_ready'", [runId])).rows[0]);
     assert.equal(run.state, 'paused', JSON.stringify(run));
     const timeline = await adminJobTimeline(pool, operator, run.job_id);
-    assert.ok(timeline.stages.some(s => s.stage === 'capability_not_ready' && ['rule_pack_pin_missing', 'production_rule_pack_selector_unavailable'].includes(s.reason ?? '')), JSON.stringify(timeline.stages));
+    assert.ok(timeline.stages.some(s => s.stage === 'capability_not_ready' && s.reason === 'historical_material_not_selected'), JSON.stringify(timeline.stages));
     assert.notEqual(timeline.outcome.state, 'succeeded');
     await runtime.stop();
     assert.ok((await pool.query('SELECT stopped_at FROM bb_worker_heartbeats WHERE worker_id=$1', [workerId])).rows[0].stopped_at);

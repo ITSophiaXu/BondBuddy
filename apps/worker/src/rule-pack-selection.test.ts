@@ -14,7 +14,7 @@ function stageContext(manifest: unknown, version: string | null): StageContext {
     blobs: {} as never,
     lease: {} as never,
     run: { id: 'synthetic-run', owner_user_id: 'synthetic-owner', project_id: 'synthetic-project', input_revision: 1,
-      input_hash: hash, task_kind: 'update' },
+      input_hash: hash, task_kind: 'review' },
     signal: new AbortController().signal,
     checkpoint: {},
     values: new Map(),
