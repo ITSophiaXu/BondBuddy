@@ -45,10 +45,12 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
   await event(client,{...r,event_cursor:0},'queued','queued','submitted');
 }
 
-export async function claim(pool:Pool, leaseSeconds=30):Promise<Lease|null> {
+// Run jobs and #79/#16 platform probes share the lease model but are claimed separately, so the
+// run pipeline never picks up a probe and the probe worker never picks up a user run.
+export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean}={}):Promise<Lease|null> {
   return transaction(pool,async client=>{
     // Lock order is run then job in every transition, including cancellation.
-    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','rejected') ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1");
+    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','rejected') AND (j.job_type='platform_probe')=$1 ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true]);
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
@@ -358,6 +360,30 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',
     if(outcome==='failed')await recordRunFailure(client,r,lease.jobId,options.errorCode,options.failedStage);
     await event(client,r,outcome,outcome,outcome==='failed'?'processor_failed':'word_delivered',options.errorCode);
     return runDto({...r,artifact_id:artifact?.id??null,updated_at:new Date()});
+  });
+}
+
+/**
+ * #79/#16 terminal transition for a platform probe. Success needs a completed attempt with a
+ * stored result and measured usage (0027 re-checks it); a failure needs no unresolved attempt.
+ */
+export async function finishPlatformProbe(pool:Pool,lease:Lease,outcome:'failed'|'succeeded',options:{errorCode?:string;failedStage?:string}={}) {
+  return transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease);
+    if(j.job_type!=='platform_probe')throw new Problem(409,'IDEMPOTENCY_CONFLICT','Not a platform probe job');
+    const pending=await client.query("SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND status='pending_reconcile' LIMIT 1",[j.id]);
+    if(pending.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs reconciliation');
+    if(outcome==='succeeded'){
+      const done=await client.query(`SELECT 1 FROM bb_model_call_attempts a JOIN bb_call_usage u ON u.attempt_id=a.id
+        JOIN bb_provider_call_observations o ON o.attempt_id=a.id AND o.outcome='completed' AND o.usage_status='measured'
+        JOIN bb_provider_result_refs p ON p.id=o.result_id AND p.attempt_id=a.id
+        WHERE a.job_id=$1 AND a.status='completed' AND u.usage_status='measured' AND u.conflicting_measurements=0 LIMIT 1`,[j.id]);
+      if(!done.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Probe has no completed measured provider result');
+    }
+    await client.query('UPDATE bb_jobs SET state=$2,stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,outcome]);
+    if(outcome==='failed')await recordRunFailure(client,r,j.id,options.errorCode,options.failedStage);
+    await event(client,r,outcome,outcome,outcome==='failed'?'processor_failed':'platform_probe_completed',outcome==='failed'?options.errorCode:undefined);
+    return {state:outcome};
   });
 }
 

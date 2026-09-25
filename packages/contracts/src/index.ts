@@ -12,6 +12,7 @@ export * from './worker-runtime.js';
 // --- end #17 worker runtime ---
 import { trialSchemas, TRIAL_GUARD_ERROR_CODES, TRIAL_ADMIN_OPERATIONS, trialOpenApiPaths } from './trial-guard.js'; export * from './trial-guard.js'; // #35 trial guard
 export * from './reference-library.js';
+export * from './platform-probe.js'; // #79/#16 platform probe
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;

@@ -105,6 +105,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       BB_CODEX_BASE_URL: ${BB_CODEX_BASE_URL:-https://api.deepseek.com}
       BB_CODEX_MODEL: ${BB_CODEX_MODEL:-}
+      BB_CODEX_WORK_ROOT: /tmp/bb-codex
+      # #79/#16 operator-only platform probe (POST /api/v1/admin/probes/model). Off by default.
+      BB_PLATFORM_PROBE_ENABLED: ${BB_PLATFORM_PROBE_ENABLED:-0}
     networks: [backend]
     depends_on:
       postgres: {condition: service_healthy}

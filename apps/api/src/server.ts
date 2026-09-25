@@ -20,6 +20,7 @@ import { dataLifecycleSchemas } from '@bondbuddy/contracts';
 import { RUN_PIPELINE_SUBTYPE } from '@bondbuddy/contracts';
 import { admitProjectCreate, admitRunSubmit, admitUploadCreate, reportTrialRejection, sourceHash, TrialLimitProblem, trialConfigFromEnv, type TrialConfig } from './trial-guard.js';
 import { installTrialRoutes } from './trial-routes.js';
+import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
@@ -104,6 +105,7 @@ export function createServer(settings: Settings = {}) {
   installEventStreams(app,{db,owner},settings.stream);
   const trial=settings.trial ?? trialConfigFromEnv();
   installTrialRoutes(app,{db,blobs,owner,config:trial});
+  installPlatformProbeRoutes(app,{db,owner,config:trial}); // #79/#16 operator-only platform probe
   // #35: a trial rejection is still a logged #79 operation and may raise the quota alert.
   async function trialRejected(error:unknown,user:string,kind:string,projectId:string|null,requestId:string){
     if(!(error instanceof TrialLimitProblem))return;

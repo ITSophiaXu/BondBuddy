@@ -8,6 +8,10 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./platform-probe": {
+      "types": "./dist/platform-probe.d.ts",
+      "default": "./dist/platform-probe.js"
+    },
     "./queue": {
       "types": "./dist/queue.d.ts",
       "default": "./dist/queue.js"
