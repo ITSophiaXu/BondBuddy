@@ -2,11 +2,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
 import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
-import { raiseAlert } from './evidence-gate.js';
+import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
 
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const safeCode = /^[a-z][a-z0-9_]{0,63}$/;
@@ -93,11 +94,28 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
       WHERE o.id IN (SELECT id FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL
         AND (lease_until IS NULL OR lease_until<now()) AND (next_attempt_at IS NULL OR next_attempt_at<=now())
         ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT $3)
-      RETURNING o.id,o.aggregate_id,o.delivery_attempts,o.created_at`, [token, lease, batch])).rows);
+      RETURNING o.id,o.aggregate_id,o.owner_user_id,o.event_type,o.payload,o.delivery_attempts,o.created_at`, [token, lease, batch])).rows);
   if (!claimed.length) return { claimed: 0, delivered: 0, failed: 0 };
   claimed.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at) || String(a.id).localeCompare(String(b.id)));
-  const events = new Map((await pool.query('SELECT id,event FROM bb_observability_events WHERE id=ANY($1)', [claimed.map(r => r.aggregate_id)])).rows.map(r => [r.id, r.event]));
-  const records: LogRecord[] = claimed.filter(r => events.has(r.aggregate_id)).map(r => ({ delivery_key: digest(`${sink.name}:${r.id}`), outbox_id: r.id, event: events.get(r.aggregate_id) }));
+  let events: Map<string, { event: Record<string, unknown>; owner_user_id: string; kind: string }>;
+  try {
+    events = new Map((await pool.query('SELECT id,owner_user_id,kind,event FROM bb_observability_events WHERE id=ANY($1)', [claimed.map(r => r.aggregate_id)])).rows.map(r => [r.id, r]));
+  } catch (error) {
+    await tripEvidenceGate(pool, 'log_event_lookup_failed');
+    throw error;
+  }
+  if (claimed.some(r => {
+    const source = events.get(r.aggregate_id);
+    return !source || source.owner_user_id !== r.owner_user_id || source.kind !== r.event_type ||
+      r.payload?.event_id !== r.aggregate_id || source.event?.event_id !== r.aggregate_id ||
+      source.event?.user_id !== r.owner_user_id || source.event?.kind !== r.event_type;
+  })) {
+    // bb_outbox.aggregate_id has no FK. Missing or mismatched source evidence blocks the whole batch.
+    await tripEvidenceGate(pool, 'log_event_missing');
+    await pool.query("UPDATE bb_outbox SET lease_token=NULL,lease_until=NULL,last_delivery_error='evidence_missing',next_attempt_at=now()+($3::integer*interval '1 second') WHERE id=ANY($1) AND lease_token=$2", [claimed.map(r => r.id), token, retry]);
+    return { claimed: claimed.length, delivered: 0, failed: claimed.length };
+  }
+  const records: LogRecord[] = claimed.map(r => ({ delivery_key: digest(`${sink.name}:${r.id}`), outbox_id: r.id, event: events.get(r.aggregate_id)!.event }));
   try {
     await sink.deliver(records);
   } catch {
@@ -108,10 +126,24 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
   }
   await options.afterSinkAccept?.();
   const byId = new Map(claimed.map(r => [r.id, r]));
-  await transaction(pool, async client => {
-    for (const record of records) await client.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING', [record.outbox_id, sink.name, record.delivery_key, byId.get(record.outbox_id).delivery_attempts]);
-    await client.query('UPDATE bb_outbox SET delivered_at=now(),lease_token=NULL,lease_until=NULL,last_delivery_error=NULL,next_attempt_at=NULL WHERE id=ANY($1) AND lease_token=$2 AND delivered_at IS NULL', [claimed.map(r => r.id), token]);
-  });
+  try {
+    await transaction(pool, async client => {
+      for (const record of records) {
+        await client.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING', [record.outbox_id, sink.name, record.delivery_key, byId.get(record.outbox_id).delivery_attempts]);
+        const receipt = (await client.query(`SELECT d.outbox_id,d.sink,d.delivery_key,o.aggregate_id,e.event
+          FROM bb_log_deliveries d JOIN bb_outbox o ON o.id=d.outbox_id
+          JOIN bb_observability_events e ON e.id=o.aggregate_id
+          WHERE d.delivery_key=$1 OR (d.outbox_id=$2 AND d.sink=$3)`, [record.delivery_key, record.outbox_id, sink.name])).rows;
+        if (receipt.length !== 1 || receipt[0].outbox_id !== record.outbox_id || receipt[0].sink !== sink.name ||
+          receipt[0].delivery_key !== record.delivery_key || receipt[0].aggregate_id !== byId.get(record.outbox_id).aggregate_id ||
+          !isDeepStrictEqual(receipt[0].event, record.event)) throw new Error('Inconsistent log delivery receipt');
+      }
+      await client.query('UPDATE bb_outbox SET delivered_at=now(),lease_token=NULL,lease_until=NULL,last_delivery_error=NULL,next_attempt_at=NULL WHERE id=ANY($1) AND lease_token=$2 AND delivered_at IS NULL', [claimed.map(r => r.id), token]);
+    });
+  } catch (error) {
+    await tripEvidenceGate(pool, 'log_receipt_not_persisted');
+    throw error;
+  }
   return { claimed: claimed.length, delivered: records.length, failed: 0 };
 }
 

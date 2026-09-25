@@ -8,8 +8,8 @@ import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
-import { azureBlobs, uid } from './data.js';
-import { observeUsage } from './observability.js';
+import { azureBlobs, digest, transaction, uid } from './data.js';
+import { emitInternal, internalEvent, observeUsage } from './observability.js';
 import { action, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
@@ -395,6 +395,91 @@ test('#79 production file sink survives two independent processes with crash bef
   } finally { await f.app.close(); await pool.end(); await rm(dir, { recursive: true, force: true }); }
 });
 
+test('#79 a missing source event blocks the whole claimed batch before sink or PG ACK', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const missingId = uid();
+  const valid = internalEvent({ kind: 'error.recorded', owner: 'synthetic-missing', traceId: `synthetic-missing-${uid()}`, stage: 'synthetic_stage' });
+  const sink = new MemorySink(`missing_${uid().slice(0, 8)}`);
+  let validOutboxId: string | undefined;
+  try {
+    await transaction(pool, client => emitInternal(client, valid));
+    validOutboxId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [valid.event_id])).rows[0].id;
+    await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+      VALUES($1,'synthetic-missing','observability',$2,'error.recorded','{}',now()-interval '1 day')`, [missingId, uid()]);
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '2 days' WHERE id=$1", [validOutboxId]);
+    const result = await forwardLogs(pool, sink, { batchSize: 2, retrySeconds: 0 });
+    assert.deepEqual(result, { claimed: 2, delivered: 0, failed: 2 });
+    assert.equal(sink.calls, 0);
+    const rows = (await pool.query('SELECT id,delivered_at,last_delivery_error,lease_token FROM bb_outbox WHERE id=ANY($1) ORDER BY id', [[validOutboxId, missingId]])).rows;
+    assert.equal(rows.length, 2);
+    for (const row of rows) {
+      assert.equal(row.delivered_at, null);
+      assert.equal(row.last_delivery_error, 'evidence_missing');
+      assert.equal(row.lease_token, null);
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=ANY($1)', [[validOutboxId, missingId]])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+    assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='evidence_persist_failed' AND detail->>'reason_code'='log_event_missing'")).rowCount);
+  } finally {
+    await pool.query('DELETE FROM bb_outbox WHERE id=ANY($1)', [[validOutboxId, missingId].filter(Boolean)]);
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
+test('#79 a conflicting existing receipt cannot ACK a different outbox event', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const sink = new MemorySink(`conflict_${uid().slice(0, 8)}`);
+  try {
+    const original = internalEvent({ kind: 'error.recorded', owner: 'synthetic-conflict', traceId: `synthetic-original-${uid()}`, stage: 'synthetic_stage' });
+    const other = internalEvent({ kind: 'error.recorded', owner: 'synthetic-conflict', traceId: `synthetic-other-${uid()}`, stage: 'synthetic_stage' });
+    await transaction(pool, async client => { await emitInternal(client, original); await emitInternal(client, other); });
+    const originalId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [original.event_id])).rows[0].id;
+    const otherId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [other.event_id])).rows[0].id;
+    const key = digest(`${sink.name}:${originalId}`);
+    await pool.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,1)', [otherId, sink.name, key]);
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '2 days' WHERE id=$1", [originalId]);
+    await assert.rejects(forwardLogs(pool, sink, { batchSize: 1 }), /Inconsistent log delivery receipt/);
+    assert.equal(sink.calls, 1, 'sink acceptance precedes PG receipt validation');
+    assert.equal((await pool.query('SELECT delivered_at FROM bb_outbox WHERE id=$1', [originalId])).rows[0].delivered_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=$1', [originalId])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+  } finally {
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
+test('#79 PG event lookup outage cannot call the sink or acknowledge the outbox', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const sink = new MemorySink(`lookup_${uid().slice(0, 8)}`);
+  const event = internalEvent({ kind: 'error.recorded', owner: 'synthetic-lookup', traceId: `synthetic-lookup-${uid()}`, stage: 'synthetic_stage' });
+  let outboxId: string | undefined;
+  try {
+    await transaction(pool, client => emitInternal(client, event));
+    outboxId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [event.event_id])).rows[0].id;
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '3 days' WHERE id=$1", [outboxId]);
+    const failedLookup = new Proxy(pool, { get(target, key) {
+      if (key === 'query') return (sql: string, ...args: unknown[]) => sql.startsWith('SELECT id,owner_user_id,kind,event FROM bb_observability_events')
+        ? Promise.reject(Object.assign(new Error('synthetic PG lookup outage'), { code: '08006' })) : (target.query as (...values: unknown[]) => unknown)(sql, ...args);
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } }) as Pool;
+    await assert.rejects(forwardLogs(failedLookup, sink, { batchSize: 1 }), (error: any) => error.code === '08006');
+    assert.equal(sink.calls, 0);
+    assert.equal((await pool.query('SELECT delivered_at FROM bb_outbox WHERE id=$1', [outboxId])).rows[0].delivered_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=$1', [outboxId])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+  } finally {
+    if (outboxId) await pool.query('DELETE FROM bb_outbox WHERE id=$1', [outboxId]);
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
 test('#79 evidence gate: DB transaction failure pauses new external calls and raises an alert', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
@@ -412,8 +497,8 @@ test('#79 evidence gate: DB transaction failure pauses new external calls and ra
     await assert.rejects(recordPotentialCall(faulty, lease, 'gate-call', 1), (e: any) => e.code === '08006');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 0, 'rolled back, nothing half-written');
     assert.equal((await gateState(pool)).state, 'paused');
-    const alert = (await pool.query("SELECT a.* FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
-    assert.equal(alert.detail.reason_code, 'call_intent_not_persisted');
+    const pause = (await pool.query("SELECT g.reason_code FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
+    assert.equal(pause.reason_code, 'call_intent_not_persisted');
     // Every process now refuses new calls, even with a healthy connection.
     await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 1), (e: any) => e.status === 503 && e.code === 'DATA_UNAVAILABLE');
     const gate = await f.as(f.reader)('GET', '/api/v1/admin/evidence-gate');
