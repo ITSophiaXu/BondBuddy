@@ -246,7 +246,7 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}/materials/{material_id}/source-profile', 'Read the latest persisted historical recognition; 409 CAPABILITY_NOT_READY while its parse job is pending', 'RecognitionResponse', 200, undefined, [404, 409]),
   op('patch', '/projects/{project_id}/materials/{material_id}/source-profile', 'Correct source recognition with revision (contract only)', 'RecognitionResponse', 200, 'RecognitionPatchRequest', [404, 409]),
   op('get', '/projects/{project_id}/facts/candidates', 'Read owner/project-scoped fact candidates, exact identity and latest decision', 'FactCandidateListResponse', 200, undefined, [404, 422]),
-  op('post', '/projects/{project_id}/facts/decisions', 'Append an idempotent user conflict decision; selection never verifies a candidate', 'FactDecisionResponse', 201, 'FactDecisionRequest', [404, 409, 422]),
+  op('post', '/projects/{project_id}/facts/decisions', 'Append a user conflict decision using the observed expected_version; same-request replays return the original decision', 'FactDecisionResponse', 201, 'FactDecisionRequest', [404, 409, 422]),
   op('post', '/projects/{project_id}/preflight', 'Evaluate an immutable input revision against durable parse jobs, profiles and capability', 'PreflightResponse', 200, 'PreflightRequest', [404, 409]),
   op('post', '/runs/execute', 'Submit idempotent persistent run (contract only)', 'RunResponse', 202, 'ExecuteRequest', [404, 409]),
   op('get', '/runs/{run_id}', 'Re-read owner run after new session (contract only)', 'RunResponse', 200, undefined, [404]),
