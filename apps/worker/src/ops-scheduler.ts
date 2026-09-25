@@ -10,8 +10,11 @@ import { checkLogHealth, forwardLogs, ndjsonFileSink, retentionPolicyFromEnv } f
 import { storageLifecyclePolicyFromEnv } from '@bondbuddy/api/storage-lifecycle';
 import { runUserDeletionLifecycle } from '@bondbuddy/api/deletion-lifecycle';
 import { checkTrialHealth, trialConfigFromEnv, trialHealthThresholdsFromEnv } from '@bondbuddy/api/trial-guard';
+import { registerLibrarySource } from '@bondbuddy/api/library';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { backupContainer, pruneOffhostBackups } from './backup-retention.js';
+import { runLibrarySyncPass } from './library-scheduler.js';
+import { OPERATOR_IMPORT_SOURCE, OperatorImportAdapter, SSE_BOND_SOURCE, SseBondProjectAdapter, type LibrarySourceAdapter } from './library-sources.js';
 
 // #79/#35 ops scheduler: one small process that runs the periodic operations jobs which used to be
 // host-cron one-shots. Every task is itself idempotent and bounded; the scheduler only decides when,
@@ -113,7 +116,8 @@ export async function rotateIfLarge(path: string, maxBytes: number) {
   return true;
 }
 
-export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string) => PrivateBlobs = azureBlobs, backupsFactory = backupContainer): ScheduledTask[] {
+export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, blobsFactory: (cs: string, container?: string) => PrivateBlobs = azureBlobs, backupsFactory = backupContainer,
+  libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
   const sinkFile = env.BB_LOG_SINK_FILE;
@@ -174,6 +178,24 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
     tasks.push({ name: 'parse_backfill', intervalMs: seconds('BB_OPS_PARSE_BACKFILL_SECONDS', 3600), leaseMs: 600_000, run: async (): Promise<TaskOutcome> => {
       const r = await backfillParseJobs(pool); return { ok: true, detail: { scanned: r.scanned, enqueued: r.enqueued } };
     } });
+  // #78 opt-in: per-source scheduled library sync (discover -> fetch -> dedupe -> review queue) and stale alerts.
+  if (['1', 'true', 'on', 'yes'].includes((env.BB_OPS_LIBRARY_SYNC ?? '').toLowerCase())) {
+    if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled library sync requires AZURE_STORAGE_CONNECTION_STRING');
+    const blobs = blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING, env.BB_LIBRARY_CONTAINER ?? 'bondbuddy-private');
+    const adapters = libraryAdapters?.(blobs) ?? {
+      [SSE_BOND_SOURCE.id]: new SseBondProjectAdapter({ maxProjects: intEnv(env, 'BB_LIBRARY_MAX_PROJECTS', 3, 1, 200), delayMs: 800 }),
+      [OPERATOR_IMPORT_SOURCE.id]: new OperatorImportAdapter(blobs),
+    };
+    let registered = false;
+    const owner = defaultOwner();
+    tasks.push({ name: 'library_sync', intervalMs: seconds('BB_OPS_LIBRARY_SYNC_SECONDS', 60), leaseMs: seconds('BB_OPS_LIBRARY_SYNC_LEASE_SECONDS', 1800), run: async (): Promise<TaskOutcome> => {
+      if (!registered && !libraryAdapters) { await registerLibrarySource(pool, SSE_BOND_SOURCE); await registerLibrarySource(pool, OPERATOR_IMPORT_SOURCE); registered = true; }
+      const r = await runLibrarySyncPass({ pool, blobs, adapters, owner, retryDelayMs: 5000, maxJobs: intEnv(env, 'BB_LIBRARY_MAX_JOBS_PER_PASS', 5, 1, 100),
+        staleFactor: intEnv(env, 'BB_LIBRARY_STALE_FACTOR', 2, 1, 100) });
+      // Per-source failures already raised library_sync_failed; the task itself only fails when the pass throws.
+      return { ok: true, detail: { ...r } };
+    } });
+  }
   return tasks;
 }
 

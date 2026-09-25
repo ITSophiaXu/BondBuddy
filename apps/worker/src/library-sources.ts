@@ -33,7 +33,7 @@ export const SSE_BOND_SOURCE: LibrarySourceInput = {
   // Recorded verbatim from the site legal notice checked 2026-09-25: non-commercial browsing/downloading is
   // permitted; use for profit needs written permission from 上证所信息网络有限公司. Hence evaluation_only.
   authorizationBasis: 'sse.com.cn legal notice: non-commercial browse/download permitted; commercial use requires written permission from SSE Infonet. Registered evaluation_only until a licence is recorded.',
-  termsUrl: 'https://www.sse.com.cn/home/legal/', usageRights: 'evaluation_only', staleAfterSeconds: 2 * 86400,
+  termsUrl: 'https://www.sse.com.cn/home/legal/', usageRights: 'evaluation_only', staleAfterSeconds: 2 * 86400, syncIntervalSeconds: 86400,
 };
 const SSE_QUERY = 'https://query.sse.com.cn/commonSoaQuery.do';
 const SSE_FILES = 'https://static.sse.com.cn/bond';
