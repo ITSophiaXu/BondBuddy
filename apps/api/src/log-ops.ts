@@ -33,7 +33,7 @@ const scrubRules: Array<[RegExp, string]> = [
   [/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[REDACTED_JWT]'],
   [/\b(sk|rk|pk)-[A-Za-z0-9_-]{16,}/g, '[REDACTED_KEY]'],
-  [/\b(session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
+  [/\b(set[_-]?cookie|session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
   [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
   [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
@@ -234,10 +234,15 @@ function parseCandidate(text: string, layer: number, markSensitive: () => void):
       const frame = stack[stack.length - 1];
       const inspectString = !frame?.suppressed && !(frame?.kind === '{' && frame.sensitive) && (decoded.includes('{') || decoded.includes('['));
       if (layer >= MAX_JSON_STRING_LAYERS && inspectString) {
-        markSensitive();
-        throw new DiagnosticScrubError();
+        // A business sentence may contain brackets even after several JSON
+        // string encodings. Reject only when another structured field can be
+        // hiding behind this final decoding layer.
+        if (hasKnownSensitiveKey(decoded) || /[\[{]\s*(?:\\+)?"/.test(decoded) || /\\+"/.test(decoded)) {
+          markSensitive();
+          throw new DiagnosticScrubError();
+        }
       }
-      if (inspectString) {
+      if (inspectString && layer < MAX_JSON_STRING_LAYERS) {
         let cleaned: string;
         try { cleaned = scrubText(decoded, layer + 1); }
         catch { markSensitive(); throw new DiagnosticScrubError(); }
@@ -311,7 +316,11 @@ function scrubText(text: string, layer: number): string {
           while (space(text[end])) end++;
           // Quoted fields outside a complete JSON candidate are still structured
           // evidence. Never leave their values to the plain-text regexes.
-          if (text[end] === ':' && (openPlain || text[start - 1] === '"')) throw new DiagnosticScrubError();
+          if (text[end] === ':') {
+            let before = start - 1;
+            while (before >= 0 && space(text[before])) before--;
+            if (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? '')) throw new DiagnosticScrubError();
+          }
         }
         start = end;
       } else start++;

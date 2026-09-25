@@ -196,6 +196,11 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   assert.throws(() => scrubSecrets(layered), /Diagnostic body rejected/);
   assert.equal(scrubSecrets('普通正文未闭合 { 和 [\r\n下一段业务内容'), '普通正文未闭合 { 和 [\r\n下一段业务内容');
   assert.equal(scrubSecrets('普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容'), '普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容');
+  assert.equal(scrubSecrets('{} setCookie=SYN_PLAIN_COOKIE'), '{} setCookie=[REDACTED]');
+  const layeredBrackets = JSON.stringify({ note: 'SYN_ORDINARY four layers { [ and CRLF\r\n' });
+  let wrappedBrackets = layeredBrackets;
+  for (let layer = 0; layer < 4; layer++) wrappedBrackets = JSON.stringify({ note: wrappedBrackets });
+  assert.equal(scrubSecrets(wrappedBrackets), wrappedBrackets);
   const mixed = scrubSecrets('普通正文未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_COOKIE","note":"SYN_MIXED_BUSINESS"}');
   assert.ok(mixed.includes('普通正文未闭合 { 和 [\r\n') && mixed.includes('SYN_MIXED_BUSINESS'));
   assert.ok(!mixed.includes('SYN_MIXED_COOKIE'));
@@ -294,6 +299,8 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_UNICODE_BUSINESS"', 'SYN_UNICODE_BUSINESS', 'SYN_NONE'],
+      [wrappedOrdinaryBrackets(), 'SYN_ORDINARY_FOUR_LAYERS', 'SYN_NONE'],
+      ['普通正文\r\n{} setCookie=SYN_PLAIN_COOKIE\r\n后文', '后文', 'SYN_PLAIN_COOKIE'],
       ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
     ] as const).entries()) {
       assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
@@ -307,6 +314,12 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
     }
   } finally { await f.app.close(); await pool.end(); }
 });
+
+function wrappedOrdinaryBrackets(): string {
+  let body = JSON.stringify({ note: 'SYN_ORDINARY_FOUR_LAYERS { [ \r\n' });
+  for (let layer = 0; layer < 4; layer++) body = JSON.stringify({ note: body });
+  return body;
+}
 
 test('#79 rejected diagnostics never call Blob put or register a partial snapshot', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
@@ -327,6 +340,8 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
       '{"note":"ordinary"}{] "Cookie":"SYN_LEAK_MARKER"}', '{[} "Cookie":"SYN_LEAK_MARKER"}]',
       '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
       '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"',
+      '{} setCookie:SYN_LEAK_MARKER', '[] otp:SYN_LEAK_MARKER', '{} secret:SYN_LEAK_MARKER',
+      '{note: text, } setCookie:SYN_LEAK_MARKER',
       'A'.repeat(10 * 1024 * 1024 + 1)]) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
@@ -340,6 +355,11 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
       const body = `${prefix}"${escaped}":"SYN_LEAK_MARKER"`;
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    for (const key of keys) for (const prefix of ['{} ', '[] ', '{] } ']) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body: `${prefix}${key}:SYN_LEAK_MARKER` }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
     for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} \\"Co\\\\u006Fkie\\":\\"SYN_LEAK_MARKER\\"',
       '{} "\\uD800":"SYN_INVALID_KEY"', '{"\\uD800":"SYN_INVALID_KEY"}', '{} "\\u00ZZ":"SYN_INVALID_ESCAPE"'])
