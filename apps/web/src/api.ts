@@ -1,5 +1,6 @@
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
+import type { FactDecisionRequest } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
@@ -98,6 +99,14 @@ export class ApiClient {
   }
   sourceProfile(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'RecognitionResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/source-profile`, undefined, {}, signal);
+  }
+  factCandidates(id: string, cursor?: string, signal?: AbortSignal) {
+    const query = new URLSearchParams({ limit: '100' });
+    if (cursor) query.set('cursor', cursor);
+    return this.request<Dto<'FactCandidateListResponse'>>('GET', `/projects/${encodeURIComponent(id)}/facts/candidates?${query}`, undefined, {}, signal);
+  }
+  decideFact(id: string, input: FactDecisionRequest, signal?: AbortSignal) {
+    return this.request<Dto<'FactDecisionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/facts/decisions`, input, {}, signal);
   }
   correctSourceProfile(id: string, materialId: string, input: Dto<'RecognitionPatchRequest'>) {
     return this.request<Dto<'RecognitionResponse'>>('PATCH', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/source-profile`, input, { 'If-Match': String(input.profile_version) });

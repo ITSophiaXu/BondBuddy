@@ -8,12 +8,13 @@
   "workspaces": [
     "packages/contracts",
     "packages/domain",
+    "packages/rule-pack-registry",
     "apps/api",
     "apps/worker",
     "apps/web"
   ],
   "scripts": {
-    "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web",
+    "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/rule-pack-registry && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web",
     "dev:web": "npm run dev -w @bondbuddy/web",
     "test:web": "npm test -w @bondbuddy/web",
     "check:contracts": "npm run check:examples -w @bondbuddy/contracts",

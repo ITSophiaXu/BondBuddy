@@ -22,6 +22,8 @@ export interface FactDecisionInput {
   /** Server-issued stable identifiers, reused unchanged when retrying the request. */
   readonly decisionId: string;
   readonly requestId: string;
+  /** Latest decision version observed by the reviewer; zero means no prior decision. */
+  readonly expectedVersion: number;
   readonly identity: FactIdentity;
   readonly resolution: 'selected' | 'unresolved';
   readonly selectedCandidateId?: string;
@@ -114,6 +116,7 @@ function validate(context: TrustedFactDecisionContext, input: FactDecisionInput)
     !input.decisionId.trim() || !input.requestId.trim() || input.reason.trim().length === 0 || input.reason.length > 2000) {
     throw fail('INVALID_FACT_DECISION');
   }
+  if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0) throw fail('INVALID_FACT_DECISION_VERSION');
   if (!['user', 'internal_reviewer', 'system'].includes(context.actorKind)) throw fail('INVALID_FACT_DECISION_ACTOR');
   if (typeof input.identity.accountId !== 'string' || input.identity.accountId !== context.ownerUserId ||
     typeof input.identity.entityId !== 'string' || !input.identity.entityId.trim() ||
@@ -182,6 +185,14 @@ export async function appendFactDecision(
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
       `fact-decision-identity:${context.ownerUserId}:${context.projectId}:${factKeyHash}`,
     ]);
+    const versionResult = await client.query(
+      `SELECT COALESCE(max(version), 0)::int AS version FROM bb_fact_decisions
+        WHERE owner_user_id = $1 AND project_id = $2 AND fact_key_hash = $3`,
+      [context.ownerUserId, context.projectId, factKeyHash],
+    );
+    const latestVersion = Number(versionResult.rows[0]?.version ?? 0);
+    if (input.expectedVersion !== latestVersion) throw fail('INPUT_REVISION_CONFLICT');
+    const version = latestVersion + 1;
 
     let provenance: Record<string, unknown> | null = null;
     const candidateResult = input.resolution === 'selected'
@@ -223,12 +234,6 @@ export async function appendFactDecision(
     } else if (!candidateResult.rows.some((candidate) => candidate.entity_id === input.identity.entityId &&
       factIdentityKey(parseJson(candidate.fact_key) as FactIdentity) === identityKey)) throw fail('FACT_CANDIDATE_NOT_FOUND');
 
-    const versionResult = await client.query(
-      `SELECT COALESCE(max(version), 0)::int AS version FROM bb_fact_decisions
-        WHERE owner_user_id = $1 AND project_id = $2 AND fact_key_hash = $3`,
-      [context.ownerUserId, context.projectId, factKeyHash],
-    );
-    const version = Number(versionResult.rows[0]?.version ?? 0) + 1;
     const id = input.decisionId;
     const inserted = await client.query(
       `INSERT INTO bb_fact_decisions

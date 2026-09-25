@@ -25,6 +25,8 @@ import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
+import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source.js';
+import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
@@ -188,9 +190,30 @@ export function createServer(settings: Settings = {}) {
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
-      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
+      if(p.kind==='update'){
+        const historical=resolved.filter(ref=>ref.role==='historical');
+        const historicalMaterials=historical.map(ref=>({material_id:ref.material_id,material_version:ref.material_version}));
+        if(historical.length!==1){
+          issuerIdentity=pendingIssuerIdentityBinding(historical.length===0?'historical_material_not_selected':'historical_material_selection_ambiguous',historicalMaterials);
+        }else{
+          const selected=historical[0]!;
+          const verified=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:selected.material_id,materialVersion:selected.material_version});
+          if(!verified){
+            issuerIdentity=pendingIssuerIdentityBinding('issuer_identity_source_missing_unreviewed_or_conflicting',historicalMaterials);
+          }else{
+            if(verified.materialId!==selected.material_id||verified.materialVersion!==selected.material_version)throw new Error('ISSUER_IDENTITY_SCOPE_MISMATCH');
+            issuerIdentity=verifiedIssuerIdentityBinding(verified);
+          }
+        }
+      }
       const revision=(p.latest_input_revision??0)+1;
-      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      // Update generation must only see the reviewed historical issuer name, never the browser draft label.
+      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      if(p.kind==='update'){
+        Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
+      }
       const hash=digest(canonical(manifest));
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]']);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
@@ -480,16 +503,27 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+      JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
+    const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
+    const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
+    const variant=pair?.revision_artifact_id===a.id?'revision':pair?.clean_artifact_id===a.id?'clean':pair?.baseline_artifact_id===a.id?'baseline':null;
+    const wordDelivery=variant ? {variant,revision_artifact_id:pair!.revision_artifact_id,clean_artifact_id:pair!.clean_artifact_id,
+      baseline_artifact_id:pair!.baseline_artifact_id,writer_version:pair!.writer_version,
+      source_sha256:pair!.source_sha256,baseline_hash:pair!.baseline_hash,
+      effective_baseline_sha256:pair!.effective_baseline_sha256,plan_hash:pair!.plan_hash,
+      replacements:pair!.replacements,columns:pair!.columns,pending_review_count:pair!.pending,
+      pending_review:pair!.pending_review} : undefined;
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
     await db().query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
-    return {artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString()};
+    return {artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString(),...(wordDelivery?{word_delivery:wordDelivery}:{})};
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+      JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
@@ -580,6 +614,25 @@ export function createServer(settings: Settings = {}) {
         if(!input)throw missing();
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
         const missingInputs:string[]=[],uncertainty:string[]=[];
+        const manifest=input.manifest as Record<string,unknown>;
+        if(manifest.kind==='update'){
+          const binding=manifest.issuer_identity;
+          if(!isVerifiedIssuerIdentityBinding(binding)){
+            const pending=binding&&typeof binding==='object'&&!Array.isArray(binding)?(binding as Record<string,unknown>).reason:null;
+            missingInputs.push(`issuer_identity_not_bound:${typeof pending==='string'?pending:'historical_issuer_identity_not_bound'}`);
+          }else if(manifest.issuer_entity_id!==binding.entity_id){
+            missingInputs.push('issuer_identity_pin_mismatch');
+          }else{
+            const material=(await client.query(`SELECT role,sha256,deleted_at FROM bb_material_versions
+              WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4`,[user,id,binding.material_id,binding.material_version])).rows[0];
+            if(!material||material.role!=='historical'||material.deleted_at||material.sha256.trim()!==binding.source_content_sha256){
+              missingInputs.push(`issuer_material_stale:${binding.material_id}:${binding.material_version}`);
+            }else{
+              const current=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,materialId:binding.material_id,materialVersion:binding.material_version});
+              if(!current||!issuerIdentityBindingMatches(binding,current))missingInputs.push(`issuer_identity_stale:${binding.material_id}:${binding.material_version}`);
+            }
+          }
+        }
         const refs=input.material_versions as {material_id:string;material_version:number}[];
         if(!refs.length)missingInputs.push('material_versions');
         for(const ref of refs){

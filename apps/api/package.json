@@ -60,6 +60,14 @@
       "types": "./dist/deletion-lifecycle.d.ts",
       "default": "./dist/deletion-lifecycle.js"
     },
+    "./issuer-identity-source": {
+      "types": "./dist/issuer-identity-source.d.ts",
+      "default": "./dist/issuer-identity-source.js"
+    },
+    "./issuer-identity-binding": {
+      "types": "./dist/issuer-identity-binding.d.ts",
+      "default": "./dist/issuer-identity-binding.js"
+    },
     "./library": {
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"
@@ -78,6 +86,7 @@
     "@azure/storage-blob": "^12.33.0",
     "@bondbuddy/contracts": "0.1.0",
     "@bondbuddy/domain": "0.1.0",
+    "@bondbuddy/rule-pack-registry": "0.1.0",
     "@sinclair/typebox": "^0.34.41",
     "argon2": "^0.44.0",
     "fast-xml-parser": "^5.11.1",
