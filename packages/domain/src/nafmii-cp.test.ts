@@ -26,6 +26,16 @@ test('CP product cases keep the one-year boundary distinct from SCP',()=>{
   assert.ok(identity?.required_inputs.includes('interest_start_date'));
   assert.ok(identity?.required_inputs.includes('maturity_date'));
   assert.ok(identity?.required_inputs.includes('stated_tenor'));
+  const positive=identity?.positive_examples.find(example=>example.example_id==='cp-identity-positive');
+  assert.ok(positive);
+  assert.match(positive.summary,/合成工程示例/);
+  assert.match(positive.summary,/11个月/);
+  assert.match(positive.summary,/2025-01-01/);
+  assert.match(positive.summary,/2025-12-01/);
+  assert.match(positive.summary,/1年内/);
+  assert.equal(positive.evidence_ref,'synthetic:cp-eleven-month-tenor');
+  assert.doesNotMatch(positive.summary,/365\s*天/);
+  assert.equal(nafmiiCpDraftRulePack.sample_suite?.cases.find(example=>example.case_id==='cp-synthetic-basic')?.evidence_ref,positive.evidence_ref);
   assert.match(identity?.boundaries.join('')??'',/365天/);
   assert.match(identity?.boundaries.join('')??'',/SCP.*270/);
   assert.equal(nafmiiCpCoverageManifest.items.find(item=>item.item_id==='mtn-ppn-scp-dfi')?.disposition,'not_applicable');
