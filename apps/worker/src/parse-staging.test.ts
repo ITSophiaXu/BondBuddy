@@ -17,8 +17,8 @@ test('SIGKILL leaves private staging; restart sweep reclaims only expired inacti
      import { writeFile } from 'node:fs/promises';
      import { join } from 'node:path';
      const s = await createParseStaging(process.argv[1]);
-     await writeFile(join(s.directory, 'source'), 'synthetic private source');
-     await writeFile(join(s.directory, 'records.ndjson'), 'synthetic evidence');
+     await writeFile(join(s.directory, 'source'), 'synthetic private source', { mode: 0o600 });
+     await writeFile(join(s.directory, 'records.ndjson'), 'synthetic evidence', { mode: 0o600 });
      process.stdout.write(s.directory + '\\n');
      setInterval(() => {}, 1000);`, root], { stdio: ['ignore', 'pipe', 'pipe'] });
   try {

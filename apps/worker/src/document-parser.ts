@@ -236,7 +236,7 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
     : request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ? (value.status==='failed'?['page_count']:['page_count','revision_summary'])
       : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        ? (value.status==='failed'?['page_count']:['page_count','worksheet_count','missing_formula_results'])
+        ? ['page_count','worksheet_count','missing_formula_results','cached_formula_results']
         : request.material.media_type==='text/csv'
           ? (value.status==='failed'?['page_count']:['page_count','encoding','delimiter'])
           : (value.status==='failed'?['page_count']:['page_count','encoding'])) ||
@@ -257,7 +257,10 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
       !Number.isSafeInteger(value.document.revision_summary.insertions) || Number(value.document.revision_summary.insertions)<0 ||
       !Number.isSafeInteger(value.document.revision_summary.deletions) || Number(value.document.revision_summary.deletions)<0) throw parserError('INVALID_PARSE_RESPONSE');
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-    if(!positiveInteger(value.document.worksheet_count) || !Number.isSafeInteger(value.document.missing_formula_results) || Number(value.document.missing_formula_results)<0) throw parserError('INVALID_PARSE_RESPONSE');
+    if(!positiveInteger(value.document.worksheet_count) || !Number.isSafeInteger(value.document.missing_formula_results) || Number(value.document.missing_formula_results)<0 ||
+      !Number.isSafeInteger(value.document.cached_formula_results) || Number(value.document.cached_formula_results)<0 ||
+      (Number(value.document.cached_formula_results)>0 && (value.status!=='needs_confirmation' ||
+        !value.warnings.some(warning=>isObject(warning) && warning.code==='XLSX_FORMULA_CACHE_UNVERIFIED')))) throw parserError('INVALID_PARSE_RESPONSE');
   } else if(!nonEmptyString(value.document.encoding,64) || (request.material.media_type==='text/csv' && !nonEmptyString(value.document.delimiter,1))) throw parserError('INVALID_PARSE_RESPONSE');
 
   for(const warning of value.warnings) {
@@ -266,11 +269,19 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
   }
   const recordIds=new Set<string>();
   const pageCount=value.document.page_count as number|null;
+  let cachedFormulaRecords=0;
   for(const record of value.records) {
     const validated=validateDocumentParseRecord(record,request,pageCount);
     if(recordIds.has(validated.record_id)) throw parserError('INVALID_PARSE_RESPONSE');
     recordIds.add(validated.record_id);
+    if(request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' &&
+      Object.hasOwn(validated.formatting,'cached_formula_result')) {
+      cachedFormulaRecords++;
+      if(!validated.uncertainty.includes('formula_cached_result_unverified')) throw parserError('INVALID_PARSE_RESPONSE');
+    }
   }
+  if(value.status!=='failed' && request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' &&
+    cachedFormulaRecords!==value.document.cached_formula_results) throw parserError('INVALID_PARSE_RESPONSE');
   if([value.parser_version,...value.warnings.flatMap(warning=>isObject(warning)?[warning.message]:[]),
     ...value.records.flatMap(record=>isObject(record)?[record.literal_quote,record.context,record.extractor_version]:[]),
     ...(isObject(value.error)?[value.error.message]:[])].some(item=>typeof item==='string' && item.includes(request.material.authorized_local_path))) {

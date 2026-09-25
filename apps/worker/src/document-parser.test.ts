@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { runDocumentParser, runDocumentParserToFile, type DocumentParseRequest } from './document-parser.js';
+import { createNativeFinancialFactExtractor } from './native-financial-fact-extractor.js';
+import type { SemanticFactExtractionRequest } from './fact-candidate-producer.js';
 
 const request:DocumentParseRequest={
   schema_version:'document-parse-request-v1',
@@ -101,8 +103,60 @@ test('worker validates type-specific PDF and DOCX anchors without fabricating DO
   await assert.rejects(runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(badDocx)}),/INVALID_PARSE_RESPONSE/);
 });
 
+test('XLSX response accepts the exact cached-formula count and keeps cached values unverified',async()=>{
+  const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}};
+  const cell={...response.records[0],locator_type:'xlsx_cell',locator:{sheet:'Synthetic',cell:'C3',merged_range:null,stable_ref:'xlsx:Synthetic:cell:C3'},
+    literal_quote:'=C2',formatting:{cached_formula_result:'123.45'},uncertainty:['formula_cached_result_unverified']};
+  const xlsx={...response,material:{...response.material,media_type:xlsxRequest.material.media_type},
+    status:'needs_confirmation',document:{page_count:null,worksheet_count:1,missing_formula_results:0,cached_formula_results:1},
+    warnings:[{code:'XLSX_FORMULA_CACHE_UNVERIFIED',message:'Synthetic source cache is unverified'}],records:[cell]};
+  assert.equal((await runDocumentParser(xlsxRequest,{invoke:async()=>JSON.stringify(xlsx)})).status,'needs_confirmation');
+  const invalid=[
+    {...xlsx,status:'parsed',warnings:[],records:[{...cell,uncertainty:[]}]},
+    {...xlsx,warnings:[]},
+    {...xlsx,document:{...xlsx.document,cached_formula_results:-1}},
+    {...xlsx,document:{...xlsx.document,cached_formula_results:'1'}},
+    {...xlsx,document:{...xlsx.document,cached_formula_results:1.5}},
+    {...xlsx,document:{...xlsx.document,cached_formula_results:Number.MAX_SAFE_INTEGER+1}},
+    {...xlsx,document:{...xlsx.document,cached_formula_results:0}},
+    {...xlsx,records:[{...cell,uncertainty:[]}]},
+    {...xlsx,document:{...xlsx.document,unknown_count:0}},
+    {...xlsx,document:{page_count:null,worksheet_count:1,missing_formula_results:0}},
+  ];
+  for(const candidate of invalid) await assert.rejects(runDocumentParser(xlsxRequest,{invoke:async()=>JSON.stringify(candidate)}),/INVALID_PARSE_RESPONSE/);
+});
+
 const repositoryRoot=join(dirname(fileURLToPath(import.meta.url)),'../../..');
-const localPython=join(repositoryRoot,'.venv','bin','python');
+const localPython=process.env.BB_PYTHON?.trim() || join(repositoryRoot,'.venv','bin','python');
+test('authorized zq-202312-02 XLSX crosses the real Python to Node parser boundary',{
+  skip:existsSync(localPython)?false:'repository .venv is not installed',
+},async()=>{
+  const path=join(repositoryRoot,'tests/samples/2026-09-25/zq-202312/2.5 发行人2023年末财务报表.xlsx');
+  const sha256=createHash('sha256').update(await readFile(path)).digest('hex');
+  assert.equal(sha256,'1904db38788dacc07603234ac83be81548493321abc45905601422a6a9b30a2f');
+  const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,material_id:'zq-202312-02',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    sha256,authorized_local_path:path}};
+  const parsed=await runDocumentParser(xlsxRequest,{pythonExecutable:localPython,repoRoot:repositoryRoot});
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.5');
+  assert.equal(parsed.status,'parsed');
+  assert.equal(parsed.records.length,1392);
+  assert.equal(parsed.warnings.length,0);
+  assert.equal(parsed.document.worksheet_count,8);
+  assert.equal(parsed.document.cached_formula_results,0);
+  const factRequest:SemanticFactExtractionRequest={
+    schema_version:'semantic-fact-extraction-request-v1',owner_user_id:'authorized-sample-owner',project_id:'authorized-zq-project',
+    input_revision:1,input_hash:'a'.repeat(64),issuer_identity_record_id:'reviewed-zq-identity',issuer_identity_version:1,
+    issuer_identity_hash:'b'.repeat(64),entity_id:'authorized-zq-entity',material_id:xlsxRequest.material.material_id,
+    material_version:1,material_sha256:sha256,parse_snapshot_id:'authorized-zq-parse-snapshot',
+    parse_response_sha256:createHash('sha256').update(JSON.stringify(parsed)).digest('hex'),
+    parser_version:parsed.parser_version,records:parsed.records,
+  };
+  const mapped=await createNativeFinancialFactExtractor(async()=>({status:parsed.status,warnings:parsed.warnings})).extract(factRequest);
+  assert.equal(mapped.facts.length,1);
+  assert.equal(mapped.needs_review.length,0);
+  const refs=new Set(parsed.records.map(record=>record.record_id));
+  assert.ok(mapped.facts[0]!.evidence_refs.every(ref=>refs.has(ref)));
+});
 test('worker accepts the actual Python subprocess response shape when the repository venv exists',{
   skip:existsSync(localPython)?false:'repository .venv is not installed',
 },async t=>{
