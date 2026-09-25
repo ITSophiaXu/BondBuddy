@@ -156,7 +156,7 @@ async function appendDecision(db: Pool, owner: string, projectId: string, reques
     await client.query('BEGIN'); transactionOpen = true;
     const project = await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR KEY SHARE', [owner, projectId]);
     if (!project.rows[0]) throw missing();
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-review-request:${owner}:${projectId}:${request.request_id}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-decision-request:${owner}:${projectId}:${request.request_id}`]);
     const previous = await client.query(
       `SELECT id,request_id,owner_user_id,project_id,fact_key_hash,fact_key,version,resolution,selected_candidate_id,reason,actor_kind,actor_id,created_at
          FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND request_id=$3`, [owner, projectId, request.request_id]);
@@ -170,7 +170,11 @@ async function appendDecision(db: Pool, owner: string, projectId: string, reques
       await client.query('COMMIT'); transactionOpen = false;
       return { row, identity: oldIdentity, keyHash: String(row.fact_key_hash).trim(), replayed: true };
     }
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-review-identity:${owner}:${projectId}:${keyHash}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`fact-decision-identity:${owner}:${projectId}:${keyHash}`]);
+    const versionResult = await client.query('SELECT COALESCE(max(version),0)::int AS version FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND fact_key_hash=$3', [owner, projectId, keyHash]);
+    const latestVersion = Number(versionResult.rows[0]?.version ?? 0);
+    if (request.expected_version !== latestVersion) throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Fact decision changed; reload the latest candidates and review again');
+    const version = latestVersion + 1;
     let selectedProvenance: Record<string, unknown> | null = null;
     if (request.resolution === 'selected') {
       if (!request.selected_candidate_id) throw new Problem(422, 'VALIDATION_FAILED', 'selected_candidate_id is required');
@@ -191,8 +195,6 @@ async function appendDecision(db: Pool, owner: string, projectId: string, reques
         [owner, projectId, keyHash]);
       if (!candidates.rows.some((row) => factIdentityKey(identityFromRow(row.fact_key, owner, row.entity_id, row.fact_key_hash)) === key)) throw missing();
     }
-    const versionResult = await client.query('SELECT COALESCE(max(version),0)::int AS version FROM bb_fact_decisions WHERE owner_user_id=$1 AND project_id=$2 AND fact_key_hash=$3', [owner, projectId, keyHash]);
-    const version = Number(versionResult.rows[0]?.version ?? 0) + 1;
     const inserted = await client.query(
       `INSERT INTO bb_fact_decisions(id,request_id,owner_user_id,project_id,fact_key_hash,fact_key,version,resolution,selected_candidate_id,selected_candidate_provenance,reason,actor_kind,actor_id)
        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb,$11,'user',$3)

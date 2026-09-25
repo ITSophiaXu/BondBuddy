@@ -392,6 +392,18 @@
       "schema": "MaterialParseJobResponse",
       "valid": false,
       "value": {"job_id": "synthetic-parse-job", "job_type": "parse", "subtype": "material_parse", "project_id": "synthetic-project", "material_id": "synthetic-material", "material_version": 1, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parser_version": "bondbuddy-document-parser-1.0.3", "state": "failed", "stage": "awaiting_ocr", "completed_stages": ["parse_evidence"], "attempts": 1, "max_attempts": 3, "error_code": "PARSER_EXPLODED", "outcome": "pending_ocr", "parse_status": "needs_confirmation", "profile_version": null, "pending_capabilities": ["ocr"], "updated_at": "2026-09-25T06:00:00Z"}
+    },
+    {
+      "name": "fact-decision-first-version",
+      "schema": "FactDecisionRequest",
+      "valid": true,
+      "value": {"decision_id": "decision-synthetic-1", "request_id": "request-synthetic-1", "expected_version": 0, "identity": {"entity_id": "issuer-synthetic-1", "scope": "consolidated", "metric": "operating_revenue", "period": {"start": "2024-01-01", "end": "2024-12-31"}, "currency": "CNY", "unit": "CNY_10000", "basis": "audited", "data_version": "parse-v1"}, "resolution": "selected", "selected_candidate_id": "candidate-synthetic-1", "reason": "Synthetic example only"}
+    },
+    {
+      "name": "fact-decision-missing-expected-version",
+      "schema": "FactDecisionRequest",
+      "valid": false,
+      "value": {"decision_id": "decision-synthetic-2", "request_id": "request-synthetic-2", "identity": {"entity_id": "issuer-synthetic-1", "scope": "consolidated", "metric": "operating_revenue", "period": {"start": "2024-01-01", "end": "2024-12-31"}, "currency": "CNY", "unit": "CNY_10000", "basis": "audited", "data_version": "parse-v1"}, "resolution": "selected", "selected_candidate_id": "candidate-synthetic-1", "reason": "Synthetic example only"}
     }
   ]
 }
