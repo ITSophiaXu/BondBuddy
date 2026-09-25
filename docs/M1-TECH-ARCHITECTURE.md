@@ -129,7 +129,7 @@ deploy/              # Compose、Nginx、部署与回滚
 
 Migration allocation: `0037` is #19's rule-pack sample binding; `0038` is #15's pinned fact-candidate ingestion; `0039` remains reserved for #17 and is not yet merged or executed; `0040` is #79's logical job and schema-rejection evidence.
 
-Schema-rejected execute requests accept the contract's 1–128 character opaque business key, including punctuation and Unicode. `0040` stores its SHA-256 key digest on the logical job instead of logging the submitted key; the operator timeline exposes that digest for correlation. Recursive JSON key sorting makes bounded schema-rejection fingerprints independent of object field order, while preserving array order. A claimed revision outside PostgreSQL's positive `integer` range is omitted from rejection evidence rather than causing the original 422 to become 503. Missing keys and bodies too large to fingerprint retain only the safe per-request evidence described above.
+Run-less execute rejections accept the contract's 1–128 character opaque business key, including punctuation and Unicode. `0040` stores its SHA-256 key digest on the logical job instead of logging the submitted key; the operator timeline exposes that digest for correlation. Recursive JSON key sorting makes bounded schema-rejection fingerprints independent of object field order, while preserving array order. A claimed revision outside PostgreSQL's positive `integer` range is omitted from rejection evidence rather than causing the original 422 to become 503. Missing keys and bodies too large to fingerprint retain only the safe per-request evidence described above.
 
 ## 4. 关键流程
 

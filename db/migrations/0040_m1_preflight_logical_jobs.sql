@@ -53,7 +53,7 @@ ALTER TABLE bb_jobs ADD CONSTRAINT bb_job_binding CHECK (
            ELSE input_revision > 0 AND input_hash ~ '^[a-f0-9]{64}$' END)
       AND material_id IS NULL AND library_source_id IS NULL AND lease_token IS NULL
       AND attempts=0
-      AND ((subtype='execute_rejected' AND execution_request_id IS NOT NULL
+      AND ((subtype='execute_rejected' AND execution_request_id IS NULL
             AND execution_request_key_hash ~ '^[a-f0-9]{64}$'
             AND request_hash ~ '^[a-f0-9]{64}$' AND rejection_http_status BETWEEN 400 AND 599)
         OR (subtype='execute_schema_rejected' AND execution_request_id IS NULL
