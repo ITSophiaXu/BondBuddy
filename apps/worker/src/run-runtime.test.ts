@@ -38,7 +38,7 @@ function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: DEFAULT_DOCUMENT_PARSER_VERSION, status: 'parsed',
     material: { material_id: m.material_id, material_version: m.material_version, media_type: m.media_type, sha256: m.sha256 },
     records: [{ record_id: 'line-1', material_id: m.material_id, material_version: m.material_version, content_hash: m.sha256, locator_type: 'text_line', locator: { line: 1, stable_ref: 'text:l000001' },
-      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: DEFAULT_DOCUMENT_PARSER_VERSION, confidence: 1, uncertainty: [], formatting: {} }],
+      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: DEFAULT_DOCUMENT_PARSER_VERSION, confidence: 1, uncertainty: [], formatting: {} }],
     warnings: [], document: { page_count: null, encoding: 'utf-8' }, error: null } as DocumentParseResponse;
 }
 

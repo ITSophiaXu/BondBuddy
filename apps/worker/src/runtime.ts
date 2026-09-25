@@ -17,6 +17,7 @@ import { modelGenerationRouter } from './model-generation-router.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
 import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
+import { historicalWordDeliveryStage } from './historical-word-stage.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -71,7 +72,8 @@ export class WorkerRuntime {
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
-      runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters }) }),
+      runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters }),
+        word_delivery: historicalWordDeliveryStage() }),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
   }
