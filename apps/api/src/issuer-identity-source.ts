@@ -336,7 +336,7 @@ export async function authorizeIssuerIdentityReviewer(
  * material version has an active-grant review and there is exactly one verified entity ID.
  */
 export async function loadVerifiedIssuerIdentitySourceRecord(
-  pool: IssuerIdentitySourcePool,
+  pool: Pick<IssuerIdentitySourcePool, 'query'>,
   scope: IssuerIdentitySourceScope,
 ): Promise<VerifiedIssuerIdentitySourceRecord | null> {
   validateScope(scope);
