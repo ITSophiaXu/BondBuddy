@@ -10,6 +10,7 @@
   },
   "synthetic": false,
   "acceptance_status": "pending_industry_review",
+  "execution_policy_record": "TARGET-CONFIRMATIONS.md#execution-policy-20260925",
   "evidence_convention": "DOCX locator 对 word/document.xml 中所有 w:p 按文档顺序从 1 起计数（含表格及空段落），不是 Word 页码；PDF 为从 1 起算的物理页；XLSX 为工作表/单元格。元数据核对不代表财务或行业验收。",
   "file_count": 15,
   "total_bytes": 26246609,
