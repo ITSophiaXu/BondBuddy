@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
-import { azureBlobs, uid } from './data.js';
-import { observeUsage } from './observability.js';
+import { azureBlobs, digest, transaction, uid } from './data.js';
+import { emitInternal, internalEvent, observeUsage } from './observability.js';
 import { action, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
-import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
+import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
 
 // Synthetic data only. No real provider, credential or customer material is used.
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -67,6 +68,29 @@ async function drain(pool: Pool, sink: LogSink, options = {}) {
   return total;
 }
 
+async function forwardInProcess(file: string, sinkName: string, crash: boolean) {
+  const source = `import { Pool } from 'pg';
+    const { forwardLogs, ndjsonFileSink } = await import(process.env.BB_TEST_LOG_MODULE);
+    const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+    try {
+      const result = await forwardLogs(pool, ndjsonFileSink(process.env.BB_TEST_LOG_FILE, process.env.BB_TEST_LOG_SINK), {
+        batchSize: 500, afterSinkAccept: ${crash ? 'async () => process.exit(17)' : 'undefined'}
+      });
+      process.stdout.write(JSON.stringify(result));
+    } finally { await pool.end(); }`;
+  return await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
+      env: { ...process.env, BB_TEST_LOG_MODULE: new URL('./log-ops.js', import.meta.url).href, BB_TEST_LOG_FILE: file, BB_TEST_LOG_SINK: sinkName }
+    });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', code => resolve({ code, stdout, stderr }));
+  });
+}
+
 test('#79 scrubber removes secrets, captcha codes and cookies', () => {
   const out = scrubSecrets(SECRET_PROMPT + '\nset-cookie: x=1\npassword: hunter2hunter2\neyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U');
   for (const leaked of ['482913', 'abc123secret', 'sk-synthetictestkey', 'syntheticbearertoken', 'hunter2hunter2', 'eyJhbGciOiJIUzI1NiJ9', 'x=1']) assert.ok(!out.includes(leaked), leaked);
@@ -81,6 +105,93 @@ test('#79 NDJSON sink cannot be split by log injection', async () => {
     const lines = (await readFile(file, 'utf8')).split('\n').filter(Boolean);
     assert.equal(lines.length, 1);
     assert.equal(JSON.parse(lines[0]).kind, 'error.recorded');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 file sink repeat and concurrent processes retain one durable line per key', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-concurrent-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const records = Array.from({ length: 35 }, (_, i) => ({ delivery_key: i.toString(16).padStart(64, '0'), outbox_id: `synthetic-${i}`, event: { kind: 'synthetic.event', seq: i } }));
+    const sink = ndjsonFileSink(file);
+    await Promise.all(Array.from({ length: 4 }, () => sink.deliver(records)));
+    await sink.deliver(records);
+    const lines = (await readFile(file, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines.length, records.length);
+    assert.equal(new Set(lines.map(line => line.delivery_key)).size, records.length);
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    assert.equal((await stat(`${file}.lock`)).mode & 0o777, 0o600);
+    await assert.rejects(sink.deliver([{ ...records[0], event: { kind: 'changed' } }]));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 file sink fails closed on torn/corrupt lines and unsafe permissions', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-corrupt-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'f'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file);
+    for (const body of ['{"delivery_key":"partial"', '{"delivery_key":"invalid"}\n', '\n']) {
+      await writeFile(file, body, { mode: 0o600 });
+      await assert.rejects(sink.deliver([record]));
+      assert.equal(await readFile(file, 'utf8'), body);
+    }
+    await writeFile(file, '', { mode: 0o600 });
+    await chmod(file, 0o644);
+    await assert.rejects(sink.deliver([record]));
+    assert.equal(await readFile(file, 'utf8'), '');
+    await chmod(file, 0o600);
+    await chmod(`${file}.lock`, 0o644);
+    await assert.rejects(sink.deliver([record]));
+    assert.equal(await readFile(file, 'utf8'), '');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 replay of a complete pre-existing line still acknowledges only after file sync', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-complete-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'e'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const line = JSON.stringify({ delivery_key: record.delivery_key, ...record.event }) + '\n';
+    await writeFile(file, line, { mode: 0o600 }); // models a complete append before the prior writer's fsync
+    await ndjsonFileSink(file).deliver([record]);
+    assert.equal(await readFile(file, 'utf8'), line);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 size cap fails closed for new keys but permits replay of a full segment', async () => {
+  assert.equal(ndjsonSizeCapFromEnv({}), 64 * 1024 * 1024);
+  assert.throws(() => ndjsonSizeCapFromEnv({ BB_LOG_SINK_MAX_BYTES: '0' }));
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-cap-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const first = { delivery_key: 'a'.repeat(64), outbox_id: 'synthetic-a', event: { kind: 'synthetic.event', padding: 'x'.repeat(200) } };
+    const next = { delivery_key: 'b'.repeat(64), outbox_id: 'synthetic-b', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file, 'ndjson_file', 350);
+    await sink.deliver([first]);
+    const original = await readFile(file, 'utf8');
+    assert.ok(Buffer.byteLength(original) < 350);
+    await sink.deliver([first]);
+    assert.equal(await readFile(file, 'utf8'), original);
+    await assert.rejects(sink.deliver([next]));
+    assert.equal(await readFile(file, 'utf8'), original);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 replay also detects a key in a legacy rotated segment', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-archive-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'c'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file);
+    await sink.deliver([record]);
+    const original = await readFile(file, 'utf8');
+    await rename(file, `${file}.1`); // models a pre-fix scheduler rotation before PG acknowledgement
+    await sink.deliver([record]);
+    assert.equal(await readFile(`${file}.1`, 'utf8'), original);
+    assert.equal(await readFile(file, 'utf8'), '');
+    await writeFile(`${file}.1`, '{"delivery_key":"partial"', { mode: 0o600 });
+    await assert.rejects(sink.deliver([record]), 'an incomplete archive is not silently ignored');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -257,6 +368,170 @@ test('#79 forwarding drills: sink outage, process crash and replay never lose or
   } finally { await f.app.close(); await pool.end(); }
 });
 
+test('#79 production file sink survives two independent processes with crash before PG ack', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-replay-'));
+  const f = await fixture(pool);
+  try {
+    await drain(pool, new MemorySink('synthetic_prior_outbox'));
+    const { lease } = await f.runFor(f.ownerA, 'Synthetic file crash drill');
+    for (let i = 0; i < 35; i++) await recordPotentialCall(pool, lease, `synthetic-call-${i}`, 1, { modelId: 'synthetic-model' });
+    const expected = (await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n;
+    assert.ok(expected >= 35);
+    const file = join(dir, 'sink.ndjson');
+    const sinkName = `file_${uid().replace(/-/g, '').slice(0, 24)}`;
+    const first = await forwardInProcess(file, sinkName, true);
+    assert.equal(first.code, 17, first.stderr);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE sink=$1', [sinkName])).rows[0].n, 0);
+    await pool.query("UPDATE bb_outbox SET lease_until=now()-interval '1 second' WHERE aggregate_type='observability' AND delivered_at IS NULL AND lease_token IS NOT NULL");
+    const second = await forwardInProcess(file, sinkName, false);
+    assert.equal(second.code, 0, second.stderr);
+    assert.equal(JSON.parse(second.stdout).delivered, expected);
+    const lines = (await readFile(file, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines.length, expected, 'replay added no physical lines');
+    assert.equal(new Set(lines.map(line => line.delivery_key)).size, expected);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE sink=$1', [sinkName])).rows[0].n, expected);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n, 0);
+  } finally { await f.app.close(); await pool.end(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 a missing source event blocks the whole claimed batch before sink or PG ACK', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const missingId = uid();
+  const valid = internalEvent({ kind: 'error.recorded', owner: 'synthetic-missing', traceId: `synthetic-missing-${uid()}`, stage: 'synthetic_stage' });
+  const sink = new MemorySink(`missing_${uid().slice(0, 8)}`);
+  let validOutboxId: string | undefined;
+  try {
+    await transaction(pool, client => emitInternal(client, valid));
+    validOutboxId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [valid.event_id])).rows[0].id;
+    await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+      VALUES($1,'synthetic-missing','observability',$2,'error.recorded','{}',now()-interval '1 day')`, [missingId, uid()]);
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '2 days' WHERE id=$1", [validOutboxId]);
+    const result = await forwardLogs(pool, sink, { batchSize: 2, retrySeconds: 0 });
+    assert.deepEqual(result, { claimed: 2, delivered: 0, failed: 2 });
+    assert.equal(sink.calls, 0);
+    const rows = (await pool.query('SELECT id,delivered_at,last_delivery_error,lease_token FROM bb_outbox WHERE id=ANY($1) ORDER BY id', [[validOutboxId, missingId]])).rows;
+    assert.equal(rows.length, 2);
+    for (const row of rows) {
+      assert.equal(row.delivered_at, null);
+      assert.equal(row.last_delivery_error, 'evidence_missing');
+      assert.equal(row.lease_token, null);
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=ANY($1)', [[validOutboxId, missingId]])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+    assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='evidence_persist_failed' AND detail->>'reason_code'='log_event_missing'")).rowCount);
+  } finally {
+    await pool.query('DELETE FROM bb_outbox WHERE id=ANY($1)', [[validOutboxId, missingId].filter(Boolean)]);
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
+test('#79 malformed outbox envelope or source event blocks the entire PG batch', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const owner = `synthetic-contract-${uid().slice(0, 8)}`;
+  const cases: Array<{ name: string; payload?: (id: string) => unknown; source?: (event: ReturnType<typeof internalEvent>) => unknown; mixed: boolean }> = [
+    { name: 'unknown payload schema version', payload: id => ({ event_id: id, schema_version: 2 }), mixed: false },
+    { name: 'mixed valid and wrong-version payload', payload: id => ({ event_id: id, schema_version: 2 }), mixed: true },
+    { name: 'missing payload field', payload: id => ({ event_id: id }), mixed: false },
+    { name: 'extra payload field', payload: id => ({ event_id: id, schema_version: 1, untrusted: true }), mixed: false },
+    { name: 'wrong payload value', payload: id => ({ event_id: `${id}-wrong`, schema_version: 1 }), mixed: false },
+    { name: 'invalid source schema version', source: event => ({ ...event, schema_version: 2 }), mixed: false },
+    { name: 'extra source field', source: event => ({ ...event, untrusted: true }), mixed: false },
+    { name: 'missing source field', source: event => { const { occurred_at: _removed, ...rest } = event; return rest; }, mixed: false }
+  ];
+  try {
+    for (const variant of cases) {
+      const sink = new MemorySink(`contract_${uid().slice(0, 8)}`);
+      const bad = internalEvent({ kind: 'error.recorded', owner, traceId: uid(), stage: 'synthetic_stage' });
+      const good = variant.mixed ? internalEvent({ kind: 'error.recorded', owner, traceId: uid(), stage: 'synthetic_stage' }) : null;
+      const outboxIds = [uid(), ...(good ? [uid()] : [])];
+      await pool.query(`INSERT INTO bb_observability_events(id,owner_user_id,trace_id,kind,event)
+        VALUES($1,$2,$3,$4,$5)`, [bad.event_id, owner, bad.trace_id, bad.kind, variant.source?.(bad) ?? bad]);
+      if (good) await pool.query(`INSERT INTO bb_observability_events(id,owner_user_id,trace_id,kind,event)
+        VALUES($1,$2,$3,$4,$5)`, [good.event_id, owner, good.trace_id, good.kind, good]);
+      await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+        VALUES($1,$2,'observability',$3,$4,$5,now()-interval '3 days')`,
+        [outboxIds[0], owner, bad.event_id, bad.kind, variant.payload?.(bad.event_id) ?? { event_id: bad.event_id, schema_version: 1 }]);
+      if (good) await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+        VALUES($1,$2,'observability',$3,$4,$5,now()-interval '2 days')`,
+        [outboxIds[1], owner, good.event_id, good.kind, { event_id: good.event_id, schema_version: 1 }]);
+      try {
+        assert.deepEqual(await forwardLogs(pool, sink, { batchSize: outboxIds.length, retrySeconds: 0 }),
+          { claimed: outboxIds.length, delivered: 0, failed: outboxIds.length }, variant.name);
+        assert.equal(sink.calls, 0, variant.name);
+        const rows = (await pool.query('SELECT delivered_at,last_delivery_error,lease_token FROM bb_outbox WHERE id=ANY($1)', [outboxIds])).rows;
+        assert.equal(rows.length, outboxIds.length, variant.name);
+        for (const row of rows) {
+          assert.equal(row.delivered_at, null, variant.name);
+          assert.equal(row.last_delivery_error, 'evidence_missing', variant.name);
+          assert.equal(row.lease_token, null, variant.name);
+        }
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=ANY($1)', [outboxIds])).rows[0].n, 0, variant.name);
+        assert.equal((await gateState(pool)).state, 'paused', variant.name);
+        assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='evidence_persist_failed' AND detail->>'reason_code'='log_event_missing'")).rowCount, variant.name);
+      } finally {
+        await pool.query('DELETE FROM bb_outbox WHERE id=ANY($1)', [outboxIds]);
+        if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+        resetProcessGateForTests();
+      }
+    }
+  } finally { await pool.end(); }
+});
+
+test('#79 a conflicting existing receipt cannot ACK a different outbox event', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const sink = new MemorySink(`conflict_${uid().slice(0, 8)}`);
+  try {
+    const original = internalEvent({ kind: 'error.recorded', owner: 'synthetic-conflict', traceId: `synthetic-original-${uid()}`, stage: 'synthetic_stage' });
+    const other = internalEvent({ kind: 'error.recorded', owner: 'synthetic-conflict', traceId: `synthetic-other-${uid()}`, stage: 'synthetic_stage' });
+    await transaction(pool, async client => { await emitInternal(client, original); await emitInternal(client, other); });
+    const originalId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [original.event_id])).rows[0].id;
+    const otherId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [other.event_id])).rows[0].id;
+    const key = digest(`${sink.name}:${originalId}`);
+    await pool.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,1)', [otherId, sink.name, key]);
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '2 days' WHERE id=$1", [originalId]);
+    await assert.rejects(forwardLogs(pool, sink, { batchSize: 1 }), /Inconsistent log delivery receipt/);
+    assert.equal(sink.calls, 1, 'sink acceptance precedes PG receipt validation');
+    assert.equal((await pool.query('SELECT delivered_at FROM bb_outbox WHERE id=$1', [originalId])).rows[0].delivered_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=$1', [originalId])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+  } finally {
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
+test('#79 PG event lookup outage cannot call the sink or acknowledge the outbox', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const sink = new MemorySink(`lookup_${uid().slice(0, 8)}`);
+  const event = internalEvent({ kind: 'error.recorded', owner: 'synthetic-lookup', traceId: `synthetic-lookup-${uid()}`, stage: 'synthetic_stage' });
+  let outboxId: string | undefined;
+  try {
+    await transaction(pool, client => emitInternal(client, event));
+    outboxId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [event.event_id])).rows[0].id;
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '3 days' WHERE id=$1", [outboxId]);
+    const failedLookup = new Proxy(pool, { get(target, key) {
+      if (key === 'query') return (sql: string, ...args: unknown[]) => sql.startsWith('SELECT id,owner_user_id,kind,event FROM bb_observability_events')
+        ? Promise.reject(Object.assign(new Error('synthetic PG lookup outage'), { code: '08006' })) : (target.query as (...values: unknown[]) => unknown)(sql, ...args);
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } }) as Pool;
+    await assert.rejects(forwardLogs(failedLookup, sink, { batchSize: 1 }), (error: any) => error.code === '08006');
+    assert.equal(sink.calls, 0);
+    assert.equal((await pool.query('SELECT delivered_at FROM bb_outbox WHERE id=$1', [outboxId])).rows[0].delivered_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=$1', [outboxId])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+  } finally {
+    if (outboxId) await pool.query('DELETE FROM bb_outbox WHERE id=$1', [outboxId]);
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
 test('#79 evidence gate: DB transaction failure pauses new external calls and raises an alert', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
@@ -274,8 +549,8 @@ test('#79 evidence gate: DB transaction failure pauses new external calls and ra
     await assert.rejects(recordPotentialCall(faulty, lease, 'gate-call', 1), (e: any) => e.code === '08006');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 0, 'rolled back, nothing half-written');
     assert.equal((await gateState(pool)).state, 'paused');
-    const alert = (await pool.query("SELECT a.* FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
-    assert.equal(alert.detail.reason_code, 'call_intent_not_persisted');
+    const pause = (await pool.query("SELECT g.reason_code FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
+    assert.equal(pause.reason_code, 'call_intent_not_persisted');
     // Every process now refuses new calls, even with a healthy connection.
     await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 1), (e: any) => e.status === 503 && e.code === 'DATA_UNAVAILABLE');
     const gate = await f.as(f.reader)('GET', '/api/v1/admin/evidence-gate');
