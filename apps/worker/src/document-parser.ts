@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDiagnostic } from './parser-diagnostics.js';
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
@@ -61,11 +62,16 @@ export type DocumentParseResponse = {
   error: {code:string;message:string}|null;
 };
 
-type Invoke = (serializedRequest:string, options:{pythonExecutable:string;repoRoot:string;timeoutMs:number;maxOutputBytes:number})=>Promise<string>;
+type InvokeOutput = string|{stdout:string;stderr:Buffer;stderrBytes:number};
+type Invoke = (serializedRequest:string, options:{pythonExecutable:string;repoRoot:string;timeoutMs:number;maxOutputBytes:number})=>Promise<InvokeOutput>;
 
-function parserError(code:string):Error {
-  const error=new Error(code);
+export type DocumentParserError = Error & {code:string;diagnostic?:ParserStderrDiagnostic|null;stderr?:{captured:Buffer;bytes:number}};
+
+function parserError(code:string, stderr?:{captured:Buffer;bytes:number}):DocumentParserError {
+  const error=new Error(code) as DocumentParserError;
   error.name='DocumentParserError';
+  error.code=code;
+  if(stderr)error.stderr=stderr;
   return error;
 }
 
@@ -246,34 +252,37 @@ const invokePython:Invoke = (serializedRequest,{pythonExecutable,repoRoot,timeou
   const stderr:Buffer[]=[];
   let stdoutBytes=0;
   let stderrBytes=0;
+  let capturedStderr=0;
   let settled=false;
-  const stop=(error:Error)=>{
+  const stderrSnapshot=()=>({captured:Buffer.concat(stderr),bytes:stderrBytes});
+  const stop=(code:string)=>{
     if(settled)return;
     settled=true;
     clearTimeout(timer);
     child.kill('SIGKILL');
-    reject(error);
+    reject(parserError(code,stderrSnapshot()));
   };
-  const timer=setTimeout(()=>stop(parserError('DOCUMENT_PARSER_TIMEOUT')),timeoutMs);
+  const timer=setTimeout(()=>stop('DOCUMENT_PARSER_TIMEOUT'),timeoutMs);
   child.stdout.on('data',(chunk:Buffer)=>{
     stdoutBytes+=chunk.length;
-    if(stdoutBytes>maxOutputBytes)return stop(parserError('DOCUMENT_PARSER_OUTPUT_LIMIT'));
+    if(stdoutBytes>maxOutputBytes)return stop('DOCUMENT_PARSER_OUTPUT_LIMIT');
     stdout.push(chunk);
   });
+  // Stderr never decides the outcome. Keep the first 64 KiB for the diagnostic and count the rest.
   child.stderr.on('data',(chunk:Buffer)=>{
     stderrBytes+=chunk.length;
-    if(stderrBytes<=64*1024)stderr.push(chunk);
+    const room=PARSER_STDERR_CAPTURE_BYTES-capturedStderr;
+    if(room>0){const kept=chunk.subarray(0,room);stderr.push(kept);capturedStderr+=kept.length;}
   });
-  child.on('error',()=>stop(parserError('DOCUMENT_PARSER_UNAVAILABLE')));
+  child.on('error',()=>stop('DOCUMENT_PARSER_UNAVAILABLE'));
   child.on('close',code=>{
     if(settled)return;
     settled=true;
     clearTimeout(timer);
-    if(code!==0)return reject(parserError('DOCUMENT_PARSER_PROCESS_FAILED'));
-    if(stderrBytes>0)return reject(parserError('DOCUMENT_PARSER_STDERR'));
-    resolveOutput(Buffer.concat(stdout).toString('utf8'));
+    if(code!==0)return reject(parserError('DOCUMENT_PARSER_PROCESS_FAILED',stderrSnapshot()));
+    resolveOutput({stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr),stderrBytes});
   });
-  child.stdin.on('error',()=>stop(parserError('DOCUMENT_PARSER_PROCESS_FAILED')));
+  child.stdin.on('error',()=>stop('DOCUMENT_PARSER_PROCESS_FAILED'));
   child.stdin.end(serializedRequest);
 });
 
@@ -283,19 +292,45 @@ export async function runDocumentParser(request:DocumentParseRequest, options:{
   timeoutMs?:number;
   maxOutputBytes?:number;
   invoke?:Invoke;
+  /** Receives the redacted stderr diagnostic (or null) for every attempt, successful or not. */
+  onDiagnostic?:(diagnostic:ParserStderrDiagnostic|null)=>void;
 }={}):Promise<DocumentParseResponse> {
   validateRequest(request);
   const timeoutMs=options.timeoutMs??5*60_000;
   const maxOutputBytes=options.maxOutputBytes??DOCUMENT_PARSER_MAX_OUTPUT_BYTES;
   if(!Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>30*60_000 || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes<1024 || maxOutputBytes>256*1024*1024) throw parserError('INVALID_PARSE_RUNNER_OPTIONS');
   const serialized=JSON.stringify(request);
-  const output=await (options.invoke??invokePython)(serialized,{
-    pythonExecutable:options.pythonExecutable??'python3',
-    repoRoot:options.repoRoot??process.cwd(),
-    timeoutMs,
-    maxOutputBytes,
-  });
-  let parsed:unknown;
-  try {parsed=JSON.parse(output);} catch {throw parserError('INVALID_PARSE_RESPONSE');}
-  return validateDocumentParseResponse(parsed,request);
+  const privatePaths=[request.material.authorized_local_path,resolve(request.material.authorized_local_path,'..'),options.repoRoot??process.cwd()];
+  let diagnostic:ParserStderrDiagnostic|null=null;
+  try {
+    let output:InvokeOutput;
+    try {
+      output=await (options.invoke??invokePython)(serialized,{
+        pythonExecutable:options.pythonExecutable??'python3',
+        repoRoot:options.repoRoot??process.cwd(),
+        timeoutMs,
+        maxOutputBytes,
+      });
+    } catch(error) {
+      const failure=(error instanceof Error && error.name==='DocumentParserError')?error as DocumentParserError:parserError('DOCUMENT_PARSER_PROCESS_FAILED');
+      if(failure.stderr)diagnostic=classifyParserStderr(failure.stderr.captured,failure.stderr.bytes,privatePaths);
+      delete failure.stderr;
+      failure.diagnostic=diagnostic;
+      throw failure;
+    }
+    const stdout=typeof output==='string'?output:output.stdout;
+    if(typeof output!=='string')diagnostic=classifyParserStderr(output.stderr,output.stderrBytes,privatePaths);
+    if(Buffer.byteLength(stdout,'utf8')>maxOutputBytes)throw withDiagnostic(parserError('DOCUMENT_PARSER_OUTPUT_LIMIT'),diagnostic);
+    let parsed:unknown;
+    try {parsed=JSON.parse(stdout);} catch {throw withDiagnostic(parserError('INVALID_PARSE_RESPONSE'),diagnostic);}
+    try {return validateDocumentParseResponse(parsed,request);}
+    catch(error) {throw withDiagnostic(error as DocumentParserError,diagnostic);}
+  } finally {
+    options.onDiagnostic?.(diagnostic);
+  }
+}
+
+function withDiagnostic(error:DocumentParserError,diagnostic:ParserStderrDiagnostic|null):DocumentParserError {
+  error.diagnostic=diagnostic;
+  return error;
 }

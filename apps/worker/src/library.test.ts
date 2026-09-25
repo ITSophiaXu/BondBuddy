@@ -415,3 +415,25 @@ test('Azurite-backed ingest stores bytes under library/ and verifies the hash on
     assert.ok((await blobs.get(row.blob_key)).equals(bytes));
   } finally { await pool.end(); }
 });
+
+test('harmless parser stderr no longer fails a version; the redacted diagnostic stays in the parse summary', { skip }, async () => {
+  const t = await setup();
+  try {
+    const diagnostic = { bytes: 42, truncated: false, classes: ['PDF_WRONG_POINTING_OBJECT' as const], unclassified_lines: 0, excerpt: 'Ignoring wrong pointing object 7 0 (offset 0)' };
+    const logged: unknown[] = [];
+    t.deps.log = line => { logged.push(line); };
+    t.deps.parser = async (request, hooks) => { hooks?.onDiagnostic?.(diagnostic); return syntheticParser(request); };
+    t.source.add('W', 1, 'w1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const v = await t.versionOf('W', 1);
+    assert.notEqual(v.state, 'failed');
+    const summary = (await t.pool.query('SELECT parse_summary FROM bb_library_document_versions WHERE id=$1', [v.id])).rows[0].parse_summary;
+    assert.deepEqual(summary.parser_stderr, diagnostic);
+    // A real failure still fails closed and the diagnostic rides along in the pipeline log.
+    t.deps.parser = async (_request, hooks) => { hooks?.onDiagnostic?.(diagnostic); throw Object.assign(new Error('INVALID_PARSE_RESPONSE'), { name: 'DocumentParserError' }); };
+    t.source.add('X', 1, 'x1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    assert.equal((await t.versionOf('X', 1)).state, 'failed');
+    assert.ok(logged.some(line => JSON.stringify(line).includes('"error":"INVALID_PARSE_RESPONSE"') && JSON.stringify(line).includes('PDF_WRONG_POINTING_OBJECT')));
+  } finally { await t.pool.end(); }
+});
