@@ -46,6 +46,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_project_events WHERE project_id=$1',[project])).rows[0].n,1,'completion replay does not duplicate the project event');
     const changedComplete=await send('POST',completeUrl,{byte_size:bytes.length,sha256:'a'.repeat(64)});assert.equal(changedComplete.statusCode,409);assert.equal(changedComplete.json().code,'IDEMPOTENCY_CONFLICT');
     const savePdf=async(filename:string)=>{
+      const bytes=pdfSample({tag:filename}),sha=digest(bytes);
       const created=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename,media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});assert.equal(created.statusCode,201,created.body);
       assert.equal((await send('PUT',created.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
       const saved=await send('POST',`/api/v1/projects/${project}/materials/uploads/${created.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha});assert.equal(saved.statusCode,200,saved.body);
@@ -86,7 +87,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,14);
     await pool.query("CREATE FUNCTION bb_fail_test_project_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic project event failure'; END $$");
     await pool.query('CREATE TRIGGER bb_fail_test_project_event BEFORE INSERT ON bb_project_events FOR EACH ROW EXECUTE FUNCTION bb_fail_test_project_event()');
-    const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'});
+    const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'notes'});
     assert.equal((await send('PUT',upload2.json().upload_url,bytes,{'content-type':'application/octet-stream'})).statusCode,204);
     const outboxBeforeFailedCompletion=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");
     assert.equal((await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload2.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha})).statusCode,500);

@@ -1,5 +1,11 @@
 # M1 persistent API and M1-02 session slice
 
+## #12 upload reuse and capacity follow-up
+
+Apply append-only migration `0018_m1_upload_reuse.sql` before this API. Equal verified content within one owner/project/role resolves to the existing live material and exact version, even when renamed or completed concurrently. Completion can return the canonical material's earlier filename/upload ID; its public DTO is unchanged. The private immutable reuse receipt and `upload.reused` outbox commit together. A duplicate never inserts a second `material.persisted` or project material event. Completion retries recheck canonical Blob size/hash, fail closed on missing bytes, and cannot revive deleted materials.
+
+Redundant staging remains `received`, is no longer writable, and follows the existing configured orphan grace/tombstone cleaner. Its receipt remains replayable after staging purge. New material capacity is checked under the project lock: 60 undeleted versions / 500 MiB; single uploads remain at most 100 MiB. This counts saved materials, not a staging-space reservation quota. Reuse is checked before capacity, so duplicates are still accepted at capacity. Existing snapshots/versions and deployed migrations are untouched. Read [the #12 acceptance record](../web/UPLOAD-ACCEPTANCE.md) for tested boundaries, small-file timings and remaining #8/#76 deployment/recognition gates.
+
 ## #11 update project draft fields
 
 Migration `0013_m1_update_project_details.sql` adds a private `bb_projects.update_details` JSONB object; apply all migrations in order before deploying this API. No old migration or historical input snapshot is rewritten. POST defaults missing details to all unknown/null and an empty use list. PATCH omission preserves details; supplying `update_details` replaces the **entire schema-validated object**. GET returns canonical defaults for pre-migration projects. The shared contract defines history choice, target cutoff, separate registration/issuance decimal amounts and units, flexible bond/agency/rating text, six funding purposes, other information and supplementary notes. Existing market/offering and If-Match checks still apply.

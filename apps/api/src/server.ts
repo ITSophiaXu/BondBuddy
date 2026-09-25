@@ -2,7 +2,7 @@ import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
-import { M1_UPLOAD_MIME_TYPES, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { action as queueAction, enqueue } from './queue.js';
@@ -14,7 +14,7 @@ export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
-const MAX_BYTES = 104857600;
+const MAX_BYTES = M1_UPLOAD_LIMITS.fileBytes;
 const DEFAULT_PROJECT_EVENT_PAGE_SIZE = 50;
 const MAX_PROJECT_EVENT_PAGE_SIZE = 100;
 const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
@@ -165,6 +165,7 @@ export function createServer(settings: Settings = {}) {
     const bytes=request.body;if(!Buffer.isBuffer(bytes))throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
     await transaction(db(),async client=>{
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
+      if((await client.query('SELECT 1 FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND upload_id=$2',[user,uploadId])).rowCount)throw conflict('IDEMPOTENCY_CONFLICT','Upload already resolved; retry completion');
       if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
       if(u.state!=='uploading'&&u.state!=='received')throw missing();
       if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
@@ -191,15 +192,40 @@ export function createServer(settings: Settings = {}) {
   app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async request=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id'),b=body<{byte_size:number;sha256:string}>(request);
     return transaction(db(),async client=>{
-      await project(client,user,id);
+      // Same lock order as deletion/snapshot creation; concurrent equal uploads resolve once.
+      await project(client,user,id,true);
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
-      if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);if(!existing.rows[0])throw missing();return materialDto(existing.rows[0]);}
+      const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
+      const checkedMaterial=async (m:any)=>{
+        if(!m)throw missing();
+        const stored=await blob().getIfExistsBounded(m.object_key,Number(m.byte_size));
+        if(!stored||stored.length!==Number(m.byte_size)||digest(stored)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
+        return materialDto(m);
+      };
+      if(receipt.rows[0]){
+        const r=receipt.rows[0];
+        const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,id,r.material_id,r.material_version]);
+        return checkedMaterial(existing.rows[0]);
+      }
+      if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);return checkedMaterial(existing.rows[0]);}
       if(u.state==='deleting'||u.state==='purged')throw missing();
       if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
       const bytes=await blob().get(u.object_key);
       if(bytes.length!==b.byte_size||digest(bytes)!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
       const media=await verifiedMedia(bytes,u.declared_media_type);
+      const duplicate=await client.query(`SELECT * FROM bb_material_versions
+        WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL
+        ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,media]);
+      if(duplicate.rows[0]){
+        const m=duplicate.rows[0], result=await checkedMaterial(m);
+        await client.query('INSERT INTO bb_upload_reuse_receipts(upload_id,owner_user_id,project_id,material_id,material_version) VALUES($1,$2,$3,$4,$5)',[uploadId,user,id,m.id,m.version]);
+        await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.reused',$4)",[uid(),user,uploadId,{project_id:id,material_id:m.id,material_version:m.version}]);
+        return result;
+      }
+      const capacity=(await client.query('SELECT count(*)::int AS files,COALESCE(sum(byte_size),0)::bigint AS bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id])).rows[0];
+      if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+b.byte_size>M1_UPLOAD_LIMITS.projectBytes)
+        throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const materialId=uid();
       const inserted=await client.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'persisted') RETURNING *",[materialId,user,id,uploadId,u.role,u.filename,media,b.byte_size,b.sha256,u.object_key]);
       await client.query("UPDATE bb_uploads SET state='completed' WHERE owner_user_id=$1 AND id=$2",[user,uploadId]);

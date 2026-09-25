@@ -91,3 +91,6 @@ BB_E2E_REAL_API=1 BB_E2E_LIVE=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
 ## #14 OCR 原页核对
 
 材料行可打开识别核对页，查看受权 worker 已生成的结果、原页片段及版本化用户校正。读取、图片与写入均走同源 owner API；没有结果时明确显示不可查看。用户校正不等于审计确认。真实 Tesseract、存储、预算和运行说明见 [OCR 交接](../../python/OCR-HANDOFF.md)。自动预检调度和下游事实消费仍待接入，不在上传后偷偷启动全文 OCR。
+# #12 上传补充验收
+
+上传的条件分区、排队、复用版本与原 session 恢复行为，以及本次取得的真实数据库/浏览器证据，见 [UPLOAD-ACCEPTANCE.md](./UPLOAD-ACCEPTANCE.md)。接口仍复用公共契约；页面不会把文件传完或保存完成当作源信息识别完成。
