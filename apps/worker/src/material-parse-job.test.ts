@@ -1,0 +1,256 @@
+import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import { Pool } from 'pg';
+import { createServer } from '@bondbuddy/api';
+import { azureBlobs } from '@bondbuddy/api/data';
+import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, succeedMaterialParse } from '@bondbuddy/api/material-jobs';
+import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
+import { makeWorkerDocxFixture } from './docx-test-fixture.js';
+import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
+
+// All data, parser output and identities here are synthetic. No real material or provider is used.
+const connection = process.env.BB_TEST_DATABASE_URL;
+const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const ORIGIN = 'http://bondbuddy.test';
+const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+// 1x1 synthetic PNG; images have no native parser and must wait for OCR.
+const PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
+  const material = request.material;
+  const snippets = request.material.media_type === DOCX ? [
+    ['venue-cover', '本期债券发行场所：上海证券交易所。', '募集说明书封面'],
+    ['venue-overview', '本期债券在上海证券交易所发行。', '本次发行概况'],
+    ['offering-cover', '本期债券采取非公开发行方式。', '募集说明书封面'],
+    ['offering-overview', '本期公司债券采用私募发行。', '本次发行概况'],
+    ['financial-period', '合并财务报表报告期：2022年度、2023年度、2024年度。', '财务会计信息'],
+  ] : [['line-1', 'Synthetic audit text', 'synthetic']];
+  return {
+    schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: DEFAULT_DOCUMENT_PARSER_VERSION, status: 'parsed',
+    material: { material_id: material.material_id, material_version: material.material_version, media_type: material.media_type, sha256: material.sha256 },
+    records: snippets.map(([id, quote, context], index) => ({
+      record_id: id!, material_id: material.material_id, material_version: material.material_version, content_hash: material.sha256,
+      locator_type: request.material.media_type === DOCX ? 'docx_block' as const : 'text_line' as const,
+      locator: request.material.media_type === DOCX ? { path: [{ paragraph: index + 1 }], stable_ref: `docx:p${String(index + 1).padStart(4, '0')}` } : { line: index + 1, stable_ref: `text:l${String(index + 1).padStart(6, '0')}` },
+      literal_quote: quote!, context: context!, extraction_method: 'native_text' as const, extractor_version: DEFAULT_DOCUMENT_PARSER_VERSION,
+      confidence: 1, uncertainty: [], formatting: {},
+    })),
+    warnings: [], document: request.material.media_type === DOCX ? { page_count: null, revision_summary: { insertions: 0, deletions: 0 } } : { page_count: null, encoding: 'utf-8' }, error: null,
+  };
+}
+
+test('synthetic parser version matches the deployed Python parser identity', () => {
+  const python = readFileSync(new URL('../../../python/bondbuddy_document_parser/parser.py', import.meta.url), 'utf8');
+  assert.match(python, new RegExp(`PARSER_VERSION = "${DEFAULT_DOCUMENT_PARSER_VERSION.replaceAll('.', '\\.')}"`));
+});
+
+test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, cancel race, owner 404 and #79 rows', { skip: !connection || !blobConnection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const containerName = `bb-parse-job-${randomUUID()}`;
+  const blobs = azureBlobs(blobConnection!, containerName);
+  let owner = `parse-owner-${randomUUID()}`;
+  const alice = owner, bob = `parse-other-${randomUUID()}`;
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }) });
+  const stagingApp = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunStaging: true });
+  const send = (method: string, url: string, payload?: unknown, contentType?: string, target = app) => target.inject({ method: method as any, url,
+    headers: { origin: ORIGIN, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
+  let parserCalls = 0;
+  let parser: (request: DocumentParseRequest) => Promise<DocumentParseResponse> = async request => { parserCalls++; return syntheticParse(request); };
+  const deps = (extra: Partial<MaterialParseJobDependencies> = {}): MaterialParseJobDependencies => ({
+    pool, leaseSeconds: 30, ...extra,
+    material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, parser: request => parser(request) },
+  });
+  const jobFor = async (materialId: string) => (await pool.query("SELECT * FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [materialId])).rows;
+  const outboxTypes = async (jobId: string) => (await pool.query("SELECT event_type FROM bb_outbox WHERE aggregate_type='material_parse_job' AND aggregate_id=$1 ORDER BY created_at,id", [jobId])).rows.map(r => r.event_type as string);
+  const internal = async (jobId: string) => (await pool.query("SELECT kind,event FROM bb_observability_events WHERE job_id=$1 ORDER BY created_at,id", [jobId])).rows;
+  const errors = async (jobId: string) => (await pool.query('SELECT code,category,recovery_status,retry_count FROM bb_observability_errors WHERE job_id=$1 ORDER BY created_at,id', [jobId])).rows;
+  const operations = async (kind: string, status: string) => (await pool.query('SELECT * FROM bb_operations WHERE owner_user_id=$1 AND operation_kind=$2 AND status=$3', [owner, kind, status])).rows;
+
+  async function startUpload(projectId: string, bytes: Buffer, mediaType: string, role: string, filename: string) {
+    const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename, media_type: mediaType, byte_size: bytes.length, sha256: sha(bytes), role });
+    assert.equal(start.statusCode, 201, start.body);
+    const put = await send('PUT', start.json().upload_url, bytes, 'application/octet-stream');
+    assert.equal(put.statusCode, 204, put.body);
+    return start.json().upload_id as string;
+  }
+  const complete = (projectId: string, uploadId: string, bytes: Buffer) =>
+    send('POST', `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/complete`, { byte_size: bytes.length, sha256: sha(bytes) });
+
+  try {
+    // Claims are global; retire parse jobs left by an earlier interrupted run of this suite on a reused database.
+    await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE job_type='parse' AND state NOT IN ('succeeded','failed','cancelled')");
+    const project = await send('POST', '/api/v1/projects', { name: 'Synthetic parse hook', kind: 'update', issuer_name: null, market: null, offering: null });
+    assert.equal(project.statusCode, 201, project.body);
+    const projectId = project.json().project_id as string;
+
+    // 1. Duplicate completion (concurrent replays and a renamed duplicate upload) yields exactly one job.
+    const docx = makeWorkerDocxFixture({ externalLink: false });
+    const historicalUpload = await startUpload(projectId, docx, DOCX, 'historical', 'history.docx');
+    const completions = await Promise.all(Array.from({ length: 5 }, () => complete(projectId, historicalUpload, docx)));
+    assert.ok(completions.every(r => r.statusCode === 200), completions.map(r => r.body).join('\n'));
+    const historicalId = completions[0].json().material_id as string;
+    const duplicateUpload = await startUpload(projectId, docx, DOCX, 'historical', 'history-renamed.docx');
+    assert.equal((await complete(projectId, duplicateUpload, docx)).json().material_id, historicalId);
+    let [historicalJob] = await jobFor(historicalId);
+    assert.equal((await jobFor(historicalId)).length, 1);
+    assert.equal(historicalJob.state, 'queued');
+    assert.equal(historicalJob.material_sha256.trim(), sha(docx));
+    assert.equal(historicalJob.parser_version, DEFAULT_DOCUMENT_PARSER_VERSION);
+    assert.deepEqual(await outboxTypes(historicalJob.id), ['material_parse.enqueued']);
+    assert.equal((await operations('material_complete', 'submitted')).length, 6);
+    // Binding is immutable in the database, not just in application code.
+    await assert.rejects(pool.query("UPDATE bb_jobs SET material_sha256=$2 WHERE id=$1", [historicalJob.id, 'f'.repeat(64)]), /immutable/);
+
+    // Pending work is explicit: no synthesized source profile before the durable job runs.
+    const pendingProfile = await send('GET', `/api/v1/projects/${projectId}/materials/${historicalId}/source-profile`);
+    assert.equal(pendingProfile.statusCode, 409); assert.equal(pendingProfile.json().code, 'CAPABILITY_NOT_READY');
+    const lockedInput = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [{ material_id: historicalId, material_version: 1 }], requirement_message_ids: [] });
+    assert.equal(lockedInput.statusCode, 201, lockedInput.body);
+    const preflightBody = { input_revision: 1, input_hash: lockedInput.json().input_hash };
+    const pendingPreflight = await send('POST', `/api/v1/projects/${projectId}/preflight`, preflightBody);
+    assert.equal(pendingPreflight.statusCode, 200, pendingPreflight.body);
+    assert.equal(pendingPreflight.json().status, 'blocked');
+    assert.deepEqual(pendingPreflight.json().missing_inputs, [`material_parse_pending:${historicalId}:1`, 'execution_capability_not_ready']);
+
+    // 2. Crash after the parse_evidence checkpoint, lease expiry, then resume without re-parsing.
+    await assert.rejects(runMaterialParseOnce(deps({ afterStage: async stage => { if (stage === 'parse_evidence') throw new Error('SYNTHETIC_CRASH'); } })), /SYNTHETIC_CRASH/);
+    assert.equal(parserCalls, 1);
+    [historicalJob] = await jobFor(historicalId);
+    assert.equal(historicalJob.state, 'running'); assert.equal(historicalJob.stage, 'parse_evidence');
+    assert.ok(historicalJob.checkpoint.stages.parse_evidence.snapshot_id);
+    assert.equal(await runMaterialParseOnce(deps()), 'idle', 'an unexpired lease is not stolen');
+    await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [historicalJob.id]);
+    assert.equal(await runMaterialParseOnce(deps()), 'succeeded');
+    assert.equal(parserCalls, 1, 'completed parse stage is read from the checkpoint');
+    [historicalJob] = await jobFor(historicalId);
+    assert.equal(historicalJob.state, 'succeeded'); assert.equal(historicalJob.attempts, 2);
+    const jobView = await send('GET', `/api/v1/projects/${projectId}/materials/${historicalId}/parse-job`);
+    assert.equal(jobView.statusCode, 200, jobView.body);
+    assert.deepEqual(jobView.json().completed_stages, ['parse_evidence', 'historical_profile']);
+    assert.equal(jobView.json().profile_version, 1);
+    assert.deepEqual(jobView.json().pending_capabilities, []);
+    const profile = await send('GET', `/api/v1/projects/${projectId}/materials/${historicalId}/source-profile`);
+    assert.equal(profile.statusCode, 200, profile.body);
+    assert.equal(profile.json().material_id, historicalId); assert.equal(profile.json().profile_version, 1);
+    assert.equal(jobView.json().outcome, profile.json().state === 'ready' ? 'parsed' : 'needs_confirmation');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_parse_snapshots WHERE material_id=$1', [historicalId])).rows[0].n, 1);
+    assert.deepEqual(await outboxTypes(historicalJob.id), ['material_parse.enqueued', 'material_parse.claimed', 'material_parse.stage_completed',
+      'material_parse.claimed', 'material_parse.stage_completed', 'material_parse.succeeded']);
+    const successLog = await internal(historicalJob.id);
+    assert.ok(successLog.every(r => r.kind === 'job.state_changed' && r.event.job_kind === 'parse'));
+    assert.equal(successLog.at(-1)!.event.status, 'succeeded');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox o JOIN bb_observability_events e ON o.aggregate_id=e.id WHERE o.aggregate_type='observability' AND e.job_id=$1", [historicalJob.id])).rows[0].n, successLog.length);
+    const readyPreflight = await send('POST', `/api/v1/projects/${projectId}/preflight`, preflightBody, undefined, stagingApp);
+    assert.equal(readyPreflight.statusCode, 200, readyPreflight.body);
+    assert.deepEqual(readyPreflight.json().missing_inputs, []);
+    assert.equal(readyPreflight.json().status, profile.json().state === 'ready' ? 'ready' : 'needs_confirmation');
+    assert.equal((await operations('preflight', 'submitted')).length, 2);
+
+    // 3. Bounded retry then terminal failure with a structured error code.
+    const text = Buffer.from('Synthetic audit text\n', 'utf8');
+    const textId = (await complete(projectId, await startUpload(projectId, text, 'text/plain', 'audit', 'audit.txt'), text)).json().material_id as string;
+    parser = async () => { parserCalls++; throw new Error('synthetic parser crash'); };
+    assert.deepEqual([await runMaterialParseOnce(deps()), await runMaterialParseOnce(deps()), await runMaterialParseOnce(deps())], ['retry_scheduled', 'retry_scheduled', 'failed']);
+    assert.equal(await runMaterialParseOnce(deps()), 'idle', 'failure is final');
+    const [textJob] = await jobFor(textId);
+    assert.equal(textJob.state, 'failed'); assert.equal(textJob.error_code, 'MATERIAL_UNREADABLE'); assert.equal(textJob.attempts, 3);
+    assert.deepEqual((await errors(textJob.id)).map(e => [e.code, e.recovery_status, e.retry_count]),
+      [['MATERIAL_UNREADABLE', 'retry_scheduled', 1], ['MATERIAL_UNREADABLE', 'retry_scheduled', 2], ['MATERIAL_UNREADABLE', 'terminal', 3]]);
+    assert.deepEqual((await outboxTypes(textJob.id)).filter(t => t !== 'material_parse.claimed'), ['material_parse.enqueued', 'material_parse.retry_scheduled', 'material_parse.retry_scheduled', 'material_parse.failed']);
+    const failureLog = await internal(textJob.id);
+    assert.equal(failureLog.filter(r => r.kind === 'error.recorded').length, 3);
+    assert.equal(failureLog.filter(r => r.kind === 'job.state_changed').at(-1)!.event.status, 'failed');
+    const cancelFailed = await send('POST', `/api/v1/projects/${projectId}/materials/${textId}/parse-job/cancel`, { reason: 'synthetic' });
+    assert.equal(cancelFailed.statusCode, 409); assert.equal(cancelFailed.json().code, 'ALREADY_TERMINAL');
+    assert.equal((await operations('material_parse_cancel', 'rejected'))[0].error_code, 'ALREADY_TERMINAL');
+
+    // A crash on the final attempt is also bounded: the recovered lease fails instead of running again.
+    parser = async request => { parserCalls++; return syntheticParse(request); };
+    const text2 = Buffer.from('Synthetic audit text two\n', 'utf8');
+    const text2Id = (await complete(projectId, await startUpload(projectId, text2, 'text/plain', 'audit', 'audit-2.txt'), text2)).json().material_id as string;
+    for (let i = 0; i < 3; i++) {
+      // Simulated worker process death right after claiming: the lease is never renewed or released.
+      assert.equal((await claimMaterialParse(pool, 30))?.materialId, text2Id);
+      await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE material_id=$1", [text2Id]);
+    }
+    assert.equal(await runMaterialParseOnce(deps()), 'idle');
+    const [text2Job] = await jobFor(text2Id);
+    assert.equal(text2Job.state, 'failed'); assert.equal(text2Job.error_code, 'DATA_UNAVAILABLE'); assert.equal(text2Job.attempts, 3);
+
+    // 4. Cancel vs worker completion race: exactly one final state and one final event per job.
+    const winners = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      const bytes = Buffer.from(`Synthetic race text ${i}\n`, 'utf8');
+      const materialId = (await complete(projectId, await startUpload(projectId, bytes, 'text/plain', 'other', `race-${i}.txt`), bytes)).json().material_id as string;
+      const lease = await claimMaterialParse(pool, 30);
+      assert.ok(lease); assert.equal(lease.materialId, materialId);
+      const cancelCall = () => send('POST', `/api/v1/projects/${projectId}/materials/${materialId}/parse-job/cancel`, { reason: 'synthetic race' });
+      const completeCall = () => succeedMaterialParse(pool, lease, { outcome: 'parsed', parse_status: 'parsed', profile_version: null, pending_capabilities: [] });
+      // Even rounds race concurrently; odd rounds let the cancel commit first so both winners are exercised.
+      const [cancel, done] = i % 2 === 0 ? await Promise.allSettled([cancelCall(), completeCall()])
+        : [await Promise.allSettled([cancelCall()]).then(([r]) => r), await Promise.allSettled([completeCall()]).then(([r]) => r)];
+      if (done.status === 'rejected') assert.equal((done.reason as { code?: string }).code, 'ALREADY_TERMINAL');
+      winners.add(done.status === 'fulfilled' ? 'succeeded' : 'cancelled');
+      const [job] = await jobFor(materialId);
+      const cancelled = cancel.status === 'fulfilled' && cancel.value.statusCode === 200;
+      const succeeded = done.status === 'fulfilled';
+      assert.notEqual(cancelled, succeeded, 'exactly one side wins');
+      assert.equal(job.state, cancelled ? 'cancelled' : 'succeeded');
+      if (!cancelled) assert.equal(cancel.status === 'fulfilled' && cancel.value.json().code, 'ALREADY_TERMINAL');
+      const finals = (await outboxTypes(job.id)).filter(t => ['material_parse.succeeded', 'material_parse.cancelled', 'material_parse.failed'].includes(t));
+      assert.deepEqual(finals, [cancelled ? 'material_parse.cancelled' : 'material_parse.succeeded']);
+      await assert.rejects(pool.query("UPDATE bb_jobs SET state='queued' WHERE id=$1", [job.id]), /final state/);
+    }
+    assert.deepEqual([...winners].sort(), ['cancelled', 'succeeded']);
+
+    // 5. OCR-dependent result stays explicitly pending; image material never reports success.
+    const imageId = (await complete(projectId, await startUpload(projectId, PNG_BYTES, 'image/png', 'other', 'scan.png'), PNG_BYTES)).json().material_id as string;
+    assert.equal(await runMaterialParseOnce(deps()), 'paused');
+    const imageJob = await send('GET', `/api/v1/projects/${projectId}/materials/${imageId}/parse-job`);
+    assert.equal(imageJob.json().state, 'paused'); assert.equal(imageJob.json().stage, 'awaiting_ocr');
+    assert.equal(imageJob.json().outcome, 'pending_ocr'); assert.deepEqual(imageJob.json().pending_capabilities, ['ocr']);
+    assert.equal(await runMaterialParseOnce(deps()), 'idle', 'paused OCR work is not reclaimed until OCR is connected');
+    const cancelImage = await send('POST', `/api/v1/projects/${projectId}/materials/${imageId}/parse-job/cancel`, { reason: 'synthetic' });
+    assert.equal(cancelImage.statusCode, 200, cancelImage.body); assert.equal(cancelImage.json().state, 'cancelled');
+    assert.ok((await outboxTypes(cancelImage.json().job_id)).includes('material_parse.cancelled'));
+    assert.equal((await internal(cancelImage.json().job_id)).at(-1)!.event.status, 'cancelled');
+    assert.ok((await operations('material_parse_cancel', 'submitted')).length >= 1);
+
+    // 6. Rejection before any run exists is logged: a completion whose declaration changed.
+    const rejectBytes = Buffer.from('Synthetic rejected text\n', 'utf8');
+    const rejectUpload = await startUpload(projectId, rejectBytes, 'text/plain', 'other', 'reject.txt');
+    const rejected = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${rejectUpload}/complete`, { byte_size: rejectBytes.length, sha256: 'a'.repeat(64) });
+    assert.equal(rejected.statusCode, 409);
+    const rejectedOps = await operations('material_complete', 'rejected');
+    assert.equal(rejectedOps.length, 1); assert.equal(rejectedOps[0].error_code, 'IDEMPOTENCY_CONFLICT'); assert.equal(rejectedOps[0].run_id, null);
+    // Every rejected operation (terminal cancel, race-losing cancels, changed completion) has its #79 timeline row.
+    const allRejected = (await pool.query("SELECT count(*)::int n FROM bb_operations WHERE owner_user_id=$1 AND status='rejected'", [owner])).rows[0].n;
+    assert.ok(allRejected >= 2);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_observability_events WHERE owner_user_id=$1 AND kind='operation.rejected'", [owner])).rows[0].n, allRejected);
+
+    // 7. Another account gets the uniform 404 for every new route, and its rejections are logged under its own ID.
+    owner = bob;
+    for (const [method, url, payload] of [
+      ['GET', `/api/v1/projects/${projectId}/materials/${historicalId}/parse-job`],
+      ['POST', `/api/v1/projects/${projectId}/materials/${historicalId}/parse-job/cancel`, { reason: 'foreign' }],
+      ['GET', `/api/v1/projects/${projectId}/materials/${historicalId}/source-profile`],
+      ['POST', `/api/v1/projects/${projectId}/preflight`, preflightBody],
+      ['POST', `/api/v1/projects/${projectId}/materials/uploads/${rejectUpload}/complete`, { byte_size: rejectBytes.length, sha256: sha(rejectBytes) }],
+    ] as const) {
+      const response = await send(method, url, payload);
+      assert.equal(response.statusCode, 404, `${method} ${url}: ${response.body}`);
+      assert.equal(response.json().code, 'NOT_FOUND');
+    }
+    const foreign = await pool.query("SELECT operation_kind,project_id,error_code FROM bb_operations WHERE owner_user_id=$1 ORDER BY operation_kind", [bob]);
+    assert.deepEqual(foreign.rows.map(r => [r.operation_kind, r.project_id, r.error_code]),
+      [['material_complete', null, 'NOT_FOUND'], ['material_parse_cancel', null, 'NOT_FOUND'], ['preflight', null, 'NOT_FOUND']]);
+    owner = alice;
+    assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${textId}/source-profile`)).statusCode, 404, 'non-historical materials have no source profile');
+  } finally {
+    // The synthetic Azurite container is discarded with the test Azurite instance.
+    await app.close(); await stagingApp.close(); await pool.end();
+  }
+});

@@ -338,6 +338,30 @@
       "schema": "RecognitionPatchRequest",
       "valid": false,
       "value": { "profile_version": 2, "reason": "synthetic missing target", "evidence_refs": [] }
+    },
+    {
+      "name": "material-parse-job-awaiting-ocr",
+      "schema": "MaterialParseJobResponse",
+      "valid": true,
+      "value": {"job_id": "synthetic-parse-job", "job_type": "parse", "subtype": "material_parse", "project_id": "synthetic-project", "material_id": "synthetic-material", "material_version": 1, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parser_version": "bondbuddy-document-parser-1.0.3", "state": "paused", "stage": "awaiting_ocr", "completed_stages": ["parse_evidence"], "attempts": 1, "max_attempts": 3, "error_code": null, "outcome": "pending_ocr", "parse_status": "needs_confirmation", "profile_version": null, "pending_capabilities": ["ocr"], "updated_at": "2026-09-25T06:00:00Z"}
+    },
+    {
+      "name": "material-parse-job-failed",
+      "schema": "MaterialParseJobResponse",
+      "valid": true,
+      "value": {"job_id": "synthetic-parse-job", "job_type": "parse", "subtype": "material_parse", "project_id": "synthetic-project", "material_id": "synthetic-material", "material_version": 1, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parser_version": "bondbuddy-document-parser-1.0.3", "state": "failed", "stage": "parse_evidence", "completed_stages": ["parse_evidence"], "attempts": 3, "max_attempts": 3, "error_code": "MATERIAL_UNREADABLE", "outcome": null, "parse_status": null, "profile_version": null, "pending_capabilities": [], "updated_at": "2026-09-25T06:00:00Z"}
+    },
+    {
+      "name": "material-parse-job-unknown-stage",
+      "schema": "MaterialParseJobResponse",
+      "valid": false,
+      "value": {"job_id": "synthetic-parse-job", "job_type": "parse", "subtype": "material_parse", "project_id": "synthetic-project", "material_id": "synthetic-material", "material_version": 1, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parser_version": "bondbuddy-document-parser-1.0.3", "state": "paused", "stage": "awaiting_ocr", "completed_stages": ["model_call"], "attempts": 1, "max_attempts": 3, "error_code": null, "outcome": "pending_ocr", "parse_status": "needs_confirmation", "profile_version": null, "pending_capabilities": ["ocr"], "updated_at": "2026-09-25T06:00:00Z"}
+    },
+    {
+      "name": "material-parse-job-invented-error",
+      "schema": "MaterialParseJobResponse",
+      "valid": false,
+      "value": {"job_id": "synthetic-parse-job", "job_type": "parse", "subtype": "material_parse", "project_id": "synthetic-project", "material_id": "synthetic-material", "material_version": 1, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parser_version": "bondbuddy-document-parser-1.0.3", "state": "failed", "stage": "awaiting_ocr", "completed_stages": ["parse_evidence"], "attempts": 1, "max_attempts": 3, "error_code": "PARSER_EXPLODED", "outcome": "pending_ocr", "parse_status": "needs_confirmation", "profile_version": null, "pending_capabilities": ["ocr"], "updated_at": "2026-09-25T06:00:00Z"}
     }
   ]
 }

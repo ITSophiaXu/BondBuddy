@@ -8,6 +8,7 @@ import { installAuth, principal as sessionPrincipal, type AuthConfig } from './a
 import { action as queueAction, enqueue } from './queue.js';
 import { recordOperation, rejectOperation } from './observability.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
+import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean };
@@ -191,17 +192,24 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async request=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id'),b=body<{byte_size:number;sha256:string}>(request);
-    return transaction(db(),async client=>{
+    const traceId=uid();
+    try { return await transaction(db(),async client=>{
       // Same lock order as deletion/snapshot creation; concurrent equal uploads resolve once.
       await project(client,user,id,true);
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
       const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
+      // The parse job, its outbox/log rows and the #79 operation commit with the verified completion.
+      const accepted=async (m:any)=>{
+        await enqueueMaterialParse(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
+        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_complete',status:'submitted'});
+        return materialDto(m);
+      };
       const checkedMaterial=async (m:any)=>{
         if(!m)throw missing();
         const stored=await blob().getIfExistsBounded(m.object_key,Number(m.byte_size));
         if(!stored||stored.length!==Number(m.byte_size)||digest(stored)!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
-        return materialDto(m);
+        return accepted(m);
       };
       if(receipt.rows[0]){
         const r=receipt.rows[0];
@@ -231,8 +239,14 @@ export function createServer(settings: Settings = {}) {
       await client.query("UPDATE bb_uploads SET state='completed' WHERE owner_user_id=$1 AND id=$2",[user,uploadId]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.persisted',{material_id:materialId,material_version:1,project_id:id}]);
       await appendProjectMaterialEvent(client, user, id, materialId, Number(inserted.rows[0].byte_size));
-      return materialDto(inserted.rows[0]);
-    });
+      return accepted(inserted.rows[0]);
+    }); } catch(error) {
+      if(error instanceof Problem){
+        const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'material_complete',status:'rejected',errorCode:error.code});
+      }
+      throw error;
+    }
   });
   app.get('/api/v1/projects/:project_id/materials/:material_id',async request=>{
     const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
@@ -369,9 +383,85 @@ export function createServer(settings: Settings = {}) {
     return reply.code(201).send(result);
   });
   const sourceProfile='/api/v1/projects/:project_id/materials/:material_id/source-profile';
-  app.get(sourceProfile,async request=>{await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));throw unavailable();});
+  const parseJob='/api/v1/projects/:project_id/materials/:material_id/parse-job';
+  app.get(parseJob,{schema:{response:{200:schemas.MaterialParseJobResponse}}},async request=>
+    materialParseJobDto(await readMaterialParseJob(db(),await owner(request),param(request,'project_id'),param(request,'material_id'))));
+  app.post(`${parseJob}/cancel`,{schema:{body:schemas.RunActionRequest,response:{200:schemas.MaterialParseJobResponse}}},async request=>{
+    const user=await owner(request),id=param(request,'project_id'),materialId=param(request,'material_id'),traceId=uid();
+    try {
+      return await transaction(db(),async client=>{
+        await project(client,user,id);
+        const job=await cancelMaterialParse(client,user,id,materialId);
+        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:job.trace_id,kind:'material_parse_cancel',status:'submitted'});
+        return materialParseJobDto(job);
+      });
+    } catch(error) {
+      if(error instanceof Problem){
+        const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'material_parse_cancel',status:'rejected',errorCode:error.code});
+      }
+      throw error;
+    }
+  });
+  app.get(sourceProfile,{schema:{response:{200:schemas.RecognitionResponse}}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id'),m=await material(db(),user,id,param(request,'material_id'));
+    // Source profiles exist only for historical prospectus partitions; other materials share the owner-safe 404.
+    if(m.role!=='historical'||![DOCX_MEDIA_TYPE,PDF_MEDIA_TYPE].includes(m.media_type))throw missing();
+    reply.header('cache-control','private, no-store');
+    const profile=await db().query(`SELECT recognition FROM bb_historical_profiles WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+      ORDER BY profile_version DESC LIMIT 1`,[user,id,m.id,m.version]);
+    if(profile.rows[0])return profile.rows[0].recognition;
+    const job=await readMaterialParseJob(db(),user,id,m.id).catch(error=>{if(error instanceof Problem&&error.status===404)return null;throw error;});
+    // Never synthesize a recognition: the durable job has not produced one yet (or failed).
+    if(job?.state==='failed')throw new Problem(409,job.error_code,'Source profile parse job failed');
+    throw new Problem(409,'CAPABILITY_NOT_READY','Source profile is pending its durable parse job');
+  });
   app.patch(sourceProfile,async request=>{await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));throw unavailable();});
-  app.post('/api/v1/projects/:project_id/preflight',async request=>{await project(db(),await owner(request),param(request,'project_id'));throw unavailable();});
+  app.post('/api/v1/projects/:project_id/preflight',{schema:{body:schemas.PreflightRequest,response:{200:schemas.PreflightResponse}}},async request=>{
+    const user=await owner(request),id=param(request,'project_id'),b=body<{input_revision:number;input_hash:string}>(request),traceId=uid();
+    try {
+      return await transaction(db(),async client=>{
+        await project(client,user,id);
+        const input=(await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,id,b.input_revision])).rows[0];
+        if(!input)throw missing();
+        if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+        const missingInputs:string[]=[],uncertainty:string[]=[];
+        const refs=input.material_versions as {material_id:string;material_version:number}[];
+        if(!refs.length)missingInputs.push('material_versions');
+        for(const ref of refs){
+          // The input revision pins exact versions, so pinned rows are read even after later deletion.
+          const row=(await client.query(`SELECT m.role,m.media_type,j.state,j.error_code,j.result FROM bb_material_versions m
+            LEFT JOIN bb_jobs j ON j.job_type='parse' AND j.owner_user_id=m.owner_user_id AND j.project_id=m.project_id AND j.material_id=m.id
+              AND j.material_version=m.version AND j.subtype='material_parse' AND j.parser_version=$5
+            WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.version=$4`,[user,id,ref.material_id,ref.material_version,documentParserVersion()])).rows[0];
+          if(!row)throw missing();
+          const key=`${ref.material_id}:${ref.material_version}`;
+          if(!row.state){missingInputs.push(`material_parse_not_enqueued:${key}`);continue;}
+          if(row.state==='failed'){missingInputs.push(`material_parse_failed:${key}:${row.error_code}`);continue;}
+          if(row.state==='cancelled'){missingInputs.push(`material_parse_cancelled:${key}`);continue;}
+          if(row.state==='paused'&&row.result?.pending_capabilities?.includes('ocr')){missingInputs.push(`ocr_pending:${key}`);continue;}
+          if(row.state!=='succeeded'){missingInputs.push(`material_parse_pending:${key}`);continue;}
+          if(row.result?.outcome==='needs_confirmation')uncertainty.push(`material_needs_confirmation:${key}`);
+          if(row.role==='historical'&&[DOCX_MEDIA_TYPE,PDF_MEDIA_TYPE].includes(row.media_type)){
+            const profile=(await client.query(`SELECT recognition->>'state' AS state FROM bb_historical_profiles WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+              ORDER BY profile_version DESC LIMIT 1`,[user,id,ref.material_id,ref.material_version])).rows[0];
+            if(!profile)missingInputs.push(`source_profile_missing:${key}`);
+            else if(profile.state!=='ready')uncertainty.push(`source_profile_${profile.state}:${key}`);
+          }
+        }
+        // Execution stays 501 until #16/#79/Word delivery are live, so preflight cannot report an executable input.
+        if(!settings.enableRunStaging&&!settings.enableSyntheticQueue)missingInputs.push('execution_capability_not_ready');
+        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
+        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status:missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const};
+      });
+    } catch(error) {
+      if(error instanceof Problem){
+        const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'preflight',status:'rejected',errorCode:error.code});
+      }
+      throw error;
+    }
+  });
   app.post('/api/v1/conversations/:conversation_id/messages',async request=>{await owner(request);throw unavailable();});
   return app;
 }

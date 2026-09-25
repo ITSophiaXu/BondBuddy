@@ -84,7 +84,11 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     active='synthetic-bob';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}`)).statusCode,404);assert.equal((await send('GET',`/api/v1/runs/${run1.json().run_id}/events`)).statusCode,404);
     active='synthetic-alice';assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404,'pending artifacts cannot receive download grants');assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download`)).statusCode,404);const events=await send('GET',`/api/v1/runs/${run1.json().run_id}/events`);assert.equal(events.json().items.length,1);
-    const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type<>'observability'");assert.equal(outbox.rows[0].n,14);
+    const outbox=await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND aggregate_type NOT IN ('observability','material_parse_job')");assert.equal(outbox.rows[0].n,14);
+    // Each verified material version enqueues exactly one parse job with its outbox row in the completion transaction.
+    const parseJobs=(await pool.query("SELECT count(*)::int AS n FROM bb_jobs WHERE owner_user_id='synthetic-alice' AND job_type='parse'")).rows[0].n;
+    assert.ok(parseJobs>0);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id='synthetic-alice' AND event_type='material_parse.enqueued'")).rows[0].n,parseJobs);
     await pool.query("CREATE FUNCTION bb_fail_test_project_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic project event failure'; END $$");
     await pool.query('CREATE TRIGGER bb_fail_test_project_event BEFORE INSERT ON bb_project_events FOR EACH ROW EXECUTE FUNCTION bb_fail_test_project_event()');
     const upload2=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'retry.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'notes'});
