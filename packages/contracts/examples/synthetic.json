@@ -340,6 +340,36 @@
       "value": { "profile_version": 2, "reason": "synthetic missing target", "evidence_refs": [] }
     },
     {
+      "name": "codex-adapter-attempt-structured-success",
+      "schema": "ModelAdapterAttemptRecord",
+      "valid": true,
+      "value": {"schema_version": 1, "adapter": "codex_exec", "adapter_version": "codex-adapter-1", "trace_id": "run-synthetic-1", "job_id": "job-synthetic-1", "run_id": "run-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "model_id": "deepseek-flash", "model_provider": "deepseek", "model_config_version": "codex-deepseek-flash-20260925", "prompt_snapshot_ref": "prompt-synthetic-1", "provider_request_id": null, "provider_request_id_status": "unknown", "framework_thread_id": "thread-synthetic-1", "started_at": "2026-09-25T03:00:00Z", "duration_ms": 1840, "exit_code": 0, "exit_signal": null, "finish_reason": "stop", "outcome": "completed", "error_code": null, "tool_attempts": 0, "usage": {"status": "measured", "input_tokens": 8418, "cached_input_tokens": 6784, "output_tokens": 46, "reasoning_tokens": 33, "total_tokens": 8464}, "pricing_status": "unknown", "result_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+    },
+    {
+      "name": "codex-adapter-attempt-timeout-unknown-usage",
+      "schema": "ModelAdapterAttemptRecord",
+      "valid": true,
+      "value": {"schema_version": 1, "adapter": "codex_exec", "adapter_version": "codex-adapter-1", "trace_id": "run-synthetic-1", "job_id": "job-synthetic-1", "run_id": "run-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-2", "attempt_no": 2, "model_id": "deepseek-flash", "model_provider": "deepseek", "model_config_version": "codex-deepseek-flash-20260925", "prompt_snapshot_ref": "prompt-synthetic-1", "provider_request_id": null, "provider_request_id_status": "unknown", "framework_thread_id": "thread-synthetic-1", "started_at": "2026-09-25T03:00:00Z", "duration_ms": 3000, "exit_code": null, "exit_signal": "SIGKILL", "finish_reason": null, "outcome": "pending_reconcile", "error_code": "MODEL_TIMEOUT", "tool_attempts": 0, "usage": {"status": "unknown", "input_tokens": null, "cached_input_tokens": null, "output_tokens": null, "reasoning_tokens": null, "total_tokens": null}, "pricing_status": "unknown", "result_sha256": null}
+    },
+    {
+      "name": "codex-adapter-attempt-tool-blocked",
+      "schema": "ModelAdapterAttemptRecord",
+      "valid": true,
+      "value": {"schema_version": 1, "adapter": "codex_exec", "adapter_version": "codex-adapter-1", "trace_id": "run-synthetic-1", "job_id": "job-synthetic-1", "run_id": "run-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-3", "attempt_no": 3, "model_id": "deepseek-flash", "model_provider": "deepseek", "model_config_version": "codex-deepseek-flash-20260925", "prompt_snapshot_ref": "prompt-synthetic-1", "provider_request_id": null, "provider_request_id_status": "unknown", "framework_thread_id": "thread-synthetic-1", "started_at": "2026-09-25T03:00:00Z", "duration_ms": 1840, "exit_code": null, "exit_signal": "SIGKILL", "finish_reason": "tool_blocked", "outcome": "failed", "error_code": "MODEL_TOOL_ATTEMPT_BLOCKED", "tool_attempts": 1, "usage": {"status": "unknown", "input_tokens": null, "cached_input_tokens": null, "output_tokens": null, "reasoning_tokens": null, "total_tokens": null}, "pricing_status": "unknown", "result_sha256": null}
+    },
+    {
+      "name": "invalid-codex-adapter-attempt-fake-request-id",
+      "schema": "ModelAdapterAttemptRecord",
+      "valid": false,
+      "value": {"schema_version": 1, "adapter": "codex_exec", "adapter_version": "codex-adapter-1", "trace_id": "run-synthetic-1", "job_id": "job-synthetic-1", "run_id": "run-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "model_id": "deepseek-flash", "model_provider": "deepseek", "model_config_version": "codex-deepseek-flash-20260925", "prompt_snapshot_ref": "prompt-synthetic-1", "provider_request_id": "unknown", "provider_request_id_status": "unknown", "framework_thread_id": "thread-synthetic-1", "started_at": "2026-09-25T03:00:00Z", "duration_ms": 1840, "exit_code": 0, "exit_signal": null, "finish_reason": "stop", "outcome": "completed", "error_code": null, "tool_attempts": 0, "usage": {"status": "measured", "input_tokens": 8418, "cached_input_tokens": 6784, "output_tokens": 46, "reasoning_tokens": 33, "total_tokens": 8464}, "pricing_status": "unknown", "result_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+    },
+    {
+      "name": "invalid-codex-adapter-attempt-prompt-body",
+      "schema": "ModelAdapterAttemptRecord",
+      "valid": false,
+      "value": {"schema_version": 1, "adapter": "codex_exec", "adapter_version": "codex-adapter-1", "trace_id": "run-synthetic-1", "job_id": "job-synthetic-1", "run_id": "run-synthetic-1", "logical_call_id": "logical-synthetic-1", "call_id": "call-synthetic-1", "attempt_no": 1, "model_id": "deepseek-flash", "model_provider": "deepseek", "model_config_version": "codex-deepseek-flash-20260925", "prompt_snapshot_ref": "prompt-synthetic-1", "provider_request_id": null, "provider_request_id_status": "unknown", "framework_thread_id": "thread-synthetic-1", "started_at": "2026-09-25T03:00:00Z", "duration_ms": 1840, "exit_code": 0, "exit_signal": null, "finish_reason": "stop", "outcome": "completed", "error_code": null, "tool_attempts": 0, "usage": {"status": "measured", "input_tokens": 8418, "cached_input_tokens": 6784, "output_tokens": 46, "reasoning_tokens": 33, "total_tokens": 8464}, "pricing_status": "unknown", "result_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "prompt_body": "synthetic forbidden body"}
+    },
+    {
       "name": "material-parse-job-awaiting-ocr",
       "schema": "MaterialParseJobResponse",
       "valid": true,

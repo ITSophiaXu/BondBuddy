@@ -1,8 +1,9 @@
 import type { Pool } from 'pg';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
-import { persistProviderResultObject, recordProviderCallObservation, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference } from '@bondbuddy/api/provider-results';
+import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
+import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
 
 // This is an internal worker seam. It never accepts a browser principal and is not
 // installed by the production worker entry point until the live release gates pass.
@@ -35,8 +36,29 @@ export class DurableProbeJournal implements ProbeJournal {
     }
   }
 
-  async recordObservation(observation: ProviderCallObservation): Promise<void> {
+  async recordObservation(observation: ProviderCallObservation, options: {retryable?: boolean} = {}): Promise<void> {
     this.assertLeaseIdentity(observation);
-    await recordProviderCallObservation(this.input.pool,this.input.blobs,observation,this.input.validateResult,{lease:this.input.lease,source:'provider'});
+    await recordProviderCallObservation(this.input.pool,this.input.blobs,observation,this.input.validateResult,{lease:this.input.lease,source:'provider',retryable:options.retryable===true});
+  }
+}
+
+// #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
+export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
+  constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+
+  async recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void> {
+    await recordModelAttemptRuntime(this.codexInput.pool,this.codexInput.lease,intent,runtime);
+  }
+
+  async latestAttempt(logicalCallId: string): Promise<PriorAttempt | null> {
+    const row=await latestProviderAttempt(this.codexInput.pool,this.codexInput.lease,logicalCallId);
+    return row?{call_id:row.call_id,attempt_no:row.attempt_no,status:row.status,observed:row.observed}:null;
+  }
+
+  async readCompleted(logicalCallId: string, attemptNo: number) {
+    try {
+      const result=await readCheckpointedProviderResult({pool:this.codexInput.pool,blobs:this.codexInput.blobs,lease:this.codexInput.lease,logicalCallId,attemptNo,validateResult:this.codexInput.validateResult});
+      return result?{value:result.value,result_sha256:result.result_sha256}:null;
+    } catch { return null; }
   }
 }

@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"0199a1f0-0000-7000-8000-00000000c0de"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"bash -lc 'cat /etc/passwd'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"fake":"side_effect"}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"bash -lc 'cat /etc/passwd'","aggregated_output":"synthetic","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"{\"answer\":\"leaked\",\"n\":1}"}}
+{"type":"turn.completed","usage":{"input_tokens":27664,"cached_input_tokens":24960,"output_tokens":448,"reasoning_output_tokens":231}}
