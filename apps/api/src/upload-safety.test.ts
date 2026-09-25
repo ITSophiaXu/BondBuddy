@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
 import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js';
 import { createServer } from './server.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
-  encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, JPEG, jpegSample, CSV,
+  encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
   macroDefaultDocxSample, macroDocxSample, neutralExtensionDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
   XLSX, xlsxSample
 } from './upload-safety.samples.js';
@@ -75,6 +76,52 @@ test('bounded upload inspection accepts valid synthetic samples for the seven sh
     assert.equal(await verifiedMedia(item.bytes, item.mediaType), item.mediaType, item.name);
     assert.equal(await spooled(item.bytes, path => verifiedMediaFile(path, item.bytes.length, item.mediaType)), item.mediaType, `${item.name} from file`);
   }
+});
+
+test('authorized rq-202509 historical DOCX passes both inspection paths at its recorded hash', async () => {
+  const sampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25');
+  const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as {
+    cases: Array<{ case_id: string; files: Array<{ file_id: string; path: string; bytes: number; sha256: string }> }>;
+  };
+  const entry = manifest.cases.find(item => item.case_id === 'rq-202509')?.files.find(item => item.file_id === 'rq-202509-01');
+  assert.ok(entry, 'authorized historical DOCX is listed in the manifest');
+  assert.equal(entry.sha256, '51f77e36dcdc8b565f9a7b58ebf87cb6be4839a3444b8602df833e3fd61ef678');
+  const path = join(sampleRoot, entry.path);
+  const bytes = await readFile(path);
+  assert.equal(bytes.length, entry.bytes);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+  assert.equal(await verifiedMediaFile(path, bytes.length, DOCX), DOCX);
+  assert.equal(await verifiedMedia(bytes, DOCX), DOCX);
+});
+
+test('only bounded, absolute DOCX http/https/mailto hyperlink relationships are passive', async () => {
+  for (const target of ['http://example.invalid/a?x=%B2', 'https://example.invalid/path#section', 'mailto:test@example.invalid', 'mailto:synthetic、name@example.invalid']) {
+    const bytes = await externalRelationshipDocxSample(target);
+    assert.equal(await verifiedMedia(bytes, DOCX), DOCX);
+    assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, DOCX)), DOCX);
+  }
+  for (const [target, type] of [
+    ['javascript:alert(1)', 'hyperlink'], ['data:text/html,active', 'hyperlink'],
+    ['file:///etc/passwd', 'hyperlink'], ['\\\\server\\share', 'hyperlink'],
+    ['../relative', 'hyperlink'], ['https://user:secret@example.invalid', 'hyperlink'],
+    ['https://example.invalid/%0a', 'hyperlink'], ['http:\\example.invalid', 'hyperlink'],
+    ['https://%65xample.invalid/path', 'hyperlink'], ['mailto:test@example.invalid?subject=active', 'hyperlink'],
+    ['https://example.invalid/template', 'attachedTemplate'],
+    ['https://example.invalid/asset', 'image']
+  ] as const) {
+    await expectInspectionFailure(await externalRelationshipDocxSample(target, type), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  }
+  await expectInspectionFailure(await externalRelationshipXlsxSample('https://example.invalid'), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+});
+
+test('Office XML parts remain capped at 16 MiB despite the authorized large document', async () => {
+  const body = randomBytes(12 * 1024 * 1024 + 1024).toString('base64');
+  const document = Buffer.from(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:t>${body}</w:t></w:p></w:body></w:document>`);
+  assert.ok(document.length > 16 * 1024 * 1024);
+  const bytes = await docxSample([], document);
+  const expected = { status: 415, code: 'MATERIAL_FORMAT_UNSUPPORTED', message: 'Office XML part exceeds the inspection limit' };
+  assert.deepEqual(await outcome(verifiedMedia(bytes, DOCX)), expected);
+  assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, DOCX))), expected);
 });
 
 test('Office containers are inspected from the spooled file entry by entry and zip bombs fail closed', async () => {

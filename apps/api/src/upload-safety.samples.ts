@@ -122,17 +122,17 @@ const wordContentTypes = Buffer.from(
   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
 );
 
-function docxParts(extra: readonly ZipPart[] = []): ZipPart[] {
+function docxParts(extra: readonly ZipPart[] = [], document = wordDocument): ZipPart[] {
   return [
     { name: '[Content_Types].xml', contents: wordContentTypes },
     { name: '_rels/.rels', contents: wordRelationships },
-    { name: 'word/document.xml', contents: wordDocument },
+    { name: 'word/document.xml', contents: document },
     ...extra
   ];
 }
 
-export function docxSample(extra: readonly ZipPart[] = []): Promise<Buffer> {
-  return createZip(docxParts(extra));
+export function docxSample(extra: readonly ZipPart[] = [], document = wordDocument): Promise<Buffer> {
+  return createZip(docxParts(extra, document));
 }
 
 const workbook = Buffer.from(
@@ -172,8 +172,18 @@ export function pptxSample(): Promise<Buffer> {
   return createZip(parts);
 }
 
+export function externalRelationshipDocxSample(target: string, type = 'hyperlink'): Promise<Buffer> {
+  const escaped = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return docxSample([{ name: 'word/_rels/document.xml.rels', contents: Buffer.from(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${escaped}" TargetMode="External"/></Relationships>`) }]);
+}
+
+export function externalRelationshipXlsxSample(target: string): Promise<Buffer> {
+  const rels = Buffer.from(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${target}" TargetMode="External"/></Relationships>`);
+  return createZip(xlsxParts().map(part => part.name === 'xl/_rels/workbook.xml.rels' ? { ...part, contents: rels } : part));
+}
+
 export function activeDocxSample(): Promise<Buffer> {
-  return docxSample([{ name: 'word/_rels/document.xml.rels', contents: Buffer.from('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.invalid" TargetMode="External"/></Relationships>') }]);
+  return externalRelationshipDocxSample('javascript:alert(1)');
 }
 
 export function activeSvgDocxSample(): Promise<Buffer> {

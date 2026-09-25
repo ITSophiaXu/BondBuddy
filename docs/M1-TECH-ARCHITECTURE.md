@@ -265,6 +265,8 @@ Engineering slice for #17 (task BB-M1-12-RUNTIME). All tests use synthetic data,
 
 `db/migrations/0001_m1_owner_data.sql` 和 `0002_artifact_download_grants.sql` 建立个人项目、上传会话、材料版本、不可变输入版本、run、事件、outbox、成果元数据及限时下载授权。`apps/api/` 在可信会话 seam 下实现 owner 限定的项目、材料、输入快照、run 查询与成果读取；Blob 存材料字节。`deploy/local/compose.yaml` 用 PostgreSQL 16 与 Azurite 做合成数据集成验证。实际身份由 #7 注入可信 principal 前，公开个人路由拒绝请求；真实 run 执行由 #17 队列和 #79 日志能力接入前返回 `CAPABILITY_NOT_READY`。测试专用 run staging 只保存 `paused` run/事件/outbox，不发起模型调用。尚未连接的识别、预检、对话、项目事件等能力明确返回 501。生产保存期限、物理清理、备份删除重放和供应商处理证据仍待发布决策，详见 `apps/api/README.md`。
 
+上传 Office 检查器在固定 16 MiB 单 XML 部件、32 MiB 单 ZIP 条目、128 MiB 总展开量和 100:1 压缩比上限内解析材料。DOCX 仅允许 Word XML 部件的标准 hyperlink 外部关系，目标限严格校验的 HTTP、HTTPS 或 mailto 地址；检查器不请求目标地址。其他外部关系以及 XLSX 外部关系继续拒绝。获授权 `rq-202509-01` 原件按清单哈希在文件和内存检查路径通过；该结构验收不代替解析、恶意软件扫描或专业内容验收。完整边界见 `apps/api/UPLOAD-SAFETY.md`。
+
 ### #8 私有存储生命周期跟进（2026-09-24）
 
 追加迁移 `0006_m1_storage_lifecycle.sql` 在 #79 的 `0005` 后登记不可变材料删除墓碑和孤立上传清理状态。材料软删除、墓碑和 `material.deleted` outbox 事件在同一事务内提交；独立单批 CLI 先持久化租约，再校验 Blob hash 并清理，丢失删除响应时可按墓碑安全重放。所有不可变输入修订中的材料引用都会阻止物理清理；run、成果和已绑定观测快照通过输入修订被保守固定。输入修订目前没有引用释放生命周期，因此已有快照引用的材料会无限期保留。过期 `uploading`/`received` 上传以有界批次和 `SKIP LOCKED` 清理，并与 PUT/complete 使用同一上传行锁。
