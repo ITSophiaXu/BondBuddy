@@ -41,7 +41,7 @@ const MAX_ARCHIVE_ENTRY_BYTES = 32 * 1024 * 1024;
 const MAX_ARCHIVE_EXPANDED_BYTES = 128 * 1024 * 1024;
 const MAX_ARCHIVE_RATIO = 100;
 const MAX_ARCHIVE_PATH_DEPTH = 32;
-const MAX_XML_PART_BYTES = 8 * 1024 * 1024;
+const MAX_XML_PART_BYTES = 16 * 1024 * 1024;
 const MAX_ACTIVE_PART_PREFIX_BYTES = 8 * 1024;
 const MAX_IMAGE_DIMENSION = 16_384;
 const MAX_IMAGE_PIXELS = 16_000_000;
@@ -777,7 +777,7 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
       if (!target || !type) return unreadable();
       const normalizedMode = targetMode?.toLowerCase();
       if (normalizedMode && normalizedMode !== 'external' && normalizedMode !== 'internal') unreadable();
-      if (normalizedMode === 'external' || /(?:oleobject|package|vbaproject|activex|attachedtemplate|externallink|afchunk)$/i.test(type)) {
+      if (/(?:oleobject|package|vbaproject|activex|attachedtemplate|externallink|afchunk)$/i.test(type)) {
         unsupported('Office relationships contain external or active content');
       }
       relationships.push({ type, target, external: normalizedMode === 'external' });
@@ -882,12 +882,45 @@ function resolveRelationshipTarget(source: string, target: string): string | nul
   return segments.join('/');
 }
 
-function verifyOfficeRelationships(state: OfficeState): void {
+const DOCX_HYPERLINK_RELATIONSHIP = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
+
+function safeExternalHyperlink(target: string): boolean {
+  // Relationship targets are never fetched during inspection. Restrict the exception to printable,
+  // absolute browser/mail links so URL parser normalization cannot turn an ambiguous target safe.
+  if (target.length > 2048 || /[\p{C}\p{Z}\\<>"']/u.test(target) ||
+      /%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|5c|7f)/i.test(target)) return false;
+  if (/^mailto:/i.test(target)) {
+    // Existing Word files can carry an EAI local part as an IRI. Only letters, numbers, marks
+    // and the observed Chinese enumeration comma are accepted beyond the ASCII mail alphabet.
+    const match = /^mailto:([a-z0-9.!$%&*+/=_`{|}~\-\p{L}\p{N}\p{M}\u3001]+)@([a-z0-9.-]+)$/iu.exec(target);
+    if (!match) return false;
+    const labels = match[2]!.split('.');
+    return labels.length >= 2 && /^[a-z]{2,}$/i.test(labels.at(-1)!) &&
+      labels.every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label));
+  }
+  const authority = /^https?:\/\/([^/?#]+)/i.exec(target)?.[1];
+  if (!/^[\x21-\x7e]+$/.test(target) || !authority || !/^[a-z0-9.-]+$/i.test(authority)) return false;
+  try {
+    const url = new URL(target);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname === authority.toLowerCase() &&
+      !url.username && !url.password && !url.port && url.hostname.split('.').length >= 2 &&
+      /^[a-z]{2,}$/i.test(url.hostname.split('.').at(-1)!) &&
+      url.hostname.split('.').every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label));
+  } catch { return false; }
+}
+
+function verifyOfficeRelationships(state: OfficeState, declared: string): void {
   for (const [relsPath, relationships] of state.relationships) {
     const source = relationshipSource(relsPath);
     if (source === null) return unreadable();
     for (const relationship of relationships) {
-      if (relationship.external) unsupported('Office relationships contain external content');
+      if (relationship.external) {
+        if (declared !== DOCX_MIME || !/^word\/.*\.xml$/.test(source) || !state.files.has(source) ||
+            relationship.type !== DOCX_HYPERLINK_RELATIONSHIP || !safeExternalHyperlink(relationship.target)) {
+          unsupported('Office relationships contain external content');
+        }
+        continue;
+      }
       const target = resolveRelationshipTarget(source, relationship.target);
       if (target) {
         if (!state.files.has(target)) unreadable();
@@ -971,7 +1004,7 @@ async function inspectOffice(source: ZipSource, declared: string): Promise<void>
     if (name === '[Content_Types].xml') continue;
     if (!officePartContentType(state, name)) unreadable();
   }
-  verifyOfficeRelationships(state);
+  verifyOfficeRelationships(state, declared);
 }
 
 const ACTIVE_PDF_TOKENS = ['/Launch', '/EmbeddedFile', '/EmbeddedFiles', '/RichMedia', '/SubmitForm', '/ImportData', '/GoToR', '/XFA'].map(token => Buffer.from(token, 'ascii'));
