@@ -674,4 +674,3 @@ export async function libraryVersionDetail(pool: Pool, versionId: string) {
     WHERE (subject_type='document_version' AND subject_id=$1) OR (subject_type='profile' AND subject_id = ANY($2::text[])) ORDER BY id`, [versionId, profiles.map(p => p.id)])).rows;
   return { version: { ...v, sha256: v.sha256.trim(), state_changed_at: date(v.state_changed_at) }, profiles, audit: audit.map(a => ({ ...a, occurred_at: date(a.occurred_at) })) };
 }
-
