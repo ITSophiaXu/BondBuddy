@@ -11,7 +11,7 @@ import type { Readable } from 'node:stream';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
-import { recordOperation, rejectOperation } from './observability.js';
+import { recordLogicalJob, recordOperation, rejectOperation } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
@@ -383,7 +383,8 @@ export function createServer(settings: Settings = {}) {
     const traceId=uid();
     if(!settings.enableRunStaging && !queueEnabled){
       const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
-      await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY',inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
+      if(owned.rowCount)await transaction(db(),client=>recordLogicalJob(client,{owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute',jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected',errorCode:'CAPABILITY_NOT_READY',inputRevision:b.input_revision,inputHash:b.input_hash,stage:'capability_not_ready'}));
+      else await rejectOperation(db(),{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});
       throw unavailable();
     }
     let result;
@@ -411,7 +412,8 @@ export function createServer(settings: Settings = {}) {
     });} catch(error) {
       if(error instanceof Problem){
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2',[user,b.project_id]);
-        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code,inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
+        if(owned.rowCount)await transaction(db(),client=>recordLogicalJob(client,{owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute',jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected',errorCode:error.code,inputRevision:b.input_revision,inputHash:b.input_hash,stage:'submission_rejected'}));
+        else await rejectOperation(db(),{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
         await reportTrialRejection(db(),error,user);
       }
       throw error;
@@ -559,13 +561,15 @@ export function createServer(settings: Settings = {}) {
         }
         // Execution stays 501 until #16/#79/Word delivery are live, so preflight cannot report an executable input.
         if(!settings.enableRunStaging&&!queueEnabled)missingInputs.push('execution_capability_not_ready');
-        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
-        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status:missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const};
+        const status=missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const;
+        await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status});
+        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const};
       });
     } catch(error) {
       if(error instanceof Problem){
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
-        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'preflight',status:'rejected',errorCode:error.code});
+        if(owned.rowCount)await transaction(db(),client=>recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'rejected',errorCode:error.code,inputRevision:b.input_revision,inputHash:b.input_hash,stage:'submission_rejected'}));
+        else await rejectOperation(db(),{owner:user,projectId:null,requestId:request.id,traceId,kind:'preflight',status:'rejected',errorCode:error.code});
       }
       throw error;
     }
