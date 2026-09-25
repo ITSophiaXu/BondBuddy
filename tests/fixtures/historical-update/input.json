@@ -1,0 +1,550 @@
+{
+  "context": {
+    "ownerUserId": "owner-1",
+    "projectId": "project-1",
+    "issuerEntityId": "issuer-1",
+    "inputRevision": 1,
+    "inputHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "targetMarket": "sse",
+    "targetOffering": "private",
+    "ruleSnapshot": {
+      "packId": "synthetic-rules",
+      "version": "1",
+      "contentHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  },
+  "baseline": {
+    "ownerUserId": "owner-1",
+    "projectId": "project-1",
+    "materialId": "history-1",
+    "materialVersion": 1,
+    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "snapshotId": "snapshot-1",
+    "parserVersion": "synthetic-v1",
+    "parseResultHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "format": "docx_effective",
+    "parseStatus": "parsed",
+    "warnings": [],
+    "priorRevisions": {
+      "insertions": 0,
+      "deletions": 0
+    },
+    "blocks": [
+      {
+        "recordId": "p1",
+        "text": "上海证券交易所非公开发行公司债券。财务报告截止日2023-12-31。",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "p2",
+        "text": "2023年度营业收入为100.00万元。",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "paragraph": 2
+            }
+          ],
+          "stable_ref": "docx:p0002"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "p3",
+        "text": "2023年发生的诉讼尚未结案；收入变动原因待补充材料。",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "paragraph": 3
+            }
+          ],
+          "stable_ref": "docx:p0003"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "p4",
+        "text": "审计意见为保留意见。原有偿债风险继续披露。",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "paragraph": 4
+            }
+          ],
+          "stable_ref": "docx:p0004"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "t1r1c1",
+        "text": "项目",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "table": 1,
+              "row": 1,
+              "column": 1
+            },
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:t001:r001:c001:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "t1r1c2",
+        "text": "2022年度",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "table": 1,
+              "row": 1,
+              "column": 2
+            },
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:t001:r001:c002:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "t1r1c3",
+        "text": "2023年度",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "table": 1,
+              "row": 1,
+              "column": 3
+            },
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:t001:r001:c003:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "t1r2c1",
+        "text": "营业收入",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "table": 1,
+              "row": 2,
+              "column": 1
+            },
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:t001:r002:c001:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "t1r2c2",
+        "text": "80.00",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "table": 1,
+              "row": 2,
+              "column": 2
+            },
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:t001:r002:c002:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      },
+      {
+        "recordId": "t1r2c3",
+        "text": "100.00",
+        "locatorType": "docx_block",
+        "locator": {
+          "path": [
+            {
+              "table": 1,
+              "row": 2,
+              "column": 3
+            },
+            {
+              "paragraph": 1
+            }
+          ],
+          "stable_ref": "docx:t001:r002:c003:p0001"
+        },
+        "formatting": {
+          "style": "Normal"
+        },
+        "uncertainty": []
+      }
+    ],
+    "profile": {
+      "material_id": "history-1",
+      "material_version": 1,
+      "profile_version": 1,
+      "state": "ready",
+      "source_market": {
+        "value": "sse",
+        "raw_value": "sse",
+        "status": "recognized",
+        "uncertainty": [],
+        "provenance": {
+          "material_id": "history-1",
+          "material_version": 1,
+          "method": "native_text",
+          "extractor_version": "synthetic-v1",
+          "evidence_refs": [
+            "p1"
+          ]
+        }
+      },
+      "source_offering": {
+        "value": "private",
+        "raw_value": "private",
+        "status": "recognized",
+        "uncertainty": [],
+        "provenance": {
+          "material_id": "history-1",
+          "material_version": 1,
+          "method": "native_text",
+          "extractor_version": "synthetic-v1",
+          "evidence_refs": [
+            "p1"
+          ]
+        }
+      },
+      "latest_reporting_cutoff": {
+        "value": "2023-12-31",
+        "raw_value": "2023-12-31",
+        "status": "recognized",
+        "uncertainty": [],
+        "provenance": {
+          "material_id": "history-1",
+          "material_version": 1,
+          "method": "native_text",
+          "extractor_version": "synthetic-v1",
+          "evidence_refs": [
+            "p1"
+          ]
+        }
+      },
+      "reporting_periods": [
+        {
+          "start": "2023-01-01",
+          "end": "2023-12-31",
+          "period_kind": "annual",
+          "scope": "consolidated",
+          "raw_value": "2023年度",
+          "status": "recognized",
+          "uncertainty": [],
+          "provenance": {
+            "material_id": "history-1",
+            "material_version": 1,
+            "method": "native_text",
+            "extractor_version": "synthetic-v1",
+            "evidence_refs": [
+              "p1"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "facts": [
+    {
+      "candidate": {
+        "candidateId": "revenue-2024",
+        "identity": {
+          "accountId": "owner-1",
+          "entityId": "issuer-1",
+          "scope": "consolidated",
+          "metric": "revenue",
+          "period": {
+            "start": "2024-01-01",
+            "end": "2024-12-31"
+          },
+          "currency": "CNY",
+          "unit": "元",
+          "basis": "CAS",
+          "dataVersion": "audit-v1"
+        },
+        "value": {
+          "kind": "known",
+          "decimalOrText": "1200000"
+        },
+        "source": {
+          "kind": "audited",
+          "sourceId": "audit-1",
+          "observedAt": "2025-03-01T00:00:00Z"
+        },
+        "confidence": 1
+      },
+      "status": "extracted",
+      "evidence": [
+        {
+          "materialId": "audit-1",
+          "materialVersion": 1,
+          "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordId": "audit-revenue-2024",
+          "locatorType": "pdf_bbox",
+          "locator": {
+            "page": 8,
+            "bbox": [
+              0,
+              0,
+              100,
+              20
+            ]
+          },
+          "literalQuote": "2024年度合并营业收入（元）：1200000",
+          "extractionVersion": "synthetic-v1",
+          "uncertainty": []
+        }
+      ]
+    },
+    {
+      "candidate": {
+        "candidateId": "revenue-2023",
+        "identity": {
+          "accountId": "owner-1",
+          "entityId": "issuer-1",
+          "scope": "consolidated",
+          "metric": "revenue",
+          "period": {
+            "start": "2023-01-01",
+            "end": "2023-12-31"
+          },
+          "currency": "CNY",
+          "unit": "元",
+          "basis": "CAS",
+          "dataVersion": "audit-v1"
+        },
+        "value": {
+          "kind": "known",
+          "decimalOrText": "1000000"
+        },
+        "source": {
+          "kind": "audited",
+          "sourceId": "audit-1",
+          "observedAt": "2025-03-01T00:00:00Z"
+        },
+        "confidence": 1
+      },
+      "status": "extracted",
+      "evidence": [
+        {
+          "materialId": "audit-1",
+          "materialVersion": 1,
+          "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordId": "audit-revenue-2023",
+          "locatorType": "pdf_bbox",
+          "locator": {
+            "page": 8,
+            "bbox": [
+              0,
+              0,
+              100,
+              20
+            ]
+          },
+          "literalQuote": "2023年度合并营业收入（元）：1000000",
+          "extractionVersion": "synthetic-v1",
+          "uncertainty": []
+        }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "bindingId": "revenue-new",
+      "expression": {
+        "kind": "fact",
+        "identity": {
+          "accountId": "owner-1",
+          "entityId": "issuer-1",
+          "scope": "consolidated",
+          "metric": "revenue",
+          "period": {
+            "start": "2024-01-01",
+            "end": "2024-12-31"
+          },
+          "currency": "CNY",
+          "unit": "元",
+          "basis": "CAS",
+          "dataVersion": "audit-v1"
+        }
+      },
+      "reason": "new_period"
+    }
+  ],
+  "occurrences": [
+    {
+      "occurrenceId": "cover-period",
+      "bindingId": "revenue-new",
+      "recordId": "p1",
+      "start": 24,
+      "end": 34,
+      "before": "2023-12-31",
+      "display": {
+        "kind": "period",
+        "style": "date"
+      }
+    },
+    {
+      "occurrenceId": "body-period",
+      "bindingId": "revenue-new",
+      "recordId": "p2",
+      "start": 0,
+      "end": 4,
+      "before": "2023",
+      "display": {
+        "kind": "period",
+        "style": "year"
+      }
+    },
+    {
+      "occurrenceId": "body-value",
+      "bindingId": "revenue-new",
+      "recordId": "p2",
+      "start": 11,
+      "end": 17,
+      "before": "100.00",
+      "display": {
+        "kind": "number",
+        "unit": "万元",
+        "decimalPlaces": 2,
+        "groupThousands": false
+      }
+    }
+  ],
+  "columns": [
+    {
+      "changeId": "new-year-column",
+      "cells": [
+        {
+          "afterRecordId": "t1r1c3",
+          "bindingId": "revenue-new",
+          "display": {
+            "kind": "period",
+            "style": "annual"
+          }
+        },
+        {
+          "afterRecordId": "t1r2c3",
+          "bindingId": "revenue-new",
+          "display": {
+            "kind": "number",
+            "unit": "万元",
+            "decimalPlaces": 2,
+            "groupThousands": false
+          }
+        }
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "recordId": "p1",
+      "disposition": "update",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "p2",
+      "disposition": "update",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "p3",
+      "disposition": "retain",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "p4",
+      "disposition": "retain",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "t1r1c1",
+      "disposition": "retain",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "t1r1c2",
+      "disposition": "retain",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "t1r1c3",
+      "disposition": "update",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "t1r2c1",
+      "disposition": "retain",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "t1r2c2",
+      "disposition": "retain",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    },
+    {
+      "recordId": "t1r2c3",
+      "disposition": "update",
+      "reason": "Synthetic semantic mapping; retain old years, risks and historical events."
+    }
+  ]
+}

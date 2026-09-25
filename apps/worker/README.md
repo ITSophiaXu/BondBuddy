@@ -1,5 +1,7 @@
 # M1 worker boundaries
 
+#31 的内部历史稿修改计划、锁定材料/事实读取入口、#34 消费约定及未完成验收项见 [HISTORICAL-UPDATE-HANDOFF.md](HISTORICAL-UPDATE-HANDOFF.md)。本切片不开放生产任务或生成 Word 成功成果。
+
 `historical-native-recognition.ts` is a conservative #76 native-text
 recognition seam. Given a trusted, immutable parser response and explicit
 profile version, it derives source market/offering and evidenced financial

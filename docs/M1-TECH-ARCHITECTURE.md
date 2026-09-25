@@ -154,6 +154,12 @@ Production publication requires verified sources, source/pack validity, enabled 
 
 ## 5. 四人工作面与交接
 
+### #31 历史原文修改计划切片（2026-09-25）
+
+`packages/domain/src/historical-update.ts` 以锁定的本发行人有效历史正文、#76 profile、#15 事实和上游语义引用清单生成 `historical-update-plan-v1`。它使用精确算术，在原文 UTF-16 锚点上计划局部替换/简单表格新增期间列，保留旧年、风险与未改文字，输出修改前后、理由、公式、来源状态和证据；存疑/冲突/覆盖缺口均显式阻断完整计划。`apps/worker/src/historical-update.ts` 组合现有 owner-scoped repositories，核验材料 hash、解析快照、识别版本及不可变候选清单，不使用参考库。
+
+这是内部 TypeScript handoff，不新增公共 DTO/迁移/任务状态，不调用模型、不计费，所有计划 `deliverable=false`。`planned` 不等于专业覆盖或 Word 验收；#17 还需冻结可信输入、接检查点与 #79 日志；#34/#146 需消费计划落实真实修订、清洁版、comments 及 WPS 验收。自动语义遍历、经确认的旧修订有效基线、PDF 重建、跨市场条款重组、生产规则与授权样本仍未完成。细节和重现步骤见 [历史稿修改交接](../apps/worker/HISTORICAL-UPDATE-HANDOFF.md)。
+
 ### #10/#12 浏览器项目与材料上传切片（2026-09-24）
 
 `apps/web/` 以 Vite、原生 TypeScript 和原型的视觉样式接入现有 `/api/v1`，复用 `packages/contracts` 类型。当前覆盖已有账号登录、会话刷新/退出、本人项目分页列表、已加载名称搜索、新建项目、名称/发行人自动保存，以及按公共固定分区上传文件。每个文件有独立上传会话、XHR 字节进度、服务端保存/核验阶段、失败重试和取消；只有 `complete` 返回材料版本才显示服务端确认成功。刷新恢复读取项目材料事件并按 owner-scoped material ID 拉取当前状态，不从浏览器存储恢复个人数据；#12 的初始 UI 切片缺少服务端事件读取，后续 #8 项目事件切片现已提供此恢复路径。409 保留输入且不覆盖服务端新版本；跨页账号切换清除旧页面内容。
