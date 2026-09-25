@@ -9,6 +9,7 @@ COPY package.json package-lock.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/domain/package.json packages/domain/
 COPY packages/rule-pack-registry/package.json packages/rule-pack-registry/
+COPY packages/rule-applicability-context/package.json packages/rule-applicability-context/
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
 COPY apps/web/package.json apps/web/
