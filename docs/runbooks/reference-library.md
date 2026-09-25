@@ -94,7 +94,15 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 - 输出：`candidates` / `no_match` / `unavailable` / `index_version_mismatch`；候选只含不可变 document/profile/taxonomy/index 版本、市场/方式/品种/阶段、状态（恒为 published/可读/有使用权/来源有效）、适用规则范围、章节映射版本、审核质量、披露日和集合键。不含正文、发行人名称或收入金额。
 - 过滤：活动发布 + 正文 published + 画像 published 且完整 + 来源 `commercial_licensed` + 集合键、词典、品种、阶段一致。市场/方式不强制相同，由 #33 的领域规则按跨市场章节映射决定。
 - 选中后调用 `lockReferenceSelection` 锁定版本；读取正文用 `readLockedReference`，每次读取重新检查撤回与授权。
-- 缓存：按“活动发布 ID + 来源权属时间戳”作键，两者每次查询都从 PostgreSQL 读取；任何发布/撤回/回滚/权属变化都会使其失效。
+- 缓存：按“活动发布 ID + 来源权属时间戳 + 章节映射时间戳”作键，每次查询都从 PostgreSQL 读取；任何发布/撤回/回滚/权属/映射变化都会使其失效。
+
+### 7.1 v1.1 增量字段（`reference-library-query-v1.1`，迁移 0030）
+
+请求 `schema_version` 传 `reference-library-query-v1.1` 时，响应同名版本，每个候选在 v1 字段外追加；传 v1 仍返回原样 v1 形状。
+
+- `comparability`：已审核画像版本的可比性事实 `accounting_scope`（consolidated/parent/mixed/unknown，已发布画像恒为 consolidated）、`revenue_basis`（`operating_revenue` / `main_business_revenue`）、`currency`（ISO 4217，如 `CNY`）、`unit`（`yuan` / `thousand_yuan` / `ten_thousand_yuan` / `million_yuan` / `hundred_million_yuan`）、`fiscal_year`，以及 `attestation { review_id, reviewed_by, reviewed_at, profile_id, profile_version }`。这些字段写在 `bb_library_profiles` 上，按画像版本不可变；首次发布（pending_review → published）必须齐全，并在同一 UPDATE 里写入批准审核项的 id、审核人和时间，数据库触发器强制执行。0030 之前发布的画像没有这些事实时返回 `null`，调用方必须视为不可比（不得标 exact）。
+- 缺少事实的画像需由运营通过 `correct` 提交 `revenue_basis`、`currency`、`unit` 后再批准；未审核数据仍不可发布。
+- `chapter_mappings`：已接受的章节映射版本 `{ mapping_version_id, mapping_key, version, status, source{market,offering,instrument}, target{market,offering,instrument}, document_stage, rule_version }`。只返回 source 等于候选市场/方式/品种、target 等于请求市场/方式/品种且阶段和规则版本一致的版本；`chapter_mapping_versions` 同步为这些 id。映射版本存 `bb_library_chapter_mapping_versions`，只能跨市场或方式，除一次撤回外不可变；运营接口 `POST /api/v1/admin/library/chapter-mappings` 与 `.../chapter-mappings/:id/withdraw`。
 
 ## 8. 已知缺口
 

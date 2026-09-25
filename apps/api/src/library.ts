@@ -1,8 +1,8 @@
 import { Value } from '@sinclair/typebox/value';
 import type { Pool, PoolClient } from 'pg';
 import {
-  LIBRARY_ERROR_CODES, LIBRARY_QUERY_SCHEMA_VERSION, LIBRARY_SYSTEM_OWNER, LibraryQueryRequestSchema, librarySetKey,
-  type ErrorCode, type LibraryAlert, type LibraryCandidate, type LibraryErrorCode, type LibraryOverview, type LibraryQueryRequest,
+  LIBRARY_ERROR_CODES, LIBRARY_QUERY_SCHEMA_VERSION, LIBRARY_QUERY_SCHEMA_VERSION_V1_1, LIBRARY_SYSTEM_OWNER, LibraryQueryRequestSchema, librarySetKey,
+  type ErrorCode, type LibraryAlert, type LibraryCandidate, type LibraryCandidateV1_1, type LibraryChapterMapping, type LibraryChapterMappingCreateRequest, type LibraryErrorCode, type LibraryOverview, type LibraryQueryRequest,
   type LibraryQueryResponse, type LibraryReviewActionRequest, type LibrarySelectionLock,
 } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
@@ -338,7 +338,11 @@ export async function markLibraryVersionFailed(pool: Pool, versionId: string, co
 
 // ---------------------------------------------------------------- profiles and review
 export type ProfileLine = { code: string; label: string; rank: number; revenue: string; evidence: string[] };
-export type ProfileDraft = { fiscalYear: number | null; taxonomyVersion: string; accountingScope: 'consolidated' | 'parent' | 'mixed' | 'unknown'; top3: ProfileLine[] | null };
+export type RevenueBasis = 'operating_revenue' | 'main_business_revenue';
+export type AmountUnit = 'yuan' | 'thousand_yuan' | 'ten_thousand_yuan' | 'million_yuan' | 'hundred_million_yuan';
+/** Comparability facts are optional on a draft (a classifier may not know them) but required before publish. */
+export type ProfileDraft = { fiscalYear: number | null; taxonomyVersion: string; accountingScope: 'consolidated' | 'parent' | 'mixed' | 'unknown'; top3: ProfileLine[] | null;
+  revenueBasis?: RevenueBasis | null; currency?: string | null; unit?: AmountUnit | null };
 export type Classification = { market: 'sse' | 'szse' | 'nafmii' | null; offering: string | null; instrument: string | null; documentStage: 'registration' | 'issuance' | null };
 
 // jsonb does not keep key order, so compare stored and new profile lines with sorted keys.
@@ -363,14 +367,15 @@ async function appendProfile(client: PoolClient, versionId: string, draft: Profi
   const keys = profileKeys(draft);
   const latest = (await client.query('SELECT * FROM bb_library_profiles WHERE document_version_id=$1 ORDER BY profile_version DESC LIMIT 1', [versionId])).rows[0];
   if (latest && latest.state === 'pending_review' && keys.complete && latest.ranking_key === keys.rankingKey && latest.origin === origin
-      && canonicalJson(latest.top3) === canonicalJson(keys.top3)) return { profileId: latest.id as string, created: false };
+      && canonicalJson(latest.top3) === canonicalJson(keys.top3) && latest.revenue_basis === (draft.revenueBasis ?? null)
+      && latest.currency === (draft.currency ?? null) && latest.unit === (draft.unit ?? null)) return { profileId: latest.id as string, created: false };
   if (latest?.state === 'pending_review') await setProfileState(client, latest.id, 'superseded', origin === 'operator_correction' ? 'operator_correction' : 'reclassified', actor);
   const id = uid();
-  await client.query(`INSERT INTO bb_library_profiles(id,document_version_id,profile_version,fiscal_year,taxonomy_version,accounting_scope,top3,set_key,ranking_key,completeness,origin,state_reason,state_actor)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+  await client.query(`INSERT INTO bb_library_profiles(id,document_version_id,profile_version,fiscal_year,taxonomy_version,accounting_scope,top3,set_key,ranking_key,completeness,origin,state_reason,state_actor,revenue_basis,currency,unit)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
   [id, versionId, Number(latest?.profile_version ?? 0) + 1, draft.fiscalYear, draft.taxonomyVersion, keys.complete ? 'consolidated' : draft.accountingScope,
     keys.top3 ? JSON.stringify(keys.top3) : null, keys.setKey, keys.rankingKey, keys.complete ? 'complete' : 'incomplete', origin,
-    latest && latest.ranking_key !== keys.rankingKey ? 'ranking_changed' : 'profile_created', actor]);
+    latest && latest.ranking_key !== keys.rankingKey ? 'ranking_changed' : 'profile_created', actor, draft.revenueBasis ?? null, draft.currency ?? null, draft.unit ?? null]);
   return { profileId: id, created: true };
 }
 
@@ -423,6 +428,7 @@ export async function reviewLibraryVersion(pool: Pool, versionId: string, action
     if (action.action === 'approve') {
       if (v.state !== 'pending_review' || profile?.state !== 'pending_review') throw new Problem(409, 'ALREADY_TERMINAL', 'Only a pending review can be approved');
       if (profile.completeness !== 'complete') throw new Problem(422, 'VALIDATION_FAILED', 'Profile lacks an evidenced consolidated top-three; correct it first');
+      if (!profile.revenue_basis || !profile.currency || !profile.unit) throw new Problem(422, 'VALIDATION_FAILED', 'Profile lacks reviewed revenue basis, currency and unit; correct it first');
       if (!v.market || !v.offering || !v.instrument || !v.document_stage) throw new Problem(422, 'VALIDATION_FAILED', 'Market, offering, instrument and stage must be classified');
       const newer = (await client.query(`SELECT 1 FROM bb_library_document_versions WHERE document_id=$1 AND id<>$2 AND source_revision_rank>$3
         AND state IN ('published','pending_parse','pending_classify','pending_review')`, [v.document_id, versionId, v.source_revision_rank])).rows[0];
@@ -447,8 +453,12 @@ export async function reviewLibraryVersion(pool: Pool, versionId: string, action
         await client.query("UPDATE bb_library_profiles SET state='superseded',state_reason='newer_version_published',state_actor=$2,state_changed_at=clock_timestamp() WHERE document_version_id=$1 AND state='published'", [p.id, actor]);
       }
       await setVersionState(client, versionId, 'published', reason, actor);
-      await setProfileState(client, profile.id, 'published', reason, actor);
-      await client.query("UPDATE bb_library_review_items SET state='approved',decided_by=$2,decision_reason=$3,decided_at=now() WHERE state='open' AND document_version_id=$1", [versionId, actor, reason]);
+      // The approving review item is the attestation: same id, reviewer and time as on the profile version.
+      const review = (await client.query("UPDATE bb_library_review_items SET state='approved',decided_by=$2,decision_reason=$3,decided_at=clock_timestamp() WHERE state='open' AND document_version_id=$1 RETURNING id, decided_at",
+        [versionId, actor, reason])).rows[0];
+      if (!review) throw new Problem(409, 'ALREADY_TERMINAL', 'No open review item to approve');
+      await client.query(`UPDATE bb_library_profiles SET state='published',state_reason=$2,state_actor=$3,state_changed_at=clock_timestamp(),
+        reviewed_review_id=$4,reviewed_by=$3,reviewed_at=$5 WHERE id=$1`, [profile.id, reason, actor, review.id, review.decided_at]);
       return { status: 'published' as const, release_id: release.id, release_no: release.releaseNo };
     }
     if (action.action === 'reject') {
@@ -464,7 +474,8 @@ export async function reviewLibraryVersion(pool: Pool, versionId: string, action
       await client.query('UPDATE bb_library_document_versions SET market=COALESCE($2,market),offering=COALESCE($3,offering),instrument=COALESCE($4,instrument),document_stage=COALESCE($5,document_stage) WHERE id=$1',
         [versionId, c.market ?? null, c.offering ?? null, c.instrument ?? null, c.document_stage ?? null]);
       if (v.state === 'rejected') await setVersionState(client, versionId, 'pending_review', reason, actor);
-      const created = await appendProfile(client, versionId, { fiscalYear: c.fiscal_year, taxonomyVersion: c.taxonomy_version, accountingScope: 'consolidated', top3: c.top3.map(l => ({ ...l, evidence: [...l.evidence] })) }, 'operator_correction', actor);
+      const created = await appendProfile(client, versionId, { fiscalYear: c.fiscal_year, taxonomyVersion: c.taxonomy_version, accountingScope: 'consolidated',
+        revenueBasis: c.revenue_basis ?? null, currency: c.currency ?? null, unit: c.unit ?? null, top3: c.top3.map(l => ({ ...l, evidence: [...l.evidence] })) }, 'operator_correction', actor);
       await openReview(client, versionId, created.profileId, 'operator_correction', actor);
       return { status: 'corrected' as const, profile_id: created.profileId };
     }
@@ -538,19 +549,24 @@ export async function queryReferenceLibrary(pool: Pool, request: LibraryQueryReq
   const project = await pool.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL', [request.audit.owner_user_id, request.audit.project_id]);
   if (!project.rowCount) throw missing();
   let head: any;
-  try { head = (await pool.query("SELECT r.id, r.release_no, (SELECT coalesce(max(updated_at),'epoch') FROM bb_library_sources) AS rights_stamp FROM bb_library_index_releases r WHERE r.active")).rows[0]; }
-  catch { return { schema_version: LIBRARY_QUERY_SCHEMA_VERSION, status: 'unavailable', index_release: null, candidates: [], reason: 'library_unavailable' }; }
+  try { head = (await pool.query(`SELECT r.id, r.release_no, (SELECT coalesce(max(updated_at),'epoch') FROM bb_library_sources) AS rights_stamp,
+      (SELECT coalesce(max(state_changed_at),'epoch') FROM bb_library_chapter_mapping_versions) AS mapping_stamp FROM bb_library_index_releases r WHERE r.active`)).rows[0]; }
+  catch { return { schema_version: request.schema_version, status: 'unavailable', index_release: null, candidates: [], reason: 'library_unavailable' }; }
   const release = { release_id: head.id as string, release_no: Number(head.release_no) };
   if (request.index_release && request.index_release !== release.release_id) {
-    return { schema_version: LIBRARY_QUERY_SCHEMA_VERSION, status: 'index_version_mismatch', index_release: release, candidates: [], reason: 'requested_release_not_active' };
+    return { schema_version: request.schema_version, status: 'index_version_mismatch', index_release: release, candidates: [], reason: 'requested_release_not_active' };
   }
   const setKey = librarySetKey(request.target.top3_codes);
-  const cacheKey = JSON.stringify([release.release_id, new Date(head.rights_stamp).toISOString(), setKey, request.target.taxonomy_version, request.target.instrument, request.target.document_stage]);
+  const v11 = request.schema_version === LIBRARY_QUERY_SCHEMA_VERSION_V1_1;
+  const t = request.target;
+  const cacheKey = JSON.stringify([request.schema_version, release.release_id, new Date(head.rights_stamp).toISOString(), new Date(head.mapping_stamp).toISOString(), setKey,
+    t.taxonomy_version, t.instrument, t.document_stage, ...(v11 ? [t.market, t.offering, t.rule_version] : [])]);
   const cached = queryCache.get(cacheKey);
   let response: LibraryQueryResponse;
   if (cached) response = cached;
   else {
-    const rows = (await pool.query(`SELECT e.*, v.version AS document_version, p.profile_version, v.state AS v_state, p.state AS p_state, s.usage_rights, s.enabled
+    const rows = (await pool.query(`SELECT e.*, v.version AS document_version, p.profile_version, p.accounting_scope, p.revenue_basis, p.currency, p.unit,
+      p.reviewed_review_id, p.reviewed_by, p.reviewed_at, v.state AS v_state, p.state AS p_state, s.usage_rights, s.enabled
       FROM bb_library_index_entries e
       JOIN bb_library_document_versions v ON v.id=e.document_version_id AND v.state='published'
       JOIN bb_library_profiles p ON p.id=e.profile_id AND p.state='published' AND p.completeness='complete'
@@ -565,12 +581,74 @@ export async function queryReferenceLibrary(pool: Pool, request: LibraryQueryReq
       availability: 'published', readable: true, use_authorized: true, source_validity: 'valid', applicable_scopes: r.applicable_scopes, chapter_mapping_versions: r.chapter_mapping_versions,
       review_quality: r.review_quality, disclosed_at: r.disclosed_at ? new Date(r.disclosed_at).toISOString().slice(0, 10) : null, top3_set_key: r.set_key,
     }));
-    response = { schema_version: LIBRARY_QUERY_SCHEMA_VERSION, status: candidates.length ? 'candidates' : 'no_match', index_release: release, candidates, reason: candidates.length ? null : 'no_published_exact_set' };
+    response = v11
+      ? { schema_version: LIBRARY_QUERY_SCHEMA_VERSION_V1_1, status: candidates.length ? 'candidates' : 'no_match', index_release: release,
+        candidates: await withComparability(pool, rows, candidates, t), reason: candidates.length ? null : 'no_published_exact_set' }
+      : { schema_version: LIBRARY_QUERY_SCHEMA_VERSION, status: candidates.length ? 'candidates' : 'no_match', index_release: release, candidates, reason: candidates.length ? null : 'no_published_exact_set' };
     queryCache.set(cacheKey, response);
     if (queryCache.size > 500) queryCache.delete(queryCache.keys().next().value!);
   }
   if (response.status === 'no_match') await recordMiss(pool, release.release_id, request, 'no_published_exact_set');
   return response;
+}
+
+const mappingOf = (m: any): LibraryChapterMapping => ({
+  mapping_version_id: m.id, mapping_key: m.mapping_key, version: m.version, status: 'accepted',
+  source: { market: m.source_market, offering: m.source_offering, instrument: m.source_instrument },
+  target: { market: m.target_market, offering: m.target_offering, instrument: m.target_instrument },
+  document_stage: m.document_stage, rule_version: m.rule_version,
+});
+
+/**
+ * v1.1 additions. Comparability comes from the published profile version only (never from the request).
+ * A chapter mapping is attached only when its source scope is the candidate's market/offering/instrument
+ * and its target scope is exactly the requested market/offering/instrument, stage and rule version.
+ */
+async function withComparability(pool: Pool, rows: any[], candidates: LibraryCandidate[], target: LibraryQueryRequest['target']): Promise<LibraryCandidateV1_1[]> {
+  const mappings = candidates.length ? (await pool.query(`SELECT * FROM bb_library_chapter_mapping_versions WHERE state='accepted'
+    AND target_market=$1 AND target_offering=$2 AND target_instrument=$3 AND document_stage=$4 AND rule_version=$5 ORDER BY mapping_key, version`,
+  [target.market, target.offering, target.instrument, target.document_stage, target.rule_version])).rows : [];
+  return candidates.map((c, i) => {
+    const r = rows[i];
+    const comparable = r.revenue_basis && r.currency && r.unit && r.reviewed_review_id;
+    const scoped = mappings.filter(m => m.source_market === c.market && m.source_offering === c.offering && m.source_instrument === c.instrument).map(mappingOf);
+    return {
+      ...c,
+      chapter_mapping_versions: scoped.map(m => m.mapping_version_id),
+      comparability: comparable ? {
+        accounting_scope: r.accounting_scope, revenue_basis: r.revenue_basis, currency: r.currency, unit: r.unit, fiscal_year: r.fiscal_year,
+        attestation: { review_id: r.reviewed_review_id, reviewed_by: r.reviewed_by, reviewed_at: date(r.reviewed_at), profile_id: c.profile_id, profile_version: c.profile_version },
+      } : null,
+      chapter_mappings: scoped,
+    };
+  });
+}
+
+// ---------------------------------------------------------------- chapter-mapping versions (operator)
+/** Records a new accepted mapping version (next version for its key). Mappings never convert a scope implicitly. */
+export async function recordChapterMappingVersion(pool: Pool, input: LibraryChapterMappingCreateRequest, actor: string): Promise<LibraryChapterMapping> {
+  const reason = reasonOf(input.reason);
+  if (input.source.market === input.target.market && input.source.offering === input.target.offering) throw new Problem(422, 'VALIDATION_FAILED', 'A chapter mapping must cross market or offering');
+  const out = await transaction(pool, async client => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`library-mapping:${input.mapping_key}`]);
+    const next = Number((await client.query('SELECT coalesce(max(version),0)+1 AS n FROM bb_library_chapter_mapping_versions WHERE mapping_key=$1', [input.mapping_key])).rows[0].n);
+    const row = (await client.query(`INSERT INTO bb_library_chapter_mapping_versions(id,mapping_key,version,source_market,source_offering,source_instrument,
+      target_market,target_offering,target_instrument,document_stage,rule_version,reviewed_by,reason,state_actor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$12) RETURNING *`,
+    [uid(), input.mapping_key, next, input.source.market, input.source.offering, input.source.instrument, input.target.market, input.target.offering, input.target.instrument,
+      input.document_stage, input.rule_version, actor, reason])).rows[0];
+    return mappingOf(row);
+  });
+  invalidateLibraryCache();
+  return out;
+}
+
+export async function withdrawChapterMappingVersion(pool: Pool, mappingVersionId: string, reasonCode: string, actor: string) {
+  const reason = reasonOf(reasonCode);
+  const r = await pool.query(`UPDATE bb_library_chapter_mapping_versions SET state='withdrawn',reason=$2,state_actor=$3,state_changed_at=clock_timestamp()
+    WHERE id=$1 AND state='accepted' RETURNING id`, [mappingVersionId, reason, actor]);
+  if (!r.rowCount) throw missing();
+  invalidateLibraryCache();
+  return { mapping_version_id: mappingVersionId, status: 'withdrawn' as const };
 }
 
 /** Pins the selected versions for a task. The candidate must be in the stated release and still usable now. */
@@ -681,7 +759,7 @@ export async function libraryVersionDetail(pool: Pool, versionId: string) {
       v.state, v.state_reason, v.state_actor, v.state_changed_at, d.source_id, d.external_key, d.issuer_name, d.title
     FROM bb_library_document_versions v JOIN bb_library_documents d ON d.id=v.document_id WHERE v.id=$1`, [versionId])).rows[0];
   if (!v) throw missing();
-  const profiles = (await pool.query('SELECT id, profile_version, fiscal_year, taxonomy_version, top3, set_key, completeness, origin, state, state_reason FROM bb_library_profiles WHERE document_version_id=$1 ORDER BY profile_version', [versionId])).rows;
+  const profiles = (await pool.query('SELECT id, profile_version, fiscal_year, taxonomy_version, accounting_scope, revenue_basis, currency, unit, reviewed_review_id, reviewed_by, reviewed_at, top3, set_key, completeness, origin, state, state_reason FROM bb_library_profiles WHERE document_version_id=$1 ORDER BY profile_version', [versionId])).rows;
   const audit = (await pool.query(`SELECT subject_type, subject_id, from_state, to_state, reason, actor, occurred_at FROM bb_library_audit
     WHERE (subject_type='document_version' AND subject_id=$1) OR (subject_type='profile' AND subject_id = ANY($2::text[])) ORDER BY id`, [versionId, profiles.map(p => p.id)])).rows;
   return { version: { ...v, sha256: v.sha256.trim(), state_changed_at: date(v.state_changed_at) }, profiles, audit: audit.map(a => ({ ...a, occurred_at: date(a.occurred_at) })) };

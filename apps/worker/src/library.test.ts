@@ -6,9 +6,10 @@ import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import {
   classifyLibraryVersion, enqueueLibraryRecordRerun, enqueueLibrarySync, ingestLibraryVersion, invalidateLibraryCache, libraryAlerts, libraryCacheSize, libraryOverview,
   lockReferenceSelection, markLibraryVersionParsed, queryReferenceLibrary, readLockedReference, reclassifyPendingProfile, registerLibrarySource, reviewLibraryVersion,
-  rollbackLibraryRelease, setLibrarySourceRights, syncRunSummary, type ProfileDraft, type ProfileLine,
+  recordChapterMappingVersion, rollbackLibraryRelease, setLibrarySourceRights, syncRunSummary, withdrawChapterMappingVersion, type ProfileDraft, type ProfileLine,
 } from '@bondbuddy/api/library';
-import type { LibraryQueryRequest } from '@bondbuddy/contracts';
+import { Ajv } from 'ajv';
+import { LibraryQueryResponseV1_1Schema, LibraryQueryResponseV1Schema, type LibraryQueryRequest, type LibraryQueryResponseV1_1 } from '@bondbuddy/contracts';
 import { conservativeClassifier, runLibraryOnce, type LibraryClassifier, type LibraryParser, type LibraryPipelineDependencies } from './library-pipeline.js';
 import { OperatorImportAdapter, SourceError, SseBondProjectAdapter, type DiscoveredItem, type LibrarySourceAdapter } from './library-sources.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -17,6 +18,8 @@ import { isolatedTestDatabase } from './test-database.js';
 // It proves the #78 library mechanics; it is not evidence about any real prospectus.
 const connection = await isolatedTestDatabase();
 const skip = !connection;
+const ajv = new Ajv({ strict: false });
+const validV1 = ajv.compile(LibraryQueryResponseV1Schema), validV11 = ajv.compile(LibraryQueryResponseV1_1Schema);
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 
 function memoryBlobs(): PrivateBlobs & { keys(): string[] } {
@@ -41,7 +44,8 @@ const syntheticParser: LibraryParser = async request => ({
 });
 
 const lines = (codes: string[]): ProfileLine[] => codes.map((code, i) => ({ code, label: code, rank: i + 1, revenue: String(300 - i * 100), evidence: [`p${10 + i}`] }));
-const draft = (codes: string[], taxonomy: string): ProfileDraft => ({ fiscalYear: 2025, taxonomyVersion: taxonomy, accountingScope: 'consolidated', top3: lines(codes) });
+const draft = (codes: string[], taxonomy: string): ProfileDraft => ({ fiscalYear: 2025, taxonomyVersion: taxonomy, accountingScope: 'consolidated', top3: lines(codes),
+  revenueBasis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan' });
 const TOP3 = ['BIZ.WATER', 'BIZ.CONSTRUCTION', 'BIZ.PROPERTY'];
 const syntheticClassifier = (taxonomy: string, codes = TOP3): LibraryClassifier => () => ({
   classification: { market: 'sse', offering: 'public', instrument: 'corporate_bond', documentStage: 'registration' },
@@ -85,8 +89,8 @@ async function setup(rights: 'commercial_licensed' | 'evaluation_only' = 'commer
   const owner = `lib-owner-${randomUUID()}`, project = `lib-project-${randomUUID()}`;
   await pool.query('INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,$3,$4)', [project, owner, 'Synthetic library consumer', 'generation']);
   const deps: LibraryPipelineDependencies = { pool, blobs, adapters: { [sourceId]: source }, parser: syntheticParser, classifier: syntheticClassifier(taxonomy), retryDelayMs: 1 };
-  const query = (codes = TOP3, extra: Partial<LibraryQueryRequest['target']> = {}, indexRelease: string | null = null) => queryReferenceLibrary(pool, {
-    schema_version: 'reference-library-query-v1', service_identity: 'task_service', audit: { owner_user_id: owner, project_id: project, run_id: null, trace_id: 'trace-syn' },
+  const query = (codes = TOP3, extra: Partial<LibraryQueryRequest['target']> = {}, indexRelease: string | null = null, schemaVersion: LibraryQueryRequest['schema_version'] = 'reference-library-query-v1') => queryReferenceLibrary(pool, {
+    schema_version: schemaVersion, service_identity: 'task_service', audit: { owner_user_id: owner, project_id: project, run_id: null, trace_id: 'trace-syn' },
     target: { top3_codes: codes, taxonomy_version: taxonomy, fiscal_year: 2025, evidence_refs: ['fact-1'], market: 'sse', offering: 'public', instrument: 'corporate_bond', document_stage: 'registration', rule_version: 'rule-syn', ...extra },
     index_release: indexRelease,
   });
@@ -216,11 +220,15 @@ test('conservative classifier leaves the business profile incomplete; approval n
     const v = await t.versionOf('K', 1);
     assert.deepEqual([v.market, v.offering, v.instrument, v.document_stage], ['sse', 'public', 'corporate_bond', 'registration']);
     await assert.rejects(t.approve(v.id), /evidenced consolidated top-three/);
-    const corrected = await reviewLibraryVersion(t.pool, v.id, { action: 'correct', reason: 'operator_profile_entry', correction: { fiscal_year: 2025, taxonomy_version: t.taxonomy, top3: lines(TOP3) } }, 'operator-syn');
+    // A correction without the reviewed comparability facts is still unpublishable.
+    await reviewLibraryVersion(t.pool, v.id, { action: 'correct', reason: 'operator_profile_entry', correction: { fiscal_year: 2025, taxonomy_version: t.taxonomy, top3: lines(TOP3) } }, 'operator-syn');
+    await assert.rejects(t.approve(v.id), /revenue basis, currency and unit/);
+    const corrected = await reviewLibraryVersion(t.pool, v.id, { action: 'correct', reason: 'operator_profile_entry',
+      correction: { fiscal_year: 2025, taxonomy_version: t.taxonomy, top3: lines(TOP3), revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan' } }, 'operator-syn');
     assert.equal(corrected.status, 'corrected');
     assert.equal((await t.approve(v.id)).status, 'published');
     const profiles = (await t.pool.query('SELECT profile_version, origin, completeness, state FROM bb_library_profiles WHERE document_version_id=$1 ORDER BY profile_version', [v.id])).rows;
-    assert.deepEqual(profiles.map(p => [p.profile_version, p.origin, p.completeness, p.state]), [[1, 'classifier', 'incomplete', 'superseded'], [2, 'operator_correction', 'complete', 'published']]);
+    assert.deepEqual(profiles.map(p => [p.profile_version, p.origin, p.completeness, p.state]), [[1, 'classifier', 'incomplete', 'superseded'], [2, 'operator_correction', 'complete', 'superseded'], [3, 'operator_correction', 'complete', 'published']]);
     // Operator per-record re-run of a failed version goes through the same pipeline.
     t.source.add('F', 1, 'f1');
     const failingParser: LibraryParser = async () => { throw new Error('synthetic parser crash'); };
@@ -372,6 +380,84 @@ test('personal uploads cannot enter the library: blob keys must be library/ and 
     await classifyLibraryVersion(t.pool, ingested.versionId, { market: 'sse', offering: 'public', instrument: 'corporate_bond', documentStage: 'registration' }, draft(TOP3, t.taxonomy));
     assert.equal((await t.pool.query('SELECT state FROM bb_library_document_versions WHERE id=$1', [ingested.versionId])).rows[0].state, 'pending_review');
     assert.ok(t.blobs.keys().every(k => k.startsWith('library/')));
+  } finally { await t.pool.end(); }
+});
+
+test('v1.1 query returns reviewed comparability facts and attestation; v1 shape is unchanged; the gate holds in the database', { skip }, async () => {
+  const t = await setup();
+  try {
+    t.source.add('CMP', 1, 'cmp1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const v = await t.versionOf('CMP', 1);
+    const published = await t.approve(v.id);
+    assert.equal(published.status, 'published');
+    const v1 = await t.query();
+    assert.equal(v1.schema_version, 'reference-library-query-v1');
+    assert.ok(validV1(v1), 'v1 response keeps the exact v1 shape');
+    assert.equal('comparability' in v1.candidates[0]!, false);
+    const v11 = await t.query(TOP3, {}, null, 'reference-library-query-v1.1') as LibraryQueryResponseV1_1;
+    assert.ok(validV11(v11), JSON.stringify(validV11.errors));
+    const c = v11.candidates.find(x => x.document_version_id === v.id)!;
+    const profile = (await t.pool.query('SELECT p.id, p.profile_version, r.id AS review_id, r.decided_by, r.decided_at FROM bb_library_profiles p JOIN bb_library_review_items r ON r.id=p.reviewed_review_id WHERE p.document_version_id=$1 AND p.state=$2', [v.id, 'published'])).rows[0];
+    assert.deepEqual(c.comparability, { accounting_scope: 'consolidated', revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
+      attestation: { review_id: profile.review_id, reviewed_by: 'operator-syn', reviewed_at: new Date(profile.decided_at).toISOString(), profile_id: profile.id, profile_version: profile.profile_version } });
+    assert.equal(profile.decided_by, 'operator-syn');
+    // Facts and attestation are immutable per profile version, even for a direct SQL writer.
+    await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET revenue_basis='main_business_revenue' WHERE id=$1", [profile.id]), /immutable/);
+    await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET reviewed_by='someone-else' WHERE id=$1", [profile.id]), /attestation is immutable/);
+    // Unreviewed data (no facts, or no attestation) cannot be published by any path.
+    t.deps.classifier = conservativeClassifier;
+    t.source.add('RAW', 1, 'raw1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const raw = await t.versionOf('RAW', 1);
+    const rawProfile = (await t.pool.query('SELECT id FROM bb_library_profiles WHERE document_version_id=$1', [raw.id])).rows[0].id;
+    await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET state='published',state_reason='sql_bypass',state_actor='x' WHERE id=$1", [rawProfile]), /reviewed comparability facts/);
+    t.deps.classifier = syntheticClassifier(t.taxonomy);
+    t.source.add('NOATT', 1, 'noatt1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const noAtt = (await t.pool.query('SELECT id FROM bb_library_profiles WHERE document_version_id=$1', [(await t.versionOf('NOATT', 1)).id])).rows[0].id;
+    await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET state='published',state_reason='sql_bypass',state_actor='x' WHERE id=$1", [noAtt]), /reviewed comparability facts/);
+  } finally { await t.pool.end(); }
+});
+
+test('v1.1 chapter mappings: only versions whose source->target scope covers the request are returned, with the mapping version id', { skip }, async () => {
+  const t = await setup();
+  try {
+    t.source.add('MAP', 1, 'map1');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    await t.approve((await t.versionOf('MAP', 1)).id);
+    const key = `m.${t.sourceId}`;
+    const src = { market: 'sse' as const, offering: 'public' as const, instrument: 'corporate_bond' };
+    const tgt = { market: 'szse' as const, offering: 'public' as const, instrument: 'corporate_bond' };
+    // Mapping versions are global rows, so a per-test rule version keeps other suites' mappings out of scope.
+    const rule = `rule-${t.sourceId}`;
+    const base = { mapping_key: key, source: src, target: tgt, document_stage: 'registration' as const, rule_version: rule, reason: 'synthetic_mapping_ok' };
+    const covering = await recordChapterMappingVersion(t.pool, base, 'operator-syn');
+    const wrongStage = await recordChapterMappingVersion(t.pool, { ...base, mapping_key: `${key}.stage`, document_stage: 'issuance' }, 'operator-syn');
+    const wrongRule = await recordChapterMappingVersion(t.pool, { ...base, mapping_key: `${key}.rule`, rule_version: 'rule-other' }, 'operator-syn');
+    const wrongSource = await recordChapterMappingVersion(t.pool, { ...base, mapping_key: `${key}.src`, source: { ...src, offering: 'private' } }, 'operator-syn');
+    const otherTarget = await recordChapterMappingVersion(t.pool, { ...base, mapping_key: `${key}.tgt`, target: { ...tgt, offering: 'private' } }, 'operator-syn');
+    assert.equal(covering.version, 1);
+    await assert.rejects(recordChapterMappingVersion(t.pool, { ...base, target: src }, 'operator-syn'), /cross market or offering/);
+    const ask = (target: Partial<LibraryQueryRequest['target']>) => t.query(TOP3, { rule_version: rule, ...target }, null, 'reference-library-query-v1.1') as Promise<LibraryQueryResponseV1_1>;
+    const szse = await ask({ market: 'szse', offering: 'public' });
+    const cand = szse.candidates.find(c => c.market === 'sse')!;
+    assert.deepEqual(cand.chapter_mappings.map(m => m.mapping_version_id), [covering.mapping_version_id]);
+    assert.deepEqual(cand.chapter_mapping_versions, [covering.mapping_version_id]);
+    assert.deepEqual(cand.chapter_mappings[0], { mapping_version_id: covering.mapping_version_id, mapping_key: key, version: 1, status: 'accepted', source: src, target: tgt, document_stage: 'registration', rule_version: rule });
+    for (const excluded of [wrongStage, wrongRule, wrongSource, otherTarget]) assert.equal(cand.chapter_mapping_versions.includes(excluded.mapping_version_id), false, excluded.mapping_key);
+    // Same market/offering: no mapping needed and none returned; other target: only its own mapping.
+    assert.deepEqual((await ask({})).candidates.find(c => c.market === 'sse')!.chapter_mappings, []);
+    assert.deepEqual((await ask({ market: 'szse', offering: 'private' })).candidates.find(c => c.market === 'sse')!.chapter_mapping_versions, [otherTarget.mapping_version_id]);
+    // A withdrawn version leaves the response at once; a new version for the key takes its place.
+    await withdrawChapterMappingVersion(t.pool, covering.mapping_version_id, 'synthetic_withdraw', 'operator-syn');
+    assert.deepEqual((await ask({ market: 'szse', offering: 'public' })).candidates.find(c => c.market === 'sse')!.chapter_mappings, []);
+    const v2 = await recordChapterMappingVersion(t.pool, base, 'operator-syn');
+    assert.equal(v2.version, 2);
+    assert.deepEqual((await ask({ market: 'szse', offering: 'public' })).candidates.find(c => c.market === 'sse')!.chapter_mapping_versions, [v2.mapping_version_id]);
+    // Mapping versions are immutable apart from one withdrawal.
+    await assert.rejects(t.pool.query("UPDATE bb_library_chapter_mapping_versions SET target_offering='private' WHERE id=$1", [v2.mapping_version_id]), /immutable/);
+    await assert.rejects(t.pool.query("UPDATE bb_library_chapter_mapping_versions SET state='accepted',reason='x_again' WHERE id=$1", [covering.mapping_version_id]), /immutable/);
   } finally { await t.pool.end(); }
 });
 
