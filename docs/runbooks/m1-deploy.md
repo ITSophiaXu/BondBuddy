@@ -16,15 +16,40 @@ Everything lives in `deploy/m1/`. This runbook covers target-host requirements, 
 
 `backend` is a Docker `internal` network (no gateway). The worker gets `HTTPS_PROXY=http://egress:3128`; squid only accepts `CONNECT host:443` for names in `BB_EGRESS_ALLOW` (default `api.deepseek.com`). In production add the Blob host, for example `BB_EGRESS_ALLOW=api.deepseek.com,<account>.blob.core.windows.net`. `scripts/egress-test.sh` proves the policy from inside the worker container: direct TCP fails, non-listed hosts get 403, the provider host gets a tunnel (closed at once; no TLS or model request is sent).
 
-Resource limits (sum ≈ 2.7 GB, 5.75 CPU shares) fit a 2 vCPU / 3 GB VM because the limits are ceilings, not reservations: postgres 768M, worker 768M, api 512M, azurite 256M (staging), migrate 256M, web 128M, egress 96M.
+Staging limits are ceilings (postgres 768M, worker 768M, api 512M, azurite 256M, migrate 256M, web 128M, egress 96M). `compose.prod.yaml` is the small-host production profile (below): `postgres:16-alpine` with small buffers, capped Node heaps, no Azurite, and Blob traffic through the egress proxy.
 
-## Target host requirements
+## Target host requirements (measured in staging, 2026-09-25)
 
-- Ubuntu 22.04+ (or any Linux with Docker Engine 24+ and Compose v2.20+), git, curl, openssl.
-- **Disk: ≥ 15 GB free** on the Docker data root: images ≈ 1.6 GB per release (keep the previous release for rollback), build cache ≈ 2 GB, PostgreSQL and Blob data, and local backups. Put backups on a separate disk or copy them off-host.
-- **RAM: ≥ 3 GB** (2 GB is not enough while a release builds). vCPU: 2.
-- **Ports:** 22 (SSH, restricted), 443 (and 80 for ACME/redirect) on the host TLS terminator. The stack itself binds only `127.0.0.1:${BB_HTTP_PORT}`; nothing else is published. Outbound: 443 to the model provider and Blob via the egress proxy, plus the Docker registry and GitHub during builds.
-- The deploy user is in the `docker` group and has a clone of the repository.
+Measured on the worker host with the release images and the full browser acceptance suite (synthetic, small files):
+
+| | staging profile (`compose.yaml`) | production profile (`+ compose.prod.yaml`) |
+|---|---|---|
+| memory limits (steady state) | 2.5 GB incl. Azurite | **848 MiB** (postgres 256, worker 320, api 192, egress 48, web 32); migrate 128 MiB runs first |
+| measured peak per container | postgres 114, api 65, azurite 61, worker 48, egress 17, web 13 MiB | api 136, postgres 104, worker 43, egress 13, web 10 MiB (Azurite 54 MiB was only the test stand-in) |
+| measured peak sum | ≈ 320 MiB | **≈ 306 MiB**; no OOM kill, no restart |
+
+The api peak comes from Argon2id (19 MiB per hash); 192 MiB leaves room for a few concurrent logins. The worker peak was measured on small synthetic DOCX only. A 100 MB PDF or an OCR-heavy file has not been measured and may exceed 320 MiB; the job then fails or retries through its lease, and the worker restarts. Raise the limit if real material needs it.
+
+**Minimum RAM:** 1 GB free for the production profile (the limits add up to 848 MiB; measured use ≈ 310 MiB). The staging profile needs 3 GB.
+
+**Disk (measured image sizes, uncompressed):** api 539 MB and worker 863 MB, sharing the `node:22-bookworm-slim` base (≈ 200 MB) and app layers. The unique worker delta is ≈ 325 MB (Python 3.11 venv 177 MB plus apt python). web 82 MB, egress 30 MB, `postgres:16-alpine` 420 MB (`postgres:16` is 642 MB). The four release images are **235 MB** as a gzip `docker save`.
+
+- **Deploying from exported images** (recommended for small hosts): ≈ 1.2 GB for a first install when the node base is already present, plus ≈ 0.4 GB per extra retained release. Add the 235 MB tarball while loading, plus data and backups. **Minimum free disk: 2.5 GB**; keep ≥ 1 GB free afterwards for PostgreSQL growth and backups.
+- **Building on the target** (`deploy.sh` without preloaded images) additionally needs the build stage (848 MB) plus npm/BuildKit cache, about 1.5–2 GB transient. **Minimum free disk: 4 GB**; run `docker builder prune` afterwards.
+- A general-purpose host running the staging profile should have ≥ 15 GB free.
+
+**Ports:** the stack binds only `127.0.0.1:${BB_HTTP_PORT}`. Host nginx terminates TLS on 443 (and 80 for ACME/redirect). Outbound 443 goes to the model provider and Blob through the egress proxy. Builds also need the Docker registry and GitHub.
+
+**Network:** `backend` uses `BB_BACKEND_SUBNET` (default `10.231.0.0/24`) and `BB_WEB_IP`. Pick a /24 that no other Docker network on the host uses (`docker network inspect $(docker network ls -q) | grep Subnet`).
+
+### Small shared host: openclaw-vm
+
+As of 2026-09-25, openclaw-vm has one 5.3 GB-free root disk, 2 vCPU and 3.3 GB RAM, with about 1.3 GB left after BondDraftAI/motive. Ports 80, 443, 3001, 5174, 8088, 8501, 8503, 8506 and 9506 are taken, and host nginx serves `bonddraftai-openclaw.japaneast.cloudapp.azure.com`.
+
+1. `.env`: `BB_PROFILE=prod`, `COMPOSE_PROFILES=` (empty, so no Azurite), `BB_BIND_ADDR=127.0.0.1`, `BB_HTTP_PORT=18090` (free on that host), a free `BB_BACKEND_SUBNET`/`BB_WEB_IP`, `AZURE_STORAGE_CONNECTION_STRING=<private Azure Blob>`, `BB_EGRESS_ALLOW=api.deepseek.com,<account>.blob.core.windows.net`. The api and worker reach Blob only through the proxy.
+2. Build on the worker host: `scripts/export-images.sh <sha> m1-<sha>.tar.gz`. Copy the tarball over the authorised SSH route, `docker load -i` it, delete it, then `scripts/deploy.sh <sha>`; the preloaded images are reused. Expect ≈ 1.2 GB of new images. Check `df -h /` stays ≥ 1 GB free.
+3. Host nginx: install `deploy/m1/nginx/host-server-block.conf.example` as a **separate server block with its own hostname** and certificate (`certbot --nginx -d <host>`). The app cannot be mounted under a path of the BondDraftAI hostname: it uses root paths (`/assets`, `/api/v1`) and `Path=/` cookies. It therefore needs its own DNS name, for example a second Azure DNS label or CNAME. Choosing that name is a CTO decision. `BB_PUBLIC_ORIGIN` must equal `https://<that host>`.
+4. Backups share the only disk: run `backup.sh`, copy the directory off-host, then delete the local copy.
 
 ## First install
 
@@ -64,7 +89,7 @@ The model credential is passed only through the adapter's env credential mode: `
 
 The web container speaks plain HTTP on loopback only. TLS terminates in front of it:
 
-- **Production:** host nginx (or Caddy) with a public certificate (Let's Encrypt via certbot), `listen 443 ssl http2`, `proxy_pass http://127.0.0.1:${BB_HTTP_PORT}`, `proxy_set_header X-Forwarded-Proto https`, HTTP→HTTPS redirect on 80, and `client_max_body_size 101m`. `BB_PUBLIC_ORIGIN` must equal the exact `https://` origin because the API enforces Origin/CSRF and always sets `Secure` cookies.
+- **Production:** host nginx (template: `deploy/m1/nginx/host-server-block.conf.example`) with a public certificate (Let's Encrypt via certbot), `listen 443 ssl http2`, `proxy_pass http://127.0.0.1:${BB_HTTP_PORT}`, `proxy_set_header X-Forwarded-Proto https`, HTTP→HTTPS redirect on 80, and `client_max_body_size 101m`. `BB_PUBLIC_ORIGIN` must equal the exact `https://` origin because the API enforces Origin/CSRF and always sets `Secure` cookies.
 - **Staging (worker host):** a cloudflared quick tunnel `cloudflared tunnel --url http://127.0.0.1:${BB_HTTP_PORT}` gives a `https://*.trycloudflare.com` origin. The URL changes when cloudflared restarts; update `BB_PUBLIC_ORIGIN` and `docker compose up -d api` afterwards. Quick tunnels have no uptime guarantee and all traffic reaches nginx from one address, so per-source login limits see every client as one source.
 
 ## Operator grants (#79)
