@@ -43,6 +43,10 @@
     "./material-jobs": {
       "types": "./dist/material-jobs.d.ts",
       "default": "./dist/material-jobs.js"
+    },
+    "./library": {
+      "types": "./dist/library.d.ts",
+      "default": "./dist/library.js"
     }
   },
   "scripts": {
