@@ -36,7 +36,9 @@ COPY --from=build --chown=root:root /app/deploy/m1/scripts/blob-snapshot.mjs dep
 
 FROM node-runtime AS api
 ARG BB_RELEASE_SHA=unknown
-ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000
+ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool
+# Disk-backed upload spool (compose mounts a volume here); a fresh named volume inherits this owner.
+RUN mkdir -p /var/lib/bondbuddy/upload-spool && chown node:node /var/lib/bondbuddy/upload-spool && chmod 0700 /var/lib/bondbuddy/upload-spool
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD ["node","-e","fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]

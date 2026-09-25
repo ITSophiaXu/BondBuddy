@@ -1,3 +1,5 @@
+import { isUtf8 } from 'node:buffer';
+import { open, readFile } from 'node:fs/promises';
 import { parentPort, workerData } from 'node:worker_threads';
 import { inflateRawSync, inflateSync } from 'node:zlib';
 import { fileTypeFromBuffer } from 'file-type';
@@ -8,7 +10,7 @@ import type { UploadSafetyCode, UploadWorkerReply } from './upload-safety.js';
 
 type ContentSafetyCode = Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>;
 type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string };
-type InspectionInput = { bytes: ArrayBuffer; mediaType: string };
+type InspectionInput = { bytes: ArrayBuffer; mediaType: string } | { path: string; byteSize: number; mediaType: string };
 type PdfPage = {
   getAnnotations(options: { intent: string }): Promise<Array<Record<string, unknown>>>;
   getJSActions(): Promise<Map<unknown, unknown> | null>;
@@ -26,8 +28,10 @@ type PdfDocument = {
   getPage(pageNumber: number): Promise<PdfPage>;
 };
 type PdfLoadingTask = { promise: Promise<PdfDocument>; destroy(): Promise<void> };
+type PdfRangeTransport = { requestDataRange(begin: number, end: number): void; onDataRange(begin: number, chunk: Uint8Array): void; abort(): void };
 type PdfJsModule = {
   getDocument(options: Record<string, unknown>): PdfLoadingTask;
+  PDFDataRangeTransport: new (length: number, initialData: Uint8Array | null) => PdfRangeTransport;
   AnnotationType: { WIDGET: number; FILEATTACHMENT: number };
 };
 
@@ -90,27 +94,67 @@ function utf8(bytes: Buffer): string {
   }
 }
 
-function verifyUtf8InChunks(bytes: Buffer): void {
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  try {
-    for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
-      decoder.decode(bytes.subarray(offset, Math.min(bytes.length, offset + 64 * 1024)), { stream: true });
+const TEXT_CHUNK_BYTES = 1024 * 1024;
+
+// Text and CSV are verified incrementally so a spooled file never has to be held in memory.
+type ChunkInspector = { feed(chunk: Buffer): void; end(): void };
+
+async function inspectTextChunks(chunks: AsyncIterable<Buffer> | Iterable<Buffer>, csv: boolean): Promise<void> {
+  const table = csv ? csvInspector() : null;
+  // Validate UTF-8 without decoding (decoded strings would pile up as garbage); a sequence split
+  // across chunks is carried into the next chunk.
+  let carry: Buffer | null = null;
+  const consume = (part: Buffer) => {
+    const joined: Buffer = carry ? Buffer.concat([carry, part]) : part;
+    const tail = incompleteUtf8Tail(joined);
+    if (!isUtf8(joined.subarray(0, joined.length - tail))) mismatch();
+    carry = tail ? Buffer.from(joined.subarray(joined.length - tail)) : null;
+    table?.feed(part);
+  };
+  // Binary signatures are checked on the leading MiB before any text is parsed.
+  const head: Buffer[] = [];
+  let headBytes = 0;
+  let typed = false;
+  const checkType = async () => {
+    typed = true;
+    if (await fileTypeFromBuffer(Buffer.concat(head).subarray(0, TEXT_CHUNK_BYTES))) mismatch();
+    for (const part of head.splice(0)) consume(part);
+  };
+  for await (const chunk of chunks) {
+    if (chunk.includes(0)) mismatch();
+    if (typed) {
+      consume(chunk);
+      continue;
     }
-    decoder.decode();
-  } catch {
-    mismatch();
+    head.push(Buffer.from(chunk)); // chunks may reuse one read buffer
+    headBytes += chunk.length;
+    if (headBytes >= TEXT_CHUNK_BYTES) await checkType();
   }
+  if (!typed) await checkType();
+  if (carry) mismatch();
+  table?.end();
+}
+
+/** Length of a trailing, not yet complete UTF-8 sequence (0 when the chunk ends on a boundary). */
+function incompleteUtf8Tail(bytes: Buffer): number {
+  for (let back = 1; back <= Math.min(3, bytes.length); back++) {
+    const value = bytes[bytes.length - back]!;
+    if ((value & 0xc0) === 0x80) continue;
+    const needed = value >= 0xf0 ? 4 : value >= 0xe0 ? 3 : value >= 0xc0 ? 2 : 1;
+    return needed > back ? back : 0;
+  }
+  return 0;
+}
+
+function* bufferChunks(bytes: Buffer): Iterable<Buffer> {
+  for (let offset = 0; offset < bytes.length; offset += TEXT_CHUNK_BYTES) yield bytes.subarray(offset, Math.min(bytes.length, offset + TEXT_CHUNK_BYTES));
 }
 
 async function inspectText(bytes: Buffer, csv: boolean): Promise<void> {
-  if (bytes.includes(0)) mismatch();
-  const detected = await fileTypeFromBuffer(bytes);
-  if (detected) mismatch();
-  verifyUtf8InChunks(bytes);
-  if (csv) inspectCsv(bytes);
+  await inspectTextChunks(bufferChunks(bytes), csv);
 }
 
-function inspectCsv(bytes: Buffer): void {
+function csvInspector(): ChunkInspector {
   type State = 'start' | 'unquoted' | 'quoted' | 'after-quote';
   let state: State = 'start';
   let prefix: number[] = [];
@@ -123,6 +167,13 @@ function inspectCsv(bytes: Buffer): void {
   const maxCellsPerRow = 100_000;
   const maxCells = 2_000_000;
   let cells = 0;
+  // Cross-chunk lookahead: a quote inside a quoted field, or a CR that may be followed by LF.
+  let quoteInQuoted = false;
+  let skipLf = false;
+  let seen = 0;
+  let last = -1;
+  let bomChecked = false;
+  const bom: number[] = [];
 
   const appendCandidate = (value: number) => {
     if (prefix.length < 512) prefix.push(value);
@@ -167,18 +218,29 @@ function inspectCsv(bytes: Buffer): void {
     if (rows > maxRows) unsupported('CSV exceeds the inspection row limit');
     rowCells = 0;
   };
+  const endLine = (value: number) => {
+    finishField();
+    if (value === 0x0d) skipLf = true;
+    finishRow();
+  };
 
-  const hasUtf8Bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
-  for (let i = hasUtf8Bom ? 3 : 0; i < bytes.length; i++) {
-    const value = bytes[i]!;
-    if (state === 'quoted') {
+  const step = (value: number) => {
+    if (skipLf) {
+      skipLf = false;
+      if (value === 0x0a) return;
+    }
+    if (quoteInQuoted) {
+      quoteInQuoted = false;
       if (value === 0x22) {
-        if (bytes[i + 1] === 0x22) {
-          append(value);
-          i++;
-        } else state = 'after-quote';
-      } else append(value);
-      continue;
+        append(value);
+        return;
+      }
+      state = 'after-quote';
+    }
+    if (state === 'quoted') {
+      if (value === 0x22) quoteInQuoted = true;
+      else append(value);
+      return;
     }
 
     if (state === 'after-quote') {
@@ -186,45 +248,66 @@ function inspectCsv(bytes: Buffer): void {
         finishField();
         state = 'start';
       } else if (value === 0x0a || value === 0x0d) {
-        finishField();
-        if (value === 0x0d && bytes[i + 1] === 0x0a) i++;
-        finishRow();
+        endLine(value);
         state = 'start';
       } else unreadable();
-      continue;
+      return;
     }
 
     if (state === 'start') {
       if (value === 0x22) state = 'quoted';
       else if (value === 0x2c) finishField();
-      else if (value === 0x0a || value === 0x0d) {
-        finishField();
-        if (value === 0x0d && bytes[i + 1] === 0x0a) i++;
-        finishRow();
-      } else {
+      else if (value === 0x0a || value === 0x0d) endLine(value);
+      else {
         append(value);
         state = 'unquoted';
       }
-      continue;
+      return;
     }
 
     if (value === 0x2c) {
       finishField();
       state = 'start';
     } else if (value === 0x0a || value === 0x0d) {
-      finishField();
-      if (value === 0x0d && bytes[i + 1] === 0x0a) i++;
-      finishRow();
+      endLine(value);
       state = 'start';
     } else if (value === 0x22) unreadable();
     else append(value);
-  }
+  };
 
-  if (state === 'quoted') unreadable();
-  if (state !== 'start' || prefix.length > 0 || bytes.length === 0 || bytes.at(-1) === 0x2c) {
-    finishField();
-    finishRow();
-  }
+  const flushBom = () => {
+    bomChecked = true;
+    const isBom = bom.length === 3 && bom[0] === 0xef && bom[1] === 0xbb && bom[2] === 0xbf;
+    if (!isBom) for (const value of bom) step(value);
+  };
+
+  return {
+    feed(chunk: Buffer) {
+      for (let i = 0; i < chunk.length; i++) {
+        const value = chunk[i]!;
+        seen++;
+        last = value;
+        if (!bomChecked) {
+          bom.push(value);
+          if (bom.length === 3) flushBom();
+          continue;
+        }
+        step(value);
+      }
+    },
+    end() {
+      if (!bomChecked) flushBom();
+      if (quoteInQuoted) {
+        quoteInQuoted = false;
+        state = 'after-quote';
+      }
+      if (state === 'quoted') unreadable();
+      if (state !== 'start' || prefix.length > 0 || seen === 0 || last === 0x2c) {
+        finishField();
+        finishRow();
+      }
+    }
+  };
 }
 
 const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
@@ -788,18 +871,57 @@ function inspectOffice(bytes: Buffer, declared: string): void {
   verifyOfficeRelationships(state);
 }
 
+const ACTIVE_PDF_TOKENS = ['/Launch', '/EmbeddedFile', '/EmbeddedFiles', '/RichMedia', '/SubmitForm', '/ImportData', '/GoToR', '/XFA'].map(token => Buffer.from(token, 'ascii'));
+const PDF_RANGE_CHUNK_BYTES = 64 * 1024;
+const activePdfToken = (bytes: Buffer) => ACTIVE_PDF_TOKENS.some(token => bytes.includes(token));
+
 async function inspectPdf(bytes: Buffer): Promise<void> {
   if (!bytes.subarray(0, 8).toString('ascii').startsWith('%PDF-')) mismatch();
-  const activePdfTokens = ['/Launch', '/EmbeddedFile', '/EmbeddedFiles', '/RichMedia', '/SubmitForm', '/ImportData', '/GoToR', '/XFA'];
-  if (activePdfTokens.some(token => bytes.includes(Buffer.from(token, 'ascii')))) {
-    unsupported('PDF contains an active action or embedded file');
-  }
+  if (activePdfToken(bytes)) unsupported('PDF contains an active action or embedded file');
+  await inspectPdfDocument({ data: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), disableRange: true });
+}
 
+/** PDF from a spooled file: tokens are scanned in chunks and pdf.js reads only the byte ranges it needs. */
+async function inspectPdfFile(path: string, byteSize: number): Promise<void> {
+  const handle = await open(path, 'r');
+  try {
+    const buffer = Buffer.allocUnsafe(TEXT_CHUNK_BYTES);
+    const overlap = Math.max(...ACTIVE_PDF_TOKENS.map(token => token.length)) - 1;
+    let tail = Buffer.alloc(0);
+    let position = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      if (position === 0 && !buffer.subarray(0, Math.min(8, bytesRead)).toString('ascii').startsWith('%PDF-')) mismatch();
+      const chunk = buffer.subarray(0, bytesRead);
+      // Search the chunk in place plus a small seam window, so no chunk-sized copies are made.
+      const seam = Buffer.concat([tail, chunk.subarray(0, overlap)]);
+      if (activePdfToken(chunk) || activePdfToken(seam)) unsupported('PDF contains an active action or embedded file');
+      tail = Buffer.from(chunk.length >= overlap ? chunk.subarray(chunk.length - overlap) : Buffer.concat([tail, chunk]).subarray(-overlap));
+      position += bytesRead;
+    }
+    if (position !== byteSize) unreadable();
+    const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfJsModule;
+    const transport = new pdfjs.PDFDataRangeTransport(byteSize, null);
+    transport.requestDataRange = (begin: number, end: number) => {
+      const chunk = new Uint8Array(end - begin);
+      handle.read(chunk, 0, chunk.length, begin).then(
+        ({ bytesRead }) => transport.onDataRange(begin, bytesRead === chunk.length ? chunk : chunk.subarray(0, bytesRead)),
+        () => transport.abort()
+      );
+    };
+    await inspectPdfDocument({ range: transport, length: byteSize, rangeChunkSize: PDF_RANGE_CHUNK_BYTES, disableRange: false });
+  } finally {
+    await handle.close();
+  }
+}
+
+async function inspectPdfDocument(source: Record<string, unknown>): Promise<void> {
   let loading: PdfLoadingTask | undefined;
   try {
     const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfJsModule;
     loading = pdfjs.getDocument({
-      data: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+      ...source,
       verbosity: 0,
       stopAtErrors: true,
       enableXfa: false,
@@ -807,7 +929,6 @@ async function inspectPdf(bytes: Buffer): Promise<void> {
       disableFontFace: true,
       disableAutoFetch: true,
       disableStream: true,
-      disableRange: true,
       maxImageSize: MAX_IMAGE_PIXELS
     });
     const document = await loading.promise;
@@ -840,6 +961,8 @@ async function inspectPdf(bytes: Buffer): Promise<void> {
       if (pageActions && pageActions.size > 0) unsupported('PDF page contains JavaScript actions');
       await page.getOperatorList();
       page.cleanup();
+      // Decoded page images are garbage now; with --expose-gc free them before the next page.
+      (globalThis as { gc?: () => void }).gc?.();
     }
   } catch (error) {
     if (error instanceof MaterialInspectionError) throw error;
@@ -1012,11 +1135,40 @@ async function inspectContent(bytes: Buffer, declared: string): Promise<void> {
   }
 }
 
+async function inspectFile(path: string, byteSize: number, declared: string): Promise<void> {
+  if (declared === TEXT_MIME || declared === CSV_MIME) {
+    // One reused read buffer: no per-chunk allocations for the GC to catch up with.
+    const handle = await open(path, 'r');
+    let seen = 0;
+    try {
+      const buffer = Buffer.allocUnsafe(TEXT_CHUNK_BYTES);
+      const chunks = async function* () {
+        for (;;) {
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+          if (bytesRead === 0) return;
+          seen += bytesRead;
+          yield buffer.subarray(0, bytesRead);
+        }
+      };
+      await inspectTextChunks(chunks(), declared === CSV_MIME);
+    } finally {
+      await handle.close();
+    }
+    if (seen !== byteSize) unreadable();
+    return;
+  }
+  if (declared === PDF_MIME) return inspectPdfFile(path, byteSize);
+  // Office and image formats need random access; the one whole-file copy lives only in this worker.
+  const bytes = await readFile(path);
+  if (bytes.length !== byteSize) unreadable();
+  await inspectContent(bytes, declared);
+}
+
 async function run(): Promise<void> {
   const input = workerData as InspectionInput;
-  const bytes = Buffer.from(input.bytes);
   try {
-    await inspectContent(bytes, input.mediaType);
+    if ('path' in input) await inspectFile(input.path, input.byteSize, input.mediaType);
+    else await inspectContent(Buffer.from(input.bytes), input.mediaType);
     parentPort?.postMessage({ ok: true } satisfies UploadWorkerReply);
   } catch (error) {
     const failure: InspectionFailure = error instanceof MaterialInspectionError

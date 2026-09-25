@@ -70,6 +70,11 @@ services:
       BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
       BB_SUPPORT_CONTACT: ${BB_SUPPORT_CONTACT:-}
       BB_TRUSTED_PROXY_CIDR: ${BB_WEB_IP:-10.231.0.10}/32
+      # Uploads are spooled to this disk-backed volume, never to the memory-backed /tmp tmpfs.
+      # The API caps in-flight spool bytes and deletes each file after the request.
+      BB_UPLOAD_SPOOL_DIR: /var/lib/bondbuddy/upload-spool
+      BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_SPOOL_MAX_BYTES:-1073741824}
+    volumes: [uploadspool:/var/lib/bondbuddy/upload-spool]
     networks: [backend]
     depends_on:
       postgres: {condition: service_healthy}
@@ -150,3 +155,4 @@ networks:
 volumes:
   pgdata:
   blobdata:
+  uploadspool:

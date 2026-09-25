@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { readFile, rm, writeFile } from 'node:fs/promises';
+import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { inspectMaterialUpload } from './upload-safety.js';
+import { inspectMaterialUpload, inspectMaterialUploadFile } from './upload-safety.js';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -48,6 +51,50 @@ export interface PrivateBlobs {
   getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
+  /** Streaming variants for large objects (Azure/Azurite). In-memory test doubles may omit them. */
+  putFile?(key: string, path: string, mediaType: string): Promise<void>;
+  /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
+  readToFile?(key: string, path: string | null, maxBytes: number): Promise<BlobDigest | null>;
+}
+export type BlobDigest = { byteSize: number; sha256: string };
+const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
+const notFound = (error: unknown) => Boolean(error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'));
+async function hashStream(body: Readable, path: string | null, maxBytes: number, expected?: number): Promise<BlobDigest> {
+  const hash = createHash('sha256');
+  const out = path ? createWriteStream(path, { flags: 'wx', mode: 0o600 }) : null;
+  let byteSize = 0;
+  try {
+    for await (const chunk of body) {
+      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      byteSize += value.length;
+      if (byteSize > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+      hash.update(value);
+      if (out && !out.write(value)) await new Promise<void>(resolve => out.once('drain', () => resolve()));
+    }
+    if (out) await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => error ? reject(error) : resolve()));
+  } catch (error) {
+    body.destroy();
+    if (out) { out.destroy(); await rm(path!, { force: true }).catch(() => undefined); }
+    throw error;
+  }
+  if (expected !== undefined && byteSize !== expected) {
+    if (path) await rm(path, { force: true }).catch(() => undefined);
+    throw new Problem(503,'DATA_UNAVAILABLE','Stored object size changed during bounded read');
+  }
+  return { byteSize, sha256: hash.digest('hex') };
+}
+/** Stage a spooled file to private Blob without loading it into memory. */
+export async function putBlobFile(blobs: PrivateBlobs, key: string, path: string, mediaType: string): Promise<void> {
+  if (blobs.putFile) return blobs.putFile(key, path, mediaType);
+  await blobs.put(key, await readFile(path), mediaType);
+}
+/** Hash a stored object (and optionally copy it to `path`) without holding it in memory. */
+export async function readBlobToFile(blobs: PrivateBlobs, key: string, path: string | null, maxBytes: number): Promise<BlobDigest | null> {
+  if (blobs.readToFile) return blobs.readToFile(key, path, maxBytes);
+  const bytes = await blobs.getIfExistsBounded(key, maxBytes);
+  if (bytes === null) return null;
+  if (path) await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+  return { byteSize: bytes.length, sha256: digest(bytes) };
 }
 export function azureBlobs(connectionString: string, containerName = 'bondbuddy-private'): PrivateBlobs {
   const container = BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
@@ -102,12 +149,43 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         throw error;
       }
     },
-    async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); }
+    async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); },
+    async putFile(key, path, mediaType) {
+      await ensure();
+      // Always stage blocks (the SDK would otherwise send objects up to 256 MiB in one buffered request),
+      // so at most blockSize x concurrency bytes are in memory at a time.
+      await container.getBlockBlobClient(key).uploadFile(path, { blockSize: BLOB_BLOCK_BYTES, maxSingleShotSize: BLOB_BLOCK_BYTES, concurrency: 2, blobHTTPHeaders: { blobContentType: mediaType } });
+    },
+    async readToFile(key, path, maxBytes) {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Problem(422,'VALIDATION_FAILED','Invalid Blob read limit');
+      await ensure();
+      try {
+        const response = await container.getBlockBlobClient(key).download();
+        if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
+        if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
+        return await hashStream(response.readableStreamBody as Readable, path, maxBytes, response.contentLength);
+      } catch (error) {
+        if (error instanceof Problem) throw error;
+        if (notFound(error)) return null;
+        throw error;
+      }
+    }
   };
 }
 export async function verifiedMedia(bytes: Buffer, declared: string): Promise<string> {
   try {
     return await inspectMaterialUpload(bytes, declared);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'status' in error && 'code' in error && error instanceof Error) {
+      throw new Problem(error.status as number, String(error.code), error.message);
+    }
+    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected');
+  }
+}
+/** Inspect a spooled upload file; the parser worker reads it in bounded chunks where the format allows. */
+export async function verifiedMediaFile(path: string, byteSize: number, declared: string): Promise<string> {
+  try {
+    return await inspectMaterialUploadFile(path, byteSize, declared);
   } catch (error) {
     if (error && typeof error === 'object' && 'status' in error && 'code' in error && error instanceof Error) {
       throw new Problem(error.status as number, String(error.code), error.message);
