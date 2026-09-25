@@ -34,8 +34,9 @@ const response={
 };
 
 test('worker validates the versioned parser response and material binding',async()=>{
-  const result=await runDocumentParser(request,{invoke:async serialized=>{
+  const result=await runDocumentParser(request,{invoke:async (serialized,options)=>{
     assert.deepEqual(JSON.parse(serialized),request);
+    assert.equal(options.timeoutMs,15*60_000,'large DOCX can exceed the previous five-minute bridge limit');
     return JSON.stringify(response);
   }});
   assert.equal(result.records[0]?.literal_quote,'synthetic');

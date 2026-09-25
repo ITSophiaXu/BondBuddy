@@ -496,7 +496,7 @@ export async function runDocumentParser(request:DocumentParseRequest, options:{
   onDiagnostic?:(diagnostic:ParserStderrDiagnostic|null)=>void;
 }={}):Promise<DocumentParseResponse> {
   validateRequest(request);
-  const timeoutMs=options.timeoutMs??5*60_000;
+  const timeoutMs=options.timeoutMs??15*60_000;
   const maxOutputBytes=options.maxOutputBytes??DOCUMENT_PARSER_MAX_OUTPUT_BYTES;
   if(!Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>30*60_000 || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes<1024 || maxOutputBytes>256*1024*1024) throw parserError('INVALID_PARSE_RUNNER_OPTIONS');
   const serialized=JSON.stringify(request);
