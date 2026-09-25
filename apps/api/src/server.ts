@@ -503,9 +503,10 @@ export function createServer(settings: Settings = {}) {
     const traceId=uid();
     try {
       const header=request.headers['if-match'];
-      if(typeof header!=='string'||! /^(?:[1-9][0-9]{0,8})$/.test(header))throw new Problem(422,'VALIDATION_FAILED','If-Match profile version required');
+      if(typeof header!=='string'||!/^(?:[1-9][0-9]{0,9})$/.test(header))throw new Problem(422,'VALIDATION_FAILED','If-Match profile version required');
       const expected=Number(header),patch=body<{profile_version:number;reason:string;source_market?:Market|null;source_offering?:Offering|null;evidence_refs:string[];reporting_periods?:unknown[]}>(request);
-      if(!Number.isSafeInteger(expected)||patch.profile_version!==expected)throw conflict('INPUT_REVISION_CONFLICT','If-Match and profile_version must match');
+      if(!Number.isSafeInteger(expected)||expected>2147483647)throw new Problem(422,'VALIDATION_FAILED','If-Match profile version is out of range');
+      if(patch.profile_version!==expected)throw conflict('INPUT_REVISION_CONFLICT','If-Match and profile_version must match');
       const result=await transaction(db(),async client=>{
         const corrected=await correctHistoricalProfile(client,blobs,{owner:user,projectId:id,materialId,materialVersion:m.version,actorId:user,requestId:request.id},patch);
         await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'source_profile_correction',status:'submitted'});

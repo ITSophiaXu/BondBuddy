@@ -68,6 +68,8 @@ test('source-profile PATCH appends an owner-scoped asserted profile with verifie
       const patch = { profile_version: 1, source_market: 'szse', reason: 'synthetic user correction', evidence_refs: ['anchor-market'] };
       const absentMatch = await send('PATCH', baseUrl, patch);
       assert.equal(absentMatch.statusCode, 422);
+      const mismatchedMatch = await send('PATCH', baseUrl, { ...patch, profile_version: 2 }, { 'if-match': '1' });
+      assert.equal(mismatchedMatch.statusCode, 409);
       active = 'synthetic-profile-foreign';
       const foreign = await send('PATCH', baseUrl, patch, { 'if-match': '1' });
       assert.equal(foreign.statusCode, 404);
