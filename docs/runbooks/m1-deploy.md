@@ -24,9 +24,11 @@ Measured on the worker host with the release images and the full browser accepta
 
 | | staging profile (`compose.yaml`) | production profile (`+ compose.prod.yaml`) |
 |---|---|---|
-| memory limits (steady state) | 2.5 GB incl. Azurite | **848 MiB** (postgres 256, worker 320, api 192, egress 48, web 32); migrate 128 MiB runs first |
+| memory limits (steady state) | 2.5 GB incl. Azurite | **1168 MiB** (postgres 256, worker 320, api 512, egress 48, web 32); migrate 128 MiB runs first |
 | measured peak per container | postgres 114, api 65, azurite 61, worker 48, egress 17, web 13 MiB | api 136, postgres 104, worker 43, egress 13, web 10 MiB (Azurite 54 MiB was only the test stand-in) |
 | measured peak sum | ≈ 320 MiB | **≈ 306 MiB**; no OOM kill, no restart |
+
+Upload capacity (#6/#35): request bodies stream to the disk-backed `uploadspool` volume (never the tmpfs `/tmp`), hashed on the way; Blob writes are staged in 4 MiB blocks. Inspection is single-flight per api process; waiting requests get a retryable `503 DATA_UNAVAILABLE` after 60 s (`BB_UPLOAD_INSPECTION_QUEUE_MS`). Measured on the prod profile: a ~96 MiB scanned-style PDF peaks at ~470 MiB container memory (353 MiB anon), which is why the api limit is 512M. DOCX/XLSX are still read whole inside the parser worker (open risk, see PR).
 
 The api peak comes from Argon2id (19 MiB per hash); 192 MiB leaves room for a few concurrent logins. The worker peak was measured on small synthetic DOCX only. A 100 MB PDF or an OCR-heavy file has not been measured and may exceed 320 MiB; the job then fails or retries through its lease, and the worker restarts. Raise the limit if real material needs it.
 
