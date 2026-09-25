@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { ApiError, type Dto } from './api.js';
-import { MaterialProcessing, materialProcessingKey } from './material-processing.js';
+import { ApiClient, ApiError, type Dto } from './api.js';
+import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow, selectCorrectionEditorForRender } from './material-processing.js';
 
 const material: Dto<'MaterialResponse'> = { material_id: 'material-a', material_version: 1, sha256: 'a'.repeat(64), role: 'historical', filename: 'synthetic.docx', upload_id: 'upload-a', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, state: 'persisted', persisted_at: '2026-09-25T00:00:00Z', error: null };
 const job: Dto<'MaterialParseJobResponse'> = { job_id: 'job-a', job_type: 'parse', subtype: 'material_parse', project_id: 'project-a', material_id: material.material_id, material_version: 1, material_sha256: material.sha256, parser_version: 'synthetic-v1', state: 'succeeded', stage: 'succeeded', completed_stages: ['parse_evidence', 'historical_profile'], attempts: 1, max_attempts: 3, error_code: null, outcome: 'parsed', parse_status: 'parsed', profile_version: 1, pending_capabilities: [], updated_at: material.persisted_at };
@@ -10,16 +10,18 @@ const field = <T>(value: T) => ({ value, raw_value: '合成原文 <script>neverR
 const profile: Dto<'RecognitionResponse'> = { material_id: material.material_id, material_version: 1, profile_version: 1, state: 'ready', source_market: field('nafmii'), source_offering: field('dfi'), latest_reporting_cutoff: field('2025-12-31'), reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', raw_value: null, provenance, uncertainty: [], status: 'recognized' }] };
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 function setup(t: TestContext, overrides: Partial<ConstructorParameters<typeof MaterialProcessing>[0]> = {}) {
-  const reader = { material: async () => material, materialParseJob: async () => job, sourceProfile: async () => profile, ...overrides };
-  const controller = new MaterialProcessing(reader, 'project-a', () => {});
+  const reader = { material: async () => material, materialParseJob: async () => job, sourceProfile: async () => profile, correctSourceProfile: async (_project: string, _material: string, patch: Dto<'RecognitionPatchRequest'>) => ({ ...profile, profile_version: patch.profile_version + 1, state: 'needs_confirmation' as const }), ...overrides };
+  const controller = new MaterialProcessing(reader, 'project-a', () => {}, { market: 'nafmii', offering: 'mtn' });
   t.after(() => controller.dispose());
   return controller;
 }
 
-test('renders persisted profile with source labels, periods and escaped evidence', async t => {
+test('renders source and target separately, correction control, periods and escaped evidence', async t => {
   const controller = setup(t); controller.sync([material]); await tick();
   const html = controller.render(material);
-  for (const text of ['交易商协会', 'DFI · 储架发行', '2025-01-01 至 2025-12-31', '合并口径', '本次发行目标仍以项目表单为准', '&lt;script&gt;', '在线校正尚未开放']) assert.ok(html.includes(text), text);
+  for (const text of ['上交所', '普通私募公司债', '本次发行目标', '交易商协会 · MTN · 中期票据', '2025-01-01 至 2025-12-31', '合并口径', '校正历史稿源信息', 'profile_version', '&lt;script&gt;', '尚非核验事实']) assert.ok(html.includes(text), text);
+  assert.match(html, /data-period-add/); assert.match(html, /data-period-remove/);
+  assert.ok(html.indexOf('历史稿信息') < html.indexOf('本次发行目标'));
   assert.ok(!html.includes('<script>'));
 });
 
@@ -28,6 +30,32 @@ test('unknown source values and reporting periods stay unknown with raw evidence
   const controller = setup(t, { sourceProfile: async () => uncertain }); controller.sync([material]); await tick();
   const html = controller.render(material);
   assert.match(html, /源信息待确认/); assert.match(html, /原文涉及多个市场/); assert.match(html, /未识别到有依据的报告期/);
+  assert.match(html, /尚未识别到报告期；可按原文逐期添加/); assert.match(html, /data-period-add/);
+});
+
+test('full period correction list can add a missed period and remove an extra period', () => {
+  const syntheticPeriod = (year: number) => ({ start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual' as const, scope: 'consolidated' as const });
+  const afterAddingMissedYear = buildReportingPeriodCorrections([syntheticPeriod(2022), syntheticPeriod(2023), syntheticPeriod(2024)], ['evidence-period']);
+  assert.deepEqual(afterAddingMissedYear.map(period => period.end), ['2022-12-31', '2023-12-31', '2024-12-31']);
+  assert.ok(afterAddingMissedYear.every(period => period.evidence_refs.includes('evidence-period')));
+
+  const afterRemovingExtraYear = buildReportingPeriodCorrections([syntheticPeriod(2022), syntheticPeriod(2024)], ['evidence-period']);
+  assert.deepEqual(afterRemovingExtraYear.map(period => period.end), ['2022-12-31', '2024-12-31']);
+  assert.ok(!afterRemovingExtraYear.some(period => period.end === '2023-12-31'));
+  assert.ok(afterRemovingExtraYear.every(period => !('latest_reporting_cutoff' in period)));
+  assert.match(renderReportingPeriodRow(3), /移除报告期 4/);
+});
+
+test('ordinary rerenders retain unsaved editor rows only for the same profile version', () => {
+  const draft = { reason: 'unsaved synthetic edit', open: true, periods: ['2022', '2023 added'] };
+  const refreshedAtSameVersion = { reason: '', open: false, periods: ['2022'] };
+  assert.equal(selectCorrectionEditorForRender(draft, 4, refreshedAtSameVersion, 4), draft);
+  assert.equal(draft.reason, 'unsaved synthetic edit');
+  assert.deepEqual(draft.periods, ['2022', '2023 added']);
+
+  const afterNewProfile = { reason: '', open: false, periods: ['2022', '2024'] };
+  assert.equal(selectCorrectionEditorForRender(draft, 4, afterNewProfile, 5), afterNewProfile);
+  assert.equal(selectCorrectionEditorForRender(draft, 4, afterNewProfile, null), afterNewProfile);
 });
 
 test('different material version/hash and foreign profile provenance cannot appear as current results', async t => {
@@ -51,10 +79,63 @@ test('read errors clear prior profile, manual refresh recovers, and 404 distingu
   mode = 'ok'; controller.refresh(); await tick(); assert.match(controller.render(material), /源信息已识别/);
 });
 
-test('job success with unavailable profile never synthesizes history or invents correction controls', async t => {
+test('job success with unavailable profile never synthesizes history or correction controls', async t => {
   const controller = setup(t, { sourceProfile: async () => { throw new ApiError(409, 'CAPABILITY_NOT_READY'); } });
   controller.sync([material]); await tick();
   assert.match(controller.render(material), /识别结果暂不可用/); assert.doesNotMatch(controller.render(material), /源信息已识别|input|textarea/);
+});
+
+test('missing correction route preserves a read-only source profile', async t => {
+  const controller = setup(t, { correctSourceProfile: undefined }); controller.sync([material]); await tick();
+  const html = controller.render(material);
+  assert.match(html, /源信息校正接口当前不可用，结果保持只读/);
+  assert.doesNotMatch(html, /data-source-correction/);
+});
+
+test('correction writes against the displayed profile version and retains pending review', async t => {
+  let received: Dto<'RecognitionPatchRequest'> | undefined;
+  const controller = setup(t, { correctSourceProfile: async (_project, _material, patch) => {
+    received = patch;
+    return { ...profile, profile_version: patch.profile_version + 1, state: 'needs_confirmation' };
+  } });
+  controller.sync([material]); await tick();
+  await controller.correct(materialProcessingKey(material), { profile_version: 1, source_market: 'szse', reason: '合成校正', evidence_refs: ['evidence-a'] });
+  assert.equal(received?.profile_version, 1);
+  assert.equal(received?.source_market, 'szse');
+  assert.match(controller.render(material), /用户提供 · 尚非核验事实|校正已保存为用户提供的信息/);
+});
+
+test('stale profile correction triggers latest profile refresh and remains explicit', async t => {
+  let reads = 0;
+  const controller = setup(t, { sourceProfile: async () => { reads++; return { ...profile, profile_version: reads === 1 ? 1 : 2 }; },
+    correctSourceProfile: async () => { throw new ApiError(409, 'HISTORICAL_PROFILE_VERSION_CONFLICT'); } });
+  controller.sync([material]); await tick();
+  await controller.correct(materialProcessingKey(material), { profile_version: 1, source_market: 'szse', reason: '合成过期校正', evidence_refs: ['evidence-a'] });
+  await tick();
+  assert.equal(reads, 2);
+  assert.match(controller.render(material), /识别结果第 2 版/);
+  assert.match(controller.render(material), /版本或引用证据已更新/);
+});
+
+test('PATCH sends the contract profile version as a decimal If-Match header', async t => {
+  const previousFetch = globalThis.fetch;
+  const previousDocument = globalThis.document;
+  let request: { url: string; init: RequestInit } | undefined;
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { cookie: '' } });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    request = { url: String(input), init: init ?? {} };
+    return new Response(JSON.stringify(profile), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document');
+    else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument });
+  });
+  const api = new ApiClient(() => {});
+  await api.correctSourceProfile('project a', 'material/b', { profile_version: 12, source_market: 'szse', reason: 'synthetic', evidence_refs: ['evidence-a'] });
+  assert.equal(request?.url, '/api/v1/projects/project%20a/materials/material%2Fb/source-profile');
+  assert.equal(new Headers(request?.init.headers).get('If-Match'), '12');
+  assert.equal(request?.init.method, 'PATCH');
 });
 
 test('statuses are derived from durable jobs, not stale material.state', async t => {
