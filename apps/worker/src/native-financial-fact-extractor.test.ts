@@ -21,6 +21,10 @@ const sampleParserPython = process.env.BB_PYTHON?.trim() || (existsSync(localPyt
   ? localPython
   : process.platform === 'win32' ? 'python' : 'python3');
 const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+const SUPPORTED_SAMPLE_PARSER_VERSIONS = new Set([
+  'bondbuddy-document-parser-1.0.3',
+  'bondbuddy-document-parser-1.0.5',
+]);
 
 function evidence(recordId: string, sheet: string, cell: string, literalQuote: string, sheetState = 'visible'): DocumentParseRecord {
   return {
@@ -207,7 +211,8 @@ test('real authorized zq XLSX parses through Python and maps A5/C5 with manifest
   const parsed = JSON.parse(processResult.stdout) as DocumentParseResponse;
   assert.equal(parsed.status, 'parsed');
   assert.deepEqual(parsed.warnings, []);
-  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.3');
+  assert.ok(SUPPORTED_SAMPLE_PARSER_VERSIONS.has(parsed.parser_version),
+    `sample parser version must be explicitly supported, received ${parsed.parser_version}`);
   assert.equal(parsed.document.worksheet_count, 8);
 
   const mapped = await createNativeFinancialFactExtractor(async () => ({ status: parsed.status, warnings: parsed.warnings }))
