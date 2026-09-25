@@ -67,6 +67,8 @@ services:
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
       BB_ALLOWED_ORIGIN: ${BB_PUBLIC_ORIGIN:?set in .env}
+      # #17: run submission commits durable jobs for the deployed WorkerRuntime to claim.
+      BB_RUN_RUNTIME_ENABLED: '1'
       BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
       BB_SUPPORT_CONTACT: ${BB_SUPPORT_CONTACT:-}
       BB_TRUSTED_PROXY_CIDR: ${BB_WEB_IP:-10.231.0.10}/32
@@ -92,7 +94,9 @@ services:
       <<: *bb-policy-env
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
-      BB_PARSE_JOB_BATCH: ${BB_PARSE_JOB_BATCH:-5}
+      # #17 WorkerRuntime (apps/worker/src/runtime.ts): bounded slots over run and parse jobs.
+      BB_WORKER_CONCURRENCY: ${BB_WORKER_CONCURRENCY:-2}
+      BB_WORKER_DRAIN_MS: ${BB_WORKER_DRAIN_MS:-20000}
       BB_PARSE_CACHE_OCR_VERSION: ${BB_PARSE_CACHE_OCR_VERSION:?set in .env; see .env.example}
       BB_PARSE_CACHE_BASIS_VERSION: ${BB_PARSE_CACHE_BASIS_VERSION:?set in .env; see .env.example}
       # Only route out: the allow-list proxy. The backend network has no internet gateway.
@@ -115,6 +119,8 @@ services:
       egress: {condition: service_started}
     read_only: true
     tmpfs: [/tmp]
+    # Compose's default 10 s is shorter than the drain window; SIGKILL would skip lease release.
+    stop_grace_period: 30s
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     deploy: {resources: {limits: {cpus: '1.0', memory: 768M}}}
