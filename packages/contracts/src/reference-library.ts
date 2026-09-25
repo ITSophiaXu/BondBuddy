@@ -138,9 +138,29 @@ export const LibraryChapterMappingCreateRequestSchema = obj({
   reason: code,
 });
 
-export const LibrarySelectionLockSchema = obj({
+const LibrarySelectionLockV1Schema = obj({
   lock_id: id, query_schema_version: Type.Literal(LIBRARY_QUERY_SCHEMA_VERSION),
   document_version_id: id, profile_id: id, taxonomy_version: version, index_release_id: id, locked_at: utc,
+});
+
+/** v1.1 locks additionally pin the reviewed profile version and the exact accepted cross-scope mapping, if any. */
+export const LibrarySelectionLockV1_1Schema = obj({
+  lock_id: id, query_schema_version: Type.Literal(LIBRARY_QUERY_SCHEMA_VERSION_V1_1),
+  document_version_id: id, profile_id: id, profile_version: Type.Integer({ minimum: 1 }), taxonomy_version: version,
+  index_release_id: id, chapter_mapping_version_id: nullable(id), locked_at: utc,
+});
+export const LibrarySelectionLockSchema = Type.Union([LibrarySelectionLockV1Schema, LibrarySelectionLockV1_1Schema]);
+
+/** Trusted internal request to pin exactly the candidate checked in a v1.1 query response. */
+export const LibrarySelectionLockRequestV1_1Schema = obj({
+  owner_user_id: id, project_id: id, run_id: nullable(id),
+  query_schema_version: Type.Literal(LIBRARY_QUERY_SCHEMA_VERSION_V1_1),
+  document_version_id: id, document_version: Type.Integer({ minimum: 1 }), profile_id: id, profile_version: Type.Integer({ minimum: 1 }),
+  taxonomy_version: version, index_release_id: id,
+  candidate_scope: obj({ market, offering, instrument }),
+  target_scope: obj({ market, offering, instrument, document_stage: stage, rule_version: version }),
+  comparability: LibraryComparabilitySchema,
+  chapter_mapping_version_id: nullable(id),
 });
 
 export const LibraryReviewActionRequestSchema = obj({
@@ -182,6 +202,7 @@ export const referenceLibrarySchemas = {
   LibraryChapterMapping: LibraryChapterMappingSchema,
   LibraryChapterMappingCreateRequest: LibraryChapterMappingCreateRequestSchema,
   LibrarySelectionLock: LibrarySelectionLockSchema,
+  LibrarySelectionLockRequestV1_1: LibrarySelectionLockRequestV1_1Schema,
   LibraryReviewActionRequest: LibraryReviewActionRequestSchema,
   LibraryOverview: LibraryOverviewSchema,
   LibraryAlert: LibraryAlertSchema,
@@ -197,6 +218,8 @@ export type LibraryChapterMappingCreateRequest = Static<typeof LibraryChapterMap
 export type LibraryQueryResponseV1 = Static<typeof LibraryQueryResponseV1Schema>;
 export type LibraryQueryResponseV1_1 = Static<typeof LibraryQueryResponseV1_1Schema>;
 export type LibrarySelectionLock = Static<typeof LibrarySelectionLockSchema>;
+export type LibrarySelectionLockV1_1 = Static<typeof LibrarySelectionLockV1_1Schema>;
+export type LibrarySelectionLockRequestV1_1 = Static<typeof LibrarySelectionLockRequestV1_1Schema>;
 export type LibraryReviewActionRequest = Static<typeof LibraryReviewActionRequestSchema>;
 export type LibraryOverview = Static<typeof LibraryOverviewSchema>;
 export type LibraryAlert = Static<typeof LibraryAlertSchema>;

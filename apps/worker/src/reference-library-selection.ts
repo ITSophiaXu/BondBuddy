@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { LIBRARY_QUERY_SCHEMA_VERSION, type LibraryQueryRequest, type LibraryQueryResponse, type LibrarySelectionLock } from '@bondbuddy/contracts';
+import { type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponse, type LibrarySelectionLock } from '@bondbuddy/contracts';
 import { matchBusinessReferences, matchLibraryQuery, type AnnualBusinessProfile, type ReferenceTarget } from '@bondbuddy/domain/reference-match';
 import type { Pool } from 'pg';
 import { checkpointStage, type Lease } from '@bondbuddy/api/queue';
@@ -42,7 +42,13 @@ export interface NoHistoryLibrarySelectionInput {
 
 export interface LibrarySelectionAdapters {
   query(request: LibraryQueryRequest): Promise<LibraryQueryResponse>;
-  lock(input: { ownerUserId: string; projectId: string; runId: string; documentVersionId: string; profileId: string; indexReleaseId: string }): Promise<LibrarySelectionLock>;
+  lock(input: {
+    ownerUserId: string; projectId: string; runId: string; documentVersionId: string; profileId: string; indexReleaseId: string;
+    querySchemaVersion: 'reference-library-query-v1.1'; documentVersion: number; profileVersion: number; taxonomyVersion: string;
+    candidateScope: { market: string; offering: string; instrument: string };
+    targetScope: { market: string; offering: string; instrument: string; document_stage: string; rule_version: string };
+    comparability: NonNullable<LibraryCandidateV1_1['comparability']>; chapterMappingVersionId: string | null;
+  }): Promise<LibrarySelectionLock>;
   persist(snapshot: LibrarySelectionSnapshot): Promise<void>;
 }
 
@@ -99,12 +105,37 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
     return result;
   }
   const candidate = matched.selected;
+  const candidateV11 = 'comparability' in candidate ? candidate as LibraryCandidateV1_1 : null;
+  if (response.schema_version !== 'reference-library-query-v1.1' || !candidateV11?.comparability) {
+    const result = snapshotBase({ status: 'needs_review', target: matched.targetValidation.snapshot,
+      index_release: response.index_release, candidate_decisions: matched.decisions, selected: null,
+      reasons: ['v1_1_reviewed_lock_facts_missing'] });
+    await adapters.persist(result);
+    return result;
+  }
   let lock: LibrarySelectionLock;
   try {
     lock = await adapters.lock({ ownerUserId: input.ownerUserId, projectId: input.projectId, runId: input.runId,
-      documentVersionId: candidate.document_version_id, profileId: candidate.profile_id, indexReleaseId: response.index_release.release_id });
+      documentVersionId: candidate.document_version_id, profileId: candidate.profile_id, indexReleaseId: response.index_release.release_id,
+      querySchemaVersion: 'reference-library-query-v1.1', documentVersion: candidate.document_version, profileVersion: candidate.profile_version,
+      taxonomyVersion: candidate.taxonomy_version,
+      candidateScope: { market: candidate.market, offering: candidate.offering, instrument: candidate.instrument },
+      targetScope: { market: input.target.market, offering: input.target.offering, instrument: input.target.instrument,
+        document_stage: input.target.documentStage, rule_version: input.ruleVersion },
+      comparability: candidateV11.comparability, chapterMappingVersionId: matched.selectedChapterMapping?.mapping_version_id ?? null });
   } catch (error) {
-    if (!(error instanceof Problem) || error.code !== 'DATA_NOT_ENTITLED') throw error;
+    if (!(error instanceof Problem)) throw error;
+    if (error.code === 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED') {
+      const result = snapshotBase({ status: 'needs_review', target: matched.targetValidation.snapshot,
+        index_release: response.index_release,
+        candidate_decisions: matched.decisions.map(decision => decision.referenceId === candidate.reference_id
+          && decision.documentVersion === String(candidate.document_version)
+          ? { ...decision, disposition: 'excluded' as const, reason: 'candidate_full_revenue_universe_or_tie_proof_missing' }
+          : decision), selected: null, reasons: ['candidate_full_revenue_universe_or_tie_proof_missing'] });
+      await adapters.persist(result);
+      return result;
+    }
+    if (error.code !== 'DATA_NOT_ENTITLED') throw error;
     const result = snapshotBase({ status: 'index_version_mismatch', target: matched.targetValidation.snapshot,
       index_release: response.index_release,
       candidate_decisions: matched.decisions.map(decision => decision.referenceId === candidate.reference_id
@@ -127,11 +158,7 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
 export function createNoHistoryLibrarySelector(pool: Pool, lease: Lease) {
   return (input: NoHistoryLibrarySelectionInput) => selectNoHistoryLibraryReference(input, {
     query: request => queryReferenceLibrary(pool, request),
-    // The shared lock transaction still writes a v1 lock. Do not create that durable lock
-    // for a v1.1 query; the #77/#78 lock contract must be upgraded first.
-    lock: lockInput => String(LIBRARY_QUERY_SCHEMA_VERSION) === 'reference-library-query-v1.1'
-      ? lockReferenceSelection(pool, lockInput)
-      : Promise.reject(new Problem(409, 'DATA_NOT_ENTITLED', 'v1.1 reference lock is not installed')),
+    lock: lockInput => lockReferenceSelection(pool, { ...lockInput, querySchemaVersion: 'reference-library-query-v1.1' }),
     persist: snapshot => checkpointStage(pool, lease, 'reference_selection', snapshot as unknown as Record<string, unknown>),
   });
 }
