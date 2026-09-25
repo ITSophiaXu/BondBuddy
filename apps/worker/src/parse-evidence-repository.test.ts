@@ -15,6 +15,9 @@ import {
   type ParseEvidenceDependencies,
   type TrustedParseEvidenceContext,
 } from './parse-evidence-repository.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('PARSE_EVIDENCE_TEST_DATABASE_URL');
 
 const owner = 'owner-synthetic';
 const project = 'project-synthetic';
@@ -266,7 +269,7 @@ test('authorized parse composition binds the owned Blob SHA, persists anchors, a
   }
 });
 
-const liveUrl = process.env.PARSE_EVIDENCE_TEST_DATABASE_URL;
+const liveUrl = testDatabaseUrl;
 test('PostgreSQL 16: immutable snapshots, request aliases, access scope and transaction rollback', { skip: !liveUrl }, async () => {
   const pool = new Pool({ connectionString: liveUrl });
   const client = await pool.connect();

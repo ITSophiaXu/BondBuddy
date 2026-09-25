@@ -17,6 +17,9 @@ import {
   type TrustedHistoricalCorrectionContext,
 } from './historical-profile-repository.js';
 import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('HISTORICAL_PROFILE_TEST_DATABASE_URL');
 
 const owner = 'owner-synthetic';
 const project = 'project-synthetic';
@@ -467,9 +470,9 @@ test('latest and history reads bind owner/project/material and hide deleted/non-
 });
 
 test('live PostgreSQL enforces immutable versioned snapshots and owner-scoped reads', {
-  skip: !process.env.HISTORICAL_PROFILE_TEST_DATABASE_URL && 'set HISTORICAL_PROFILE_TEST_DATABASE_URL for migrated PostgreSQL 16',
+  skip: !testDatabaseUrl && 'set HISTORICAL_PROFILE_TEST_DATABASE_URL for migrated PostgreSQL 16',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.HISTORICAL_PROFILE_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: testDatabaseUrl });
   const suffix = randomUUID();
   const liveOwner = `profile-owner-${suffix}`;
   const liveProject = `profile-project-${suffix}`;
@@ -596,10 +599,10 @@ test('live PostgreSQL enforces immutable versioned snapshots and owner-scoped re
 });
 
 test('live PostgreSQL 16 and Azurite persist OCR-bound profiles and verify cited page images', {
-  skip: (!process.env.HISTORICAL_PROFILE_TEST_DATABASE_URL || !process.env.BB_TEST_AZURITE_CONNECTION_STRING) &&
+  skip: (!testDatabaseUrl || !process.env.BB_TEST_AZURITE_CONNECTION_STRING) &&
     'set HISTORICAL_PROFILE_TEST_DATABASE_URL and BB_TEST_AZURITE_CONNECTION_STRING for PostgreSQL 16/Azurite',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.HISTORICAL_PROFILE_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: testDatabaseUrl });
   const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!);
   const suffix = randomUUID();
   const liveOwner = `profile-ocr-owner-${suffix}`;

@@ -1,6 +1,6 @@
 // SYNTHETIC PostgreSQL/Azurite test for the Codex adapter journal. It claims jobs globally,
-// so it needs its own fresh database (BB_TEST_CODEX_DATABASE_URL), separate from the one used
-// by provider-reconciliation.test.ts. The fake codex replays synthetic JSONL; no provider is called.
+// so it runs in its own clone of the migrated template (BB_TEST_CODEX_DATABASE_URL, else
+// BB_TEST_DATABASE_URL; see test-database.ts). The fake codex replays synthetic JSONL; no provider is called.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
@@ -15,8 +15,11 @@ import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { claim, jobSnapshot } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
+import { isolatedTestDatabase } from './test-database.js';
 
-const connection = process.env.BB_TEST_CODEX_DATABASE_URL;
+const testDatabaseUrl = await isolatedTestDatabase('BB_TEST_CODEX_DATABASE_URL');
+
+const connection = testDatabaseUrl;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string';

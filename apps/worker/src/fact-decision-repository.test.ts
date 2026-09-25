@@ -12,6 +12,9 @@ import {
   type FactDecisionInput,
   type TrustedFactDecisionContext,
 } from './fact-decision-repository.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const testDatabaseUrl = await isolatedTestDatabase('FACT_DECISION_TEST_DATABASE_URL');
 
 const context: TrustedFactDecisionContext = {
   ownerUserId: 'owner-a', projectId: 'project-a', actorId: 'user-a', actorKind: 'user',
@@ -214,9 +217,9 @@ test('decision and outbox roll back atomically if the outbox insert fails', asyn
 });
 
 test('live PostgreSQL appends immutable, versioned decisions atomically and keeps owner/key candidates isolated', {
-  skip: !process.env.FACT_DECISION_TEST_DATABASE_URL && 'set FACT_DECISION_TEST_DATABASE_URL for migrated PostgreSQL 16',
+  skip: !testDatabaseUrl && 'set FACT_DECISION_TEST_DATABASE_URL for migrated PostgreSQL 16',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.FACT_DECISION_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: testDatabaseUrl });
   const suffix = randomUUID();
   const owner = `decision-owner-${suffix}`;
   const project = `decision-project-${suffix}`;
@@ -233,8 +236,8 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
   const liveIdentity: FactIdentity = { ...identity, accountId: owner };
   const liveEvidence: FactEvidenceAnchor[] = [{
     evidence_id: `evidence-${suffix}`, material_id: materialId, material_version: 1, content_hash: hash,
-    locator_type: 'synthetic_paragraph', locator: { paragraph_id: 'p-1' }, literal_quote: '合成测试数据 123',
-    extraction_method: 'synthetic_test', extraction_version: 'test-1', confidence: 1, uncertainty: [],
+    locator_type: 'text_line', locator: { line: 1 }, literal_quote: '合成测试数据 123',
+    extraction_method: 'native_text', extraction_version: 'test-1', confidence: 1, uncertainty: [],
   }];
   const liveCandidate: FactCandidate = {
     candidateId: `candidate-${suffix}`, identity: liveIdentity, value: { kind: 'known', decimalOrText: '123.00' },
@@ -258,6 +261,30 @@ test('live PostgreSQL appends immutable, versioned decisions atomically and keep
     await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
       VALUES ($1,1,$2,$3,$4,'audit','synthetic.txt','text/plain',10,$5,$6,'parsed')`,
     [foreignMaterialId, foreignOwner, foreignProject, foreignUpload, foreignHash, `synthetic-material/${foreignOwner}`]);
+
+    // Since #134, candidates must cite persisted parse evidence, so seed one synthetic snapshot + record per material.
+    const seedParseEvidence = async (seedOwner: string, seedProject: string, seedMaterial: string, seedHash: string) => {
+      const snapshotId = `decision-snapshot-${seedMaterial}`;
+      const anchor = liveEvidence[0]!;
+      await pool.query(`INSERT INTO bb_parse_snapshots
+        (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,request_options,
+         response_status,response_schema_version,response_sha256,record_count,response_meta)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'{}'::jsonb,'parsed','document-parse-response-v1',$8,1,$9::jsonb)`,
+      [snapshotId, seedOwner, seedProject, seedMaterial, seedHash, anchor.extraction_version, 'b'.repeat(64), 'c'.repeat(64), JSON.stringify({
+        schema_version: 'document-parse-response-v1', request_id: `decision-parse-${seedMaterial}`, parser_version: anchor.extraction_version,
+        status: 'parsed', material: { material_id: seedMaterial, material_version: 1, media_type: 'text/plain', sha256: seedHash },
+        warnings: [], document: { page_count: null }, error: null,
+      })]);
+      await pool.query(`INSERT INTO bb_parse_evidence
+        (owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,
+         literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,1,$4,$5,$6,$7,$8::jsonb,$9,'synthetic context',$10,$11,$12,$13::jsonb,'{}'::jsonb,$14,0)`,
+      [seedOwner, seedProject, seedMaterial, snapshotId, anchor.evidence_id, seedHash, anchor.locator_type, JSON.stringify(anchor.locator),
+        anchor.literal_quote, anchor.extraction_method, anchor.extraction_version, anchor.confidence,
+        JSON.stringify(anchor.uncertainty), 'd'.repeat(64)]);
+    };
+    await seedParseEvidence(owner, project, materialId, hash);
+    await seedParseEvidence(foreignOwner, foreignProject, foreignMaterialId, foreignHash);
 
     const firstCandidate = await insertFactCandidate({ pool }, liveContext, liveCandidate,
       { id: materialId, version: 1 }, liveEvidence);

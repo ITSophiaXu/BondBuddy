@@ -1,5 +1,27 @@
 # M1 worker boundaries
 
+## Running the tests
+
+`npm test -w @bondbuddy/worker` builds and runs every `dist/*.test.js` with the
+default parallel `node --test` (one process per file). Database-bound suites
+skip unless a migrated PostgreSQL 16 database is configured. Point
+`BB_TEST_DATABASE_URL` at a disposable, fully migrated database; it is used
+**only as a template**. Each test file clones it (`CREATE DATABASE … TEMPLATE`,
+see `src/test-database.ts`) and drops the clone with `WITH (FORCE)` when the file
+ends. Suites that assert global outbox/job counts or install `bb_outbox`
+triggers therefore cannot race each other. Requirements: the role needs
+`CREATEDB`, the server must expose the `postgres` maintenance database, and
+nothing else may hold a session on the template. Don't run the API or migrations against it
+while the tests run. Suite-specific variables (`FACT_DECISION_TEST_DATABASE_URL`,
+`BB_TEST_CODEX_DATABASE_URL`, …) still work and override the template for that
+suite. Azurite suites also need `BB_TEST_AZURITE_CONNECTION_STRING`.
+
+```sh
+createdb bb_worker_template && DATABASE_URL=postgresql://…/bb_worker_template npm run migrate:api
+BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
+BB_TEST_AZURITE_CONNECTION_STRING=UseDevelopmentStorage=true npm test -w @bondbuddy/worker
+```
+
 #31 的内部历史稿修改计划、锁定材料/事实读取入口、#34 消费约定及未完成验收项见 [HISTORICAL-UPDATE-HANDOFF.md](HISTORICAL-UPDATE-HANDOFF.md)。本切片不开放生产任务或生成 Word 成功成果。
 
 `historical-native-recognition.ts` is a conservative #76 native-text
