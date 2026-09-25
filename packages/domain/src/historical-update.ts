@@ -320,12 +320,12 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
     const block = blockById.get(occurrence.recordId);
     const binding = bindingById.get(occurrence.bindingId);
     if (!block || !binding) throw new Error('UPDATE_UNKNOWN_BINDING_OR_ANCHOR');
-    if (localizedUncertainRecordIds.has(block.recordId)) continue;
     if (!Number.isInteger(occurrence.start) || !Number.isInteger(occurrence.end) || occurrence.start < 0 ||
       occurrence.end <= occurrence.start || occurrence.end > block.text.length || splitsSurrogate(block.text, occurrence.start) || splitsSurrogate(block.text, occurrence.end) ||
       block.text.slice(occurrence.start, occurrence.end) !== occurrence.before) {
       failedBindings.add(binding.bindingId); flag('UPDATE_STALE_ANCHOR', [block.recordId], [binding.bindingId]); continue;
     }
+    if (localizedUncertainRecordIds.has(block.recordId)) continue;
     if (reviews.get(block.recordId)?.disposition !== 'update') { failedBindings.add(binding.bindingId); flag('UPDATE_COVERAGE_CONFLICT', [block.recordId], [binding.bindingId]); continue; }
     const resolved = values.get(binding.bindingId);
     if (!resolved) continue;
@@ -351,11 +351,6 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const plannedColumns: PlannedColumn[] = [];
   const columnPositions = new Set<string>();
   for (const request of columns) {
-    const uncertainAnchors = request.cells.filter(cell => localizedUncertainRecordIds.has(cell.afterRecordId));
-    if (uncertainAnchors.length) {
-      for (const cell of uncertainAnchors) flag('UPDATE_BASELINE_BLOCK_UNCERTAIN', [cell.afterRecordId], [cell.bindingId]);
-      continue;
-    }
     try {
       if (!request.cells.length) throw new Error('UPDATE_EMPTY_COLUMN');
       const anchors = request.cells.map(cell => blockById.get(cell.afterRecordId));
@@ -375,6 +370,12 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
       if (rows.some((row, index) => row !== index + 1) || new Set(widths).size !== 1 ||
         columnNumbers.some((column, index) => column !== index + 1) || new Set(grid.map(cell => `${cell!.row}:${cell!.column}`)).size !== grid.length ||
         request.cells.length !== rows.length || new Set(positions.map(position => position!.row)).size !== rows.length) throw new Error('UPDATE_TABLE_COVERAGE_INCOMPLETE');
+      if (request.cells.some(cell => !bindingById.has(cell.bindingId))) throw new Error('UPDATE_UNKNOWN_BINDING_OR_ANCHOR');
+      const uncertainAnchors = request.cells.filter(cell => localizedUncertainRecordIds.has(cell.afterRecordId));
+      if (uncertainAnchors.length) {
+        for (const cell of uncertainAnchors) flag('UPDATE_BASELINE_BLOCK_UNCERTAIN', [cell.afterRecordId], [cell.bindingId]);
+        continue;
+      }
       const columnContexts: string[] = [];
       const cells = request.cells.map((cell, index) => {
         const value = values.get(cell.bindingId); const binding = bindingById.get(cell.bindingId);
