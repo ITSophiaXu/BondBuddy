@@ -226,7 +226,7 @@ export async function recordProviderCallObservation(
   blobs: PrivateBlobs,
   observation: ProviderCallObservation,
   validateResult: (value: unknown) => boolean,
-  options: { lease?: Lease; source?: 'provider'|'reconciliation' } = {}
+  options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean } = {}
 ): Promise<ProviderObservationResult> {
   assertObservation(observation);
   await assertObservationScope(pool,observation,options.lease);
@@ -286,6 +286,11 @@ export async function recordProviderCallObservation(
       await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1',[job.id,checkpoint]);
       await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_result_reconciled');
       await appendCallFinished(client,observation,'succeeded');
+    } else if (failed && options.retryable && options.lease) {
+      // A settled, measured failure (for example schema-invalid output) may be re-asked
+      // as the next attempt number under the same lease; the job keeps running.
+      await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_call_retrying');
+      await appendCallFinished(client,observation,'running');
     } else if (failed) {
       await client.query("UPDATE bb_jobs SET state='failed',stage='failed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
       await appendRunEvent(client,r,'failed','failed','provider_call_failed','run.state_changed');
@@ -364,4 +369,65 @@ export async function readCheckpointedProviderResult(input: {
   }
   const value=parseAndValidate(bytes,input.validateResult);
   return {value,result_ref:result.result_ref,result_sha256:result.result_sha256.trim(),result_schema_version:result.result_schema_version,call_id:result.call_id,attempt_no:result.attempt_no};
+}
+
+export type ModelAttemptRuntime = {
+  adapter: 'codex_exec';
+  adapter_version: string;
+  model_provider: string;
+  model_config_version: string;
+  provider_request_id_status: 'unknown';
+  framework_thread_id: string | null;
+  started_at: string;
+  duration_ms: number;
+  exit_code: number | null;
+  exit_signal: string | null;
+  finish_reason: string | null;
+  error_code: string | null;
+  tool_attempts: number;
+  pricing_status: 'unknown';
+};
+
+// #16/#79 framework-side evidence for one attempt. Written under the active lease;
+// an identical replay is idempotent and a different record for the same attempt conflicts.
+export async function recordModelAttemptRuntime(pool: Pool, lease: Lease, intent: ProviderCallIntent, runtime: ModelAttemptRuntime) {
+  assertIntent(intent);
+  if (runtime.adapter!=='codex_exec' || !safeVersion(runtime.adapter_version) || !/^[a-z0-9_-]{1,64}$/.test(runtime.model_provider) || runtime.model_config_version!==intent.model_config_version ||
+      runtime.provider_request_id_status!=='unknown' || runtime.pricing_status!=='unknown' || (runtime.framework_thread_id!==null && !safeId(runtime.framework_thread_id)) ||
+      !token(runtime.duration_ms) || !token(runtime.tool_attempts) || (runtime.exit_code!==null && !Number.isSafeInteger(runtime.exit_code)) ||
+      (runtime.exit_signal!==null && !/^SIG[A-Z0-9]{1,16}$/.test(runtime.exit_signal)) || (runtime.finish_reason!==null && !/^[a-z_]{1,64}$/.test(runtime.finish_reason)) ||
+      (runtime.error_code!==null && !safeError(runtime.error_code)) || Number.isNaN(Date.parse(runtime.started_at))) throw new Error('Invalid model attempt runtime');
+  if (lease.owner!==intent.owner_user_id || lease.jobId!==intent.job_id || lease.runId!==intent.run_id) throw missing();
+  return transaction(pool,async client=>{
+    const job=(await client.query('SELECT state,lease_token,lease_until FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 FOR UPDATE',[lease.owner,lease.jobId,lease.runId])).rows[0];
+    const a=(await client.query('SELECT id FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4',[intent.owner_user_id,intent.job_id,intent.logical_call_id,intent.attempt_no])).rows[0];
+    if (!job || !a || a.id!==intent.call_id) throw missing();
+    // Written before the observation, which may pause the job and release the lease.
+    if (job.state!=='running' || job.lease_token!==lease.token || !job.lease_until || new Date(job.lease_until).getTime()<=Date.now()) throw new Problem(409,'CAPABILITY_NOT_READY','Model attempt runtime lease is no longer active');
+    const existing=(await client.query('SELECT * FROM bb_model_call_attempt_runtime WHERE attempt_id=$1',[a.id])).rows[0];
+    if (existing) {
+      const same=existing.adapter_version===runtime.adapter_version && existing.duration_ms===runtime.duration_ms && existing.error_code===runtime.error_code && existing.framework_thread_id===runtime.framework_thread_id && existing.tool_attempts===runtime.tool_attempts;
+      if (!same) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Model attempt already has different runtime evidence');
+      return {idempotent:true};
+    }
+    await client.query('INSERT INTO bb_model_call_attempt_runtime(id,owner_user_id,project_id,job_id,run_id,trace_id,attempt_id,logical_call_id,attempt_no,adapter,adapter_version,model_provider,model_config_version,provider_request_id_status,framework_thread_id,started_at,duration_ms,exit_code,exit_signal,finish_reason,error_code,tool_attempts,pricing_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)',
+      [uid(),intent.owner_user_id,intent.project_id,intent.job_id,intent.run_id,intent.trace_id,a.id,intent.logical_call_id,intent.attempt_no,runtime.adapter,runtime.adapter_version,runtime.model_provider,runtime.model_config_version,runtime.provider_request_id_status,runtime.framework_thread_id,runtime.started_at,runtime.duration_ms,runtime.exit_code,runtime.exit_signal,runtime.finish_reason,runtime.error_code,runtime.tool_attempts,runtime.pricing_status]);
+    return {idempotent:false};
+  });
+}
+
+// Latest durable attempt for a logical call, read under the active lease. Callers use it
+// on restart to decide between reuse, a bounded retry, or reconciliation, never a blind resend.
+export async function latestProviderAttempt(pool: Pool, lease: Lease, logicalCallId: string) {
+  if (!safeId(logicalCallId)) throw new Error('Invalid provider call identity');
+  const active=await pool.query("SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[lease.owner,lease.jobId,lease.runId,lease.token]);
+  if (!active.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider attempt lookup requires the active worker lease');
+  const q=await pool.query(`SELECT a.id,a.attempt_no,a.status,a.usage_status,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id) AS observed
+    FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
+    WHERE a.owner_user_id=$1 AND a.job_id=$2 AND j.run_id=$3 AND a.logical_call_id=$4
+    ORDER BY a.attempt_no DESC LIMIT 1`,[lease.owner,lease.jobId,lease.runId,logicalCallId]);
+  const row=q.rows[0];
+  if (!row) return null;
+  return {call_id:row.id as string,attempt_no:Number(row.attempt_no),status:row.status as 'pending_reconcile'|'confirmed_not_sent'|'completed'|'failed',usage_status:row.usage_status as string,observed:row.observed===true};
 }

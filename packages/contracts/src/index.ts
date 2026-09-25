@@ -41,6 +41,11 @@ export const USAGE_STATUSES = ['reported', 'pending', 'unavailable'] as const;
 export const JOB_KINDS = ['update', 'review', 'generation', 'qa', 'preflight', 'parse'] as const;
 export const JOB_STATUSES = ['created', 'queued', 'running', 'awaiting_input', 'paused', 'succeeded', 'failed', 'cancelled', 'rejected'] as const;
 export const ERROR_CATEGORIES = ['validation', 'auth', 'material_parse', 'ocr', 'model_provider', 'tool', 'queue', 'export', 'delivery', 'metering', 'internal'] as const;
+// #16 contained model adapter (internal worker/#79 codes; never shown as a public API error).
+export const MODEL_ADAPTER_KINDS = ['codex_exec'] as const;
+export const MODEL_ADAPTER_ERROR_CODES = ['MODEL_ADAPTER_CONFIG_INVALID', 'MODEL_SPAWN_FAILED', 'MODEL_TOOL_ATTEMPT_BLOCKED', 'MODEL_OUTPUT_SCHEMA_INVALID', 'MODEL_TIMEOUT', 'MODEL_STREAM_BROKEN', 'MODEL_TURN_FAILED', 'MODEL_PROCESS_EXIT_NONZERO', 'MODEL_CANCELLED', 'MODEL_OUTPUT_TOO_LARGE', 'MODEL_RESULT_STORE_FAILED', 'MODEL_USAGE_PENDING', 'MODEL_PRIOR_ATTEMPT_UNRESOLVED'] as const;
+export const MODEL_ADAPTER_OUTCOMES = ['completed', 'failed', 'pending_reconcile', 'confirmed_not_sent'] as const;
+export const MODEL_ADAPTER_USAGE_STATUSES = ['measured', 'pending', 'unknown'] as const;
 export const OBSERVABILITY_EVENT_KINDS = ['operation.submitted', 'operation.rejected', 'job.state_changed', 'prompt.snapshot_saved', 'model.call_started', 'model.call_finished', 'model.usage_observed', 'error.recorded', 'artifact.delivered'] as const;
 
 const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal<T[number]>(value)));
@@ -144,6 +149,7 @@ export const schemas = {
   ConversationMessageResponse: obj({ message_id: id, conversation_id: id, prompt_snapshot_ref: id, intent: Type.Union([Type.Literal('answer'), Type.Literal('update'), Type.Literal('clarify')]), reply: nullable(Type.String()), run_id: nullable(id), created_at: utc }),
   ModelCallAttempt: obj({ logical_call_id: id, call_id: id, attempt_no: revision, provider_request_id: nullable(id), model_id: Type.String(), prompt_snapshot_ref: id, usage_status: usageStatus, input_tokens: nullable(Type.Integer({ minimum: 0 })), output_tokens: nullable(Type.Integer({ minimum: 0 })), cached_input_tokens: nullable(Type.Integer({ minimum: 0 })), reasoning_tokens: nullable(Type.Integer({ minimum: 0 })), usage_evidence_ref: nullable(id), billable: Type.Boolean(), cost_payer: Type.Literal('platform') }),
   TraceContext: obj({ operation_id: id, request_id: id, trace_id: id, span_id: id, parent_span_id: nullable(id), user_id: nullable(id), project_id: nullable(id), job_id: nullable(id), run_id: nullable(id), work_item_id: nullable(id), occurred_at: utc }),
+  ModelAdapterAttemptRecord: obj({ schema_version: Type.Literal(1), adapter: enumOf(MODEL_ADAPTER_KINDS), adapter_version: Type.String({ pattern: '^[A-Za-z0-9._-]{1,128}$' }), trace_id: id, job_id: id, run_id: id, logical_call_id: id, call_id: id, attempt_no: revision, model_id: Type.String({ pattern: '^[A-Za-z0-9._-]{1,128}$' }), model_provider: Type.String({ pattern: '^[a-z0-9_-]{1,64}$' }), model_config_version: Type.String({ pattern: '^[A-Za-z0-9._-]{1,128}$' }), prompt_snapshot_ref: id, provider_request_id: Type.Null({ description: 'codex exec --json exposes no supplier request id; see provider_request_id_status.' }), provider_request_id_status: Type.Literal('unknown'), framework_thread_id: nullable(id), started_at: utc, duration_ms: Type.Integer({ minimum: 0 }), exit_code: nullable(Type.Integer()), exit_signal: nullable(Type.String({ pattern: '^SIG[A-Z0-9]{1,16}$' })), finish_reason: nullable(Type.String({ pattern: '^[a-z_]{1,64}$' })), outcome: enumOf(MODEL_ADAPTER_OUTCOMES), error_code: nullable(enumOf(MODEL_ADAPTER_ERROR_CODES)), tool_attempts: Type.Integer({ minimum: 0 }), usage: obj({ status: enumOf(MODEL_ADAPTER_USAGE_STATUSES), input_tokens: nullable(Type.Integer({ minimum: 0 })), cached_input_tokens: nullable(Type.Integer({ minimum: 0 })), output_tokens: nullable(Type.Integer({ minimum: 0 })), reasoning_tokens: nullable(Type.Integer({ minimum: 0 })), total_tokens: nullable(Type.Integer({ minimum: 0 })) }), pricing_status: Type.Literal('unknown'), result_sha256: nullable(hash) }),
   HealthResponse: obj({ status: Type.Literal('ok'), service: Type.Literal('bondbuddy-m1-api-skeleton'), implementation: Type.Literal('health-and-contract-only') })
 } as const;
 
@@ -153,6 +159,8 @@ export type RunEvent = Static<typeof schemas.RunEvent>;
 export type ProjectEvent = Static<typeof schemas.ProjectEvent>;
 export type Material = Static<typeof schemas.MaterialResponse>;
 export type ModelCallAttempt = Static<typeof schemas.ModelCallAttempt>;
+export type ModelAdapterAttemptRecord = Static<typeof schemas.ModelAdapterAttemptRecord>;
+export type ModelAdapterErrorCode = typeof MODEL_ADAPTER_ERROR_CODES[number];
 export type Recognition = Static<typeof schemas.RecognitionResponse>;
 export type ReportingPeriod = Static<typeof ReportingPeriodSchema>;
 export type RecognitionPatchRequest = Static<typeof schemas.RecognitionPatchRequest>;

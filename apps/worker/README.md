@@ -173,3 +173,15 @@ set `RULE_PACK_LEDGER_TEST_DATABASE_URL` after applying migrations.
 
 Build dependencies first, then run `npm test -w @bondbuddy/worker` from the
 repository root.
+
+## #16 contained Codex adapter
+
+`src/codex-adapter.ts` runs `codex exec --json` per attempt with an isolated `CODEX_HOME`, an empty cwd, a read-only sandbox and tool features disabled. It fails closed on any tool item (see `docs/M1-TECH-ARCHITECTURE.md`). It is not installed in `runOnce`. Unit tests replay the synthetic JSONL fixtures in `test-fixtures/codex/` through a fake `codex`. The durable test `codex-durable.test.ts` claims jobs globally, so it needs its own fresh, migrated database: `BB_TEST_CODEX_DATABASE_URL=... BB_TEST_AZURITE_CONNECTION_STRING=... npm test -w @bondbuddy/worker`.
+
+Operator probe for the authorized host (in-memory journal, synthetic prompts only; prints the redacted attempt record):
+
+```
+BB_CODEX_BIN=/path/to/codex BB_CODEX_AUTH_FILE=/abs/auth.json npm run -w apps/worker probe:codex -- --prompt-file prompt.txt [--schema-file schema.json] [--material-file material.txt] [--timeout-ms 60000]
+```
+
+Use `BB_CODEX_CREDENTIAL_ENV=<NAME>` instead of `BB_CODEX_AUTH_FILE` when the key is provided by env. Point `BB_CODEX_BIN` at the real codex binary, not at a wrapper script that overrides `CODEX_HOME`.
