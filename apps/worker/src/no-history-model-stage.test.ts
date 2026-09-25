@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { Pool } from 'pg';
 import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
+import { scrubSecrets } from '@bondbuddy/api/log-ops';
+import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
+import { azureBlobs, digest, uid } from '@bondbuddy/api/data';
 import type { LibrarySelectionSnapshot } from './reference-library-selection.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
 import { buildNoHistoryGenerationPrompt, noHistoryModelGenerationStage, validateNoHistoryDraft, type NoHistoryStageAdapters, type TrustedRuleSelection } from './no-history-model-stage.js';
@@ -18,6 +22,30 @@ const profile: AnnualBusinessProfile = {
 const reviewedProfile = { ...scope, review: { status: 'reviewed' as const, reviewId: 'review-synthetic', reviewerId: 'reviewer-synthetic', reviewedAt: '2026-09-25T00:00:00Z' }, profile };
 const rule: TrustedRuleSelection = { ...scope, status: 'eligible_for_evaluation', target, ruleVersion: target.ruleVersion, contentHash: 'b'.repeat(64),
   releaseId: 'production-rule-release', releaseChannel: 'production', rules: [{ ruleId: 'rule-a', title: '披露要求', requirement: '按经核实的目标发行人资料披露。' }] };
+
+test('263273-byte no-history builder output remains a complete diagnostic', async () => {
+  const make = (length: number) => buildNoHistoryGenerationPrompt({ scope, profile,
+    facts: [{ factId: 'target-fact-synthetic', statement: 'A'.repeat(length), evidenceRefs: ['target-audit-p1'], status: 'verified' }],
+    rule, chapters: [{ order: 1, heading: '合成章节' }] });
+  const length = 263_273 - Buffer.byteLength(make(0));
+  const prompt = make(length);
+  assert.equal(Buffer.byteLength(prompt), 263_273);
+  assert.equal(scrubSecrets(prompt), prompt);
+  if (process.env.BB_TEST_DATABASE_URL && process.env.BB_TEST_AZURITE_CONNECTION_STRING) {
+    const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+    try {
+      const owner = `synthetic-${uid()}`, project = `nohistory-${uid()}`;
+      await pool.query('INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,$3,$4)', [project, owner, 'Synthetic no-history diagnostic', 'generation']);
+      const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING);
+      const id = await savePromptSnapshot(pool, blobs, { owner, projectId: project, kind: 'model_request', version: 1, body: prompt });
+      const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
+      const stored = (await blobs.get(row.object_key)).toString('utf8');
+      assert.equal(stored, prompt);
+      assert.equal(row.content_sha256, digest(stored));
+      assert.equal(row.redaction_version, 'scrub_v1');
+    } finally { await pool.end(); }
+  }
+});
 
 function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { config: 0, rules: 0, select: 0, facts: 0 }): NoHistoryStageAdapters {
   return {

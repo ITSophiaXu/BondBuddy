@@ -139,7 +139,7 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const nested = (depth: number) => '{"v":'.repeat(depth - 1) + inside + '}'.repeat(depth - 1);
   const accepted = scrubSecrets(nested(64));
   assert.ok(!accepted.includes('SYN_DEEP_SECRET'));
-  for (const input of [nested(65), nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{note: text, setCookie: SYN_LEAK_MARKER}', '{"session_cookie":"SYN_UNCLOSED"']) {
+  for (const input of [nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{note: text, setCookie: SYN_LEAK_MARKER}', '{"session_cookie":"SYN_UNCLOSED"']) {
     const start = performance.now();
     assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     assert.ok(performance.now() - start < 2000, 'rejection remains bounded for malformed or deep input');
@@ -155,23 +155,37 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const plainKeys = scrubSecrets('session_cookie=SYN_PLAIN_COOKIE\r\nx_api_key=SYN_PLAIN_KEY\r\none_time_password=SYN_PLAIN_PASSWORD\r\n业务正文');
   for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD']) assert.ok(!plainKeys.includes(secret));
   assert.ok(plainKeys.endsWith('业务正文'));
+  assert.ok(!scrubSecrets('{"\\u0043ookie":"SYN_ENCODED_KEY"}').includes('SYN_ENCODED_KEY'));
+  assert.throws(() => scrubSecrets('{"\\u0043ookie":"SYN_MALFORMED_UNICODE"'), /Diagnostic body rejected/);
+  const layered = Array.from({ length: 6 }).reduce<string>(value => JSON.stringify({ note: value }), '{"Cookie":"SYN_LAYERED_SECRET"}');
+  assert.throws(() => scrubSecrets(layered), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('普通正文未闭合 { 和 [\r\n下一段业务内容'), '普通正文未闭合 { 和 [\r\n下一段业务内容');
+  const mixed = scrubSecrets('普通正文未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_COOKIE","note":"SYN_MIXED_BUSINESS"}');
+  assert.ok(mixed.includes('普通正文未闭合 { 和 [\r\n') && mixed.includes('SYN_MIXED_BUSINESS'));
+  assert.ok(!mixed.includes('SYN_MIXED_COOKIE'));
+  assert.throws(() => scrubSecrets('{note: text,\r\n setCookie: SYN_MULTILINE_LEAK}'), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('{note: text,\r\n "Cookie":"SYN_MULTILINE_QUOTED"}'), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('{note: text,\r\n "\\u0043ookie":"SYN_MULTILINE_UNICODE"}'), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('{note: text, "\\u0043ookie":"SYN_INLINE_UNICODE"}'), /Diagnostic body rejected/);
   const maxBody = 'A'.repeat(10 * 1024 * 1024);
   assert.equal(scrubSecrets(maxBody).length, maxBody.length);
   assert.throws(() => scrubSecrets(maxBody + 'B'), /Diagnostic body rejected/);
 });
 
-test('#79 structured parsing limits bound fragments, aggregate work and token count', () => {
+test('#79 large legal JSON and prompt-shaped text retain the full body', () => {
   const nearFragment = JSON.stringify({ note: 'A'.repeat(256 * 1024 - 100), Cookie: 'SYN_LIMIT_COOKIE' });
   const accepted = scrubSecrets(nearFragment);
   assert.ok(accepted.includes('A'.repeat(100)) && !accepted.includes('SYN_LIMIT_COOKIE'));
   const overFragment = JSON.stringify({ note: 'A'.repeat(256 * 1024), Cookie: 'SYN_OVER_COOKIE' });
-  assert.throws(() => scrubSecrets(overFragment), /Diagnostic body rejected/);
+  const larger = scrubSecrets(overFragment);
+  assert.ok(larger.includes('A'.repeat(256 * 1024)) && !larger.includes('SYN_OVER_COOKIE'));
   const smallObject = '{"note":"x"}';
   assert.ok(scrubSecrets(smallObject.repeat(1024)).includes('"note"'));
-  assert.throws(() => scrubSecrets(smallObject.repeat(1025)), /Diagnostic body rejected/);
+  assert.ok(scrubSecrets(smallObject.repeat(1025)).includes('"note"'));
   const aggregate = JSON.stringify({ note: 'A'.repeat(200 * 1024) });
-  assert.throws(() => scrubSecrets(aggregate.repeat(6)), /Diagnostic body rejected/);
-  assert.throws(() => scrubSecrets('[' + '0,'.repeat(5000).slice(0, -1) + ']'), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets(aggregate.repeat(6)), aggregate.repeat(6));
+  const wide = '[' + '0,'.repeat(5000).slice(0, -1) + ']';
+  assert.equal(scrubSecrets(wide), wide);
 });
 
 test('#79 structured secrets are absent from the private diagnostic Blob readback', { skip }, async () => {
@@ -220,6 +234,42 @@ test('#79 escaped quotes and business placeholders survive private Blob readback
   } finally { await f.app.close(); await pool.end(); }
 });
 
+test('#79 full-size synthetic model diagnostics survive private Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic full-size diagnostic');
+    const facts = Array.from({ length: 46 }, (_, i) => ({ candidate_id: `synthetic-fact-${i}`, identity: { metric: `synthetic-metric-${i}` },
+      evidence: [{ evidence_id: `synthetic-evidence-${i}`, status: 'verified' }], status: 'extracted' }));
+    const historical = JSON.stringify({ candidate_facts: facts, original_blocks: [{ quote: 'SYN_ORDINARY_HISTORICAL' }],
+      nested: { session_cookie: 'SYN_HISTORICAL_COOKIE' } }).padEnd(43_660, ' ');
+    const largerHistorical = JSON.stringify({ candidate_facts: Array.from({ length: 250 }, (_, i) => ({ ...facts[i % facts.length], candidate_id: `fact-${i}` })),
+      original_blocks: [{ quote: 'SYN_ORDINARY_LARGE' }] }).padEnd(239_000, ' ');
+    const noHistory = JSON.stringify({ schema_version: 'no-history-generation-input-v1',
+      facts: [{ statement: 'SYN_ORDINARY_NO_HISTORY', evidence_refs: ['synthetic-evidence'] }],
+      Cookie: 'SYN_NO_HISTORY_COOKIE' }).padEnd(263_273, ' ');
+    const nearLimit = JSON.stringify({ note: 'A'.repeat(10 * 1024 * 1024 - 90), otp: 'SYN_NEAR_LIMIT_OTP' });
+    for (const [index, [body, ordinary, secret]] of ([
+      [historical, 'SYN_ORDINARY_HISTORICAL', 'SYN_HISTORICAL_COOKIE'],
+      [largerHistorical, 'SYN_ORDINARY_LARGE', 'SYN_NONE'],
+      [noHistory, 'SYN_ORDINARY_NO_HISTORY', 'SYN_NO_HISTORY_COOKIE'],
+      [nearLimit, 'A'.repeat(100), 'SYN_NEAR_LIMIT_OTP'],
+      ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
+      ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
+    ] as const).entries()) {
+      assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
+      const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'model_request', version: index + 1, body });
+      const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
+      const stored = (await blobs.get(row.object_key)).toString('utf8');
+      assert.ok(stored.includes(ordinary));
+      assert.ok(!stored.includes(secret));
+      assert.equal(row.content_sha256, digest(stored));
+      assert.equal(row.redaction_version, 'scrub_v1');
+    }
+  } finally { await f.app.close(); await pool.end(); }
+});
+
 test('#79 rejected diagnostics never call Blob put or register a partial snapshot', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
@@ -230,8 +280,11 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
     let puts = 0;
     const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
     const deep = '{"v":'.repeat(5000) + '{"session_cookie":"SYN_REJECT_SECRET"}' + '}'.repeat(5000);
-    const wide = '[' + '{"note":"synthetic"},'.repeat(210000).slice(0, -1) + ']';
-    for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"', '{note: text, setCookie: SYN_LEAK_MARKER}', wide, 'A'.repeat(10 * 1024 * 1024 + 1)]) {
+    const denseUnit = '{"Cookie":"S"},';
+    const dense = '[' + denseUnit.repeat(Math.floor(9 * 1024 * 1024 / denseUnit.length)).slice(0, -1) + ']';
+    for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"',
+      '{"\\u0043ookie":"SYN_BAD_UNICODE"', '{note: text, setCookie: SYN_LEAK_MARKER}', dense,
+      'A'.repeat(10 * 1024 * 1024 + 1)]) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
@@ -241,7 +294,7 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
   } finally { await f.app.close(); await pool.end(); }
 });
 
-test('#79 wide JSON arrays reject in bounded 128/256 MiB child heaps', async t => {
+test('#79 wide JSON arrays stay bounded in 128/256 MiB child heaps', async t => {
   const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
   for (const heapMiB of [128, 256]) for (const sizeMiB of [4, 9]) {
     const source = `import { performance } from 'node:perf_hooks';
@@ -250,11 +303,10 @@ test('#79 wide JSON arrays reject in bounded 128/256 MiB child heaps', async t =
       const count = Math.ceil(${sizeMiB} * 1024 * 1024 / unit.length);
       const body = '[' + unit.repeat(count).slice(0, -1) + ']';
       const started = performance.now();
-      let rejected = false;
-      try { scrubSecrets(body); } catch (error) { rejected = error?.message === 'Diagnostic body rejected' && !String(error?.stack).includes('synthetic'); }
+      const stored = scrubSecrets(body);
       const elapsedMs = Math.round(performance.now() - started);
-      process.stdout.write(JSON.stringify({ rejected, elapsedMs, peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024), inputMiB: ${sizeMiB} }));
-      if (!rejected) process.exitCode = 1;`;
+      process.stdout.write(JSON.stringify({ accepted: stored === body, elapsedMs, peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024), inputMiB: ${sizeMiB} }));
+      if (stored !== body) process.exitCode = 1;`;
     const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
       const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source], {
         env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl }
@@ -268,9 +320,66 @@ test('#79 wide JSON arrays reject in bounded 128/256 MiB child heaps', async t =
     });
     assert.equal(result.code, 0, `${heapMiB} MiB heap, ${sizeMiB} MiB input`);
     const metrics = JSON.parse(result.stdout);
-    assert.equal(metrics.rejected, true);
-    assert.ok(metrics.elapsedMs < 2000, 'wide input rejects before object-tree allocation');
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 2000, 'wide input parses without object-tree allocation');
     t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"Cookie":"S"},';
+      const body = '[' + unit.repeat(Math.floor(9 * 1024 * 1024 / unit.length)).slice(0, -1) + ']';
+      const started = performance.now();
+      let safe = false;
+      try { scrubSecrets(body); } catch (error) { safe = error?.message === 'Diagnostic body rejected' && !String(error?.stack).includes('Cookie'); }
+      process.stdout.write(JSON.stringify({ safe, elapsedMs: Math.round(performance.now() - started), peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (!safe) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.safe, true);
+    assert.ok(metrics.elapsedMs < 2000);
+    t.diagnostic(`${heapMiB} MiB heap / 9 MiB dense sensitive input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 densely redacted valid 10 MiB arrays fit bounded child heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"Cookie":"ABCDEFGHIJKL"},';
+      const body = '[' + unit.repeat(Math.floor(10 * 1024 * 1024 / unit.length)).slice(0, -1) + ']';
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      const safe = result.includes('[REDACTED]') && !result.includes('ABCDEFGHIJKL');
+      process.stdout.write(JSON.stringify({ safe, inputBytes: body.length, outputBytes: result.length,
+        elapsedMs: Math.round(performance.now() - started), peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (!safe) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.safe, true);
+    assert.ok(metrics.elapsedMs < 2000);
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B dense valid input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
   }
 });
 

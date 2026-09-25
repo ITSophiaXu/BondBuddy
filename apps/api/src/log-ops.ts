@@ -19,12 +19,8 @@ const int = (value: unknown) => value === null || value === undefined ? null : N
 
 export const SCRUB_VERSION = 'scrub_v1';
 const MAX_DIAGNOSTIC_BYTES = 10 * 1024 * 1024;
-const MAX_JSON_DEPTH = 64;
+const MAX_JSON_DEPTH = 1024;
 const MAX_JSON_STRING_LAYERS = 4;
-const MAX_JSON_FRAGMENT_BYTES = 256 * 1024;
-const MAX_PARSED_JSON_BYTES = 1024 * 1024;
-const MAX_JSON_FRAGMENTS = 1024;
-const MAX_JSON_TOKENS = 4096;
 const sensitiveField = /^(?:setcookie|cookie|sessioncookie|authorization|proxyauthorization|apikey|xapikey|accesskey|clientsecret|secret|(?:access|refresh|bearer|id|session|auth)?token|(?:onetime)?password(?:confirmation)?|passwd|pwd|otp(?:code)?|captcha|verificationcode|验证码|校验码|动态码|短信码)$/iu;
 const redacted = '[REDACTED]';
 const isSensitiveField = (key: string) => sensitiveField.test(key.replace(/[_ -]/g, ''));
@@ -41,49 +37,65 @@ const scrubRules: Array<[RegExp, string]> = [
   [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
   [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
-type ScrubBudget = { remaining: number; parsedBytes: number; fragments: number };
-function charge(budget: ScrubBudget, size: number) {
-  budget.remaining -= size;
-  if (budget.remaining < 0) throw new DiagnosticScrubError();
-}
+type Edits = { starts: number[]; ends: number[]; values: string[]; resultLength: number };
+const newEdits = (length: number): Edits => ({ starts: [], ends: [], values: [], resultLength: length });
+const addEdit = (edits: Edits, start: number, end: number, value: string) => {
+  edits.resultLength += value.length - (end - start);
+  if (edits.resultLength > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  edits.starts.push(start); edits.ends.push(end); edits.values.push(value);
+};
+const space = (char: string) => char === ' ' || char === '\n' || char === '\r' || char === '\t';
 
-/** One forward scan per candidate; a malformed candidate is rejected, never scanned again at each inner brace. */
-function jsonEnd(text: string, start: number, escapedQuotes: boolean): number {
+/** Find a candidate's boundary once. An unclosed prose bracket is ordinary text
+ * unless a known field occurs inside it. This scan never retries inner brackets. */
+function candidateEnd(text: string, start: number, encoded: boolean): number {
   const stack: string[] = [];
-  let quoted = false, escaped = false;
-  let tokens = 0;
+  let quoted = false, slash = false;
   for (let i = start; i < text.length; i++) {
-    if (i - start >= MAX_JSON_FRAGMENT_BYTES) throw new DiagnosticScrubError();
     const char = text[i];
-    if (escapedQuotes && char === '\\') {
-      let end = i + 1;
-      while (text[end] === '\\') end++;
-      // Escaping a JSON document as a string doubles its backslashes and adds one
-      // before each quote. Runs of 1 mod 4 delimit JSON strings; 3 mod 4 are
-      // quotes inside a JSON string value.
-      if (text[end] === '"' && (end - i) % 4 === 1) { quoted = !quoted; i = end; continue; }
-      if (text[end] === '"') { i = end; continue; }
-      i = end - 1; continue;
+    if (encoded && char === '\\') {
+      let next = i + 1;
+      while (text[next] === '\\') next++;
+      if (text[next] === '"') {
+        if ((next - i) % 4 === 1) quoted = !quoted;
+        i = next;
+        continue;
+      }
+      i = next - 1;
+      continue;
     }
     if (quoted) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
+      if (slash) slash = false;
+      else if (char === '\\') slash = true;
       else if (char === '"') quoted = false;
       continue;
     }
     if (char === '"') { quoted = true; continue; }
-    if (char === '{' || char === '[' || char === ',' || char === ':') {
-      if (++tokens > MAX_JSON_TOKENS) throw new DiagnosticScrubError();
-    }
     if (char === '{' || char === '[') {
       stack.push(char);
       if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
     } else if (char === '}' || char === ']') {
-      if (stack.pop() !== (char === '}' ? '{' : '[')) throw new DiagnosticScrubError();
+      if (stack.pop() !== (char === '}' ? '{' : '[')) return i + 1;
       if (!stack.length) return i + 1;
     }
   }
-  throw new DiagnosticScrubError();
+  return text.length;
+}
+
+function plainBracketEnd(text: string, start: number): { end: number; closed: boolean } {
+  const stack: string[] = [];
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (char === '\r' || char === '\n') return { end: i, closed: false };
+    if (char === '{' || char === '[') {
+      stack.push(char);
+      if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
+    } else if (char === '}' || char === ']') {
+      if (stack.pop() !== (char === '}' ? '{' : '[')) return { end: i + 1, closed: true };
+      if (!stack.length) return { end: i + 1, closed: true };
+    }
+  }
+  return { end: text.length, closed: false };
 }
 
 /** Inspect the entire bounded fragment, including fields after ordinary first fields. */
@@ -94,8 +106,8 @@ function hasKnownSensitiveKey(fragment: string): boolean {
     let before = match.index - 1;
     while (before >= 0 && /\s/.test(fragment[before])) before--;
     let after = match.index + match[0].length;
-    if (fragment[after] === '"' || fragment[after] === '\\' && fragment[after + 1] === '"')
-      after += fragment[after] === '"' ? 1 : 2;
+    while (fragment[after] === '\\') after++;
+    if (fragment[after] === '"') after++;
     while (after < fragment.length && /\s/.test(fragment[after])) after++;
     // A known key at a field boundary is suspicious even when its colon is missing.
     if (fragment[after] === ':' || fragment[before] === '{' || fragment[before] === ',' ||
@@ -104,59 +116,171 @@ function hasKnownSensitiveKey(fragment: string): boolean {
   return false;
 }
 
-function scrubStructured(root: unknown, budget: ScrubBudget, layer: number): unknown {
-  if (!root || typeof root !== 'object') throw new DiagnosticScrubError();
-  const copy: any = Array.isArray(root) ? [] : {};
-  const pending: Array<{ source: any; target: any }> = [{ source: root, target: copy }];
-  while (pending.length) {
-    const { source, target } = pending.pop()!;
-    for (const [key, item] of Object.entries(source)) {
-      charge(budget, key.length + 1);
-      if (!Array.isArray(source) && isSensitiveField(key)) { target[key] = redacted; continue; }
-      if (item && typeof item === 'object') {
-        const child: any = Array.isArray(item) ? [] : {};
-        target[key] = child;
-        pending.push({ source: item, target: child });
-      } else target[key] = typeof item === 'string' ? scrubText(item, budget, layer + 1) : item;
-    }
+function applyEdits(text: string, edits: Edits): string {
+  if (!edits.starts.length) return text;
+  const chunks: string[] = [];
+  let previous = 0, current = '';
+  for (let index = 0; index < edits.starts.length; index++) {
+    current += text.slice(previous, edits.starts[index]) + edits.values[index];
+    if (current.length >= 64 * 1024) { chunks.push(current); current = ''; }
+    previous = edits.ends[index];
   }
-  return copy;
+  chunks.push(current, text.slice(previous));
+  return chunks.join('');
 }
 
-function scrubText(text: string, budget: ScrubBudget, layer: number): string {
-  charge(budget, text.length);
-  const pieces: string[] = [];
-  let cursor = 0, emitted = 0;
-  let nextObject = text.indexOf('{'), nextArray = text.indexOf('[');
-  while (cursor < text.length) {
-    if (nextObject !== -1 && nextObject < cursor) nextObject = text.indexOf('{', cursor);
-    if (nextArray !== -1 && nextArray < cursor) nextArray = text.indexOf('[', cursor);
-    const start = nextObject < 0 ? nextArray : nextArray < 0 ? nextObject : Math.min(nextObject, nextArray);
-    if (start < 0) break;
-    let probe = start + 1;
-    while (probe < text.length && /\s/.test(text[probe])) probe++;
-    const first = text[probe];
-    const quoteEscaped = first === '\\' && text[probe + 1] === '"';
-    const end = jsonEnd(text, start, quoteEscaped);
-    const raw = text.slice(start, end);
-    const strict = quoteEscaped || ['"', '{', '[', '}', ']'].includes(first) || hasKnownSensitiveKey(raw);
-    if (!strict) { cursor = end; continue; } // e.g. {债券名称: 本期公司债}
-    if (layer >= MAX_JSON_STRING_LAYERS) throw new DiagnosticScrubError();
-    const bytes = Buffer.byteLength(raw, 'utf8');
-    budget.parsedBytes += bytes;
-    budget.fragments++;
-    if (bytes > MAX_JSON_FRAGMENT_BYTES || budget.parsedBytes > MAX_PARSED_JSON_BYTES || budget.fragments > MAX_JSON_FRAGMENTS)
-      throw new DiagnosticScrubError();
-    let parsed: unknown;
-    try { parsed = JSON.parse(quoteEscaped ? JSON.parse(`"${raw}"`) : raw); }
-    catch { throw new DiagnosticScrubError(); }
-    const cleaned = JSON.stringify(scrubStructured(parsed, budget, layer));
-    pieces.push(text.slice(emitted, start), quoteEscaped ? JSON.stringify(cleaned).slice(1, -1) : cleaned);
-    cursor = end;
-    emitted = end;
+/** Validate JSON without constructing an object tree; retain only the nesting
+ * stack and source intervals that actually require replacement. */
+function parseCandidate(text: string, layer: number, markSensitive: () => void): string {
+  type Frame = { kind: '{' | '['; state: number; sensitive: boolean; suppressed: boolean; valueStart: number };
+  const stack: Frame[] = [];
+  const edits = newEdits(text.length);
+  let i = 0;
+  const whitespace = () => { while (space(text[i])) i++; };
+  const stringEnd = () => {
+    const start = i++;
+    for (; i < text.length; i++) {
+      const char = text[i];
+      if (char === '\\') { i++; continue; }
+      if (char === '"') { i++; return start; }
+      if (char < ' ') throw new DiagnosticScrubError();
+    }
+    throw new DiagnosticScrubError();
+  };
+  const valueDone = () => {
+    if (!stack.length) return;
+    const frame = stack[stack.length - 1];
+    if (frame.kind === '{' && frame.sensitive && !frame.suppressed) {
+      addEdit(edits, frame.valueStart, i, JSON.stringify(redacted));
+      frame.sensitive = false;
+    }
+    frame.state = frame.kind === '{' ? 3 : 1;
+  };
+  const value = () => {
+    whitespace();
+    const start = i;
+    const char = text[i];
+    if (char === '{' || char === '[') {
+      const parent = stack[stack.length - 1];
+      stack.push({ kind: char, state: 0, sensitive: false,
+        suppressed: !!parent && (parent.suppressed || parent.kind === '{' && parent.sensitive), valueStart: 0 });
+      if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
+      i++;
+    } else if (char === '"') {
+      stringEnd();
+      const raw = text.slice(start, i);
+      let decoded: string;
+      try { decoded = JSON.parse(raw) as string; } catch { throw new DiagnosticScrubError(); }
+      const frame = stack[stack.length - 1];
+      const inspectString = !frame?.suppressed && !(frame?.kind === '{' && frame.sensitive) && (decoded.includes('{') || decoded.includes('['));
+      if (layer >= MAX_JSON_STRING_LAYERS && inspectString) {
+        markSensitive();
+        throw new DiagnosticScrubError();
+      }
+      if (inspectString) {
+        let cleaned: string;
+        try { cleaned = scrubText(decoded, layer + 1); }
+        catch { markSensitive(); throw new DiagnosticScrubError(); }
+        if (cleaned !== decoded) addEdit(edits, start, i, JSON.stringify(cleaned));
+      }
+      valueDone();
+    } else {
+      const match = /(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)/y;
+      match.lastIndex = i;
+      const token = match.exec(text);
+      if (!token) throw new DiagnosticScrubError();
+      i = match.lastIndex;
+      valueDone();
+    }
+  };
+  value();
+  while (stack.length) {
+    whitespace();
+    const frame = stack[stack.length - 1];
+    if (frame.kind === '{') {
+      if (frame.state === 0 || frame.state === 4) {
+        if (text[i] === '}' && frame.state === 0) { i++; stack.pop(); valueDone(); continue; }
+        if (text[i] !== '"') throw new DiagnosticScrubError();
+        const start = stringEnd();
+        let key = '';
+        try { key = JSON.parse(text.slice(start, i)) as string; } catch { throw new DiagnosticScrubError(); }
+        frame.sensitive = !frame.suppressed && isSensitiveField(key);
+        if (frame.sensitive) markSensitive();
+        frame.state = 1;
+      } else if (frame.state === 1) {
+        if (text[i++] !== ':') throw new DiagnosticScrubError();
+        frame.state = 2;
+      } else if (frame.state === 2) {
+        whitespace(); frame.valueStart = i; value();
+      } else {
+        if (text[i] === ',') { i++; frame.state = 4; }
+        else if (text[i] === '}') { i++; stack.pop(); valueDone(); }
+        else throw new DiagnosticScrubError();
+      }
+    } else if (frame.state === 0 || frame.state === 2) {
+      if (text[i] === ']' && frame.state === 0) { i++; stack.pop(); valueDone(); }
+      else value();
+    } else {
+      if (text[i] === ',') { i++; frame.state = 2; }
+      else if (text[i] === ']') { i++; stack.pop(); valueDone(); }
+      else throw new DiagnosticScrubError();
+    }
   }
-  pieces.push(text.slice(emitted));
-  let value = pieces.join('');
+  whitespace();
+  if (i !== text.length) throw new DiagnosticScrubError();
+  return applyEdits(text, edits);
+}
+
+function scrubText(text: string, layer: number): string {
+  const edits = newEdits(text.length);
+  let openPlain = false;
+  for (let start = 0; start < text.length;) {
+    if (text[start] !== '{' && text[start] !== '[') {
+      if (openPlain && (text[start] === '}' || text[start] === ']')) openPlain = false;
+      if (openPlain && text[start] === '\\' && text[start + 1] === 'u') throw new DiagnosticScrubError();
+      if (openPlain && /[A-Za-z_验校动短]/.test(text[start])) {
+        let end = start + 1;
+        while (end < text.length && /[\p{L}\p{N}_-]/u.test(text[end])) end++;
+        if (isSensitiveField(text.slice(start, end))) {
+          while (text[end] === '\\') end++;
+          if (text[end] === '"') end++;
+          while (space(text[end])) end++;
+          if (text[end] === ':') throw new DiagnosticScrubError();
+        }
+        start = end;
+      } else start++;
+      continue;
+    }
+    let probe = start + 1;
+    while (space(text[probe])) probe++;
+    const encoded = text[probe] === '\\' && text[probe + 1] === '"';
+    const jsonEvidence = encoded || text[start] === '{' && text[probe] === '"' ||
+      text[start] === '[' && /[\[{"0-9tfn-]/.test(text[probe] ?? '');
+    if (!jsonEvidence) {
+      const plain = plainBracketEnd(text, start);
+      const ordinary = text.slice(start, plain.end);
+      if (hasKnownSensitiveKey(ordinary) || ordinary.includes('\\u')) throw new DiagnosticScrubError();
+      openPlain ||= !plain.closed;
+      start = plain.end;
+      continue;
+    }
+    const end = candidateEnd(text, start, encoded);
+    const raw = text.slice(start, end);
+    const suspicious = hasKnownSensitiveKey(raw);
+    if (jsonEvidence) {
+      let mustReject = false;
+      try {
+        const decoded = encoded ? JSON.parse(`"${raw}"`) as string : raw;
+        const cleaned = parseCandidate(decoded, layer, () => { mustReject = true; });
+        if (cleaned !== decoded) {
+          mustReject = true;
+          addEdit(edits, start, end, encoded ? JSON.stringify(cleaned).slice(1, -1) : cleaned);
+        }
+      } catch { if (suspicious || mustReject || raw.includes('\\u')) throw new DiagnosticScrubError(); }
+    }
+    start = end;
+  }
+  let value = applyEdits(text, edits);
   for (const [pattern, replacement] of scrubRules) value = value.replace(pattern, replacement);
   return value;
 }
@@ -164,7 +288,7 @@ function scrubText(text: string, budget: ScrubBudget, layer: number): string {
 /** Bounded scrub: rejects malformed/oversized JSON before any diagnostic Blob write. */
 export function scrubSecrets(text: string) {
   if (Buffer.byteLength(text, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
-  const cleaned = scrubText(text, { remaining: MAX_DIAGNOSTIC_BYTES * (MAX_JSON_STRING_LAYERS + 2), parsedBytes: 0, fragments: 0 }, 0);
+  const cleaned = scrubText(text, 0);
   if (Buffer.byteLength(cleaned, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
   return cleaned;
 }
