@@ -5,10 +5,11 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
-import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, succeedMaterialParse } from '@bondbuddy/api/material-jobs';
+import { claimMaterialParse, DEFAULT_DOCUMENT_PARSER_VERSION, recordMaterialParseProcessingCost, requeueAwaitingOcrParseJobs, succeedMaterialParse } from '@bondbuddy/api/material-jobs';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
+import { OcrProcessingError } from './ocr.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const testDatabaseUrl = await isolatedTestDatabase();
@@ -67,7 +68,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, parser: request => parser(request) },
   });
   const jobFor = async (materialId: string) => (await pool.query("SELECT * FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [materialId])).rows;
-  const outboxTypes = async (jobId: string) => (await pool.query("SELECT event_type FROM bb_outbox WHERE aggregate_type='material_parse_job' AND aggregate_id=$1 ORDER BY created_at,id", [jobId])).rows.map(r => r.event_type as string);
+  const outboxTypes = async (jobId: string) => (await pool.query("SELECT event_type FROM bb_outbox WHERE aggregate_type='material_parse_job' AND aggregate_id=$1 AND event_type<>'platform.processing_cost' ORDER BY created_at,id", [jobId])).rows.map(r => r.event_type as string);
+  const processingCosts = async (jobId: string) => (await pool.query("SELECT payload FROM bb_outbox WHERE aggregate_type='material_parse_job' AND aggregate_id=$1 AND event_type='platform.processing_cost' ORDER BY created_at,id", [jobId])).rows.map(r => r.payload as Record<string, unknown>);
   const internal = async (jobId: string) => (await pool.query("SELECT kind,event FROM bb_observability_events WHERE job_id=$1 ORDER BY created_at,id", [jobId])).rows;
   const errors = async (jobId: string) => (await pool.query('SELECT code,category,recovery_status,retry_count FROM bb_observability_errors WHERE job_id=$1 ORDER BY created_at,id', [jobId])).rows;
   const operations = async (kind: string, status: string) => (await pool.query('SELECT * FROM bb_operations WHERE owner_user_id=$1 AND operation_kind=$2 AND status=$3', [owner, kind, status])).rows;
@@ -130,6 +132,12 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.equal(parserCalls, 1, 'completed parse stage is read from the checkpoint');
     [historicalJob] = await jobFor(historicalId);
     assert.equal(historicalJob.state, 'succeeded'); assert.equal(historicalJob.attempts, 2);
+    const parseCost = await processingCosts(historicalJob.id);
+    assert.equal(parseCost.length, 1, 'checkpointed parses are not recorded twice after lease recovery');
+    assert.deepEqual([parseCost[0]!.stage, parseCost[0]!.attempt, parseCost[0]!.unit, parseCost[0]!.quantity, parseCost[0]!.outcome], ['parse', 1, 'document', 1, 'succeeded']);
+    assert.equal(parseCost[0]!.billable, false); assert.equal(parseCost[0]!.cost_payer, 'platform');
+    assert.equal(parseCost[0]!.pricing_status, 'unknown'); assert.equal(parseCost[0]!.unit_price_ref, null);
+    assert.deepEqual(historicalJob.checkpoint.processing_costs['parse:1'], parseCost[0]);
     const jobView = await send('GET', `/api/v1/projects/${projectId}/materials/${historicalId}/parse-job`);
     assert.equal(jobView.statusCode, 200, jobView.body);
     assert.deepEqual(jobView.json().completed_stages, ['parse_evidence', 'historical_profile']);
@@ -160,6 +168,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.equal(await runMaterialParseOnce(deps()), 'idle', 'failure is final');
     const [textJob] = await jobFor(textId);
     assert.equal(textJob.state, 'failed'); assert.equal(textJob.error_code, 'MATERIAL_UNREADABLE'); assert.equal(textJob.attempts, 3);
+    assert.deepEqual((await processingCosts(textJob.id)).map(cost => [cost.stage, cost.attempt, cost.quantity, cost.outcome]),
+      [['parse', 1, 1, 'failed'], ['parse', 2, 1, 'failed'], ['parse', 3, 1, 'failed']], 'failed consumed parser attempts remain separately measurable');
     assert.deepEqual((await errors(textJob.id)).map(e => [e.code, e.recovery_status, e.retry_count]),
       [['MATERIAL_UNREADABLE', 'retry_scheduled', 1], ['MATERIAL_UNREADABLE', 'retry_scheduled', 2], ['MATERIAL_UNREADABLE', 'terminal', 3]]);
     assert.deepEqual((await outboxTypes(textJob.id)).filter(t => t !== 'material_parse.claimed'), ['material_parse.enqueued', 'material_parse.retry_scheduled', 'material_parse.retry_scheduled', 'material_parse.failed']);
@@ -209,17 +219,41 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     }
     assert.deepEqual([...winners].sort(), ['cancelled', 'succeeded']);
 
-    // 5. OCR-dependent result stays explicitly pending; image material never reports success.
+    // 5. OCR-dependent result stays explicitly pending, then records measured platform cost when OCR is enabled.
     const imageId = (await complete(projectId, await startUpload(projectId, PNG_BYTES, 'image/png', 'other', 'scan.png'), PNG_BYTES)).json().material_id as string;
     assert.equal(await runMaterialParseOnce(deps()), 'paused');
     const imageJob = await send('GET', `/api/v1/projects/${projectId}/materials/${imageId}/parse-job`);
     assert.equal(imageJob.json().state, 'paused'); assert.equal(imageJob.json().stage, 'awaiting_ocr');
     assert.equal(imageJob.json().outcome, 'pending_ocr'); assert.deepEqual(imageJob.json().pending_capabilities, ['ocr']);
     assert.equal(await runMaterialParseOnce(deps()), 'idle', 'paused OCR work is not reclaimed until OCR is connected');
-    const cancelImage = await send('POST', `/api/v1/projects/${projectId}/materials/${imageId}/parse-job/cancel`, { reason: 'synthetic' });
-    assert.equal(cancelImage.statusCode, 200, cancelImage.body); assert.equal(cancelImage.json().state, 'cancelled');
-    assert.ok((await outboxTypes(cancelImage.json().job_id)).includes('material_parse.cancelled'));
-    assert.equal((await internal(cancelImage.json().job_id)).at(-1)!.event.status, 'cancelled');
+    assert.equal(await requeueAwaitingOcrParseJobs(pool), 1);
+    const imageOutcome = await runMaterialParseOnce(deps({
+      ocr: async () => ({ snapshot_id: 'synthetic-ocr-snapshot', ocr_pages: 2, ocr_engine: 'tesseract', ocr_engine_version: 'synthetic-only', processing_ms: 42 }),
+      afterStage: async (stage, lease) => {
+        if (stage === 'ocr_evidence') await recordMaterialParseProcessingCost(pool, lease, 'ocr', {
+          unit: 'ocr_page', quantity: 2, ocr_pages: 2, ocr_engine: 'tesseract', ocr_engine_version: 'synthetic-only', processing_ms: 42, outcome: 'succeeded',
+        });
+      },
+    }));
+    assert.equal(imageOutcome, 'succeeded');
+    const [ocrJob] = await jobFor(imageId);
+    const ocrCost = await processingCosts(ocrJob.id);
+    assert.equal(ocrCost.length, 1, 'duplicate reporting for the same job/stage/attempt is idempotent');
+    assert.deepEqual([ocrCost[0]!.stage, ocrCost[0]!.attempt, ocrCost[0]!.unit, ocrCost[0]!.quantity, ocrCost[0]!.processing_ms, ocrCost[0]!.outcome], ['ocr', 1, 'ocr_page', 2, 42, 'succeeded']);
+    assert.equal(ocrCost[0]!.ocr_engine, 'tesseract'); assert.equal(ocrCost[0]!.ocr_engine_version, 'synthetic-only');
+    assert.deepEqual(ocrJob.checkpoint.processing_costs['ocr:1'], ocrCost[0]);
+    assert.equal((await internal(ocrJob.id)).at(-1)!.event.status, 'succeeded');
+
+    const failedImageId = (await complete(projectId, await startUpload(projectId, PNG_BYTES, 'image/png', 'audit', 'scan-fail.png'), PNG_BYTES)).json().material_id as string;
+    assert.equal(await runMaterialParseOnce(deps()), 'paused');
+    assert.equal(await requeueAwaitingOcrParseJobs(pool), 1);
+    assert.equal(await runMaterialParseOnce(deps({ ocr: async () => { throw new OcrProcessingError('OCR_PROCESS_FAILED', {
+      ocr_pages: 1, ocr_engine: 'tesseract', ocr_engine_version: 'synthetic-only', processing_ms: 73,
+    }); } })), 'retry_scheduled');
+    const [failedOcrJob] = await jobFor(failedImageId);
+    const failedOcrCost = await processingCosts(failedOcrJob.id);
+    assert.deepEqual([failedOcrCost[0]!.stage, failedOcrCost[0]!.attempt, failedOcrCost[0]!.quantity, failedOcrCost[0]!.processing_ms, failedOcrCost[0]!.outcome], ['ocr', 1, 1, 73, 'failed']);
+    assert.equal(failedOcrJob.checkpoint.processing_costs['ocr:1'].outcome, 'failed');
     assert.ok((await operations('material_parse_cancel', 'submitted')).length >= 1);
 
     // 6. Rejection before any run exists is logged: a completion whose declaration changed.

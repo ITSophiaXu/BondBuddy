@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { Pool } from 'pg';
 import { azureBlobs, digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { authorizeOcrMaterial, storeOcr, validateOcrResponse, type OcrContext } from '@bondbuddy/api/ocr';
@@ -9,6 +10,13 @@ import type { OcrEngineResponse } from '@bondbuddy/contracts';
 
 export type OcrInput = OcrContext & { maxPages?:number; language?:'chi_sim+eng'|'eng' };
 export type OcrRunnerOptions = { pythonExecutable?:string; repoRoot?:string; timeoutMs?:number };
+
+export type OcrProcessingMetrics = { ocr_pages:number|null; ocr_engine:string|null; ocr_engine_version:string|null; processing_ms:number };
+export class OcrProcessingError extends Error {
+  constructor(message:string, readonly processingMetrics:OcrProcessingMetrics) { super(message); this.name='OcrProcessingError'; }
+}
+
+const measuredMs=(started:number)=>Math.max(1,Math.ceil(performance.now()-started));
 
 export async function extractOcr(pool:Pool, blobs:PrivateBlobs, input:OcrInput, options:OcrRunnerOptions={}):Promise<OcrEngineResponse> {
   const maxPages=input.maxPages ?? (input.purpose==='source_preflight'?3:50);
@@ -52,10 +60,23 @@ export async function extractOcr(pool:Pool, blobs:PrivateBlobs, input:OcrInput, 
 
 /** Called by a trusted parse/preflight worker, never by the public HTTP request handler. */
 export async function processOcrMaterial(pool:Pool, blobs:PrivateBlobs,input:OcrInput,options:OcrRunnerOptions={}) {
-  const result=await extractOcr(pool,blobs,input,options);
-  if(result.status==='failed')throw new Error(result.error??'OCR_FAILED');
-  const snapshotId=await storeOcr(pool,blobs,input,result);
-  return {snapshot_id:snapshotId,coverage:result.coverage,pages:result.pages.length,records:result.records.length,eligible_for_manuscript:false as const};
+  const started=performance.now();
+  let result:OcrEngineResponse|undefined;
+  try {
+    result=await extractOcr(pool,blobs,input,options);
+    const metrics={ocr_pages:result.attempted_pages??result.pages.length,ocr_engine:'tesseract',ocr_engine_version:result.engine_version,processing_ms:measuredMs(started)};
+    if(result.status==='failed')throw new OcrProcessingError(result.error??'OCR_FAILED',metrics);
+    const snapshotId=await storeOcr(pool,blobs,input,result);
+    return {snapshot_id:snapshotId,coverage:result.coverage,pages:result.pages.length,records:result.records.length,
+      ocr_pages:metrics.ocr_pages,ocr_engine:metrics.ocr_engine,ocr_engine_version:metrics.ocr_engine_version,
+      processing_ms:metrics.processing_ms,eligible_for_manuscript:false as const};
+  } catch(error) {
+    if(error instanceof OcrProcessingError) throw new OcrProcessingError(error.message,{...error.processingMetrics,processing_ms:measuredMs(started)});
+    throw new OcrProcessingError(error instanceof Error?error.message:'OCR_FAILED',{
+      ocr_pages:result?.attempted_pages??(result?.pages.length??null),
+      ocr_engine:result?'tesseract':null,ocr_engine_version:result?.engine_version??null,processing_ms:measuredMs(started),
+    });
+  }
 }
 
 // Operational one-shot worker for bounded source preflight. It cannot start full OCR or a model task.
