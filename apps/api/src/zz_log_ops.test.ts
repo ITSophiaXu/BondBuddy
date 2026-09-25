@@ -139,7 +139,7 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const nested = (depth: number) => '{"v":'.repeat(depth - 1) + inside + '}'.repeat(depth - 1);
   const accepted = scrubSecrets(nested(64));
   assert.ok(!accepted.includes('SYN_DEEP_SECRET'));
-  for (const input of [nested(65), nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{"session_cookie":"SYN_UNCLOSED"']) {
+  for (const input of [nested(65), nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{note: text, setCookie: SYN_LEAK_MARKER}', '{"session_cookie":"SYN_UNCLOSED"']) {
     const start = performance.now();
     assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     assert.ok(performance.now() - start < 2000, 'rejection remains bounded for malformed or deep input');
@@ -158,6 +158,20 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const maxBody = 'A'.repeat(10 * 1024 * 1024);
   assert.equal(scrubSecrets(maxBody).length, maxBody.length);
   assert.throws(() => scrubSecrets(maxBody + 'B'), /Diagnostic body rejected/);
+});
+
+test('#79 structured parsing limits bound fragments, aggregate work and token count', () => {
+  const nearFragment = JSON.stringify({ note: 'A'.repeat(256 * 1024 - 100), Cookie: 'SYN_LIMIT_COOKIE' });
+  const accepted = scrubSecrets(nearFragment);
+  assert.ok(accepted.includes('A'.repeat(100)) && !accepted.includes('SYN_LIMIT_COOKIE'));
+  const overFragment = JSON.stringify({ note: 'A'.repeat(256 * 1024), Cookie: 'SYN_OVER_COOKIE' });
+  assert.throws(() => scrubSecrets(overFragment), /Diagnostic body rejected/);
+  const smallObject = '{"note":"x"}';
+  assert.ok(scrubSecrets(smallObject.repeat(1024)).includes('"note"'));
+  assert.throws(() => scrubSecrets(smallObject.repeat(1025)), /Diagnostic body rejected/);
+  const aggregate = JSON.stringify({ note: 'A'.repeat(200 * 1024) });
+  assert.throws(() => scrubSecrets(aggregate.repeat(6)), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('[' + '0,'.repeat(5000).slice(0, -1) + ']'), /Diagnostic body rejected/);
 });
 
 test('#79 structured secrets are absent from the private diagnostic Blob readback', { skip }, async () => {
@@ -216,7 +230,8 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
     let puts = 0;
     const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
     const deep = '{"v":'.repeat(5000) + '{"session_cookie":"SYN_REJECT_SECRET"}' + '}'.repeat(5000);
-    for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"', 'A'.repeat(10 * 1024 * 1024 + 1)]) {
+    const wide = '[' + '{"note":"synthetic"},'.repeat(210000).slice(0, -1) + ']';
+    for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"', '{note: text, setCookie: SYN_LEAK_MARKER}', wide, 'A'.repeat(10 * 1024 * 1024 + 1)]) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
@@ -224,6 +239,39 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
     const after = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
     assert.equal(after, before, 'no partial snapshot reference');
   } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 wide JSON arrays reject in bounded 128/256 MiB child heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) for (const sizeMiB of [4, 9]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"note":"synthetic"},';
+      const count = Math.ceil(${sizeMiB} * 1024 * 1024 / unit.length);
+      const body = '[' + unit.repeat(count).slice(0, -1) + ']';
+      const started = performance.now();
+      let rejected = false;
+      try { scrubSecrets(body); } catch (error) { rejected = error?.message === 'Diagnostic body rejected' && !String(error?.stack).includes('synthetic'); }
+      const elapsedMs = Math.round(performance.now() - started);
+      process.stdout.write(JSON.stringify({ rejected, elapsedMs, peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024), inputMiB: ${sizeMiB} }));
+      if (!rejected) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source], {
+        env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl }
+      });
+      let stdout = '';
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume();
+      child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0, `${heapMiB} MiB heap, ${sizeMiB} MiB input`);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.rejected, true);
+    assert.ok(metrics.elapsedMs < 2000, 'wide input rejects before object-tree allocation');
+    t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
 });
 
 test('#79 NDJSON sink cannot be split by log injection', async () => {
