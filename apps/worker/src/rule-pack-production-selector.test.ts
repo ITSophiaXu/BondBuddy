@@ -56,6 +56,7 @@ async function preflightRuleReasons(client: PoolClient, ownerUserId: string, pro
     const response = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`,
       headers: { origin: 'http://bondbuddy.test' }, payload: { input_revision: revision, input_hash: inputHash } });
     assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().status, 'blocked', response.body);
     return response.json().missing_inputs;
   } finally { await app.close(); }
 }
@@ -628,6 +629,42 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     const expiredPin = { ...selected.pin, asOf: new Date(Date.parse(`${effectiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) };
     assert.deepEqual(await revalidateProductionRulePackPin(client, expiredPin, expiredPin.applicabilityContext),
       { status: 'blocked', reasons: ['production_rule_pack_not_effective'] });
+    if (gateCtx) {
+      // Keep the exact release event and all proof hashes, but replay it for an as-of date
+      // after its effective window. Both public and worker gates must reject that same pin.
+      const expiredRequest = { ...selectionRequest, asOf: expiredPin.asOf };
+      const expiredContextPin = structuredClone(contextPin);
+      expiredContextPin.fields.asOf = { ...expiredContextPin.fields.asOf!, value: expiredPin.asOf,
+        hash: hashSnapshot({ key: 'asOf', value: expiredPin.asOf }) };
+      const expiredRef = { ...ref, content_hash: inputManifestHash(expiredContextPin) };
+      const originalManifest = (await client.query(
+        'SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=2',
+        [operator, projectId])).rows[0]!.manifest;
+      const expiredManifest = { ...originalManifest,
+        rule_pack_pin: expiredPin,
+        rule_applicability_pin: { ref: expiredRef, contextPin: expiredContextPin } };
+      const expiredHash = inputManifestHash(expiredManifest);
+      await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
+        VALUES($1,6,$2,1,$3,$4,'[]','[]',$5,$6)`,
+      [projectId, operator, expiredHash, expiredManifest, expiredPin.version, expiredPin.templateVersion]);
+      for (let retry = 0; retry < 2; retry++)
+        assert.ok((await preflightRuleReasons(client, operator, projectId, expiredHash,
+          expiredRequest, expiredContextPin, 6)).includes('rule_pack:production_rule_pack_not_effective'));
+      const expiredCtx = { ...gateCtx,
+        run: { ...gateCtx.run, input_revision: 6, input_hash: expiredHash },
+        reviewedContextLoader: async () => ({ request: expiredRequest, contextPin: expiredContextPin }) };
+      const expiredGate = await inputLockStage.run(expiredCtx);
+      assert.deepEqual(expiredGate,
+        { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_not_effective' });
+      assert.deepEqual(await inputLockStage.run(expiredCtx), expiredGate,
+        'retry must keep the same exact expired pin and pause reason');
+      let promptBuilt = false;
+      const model = codexModelStage({ name: 'model_generation', logicalCallId: 'synthetic-expired-pin',
+        config: {} as never, schema: {}, validate: () => true, resultSchemaVersion: 'synthetic-v1',
+        buildPrompt: async () => { promptBuilt = true; return 'must not reach provider'; } });
+      assert.deepEqual(await model.run({ ...gateCtx, validateBeforeModelCall: async () => expiredGate as never }), expiredGate);
+      assert.equal(promptBuilt, false, 'expired pin has zero prompt construction and model calls');
+    }
 
     const tampered = { ...selected.pin, contentHash: 'f'.repeat(64) };
     assert.deepEqual(await revalidateProductionRulePackPin(client, tampered, selected.pin.applicabilityContext),
