@@ -16,12 +16,13 @@ import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
+import { resumePausedRun } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
-import { codexModelStage, createMaterialsReadyStage, defaultRunStages, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
+import { codexModelStage, createMaterialsReadyStage, defaultRunStages, materialsReadiness, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { produceParsedFactCandidates, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION, type SemanticFactExtractor } from './fact-candidate-producer.js';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv, type ProviderCallReconciler } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -360,6 +361,57 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.deepEqual(await createMaterialsReadyStage(context => produceParsedFactCandidates({ pool, extractor: reviewOnlyExtractor }, context)).run(materialContext),
       { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidates_unavailable' });
 
+    const legacyMaterials = factCheckpoint.materials as { material_id: string; material_version: number; outcome: string | null }[];
+    const factExtractCallsBeforeLegacy = factExtractCalls;
+    const seedLegacyCheckpoint = async (runId: string, materials: typeof legacyMaterials) => {
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2::jsonb WHERE run_id=$1',
+        [runId, JSON.stringify({ stages: { materials_ready: { materials } } })]);
+    };
+    const legacyFactRun = (await execute(p7)).json().run_id as string;
+    await seedLegacyCheckpoint(legacyFactRun, legacyMaterials);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'paused', 'old checkpoint still needs the trusted adapter');
+    assert.deepEqual((await runRow(legacyFactRun)).checkpoint.stages.materials_ready, { materials: legacyMaterials });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyFactRun])).rows[0].n, 0);
+    assert.equal(await resumePausedRun(pool, alice, legacyFactRun, 'materials_ready'), true);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'succeeded');
+    const upgraded = (await runRow(legacyFactRun)).checkpoint.stages.materials_ready;
+    assert.deepEqual(upgraded.materials, legacyMaterials);
+    assert.deepEqual(upgraded.extractions, factCheckpoint.extractions);
+    assert.equal(factExtractCalls, factExtractCallsBeforeLegacy, 'legacy upgrade reuses the persisted extraction run');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [legacyFactRun])).rows[0].n, 1);
+
+    const mismatchedLedgerRun = (await execute(p7)).json().run_id as string;
+    await seedLegacyCheckpoint(mismatchedLedgerRun, legacyMaterials);
+    const untrustedLedgerStage = createMaterialsReadyStage(async context => ({
+      ...await produceParsedFactCandidates({ pool, extractor }, context), extractionRunId: 'synthetic-missing-ledger' }));
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: untrustedLedgerStage }) }), 'retry');
+    assert.deepEqual((await runRow(mismatchedLedgerRun)).checkpoint.stages.materials_ready, { materials: legacyMaterials });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [mismatchedLedgerRun])).rows[0].n, 0);
+    assert.ok((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1", [mismatchedLedgerRun])).rows
+      .some(row => row.reason === 'material_fact_stage_failed'));
+    assert.equal((await send('POST', `/api/v1/runs/${mismatchedLedgerRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
+
+    const mismatchedLegacyRun = (await execute(p7)).json().run_id as string;
+    const wrongLegacyMaterials = legacyMaterials.map((material, index) => index === 0 ?
+      { ...material, material_version: material.material_version + 1 } : material);
+    await seedLegacyCheckpoint(mismatchedLegacyRun, wrongLegacyMaterials);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'paused');
+    assert.equal((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [mismatchedLegacyRun])).rows[0].reason,
+      'fact_extraction_checkpoint_mismatch');
+    assert.deepEqual((await runRow(mismatchedLegacyRun)).checkpoint.stages.materials_ready, { materials: wrongLegacyMaterials });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [mismatchedLegacyRun])).rows[0].n, 0);
+    assert.equal((await send('POST', `/api/v1/runs/${mismatchedLegacyRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
+
+    const noFinancialInput = await project('legacy without financial material');
+    const noFinancialRun = (await execute(noFinancialInput)).json().run_id as string;
+    const noFinancialRow = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1', [noFinancialRun])).rows[0];
+    const nonfinancialReady = await materialsReadiness(pool, noFinancialRow);
+    assert.equal(nonfinancialReady.status, 'ready');
+    await seedLegacyCheckpoint(noFinancialRun, nonfinancialReady.materials.map(({ material_id, material_version, outcome }) =>
+      ({ material_id, material_version, outcome })));
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'succeeded');
+    assert.deepEqual((await runRow(noFinancialRun)).checkpoint.stages.materials_ready.extractions, []);
+
     // Two pinned financial sources: a producer error after the first commit cannot checkpoint
     // the stage or enter the model. Recovery reuses that ledger and follows manifest order.
     const multiProject = (await send('POST', '/api/v1/projects', { name: 'Synthetic ordered facts', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id as string;
@@ -405,6 +457,16 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.deepEqual((await runRow(multiRun)).checkpoint.stages.materials_ready.extractions.map((item: { material_id: string }) => item.material_id),
       pinnedFinancial.map(ref => ref.material_id));
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id=$1 AND aggregate_id=$2 AND event_type='fact.extraction.completed'", [alice, multiProject])).rows[0].n, 2);
+
+    const legacyOrderedRun = (await execute(multiInput)).json().run_id as string;
+    const orderedMaterials = (await runRow(multiRun)).checkpoint.stages.materials_ready.materials as typeof legacyMaterials;
+    await seedLegacyCheckpoint(legacyOrderedRun, [...orderedMaterials].reverse());
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: multiStage }) }), 'paused');
+    assert.deepEqual((await runRow(legacyOrderedRun)).checkpoint.stages.materials_ready, { materials: [...orderedMaterials].reverse() });
+    assert.equal((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [legacyOrderedRun])).rows[0].reason,
+      'fact_extraction_checkpoint_mismatch');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyOrderedRun])).rows[0].n, 0);
+    assert.equal((await send('POST', `/api/v1/runs/${legacyOrderedRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
 
     // 9. Graceful shutdown: in-flight work past the drain window is aborted and its lease released at once.
     const p8 = await project('shutdown');

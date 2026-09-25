@@ -25,7 +25,7 @@ export type StageContext = {
   validateBeforeModelCall?: () => Promise<InputBindingGate | null>;
 };
 export type StageOutcome =
-  | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown }
+  | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
   | { kind: 'fail'; code: string }
   | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; wordSummary?: Record<string, unknown> }
@@ -129,6 +129,21 @@ export type PinnedMaterialReadiness = { material_id: string; material_version: n
 export type MaterialsReadiness = { status: 'ready' | 'pending' | 'failed'; code?: string; materials: PinnedMaterialReadiness[]; pending: string[] };
 export type ParsedFactProducer = (context: FactCandidateProductionContext) => Promise<FactCandidateProductionResult>;
 const financialRoles: ReadonlySet<string> = new Set(M1_MATERIAL_PARTITIONS.find(partition => partition.roles.some(role => role.code === 'audit'))?.roles.map(role => role.code) ?? []);
+type MaterialCheckpoint = Pick<PinnedMaterialReadiness, 'material_id' | 'material_version' | 'outcome'>;
+
+function checkpointMaterialsMatch(saved: Record<string, unknown>, materials: readonly PinnedMaterialReadiness[]): boolean {
+  const keys = Object.keys(saved).sort().join(',');
+  if (keys !== 'materials' && keys !== 'extractions,materials') return false;
+  const entries = saved.materials;
+  return Array.isArray(entries) && entries.length === materials.length && entries.every((entry: unknown, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const prior = entry as Record<string, unknown>;
+    const current = materials[index]!;
+    return Object.keys(prior).sort().join(',') === 'material_id,material_version,outcome' &&
+      prior.material_id === current.material_id && prior.material_version === current.material_version &&
+      prior.outcome === current.outcome;
+  });
+}
 
 /** Resolve the immutable manifest in order and verify exact material, parse job and snapshot pins. */
 export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_user_id' | 'project_id' | 'input_revision'> & Partial<Pick<RunRow, 'input_hash'>>): Promise<MaterialsReadiness> {
@@ -182,6 +197,9 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
     const r = await materialsReadiness(pool, run);
     if (r.status === 'failed') return { kind: 'fail', code: r.code! };
     if (r.status === 'pending') return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };
+    const saved = checkpoint?.materials_ready;
+    if (saved && !checkpointMaterialsMatch(saved, r.materials))
+      return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_extraction_checkpoint_mismatch' };
     const financial = r.materials.filter(material => financialRoles.has(material.role));
     if (financial.length && !producer) return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidate_producer_unavailable' };
     const extractions: { material_id: string; material_version: number; extraction_run_id: string; snapshot_id: string;
@@ -208,19 +226,19 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
     }
     if (financial.length && extractions.every(extraction => extraction.candidate_count === 0))
       return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidates_unavailable' };
-    const saved = checkpoint?.materials_ready;
     if (saved) {
-      const prior = Array.isArray(saved.extractions) ? saved.extractions : financial.length ? null : [];
-      if (!prior || prior.length !== extractions.length || extractions.some((item, index) => {
-        const recorded = prior[index] as Record<string, unknown> | undefined;
-        return !recorded || recorded.material_id !== item.material_id || recorded.material_version !== item.material_version ||
-          recorded.extraction_run_id !== item.extraction_run_id || recorded.snapshot_id !== item.snapshot_id ||
-          recorded.response_sha256 !== item.response_sha256 || recorded.candidate_count !== item.candidate_count ||
-          recorded.needs_review_count !== item.needs_review_count;
-      })) return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_extraction_checkpoint_mismatch' };
+      const prior = saved.extractions;
+      if (prior !== undefined && (!Array.isArray(prior) ||
+          prior.length !== extractions.length || extractions.some((item, index) => {
+            const recorded = prior[index] as Record<string, unknown> | undefined;
+            return !recorded || recorded.material_id !== item.material_id || recorded.material_version !== item.material_version ||
+              recorded.extraction_run_id !== item.extraction_run_id || recorded.snapshot_id !== item.snapshot_id ||
+              recorded.response_sha256 !== item.response_sha256 || recorded.candidate_count !== item.candidate_count ||
+              recorded.needs_review_count !== item.needs_review_count;
+          }))) return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_extraction_checkpoint_mismatch' };
     }
-    return { kind: 'done', checkpoint: { materials: r.materials.map(({ material_id, material_version, outcome }) =>
-      ({ material_id, material_version, outcome })), extractions } };
+    return { kind: 'done', checkpoint: { materials: r.materials.map(({ material_id, material_version, outcome }): MaterialCheckpoint =>
+      ({ material_id, material_version, outcome })), extractions }, upgradeCheckpoint: !!saved && saved.extractions === undefined };
   },
   };
 }
@@ -328,7 +346,10 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (saved && !stage.replay) { ctx.values.set(stage.name, saved); continue; }
       const outcome = await stage.run(ctx);
       if (outcome.kind === 'done') {
-        if (!saved) { await checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {}); checkpoint[stage.name] = outcome.checkpoint ?? {}; }
+        if (!saved || outcome.upgradeCheckpoint) {
+          await checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {});
+          checkpoint[stage.name] = outcome.checkpoint ?? {};
+        }
         ctx.values.set(stage.name, outcome.value ?? outcome.checkpoint ?? {});
         await deps.afterStage?.(stage.name, lease);
         continue;
