@@ -35,7 +35,7 @@ function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { 
 
 function context(): StageContext {
   return { pool: {} as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
-    run: { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: scope.inputHash, task_kind: 'update' },
+    run: { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: scope.inputHash, task_kind: 'generation' },
     signal: new AbortController().signal, checkpoint: {}, values: new Map() };
 }
 
@@ -55,12 +55,21 @@ test('ineligible or unavailable trusted target rules pause before reference look
   assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 0 });
 });
 
-test('non-exact or unlocked v1.1 reference selection pauses before target facts or model setup', async () => {
+test('non-exact or unlocked v1.1 reference selection pauses after target facts but before model setup', async () => {
   const counts = { config: 0, rules: 0, select: 0, facts: 0 };
   const stage = noHistoryModelGenerationStage(adapters({}, counts));
   const outcome = await stage.run(context());
   assert.deepEqual(outcome, { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:reference_selection_needs_review' });
   assert.deepEqual(counts, { config: 0, rules: 1, select: 1, facts: 1 });
+});
+
+test('stage cannot process an update run through the no-history generation path', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({}, counts));
+  const ctx = context();
+  ctx.run.task_kind = 'update';
+  assert.deepEqual(await stage.run(ctx), { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:task_kind_not_no_history_generation' });
+  assert.deepEqual(counts, { config: 0, rules: 0, select: 0, facts: 0 });
 });
 
 test('missing target facts pauses before a reference can be locked', async () => {

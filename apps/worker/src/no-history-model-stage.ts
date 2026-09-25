@@ -233,6 +233,7 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     name: 'model_generation',
     replay: true,
     run: async ctx => {
+      if (ctx.run.task_kind !== 'generation') return pause('task_kind_not_no_history_generation');
       try {
         // Revalidate the reviewed profile, production rule selection, reference lock and target
         // facts even when codexModelStage is replaying an already persisted prompt snapshot.
