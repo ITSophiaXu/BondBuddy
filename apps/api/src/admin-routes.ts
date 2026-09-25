@@ -36,6 +36,7 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
     // retain the session lock indefinitely by sending occasional traffic.
     const deadlineMs = deps.promptViewDeadlineMs ?? DEFAULT_PROMPT_VIEW_DEADLINE_MS;
     if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= 0) throw new Error('Invalid prompt view deadline');
+    const deadlineAt = performance.now() + deadlineMs;
     let release: (() => Promise<void>) | undefined;
     let disconnected = false;
     let finished = false;
@@ -63,7 +64,7 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
     if (Object.keys(query).some(key => key !== 'reason_code') || typeof query.reason_code !== 'string') throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
     reply.header('cache-control', 'no-store');
     let blobs: PrivateBlobs; try { blobs = deps.blobs(); } catch { throw unavailable(); }
-    const result = await adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code, controller.signal);
+    const result = await adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code, controller.signal, deadlineAt);
     release = result.release;
     if (disconnected) { await release(); throw unavailable(); }
     return result.view;

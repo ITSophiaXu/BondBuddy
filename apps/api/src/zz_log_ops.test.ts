@@ -910,6 +910,7 @@ test('#79 prompt deadline stops a connected lock waiter without retaining its PG
     assert.equal(pool.totalCount - pool.idleCount, 1, 'only the external holder uses a connection');
     assert.equal(pool.waitingCount, 0);
     assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    assert.equal((await pool.query('SHOW statement_timeout')).rows[0].statement_timeout, '0', 'deadline setting must not leak into unrelated pool work');
     await holder.query("SELECT pg_advisory_unlock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
     holder.release();
     holderReleased = true;
@@ -927,29 +928,37 @@ for (const readMode of ['unread', 'trickle'] as const) test(`#79 prompt deadline
   let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
   let drip: NodeJS.Timeout | undefined;
   let drippedBytes = 0;
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
   try {
     const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline unread', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
     const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'UNREAD_MARKER_79' + 'x'.repeat(9 * 1024 * 1024) });
-    app = createServer({ pool, blobs, promptViewDeadlineMs: 250, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 1000, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(snapshot)) { sendEntered.resolve(); await sendGate.promise; }
+      return payload;
+    });
     const address = await app.listen({ host: '127.0.0.1', port: 0 });
     const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
     socket = await rawGetSocket(address, path);
     socket.pause();
     if (readMode === 'trickle') drip = setInterval(() => { if (socket?.read(1)) drippedBytes++; }, 10);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await sendEntered.promise;
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
     await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
     let completed = false;
     const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { completed = true; return value; });
     await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(completed, false, 'unread response retains the lock before the deadline');
-    const result = await Promise.race([purge, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('unread response held prompt lock past deadline')), 2000))]);
+    sendGate.resolve();
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(completed, false, 'slow reader cannot complete the HTTP send immediately');
+    const result = await Promise.race([purge, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('unread response held prompt lock past deadline')), 3000))]);
     assert.equal(result.purged, 1);
     if (readMode === 'trickle') assert.ok(drippedBytes > 0, 'client actually read response bytes in small increments');
     assert.equal((await pool.query('SELECT 1')).rowCount, 1);
     assert.equal(pool.idleCount, pool.totalCount);
     assert.equal((await fetch(`${address}${path}`)).status, 404);
-  } finally { if (drip) clearInterval(drip); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+  } finally { sendGate.resolve(); if (drip) clearInterval(drip); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
 });
 
 test('#79 prompt deadline allows a normal TCP response and ends a stuck onSend', { skip }, async () => {
@@ -988,4 +997,57 @@ test('#79 prompt deadline allows a normal TCP response and ends a stuck onSend',
     assert.equal((await fetch(`${address}${stuckPath}`)).status, 404);
     assert.equal(pool.idleCount, pool.totalCount);
   } finally { sendGate.resolve(); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const stalledStage of ['snapshot', 'audit'] as const) test(`#79 PG statement deadline cancels a 3-second ${stalledStage} query holding the prompt lock`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const observer = new Pool({ connectionString: connection, max: 1 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined, backendPid: number | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic PG deadline', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: `synthetic PG_DEADLINE_${stalledStage}_79` });
+    const connectOriginal = pool.connect.bind(pool);
+    let injected = false;
+    pool.connect = ((callback?: any) => {
+      if (callback) return connectOriginal(callback);
+      return (async () => {
+      const client = await connectOriginal();
+      const queryOriginal = client.query.bind(client);
+      client.query = (async (...args: any[]) => {
+        const sql = args[0];
+        const matches = typeof sql === 'string' && (stalledStage === 'snapshot' ? sql.includes('SELECT s.*,t.id tombstone') : sql.includes('INSERT INTO bb_log_access_audit'));
+        if (!injected && matches) {
+          injected = true;
+          backendPid = (await queryOriginal('SELECT pg_backend_pid()')).rows[0].pg_backend_pid;
+          entered.resolve();
+          await queryOriginal('SELECT pg_sleep(3)');
+        }
+        return queryOriginal(...args as [string]);
+      }) as typeof client.query;
+      return client;
+      })();
+    }) as typeof pool.connect;
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    const reading = fetch(`${address}${path}`).catch(() => undefined);
+    await Promise.race([entered.promise, reading.then(response => { throw new Error(`prompt request finished before PG stall: ${response?.status ?? 'disconnected'}`); }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('prompt request never reached injected PG query')), 1500))]);
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_stat_activity WHERE pid=$1 AND state='active' AND query LIKE '%pg_sleep%'", [backendPid])).rows[0].n, 1, '3-second PostgreSQL query actually entered the server');
+    const started = performance.now();
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const result = await Promise.race([purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('PG stall outlived the prompt deadline')), 1000))]);
+    assert.equal(result.purged, 1);
+    assert.ok(performance.now() - started < 1000, 'purge finishes before the injected 3-second query');
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND granted", [backendPid])).rows[0].n, 0);
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_stat_activity WHERE pid=$1 AND state='active' AND query LIKE '%pg_sleep%'", [backendPid])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    const response = await reading;
+    if (response) assert.ok(!(await response.text()).includes(`PG_DEADLINE_${stalledStage}_79`));
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { await app?.close(); await f.app.close(); await pool.end(); await observer.end(); }
 });

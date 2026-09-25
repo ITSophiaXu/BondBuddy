@@ -363,6 +363,16 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
 
 const promptAbort = () => new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
 
+/** PostgreSQL, rather than an HTTP Promise.race, stops an active query by the route deadline. */
+async function setPromptStatementTimeout(client: PoolClient, deadlineAt?: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw promptAbort();
+  if (deadlineAt === undefined) return;
+  const remaining = Math.ceil(deadlineAt - performance.now());
+  if (remaining <= 0) throw promptAbort();
+  await client.query("SELECT set_config('statement_timeout',$1,false)", [String(remaining)]);
+  if (signal?.aborted) throw promptAbort();
+}
+
 /** Return a connection that arrives after the HTTP waiter has disconnected. */
 function connectPrompt(pool: Pool, signal?: AbortSignal): Promise<PoolClient> {
   return new Promise((resolve, reject) => {
@@ -396,7 +406,7 @@ function waitPromptRetry(milliseconds: number, signal?: AbortSignal): Promise<vo
 }
 
 /** A try-lock never blocks a pool connection behind another HTTP response. */
-async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortSignal): Promise<PoolClient> {
+async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortSignal, deadlineAt?: number): Promise<PoolClient> {
   let retryMs = 25;
   for (;;) {
     if (signal?.aborted) throw promptAbort();
@@ -410,10 +420,13 @@ async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortS
     let locked = false;
     try {
       if (signal?.aborted) throw promptAbort();
+      await setPromptStatementTimeout(client, deadlineAt, signal);
       locked = (await client.query("SELECT pg_try_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text)) locked", [snapshotId])).rows[0].locked === true;
       if (signal?.aborted) throw promptAbort();
       if (locked) return client;
-      client.release();
+      // This session carries a route-specific statement_timeout. Never lend it
+      // to unrelated pool work, even though it did not acquire the lock.
+      client.release(true);
     } catch (error) {
       // Destroying this session releases a lock even if the query raced the abort.
       client.release(true);
@@ -425,31 +438,39 @@ async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortS
 }
 
 /** The caller must hold release until the HTTP response finishes or aborts. */
-export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string, signal?: AbortSignal) {
+export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string, signal?: AbortSignal, deadlineAt?: number) {
   if (!validId(snapshotId)) throw missing();
   if (!safeCode.test(reasonCode)) throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
-  const client = await acquirePromptLock(pool, snapshotId, signal);
+  const client = await acquirePromptLock(pool, snapshotId, signal, deadlineAt);
   let releasePromise: Promise<void> | undefined;
   const release = () => releasePromise ??= (async () => {
-    try {
-      await client.query('SELECT pg_advisory_unlock(hashtext($1::text),hashtext($2::text))', ['prompt_snapshot', snapshotId]);
-      client.release();
-    } catch (error) {
-      // Never return a connection with a possibly held session lock to the pool.
-      client.release(true);
-      throw error;
-    }
+    // Closing the session releases the advisory lock without queuing an unlock
+    // behind a still-running query. It must never re-enter the pool with a lock.
+    client.release(true);
   })();
+  const abort = () => { void release(); };
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
   try {
     if (signal?.aborted) throw promptAbort();
     // Audit commits before any plaintext read. The session lock survives that commit.
-    await client.query('BEGIN');
+    const query = async (sql: string, params?: unknown[]) => {
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      return client.query(sql, params);
+    };
+    await query('BEGIN');
     let snapshot: any, auditId: string;
     try {
-      snapshot = (await client.query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      snapshot = (await query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      await setPromptStatementTimeout(client, deadlineAt, signal);
       auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
-      await client.query('COMMIT');
-    } catch (error) { await client.query('ROLLBACK'); throw error; }
+      await query('COMMIT');
+    } catch (error) {
+      // A deadline/cancel leaves the transaction and session unfit for reuse.
+      // Do not enqueue ROLLBACK behind a stalled query on an aborted response.
+      if (!signal?.aborted && !(error instanceof Error && 'code' in error && error.code === '57014')) await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
     if (!snapshot || snapshot.tombstone) throw missing();
     if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
     // A Blob request may never settle after a TCP disconnect. Promise.race observes its
@@ -468,6 +489,7 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
     if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
     return { view: { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId }, release };
   } catch (error) { await release(); throw error; }
+  finally { signal?.removeEventListener('abort', abort); }
 }
 
 export async function adminAlerts(pool: Pool, actorId: string) {
