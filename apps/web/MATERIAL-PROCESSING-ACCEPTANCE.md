@@ -59,7 +59,7 @@ BB_E2E_PARSE=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
 | --- | --- | --- |
 | #17 / #35：muhualing | #153 的运行进程/回填 CLI 已就绪，仍需 Compose 部署、实际回填及重启验证 | 部署后上传能自动开始、早期材料也能取得真实任务；本次手动 drain 不能替代 |
 | #14：ChrisLiu95；#17：muhualing；#76 消费方：loooo139 | #153 OCR hook 已合入，仍需 Tesseract/配置和真实 OCR/存疑数字验收 | 扫描/混合 PDF 和图片完成识别；未启用 OCR 时仍停在 awaiting_ocr |
-| #76：loooo139；#8 API：muhualing | `PATCH source-profile` 仍 501；需版本冲突、源校正与难度失效接口及联调 | 用户在线校正源信息、确认后进入可信难度计算；当前只读 |
+| #76：loooo139；浏览器：ChrisLiu95 | `PATCH source-profile` 已在 develop 实现版本冲突校验、来源证据核对和追加式校正（#187）；仍需部署联调、浏览器校正控件及校正后的难度失效/重算验证 | 用户在线校正源信息、确认后进入可信难度计算；当前浏览器仍只读 |
 | #76 / #13：loooo139；#8 / #35：muhualing | 授权真实材料准确性、缺页/附注/期间完整性、生产 Blob/TLS、备份与实际大文件压测 | #12 整体验收及 M1 发布；本次合成原生 DOCX 通过不能代替 |
 
 上述责任按 2026-09-25 GitHub assignee 核对。#13 已关闭并不意味着 OCR、所有材料完整性或 M1 联调均已完成；本次未重开它，也没有更改他人的 Issue 状态。
