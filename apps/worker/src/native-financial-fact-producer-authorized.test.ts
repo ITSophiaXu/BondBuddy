@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -13,7 +12,7 @@ import {
   reviewIssuerIdentitySourceRecord,
 } from '@bondbuddy/api/issuer-identity-source';
 import { verifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
-import type { DocumentParseRecord, DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
+import { runDocumentParser, type DocumentParseRecord, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
 import { produceParsedFactCandidates, type SemanticFactExtractor } from './fact-candidate-producer.js';
 import { listFactCandidates } from './fact-repository.js';
 import { createNativeFinancialFactExtractor } from './native-financial-fact-extractor.js';
@@ -80,16 +79,10 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     },
     options: {},
   };
-  const python = spawnSync(authorizedParser, ['-m', 'bondbuddy_document_parser'], {
-    cwd: sourceRoot,
-    env: { ...process.env, PYTHONPATH: join(sourceRoot, 'python') },
-    input: JSON.stringify(parseRequest),
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  assert.ifError(python.error);
-  assert.equal(python.status, 0, `actual Python parser failed: ${python.stderr}`);
-  const parsed = JSON.parse(python.stdout) as PythonXlsxParseResponse;
+  const parsed = await runDocumentParser(parseRequest, {
+    pythonExecutable: authorizedParser,
+    repoRoot: sourceRoot,
+  }) as PythonXlsxParseResponse;
   assert.ok(SUPPORTED_PARSER_VERSIONS.has(parsed.parser_version),
     `authorized mapper supports only verified parser versions, received ${parsed.parser_version}`);
   assert.equal(parsed.status, 'parsed');
@@ -133,15 +126,10 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     [file.file_id, owner, projectId, uploadId, file.original_filename, file.media_type, file.bytes, contentHash,
       `synthetic-test/material/${file.file_id}`]);
 
-    // Python 1.0.3 and 1.0.5 emit cached_formula_results; the current TypeScript snapshot contract has not
-    // adopted that metadata field yet. Assert its safe zero value above, project only that zero-only
-    // count out, then still pass all real parser records through the repository's strict validation.
-    const { cached_formula_results: _zeroCachedResults, ...contractDocument } = parsed.document;
-    const responseForCurrentSnapshotContract: DocumentParseResponse = { ...parsed, document: contractDocument };
     const savedSnapshot = await persistParseSnapshot({ pool, newId: () => snapshotId }, {
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1, requestId,
     }, { mediaType: file.media_type as DocumentParseRequest['material']['media_type'], sha256: contentHash },
-    responseForCurrentSnapshotContract);
+    parsed);
     assert.equal(savedSnapshot.parserVersion, parsed.parser_version);
     assert.equal(savedSnapshot.evidence.length, 1392);
 
