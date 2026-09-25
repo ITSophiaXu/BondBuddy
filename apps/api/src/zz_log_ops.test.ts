@@ -121,12 +121,25 @@ test('#79 scrubber handles nested, embedded and escaped JSON without losing surr
   }
 });
 
+test('#79 escaped JSON with quoted prose and Chinese business placeholders stays usable', () => {
+  const note = 'He said "SYN_ORDINARY" and used \\ a path';
+  const escaped = JSON.stringify(JSON.stringify({ Cookie: 'SYN_ESCAPED_COOKIE', note })).slice(1, -1);
+  const placeholder = '{债券名称: 本期公司债}';
+  const cleaned = scrubSecrets(`业务前文\r\n${escaped}\r\n${placeholder}\r\n业务后文`);
+  assert.ok(!cleaned.includes('SYN_ESCAPED_COOKIE'));
+  assert.ok(cleaned.includes(`业务前文\r\n`) && cleaned.includes(`${placeholder}\r\n业务后文`));
+  const encoded = cleaned.split('\r\n')[1];
+  const parsed = JSON.parse(JSON.parse(`"${encoded}"`));
+  assert.equal(parsed.note, note);
+  assert.equal(parsed.Cookie, '[REDACTED]');
+});
+
 test('#79 scrubber bounds JSON depth, body length and malformed brace work', () => {
   const inside = '{"session_cookie":"SYN_DEEP_SECRET"}';
   const nested = (depth: number) => '{"v":'.repeat(depth - 1) + inside + '}'.repeat(depth - 1);
   const accepted = scrubSecrets(nested(64));
   assert.ok(!accepted.includes('SYN_DEEP_SECRET'));
-  for (const input of [nested(65), nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{"session_cookie":"SYN_UNCLOSED"']) {
+  for (const input of [nested(65), nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{"session_cookie":"SYN_UNCLOSED"']) {
     const start = performance.now();
     assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     assert.ok(performance.now() - start < 2000, 'rejection remains bounded for malformed or deep input');
@@ -135,6 +148,10 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   const proseStart = performance.now();
   assert.equal(scrubSecrets(ordinaryBraces), ordinaryBraces);
   assert.ok(performance.now() - proseStart < 2000, 'many ordinary braces stay linear and unchanged');
+  const businessPlaceholders = '{债券名称: 本期公司债}\r\n'.repeat(20000);
+  const placeholderStart = performance.now();
+  assert.equal(scrubSecrets(businessPlaceholders), businessPlaceholders);
+  assert.ok(performance.now() - placeholderStart < 2000, 'many business placeholders stay bounded and unchanged');
   const plainKeys = scrubSecrets('session_cookie=SYN_PLAIN_COOKIE\r\nx_api_key=SYN_PLAIN_KEY\r\none_time_password=SYN_PLAIN_PASSWORD\r\n业务正文');
   for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD']) assert.ok(!plainKeys.includes(secret));
   assert.ok(plainKeys.endsWith('业务正文'));
@@ -161,6 +178,29 @@ test('#79 structured secrets are absent from the private diagnostic Blob readbac
       'SYN_SESSION_COOKIE_BLOB', 'SYN_X_API_KEY_BLOB', 'SYN_ONE_TIME_PASSWORD_BLOB'])
       assert.ok(!stored.includes(secret), `Blob contains ${secret}`);
     for (const ordinary of ['SYN_VISIBLE\r\n', 'SYN_BUSINESS_BLOB', 'SYN_UNICODE_BLOB']) assert.ok(stored.includes(ordinary));
+    assert.equal(row.content_sha256, digest(stored));
+    assert.equal(row.redaction_version, 'scrub_v1');
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 escaped quotes and business placeholders survive private Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic escaped quote scrub');
+    const note = 'He said "SYN_ORDINARY_BLOB" with \\ a path';
+    const escaped = JSON.stringify(JSON.stringify({ Cookie: 'SYN_ESCAPED_COOKIE_BLOB', note })).slice(1, -1);
+    const placeholder = '{债券名称: 本期公司债}';
+    const body = `业务前文\r\n${escaped}\r\n${placeholder}\r\n业务后文`;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body });
+    const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
+    const stored = (await blobs.get(row.object_key)).toString('utf8');
+    assert.ok(!stored.includes('SYN_ESCAPED_COOKIE_BLOB'));
+    assert.ok(stored.includes(`业务前文\r\n`) && stored.includes(`${placeholder}\r\n业务后文`));
+    const parsed = JSON.parse(JSON.parse(`"${stored.split('\r\n')[1]}"`));
+    assert.equal(parsed.note, note);
+    assert.equal(parsed.Cookie, '[REDACTED]');
     assert.equal(row.content_sha256, digest(stored));
     assert.equal(row.redaction_version, 'scrub_v1');
   } finally { await f.app.close(); await pool.end(); }

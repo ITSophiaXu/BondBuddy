@@ -49,7 +49,16 @@ function jsonEnd(text: string, start: number, escapedQuotes: boolean): number {
   let quoted = false, escaped = false;
   for (let i = start; i < text.length; i++) {
     const char = text[i];
-    if (escapedQuotes && char === '\\' && text[i + 1] === '"') { quoted = !quoted; i++; continue; }
+    if (escapedQuotes && char === '\\') {
+      let end = i + 1;
+      while (text[end] === '\\') end++;
+      // Escaping a JSON document as a string doubles its backslashes and adds one
+      // before each quote. Runs of 1 mod 4 delimit JSON strings; 3 mod 4 are
+      // quotes inside a JSON string value.
+      if (text[end] === '"' && (end - i) % 4 === 1) { quoted = !quoted; i = end; continue; }
+      if (text[end] === '"') { i = end; continue; }
+      i = end - 1; continue;
+    }
     if (quoted) {
       if (escaped) escaped = false;
       else if (char === '\\') escaped = true;
@@ -101,19 +110,20 @@ function scrubText(text: string, budget: ScrubBudget, layer: number): string {
     while (probe < text.length && /\s/.test(text[probe])) probe++;
     const first = text[probe];
     // Plain prose such as {section} or [note] remains untouched. JSON-like fragments must parse.
-    const unquotedKey = text[start] === '{' && /^[\p{L}_][\p{L}\p{N}_-]{0,63}\s*:/u.test(text.slice(probe, probe + 128));
-    if (!unquotedKey && !['"', '\\', '{', '[', '}', ']'].includes(first)) {
+    const unquotedKey = text[start] === '{' && /^[\p{L}_][\p{L}\p{N}_-]{0,63}/u.exec(text.slice(probe, probe + 64));
+    const knownUnquotedSecret = Boolean(unquotedKey && isSensitiveField(unquotedKey[0]));
+    const quoteEscaped = first === '\\' && text[probe + 1] === '"';
+    if (!knownUnquotedSecret && !quoteEscaped && !['"', '{', '[', '}', ']'].includes(first)) {
       pieces.push(text.slice(cursor, start + 1)); cursor = start + 1; continue;
     }
     if (layer >= MAX_JSON_STRING_LAYERS) throw new DiagnosticScrubError();
-    const quoteEscaped = first === '\\' && text[probe + 1] === '"';
     const end = jsonEnd(text, start, quoteEscaped);
     const raw = text.slice(start, end);
     let parsed: unknown;
-    try { parsed = JSON.parse(quoteEscaped ? raw.replace(/\\"/g, '"') : raw); }
+    try { parsed = JSON.parse(quoteEscaped ? JSON.parse(`"${raw}"`) : raw); }
     catch { throw new DiagnosticScrubError(); }
     const cleaned = JSON.stringify(scrubStructured(parsed, budget, layer));
-    pieces.push(text.slice(cursor, start), quoteEscaped ? cleaned.replace(/"/g, '\\"') : cleaned);
+    pieces.push(text.slice(cursor, start), quoteEscaped ? JSON.stringify(cleaned).slice(1, -1) : cleaned);
     cursor = end;
   }
   let value = pieces.join('');
