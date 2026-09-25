@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 import sys
 
-from .parser import failure_response, parse_request
+from .parser import failure_response, parse_request, stream_parse_request
 
 
 def main() -> None:
+    stream_mode = sys.argv[1:] == ["--stream"]
     try:
         payload = json.load(sys.stdin)
+        if stream_mode:
+            stream_parse_request(payload, sys.stdout)
+            return
         response = parse_request(payload)
     except Exception as exc:  # The worker must always receive a structured result.
         response = failure_response(
