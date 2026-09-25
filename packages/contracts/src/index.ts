@@ -3,6 +3,7 @@ export * from './ocr.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
+export * from './reference-library.js';
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -38,7 +39,7 @@ export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const
 export const CLOSURE_RETAINED_RECORDS = ['account_identifier', 'agreement_acceptances', 'registration_event', 'closure_record', 'operation_logs', 'model_usage_records', 'audit_outbox'] as const;
 export const TASK_KINDS = ['update', 'review', 'generation', 'qa'] as const;
 export const USAGE_STATUSES = ['reported', 'pending', 'unavailable'] as const;
-export const JOB_KINDS = ['update', 'review', 'generation', 'qa', 'preflight', 'parse'] as const;
+export const JOB_KINDS = ['update', 'review', 'generation', 'qa', 'preflight', 'parse', 'library'] as const;
 export const JOB_STATUSES = ['created', 'queued', 'running', 'awaiting_input', 'paused', 'succeeded', 'failed', 'cancelled', 'rejected'] as const;
 export const ERROR_CATEGORIES = ['validation', 'auth', 'material_parse', 'ocr', 'model_provider', 'tool', 'queue', 'export', 'delivery', 'metering', 'internal'] as const;
 // #16 contained model adapter (internal worker/#79 codes; never shown as a public API error).

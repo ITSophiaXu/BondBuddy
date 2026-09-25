@@ -5,6 +5,7 @@ import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, run, runDto, transaction, uid, unavailable, verifiedMedia, type PrivateBlobs } from './data.js';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
+import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
 import { recordOperation, rejectOperation } from './observability.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
@@ -86,6 +87,7 @@ export function createServer(settings: Settings = {}) {
   }
   app.get('/health', { schema: { response: { 200: schemas.HealthResponse } } }, async () => ({ status: 'ok' as const, service: 'bondbuddy-m1-api-skeleton' as const, implementation: 'health-and-contract-only' as const }));
   app.get('/openapi.json', async () => openApiDocument());
+  installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   app.get('/api/v1/projects', async request => {
     const user = await owner(request); const cursor = (request.query as {cursor?:string}).cursor;
     const rows = await db().query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND deleted_at IS NULL AND ($2::text IS NULL OR id>$2) ORDER BY id LIMIT 51',[user,cursor ?? null]);

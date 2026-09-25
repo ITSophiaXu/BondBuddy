@@ -2,7 +2,7 @@ import { Ajv } from 'ajv';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, schemas, type SchemaName } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, referenceLibrarySchemas, schemas, type SchemaName } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -11,6 +11,20 @@ const updateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../example
 assert.equal(updateExamples.synthetic, true);
 data.cases.push(...updateExamples.cases);
 assert.equal(data.synthetic, true);
+// #78 internal library query v1: validated here, and proven absent from the public OpenAPI document.
+const libraryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/reference-library.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Array<{ name: string; schema: keyof typeof referenceLibrarySchemas; valid: boolean; value: unknown }> };
+assert.equal(libraryExamples.synthetic, true);
+{
+  const libraryAjv = new Ajv({ allErrors: true, strict: true });
+  for (const example of libraryExamples.cases) {
+    const validate = libraryAjv.compile(referenceLibrarySchemas[example.schema]);
+    assert.equal(validate(example.value), example.valid, `${example.name}: ${libraryAjv.errorsText(validate.errors)}`);
+  }
+  const publicDocument = JSON.stringify(openApiDocument());
+  for (const name of Object.keys(referenceLibrarySchemas)) assert.ok(!publicDocument.includes(name), `internal ${name} leaked into public OpenAPI`);
+  assert.ok(!publicDocument.includes('/admin/library'), 'admin library routes are not public contract');
+  assert.ok(!Object.keys(schemas).some(name => name.startsWith('Library')), 'library schemas are not public schemas');
+}
 const ajv = new Ajv({ allErrors: true, strict: true });
 const byName = new Map<string, Example>();
 for (const example of data.cases) {
@@ -97,4 +111,4 @@ for (const partition of M1_MATERIAL_PARTITIONS) {
   assert.ok(source, `missing prototype partition ${partition.label}`);
   for (const role of partition.roles) assert.equal(source.items.find(item => item[0] === role.code)?.[1], role.label);
 }
-console.log(`validated ${data.cases.length} synthetic examples and recovery/conflict/usage invariants`);
+console.log(`validated ${data.cases.length} synthetic examples + ${libraryExamples.cases.length} internal library examples and recovery/conflict/usage invariants`);

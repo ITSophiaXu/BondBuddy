@@ -152,6 +152,10 @@ Production publication requires verified sources, source/pack validity, enabled 
 5. Python 生成 Word 修订/清洁版，worker 检查文件完整性、来源和交付清单，再写成果版本与终态。浏览器关闭不改变 run；重开后用 `GET /runs/{id}` 和事件游标恢复。
 6. 外部模型、存储或日志故障时，按同一 run 和检查点恢复。已经发出的模型请求先对账，不能直接重发；无法持久化关键事件时停止新的外部调用并告警。
 
+### #78 backend reference library (2026-09-25)
+
+`0023_m1_reference_library.sql` adds the platform-owned prospectus library: source registry (authorization basis, usage rights, cursor, last success), documents and immutable document versions (bytes in private Blob under `library/`, SHA-256 in PostgreSQL), append-only business profile versions, review queue, immutable index releases with exactly one active release, task selection locks, audit (written by trigger with reason and actor) and sync run/item logs. A deferred constraint trigger enforces at commit that the active release lists exactly the published versions with their published profiles, so body and index cannot diverge. Library jobs run on `bb_jobs` (`job_type='library'`, system owner `system-reference-library`) with per-item checkpoints and #79 events/errors. `apps/worker/src/library-pipeline.ts` runs discover → fetch → hash dedupe → existing Python parser bridge → classify/profile → review; only an operator review publishes. Adapters: the SSE bond project platform (real public disclosure, registered `evaluation_only` per the SSE legal notice until written permission is recorded) and operator bulk import. The internal task query `reference-library-query-v1` in `packages/contracts/src/reference-library.ts` adopts @loooo139's minimal contract from #77; it returns only published, licensed, complete-profile candidates and is excluded from the public OpenAPI. Operator routes live under `/api/v1/admin/library/*`, deny-by-default via `bb_library_operator_grants` until the #79 grant table (PR #152) lands. Runbook, alerts and recovery drill: `docs/runbooks/reference-library.md`.
+
 ## 5. 四人工作面与交接
 
 ### #31 历史原文修改计划切片（2026-09-25）
