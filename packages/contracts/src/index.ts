@@ -9,6 +9,7 @@ export * from './admin-logs.js';
 import { runtimeSchemas } from './worker-runtime.js';
 export * from './worker-runtime.js';
 // --- end #17 worker runtime ---
+import { trialSchemas, TRIAL_GUARD_ERROR_CODES, TRIAL_ADMIN_OPERATIONS, trialOpenApiPaths } from './trial-guard.js'; export * from './trial-guard.js'; // #35 trial guard
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -36,7 +37,7 @@ export const M1_UPLOAD_MIME_TYPES = [
 export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'failed', 'cancelled'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED'] as const;
+export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -109,6 +110,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 export const schemas = {
   ...adminSchemas,
   ...runtimeSchemas, // #17 worker runtime
+  ...trialSchemas, // #35 trial guard
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
@@ -252,8 +254,9 @@ export const operations: readonly Operation[] = [
   op('post', '/admin/attempts/{attempt_id}/usage-corrections', 'Append a usage correction; raw observations are never overwritten (log_operator)', 'UsageCorrectionResponse', 201, 'UsageCorrectionRequest', [404, 409, 422]),
   // --- #17 worker runtime: owner-checked SSE streams of persisted state (text/event-stream) ---
   op('get', '/runs/{run_id}/stream', 'SSE of persisted run events; resumes after Last-Event-ID; closing it never cancels the run', 'RunEvent', 200, undefined, [404, 422]),
-  op('get', '/projects/{project_id}/materials/{material_id}/parse-job/stream', 'SSE of persisted parse-job events; resumes after Last-Event-ID', 'JobStreamEvent', 200, undefined, [404, 422])
+  op('get', '/projects/{project_id}/materials/{material_id}/parse-job/stream', 'SSE of persisted parse-job events; resumes after Last-Event-ID', 'JobStreamEvent', 200, undefined, [404, 422]),
   // --- end #17 worker runtime ---
+  ...(TRIAL_ADMIN_OPERATIONS as unknown as Operation[]) // #35 trial guard
 ];
 
 const ref = (name: SchemaName) => ({ $ref: `#/components/schemas/${name}` });
@@ -312,5 +315,6 @@ export function openApiDocument() {
   for (const [path, method] of [['/runs/execute', 'post'], ['/runs/{run_id}/cancel', 'post'], ['/runs/{run_id}/resume', 'post']] as const)
     (paths[`/api/v1${path}`][method] as Record<string, unknown>)['x-implementation-status'] = 'implemented; worker-runtime; production-501-unless-BB_RUN_RUNTIME_ENABLED; stages-without-implementation-pause-capability_not_ready';
   // --- end #17 worker runtime ---
+  Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
   return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
 }

@@ -17,6 +17,10 @@ data.cases.push(...adminExamples.cases);
 const runtimeExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/worker-runtime.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(runtimeExamples.synthetic, true);
 data.cases.push(...runtimeExamples.cases);
+// #35 trial guard examples.
+const trialExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/trial-guard.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(trialExamples.synthetic, true);
+data.cases.push(...trialExamples.cases);
 assert.equal(data.synthetic, true);
 const ajv = new Ajv({ allErrors: true, strict: true });
 const byName = new Map<string, Example>();
