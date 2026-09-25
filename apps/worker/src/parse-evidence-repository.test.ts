@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import type { MaterialParserDependencies } from './material-parser.js';
 import {
   getParseSnapshot,
+  getParseSnapshotForMaterialJob,
   parseAndPersistAuthorizedMaterial,
   persistParseSnapshot,
   type ParseEvidenceClient,
@@ -313,6 +314,10 @@ test('PostgreSQL 16: immutable snapshots, request aliases, access scope and tran
     assert.equal(second.snapshotId, first.snapshotId);
     assert.equal(second.replayed, true);
     assert.equal((await getParseSnapshot(liveDeps, liveContext, first.snapshotId))?.evidence[0]?.literal_quote, 'synthetic line one');
+    const compact=await getParseSnapshotForMaterialJob(liveDeps,liveContext,first.snapshotId,false);
+    assert.equal(compact?.evidenceComplete,false);
+    assert.equal(compact?.evidenceRecordCount,1);
+    assert.deepEqual(compact?.response.records,[]);
     assert.equal(await getParseSnapshot(liveDeps, { ...liveContext, ownerUserId: `${liveOwner}-other` }, first.snapshotId), null);
     await client.query(`SAVEPOINT ${savepoint}_immutable`);
     await assert.rejects(client.query(`UPDATE bb_parse_snapshots SET response_status='failed' WHERE id=$1`, [first.snapshotId]));

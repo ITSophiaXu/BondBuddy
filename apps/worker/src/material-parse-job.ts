@@ -7,7 +7,7 @@ import {
 } from '@bondbuddy/api/material-jobs';
 import { DOCUMENT_PARSER_MEDIA_TYPES } from './document-parser.js';
 import type { MaterialParserDependencies } from './material-parser.js';
-import { getParseSnapshot, parseAndPersistAuthorizedMaterial, type ParseEvidenceDependencies, type StoredParseSnapshot } from './parse-evidence-repository.js';
+import { getParseSnapshotForMaterialJob, parseAndPersistAuthorizedMaterial, type ParseEvidenceDependencies, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { appendHistoricalOcrRecognition, appendHistoricalRecognition, getLatestHistoricalProfile, type HistoricalOcrProfileDependencies, type HistoricalProfileDependencies } from './historical-profile-repository.js';
 import { recognizeHistoricalOcr } from './historical-ocr-recognition.js';
 import { readOcr } from '@bondbuddy/api/ocr';
@@ -49,6 +49,7 @@ const TERMINAL: Record<string, ErrorCode> = {
   PARSER_RESULT_CONTAINS_PRIVATE_REFERENCE: 'VALIDATION_FAILED',
   // #17 capacity: deterministic for the same bytes, so never retried (a retry only repeats the failure).
   MATERIAL_PARSE_SIZE_LIMIT: 'MATERIAL_TOO_LARGE', MATERIAL_PARSE_OUTPUT_LIMIT: 'MATERIAL_TOO_LARGE', MATERIAL_PARSE_MEMORY_LIMIT: 'MATERIAL_TOO_LARGE',
+  PARSE_EVIDENCE_RECORD_TOO_LARGE: 'MATERIAL_TOO_LARGE',
 };
 // Structured Python parser failures that are not public codes themselves.
 const PARSER_FAILURE: Record<string, ErrorCode> = { MATERIAL_LIMIT_EXCEEDED: 'MATERIAL_TOO_LARGE' };
@@ -117,11 +118,14 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
     const material = await activeMaterial(pool, lease);
     const stages = lease.checkpoint.stages ?? {};
     const parseable = (DOCUMENT_PARSER_MEDIA_TYPES as readonly string[]).includes(material.media_type);
+    const needsNativeRecognition=material.role==='historical' && HISTORICAL_MEDIA.includes(material.media_type);
     let snapshot: StoredParseSnapshot | null = null;
     if (parseable) {
       const saved = stages.parse_evidence as { snapshot_id?: string } | undefined;
       if (saved?.snapshot_id) {
-        snapshot = await getParseSnapshot(evidence, context, saved.snapshot_id);
+        // Rebuild all anchor/text rows only when the historical recognition stage consumes them.
+        // Other jobs need status/warnings only; the immutable full evidence remains in PostgreSQL.
+        snapshot = await getParseSnapshotForMaterialJob(evidence, context, saved.snapshot_id, needsNativeRecognition);
         if (!snapshot) throw new Error('CHECKPOINT_SNAPSHOT_MISSING');
       } else {
         const started = performance.now();
@@ -153,7 +157,8 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
       }
     }
     let profile: { profile_version: number; state: string } | null = null;
-    if (snapshot && material.role === 'historical' && HISTORICAL_MEDIA.includes(material.media_type)) {
+    if (snapshot && needsNativeRecognition) {
+      if(!snapshot.evidenceComplete)throw new Error('PARSE_SNAPSHOT_EVIDENCE_INCOMPLETE');
       const saved = stages.historical_profile as { profile_version?: number; state?: string } | undefined;
       if (saved?.profile_version) profile = { profile_version: saved.profile_version, state: String(saved.state) };
       else {

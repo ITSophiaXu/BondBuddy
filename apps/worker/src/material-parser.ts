@@ -4,8 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   DOCUMENT_PARSER_MEDIA_TYPES,
+  DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES,
+  runDocumentParserToFile,
   runDocumentParser,
   validateDocumentParseResponse,
+  type StreamedDocumentParse,
   type DocumentParseRequest,
   type DocumentParseResponse,
 } from './document-parser.js';
@@ -31,19 +34,20 @@ export interface MaterialParserBlobStore {
 }
 
 /**
- * #17 parse capacity on the M1 production worker profile (320M container, 160 MiB V8 heap, shared by
- * the staged file on the /tmp tmpfs and the Python child). Measured in docs/acceptance/m1-capacity-2026-09-25.md.
- * Materials above the per-type byte limit, or whose parser output exceeds the output budget, fail
- * deterministically with MATERIAL_TOO_LARGE instead of crashing the worker and being retried.
+ * #17 parse capacity on the M1 production worker profile (320M container, 160 MiB V8 heap). Large
+ * PDF/TXT evidence uses bounded NDJSON spooled to disk; DOCX/XLSX/CSV retain the bounded JSON bridge.
+ * Inputs above a per-type or protocol budget fail with MATERIAL_TOO_LARGE instead of being retried.
  */
 export const M1_PARSE_BYTE_LIMITS: Readonly<Record<typeof DOCUMENT_PARSER_MEDIA_TYPES[number], number>> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 100 * 1024 * 1024,
   'application/pdf': 100 * 1024 * 1024,
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 20 * 1024 * 1024,
   'text/csv': 2 * 1024 * 1024,
-  'text/plain': 2 * 1024 * 1024,
+  'text/plain': 20 * 1024 * 1024,
 };
 export const M1_PARSE_OUTPUT_BUDGET_BYTES = 16 * 1024 * 1024;
+/** Bounded disk-spooled NDJSON budget; full PDF evidence is not buffered in either process. */
+export const M1_PARSE_STREAM_OUTPUT_BUDGET_BYTES = DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES;
 
 export interface AuthorizedMaterialParseInput {
   /** Trusted worker identity, never copied from an HTTP request body. */
@@ -167,6 +171,71 @@ async function stageMaterial(blobs: MaterialParserBlobStore, row: MaterialRow, p
   if (digest.byteSize !== row.byte_size || digest.sha256 !== row.sha256) throw bridgeError('MATERIAL_INTEGRITY_MISMATCH');
 }
 
+async function lookupMaterial(dependencies:MaterialParserDependencies,input:AuthorizedMaterialParseInput):Promise<MaterialRow> {
+  let result:{rows:Record<string,unknown>[]};
+  try {
+    result=await dependencies.pool.query(
+      `SELECT owner_user_id, project_id, id, version, media_type, byte_size, sha256, object_key, role
+         FROM bb_material_versions
+        WHERE owner_user_id = $1 AND project_id = $2 AND id = $3 AND version = $4
+          AND ($5::text IS NULL OR (role = $5 AND media_type IN (
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf'
+          )))
+          AND deleted_at IS NULL`,
+      [input.ownerUserId,input.projectId,input.materialId,input.version,input.requiredRole??null],
+    );
+  } catch { throw bridgeError('MATERIAL_LOOKUP_FAILED'); }
+  if(result.rows.length===0)throw bridgeError('NOT_FOUND');
+  if(result.rows.length!==1)throw bridgeError('INVALID_MATERIAL_METADATA');
+  const row=parseRow(result.rows[0]!,input);
+  if(input.requiredRole!==undefined && row.role!==input.requiredRole)throw bridgeError('MATERIAL_ROLE_MISMATCH');
+  if(input.requiredRole==='historical' && row.media_type!=='application/vnd.openxmlformats-officedocument.wordprocessingml.document' && row.media_type!=='application/pdf')throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
+  if(!supportedMediaType(row.media_type))throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
+  if(row.byte_size>(dependencies.byteLimits?.[row.media_type]??M1_PARSE_BYTE_LIMITS[row.media_type]))throw bridgeError('MATERIAL_PARSE_SIZE_LIMIT');
+  return row;
+}
+
+function requestFor(row:MaterialRow,input:AuthorizedMaterialParseInput):DocumentParseRequest {
+  return {
+    schema_version:'document-parse-request-v1',request_id:input.requestId,
+    material:{material_id:row.id,material_version:row.version,media_type:row.media_type as DocumentParseRequest['material']['media_type'],
+      sha256:row.sha256,authorized_local_path:'/private/bondbuddy-cache-lookup'},
+    options:input.options??{},
+  };
+}
+
+export type StreamedAuthorizedMaterialParse={row:MaterialRow;request:DocumentParseRequest;stream:StreamedDocumentParse;directory:string;cleanup:()=>Promise<void>};
+
+/** Default PDF/TXT bridge: stream parser rows to a disk spool so neither runtime retains the full JSON response. */
+export async function parseAuthorizedMaterialToStream(
+  dependencies:MaterialParserDependencies,input:AuthorizedMaterialParseInput,
+):Promise<StreamedAuthorizedMaterialParse|null> {
+  validateInput(input);
+  if(dependencies.parser!==undefined)return null;
+  const row=await lookupMaterial(dependencies,input);
+  if(row.media_type!=='application/pdf' && row.media_type!=='text/plain')return null;
+  let directory:string|undefined;
+  try {
+    directory=await mkdtemp(join(dependencies.tempRoot??(process.env.BB_PARSE_STAGING_DIR||tmpdir()),'bb-material-'));
+    const request=requestFor(row,input);
+    const authorizedPath=join(directory,'source');
+    await stageMaterial(dependencies.blobs,row,authorizedPath);
+    request.material.authorized_local_path=authorizedPath;
+    const stream=await runDocumentParserToFile(request,join(directory,'records.ndjson'),{
+      maxOutputBytes:envBytes('BB_PARSE_STREAM_MAX_OUTPUT_BYTES',M1_PARSE_STREAM_OUTPUT_BUDGET_BYTES),
+    });
+    return {row,request,stream,directory,cleanup:async()=>{await rm(directory!,{recursive:true,force:true});}};
+  } catch(error) {
+    if(directory!==undefined)try{await rm(directory,{recursive:true,force:true});}catch{/* preserve parse error */}
+    if(error instanceof Error && error.name==='MaterialParserError')throw error;
+    if(error instanceof Error && error.message==='DOCUMENT_PARSER_OUTPUT_LIMIT')throw bridgeError('MATERIAL_PARSE_OUTPUT_LIMIT');
+    if(error instanceof Error && error.message==='DOCUMENT_PARSER_MEMORY_LIMIT')throw bridgeError('MATERIAL_PARSE_MEMORY_LIMIT');
+    if(error instanceof Error && error.message==='DOCUMENT_PARSER_TEXT_LIMIT')throw bridgeError('MATERIAL_PARSE_SIZE_LIMIT');
+    if(error instanceof Error && error.message==='DOCUMENT_PARSER_TIMEOUT')throw bridgeError('MATERIAL_PARSE_FAILED');
+    throw bridgeError('MATERIAL_PARSE_FAILED');
+  }
+}
+
 /**
  * Resolves and parses one immutable, owner-authorized material version. This is an
  * internal worker capability and must not be called directly from an HTTP route.
@@ -176,48 +245,8 @@ export async function parseAuthorizedMaterial(
   input: AuthorizedMaterialParseInput,
 ): Promise<DocumentParseResponse> {
   validateInput(input);
-
-  let result: { rows: Record<string, unknown>[] };
-  try {
-    result = await dependencies.pool.query(
-      `SELECT owner_user_id, project_id, id, version, media_type, byte_size, sha256, object_key, role
-         FROM bb_material_versions
-        WHERE owner_user_id = $1 AND project_id = $2 AND id = $3 AND version = $4
-          AND ($5::text IS NULL OR (role = $5 AND media_type IN (
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf'
-          )))
-          AND deleted_at IS NULL`,
-      [input.ownerUserId, input.projectId, input.materialId, input.version, input.requiredRole ?? null],
-    );
-  } catch {
-    throw bridgeError('MATERIAL_LOOKUP_FAILED');
-  }
-  if (result.rows.length === 0) throw bridgeError('NOT_FOUND');
-  if (result.rows.length !== 1) throw bridgeError('INVALID_MATERIAL_METADATA');
-
-  const row = parseRow(result.rows[0]!, input);
-  if (input.requiredRole !== undefined && row.role !== input.requiredRole) throw bridgeError('MATERIAL_ROLE_MISMATCH');
-  if (input.requiredRole === 'historical' && row.media_type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
-      row.media_type !== 'application/pdf') throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
-  if (!supportedMediaType(row.media_type)) throw bridgeError('UNSUPPORTED_MEDIA_TYPE');
-  // Deterministic capacity gate before any byte is read: a retry would fail the same way.
-  if (row.byte_size > (dependencies.byteLimits?.[row.media_type] ?? M1_PARSE_BYTE_LIMITS[row.media_type])) {
-    throw bridgeError('MATERIAL_PARSE_SIZE_LIMIT');
-  }
-
-  const request: DocumentParseRequest = {
-    schema_version: 'document-parse-request-v1',
-    request_id: input.requestId,
-    material: {
-      material_id: row.id,
-      material_version: row.version,
-      media_type: row.media_type,
-      sha256: row.sha256,
-      // Only used as an internal cache identity; replaced with the staged path before invoking Python.
-      authorized_local_path: '/private/bondbuddy-cache-lookup',
-    },
-    options: input.options ?? {},
-  };
+  const row=await lookupMaterial(dependencies,input);
+  const request=requestFor(row,input);
   const cacheLookupPath = request.material.authorized_local_path;
   const cacheable = dependencies.parseCache !== undefined && input.options?.max_pages === undefined;
   const cacheContext = cacheable ? {

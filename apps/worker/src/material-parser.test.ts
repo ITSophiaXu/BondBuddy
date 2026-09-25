@@ -226,7 +226,7 @@ test('unsupported media types are rejected without fetching bytes or invoking pa
 test('#17 capacity: oversized materials fail before any byte is read, and over-budget output is its own code', async (t) => {
   const root = await temporaryRoot();
   t.after(() => rm(root, { recursive: true, force: true }));
-  assert.equal(M1_PARSE_BYTE_LIMITS['text/plain'], 2 * 1024 * 1024);
+  assert.equal(M1_PARSE_BYTE_LIMITS['text/plain'], 20 * 1024 * 1024);
   assert.equal(M1_PARSE_BYTE_LIMITS['application/pdf'], 100 * 1024 * 1024);
   assert.equal(M1_PARSE_OUTPUT_BUDGET_BYTES, 16 * 1024 * 1024);
   let blobCalls = 0;
@@ -634,7 +634,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
       return runDocumentParser(request, { pythonExecutable: localPython, repoRoot: repositoryRoot });
     },
     parseCache: { dependencies: { pool: db, blobs: privateBlobs }, versions: {
-      parserVersion: 'bondbuddy-document-parser-1.0.3',
+      parserVersion: documentParserVersion(),
       ocrVersion: 'native-text-1',
       basisVersion: 'evidence-basis-1',
     } },

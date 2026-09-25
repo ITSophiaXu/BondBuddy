@@ -40,12 +40,28 @@ try {
   await send('PUT', start.upload_url, bytes, 'application/octet-stream');
   const done = await send('POST', `/api/v1/projects/${project.project_id}/materials/uploads/${start.upload_id}/complete`, { byte_size: bytes.length, sha256: sha });
   const job = async () => (await pool.query("SELECT state,stage,attempts,max_attempts,error_code FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [done.material_id])).rows[0];
+  const evidence = async () => {
+    const snapshot=(await pool.query(`SELECT id,record_count,response_status,response_meta->'document'->>'page_count' AS page_count
+      FROM bb_parse_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1
+      ORDER BY created_at DESC LIMIT 1`,[owner,project.project_id,done.material_id])).rows[0];
+    if(!snapshot)return null;
+    const counts=(await pool.query(`SELECT count(e.record_id)::int AS record_count,
+      count(*) FILTER (WHERE e.locator_type='pdf_bbox')::int AS pdf_anchor_count,
+      count(*) FILTER (WHERE e.locator_type='text_line')::int AS text_line_anchor_count,
+      count(*) FILTER (WHERE e.locator ? 'stable_ref')::int AS stable_anchor_count,
+      count(*) FILTER (WHERE jsonb_typeof(e.formatting->'word_boxes')='array')::int AS word_box_record_count,
+      coalesce(sum(jsonb_array_length(CASE WHEN jsonb_typeof(e.formatting->'word_boxes')='array' THEN e.formatting->'word_boxes' ELSE '[]'::jsonb END)),0)::int AS word_box_count,
+      min(e.ordinal)::int AS first_ordinal,max(e.ordinal)::int AS last_ordinal
+      FROM bb_parse_evidence e WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.material_id=$3 AND e.material_version=1 AND e.snapshot_id=$4`,
+    [owner,project.project_id,done.material_id,snapshot.id])).rows[0];
+    return { ...counts, snapshot_record_count:snapshot.record_count, status:snapshot.response_status, page_count:snapshot.page_count };
+  };
     // BB_PROBE_STAGING_VOLUME=<docker volume>: stage materials on a disk-backed volume instead of the /tmp tmpfs.
   const staging = process.env.BB_PROBE_STAGING_VOLUME ? ['-v', `${process.env.BB_PROBE_STAGING_VOLUME}:/var/lib/bondbuddy/parse-staging`, '-e', 'BB_PARSE_STAGING_DIR=/var/lib/bondbuddy/parse-staging'] : [];
   const passes = [];
   for (let pass = 1; pass <= 12; pass++) {
     const before = await job();
-    if (['succeeded', 'failed', 'cancelled'].includes(before.state)) break;
+    if (['succeeded', 'failed', 'cancelled', 'paused', 'awaiting_ocr'].includes(before.state)) break;
     const name = `bb-parse-probe-${process.pid}-${pass}`;
     const started = Date.now();
     const run = spawnSync('docker', ['run', '--name', name, '--network', need('BB_PROBE_NETWORK'), '--memory', '320m', '--memory-swap', '320m', '--cpus', '0.75',
@@ -69,6 +85,7 @@ try {
     if (row.outcome === null || row.outcome === 'idle') await new Promise(r => setTimeout(r, 32_000));
   }
   const final = await job();
+  const savedEvidence=await evidence();
   console.log(JSON.stringify({ summary: { file: basename(file), media_type: mediaType, mib: +(bytes.length / 1048576).toFixed(1), passes: passes.length,
-    total_wall_ms: passes.reduce((s, p) => s + p.wall_ms, 0), max_peak_mib: Math.max(...passes.map(p => p.peak_mib ?? 0)), final } }));
+    total_wall_ms: passes.reduce((s, p) => s + p.wall_ms, 0), max_peak_mib: Math.max(...passes.map(p => p.peak_mib ?? 0)), final, evidence:savedEvidence } }));
 } finally { await app.close(); await pool.end(); }

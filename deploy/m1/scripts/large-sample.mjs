@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Realistic-shaped SYNTHETIC large materials for parse capacity probes (no real issuer data).
-// Usage: node large-sample.mjs <txt|pdf-text|pdf-scan|docx-text> <size> <out-path>
+// Usage: node large-sample.mjs <txt|txt-oversized-line|pdf-text|pdf-scan|docx-text> <size> <out-path>
 //   txt <MiB>        prospectus-like UTF-8 Chinese text lines
+//   txt-oversized-line  one pathological line above the parser's explicit 16 Ki-character record limit
 //   pdf-text <pages> multi-page PDF with a native text layer (Helvetica, ~60 lines/page)
 //   pdf-scan <MiB>   text-layer cover page + pages carrying one uncompressed grayscale image each
 //   docx-text <MiB>  DOCX whose document.xml holds <MiB> of paragraph XML (needs the repo dev dependencies)
@@ -72,6 +73,10 @@ if (kind === 'txt') {
     line++;
     await w.write(Buffer.from(line % 40 === 1 ? `第${Math.ceil(line / 40)}节 合成募集说明书章节（示例数据）\n` : `${zh[line % zh.length]}（第${line}行）\n`));
   }
+  await w.end();
+} else if (kind === 'txt-oversized-line') {
+  const w=writer(out);
+  await w.write(`${'x'.repeat(16 * 1024 + 1)}\n`);
   await w.end();
 } else if (kind === 'pdf-text') {
   await pdf(Array.from({ length: size }, (_, p) => ({ text: Array.from({ length: 60 }, (_, l) => `${p + 1}.${l + 1} ${en[(p + l) % en.length]}`) })));
