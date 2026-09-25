@@ -10,11 +10,17 @@ Everything lives in `deploy/m1/`. This runbook covers target-host requirements, 
 | `azurite` | Azurite 3.35 | **staging only** (`COMPOSE_PROFILES=staging-blob`). Production omits it and sets `AZURE_STORAGE_CONNECTION_STRING` to the private Azure Blob account. |
 | `migrate` | `bondbuddy-m1-api:<sha>` | one-shot `node db/migrate.mjs`; `api` and `worker` start only after it exits 0 |
 | `api` | `bondbuddy-m1-api:<sha>` | Fastify on :3000, non-root, read-only rootfs, trusts forwarded headers only from the nginx container address |
-| `worker` | `bondbuddy-m1-worker:<sha>` | Node 22 + Python 3.11 venv. The leased run runtime exists in the repository, but pre-production release `3506c9a40983` still starts the one-shot parse loop; see the deployment status below. |
+| `worker` | `bondbuddy-m1-worker:<sha>` | Node 22 + Python 3.11 venv; this source starts the leased WorkerRuntime as PID 1. Pre-production release `3506c9a40983` still uses the old parse loop until a new release is deployed. |
 | `egress` | `bondbuddy-m1-egress:<sha>` | squid allow-list forward proxy, the **only** route out of `backend` |
 | `web` | `bondbuddy-m1-web:<sha>` | unprivileged nginx on :8080: static web build at `/`, `/api/v1/` → api, `/healthz` → api `/health` |
 
 `backend` is a Docker `internal` network (no gateway). The worker gets `HTTPS_PROXY=http://egress:3128`; squid only accepts `CONNECT host:443` for names in `BB_EGRESS_ALLOW` (default `api.deepseek.com`). In production add the Blob host, for example `BB_EGRESS_ALLOW=api.deepseek.com,<account>.blob.core.windows.net`. `scripts/egress-test.sh` proves the policy from inside the worker container: direct TCP fails, non-listed hosts get 403, the provider host gets a tunnel (closed at once; no TLS or model request is sent).
+
+### Worker runtime and shutdown (#17)
+
+`deploy/m1/Dockerfile` starts `node apps/worker/dist/runtime.js` directly as PID 1. Compose enables durable run submission on the API with `BB_RUN_RUNTIME_ENABLED=1`; the worker starts after migrations, alternates leased `run` and `parse` claims, and writes the heartbeat consumed by `/api/v1/ready`. Production profile defaults to one worker slot to fit the 320 MiB memory limit. The separate `ops` service keeps its explicit `node apps/worker/dist/ops-scheduler.js` command.
+
+The operator model probe remains disabled unless `BB_PLATFORM_PROBE_ENABLED=1`. On SIGTERM/SIGINT the runtime stops new claims, drains for `BB_WORKER_DRAIN_MS` (20 seconds by default), aborts run work if the drain expires, releases active run/parse leases, records a stopped heartbeat, then exits. `worker.stop_grace_period` is 30 seconds so Compose does not cut off the drain. Jobs resume from PostgreSQL checkpoints after recovery. Missing production rule pins/selectors and other owner capabilities remain fail-closed as `capability_not_ready`; this runtime wiring does not mean a run can produce or deliver a Word result.
 
 Staging limits are ceilings (postgres 768M, worker 768M, api 512M, azurite 256M, migrate 256M, web 128M, egress 96M). `compose.prod.yaml` is the small-host production profile (below): `postgres:16-alpine` with small buffers, capped Node heaps, no Azurite, and Blob traffic through the egress proxy.
 
@@ -141,6 +147,7 @@ To run one task now, set its `next_due_at` to `now()`; the scheduler picks it up
 - The parse backfill is wired but off by default (`BB_OPS_PARSE_BACKFILL=on` enables it hourly).
 - In openclaw-vm pre-production release `3506c9a40983`, the worker still starts the one-shot parse loop instead of the merged leased run runtime. Public `/api/v1/ready` returned 503 with `worker_heartbeat=missing` on 2026-09-25. Deploy and verify the #17 entrypoint repair before treating run execution as ready.
 - The current pre-production stack uses private Azure Blob, and its backup-to-Blob/restore drill passed (see evidence above). That does not establish a production release from `master` or prove recovery after loss of the storage account.
+- The model router retains the historical update stage and parks generation without trusted #33 adapters. Production rule-pack selection and Word delivery remain prerequisites. Missing capabilities pause at `capability_not_ready`; this deployment slice has no live model or Word acceptance.
 - Off-host backups use the same storage account as the application blobs. Losing that account loses both; a second account or region is not configured.
 
 ## Trial guard and data-lifecycle environment (2026-09-25)

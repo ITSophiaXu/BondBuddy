@@ -15,6 +15,8 @@ import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } 
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
+import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
+import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -44,11 +46,16 @@ export type WorkerRuntimeOptions = {
   log?: (event: Record<string, unknown>) => void;
   /** #35 heartbeat row (bb_worker_heartbeats) for readiness and the stale-worker alert. */
   workerId?: string; heartbeatMs?: number;
+  /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
+  platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
 };
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
-  const timer = setTimeout(resolve, ms);
-  signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+  if (signal?.aborted) return resolve();
+  const done = () => { signal?.removeEventListener('abort', abort); resolve(); };
+  const timer = setTimeout(done, ms);
+  const abort = () => { clearTimeout(timer); done(); };
+  signal?.addEventListener('abort', abort, { once: true });
 });
 
 export class WorkerRuntime {
@@ -58,8 +65,9 @@ export class WorkerRuntime {
   private readonly runLeases = new Map<number, Lease>();
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
-  readonly counters = { run: 0, parse: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'noHistoryGenerationAdapters'>> & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log'>;
+  readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
@@ -72,6 +80,7 @@ export class WorkerRuntime {
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     this.loops.push(this.sweepLoop());
     this.loops.push(this.heartbeatLoop());
+    if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
     return this;
   }
 
@@ -98,6 +107,17 @@ export class WorkerRuntime {
       }
       turn++;
       if (!worked) { this.counters.idle++; await sleep(this.o.pollMs, this.stopSignal.signal); }
+    }
+  }
+
+  /** One probe at a time, outside the run/parse slots, so a probe never takes a user job's slot. */
+  private async probeLoop(probe: NonNullable<WorkerRuntimeOptions['platformProbe']>) {
+    while (!this.stopping) {
+      let outcome = 'idle';
+      try { outcome = await runPlatformProbeOnce({ pool: this.o.pool, blobs: this.o.blobs, config: probe.config }); }
+      catch { this.counters.errors++; outcome = 'error'; }
+      if (outcome !== 'idle') { this.counters.probe++; this.emit({ kind: 'platform_probe', outcome }); }
+      if (outcome === 'idle' || outcome === 'error') await sleep(probe.pollMs ?? 5000, this.stopSignal.signal);
     }
   }
 
@@ -172,34 +192,53 @@ export class WorkerRuntime {
   }
 }
 
-function intEnv(name: string, fallback: number, min: number, max: number) {
-  const raw = process.env[name];
-  const value = raw === undefined ? fallback : Number(raw);
+function intEnv(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number, max: number) {
+  const raw = env[name];
+  const value = raw === undefined || raw === '' ? fallback : Number(raw);
   if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}`);
   return value;
 }
 
+/**
+ * Production options from the container environment: parse and run pipelines (defaultRunStages()),
+ * bounded concurrency and, only when BB_PLATFORM_PROBE_ENABLED=1, the contained Codex adapter for the
+ * operator probe (env credential mode, checked without reading the value). Nothing starts here.
+ */
+export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env: NodeJS.ProcessEnv = process.env,
+  ocr?: (pool: Pool, blobs: PrivateBlobs) => MaterialParseJobDependencies['ocr']): WorkerRuntimeOptions {
+  const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
+  if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
+  const ocrEnabled = env.BB_OCR_ENABLED === '1';
+  const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions(env)) : undefined;
+  let platformProbe: WorkerRuntimeOptions['platformProbe'];
+  if (env.BB_PLATFORM_PROBE_ENABLED === '1') {
+    const config = loadCodexAdapterConfig(env);
+    assertProbeConfig(config, env);
+    platformProbe = { config, pollMs: intEnv(env, 'BB_PLATFORM_PROBE_POLL_MS', 5000, 500, 600000) };
+  }
+  return {
+    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages: defaultRunStages({ model_generation: modelGenerationRouter() }),
+    concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
+    leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
+    drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
+    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key),
+      ...(blobs.readToFile ? { readToFile: (key: string, path: string, max: number) => blobs.readToFile!(key, path, max) } : {}) },
+      ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
+      ocr: ocrEnabled ? ocr?.(pool, blobs) : undefined },
+    ocrEnabled,
+    logSink: env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(env.BB_LOG_NDJSON_PATH) : null,
+    ...(platformProbe ? { platformProbe } : {}),
+  };
+}
+
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   if (!process.env.DATABASE_URL || !process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('DATABASE_URL and AZURE_STORAGE_CONNECTION_STRING are required');
-  const kinds = (process.env.BB_WORKER_JOB_KINDS ?? 'run,parse').split(',').map(k => k.trim());
-  if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16) + 4 });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: intEnv(process.env, 'BB_WORKER_CONCURRENCY', 2, 1, 16) + 4 });
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
-  const ocrEnabled = process.env.BB_OCR_ENABLED === '1';
-  const parseCache = kinds.includes('parse') ? createRuntimeParseCache(pool, blobs, runtimeParseCacheVersions()) : undefined;
   const { processOcrMaterial } = await import('./ocr.js');
-  const runtime = new WorkerRuntime({
-    pool, blobs, kinds: kinds as ('run' | 'parse')[],
-    concurrency: intEnv('BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv('BB_WORKER_POLL_MS', 1000, 100, 60000),
-    leaseSeconds: intEnv('BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv('BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
-    drainMs: intEnv('BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv('BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv('BB_OCR_RETRY_SECONDS', 300, 0, 86400),
-    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), ...(blobs.readToFile ? { readToFile: (key: string, path: string, max: number) => blobs.readToFile!(key, path, max) } : {}) }, ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
-      ocr: ocrEnabled ? input => processOcrMaterial(pool, blobs, { ...input, purpose: 'source_preflight' }) : undefined },
-    ocrEnabled,
-    logSink: process.env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(process.env.BB_LOG_NDJSON_PATH) : null,
-    log: event => process.stdout.write(`${JSON.stringify(event)}\n`),
-  }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds, ocr_enabled: ocrEnabled })}\n`);
+  const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
+  const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, concurrency: options.concurrency, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;

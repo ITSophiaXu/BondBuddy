@@ -24,7 +24,7 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.4"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.5"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -195,13 +195,15 @@ def _walk_docx_blocks(parent: Any, prefix: tuple[dict[str, int], ...] = ()) -> I
         elif child.tag == qn("w:tbl"):
             table_index += 1
             table = Table(child, parent)
-            seen: set[int] = set()
+            # Keep the XML cell objects alive while deduplicating merged cells. Saving only
+            # id(cell._tc) lets Python reuse an id after a proxy is released and silently
+            # drops later table cells (the same DOCX then yields different evidence counts).
+            seen: set[Any] = set()
             for row_index, row in enumerate(table.rows, 1):
                 for column_index, cell in enumerate(row.cells, 1):
-                    identity = id(cell._tc)
-                    if identity in seen:
+                    if cell._tc in seen:
                         continue
-                    seen.add(identity)
+                    seen.add(cell._tc)
                     cell_prefix = (*prefix, {"table": table_index, "row": row_index, "column": column_index})
                     yield from _walk_docx_blocks(cell, cell_prefix)
 

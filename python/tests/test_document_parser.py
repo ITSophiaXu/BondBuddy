@@ -121,6 +121,26 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
 
+    def test_docx_table_cells_are_not_lost_to_reused_object_ids(self):
+        path = self.root / "many-cells.docx"
+        document = Document()
+        table = document.add_table(rows=32, cols=4)
+        for row in range(32):
+            for col in range(4):
+                table.cell(row, col).text = f"cell-{row:02d}-{col}"
+        table.cell(0, 0).merge(table.cell(0, 1)).text = "cell-00-0"
+        document.save(path)
+
+        expected = {f"cell-{row:02d}-{col}" for row in range(32) for col in range(4)} - {"cell-00-1"}
+        first = self.request(path, MEDIA_DOCX)
+        second = self.request(path, MEDIA_DOCX)
+        for parsed in (first, second):
+            quotes = [record["literal_quote"] for record in parsed["records"]]
+            self.assertEqual(len(quotes), 127)
+            self.assertEqual(set(quotes), expected)
+            self.assertEqual(len({record["locator"]["stable_ref"] for record in parsed["records"]}), 127)
+        self.assertEqual(first["records"], second["records"])
+
     def test_docx_move_revisions_use_current_amount_and_preserve_order(self):
         path = self.root / "moved-amount.docx"
         document = Document()
