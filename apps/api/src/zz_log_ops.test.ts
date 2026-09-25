@@ -37,7 +37,8 @@ async function fixture(pool: Pool) {
   await grantOperator(pool, { userId: viewer, role: 'prompt_viewer', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
   let current = ownerA;
   const app = createServer({ pool, blobs: azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true });
-  const as = (userId: string) => { current = userId; return (method: string, url: string, payload?: unknown) => app.inject({ method: method as never, url, headers: { origin: ORIGIN }, payload: payload as never }); };
+  // Each handle binds its own user per request, so interleaved handles never act as each other.
+  const as = (userId: string) => (method: string, url: string, payload?: unknown) => { current = userId; return app.inject({ method: method as never, url, headers: { origin: ORIGIN }, payload: payload as never }); };
   async function runFor(owner: string, name: string) {
     const send = as(owner);
     const project = (await send('POST', '/api/v1/projects', { name, kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
