@@ -227,12 +227,13 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.ok(row.checkpoint.stages.input_lock && row.checkpoint.stages.model_generation, 'checkpoint survives failure');
     assert.equal((await send('GET', `/api/v1/projects/${p5.projectId}/input-revisions/${p5.inputRevision}`)).statusCode, 200, 'input revision still readable');
 
-    // 7. Production stage list: rule selection is not available -> explicit pause, never success.
+    // 7. A missing production rule pin is an explicit capability pause, never success.
     const p6 = await project('not-ready');
     const notReadyRun = (await execute(p6)).json().run_id as string;
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
     row = await runRow(notReadyRun);
-    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(row.job_error, 'production_rule_pack_selector_unavailable'); assert.equal(row.artifact_id, null);
+    const pauseReason = (await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [notReadyRun])).rows[0].reason;
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_pack_pin_missing'); assert.equal(row.artifact_id, null);
     assert.equal((await send('POST', `/api/v1/runs/${notReadyRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
 
     // 8. Pinned materials still parsing -> awaiting_materials; the runtime sweep re-queues after parse succeeds.

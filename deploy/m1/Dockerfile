@@ -18,10 +18,10 @@ RUN npm run build && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src
 COPY db db
 COPY python python
-COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/worker-loop.sh deploy/m1/scripts/
+COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/
 COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
 # Normalise permissions regardless of the build host's umask; the runtime user only reads.
-RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + ; chmod -R a+rX,go-w /app && chmod 0755 deploy/m1/scripts/worker-loop.sh
+RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + ; chmod -R a+rX,go-w /app
 
 # Pinned codex-cli for the #16 contained adapter (same version as the #16 live probes).
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
@@ -81,11 +81,12 @@ COPY --from=codex --chown=root:root /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
-COPY --from=build --chown=root:root /app/deploy/m1/scripts/worker-loop.sh /usr/local/bin/worker-loop
 # Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.
 RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
 USER node
-CMD ["worker-loop"]
+# #17 long-lived WorkerRuntime: leased parse/run slots, sweep, heartbeat (readiness) and, only with
+# BB_PLATFORM_PROBE_ENABLED=1, the operator probe loop. PID 1 is node, so SIGTERM drains and releases leases.
+CMD ["node","apps/worker/dist/runtime.js"]
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
