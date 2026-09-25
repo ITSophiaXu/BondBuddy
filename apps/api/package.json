@@ -48,6 +48,10 @@
       "types": "./dist/material-jobs.d.ts",
       "default": "./dist/material-jobs.js"
     },
+    "./historical-profile-corrections": {
+      "types": "./dist/historical-profile-corrections.d.ts",
+      "default": "./dist/historical-profile-corrections.js"
+    },
     "./storage-lifecycle": {
       "types": "./dist/storage-lifecycle.d.ts",
       "default": "./dist/storage-lifecycle.js"
