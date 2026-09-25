@@ -21,7 +21,8 @@ test('public contract has no library route, schema or candidate field', () => {
   const doc = JSON.stringify(openApiDocument());
   for (const needle of ['/admin/library', 'LibraryQuery', 'LibraryCandidate', 'top3_set_key', 'review_quality', 'reference-library-query',
     'LibraryComparability', 'LibraryChapterMapping', 'revenue_basis', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings',
-    'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures', 'library_source_stale', 'library_sync_failed']) assert.equal(doc.includes(needle), false, needle);
+    // Alert kind names appear in the admin alerts enum; only the per-source sync fields must stay out.
+    'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures']) assert.equal(doc.includes(needle), false, needle);
 });
 
 test('admin library routes: 404 for ordinary users, read-only for readers, actions for operators; user routes never leak library data', { skip: !connection }, async () => {
