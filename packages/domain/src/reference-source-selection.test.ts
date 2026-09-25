@@ -12,7 +12,7 @@ function profile(issuerId: string): AnnualBusinessProfile {
   return {
     issuerId, profileVersion: 'profile-v1', taxonomyVersion: 'bond-business-2026.1', fiscalYear: 2025,
     completeAnnualPeriod: true, latestCompleteAnnual: true, verificationStatus: 'verified',
-    accountingScope: 'consolidated', revenueBasis: 'operating_revenue', currency: 'CNY', unit: 'CNY 10,000',
+    accountingScope: 'consolidated', revenueBasis: 'main_business_revenue', currency: 'CNY', unit: 'CNY 10,000',
     allComparableBusinessLinesPresent: true, sourceEvidence: proof,
     lines: [
       { code: 'chemicals', label: 'Chemicals', originalLabel: 'Synthetic chemicals', revenue: '100', rank: 1, evidence: proof, classificationEvidence: proof },
@@ -63,6 +63,21 @@ test('a usable project reference wins over the library and is marked structure o
   assert.equal(result.libraryDecision, null);
   assert.equal(JSON.stringify(result).includes('Synthetic chemicals'), false);
   assert.equal(JSON.stringify(result).includes('reference body'), false);
+});
+
+test('user-selected structure reference does not inherit the automatic library revenue-basis gate', () => {
+  const operatingProfile = { ...profile('synthetic-target-issuer'), revenueBasis: 'operating_revenue' };
+  const userSelected = selectReferenceSource({ project, userReferences: [material()],
+    preferredUserReference: { materialId: 'material-a', materialVersion: 'v3' },
+    automaticMatch: matchInput({ targetProfile: operatingProfile }) });
+  assert.equal(userSelected.status, 'selected_user_reference');
+  assert.equal(userSelected.issuerEvidenceStatus, 'ready');
+  assert.equal(userSelected.selected?.use, 'structure_only');
+
+  const automatic = selectReferenceSource({ project, userReferences: [], preferredUserReference: null,
+    automaticMatch: matchInput({ targetProfile: operatingProfile }) });
+  assert.equal(automatic.status, 'needs_evidence');
+  assert.equal(automatic.selected, null);
 });
 
 test('user reference selection hash binds issuer profile and target rule without exposing facts', () => {

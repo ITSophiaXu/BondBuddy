@@ -9,7 +9,7 @@ const businessCodes = ['chemicals', 'logistics', 'equipment'];
 const targetProfile: AnnualBusinessProfile = {
   issuerId: 'issuer-synthetic', profileVersion: 'issuer-profile-v1', taxonomyVersion: 'bond-business-2026.1', fiscalYear: 2025,
   completeAnnualPeriod: true, latestCompleteAnnual: true, verificationStatus: 'verified', accountingScope: 'consolidated',
-  revenueBasis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', allComparableBusinessLinesPresent: true,
+  revenueBasis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', allComparableBusinessLinesPresent: true,
   sourceEvidence: ['synthetic:annual-note'],
   lines: [
     { code: 'chemicals', label: 'Chemicals', originalLabel: 'Chemical products', revenue: '100', rank: 1, evidence: ['synthetic:line-1'], classificationEvidence: ['synthetic:map-1'] },
@@ -28,7 +28,7 @@ function candidate(overrides: Partial<LibraryCandidateV1_1> = {}): LibraryCandid
     taxonomy_version: 'bond-business-2026.1', fiscal_year: 2025, market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance',
     availability: 'published', readable: true, use_authorized: true, source_validity: 'valid', applicable_scopes: [scope], chapter_mapping_versions: [],
     review_quality: 90, disclosed_at: '2025-08-01', top3_set_key: JSON.stringify([...businessCodes].sort()),
-    comparability: { accounting_scope: 'consolidated', revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
+    comparability: { accounting_scope: 'consolidated', revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
       attestation: { review_id: 'review-v2', reviewed_by: 'operator-synthetic', reviewed_at: '2026-09-25T00:00:00Z', profile_id: 'profile-v2', profile_version: 2 } },
     chapter_mappings: [],
     ...overrides,
@@ -96,6 +96,25 @@ test('v1.1 validates comparability but waits for source completeness and tie pro
   assert.equal(selected.candidate_decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
   assert.equal(fixture.calls.lock, 0);
   assert.equal(fixture.calls.persist, 1);
+});
+
+test('target or candidate with operating revenue stays pending and never locks', async () => {
+  const targetFixture = adapters(response([candidate()]));
+  const targetResult = await selectNoHistoryLibraryReference({ ...input(), targetProfile: {
+    ...targetProfile, revenueBasis: 'operating_revenue',
+  } }, targetFixture.deps);
+  assert.equal(targetResult.status, 'needs_evidence');
+  assert.equal(targetFixture.calls.query, 0);
+  assert.equal(targetFixture.calls.lock, 0);
+
+  const operatingCandidate = candidate({ comparability: {
+    ...candidate().comparability!, revenue_basis: 'operating_revenue',
+  } });
+  const candidateFixture = adapters(response([operatingCandidate]));
+  const candidateResult = await selectNoHistoryLibraryReference(input(), candidateFixture.deps);
+  assert.equal(candidateResult.status, 'needs_review');
+  assert.equal(candidateResult.selected, null);
+  assert.equal(candidateFixture.calls.lock, 0);
 });
 
 test('two of three business codes do not match', async () => {
