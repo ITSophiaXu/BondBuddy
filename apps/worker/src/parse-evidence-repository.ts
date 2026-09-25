@@ -413,12 +413,8 @@ function compactRecognitionRecord(record:DocumentParseRecord):DocumentParseRecor
   return {...record,formatting:{}};
 }
 
-async function hashStreamedRecords(
-  input:StreamedAuthorizedMaterialParse,
-):Promise<{responseHash:string;records:DocumentParseRecord[];recordCount:number}> {
-  const {request,stream}=input;
-  if(stream.response.status==='failed')return {responseHash:responseResultHash({...stream.response,records:[]}),records:[],recordCount:0};
-  const stable={...stream.response} as Record<string,unknown>;
+function streamResponseHasher(response:DocumentParseSummary) {
+  const stable={...response} as Record<string,unknown>;
   delete stable.request_id;
   const keys=[...Object.keys(stable),'records'].sort();
   const hash=createHash('sha256');
@@ -431,9 +427,32 @@ async function hashStreamedRecords(
     if(key==='records'){hash.update('[');afterRecords=true;break;}
     hash.update(canonical(stable[key]));
   }
+  let firstRecord=true;
+  return {
+    add(record:DocumentParseRecord) {
+      if(!firstRecord)hash.update(',');
+      firstRecord=false;
+      hash.update(canonical(record));
+    },
+    digest() {
+      hash.update(']');
+      if(!afterRecords)throw fail('INVALID_PARSE_RESPONSE');
+      for(const key of keys.slice(keys.indexOf('records')+1))hash.update(`,${JSON.stringify(key)}:${canonical(stable[key])}`);
+      hash.update('}');
+      return hash.digest('hex');
+    },
+  };
+}
+
+async function hashStreamedRecords(
+  input:StreamedAuthorizedMaterialParse,
+):Promise<{responseHash:string;records:DocumentParseRecord[];recordCount:number}> {
+  const {request,stream}=input;
+  if(stream.response.status==='failed')return {responseHash:responseResultHash({...stream.response,records:[]}),records:[],recordCount:0};
+  const hasher=streamResponseHasher(stream.response);
   const rows=createInterface({input:createReadStream(stream.recordsPath),crlfDelay:Infinity});
   const records:DocumentParseRecord[]=[];
-  let count=0,textBytes=0,firstRecord=true;
+  let count=0,textBytes=0;
   // Only historical PDFs feed the current recognition stage. Other formats keep every full
   // anchor/formatting row in PostgreSQL and in the disk spool, without rebuilding a large JS array.
   const collectForRecognition=input.row.media_type==='application/pdf' && input.row.role==='historical';
@@ -449,22 +468,13 @@ async function hashStreamedRecords(
       if(bytes>MAX_RECORD_BYTES)throw fail('PARSE_EVIDENCE_RECORD_TOO_LARGE');
       textBytes+=Buffer.byteLength(record.literal_quote,'utf8')+Buffer.byteLength(record.context,'utf8');
       if(textBytes>MAX_STREAM_PROFILE_BYTES)throw fail('MATERIAL_PARSE_SIZE_LIMIT');
-      if(!firstRecord)hash.update(',');
-      firstRecord=false;
-      hash.update(encoded);
+      hasher.add(record);
       if(collectForRecognition)records.push(compactRecognitionRecord(record));
       count++;
     }
   } finally { rows.close(); }
-  hash.update(']');
-  // Close the canonical object after records; key order after the records member is preserved.
-  if(!afterRecords)throw fail('INVALID_PARSE_RESPONSE');
-  for(const key of keys.slice(keys.indexOf('records')+1)) {
-    hash.update(`,${JSON.stringify(key)}:${canonical(stable[key])}`);
-  }
-  hash.update('}');
   if(count!==stream.recordCount || count===0)throw fail('INVALID_PARSE_RESPONSE');
-  return {responseHash:hash.digest('hex'),records,recordCount:count};
+  return {responseHash:hasher.digest(),records,recordCount:count};
 }
 
 function streamedSnapshotResult(
@@ -552,6 +562,7 @@ export async function persistStreamedParseSnapshot(
     if(inserted.rows.length!==1)throw fail('PARSE_SNAPSHOT_NOT_STORED');
     const rows=createInterface({input:createReadStream(stream.recordsPath),crlfDelay:Infinity});
     let ordinal=0,batch:{ordinal:number;record:DocumentParseRecord;record_sha256:string;bytes:number}[]=[],batchBytes=0;
+    const secondHasher=streamResponseHasher(stream.response);
     const flush=async()=>{
       if(batch.length===0)return;
       const encoded=JSON.stringify(batch.map(item=>({ordinal:item.ordinal,record_id:item.record.record_id,content_sha256:item.record.content_hash,
@@ -576,18 +587,21 @@ export async function persistStreamedParseSnapshot(
         let raw:unknown;
         try{raw=JSON.parse(line) as unknown;}catch{throw fail('INVALID_PARSE_RESPONSE');}
         const record=validateDocumentParseRecord(raw,request,Number(stream.response.document.page_count));
+        if(record.record_id!==`evidence-${String(ordinal+1).padStart(6,'0')}`)throw fail('INVALID_PARSE_RESPONSE');
         const canonicalRecord=canonical(record),bytes=Buffer.byteLength(canonicalRecord,'utf8');
         if(bytes>MAX_RECORD_BYTES || Buffer.byteLength(record.literal_quote,'utf8')>65536 || Buffer.byteLength(record.context,'utf8')>65536 ||
           Buffer.byteLength(canonical(record.locator),'utf8')>65536 || Buffer.byteLength(canonical(record.formatting),'utf8')>65536 ||
           Buffer.byteLength(canonical(record.uncertainty),'utf8')>8192)throw fail('PARSE_EVIDENCE_RECORD_TOO_LARGE');
         const entry={ordinal,record,record_sha256:sha256(canonicalRecord),bytes:bytes+256};
+        secondHasher.add(record);
         if(batch.length && batchBytes+entry.bytes>MAX_STREAM_INSERT_BYTES)await flush();
         batch.push(entry);batchBytes+=entry.bytes;ordinal++;
         if(batchBytes>=MAX_STREAM_INSERT_BYTES)await flush();
       }
       await flush();
     } finally { rows.close(); }
-    if(ordinal!==hashed.recordCount)throw fail('INVALID_PARSE_RESPONSE');
+    if(ordinal!==hashed.recordCount || ordinal!==stream.recordCount)throw fail('INVALID_PARSE_RESPONSE');
+    if(secondHasher.digest()!==responseHash)throw fail('PARSE_EVIDENCE_INTEGRITY_MISMATCH');
     await client.query(
       `INSERT INTO bb_parse_snapshot_requests(owner_user_id,project_id,material_id,material_version,request_id,request_hash,snapshot_id)
        VALUES($1,$2,$3,$4,$5,$6,$7)`,[context.ownerUserId,context.projectId,context.materialId,context.materialVersion,context.requestId,requestHash,snapshotId]);

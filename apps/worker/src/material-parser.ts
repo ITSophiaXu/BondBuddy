@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createParseStaging } from './parse-staging.js';
 import {
   DOCUMENT_PARSER_MEDIA_TYPES,
   DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES,
@@ -215,8 +216,11 @@ export async function parseAuthorizedMaterialToStream(
   const row=await lookupMaterial(dependencies,input);
   if(row.media_type!=='application/pdf' && row.media_type!=='text/plain')return null;
   let directory:string|undefined;
+  let cleanup:(()=>Promise<void>)|undefined;
   try {
-    directory=await mkdtemp(join(dependencies.tempRoot??(process.env.BB_PARSE_STAGING_DIR||tmpdir()),'bb-material-'));
+    const stagingRoot=dependencies.tempRoot??process.env.BB_PARSE_STAGING_DIR;
+    if(stagingRoot){({directory,cleanup}=await createParseStaging(stagingRoot));}
+    else {directory=await mkdtemp(join(tmpdir(),'bb-material-'));cleanup=()=>rm(directory!,{recursive:true,force:true});}
     const request=requestFor(row,input);
     const authorizedPath=join(directory,'source');
     await stageMaterial(dependencies.blobs,row,authorizedPath);
@@ -224,10 +228,11 @@ export async function parseAuthorizedMaterialToStream(
     const stream=await runDocumentParserToFile(request,join(directory,'records.ndjson'),{
       maxOutputBytes:envBytes('BB_PARSE_STREAM_MAX_OUTPUT_BYTES',M1_PARSE_STREAM_OUTPUT_BUDGET_BYTES),
     });
-    return {row,request,stream,directory,cleanup:async()=>{await rm(directory!,{recursive:true,force:true});}};
+    return {row,request,stream,directory,cleanup:cleanup!};
   } catch(error) {
-    if(directory!==undefined)try{await rm(directory,{recursive:true,force:true});}catch{/* preserve parse error */}
+    if(cleanup)try{await cleanup();}catch{/* preserve parse error */}
     if(error instanceof Error && error.name==='MaterialParserError')throw error;
+    if(error instanceof Error && error.message.startsWith('PARSE_STAGING_'))throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_OUTPUT_LIMIT')throw bridgeError('MATERIAL_PARSE_OUTPUT_LIMIT');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_MEMORY_LIMIT')throw bridgeError('MATERIAL_PARSE_MEMORY_LIMIT');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_TEXT_LIMIT')throw bridgeError('MATERIAL_PARSE_SIZE_LIMIT');
@@ -255,8 +260,11 @@ export async function parseAuthorizedMaterial(
     versions: dependencies.parseCache!.versions,
   } : undefined;
   let directory: string | undefined;
+  let cleanup:(()=>Promise<void>)|undefined;
   try {
-    directory = await mkdtemp(join(dependencies.tempRoot ?? (process.env.BB_PARSE_STAGING_DIR || tmpdir()), 'bb-material-'));
+    const stagingRoot=dependencies.tempRoot??process.env.BB_PARSE_STAGING_DIR;
+    if(stagingRoot){({directory,cleanup}=await createParseStaging(stagingRoot));}
+    else {directory=await mkdtemp(join(tmpdir(),'bb-material-'));cleanup=()=>rm(directory!,{recursive:true,force:true});}
     const authorizedPath = join(directory, 'source');
     await stageMaterial(dependencies.blobs, row, authorizedPath);
     // Bytes are verified before a cache hit is trusted, as before streaming.
@@ -303,11 +311,12 @@ export async function parseAuthorizedMaterial(
     return response;
   } catch (error) {
     if (error instanceof Error && error.name === 'MaterialParserError') throw error;
+    if (error instanceof Error && error.message.startsWith('PARSE_STAGING_')) throw bridgeError('MATERIAL_BYTES_UNAVAILABLE');
     throw bridgeError('MATERIAL_PARSE_FAILED');
   } finally {
-    if (directory !== undefined) {
+    if (cleanup) {
       try {
-        await rm(directory, { recursive: true, force: true });
+        await cleanup();
       } catch {
         throw bridgeError('MATERIAL_TEMP_CLEANUP_FAILED');
       }

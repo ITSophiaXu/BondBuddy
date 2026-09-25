@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -118,11 +118,19 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     const runningEvents = Number((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND state='running'", [runId])).rows[0].n);
 
     // The real entry point: node dist/runtime.js, then SIGTERM -> drained, stopped heartbeat, exit 0.
-    const child = spawn(process.execPath, [entry], { env: { ...env, DATABASE_URL: connection, AZURE_STORAGE_CONNECTION_STRING: blobConnection }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const stagingRoot = join(root, 'parse-staging');
+    const orphan = join(stagingRoot, 'bb-material-ABC123');
+    await mkdir(orphan, { recursive: true, mode: 0o700 });
+    await writeFile(join(orphan, 'source'), 'synthetic stale source', { mode: 0o600 });
+    const expired = new Date(Date.now() - 31 * 60 * 1000);
+    await utimes(orphan, expired, expired);
+    const child = spawn(process.execPath, [entry], { env: { ...env, BB_PARSE_STAGING_DIR: stagingRoot,
+      DATABASE_URL: connection, AZURE_STORAGE_CONNECTION_STRING: blobConnection }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
     const exited = new Promise<number | null>(resolve => child.on('exit', code => resolve(code)));
     await until(async () => out.includes('"kind":"started"') && (await pool.query("SELECT 1 FROM bb_worker_heartbeats WHERE stopped_at IS NULL AND kinds=ARRAY['run','parse']")).rows[0], 20000);
+    await assert.rejects(lstat(orphan), { code: 'ENOENT' }, 'entrypoint removes expired staging before claiming');
     assert.match(out, /"platform_probe":true/);
     child.kill('SIGTERM');
     assert.equal(await exited, 0, out);
