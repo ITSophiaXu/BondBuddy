@@ -37,7 +37,11 @@ export function historicalProfileCorrectionProblem(error: unknown): Problem | nu
   if (code === 'HISTORICAL_OCR_PROFILE_PAGE_INTEGRITY_FAILED' || code === 'HISTORICAL_OCR_PROFILE_READER_REQUIRED') {
     return new Problem(503, 'DATA_UNAVAILABLE', 'Source profile evidence could not be verified');
   }
-  return new Problem(422, 'VALIDATION_FAILED', 'Source profile correction or evidence is invalid');
+  if (['INVALID_RECOGNITION_PATCH_SCHEMA', 'INVALID_HISTORICAL_PROFILE_CORRECTION_REASON', 'INVALID_SOURCE_MARKET_OFFERING',
+    'HISTORICAL_PROFILE_CORRECTION_EVIDENCE_NOT_FOUND', 'HISTORICAL_OCR_PROFILE_EVIDENCE_NOT_FOUND'].includes(code)) {
+    return new Problem(422, 'VALIDATION_FAILED', 'Source profile correction or evidence is invalid');
+  }
+  return new Problem(503, 'DATA_UNAVAILABLE', 'Stored source profile or parser evidence is invalid');
 }
 
 function safeIdentifier(value: string): boolean {
