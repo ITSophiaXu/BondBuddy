@@ -44,12 +44,12 @@ const syntheticParser: LibraryParser = async request => ({
 });
 
 const lines = (codes: string[]): ProfileLine[] => codes.map((code, i) => ({ code, label: code, rank: i + 1, revenue: String(300 - i * 100), evidence: [`p${10 + i}`] }));
-const draft = (codes: string[], taxonomy: string): ProfileDraft => ({ fiscalYear: 2025, taxonomyVersion: taxonomy, accountingScope: 'consolidated', top3: lines(codes),
-  revenueBasis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan' });
+const draft = (codes: string[], taxonomy: string, revenueBasis: NonNullable<ProfileDraft['revenueBasis']> = 'main_business_revenue'): ProfileDraft => ({ fiscalYear: 2025, taxonomyVersion: taxonomy, accountingScope: 'consolidated', top3: lines(codes),
+  revenueBasis, currency: 'CNY', unit: 'ten_thousand_yuan' });
 const TOP3 = ['BIZ.WATER', 'BIZ.CONSTRUCTION', 'BIZ.PROPERTY'];
-const syntheticClassifier = (taxonomy: string, codes = TOP3): LibraryClassifier => () => ({
+const syntheticClassifier = (taxonomy: string, codes = TOP3, revenueBasis: NonNullable<ProfileDraft['revenueBasis']> = 'main_business_revenue'): LibraryClassifier => () => ({
   classification: { market: 'sse', offering: 'public', instrument: 'corporate_bond', documentStage: 'registration' },
-  profile: draft(codes, taxonomy),
+  profile: draft(codes, taxonomy, revenueBasis),
 });
 
 class FakeSource implements LibrarySourceAdapter {
@@ -224,7 +224,7 @@ test('conservative classifier leaves the business profile incomplete; approval n
     await reviewLibraryVersion(t.pool, v.id, { action: 'correct', reason: 'operator_profile_entry', correction: { fiscal_year: 2025, taxonomy_version: t.taxonomy, top3: lines(TOP3) } }, 'operator-syn');
     await assert.rejects(t.approve(v.id), /revenue basis, currency and unit/);
     const corrected = await reviewLibraryVersion(t.pool, v.id, { action: 'correct', reason: 'operator_profile_entry',
-      correction: { fiscal_year: 2025, taxonomy_version: t.taxonomy, top3: lines(TOP3), revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan' } }, 'operator-syn');
+      correction: { fiscal_year: 2025, taxonomy_version: t.taxonomy, top3: lines(TOP3), revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan' } }, 'operator-syn');
     assert.equal(corrected.status, 'corrected');
     assert.equal((await t.approve(v.id)).status, 'published');
     const profiles = (await t.pool.query('SELECT profile_version, origin, completeness, state FROM bb_library_profiles WHERE document_version_id=$1 ORDER BY profile_version', [v.id])).rows;
@@ -515,11 +515,11 @@ test('v1.1 query returns reviewed comparability facts and attestation; v1 shape 
     assert.ok(validV11(v11), JSON.stringify(validV11.errors));
     const c = v11.candidates.find(x => x.document_version_id === v.id)!;
     const profile = (await t.pool.query('SELECT p.id, p.profile_version, r.id AS review_id, r.decided_by, r.decided_at FROM bb_library_profiles p JOIN bb_library_review_items r ON r.id=p.reviewed_review_id WHERE p.document_version_id=$1 AND p.state=$2', [v.id, 'published'])).rows[0];
-    assert.deepEqual(c.comparability, { accounting_scope: 'consolidated', revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
+    assert.deepEqual(c.comparability, { accounting_scope: 'consolidated', revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
       attestation: { review_id: profile.review_id, reviewed_by: 'operator-syn', reviewed_at: new Date(profile.decided_at).toISOString(), profile_id: profile.id, profile_version: profile.profile_version } });
     assert.equal(profile.decided_by, 'operator-syn');
     // Facts and attestation are immutable per profile version, even for a direct SQL writer.
-    await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET revenue_basis='main_business_revenue' WHERE id=$1", [profile.id]), /immutable/);
+    await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET revenue_basis='operating_revenue' WHERE id=$1", [profile.id]), /immutable/);
     await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET reviewed_by='someone-else' WHERE id=$1", [profile.id]), /attestation is immutable/);
     // Unreviewed data (no facts, or no attestation) cannot be published by any path.
     t.deps.classifier = conservativeClassifier;
@@ -533,6 +533,35 @@ test('v1.1 query returns reviewed comparability facts and attestation; v1 shape 
     await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
     const noAtt = (await t.pool.query('SELECT id FROM bb_library_profiles WHERE document_version_id=$1', [(await t.versionOf('NOATT', 1)).id])).rows[0].id;
     await assert.rejects(t.pool.query("UPDATE bb_library_profiles SET state='published',state_reason='sql_bypass',state_actor='x' WHERE id=$1", [noAtt]), /reviewed comparability facts/);
+  } finally { await t.pool.end(); }
+});
+
+test('v1.1 preserves operating-revenue comparability as raw data but rejects it for a lock', { skip }, async () => {
+  const t = await setup();
+  const runId = `library-operating-lock-${randomUUID()}`;
+  try {
+    t.deps.classifier = syntheticClassifier(t.taxonomy, TOP3, 'operating_revenue');
+    t.source.add('OPERATING', 1, 'operating profile');
+    await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
+    const version = await t.versionOf('OPERATING', 1);
+    await t.approve(version.id);
+    const response = await t.query(TOP3, {}, null, 'reference-library-query-v1.1') as LibraryQueryResponseV1_1;
+    const candidate = response.candidates.find(item => item.document_version_id === version.id)!;
+    assert.equal(candidate.comparability?.revenue_basis, 'operating_revenue', 'published original profile remains unchanged');
+
+    const inputHash = 'b'.repeat(64);
+    await t.pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,'{}','[]','[]')`, [t.project, t.owner, inputHash]);
+    await t.pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
+      VALUES($1,$2,$3,1,$4,$5,'generation',$6,'preparing')`, [runId, t.owner, t.project, inputHash, `execution-${randomUUID()}`, 'c'.repeat(64)]);
+    const lockInput = { ownerUserId: t.owner, projectId: t.project, runId, querySchemaVersion: 'reference-library-query-v1.1' as const,
+      documentVersionId: candidate.document_version_id, documentVersion: candidate.document_version, profileId: candidate.profile_id,
+      profileVersion: candidate.profile_version, taxonomyVersion: candidate.taxonomy_version, indexReleaseId: response.index_release!.release_id,
+      candidateScope: { market: candidate.market, offering: candidate.offering, instrument: candidate.instrument },
+      targetScope: { market: 'sse', offering: 'public', instrument: 'corporate_bond', document_stage: 'registration', rule_version: 'rule-syn' },
+      comparability: candidate.comparability!, chapterMappingVersionId: null };
+    await assert.rejects(lockReferenceSelection(t.pool, lockInput), /changed since the v1\.1 query/);
+    assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [runId])).rows[0].count), 0);
   } finally { await t.pool.end(); }
 });
 

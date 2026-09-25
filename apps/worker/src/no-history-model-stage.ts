@@ -4,7 +4,7 @@
  * claimed owner's immutable run input. It emits a draft JSON value only; Word inspection and
  * delivery remain a separate required pipeline stage.
  */
-import type { AnnualBusinessProfile, ReferenceTarget } from '@bondbuddy/domain/reference-match';
+import { hasLib01AAutoMatchBasis, type AnnualBusinessProfile, type ReferenceTarget } from '@bondbuddy/domain/reference-match';
 import type { LibrarySelectionSnapshot, NoHistoryLibrarySelectionInput } from './reference-library-selection.js';
 import { codexModelStage, type RunStage, type StageContext, type StageOutcome } from './run-pipeline.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
@@ -139,7 +139,8 @@ function isReviewedProfile(record: ReviewedIssuerAnnualProfile, scope: NoHistory
   return sameScope(record, scope) && record.review.status === 'reviewed' && !!record.review.reviewId.trim()
     && !!record.review.reviewerId.trim() && !!record.review.reviewedAt.trim()
     && profile.verificationStatus === 'verified' && profile.completeAnnualPeriod && profile.latestCompleteAnnual
-    && profile.accountingScope === 'consolidated' && profile.allComparableBusinessLinesPresent
+    && hasLib01AAutoMatchBasis(profile)
+    && profile.allComparableBusinessLinesPresent
     && profile.sourceEvidence.length > 0 && profile.lines.length >= 3
     && profile.lines.every(line => line.evidence.length > 0 && line.classificationEvidence.length > 0);
 }

@@ -28,7 +28,7 @@ function profile(issuerId: string, overrides: Partial<AnnualBusinessProfile> = {
     latestCompleteAnnual: true,
     verificationStatus: 'verified',
     accountingScope: 'consolidated',
-    revenueBasis: 'operating_revenue',
+    revenueBasis: 'main_business_revenue',
     currency: 'CNY',
     unit: 'CNY 10,000',
     allComparableBusinessLinesPresent: true,
@@ -110,8 +110,34 @@ test('does not match only two codes, broader overlap, or an accounting basis mis
   assert.equal(result.status, 'needs_review');
   assert.equal(result.selectedReferenceId, null);
   assert.deepEqual(result.decisions.map((decision) => decision.reason).sort(), [
-    'accounting_scope_or_revenue_basis_mismatch', 'reference_profile_fewer_than_three_businesses', 'top_three_business_set_mismatch',
+    'reference_profile_revenue_basis_not_main_business_revenue', 'reference_profile_fewer_than_three_businesses', 'top_three_business_set_mismatch',
   ].sort());
+});
+
+test('LIB-01A requires consolidated main-business revenue on both profiles, even when other bases match', () => {
+  const target = profile('issuer-123');
+  const operatingTarget = profile('issuer-123', { revenueBasis: 'operating_revenue' });
+  const operatingCandidate = candidate('operating-candidate', { profile: profile('reference-issuer', { revenueBasis: 'operating_revenue' }) });
+  const bothOperating = matchBusinessReferences(input({ targetProfile: operatingTarget, candidates: [operatingCandidate] }));
+  assert.equal(bothOperating.status, 'needs_evidence');
+  assert.equal(bothOperating.selectedReferenceId, null);
+  assert.deepEqual(bothOperating.reasons, ['profile_revenue_basis_not_main_business_revenue']);
+
+  const candidateOnlyOperating = matchBusinessReferences(input({ targetProfile: target, candidates: [operatingCandidate] }));
+  assert.equal(candidateOnlyOperating.status, 'needs_review');
+  assert.equal(candidateOnlyOperating.selectedReferenceId, null);
+  assert.equal(candidateOnlyOperating.decisions[0]?.reason, 'reference_profile_revenue_basis_not_main_business_revenue');
+
+  for (const scope of ['parent', 'mixed', 'unknown'] as const) {
+    const targetResult = matchBusinessReferences(input({ targetProfile: profile(`issuer-${scope}`, { accountingScope: scope }) }));
+    assert.notEqual(targetResult.status, 'exact');
+    assert.equal(targetResult.selectedReferenceId, null);
+    const result = matchBusinessReferences(input({ candidates: [candidate(`scope-${scope}`, {
+      profile: profile(`reference-${scope}`, { accountingScope: scope }),
+    })] }));
+    assert.notEqual(result.status, 'exact');
+    assert.equal(result.selectedReferenceId, null);
+  }
 });
 
 test('business-set key cannot collide when a taxonomy code contains a delimiter', () => {
@@ -288,7 +314,7 @@ function libraryCandidateV11(overrides: Partial<LibraryCandidateV1_1> = {}): Lib
     applicable_scopes: [{ market: 'sse', offering: 'private', instrument: 'corporate_bond', document_stage: 'issuance', rule_version: 'rules-v4' }],
     chapter_mapping_versions: [], review_quality: 90, disclosed_at: '2025-08-01',
     top3_set_key: '["chemicals","equipment","logistics"]',
-    comparability: { accounting_scope: 'consolidated', revenue_basis: 'operating_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
+    comparability: { accounting_scope: 'consolidated', revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
       attestation: { review_id: 'review-v2', reviewed_by: 'operator-synthetic', reviewed_at: '2026-09-25T00:00:00Z', profile_id: 'library-profile-v2', profile_version: 2 } },
     chapter_mappings: [],
     ...overrides,
@@ -311,6 +337,7 @@ test('v1.1 requires exact comparability and profile-bound review attestation, th
   for (const candidateWithBadFacts of [
     libraryCandidateV11({ comparability: null }),
     libraryCandidateV11({ comparability: { ...validCandidate.comparability!, currency: 'USD' } }),
+    libraryCandidateV11({ comparability: { ...validCandidate.comparability!, revenue_basis: 'operating_revenue' } }),
     libraryCandidateV11({ comparability: { ...validCandidate.comparability!, unit: 'yuan' } }),
     libraryCandidateV11({ comparability: { ...validCandidate.comparability!, fiscal_year: 2024 } }),
     libraryCandidateV11({ comparability: { ...validCandidate.comparability!, accounting_scope: 'parent' } }),

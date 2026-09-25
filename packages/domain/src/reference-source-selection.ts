@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 import {
   matchBusinessReferences,
+  validateUserReferenceIssuerEvidence,
   type AcceptedChapterMapping,
   type ReferenceMatchInput,
   type ReferenceMatchStatus,
@@ -234,15 +235,8 @@ export function selectReferenceSource(input: ReferenceSourceSelectionInput): Ref
   if (preferred && requestedMaterial) {
     const requestedReason = exclusionReason(requestedMaterial, input.project, input.automaticMatch);
     if (requestedReason === null) {
-      // Run the existing matcher in validation-only mode so a usable structure cannot hide an incomplete issuer business profile.
-      const evidenceCheck = matchBusinessReferences({
-        ...input.automaticMatch,
-        // A local sentinel is used only to reuse target-profile validation; this path does not select or persist a library index.
-        referenceIndexVersion: input.automaticMatch.referenceIndexVersion.trim() || 'user-reference-validation-only',
-        candidates: [],
-      });
-      const issuerEvidenceStatus = evidenceCheck.status === 'needs_evidence' ? 'needs_evidence'
-        : evidenceCheck.status === 'needs_review' && evidenceCheck.snapshot.targetTop3SetKey === null ? 'needs_review' : 'ready';
+      // A project-selected structure does not invoke the automatic library match rule, but still needs complete target evidence.
+      const issuerEvidenceStatus = validateUserReferenceIssuerEvidence(input.automaticMatch.targetProfile);
       const material = requestedMaterial;
       if (issuerEvidenceStatus !== 'ready') {
         userReferenceDecisions[0] = { ...userReferenceDecisions[0]!, disposition: 'excluded', reason: `issuer_profile_${issuerEvidenceStatus}` };

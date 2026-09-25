@@ -147,6 +147,7 @@ test('pending profile read checks hash and generation loader never invents an au
   };
   const pending = await getPendingIssuerBusinessProfile(pool, scope);
   assert.equal(pending?.id, stored.id);
+  assert.equal(pending?.profile.revenueBasis, 'operating_revenue', 'the original basis is retained as submitted');
   assert.equal(await loadReviewedIssuerAnnualProfile(pool, scope), null);
   assert.equal(await getPendingIssuerBusinessProfile(pool, { ...scope, ownerUserId: 'foreign-owner' }), null);
   const tampered = { ...client.rows[0]!, profile_sha256: 'f'.repeat(64) };
