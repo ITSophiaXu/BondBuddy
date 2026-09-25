@@ -9,7 +9,10 @@ import type { DocumentParseResponse } from './document-parser.js';
 /** This first native mapper is intentionally limited to one explicit XLSX layout and metric. */
 export const NATIVE_FINANCIAL_FACT_EXTRACTOR_ID = 'native-consolidated-income-statement' as const;
 export const NATIVE_FINANCIAL_FACT_EXTRACTOR_VERSION = '1.0.0' as const;
-const SUPPORTED_PARSER_VERSION = 'bondbuddy-document-parser-1.0.3';
+const SUPPORTED_PARSER_VERSIONS = new Set([
+  'bondbuddy-document-parser-1.0.3',
+  'bondbuddy-document-parser-1.0.5',
+]);
 const TARGET_SHEET = '合并利润表';
 const TARGET_METRIC = 'operating_revenue';
 const TARGET_PERIOD = { start: '2023-01-01', end: '2023-12-31' } as const;
@@ -109,7 +112,7 @@ export function createNativeFinancialFactExtractor(
         return reviewResult(request, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION', []);
       }
       const cells = request.records.filter(isCellRecord);
-      if (request.parser_version !== SUPPORTED_PARSER_VERSION || cells.length !== request.records.length) {
+      if (!SUPPORTED_PARSER_VERSIONS.has(request.parser_version) || cells.length !== request.records.length) {
         return reviewResult(request, 'UNSUPPORTED_NATIVE_FINANCIAL_PARSE', []);
       }
 
