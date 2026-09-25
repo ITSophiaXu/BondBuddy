@@ -1,6 +1,7 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 
 const terminal = new Set(['succeeded','failed','cancelled','rejected']);
@@ -85,7 +86,10 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(logicalCallId)||!Number.isSafeInteger(attemptNo)||attemptNo<1)throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
   const attemptId=metadata.callId??uid();
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(attemptId))throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
-  await transaction(pool,async client=>{
+  // #79: no durable intent, no call. An evidence outage pauses every NEW external call.
+  await ensureExternalCallsAllowed(pool);
+  await guardEvidenceWrite(pool,'call_intent_not_persisted',()=>transaction(pool,async client=>{
+    await assertGateOpen(client);
     const {r}=await lockedLease(client,lease);
     if(metadata.promptSnapshotId){
       const ref=await client.query('SELECT 1 FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4',[metadata.promptSnapshotId,lease.owner,r.project_id,r.id]);
@@ -96,7 +100,7 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7)",[attemptId,lease.owner,lease.jobId,logicalCallId,attemptNo,metadata.modelId??null,metadata.promptSnapshotId??null]);
     await emitInternal(client,internalEvent({kind:'model.call_started',owner:lease.owner,projectId:r.project_id,runId:r.id,jobId:lease.jobId,traceId:r.id,logicalCallId,attemptNo,promptSnapshotRef:metadata.promptSnapshotId}));
     await event(client,r,'running','provider_call','provider_call_may_be_sent');
-  });
+  }));
   return attemptId;
 }
 

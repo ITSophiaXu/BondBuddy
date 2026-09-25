@@ -10,6 +10,9 @@ const data = JSON.parse(readFileSync(file, 'utf8')) as { synthetic: boolean; cas
 const updateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/update-project.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(updateExamples.synthetic, true);
 data.cases.push(...updateExamples.cases);
+const adminExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-logs.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(adminExamples.synthetic, true);
+data.cases.push(...adminExamples.cases);
 assert.equal(data.synthetic, true);
 const ajv = new Ajv({ allErrors: true, strict: true });
 const byName = new Map<string, Example>();
@@ -98,3 +101,9 @@ for (const partition of M1_MATERIAL_PARTITIONS) {
   for (const role of partition.roles) assert.equal(source.items.find(item => item[0] === role.code)?.[1], role.label);
 }
 console.log(`validated ${data.cases.length} synthetic examples and recovery/conflict/usage invariants`);
+// #79: retries and final success are both kept; cached/reasoning are subsets of the totals.
+const timeline = value('admin-job-timeline-retry-then-success') as { attempts: Array<{ status: string; usage: Record<string, number> }>; consumption: Record<string, Record<string, number>> };
+const sumOf = (rows: typeof timeline.attempts, field: string) => rows.reduce((n, row) => n + row.usage[field], 0);
+assert.equal(timeline.consumption.all_attempts.input_tokens, sumOf(timeline.attempts, 'input_tokens'));
+assert.equal(timeline.consumption.completed_attempts.input_tokens, sumOf(timeline.attempts.filter(a => a.status === 'completed'), 'input_tokens'));
+assert.ok(timeline.consumption.all_attempts.cached_input_tokens <= timeline.consumption.all_attempts.input_tokens);
