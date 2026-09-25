@@ -11,6 +11,12 @@ type Entry = {
   controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
 };
 export const materialProcessingKey = (material: Material) => `${material.material_id}:${material.material_version}:${material.sha256}`;
+export function shouldReuseCorrectionEditor(previousVersion: number | null, nextVersion: number | null) {
+  return previousVersion !== null && previousVersion > 0 && previousVersion === nextVersion;
+}
+export function selectCorrectionEditorForRender<T>(previous: T | null, previousVersion: number | null, next: T, nextVersion: number | null): T {
+  return previous !== null && shouldReuseCorrectionEditor(previousVersion, nextVersion) ? previous : next;
+}
 type PeriodValue = Recognition['reporting_periods'][number];
 export type ReportingPeriodCorrectionRow = { start: string | null; end: string | null; period_kind: PeriodValue['period_kind']; scope: PeriodValue['scope'] };
 
@@ -74,12 +80,13 @@ function sourceNotes(field: Source) {
     ${field.raw_value ? `<blockquote class="source-quote">原文：${esc(field.raw_value)}</blockquote>` : ''}`;
 }
 
-function renderCorrection(profile: Recognition, key: string) {
+function renderCorrection(profile: Recognition, key: string, busy = false) {
   const fields = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
   const refs = [...new Set(fields.flatMap(field => field.provenance.evidence_refs))];
   const evidence = refs.length ? `<fieldset class="source-evidence"><legend>可引用的原文证据</legend><p class="source-note">只选择与你本次校正直接相关的材料锚点。引用锚点仍需人工核对，不会把校正变成已核验事实。</p>${refs.map((ref, index) => `<label><input type="checkbox" name="evidence_ref" value="${esc(ref)}"><span>证据 ${index + 1} · ${esc(ref)}</span></label>`).join('')}</fieldset>` : '<p class="source-note">当前没有可引用的识别锚点。提交内容仍会保存为用户提供、待人工确认。</p>';
   const periods = profile.reporting_periods.map((period, index) => renderReportingPeriodRow(index, period)).join('');
   return `<details class="source-correction"><summary>校正历史稿源信息</summary><form data-source-correction="${esc(key)}" data-period-next-index="${profile.reporting_periods.length}">
+    <fieldset class="source-correction-fields" ${busy ? 'disabled' : ''}>
     <input type="hidden" name="profile_version" value="${profile.profile_version}">
     <p class="source-note">请对照原文件填写。校正只记录为“用户提供 · 尚非核验事实”，不会自动确认业务事实。</p>
     <label class="source-correction-toggle"><input type="checkbox" name="correct_market"><span>校正原发行市场</span></label>
@@ -92,12 +99,13 @@ function renderCorrection(profile: Recognition, key: string) {
     <button type="button" class="text-button" data-period-add>添加报告期</button>
     ${evidence}
     <label>校正原因<textarea name="reason" required minlength="1" maxlength="500" rows="3"></textarea></label>
-    <p class="source-correction-message" role="status">${''}</p>
     <button type="submit" class="button secondary">保存校正</button>
+    </fieldset>
+    <p class="source-correction-message" role="status"></p>
   </form></details>`;
 }
 
-function renderProfile(profile: Recognition, target?: Target, key = '', canCorrect = true) {
+function renderProfile(profile: Recognition, target?: Target, key = '', canCorrect = true, correctionBusy = false) {
   const state = { queued: '等待识别', analyzing: '识别中', ready: '源信息已识别', needs_confirmation: '源信息待确认', failed: '源信息识别失败' }[profile.state];
   return `<section class="source-profile" aria-label="历史稿识别结果"><h4>历史稿信息 <small>${state}</small></h4>
     <p class="source-note">以下信息来自历史稿，描述历史发行来源。</p>
@@ -107,7 +115,7 @@ function renderProfile(profile: Recognition, target?: Target, key = '', canCorre
     <div><dt>最新报告截止日</dt><dd>${esc(profile.latest_reporting_cutoff.value ?? '未识别')}${sourceNotes(profile.latest_reporting_cutoff)}</dd></div></dl>
     <h5>原报告期</h5>${profile.reporting_periods.length ? `<ul class="source-periods">${profile.reporting_periods.map(period => `<li><p>${esc(period.start ?? '起始日待确认')} 至 ${esc(period.end ?? '截止日待确认')}</p><p>${period.period_kind === 'annual' ? '年度' : period.period_kind === 'interim' ? '中期' : '期间类型待确认'} · ${period.scope === 'consolidated' ? '合并口径' : period.scope === 'parent' ? '母公司口径' : '报表口径待确认'}</p>${sourceNotes(period)}</li>`).join('')}</ul>` : '<p class="source-note">未识别到有依据的报告期，不能用发行日或签署日代替。</p>'}
     <p class="source-note">来源：本文件第 ${profile.material_version} 版 · 识别结果第 ${profile.profile_version} 版。</p>
-    ${canCorrect ? renderCorrection(profile, key) : '<p class="source-note">源信息校正接口当前不可用，结果保持只读。</p>'}</section>`;
+    ${canCorrect ? renderCorrection(profile, key, correctionBusy) : '<p class="source-note">源信息校正接口当前不可用，结果保持只读。</p>'}</section>`;
 }
 
 /** One instance per authenticated project view. Reads job/profile state and applies only explicit source-profile corrections. */
@@ -162,7 +170,7 @@ export class MaterialProcessing {
     return `<div class="material-processing" data-material-processing="${esc(key)}" data-tone="${tone}">
       <p class="processing-title" role="status">${esc(title)}</p><p class="processing-hint">${esc(hint)}</p>
       ${entry?.job ? `<p class="processing-time">状态更新于 ${esc(date(entry.job.updated_at))}</p>` : ''}
-      ${entry?.profile ? renderProfile(entry.profile, this.target, key, Boolean(this.api.correctSourceProfile) && !entry.correctionUnavailable) : ''}
+      ${entry?.profile ? renderProfile(entry.profile, this.target, key, Boolean(this.api.correctSourceProfile) && !entry.correctionUnavailable, Boolean(entry.correcting)) : ''}
       ${entry?.profileError ? `<p class="material-file-error">历史稿信息：${esc(entry.profileError)}</p>` : ''}
       ${entry?.correctionError ? `<p class="material-file-error" role="status">${esc(entry.correctionError)}</p>` : ''}
       <button type="button" class="text-button" data-processing-retry="${esc(key)}" ${!entry || entry.loading ? 'disabled' : ''}>${!entry || entry.loading ? '正在读取状态…' : '重新读取状态'}</button>

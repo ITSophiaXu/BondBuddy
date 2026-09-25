@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiClient, ApiError, type Dto } from './api.js';
-import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow } from './material-processing.js';
+import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow, selectCorrectionEditorForRender } from './material-processing.js';
 
 const material: Dto<'MaterialResponse'> = { material_id: 'material-a', material_version: 1, sha256: 'a'.repeat(64), role: 'historical', filename: 'synthetic.docx', upload_id: 'upload-a', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, state: 'persisted', persisted_at: '2026-09-25T00:00:00Z', error: null };
 const job: Dto<'MaterialParseJobResponse'> = { job_id: 'job-a', job_type: 'parse', subtype: 'material_parse', project_id: 'project-a', material_id: material.material_id, material_version: 1, material_sha256: material.sha256, parser_version: 'synthetic-v1', state: 'succeeded', stage: 'succeeded', completed_stages: ['parse_evidence', 'historical_profile'], attempts: 1, max_attempts: 3, error_code: null, outcome: 'parsed', parse_status: 'parsed', profile_version: 1, pending_capabilities: [], updated_at: material.persisted_at };
@@ -44,6 +44,18 @@ test('full period correction list can add a missed period and remove an extra pe
   assert.ok(!afterRemovingExtraYear.some(period => period.end === '2023-12-31'));
   assert.ok(afterRemovingExtraYear.every(period => !('latest_reporting_cutoff' in period)));
   assert.match(renderReportingPeriodRow(3), /移除报告期 4/);
+});
+
+test('ordinary rerenders retain unsaved editor rows only for the same profile version', () => {
+  const draft = { reason: 'unsaved synthetic edit', open: true, periods: ['2022', '2023 added'] };
+  const refreshedAtSameVersion = { reason: '', open: false, periods: ['2022'] };
+  assert.equal(selectCorrectionEditorForRender(draft, 4, refreshedAtSameVersion, 4), draft);
+  assert.equal(draft.reason, 'unsaved synthetic edit');
+  assert.deepEqual(draft.periods, ['2022', '2023 added']);
+
+  const afterNewProfile = { reason: '', open: false, periods: ['2022', '2024'] };
+  assert.equal(selectCorrectionEditorForRender(draft, 4, afterNewProfile, 5), afterNewProfile);
+  assert.equal(selectCorrectionEditorForRender(draft, 4, afterNewProfile, null), afterNewProfile);
 });
 
 test('different material version/hash and foreign profile provenance cannot appear as current results', async t => {

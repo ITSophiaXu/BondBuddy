@@ -8,7 +8,7 @@ import { renderAccount, renderClosed, type AccountContext } from './account';
 import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
 import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USERNAME_PATTERN, validateRegister } from './register';
-import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow } from './material-processing';
+import { buildReportingPeriodCorrections, MaterialProcessing, materialProcessingKey, renderReportingPeriodRow, selectCorrectionEditorForRender } from './material-processing';
 import './material-processing.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 import './style.css';
@@ -433,15 +433,36 @@ function updateProcessingRows(projectId: string) {
     const material = materials.get(element.dataset.materialProcessing!);
     if (!material) continue;
     const focused = element.contains(document.activeElement);
-    const correctionOpen = element.querySelector<HTMLDetailsElement>('details.source-correction')?.open ?? false;
+    const activeElement = focused ? document.activeElement as HTMLElement : undefined;
+    const previousEditor = element.querySelector<HTMLDetailsElement>('details.source-correction');
+    const previousVersionValue = previousEditor?.querySelector<HTMLInputElement>('[name="profile_version"]')?.value;
+    const previousVersion = previousVersionValue && Number.isSafeInteger(Number(previousVersionValue)) ? Number(previousVersionValue) : null;
     const template = document.createElement('template');
     template.innerHTML = materialProcessing.render(material);
     const replacement = template.content.firstElementChild!;
     if (element.outerHTML !== replacement.outerHTML) {
+      const nextEditor = replacement.querySelector<HTMLDetailsElement>('details.source-correction');
+      const nextVersionValue = nextEditor?.querySelector<HTMLInputElement>('[name="profile_version"]')?.value;
+      const nextVersion = nextVersionValue && Number.isSafeInteger(Number(nextVersionValue)) ? Number(nextVersionValue) : null;
+      const correctionToRender = nextEditor ? selectCorrectionEditorForRender(previousEditor, previousVersion, nextEditor, nextVersion) : null;
+      if (previousEditor && nextEditor && correctionToRender === previousEditor) {
+        const oldControls = previousEditor.querySelector<HTMLFieldSetElement>('.source-correction-fields');
+        const nextControls = nextEditor.querySelector<HTMLFieldSetElement>('.source-correction-fields');
+        if (oldControls && nextControls) oldControls.disabled = nextControls.disabled;
+        nextEditor.replaceWith(previousEditor);
+      } else if (previousEditor && nextEditor && previousVersion !== nextVersion) {
+        const hasExistingNotice = replacement.querySelector('.material-file-error[role="status"]');
+        if (!hasExistingNotice) {
+          const notice = document.createElement('p');
+          notice.className = 'source-correction-message'; notice.setAttribute('role', 'status');
+          notice.textContent = '源信息版本已更新，未提交的校正已清除。请核对最新识别结果后重新填写。';
+          nextEditor.insertBefore(notice, nextEditor.querySelector('form'));
+        }
+        nextEditor.open = true;
+      }
       element.replaceWith(replacement);
-      const correction = replacement.querySelector<HTMLDetailsElement>('details.source-correction');
-      if (correction) correction.open = correctionOpen;
-      if (focused) replacement.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+      if (activeElement && replacement.contains(activeElement)) activeElement.focus({ preventScroll: true });
+      else if (focused) replacement.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
     }
   }
 }
