@@ -1,0 +1,206 @@
+{
+ "base_url": "https://handed-rules-ant-bedding.trycloudflare.com",
+ "generated_at": "2026-09-25T08:00:22.886Z",
+ "synthetic": true,
+ "results": [
+  {
+   "issue": "#7",
+   "item": "username/password register + UI login over HTTPS; Secure/HttpOnly/SameSite=Strict session cookies",
+   "result": "pass",
+   "evidence": "07-login-projects.png, results.json",
+   "detail": {
+    "register_status": 201,
+    "cookies": [
+     {
+      "name": "bb_session",
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Strict",
+      "path": "/"
+     },
+     {
+      "name": "bb_refresh",
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "Strict",
+      "path": "/"
+     },
+     {
+      "name": "bb_csrf",
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "Strict",
+      "path": "/"
+     }
+    ],
+    "csrf_cookie_note": "bb_csrf is intentionally readable by JS (double-submit), still Secure+Strict"
+   }
+  },
+  {
+   "issue": "#7",
+   "item": "duplicate username (case-normalised) is rejected with a stable code",
+   "result": "pass",
+   "evidence": "results.json",
+   "detail": {
+    "status": 409,
+    "code": "IDEMPOTENCY_CONFLICT"
+   }
+  },
+  {
+   "issue": "#6",
+   "item": "closing the tab does not cancel the server-side job; re-login shows progressed, persisted state",
+   "result": "pass",
+   "evidence": "06-upload-saved.png, 06-reopened-recovered.png, results.json",
+   "detail": {
+    "before_close": {
+     "state": "queued",
+     "stage": "queued",
+     "attempts": 0,
+     "error_code": null,
+     "updated_at": "2026-09-25T07:59:35.442Z"
+    },
+    "after_reopen": {
+     "state": "succeeded",
+     "stage": "succeeded",
+     "attempts": 1,
+     "error_code": null,
+     "updated_at": "2026-09-25T07:59:38.327Z"
+    },
+    "note": "worker paused during upload so the queued state is observable; job resumed after the browser context was closed"
+   }
+  },
+  {
+   "issue": "#6",
+   "item": "web works with only a browser (no Node/Python/CLI); no provider key/secret in bundle or API responses",
+   "result": "pass",
+   "evidence": "results.json",
+   "detail": {
+    "assets_scanned": 2,
+    "responses_scanned": 9,
+    "configured_secret_values_checked": 2,
+    "hits": [],
+    "browser_globals": {
+     "process": "undefined",
+     "require": "undefined",
+     "Buffer": "undefined"
+    }
+   }
+  },
+  {
+   "issue": "#6",
+   "item": "explicit product copy for upload scope, cloud processing, retention and deletion; no \"originals stay on this machine\" claim",
+   "result": "partial",
+   "evidence": "06-account-policy-copy.png, results.json",
+   "detail": {
+    "upload_copy": [
+     "按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。",
+     "已从服务器恢复 1 份当前账号可访问的材料记录。",
+     "必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传",
+     "服务器已保存，等待预检",
+     "传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。"
+    ],
+    "storage_copy": [
+     "已从服务器恢复 1 份当前账号可访问的材料记录。",
+     "服务器已保存，等待预检",
+     "上传的材料会在平台服务器保存一份账号隔离的副本，用于核验和你发起的处理；浏览器中的文件不是唯一副本。",
+     "注销账号后，项目、材料和成果会立即停止访问。保存期限、删除时限与备份清理规则尚待正式发布，发布后会在这里说明。"
+    ],
+    "deletion_copy": [
+     "注销账号",
+     "注销会关闭账号，并停止访问账号下的全部项目、材料和成果。完成后无法恢复。",
+     "查看注销影响",
+     "注销账号后，项目、材料和成果会立即停止访问。保存期限、删除时限与备份清理规则尚待正式发布，发布后会在这里说明。",
+     "下载到本机的 Word 或其他文件由你自行保管，不受平台删除影响。"
+    ],
+    "local_only_claim": false,
+    "note": "Upload limits, the server-side account-isolated copy and deletion/closure effects are stated. Retention periods, deletion deadlines and backup purge are explicitly marked as not yet published, because #8 retention values are unset. Partial until those values are decided."
+   }
+  },
+  {
+   "issue": "#8",
+   "item": "guessing another account's project/material/artifact IDs cannot enumerate or download (404)",
+   "result": "pass",
+   "evidence": "08-b-cannot-open-a-project.png, results.json",
+   "detail": {
+    "probes": {
+     "project": 404,
+     "material": 404,
+     "material_download": 404,
+     "parse_job": 404,
+     "events": 404,
+     "artifact_guess": 404,
+     "artifact_download_guess": 404,
+     "run_guess": 404,
+     "patch_project": 404,
+     "delete_material": 404
+    },
+    "b_project_count": 0,
+    "note": "A has no artifact (model disabled in staging), so artifact probes use guessed IDs; owner-scoped artifact reads are covered by API tests."
+   }
+  },
+  {
+   "issue": "#8",
+   "item": "editing the draft after a run snapshot does not change the snapshot",
+   "result": "pass",
+   "evidence": "results.json",
+   "detail": {
+    "snapshot_status": 201,
+    "revision": 1,
+    "input_hash_before": "d907ec61aff32b788b485beaca10dc7b49db067c75a09fd31b5427c6b02b8398",
+    "input_hash_after_edit": "d907ec61aff32b788b485beaca10dc7b49db067c75a09fd31b5427c6b02b8398",
+    "edit_status": 200,
+    "draft_revision_before": 1,
+    "draft_revision_after": 2,
+    "snapshot_response_identical": true
+   }
+  },
+  {
+   "issue": "#8",
+   "item": "edit conflict returns a stable error code",
+   "result": "pass",
+   "evidence": "results.json",
+   "detail": {
+    "status": 409,
+    "code": "INPUT_REVISION_CONFLICT"
+   }
+  },
+  {
+   "issue": "#8",
+   "item": "duplicate create (same bytes re-uploaded) returns the same resource",
+   "result": "pass",
+   "evidence": "08-duplicate-upload-reused.png, results.json",
+   "detail": {
+    "first": {
+     "material_id": "4b5dfd91-d87b-45e0-ad9f-eefe8cbaf54f",
+     "version": "1"
+    },
+    "duplicate": {
+     "material_id": "4b5dfd91-d87b-45e0-ad9f-eefe8cbaf54f",
+     "version": 1
+    }
+   }
+  },
+  {
+   "issue": "#6/#17",
+   "item": "run submission with model disabled shows explicit not-ready (no fake success)",
+   "result": "pass",
+   "evidence": "results.json",
+   "detail": {
+    "status": 501,
+    "code": "CAPABILITY_NOT_READY"
+   }
+  },
+  {
+   "issue": "#7",
+   "item": "logout revokes the session; replaying the old cookies cannot read or download materials",
+   "result": "pass",
+   "evidence": "07-logged-out.png, results.json",
+   "detail": {
+    "before_logout": 200,
+    "replayed_read": 401,
+    "replayed_download": 401,
+    "replayed_refresh": 401
+   }
+  }
+ ]
+}

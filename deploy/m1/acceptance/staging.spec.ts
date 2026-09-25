@@ -2,13 +2,18 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // #6/#7/#8/#79 acceptance evidence on a deployed staging stack. Synthetic accounts and files only.
 const base = process.env.BB_STAGING_URL ?? '';
 const terms = process.env.BB_TERMS_VERSION ?? '';
 const out = resolve(__dirname, process.env.BB_EVIDENCE_DIR ?? '../evidence/local');
 const composeDir = resolve(__dirname, '..');
+const envFile = process.env.BB_ENV_FILE ?? `${composeDir}/.env`;
+const composeFiles = ['-f', `${composeDir}/compose.yaml`, ...(process.env.BB_PROFILE === 'prod' ? ['-f', `${composeDir}/compose.prod.yaml`] : [])];
+const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-directory', composeDir, '--env-file', envFile, ...composeFiles, ...args], { encoding: 'utf8', env: { ...process.env } });
 const forbidden = (process.env.BB_FORBIDDEN_STRINGS ?? '').split('\n').filter(s => s.length >= 8);
 mkdirSync(out, { recursive: true });
 
@@ -16,7 +21,6 @@ type Item = { issue: string; item: string; result: 'pass' | 'fail' | 'partial' |
 const results: Item[] = [];
 const record = (i: Item) => { results.push(i); };
 const shot = (page: Page, name: string) => page.screenshot({ path: `${out}/${name}.png` });
-const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-directory', composeDir, '--env-file', `${composeDir}/.env`, '-f', `${composeDir}/compose.yaml`, ...args], { encoding: 'utf8', env: { ...process.env } });
 const newUser = () => ({ username: `stg_${randomUUID().replaceAll('-', '').slice(0, 20)}`, password: `Synthetic-${randomUUID()}` });
 
 async function api(page: Page, method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
@@ -157,7 +161,7 @@ test('#6 product copy on upload scope, cloud processing, storage and deletion', 
   const deletion = find(projectText + '\n' + accountText, ['删除', '注销', '清理']);
   const localOnlyClaim = /只(保存|存储|存在)(在)?本(机|地)/.test(projectText + accountText);
   const hasAll = upload.length > 0 && storage.length > 0 && deletion.length > 0 && !localOnlyClaim;
-  record({ issue: '#6', item: 'explicit product copy for upload scope, cloud processing, retention and deletion; no "originals stay on this machine" claim', result: hasAll ? 'partial' : 'fail', evidence: '06-account-policy-copy.png, results.json', detail: { upload_copy: upload, storage_copy: storage, deletion_copy: deletion, local_only_claim: localOnlyClaim, note: 'Copy found is spread over status lines and the account-closure page; there is no single upload/retention policy statement, and retention periods are not configured (#8). Needs product/UI owner decision.' } });
+  record({ issue: '#6', item: 'explicit product copy for upload scope, cloud processing, retention and deletion; no "originals stay on this machine" claim', result: hasAll ? 'partial' : 'fail', evidence: '06-account-policy-copy.png, results.json', detail: { upload_copy: upload, storage_copy: storage, deletion_copy: deletion, local_only_claim: localOnlyClaim, note: 'Upload limits, the server-side account-isolated copy and deletion/closure effects are stated. Retention periods, deletion deadlines and backup purge are explicitly marked as not yet published, because #8 retention values are unset. Partial until those values are decided.' } });
 });
 
 test('#8 isolation: B guessing A project/material/artifact/run IDs gets 404', async () => {
@@ -193,8 +197,10 @@ test('#8 snapshot immutability, duplicate upload reuse, edit conflict code', asy
   const edit = await api(page, 'PATCH', `/api/v1/projects/${ids.projectA}`, { name: `Edited after snapshot ${a.username}` }, { 'If-Match': String(p0.draft_revision) });
   const stale = await api(page, 'PATCH', `/api/v1/projects/${ids.projectA}`, { name: 'stale edit' }, { 'If-Match': String(p0.draft_revision) });
   const again = await api(page, 'GET', `/api/v1/projects/${ids.projectA}/input-revisions/${rev}`);
-  const unchanged = snap.status === 201 && again.status === 200 && again.json?.input_hash === snap.json?.input_hash && JSON.stringify(again.json?.manifest ?? again.json) .includes(p0.name) && !JSON.stringify(again.json).includes('Edited after snapshot');
-  record({ issue: '#8', item: 'editing the draft after a run snapshot does not change the snapshot', result: unchanged && edit.status === 200 ? 'pass' : 'fail', evidence: 'results.json', detail: { snapshot_status: snap.status, revision: rev, input_hash_before: snap.json?.input_hash, input_hash_after_edit: again.json?.input_hash, edit_status: edit.status } });
+  const p1 = (await api(page, 'GET', `/api/v1/projects/${ids.projectA}`)).json;
+  const unchanged = snap.status === 201 && again.status === 200 && again.json?.input_hash === snap.json?.input_hash
+    && JSON.stringify(again.json) === JSON.stringify(snap.json) && p1?.name?.startsWith('Edited after snapshot') && p1.draft_revision === p0.draft_revision + 1;
+  record({ issue: '#8', item: 'editing the draft after a run snapshot does not change the snapshot', result: unchanged && edit.status === 200 ? 'pass' : 'fail', evidence: 'results.json', detail: { snapshot_status: snap.status, revision: rev, input_hash_before: snap.json?.input_hash, input_hash_after_edit: again.json?.input_hash, edit_status: edit.status, draft_revision_before: p0.draft_revision, draft_revision_after: p1?.draft_revision, snapshot_draft_revision: again.json?.draft_revision, snapshot_response_identical: JSON.stringify(again.json) === JSON.stringify(snap.json) } });
   record({ issue: '#8', item: 'edit conflict returns a stable error code', result: stale.status === 409 && stale.json?.code === 'INPUT_REVISION_CONFLICT' ? 'pass' : 'fail', evidence: 'results.json', detail: { status: stale.status, code: stale.json?.code } });
   // duplicate create: upload identical bytes again through the UI -> same material/version
   await page.goto(`/#/projects/${encodeURIComponent(ids.projectA)}`);
@@ -279,7 +285,7 @@ test('#79 admin log routes require an operator grant', async () => {
   execFileSync(resolve(composeDir, 'scripts/grant-operator.sh'), [op.username, 'log_reader', 'staging_acceptance'], { encoding: 'utf8' });
   const withGrant = await probe();
   const prompt = (await api(page, 'GET', `/api/v1/admin/prompts/${randomUUID()}`)).status;
-  const resume = (await api(page, 'POST', '/api/v1/admin/evidence-gate/resume', {})).status;
+  const resume = (await api(page, 'POST', '/api/v1/admin/evidence-gate/resume', { reason_code: 'staging_acceptance' })).status;
   const ok = anon === 401 && Object.values(without).every(s => s === 404) && Object.values(withGrant).every(s => s === 200) && prompt === 404 && resume === 404;
   record({ issue: '#79', item: 'admin log routes reachable only with a grant (no grant -> 404; log_reader -> 200; prompt/operator routes still 404 without their own grants)', result: ok ? 'pass' : 'fail', evidence: 'results.json', detail: { anonymous: anon, without_grant: without, with_log_reader: withGrant, prompt_view_without_prompt_viewer: prompt, gate_resume_without_log_operator: resume } });
   await ctx.close();

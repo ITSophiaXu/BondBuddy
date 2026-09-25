@@ -7,11 +7,15 @@ sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?usage: deploy.sh <git-sha>}^{c
 tag="${sha:0:12}"
 ctx="$(mktemp -d)"; trap 'rm -rf "$ctx"' EXIT
 git -C "$BB_REPO" archive "$sha" | tar -x -C "$ctx"
+# Images already present (e.g. loaded with `docker load` from scripts/export-images.sh on a build
+# host, to spare a small target disk the ~2 GB build cache) are reused, not rebuilt.
+have() { docker image inspect "$1" >/dev/null 2>&1; }
 for target in api worker web; do
+  have "bondbuddy-m1-$target:$tag" && continue
   docker build -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" \
     -t "bondbuddy-m1-$target:$tag" "$ctx" >/dev/null
 done
-docker build -q -t "bondbuddy-m1-egress:$tag" "$ctx/deploy/m1/egress" >/dev/null
+have "bondbuddy-m1-egress:$tag" || docker build -q -t "bondbuddy-m1-egress:$tag" "$ctx/deploy/m1/egress" >/dev/null
 previous="$(current_tag)"
 export BB_IMAGE_TAG="$tag"
 if [ -n "$previous" ] && compose ps --status running --services 2>/dev/null | grep -qx postgres; then
@@ -24,4 +28,9 @@ echo "$tag" > "$BB_STATE/current"
 [ -n "$previous" ] && echo "$previous" > "$BB_STATE/previous"
 log_release deploy "$tag (previous ${previous:-none})"
 "$(dirname "$0")/smoke.sh" "http://127.0.0.1:$(env_value BB_HTTP_PORT)"
+# Keep only the current and previous release images on disk.
+keep="$tag ${previous:-}"
+docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^bondbuddy-m1-' | while read -r ref; do
+  case " $keep " in *" ${ref##*:} "*) ;; *) docker image rm "$ref" >/dev/null 2>&1 || true;; esac
+done
 echo "deployed $tag"
