@@ -20,7 +20,8 @@ function memoryBlobs(): PrivateBlobs {
 test('public contract has no library route, schema or candidate field', () => {
   const doc = JSON.stringify(openApiDocument());
   for (const needle of ['/admin/library', 'LibraryQuery', 'LibraryCandidate', 'top3_set_key', 'review_quality', 'reference-library-query',
-    'LibraryComparability', 'LibraryChapterMapping', 'revenue_basis', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings']) assert.equal(doc.includes(needle), false, needle);
+    'LibraryComparability', 'LibraryChapterMapping', 'revenue_basis', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings',
+    'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures', 'library_source_stale', 'library_sync_failed']) assert.equal(doc.includes(needle), false, needle);
 });
 
 test('admin library routes: 404 for ordinary users, read-only for readers, actions for operators; user routes never leak library data', { skip: !connection }, async () => {
@@ -62,6 +63,10 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
     const overview = await app.inject({ method: 'GET', url: '/api/v1/admin/library/overview', headers });
     assert.equal(overview.statusCode, 200);
     assert.ok(overview.json().counts.open_reviews >= 1);
+    // #78 scheduled-sync operator fields: cadence, next due, failures since last full success.
+    const syncRow = overview.json().sources.find((s: { source_id: string }) => s.source_id === sourceId);
+    assert.deepEqual([syncRow.sync_interval_seconds, syncRow.consecutive_failures, typeof syncRow.next_sync_due_at], [86400, 0, 'string']);
+    for (const key of ['new_24h', 'pending', 'failed', 'stale_sources']) assert.equal(typeof overview.json().counts[key], 'number');
     const reviews = await app.inject({ method: 'GET', url: '/api/v1/admin/library/reviews', headers });
     assert.ok(reviews.json().items.some((i: { document_version_id: string }) => i.document_version_id === ingested.versionId));
     for (const [method, url, body] of routes.filter(r => r[0] === 'POST')) {
@@ -93,7 +98,8 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
     for (const url of ['/api/v1/projects', `/api/v1/projects/${created.json().project_id}`]) {
       const r = await app.inject({ method: 'GET', url, headers });
       for (const needle of [ingested.versionId, ingested.documentId, mapped.json().mapping_version_id, 'top3_set_key', 'review_quality', 'candidates', 'Synthetic Admin Issuer',
-        'revenue_basis', 'reviewed_by', 'ten_thousand_yuan', 'chapter_mappings', 'reference-library-query']) assert.equal(r.body.includes(needle), false, `${url} leaks ${needle}`);
+        'revenue_basis', 'reviewed_by', 'ten_thousand_yuan', 'chapter_mappings', 'reference-library-query',
+        sourceId, 'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures', 'last_success_at', 'library_source_stale', 'library_sync_failed']) assert.equal(r.body.includes(needle), false, `${url} leaks ${needle}`);
     }
     const guess = await app.inject({ method: 'GET', url: `/api/v1/library/versions/${ingested.versionId}`, headers });
     assert.equal(guess.statusCode, 404);

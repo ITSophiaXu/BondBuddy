@@ -135,6 +135,8 @@ services:
       BB_LOG_SINK_FILE: ${BB_LOG_SINK_FILE:-/var/lib/bb-logs/observability.ndjson}
       BB_LOG_SINK_MAX_BYTES: ${BB_LOG_SINK_MAX_BYTES:-67108864}
       BB_OPS_PARSE_BACKFILL: ${BB_OPS_PARSE_BACKFILL:-off}
+      # #78 scheduled library sync (off by default; raise this service's memory limit before enabling).
+      BB_OPS_LIBRARY_SYNC: ${BB_OPS_LIBRARY_SYNC:-off}
       # Production Blob is reached through the allow-list proxy, like the worker.
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128

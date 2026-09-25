@@ -164,7 +164,9 @@ export const LibraryReviewActionRequestSchema = obj({
 
 export const LibraryOverviewSchema = obj({
   counts: obj({ new_24h: Type.Integer(), pending: Type.Integer(), failed: Type.Integer(), stale_sources: Type.Integer(), published: Type.Integer(), open_reviews: Type.Integer() }),
-  sources: Type.Array(obj({ source_id: code, kind: enumOf(LIBRARY_SOURCE_KINDS), usage_rights: enumOf(LIBRARY_USAGE_RIGHTS), enabled: Type.Boolean(), last_success_at: nullable(utc), last_attempt_at: nullable(utc), last_error_code: nullable(Type.String()), stale: Type.Boolean() })),
+  sources: Type.Array(obj({ source_id: code, kind: enumOf(LIBRARY_SOURCE_KINDS), usage_rights: enumOf(LIBRARY_USAGE_RIGHTS), enabled: Type.Boolean(), last_success_at: nullable(utc), last_attempt_at: nullable(utc), last_error_code: nullable(Type.String()), stale: Type.Boolean(),
+    /** #78 scheduled sync (0032): cadence from the registry, next due time and failures since the last full success. */
+    sync_interval_seconds: Type.Integer({ minimum: 300 }), next_sync_due_at: nullable(utc), consecutive_failures: Type.Integer({ minimum: 0 }) })),
   coverage: Type.Array(obj({ market: Type.String(), offering: Type.String(), published: Type.Integer(), business_codes: Type.Integer() })),
   active_release: obj({ release_id: id, release_no: Type.Integer() }),
 });

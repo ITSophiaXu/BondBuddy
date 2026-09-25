@@ -6,6 +6,7 @@ import {
   type LibraryQueryResponse, type LibraryReviewActionRequest, type LibrarySelectionLock,
 } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
+import { raiseAlert } from './evidence-gate.js';
 import { emitInternal, internalEvent } from './observability.js';
 
 // #78 backend reference library store. Platform data owned by LIBRARY_SYSTEM_OWNER; no function here
@@ -34,6 +35,8 @@ export function libraryCacheSize() { return queryCache.size; }
 export type LibrarySourceInput = {
   id: string; kind: 'public_disclosure' | 'operator_import'; displayName: string; market: 'sse' | 'szse' | 'nafmii' | null;
   authorizationBasis: string; termsUrl?: string | null; usageRights: 'commercial_licensed' | 'evaluation_only' | 'revoked'; staleAfterSeconds?: number;
+  /** Scheduled cadence (0032); defaults to daily. Only public_disclosure sources are scheduled. */
+  syncIntervalSeconds?: number;
 };
 export const OPERATOR_IMPORT_SOURCE: LibrarySourceInput = {
   id: 'operator_import', kind: 'operator_import', market: null, displayName: '运营批量补录',
@@ -43,9 +46,9 @@ export const OPERATOR_IMPORT_SOURCE: LibrarySourceInput = {
 export async function registerLibrarySource(pool: Pool, input: LibrarySourceInput) {
   await transaction(pool, async client => {
     await client.query("SELECT set_config('bondbuddy.library_reason','source_registered',true), set_config('bondbuddy.library_actor','system',true)");
-    await client.query(`INSERT INTO bb_library_sources(id,kind,display_name,market,authorization_basis,terms_url,terms_checked_at,usage_rights,stale_after_seconds)
-      VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $6::text IS NULL THEN NULL ELSE now() END,$7,$8) ON CONFLICT (id) DO NOTHING`,
-    [input.id, input.kind, input.displayName, input.market, input.authorizationBasis, input.termsUrl ?? null, input.usageRights, input.staleAfterSeconds ?? 172800]);
+    await client.query(`INSERT INTO bb_library_sources(id,kind,display_name,market,authorization_basis,terms_url,terms_checked_at,usage_rights,stale_after_seconds,sync_interval_seconds)
+      VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $6::text IS NULL THEN NULL ELSE now() END,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+    [input.id, input.kind, input.displayName, input.market, input.authorizationBasis, input.termsUrl ?? null, input.usageRights, input.staleAfterSeconds ?? 172800, input.syncIntervalSeconds ?? 86400]);
   });
 }
 
@@ -202,9 +205,16 @@ export async function checkpointLibraryJob(pool: Pool, lease: LibraryLease, stag
   });
 }
 
+/** Terminal or partial sync: counts toward consecutive_failures and raises a deduplicated #79 library_sync_failed alert. */
+async function recordSourceSyncFailure(client: PoolClient, sourceId: string, code: LibraryErrorCode) {
+  const row = (await client.query('UPDATE bb_library_sources SET consecutive_failures=consecutive_failures+1 WHERE id=$1 RETURNING consecutive_failures', [sourceId])).rows[0];
+  await raiseAlert(client, { kind: 'library_sync_failed', severity: 'critical', scope: sourceId,
+    detail: { source_id: sourceId, error_code: code.toLowerCase(), consecutive_failures: Number(row?.consecutive_failures ?? 0) } });
+}
 async function markSourceFailure(client: PoolClient, sourceId: string, code: LibraryErrorCode, jobId: string) {
   await client.query('UPDATE bb_library_sources SET last_error_code=$2,updated_at=now() WHERE id=$1', [sourceId, code]);
   await client.query("UPDATE bb_library_sync_runs SET state='failed',finished_at=now() WHERE job_id=$1 AND state='running'", [jobId]);
+  await recordSourceSyncFailure(client, sourceId, code);
 }
 
 export async function succeedLibraryJob(pool: Pool, lease: LibraryLease, result: Record<string, unknown>, sync?: { syncRunId: string; cursorAfter: Record<string, unknown>; partial: boolean }) {
@@ -215,7 +225,9 @@ export async function succeedLibraryJob(pool: Pool, lease: LibraryLease, result:
       // Cursor and last-success advance only in the same transaction that closes the job.
       await client.query("UPDATE bb_library_sync_runs SET state=$2,cursor_after=$3,finished_at=now() WHERE id=$1", [sync.syncRunId, sync.partial ? 'partial' : 'succeeded', sync.cursorAfter]);
       await client.query(`UPDATE bb_library_sources SET cursor=$2, last_success_at=CASE WHEN $3 THEN last_success_at ELSE now() END,
-        last_error_code=CASE WHEN $3 THEN 'LIBRARY_FETCH_FAILED' ELSE NULL END, updated_at=now() WHERE id=$1`, [lease.sourceId, sync.cursorAfter, sync.partial]);
+        last_error_code=CASE WHEN $3 THEN 'LIBRARY_FETCH_FAILED' ELSE NULL END, consecutive_failures=CASE WHEN $3 THEN consecutive_failures ELSE 0 END,
+        updated_at=now() WHERE id=$1`, [lease.sourceId, sync.cursorAfter, sync.partial]);
+      if (sync.partial) await recordSourceSyncFailure(client, lease.sourceId, 'LIBRARY_FETCH_FAILED');
     }
     await jobEvent(client, updated, 'library.job_succeeded', 'succeeded', 'succeeded', { partial: sync?.partial ?? false });
   });
@@ -727,7 +739,8 @@ export async function libraryOverview(pool: Pool): Promise<LibraryOverview> {
   return {
     counts: c,
     sources: sources.map(s => ({ source_id: s.id, kind: s.kind, usage_rights: s.usage_rights, enabled: s.enabled, last_success_at: s.last_success_at ? date(s.last_success_at) : null,
-      last_attempt_at: s.last_attempt_at ? date(s.last_attempt_at) : null, last_error_code: s.last_error_code, stale: s.stale })),
+      last_attempt_at: s.last_attempt_at ? date(s.last_attempt_at) : null, last_error_code: s.last_error_code, stale: s.stale,
+      sync_interval_seconds: s.sync_interval_seconds, next_sync_due_at: s.kind === 'public_disclosure' && s.enabled ? date(s.next_sync_due_at) : null, consecutive_failures: s.consecutive_failures })),
     coverage: coverage.map(r => ({ market: r.market, offering: r.offering, published: r.published, business_codes: r.business_codes })),
     active_release: { release_id: active.id, release_no: Number(active.release_no) },
   };

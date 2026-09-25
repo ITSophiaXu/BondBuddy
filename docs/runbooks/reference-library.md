@@ -37,7 +37,19 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 ## 3. 定时同步
 
 - 入口：`node apps/worker/dist/library-sync-cli.js [source_id]`（需要 `DATABASE_URL`、`AZURE_STORAGE_CONNECTION_STRING`，可选 `BB_LIBRARY_CONTAINER`、`BB_LIBRARY_MAX_PROJECTS`、`BB_PYTHON`、`BB_REPO_ROOT`）。每次调用：登记来源 → 若无进行中的同步则入队 → 执行至空闲 → 在 stdout 打印脱敏 JSON 摘要（只有计数和代码）。
-- 建议周期：SSE 每 6 小时一次（cron / systemd timer）；`stale_after_seconds` 默认 48 小时。部署（Compose 定时器）属于 #35/#17 的部署工作，尚未接入。
+- 手动入口仍可用于演练和一次性补跑；常规运行改用下面的 ops 调度任务。
+
+### 3.1 ops 调度任务 `library_sync`（迁移 0032）
+
+- 在 ops 调度器（`apps/worker/dist/ops-scheduler.js`，Compose 服务 `ops`）设置 `BB_OPS_LIBRARY_SYNC=on` 开启，默认关闭。需要 `AZURE_STORAGE_CONNECTION_STRING`；可选 `BB_LIBRARY_CONTAINER`、`BB_LIBRARY_MAX_PROJECTS`（默认 3）、`BB_LIBRARY_MAX_JOBS_PER_PASS`（默认 5）、`BB_LIBRARY_STALE_FACTOR`（默认 2）、`BB_OPS_LIBRARY_SYNC_SECONDS`（检查周期，默认 60 s）、`BB_OPS_LIBRARY_SYNC_LEASE_SECONDS`（默认 1800 s）。
+- 每次运行：①领取到期来源：`enabled`、`kind='public_disclosure'`、未撤回、`next_sync_due_at<=now()`，对 `sync_lease_owner/sync_lease_until` 做条件 UPDATE，多个调度实例不会重复领取同一来源；②每个来源入队一个 `library_sync` job（有进行中的 job 时复用它）；③调用共用流水线清空 library job（发现 → 下载 → 按 hash 去重 → 解析/分类 → 待审队列，增量游标和按条重试沿用第 3 节）；④释放租约，并设 `next_sync_due_at = now() + sync_interval_seconds × (1 ± 10% 抖动)`；⑤检查来源是否陈旧。
+- 周期按来源配置：`bb_library_sources.sync_interval_seconds`，默认 86400（每天），取值范围 300 s 至 1 年。SSE 登记为每天一次。修改方法（运营 SQL，写审计时带原因）：`UPDATE bb_library_sources SET sync_interval_seconds=21600 WHERE id='sse_bond_project_platform';`。
+- 单次执行与恢复：job 通过 `bb_jobs` 租约领取（`SKIP LOCKED`）。实例崩溃后，job 保持 `running`，租约到期后由任一实例接管（`lease_recovered`），从检查点 `next_index` 继续执行，已完成的条目和发现结果不会重做。
+- 告警（写入 #79 `bb_ops_alerts`，在 `/api/v1/admin/alerts` 可见）：
+  - `library_sync_failed`（critical，scope=来源 id，按小时去重）：同步最终失败，或部分条目失败（`partial`）时触发。`consecutive_failures` 加 1；只有全部条目成功才清零。
+  - `library_source_stale`（warning，scope=来源 id，每个 `sync_interval_seconds` 周期最多一条）：距上次成功（从未成功则从登记时间算起）超过 `BB_LIBRARY_STALE_FACTOR × sync_interval_seconds`。
+- `evaluation_only` 来源照常同步和审核，用于评估，但查询时按使用权过滤，任何版本都不会成为任务候选；有测试覆盖。
+- 资源：解析在 ops 容器内运行 Python 子进程。开启前把 `ops` 的内存上限和 `NODE_OPTIONS` 调到与 worker 相当（默认 64M/40M 只够原有轻量任务），并在出口代理的允许列表中加入 `query.sse.com.cn`、`static.sse.com.cn`。
 - 增量游标：`{"publish_date": "<最高已见 PUBLISH_DATE>"}`，下一次从同一日期起重扫（重叠一天），重复条目记为 `unchanged`。失败条目以 `retry_items` 写入游标，直到成功为止，不会因游标前进而丢失。
 - 只有全部条目成功时才更新 `last_success_at`；部分失败记 `partial` 并设置 `last_error_code`。
 - 限速：请求间隔 ≥700 ms，单文件下载超时 180 s，单文件上限 150 MiB，按条最多 3 次尝试（退避 5 s × 次数）。
@@ -48,7 +60,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 
 | 方法 | 路径 | 角色 | 说明 |
 |---|---|---|---|
-| GET | `/overview` | reader | 新增(24h)/待处理/失败/陈旧来源/已发布/待审数量，来源最近成功时间，按市场×方式的覆盖与三业务代码数，活动索引发布 |
+| GET | `/overview` | reader | 新增(24h)/待处理/失败/陈旧来源/已发布/待审数量；每个来源的最近成功、最近尝试、下次到期（`next_sync_due_at`）、周期（`sync_interval_seconds`）和连续失败次数（`consecutive_failures`）；按市场×方式的覆盖与三业务代码数；活动索引发布 |
 | GET | `/alerts` | reader | 告警列表（见第 5 节） |
 | GET | `/misses` | reader | 未命中汇总（仅查询形状和集合键哈希，无用户数据） |
 | GET | `/reviews` | reader | 待审队列 |
@@ -73,11 +85,20 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 ]
 ```
 
+#79 告警表中的调度告警（`GET /api/v1/admin/alerts`，合成样例）：
+
+```json
+[
+  {"kind":"library_sync_failed","severity":"critical","detail":{"source_id":"sse_bond_project_platform","error_code":"library_source_unreachable","consecutive_failures":2}},
+  {"kind":"library_source_stale","severity":"warning","detail":{"source_id":"sse_bond_project_platform","age_seconds":190000,"threshold_seconds":172800,"never_succeeded":0}}
+]
+```
+
 处理：`source_sync_failed` → 查看最近一次 `bb_library_sync_runs` / `bb_library_sync_items`（按 `error_code`），确认来源是否可达，再次触发同步；`source_stale` → 检查定时器是否在运行、来源是否被禁用；`items_failed` → `GET /versions/:id` 查看原因后 `rerun`；`review_backlog` → 安排审核人。告警目前通过 `/alerts` 拉取；推送到告警通道依赖 #79 的告警汇（PR #152）。
 
 ## 6. 失败恢复演练
 
-以下每一步都有对应自动化测试（`apps/worker/src/library.test.ts`，合成数据），可在预发环境按同样步骤手动演练：
+以下每一步都有对应自动化测试（`apps/worker/src/library.test.ts`、`library-scheduler.test.ts`，合成数据），可在预发环境按同样步骤手动演练：
 
 1. **来源不可达**：让适配器返回错误（或断网）→ 任务 `retry_scheduled` 后达到上限 `failed`，`error_code=LIBRARY_SOURCE_UNREACHABLE`，#79 错误记录依次为 `retry_scheduled`、`terminal`，`/alerts` 出现 `source_sync_failed`。恢复连通后 `POST /sources/:id/sync`。
 2. **同步中途崩溃**：在第 1 条完成后杀掉 worker（测试中使租约过期）→ 下一次运行接管同一 job，从第 2 条继续，第 1 条不重新下载，版本不重复。
@@ -109,4 +130,5 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 - 默认分类器不自动抽取前三大业务；自动抽取属于 Xuefeng 的抽取工作，业务词典与品种取值（`corporate_bond`、`renewable_corporate_bond` 等）尚待 Maxy 确认后进入公共枚举。
 - 现有 Python 解析桥在子进程有任何 stderr 输出时判定失败；真实 SSE PDF 会触发 pypdf 的 “Ignoring wrong pointing object” 警告，因此部分真实文件解析失败（见 PR 证据）。需由解析桥负责人决定是否放宽。
 - SSE 来源在书面许可前为 `evaluation_only`，真实文件不会进入任务候选；首批“真实已审核参考稿”仍依赖 #77 的授权与业务审核。
-- 定时器部署、告警推送与 #79 统一授权依赖 #35 与 PR #152。
+- 定时同步已接入 ops 调度器，但默认关闭；在生产开启前需要调高 ops 的内存限制、配置出口允许列表，并完成真实 SSE 首次和增量同步的证据（本 PR 只有合成测试）。告警推送与 #79 统一授权依赖 #35 与 PR #152。
+- 周期目前只能通过 SQL 修改，还没有管理接口。
