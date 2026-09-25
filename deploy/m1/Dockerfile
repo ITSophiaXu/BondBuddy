@@ -19,7 +19,7 @@ RUN npm run build && npm prune --omit=dev --no-audit --no-fund \
 COPY db db
 COPY python python
 COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/worker-loop.sh deploy/m1/scripts/
-COPY deploy/m1/nginx/default.conf deploy/m1/nginx/
+COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
 # Normalise permissions regardless of the build host's umask; the runtime user only reads.
 RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + ; chmod -R a+rX,go-w /app && chmod 0755 deploy/m1/scripts/worker-loop.sh
 
@@ -56,4 +56,5 @@ CMD ["worker-loop"]
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 COPY --from=build /app/deploy/m1/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/deploy/m1/nginx/security-headers.conf /etc/nginx/conf.d/snippets/security-headers.conf
 EXPOSE 8080

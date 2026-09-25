@@ -12,6 +12,8 @@ cp "$tmp/body" "$tmp/index.html"
 grep -qi '<script' "$tmp/index.html" || fail "/ is not the web app"
 grep -qi '^x-content-type-options: nosniff' "$tmp/headers" || fail "missing nosniff"
 grep -qi '^content-security-policy:' "$tmp/headers" || fail "missing CSP"
+grep -qiE '^strict-transport-security: max-age=[0-9]+' "$tmp/headers" || fail "missing HSTS"
+[ "$(grep -ci '^strict-transport-security:' "$tmp/headers")" = 1 ] || fail "HSTS not sent exactly once"
 grep -qi '^server: .*[0-9]' "$tmp/headers" && fail "server version exposed"
 [ "$(code "$base/api/v1/me")" = 401 ] || fail "/api/v1/me should be 401 anonymously"
 for asset in $(grep -o '/assets/[^"]*\.js' "$tmp/index.html" || true); do
