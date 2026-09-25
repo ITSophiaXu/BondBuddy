@@ -1,12 +1,13 @@
-import { MARKET_LABELS, OFFERING_LABELS, MATERIAL_PARSE_OCR_STAGE, type MaterialParseJob, type Recognition } from '@bondbuddy/contracts';
+import { MARKET_LABELS, OFFERING_LABELS, MATERIAL_PARSE_OCR_STAGE, type MaterialParseJob, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { esc, date } from './ui.js';
 
 type Material = Dto<'MaterialResponse'>;
-type Reader = Pick<ApiClient, 'materialParseJob' | 'sourceProfile' | 'material'>;
+type Reader = Pick<ApiClient, 'materialParseJob' | 'sourceProfile' | 'material'> & Partial<Pick<ApiClient, 'correctSourceProfile'>>;
+type Target = { market: Dto<'ProjectResponse'>['market']; offering: Dto<'ProjectResponse'>['offering'] };
 type Entry = {
   material: Material; job?: MaterialParseJob; profile?: Recognition;
-  error?: string; profileError?: string; loading: boolean; requested: boolean;
+  error?: string; profileError?: string; correctionError?: string; correcting?: boolean; correctionUnavailable?: boolean; loading: boolean; requested: boolean;
   controller?: AbortController; timer?: ReturnType<typeof setTimeout>; polls: number;
 };
 export const materialProcessingKey = (material: Material) => `${material.material_id}:${material.material_version}:${material.sha256}`;
@@ -46,33 +47,63 @@ function jobSummary(job: MaterialParseJob, role: Material['role']): [string, str
   }
 }
 
-type Source = Pick<Recognition['source_market'], 'status' | 'uncertainty' | 'raw_value'>;
+type Source = Pick<Recognition['source_market'], 'status' | 'uncertainty' | 'raw_value' | 'provenance'>;
 function sourceNotes(field: Source) {
   const status = field.status === 'unknown' ? '未识别'
     : field.status === 'user_asserted' ? '用户提供 · 尚非核验事实'
     : field.status === 'needs_confirmation' || field.uncertainty.length ? '待确认' : '已识别';
-  return `<p class="source-certainty">${status}</p>${field.uncertainty.length ? `<ul class="source-uncertainty">${field.uncertainty.map(note => `<li>${esc(note)}</li>`).join('')}</ul>` : ''}
+  return `<p class="source-certainty">${status}</p>${field.provenance.evidence_refs.length ? `<p class="source-evidence-refs">证据锚点：${field.provenance.evidence_refs.map(ref => esc(ref)).join('、')}</p>` : '<p class="source-evidence-refs">暂无证据锚点</p>'}${field.uncertainty.length ? `<ul class="source-uncertainty">${field.uncertainty.map(note => `<li>${esc(note)}</li>`).join('')}</ul>` : ''}
     ${field.raw_value ? `<blockquote class="source-quote">原文：${esc(field.raw_value)}</blockquote>` : ''}`;
 }
 
-function renderProfile(profile: Recognition) {
+function renderCorrection(profile: Recognition, key: string) {
+  const fields = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
+  const refs = [...new Set(fields.flatMap(field => field.provenance.evidence_refs))];
+  const evidence = refs.length ? `<fieldset class="source-evidence"><legend>可引用的原文证据</legend><p class="source-note">只选择与你本次校正直接相关的材料锚点。引用锚点仍需人工核对，不会把校正变成已核验事实。</p>${refs.map((ref, index) => `<label><input type="checkbox" name="evidence_ref" value="${esc(ref)}"><span>证据 ${index + 1} · ${esc(ref)}</span></label>`).join('')}</fieldset>` : '<p class="source-note">当前没有可引用的识别锚点。提交内容仍会保存为用户提供、待人工确认。</p>';
+  const periods = profile.reporting_periods.map((period, index) => `<fieldset class="source-period-edit"><legend>报告期 ${index + 1}</legend>
+    <label>开始日期<input name="period_start_${index}" type="date" value="${esc(period.start ?? '')}"></label>
+    <label>截止日期<input name="period_end_${index}" type="date" value="${esc(period.end ?? '')}"></label>
+    <label>期间类型<select name="period_kind_${index}"><option value="">待确认</option><option value="annual" ${period.period_kind === 'annual' ? 'selected' : ''}>年度</option><option value="interim" ${period.period_kind === 'interim' ? 'selected' : ''}>中期</option></select></label>
+    <label>报表口径<select name="period_scope_${index}"><option value="">待确认</option><option value="consolidated" ${period.scope === 'consolidated' ? 'selected' : ''}>合并口径</option><option value="parent" ${period.scope === 'parent' ? 'selected' : ''}>母公司口径</option></select></label></fieldset>`).join('');
+  return `<details class="source-correction"><summary>校正历史稿源信息</summary><form data-source-correction="${esc(key)}">
+    <input type="hidden" name="profile_version" value="${profile.profile_version}">
+    <p class="source-note">请对照原文件填写。校正只记录为“用户提供 · 尚非核验事实”，不会自动确认业务事实。</p>
+    <label class="source-correction-toggle"><input type="checkbox" name="correct_market"><span>校正原发行市场</span></label>
+    <label>原发行市场<select name="source_market"><option value="">未知</option>${Object.entries(MARKET_LABELS).map(([value, label]) => `<option value="${value}" ${profile.source_market.value === value ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
+    <label class="source-correction-toggle"><input type="checkbox" name="correct_offering"><span>校正原发行方式</span></label>
+    <label>原发行方式<select name="source_offering"><option value="">未知</option>${Object.entries(OFFERING_LABELS).map(([value, label]) => `<option value="${value}" ${profile.source_offering.value === value ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
+    <p class="source-note">发行方式可用性会按所选原市场校验。</p>
+    <label class="source-correction-toggle"><input type="checkbox" name="correct_periods"><span>校正完整原报告期列表及最新截止日</span></label>
+    <div class="source-period-edit-list">${periods || '<p class="source-note">当前没有报告期可校正；请先完成识别或补充材料。</p>'}</div>
+    ${evidence}
+    <label>校正原因<textarea name="reason" required minlength="1" maxlength="500" rows="3"></textarea></label>
+    <p class="source-correction-message" role="status">${''}</p>
+    <button type="submit" class="button secondary">保存校正</button>
+  </form></details>`;
+}
+
+function renderProfile(profile: Recognition, target?: Target, key = '', canCorrect = true) {
   const state = { queued: '等待识别', analyzing: '识别中', ready: '源信息已识别', needs_confirmation: '源信息待确认', failed: '源信息识别失败' }[profile.state];
   return `<section class="source-profile" aria-label="历史稿识别结果"><h4>历史稿信息 <small>${state}</small></h4>
-    <p class="source-note">以下来自历史稿，供更新难度评估使用。本次发行目标仍以项目表单为准。</p>
+    <p class="source-note">以下信息来自历史稿，描述历史发行来源。</p>
+    <section class="source-target" aria-label="本次发行目标"><h5>本次发行目标</h5><p>${target?.market ? esc(MARKET_LABELS[target.market]) : '市场未设置'} · ${target?.offering ? esc(OFFERING_LABELS[target.offering]) : '发行方式未设置'}</p><p class="source-note">目标取自项目表单，与下方历史稿来源分开保存。</p></section>
     <dl class="source-fields"><div><dt>原发行市场</dt><dd>${esc(profile.source_market.value ? MARKET_LABELS[profile.source_market.value] : '未识别')}${sourceNotes(profile.source_market)}</dd></div>
     <div><dt>原发行方式</dt><dd>${esc(profile.source_offering.value ? OFFERING_LABELS[profile.source_offering.value] : '未识别')}${sourceNotes(profile.source_offering)}</dd></div>
     <div><dt>最新报告截止日</dt><dd>${esc(profile.latest_reporting_cutoff.value ?? '未识别')}${sourceNotes(profile.latest_reporting_cutoff)}</dd></div></dl>
     <h5>原报告期</h5>${profile.reporting_periods.length ? `<ul class="source-periods">${profile.reporting_periods.map(period => `<li><p>${esc(period.start ?? '起始日待确认')} 至 ${esc(period.end ?? '截止日待确认')}</p><p>${period.period_kind === 'annual' ? '年度' : period.period_kind === 'interim' ? '中期' : '期间类型待确认'} · ${period.scope === 'consolidated' ? '合并口径' : period.scope === 'parent' ? '母公司口径' : '报表口径待确认'}</p>${sourceNotes(period)}</li>`).join('')}</ul>` : '<p class="source-note">未识别到有依据的报告期，不能用发行日或签署日代替。</p>'}
-    <p class="source-note">来源：本文件第 ${profile.material_version} 版 · 识别结果第 ${profile.profile_version} 版。请对照原文件核对；源信息在线校正尚未开放。</p></section>`;
+    <p class="source-note">来源：本文件第 ${profile.material_version} 版 · 识别结果第 ${profile.profile_version} 版。</p>
+    ${canCorrect ? renderCorrection(profile, key) : '<p class="source-note">源信息校正接口当前不可用，结果保持只读。</p>'}</section>`;
 }
 
-/** One instance per authenticated project view. Only reads; never enqueues, corrects or executes work. */
+/** One instance per authenticated project view. Reads job/profile state and applies only explicit source-profile corrections. */
 export class MaterialProcessing {
   private entries = new Map<string, Entry>();
   private disposed = false;
   private visible = true;
   private running = 0;
-  constructor(private api: Reader, private projectId: string, private changed: () => void) {}
+  constructor(private api: Reader, private projectId: string, private changed: () => void, private target?: Target) {}
+
+  setTarget(target: Target) { this.target = target; this.changed(); }
 
   sync(materials: Material[]) {
     if (this.disposed) return;
@@ -116,10 +147,47 @@ export class MaterialProcessing {
     return `<div class="material-processing" data-material-processing="${esc(key)}" data-tone="${tone}">
       <p class="processing-title" role="status">${esc(title)}</p><p class="processing-hint">${esc(hint)}</p>
       ${entry?.job ? `<p class="processing-time">状态更新于 ${esc(date(entry.job.updated_at))}</p>` : ''}
-      ${entry?.profile ? renderProfile(entry.profile) : ''}
+      ${entry?.profile ? renderProfile(entry.profile, this.target, key, Boolean(this.api.correctSourceProfile) && !entry.correctionUnavailable) : ''}
       ${entry?.profileError ? `<p class="material-file-error">历史稿信息：${esc(entry.profileError)}</p>` : ''}
+      ${entry?.correctionError ? `<p class="material-file-error" role="status">${esc(entry.correctionError)}</p>` : ''}
       <button type="button" class="text-button" data-processing-retry="${esc(key)}" ${!entry || entry.loading ? 'disabled' : ''}>${!entry || entry.loading ? '正在读取状态…' : '重新读取状态'}</button>
     </div>`;
+  }
+
+  async correct(key: string, patch: RecognitionPatchRequest) {
+    const entry = this.entries.get(key);
+    if (this.disposed || !entry?.profile || entry.correcting) return;
+    if (!this.api.correctSourceProfile) {
+      entry.correctionError = '当前服务未开放源信息校正，识别结果保持只读。'; this.changed(); return;
+    }
+    entry.correcting = true; entry.correctionError = undefined; this.changed();
+    try {
+      const profile = await this.api.correctSourceProfile(this.projectId, entry.material.material_id, patch);
+      const sources = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
+      if (profile.material_id !== entry.material.material_id || profile.material_version !== entry.material.material_version ||
+          profile.profile_version <= patch.profile_version || sources.some(field => field.provenance.material_id !== entry.material.material_id || field.provenance.material_version !== entry.material.material_version)) {
+        throw new Error('Profile version mismatch');
+      }
+      entry.profile = profile;
+      entry.correctionError = '校正已保存为用户提供的信息，仍需人工确认。';
+      this.changed();
+      this.refresh(key);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        entry.correctionError = '识别版本或引用证据已更新。正在读取最新版本，请核对后重新提交。';
+        entry.requested = true; entry.loading = true;
+      } else if (error instanceof ApiError && (error.status === 404 || error.status === 501 || error.code === 'CAPABILITY_NOT_READY')) {
+        entry.correctionUnavailable = true;
+        if (error.status === 404) { entry.profile = undefined; entry.requested = true; entry.loading = true; }
+        entry.correctionError = '校正接口或材料记录当前不可用，结果保持只读。';
+      } else {
+        entry.correctionError = '校正未保存。请核对原文件、原因和引用证据后重试。';
+      }
+      this.changed();
+      if (error instanceof ApiError && [404, 409].includes(error.status)) this.pump();
+    } finally {
+      entry.correcting = false; this.changed();
+    }
   }
 
   private pump() {

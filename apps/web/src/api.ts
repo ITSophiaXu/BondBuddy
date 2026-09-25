@@ -99,6 +99,9 @@ export class ApiClient {
   sourceProfile(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'RecognitionResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/source-profile`, undefined, {}, signal);
   }
+  correctSourceProfile(id: string, materialId: string, input: Dto<'RecognitionPatchRequest'>) {
+    return this.request<Dto<'RecognitionResponse'>>('PATCH', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/source-profile`, input, { 'If-Match': String(input.profile_version) });
+  }
   projectEvents(id: string, after: number, signal?: AbortSignal) {
     return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
   }

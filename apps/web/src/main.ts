@@ -10,7 +10,7 @@ import { date, esc, icon } from './ui';
 import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USERNAME_PATTERN, validateRegister } from './register';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
-import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
 
@@ -328,7 +328,7 @@ function renderNew() {
 
 function renderProject(project: Dto<'ProjectResponse'>) {
   draft = new Draft(project, api, updateSaveState);
-  materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
+  materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id), { market: project.market, offering: project.offering });
   materialProcessing.setVisible(document.visibilityState === 'visible');
   const value = { ...draft.fields, kind: 'update' as const, issuer_name: draft.fields.issuer_name || null };
   shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">填写本次更新的目标，已保存的资料可以随时回来继续。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
@@ -339,7 +339,7 @@ function renderProject(project: Dto<'ProjectResponse'>) {
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section>`, 'projects');
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
-  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); updateMaterialWorkspace(project.project_id); });
+  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); materialProcessing?.setTarget({ market: value.market, offering: value.offering }); updateMaterialWorkspace(project.project_id); });
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的输入，是否继续？')) return;
@@ -433,11 +433,14 @@ function updateProcessingRows(projectId: string) {
     const material = materials.get(element.dataset.materialProcessing!);
     if (!material) continue;
     const focused = element.contains(document.activeElement);
+    const correctionOpen = element.querySelector<HTMLDetailsElement>('details.source-correction')?.open ?? false;
     const template = document.createElement('template');
     template.innerHTML = materialProcessing.render(material);
     const replacement = template.content.firstElementChild!;
     if (element.outerHTML !== replacement.outerHTML) {
       element.replaceWith(replacement);
+      const correction = replacement.querySelector<HTMLDetailsElement>('details.source-correction');
+      if (correction) correction.open = correctionOpen;
       if (focused) replacement.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
     }
   }
@@ -694,6 +697,43 @@ async function refreshProjectMaterials(projectId: string, token: number) {
 
 function bindMaterialWorkspace(projectId: string) {
   const host = document.querySelector<HTMLElement>('#material-partitions')!;
+  host.addEventListener('submit', event => {
+    const form = (event.target as HTMLElement).closest<HTMLFormElement>('[data-source-correction]');
+    if (!form) return;
+    event.preventDefault();
+    const data = new FormData(form);
+    const message = form.querySelector<HTMLElement>('.source-correction-message');
+    const correctMarket = data.has('correct_market'), correctOffering = data.has('correct_offering'), correctPeriods = data.has('correct_periods');
+    if (!correctMarket && !correctOffering && !correctPeriods) {
+      if (message) message.textContent = '请选择至少一项需要校正的信息。';
+      return;
+    }
+    const market = String(data.get('source_market') ?? '') as Market | '';
+    const offering = String(data.get('source_offering') ?? '') as Offering | '';
+    if (market && offering && !isMarketOffering(market, offering)) {
+      if (message) message.textContent = '所选发行方式不适用于该市场，请重新核对历史稿。';
+      return;
+    }
+    const evidence_refs = data.getAll('evidence_ref').map(String);
+    const patch: Dto<'RecognitionPatchRequest'> = {
+      profile_version: Number(data.get('profile_version')),
+      reason: String(data.get('reason') ?? '').trim(), evidence_refs,
+      ...(correctMarket ? { source_market: market || null } : {}),
+      ...(correctOffering ? { source_offering: offering || null } : {}),
+      ...(correctPeriods ? { reporting_periods: [...form.querySelectorAll<HTMLInputElement>('[name^="period_start_"]')].map((input, index) => ({
+        start: String(data.get(`period_start_${index}`) ?? '') || null,
+        end: String(data.get(`period_end_${index}`) ?? '') || null,
+        period_kind: (String(data.get(`period_kind_${index}`) ?? '') || null) as 'annual' | 'interim' | null,
+        scope: (String(data.get(`period_scope_${index}`) ?? '') || null) as 'consolidated' | 'parent' | null,
+        evidence_refs,
+      })) } : {}),
+    };
+    if (!Number.isSafeInteger(patch.profile_version) || patch.profile_version < 1 || !patch.reason) {
+      if (message) message.textContent = '请填写校正原因后再保存。';
+      return;
+    }
+    void materialProcessing?.correct(form.dataset.sourceCorrection!, patch);
+  });
   host.addEventListener('change', event => {
     const input = event.target;
     if (!(input instanceof HTMLInputElement) || !input.matches('[data-upload-role]')) return;
