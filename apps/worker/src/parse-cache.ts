@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { parseCacheKey } from '@bondbuddy/domain/facts';
 import {
+  DOCUMENT_PARSER_MAX_OUTPUT_BYTES,
   DOCUMENT_PARSE_RESPONSE_VERSION,
   validateDocumentParseResponse,
   type DocumentParseRequest,
@@ -215,13 +216,18 @@ export async function saveParseCache(
   dependencies: ParseCacheDependencies,
   context: ParseCacheContext,
   response: DocumentParseResponse,
+  maxObjectBytes = DOCUMENT_PARSER_MAX_OUTPUT_BYTES,
 ): Promise<boolean> {
+  if (!Number.isSafeInteger(maxObjectBytes) || maxObjectBytes < 1 || maxObjectBytes > DOCUMENT_PARSER_MAX_OUTPUT_BYTES) {
+    throw cacheError('INVALID_PARSE_CACHE_LIMIT');
+  }
   assertCacheableContext(context);
   const validated = validateDocumentParseResponse(response, context.request);
   if (validated.parser_version !== context.versions.parserVersion) throw cacheError('PARSE_CACHE_VERSION_MISMATCH');
   if (validated.status === 'failed') return false;
   assertStrictCachedResponse(validated);
   const bytes = Buffer.from(JSON.stringify(validated), 'utf8');
+  if (bytes.byteLength > maxObjectBytes) throw cacheError('PARSE_CACHE_OBJECT_TOO_LARGE');
   const objectSha256 = createHash('sha256').update(bytes).digest('hex');
   // Keep the private object namespace account-scoped as a second boundary in
   // addition to the owner predicate on bb_parse_cache. Hash the owner ID so
