@@ -4,10 +4,14 @@ References use archived official attachment paragraph indices / physical PDF pag
 The common authoring source and the other five scope drafts stay unchanged.
 """
 
-VERSION = '2026.09.26-draft.2'
-PREVIOUS_VERSION = '2026.09.25-draft.1'
+VERSION = '2026.09.26-draft.3'
+PREVIOUS_VERSION = '2026.09.26-draft.2'
 EVIDENCE_VERSION = '2026.09.26-evidence.1'
 AUTHORED_AT = '2026-09-26T04:46:22Z'
+
+# Five bounded structured-evidence checks; all other candidates still need implementations.
+EXECUTABLE_CHECKS = {'private-investors', 'financial-validity-sse', 'private-use-change',
+                     'idle-proceeds-2026', 'continuing-disclosure'}
 
 # key -> chapters, official reference pairs, limitation specific to this rule.
 A = 'sse-application-2023'
