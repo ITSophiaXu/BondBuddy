@@ -37,6 +37,7 @@ export interface ParseSnapshotMetric {
   record_count: number;
   stored_response_sha256: string;
   ordered_records_sha256: string;
+  ordered_content_sha256: string;
 }
 
 export interface DocxAnchorMetric {
@@ -122,6 +123,47 @@ export function orderedRecordsSha256(snapshot: AuditSnapshotRow, evidence: Audit
   return sha256(canonical(ordered.map((row) => restoredRecord(snapshot, row))));
 }
 
+export function orderedContentSha256(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRow[]): string {
+  const ordered = [...evidence].sort((a, b) => Number(a.ordinal) - Number(b.ordinal));
+  const records = ordered.map((row) => {
+    const { material_id: _materialId, material_version: _materialVersion, content_hash: _contentHash, ...content } = restoredRecord(snapshot, row);
+    return content;
+  });
+  return sha256(canonical(records));
+}
+
+export type DocxComparisonMetric =
+  | { status: 'trivial_same_job_replay' }
+  | { status: 'not_comparable'; reason: 'source_sha256_mismatch' | 'parser_version_mismatch' }
+  | { status: 'comparable'; ordered_content_hashes_equal: boolean };
+
+export function compareDocxSnapshots(
+  jobIdA: string,
+  snapshotA: AuditSnapshotRow,
+  evidenceA: AuditEvidenceRow[],
+  jobIdB: string,
+  snapshotB: AuditSnapshotRow,
+  evidenceB: AuditEvidenceRow[],
+): DocxComparisonMetric {
+  if (jobIdA === jobIdB) return { status: 'trivial_same_job_replay' };
+  if (snapshotA.content_sha256.trim().toLowerCase() !== snapshotB.content_sha256.trim().toLowerCase()) {
+    return { status: 'not_comparable', reason: 'source_sha256_mismatch' };
+  }
+  if (snapshotA.parser_version !== snapshotB.parser_version) {
+    return { status: 'not_comparable', reason: 'parser_version_mismatch' };
+  }
+  return {
+    status: 'comparable',
+    ordered_content_hashes_equal: orderedContentSha256(snapshotA, evidenceA) === orderedContentSha256(snapshotB, evidenceB),
+  };
+}
+
+export function anchorSnapshotMatchesDocxPair(anchor: AuditSnapshotRow, docxA: AuditSnapshotRow, docxB: AuditSnapshotRow): boolean {
+  const sourceSha = anchor.content_sha256.trim().toLowerCase();
+  return sourceSha === docxA.content_sha256.trim().toLowerCase() && sourceSha === docxB.content_sha256.trim().toLowerCase() &&
+    anchor.parser_version === docxA.parser_version && anchor.parser_version === docxB.parser_version;
+}
+
 export function snapshotMetric(snapshot: AuditSnapshotRow, evidence: AuditEvidenceRow[]): ParseSnapshotMetric {
   if (!SHA256.test(snapshot.response_sha256.trim().toLowerCase()) ||
       Number(snapshot.record_count) !== evidence.length ||
@@ -134,6 +176,7 @@ export function snapshotMetric(snapshot: AuditSnapshotRow, evidence: AuditEviden
     record_count: evidence.length,
     stored_response_sha256: snapshot.response_sha256.trim().toLowerCase(),
     ordered_records_sha256: orderedRecordsSha256(snapshot, evidence),
+    ordered_content_sha256: orderedContentSha256(snapshot, evidence),
   };
 }
 
@@ -248,6 +291,7 @@ function parseTargets(raw: string | undefined): Targets {
 export async function runParseSnapshotAudit(databaseUrl: string | undefined, targetsValue: string | undefined): Promise<Record<string, unknown>> {
   if (!databaseUrl) throw new Error('AUDIT_DATABASE_URL_REQUIRED');
   const targets = parseTargets(targetsValue);
+  if (targets.docx_a_job_id === targets.docx_b_job_id) throw new Error('AUDIT_DISTINCT_DOCX_JOB_IDS_REQUIRED');
   const pool = new Pool({ connectionString: databaseUrl, max: 1, application_name: 'bondbuddy-parse-snapshot-audit' });
   const client = await pool.connect();
   try {
@@ -259,15 +303,22 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
       readSnapshot(client, targets.anchor_docx_job_id, DOCX_MEDIA),
       readSnapshot(client, targets.xlsx_job_id, XLSX_MEDIA),
     ]);
+    const anchorBindingMatches = anchorSnapshotMatchesDocxPair(anchors.snapshot, docxA.snapshot, docxB.snapshot);
+    const docxComparison = compareDocxSnapshots(targets.docx_a_job_id, docxA.snapshot, docxA.evidence,
+      targets.docx_b_job_id, docxB.snapshot, docxB.evidence);
     const result = {
       schema_version: 'parse-snapshot-audit-v1',
       database_access: 'read_only_transaction',
+      audit_status: anchorBindingMatches ? 'complete' : 'failed_anchor_binding',
       docx_jobs: {
         a: snapshotMetric(docxA.snapshot, docxA.evidence),
         b: snapshotMetric(docxB.snapshot, docxB.evidence),
-        ordered_records_hashes_equal: orderedRecordsSha256(docxA.snapshot, docxA.evidence) === orderedRecordsSha256(docxB.snapshot, docxB.evidence),
+        comparison: docxComparison,
       },
-      rq_202506_01_anchor_locator_presence: docxAnchorMetric(anchors.evidence),
+      anchor_source_binding_status: anchorBindingMatches ? 'matches_docx_pair' : 'mismatch',
+      rq_202506_01_anchor_locator_presence: anchorBindingMatches
+        ? docxAnchorMetric(anchors.evidence)
+        : { source_quote_independent_check: 'not_performed', locator_check: 'skipped_source_binding_mismatch' },
       xlsx: xlsxMetric(xlsx.snapshot, xlsx.evidence),
     };
     await client.query('COMMIT');
@@ -283,9 +334,13 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   runParseSnapshotAudit(process.env.BB_PARSE_AUDIT_DATABASE_URL, process.env.BB_PARSE_AUDIT_TARGETS_JSON)
-    .then((report) => process.stdout.write(`${JSON.stringify(report, null, 2)}\n`))
-    .catch(() => {
-      process.stderr.write('parse snapshot audit failed; inspect the redacted audit code and configuration\n');
+    .then((report) => {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (report.audit_status !== 'complete') process.exitCode = 1;
+    })
+    .catch((error: unknown) => {
+      const code = error instanceof Error && /^AUDIT_[A-Z0-9_]+$/.test(error.message) ? ` (${error.message})` : '';
+      process.stderr.write(`parse snapshot audit failed${code}; inspect the redacted audit configuration\n`);
       process.exitCode = 1;
     });
 }

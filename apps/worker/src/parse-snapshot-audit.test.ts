@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   docxAnchorMetric,
+  anchorSnapshotMatchesDocxPair,
+  compareDocxSnapshots,
+  orderedContentSha256,
   orderedRecordsSha256,
   snapshotMetric,
   xlsxMetric,
@@ -46,6 +49,44 @@ test('ordered record hash preserves array order while sorting object keys canoni
   const reversedPath = [evidence(0, { path: [{ paragraph: 4 }, { table: 2, row: 28, column: 3 }], stable_ref: 'synthetic' })];
   assert.equal(orderedRecordsSha256(snapshot(), first), orderedRecordsSha256(snapshot(), sameDifferentKeyOrder));
   assert.notEqual(orderedRecordsSha256(snapshot(), first), orderedRecordsSha256(snapshot(), reversedPath));
+});
+
+test('binding-normalized content hash matches separate material bindings for the same source and parser', () => {
+  const firstSnapshot = snapshot();
+  const secondSnapshot = { ...snapshot(), material_id: 'synthetic-material-copy', material_version: 7 };
+  const records = [evidence()];
+  assert.notEqual(orderedRecordsSha256(firstSnapshot, records), orderedRecordsSha256(secondSnapshot, records),
+    'full records hash retains material binding fields');
+  assert.equal(orderedContentSha256(firstSnapshot, records), orderedContentSha256(secondSnapshot, records),
+    'normalized content hash excludes only material id/version/content hash');
+  assert.deepEqual(compareDocxSnapshots('job-synthetic-a', firstSnapshot, records, 'job-synthetic-b', secondSnapshot, records), {
+    status: 'comparable', ordered_content_hashes_equal: true,
+  });
+});
+
+test('different DOCX jobs are not comparable across source or parser version changes', () => {
+  const first = snapshot();
+  const second = { ...snapshot(), content_sha256: 'c'.repeat(64) };
+  assert.deepEqual(compareDocxSnapshots('job-a', first, [evidence()], 'job-b', second, [evidence()]), {
+    status: 'not_comparable', reason: 'source_sha256_mismatch',
+  });
+  assert.deepEqual(compareDocxSnapshots('job-a', first, [evidence()], 'job-b', { ...first, parser_version: 'parser-2' }, [evidence()]), {
+    status: 'not_comparable', reason: 'parser_version_mismatch',
+  });
+});
+
+test('same-job replay is explicitly trivial and not cross-job comparison evidence', () => {
+  assert.deepEqual(compareDocxSnapshots('same-job', snapshot(), [evidence()], 'same-job', snapshot(), [evidence()]), {
+    status: 'trivial_same_job_replay',
+  });
+});
+
+test('anchor snapshot binding must match both DOCX jobs and parser versions', () => {
+  const first = snapshot();
+  const second = { ...snapshot(), material_id: 'synthetic-copy' };
+  assert.equal(anchorSnapshotMatchesDocxPair(snapshot(), first, second), true);
+  assert.equal(anchorSnapshotMatchesDocxPair({ ...snapshot(), content_sha256: 'c'.repeat(64) }, first, second), false);
+  assert.equal(anchorSnapshotMatchesDocxPair({ ...snapshot(), parser_version: 'parser-2' }, first, second), false);
 });
 
 test('anchor metric reports locator presence without claiming source quote verification', () => {
