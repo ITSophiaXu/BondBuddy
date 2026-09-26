@@ -3,6 +3,8 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { MARKETS, OFFERINGS, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 
+export * from './sse-private-applicability-taxonomy.js';
+
 export const RULE_PACK_SCHEMA_VERSION = 'rule-pack-v1' as const;
 export const RULE_SOURCE_KINDS = ['formal_rule','official_interpretation','internal_method','unverified_lead'] as const;
 export const RULE_ENFORCEMENTS = ['hard_block','soft_check','research_only'] as const;
