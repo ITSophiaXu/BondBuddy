@@ -95,6 +95,8 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     const wordLease=await claim(pool,30);assert.ok(wordLease);assert.equal(wordLease.runId,wordRun.json().run_id);
     const firstPromotion=await promoteWordArtifact(pool,wordLease,wordCandidate,blobs);
     assert.equal(firstPromotion.status,'available');assert.equal(firstPromotion.deliveryCode,'readback_verified');
+    assert.equal((await send('GET',`/api/v1/artifacts/${firstPromotion.artifactId}`)).statusCode,404,'verified bytes stay private until the whole run succeeds');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_artifact_download_grants WHERE artifact_id=$1',[firstPromotion.artifactId])).rows[0].n,0,'an unfinished run receives no download grant');
     const firstEvidenceCount=(await pool.query('SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE owner_user_id=$1 AND run_id=$2',[owner,wordLease.runId])).rows[0].n;
     assert.equal(firstEvidenceCount,1);
     const duplicatePromotion=await promoteWordArtifact(pool,wordLease,wordCandidate,blobs);
@@ -121,6 +123,25 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     assert.deepEqual(download.rawPayload,wordCandidate,'owned artifact download returns the hash-verified Word bytes');
     owner='synthetic-queue-b';assert.equal((await send('GET',`/api/v1/artifacts/${firstPromotion.artifactId}`)).statusCode,404);assert.equal((await send('GET',meta.json().download_url)).statusCode,404);
     owner='synthetic-queue-a';
+
+    // Exercise integrity failures only after creating a genuinely downloadable result.
+    // Use equal-length corruption so the hash check, not just the byte count, is covered.
+    const corruptedWord=Buffer.from(wordCandidate);corruptedWord[corruptedWord.length-1]^=1;
+    await blobs.put(firstPromotion.objectKey,corruptedWord,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const grantsBeforeCorruption=(await pool.query('SELECT count(*)::int n FROM bb_artifact_download_grants WHERE artifact_id=$1',[firstPromotion.artifactId])).rows[0].n;
+    const corruptMeta=await send('GET',`/api/v1/artifacts/${firstPromotion.artifactId}`);
+    assert.equal(corruptMeta.statusCode,503,'a changed Blob from a successful run cannot receive a fresh download grant');
+    assert.equal(corruptMeta.json().code,'DATA_UNAVAILABLE');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_artifact_download_grants WHERE artifact_id=$1',[firstPromotion.artifactId])).rows[0].n,grantsBeforeCorruption,'integrity failure issues no additional grants');
+    const corruptDownload=await send('GET',meta.json().download_url);
+    assert.equal(corruptDownload.statusCode,503,'an existing grant cannot bypass the fresh integrity check');
+    assert.equal(corruptDownload.json().code,'DATA_UNAVAILABLE');
+    owner='synthetic-queue-b';
+    assert.equal((await send('GET',`/api/v1/artifacts/${firstPromotion.artifactId}`)).statusCode,404,'integrity failures disclose nothing to another owner');
+    assert.equal((await send('GET',meta.json().download_url)).statusCode,404);
+    owner='synthetic-queue-a';
+    await blobs.put(firstPromotion.objectKey,wordCandidate,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    assert.deepEqual((await send('GET',meta.json().download_url)).rawPayload,wordCandidate,'restoring the verified bytes restores the existing download without a new run');
 
     const missingReadbackRun=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-word-missing-readback'});assert.equal(missingReadbackRun.statusCode,202,missingReadbackRun.body);
     const missingReadbackLease=await claim(pool,30);assert.ok(missingReadbackLease);assert.equal(missingReadbackLease.runId,missingReadbackRun.json().run_id);
@@ -151,7 +172,7 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     const tamperedLease=await claim(pool,30);assert.ok(tamperedLease);assert.equal(tamperedLease.runId,tamperedRun.json().run_id);
     const tampered=await promoteWordArtifact(pool,tamperedLease,wordCandidate,blobs);assert.equal(tampered.status,'available');
     await blobs.put(tampered.objectKey,Buffer.from('corrupt after validated readback'),'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    assert.equal((await send('GET',`/api/v1/artifacts/${tampered.artifactId}`)).statusCode,503,'a changed Blob cannot receive a fresh download grant');
+    assert.equal((await send('GET',`/api/v1/artifacts/${tampered.artifactId}`)).statusCode,404,'an unfinished run remains private even when its Blob is corrupt');
     await assert.rejects(finish(pool,tamperedLease,'succeeded',{artifactId:tampered.artifactId,artifactVersion:1,blobs}),/Word artifact hash mismatch/);
     assert.equal((await send('GET',`/api/v1/runs/${tamperedLease.runId}`)).json().state,'running','a changed Blob cannot produce run success');
     assert.equal((await pool.query('SELECT delivery_status FROM bb_artifact_versions WHERE id=$1',[tampered.artifactId])).rows[0].delivery_status,'revoked','a finish-time mismatch revokes the previously available row');
