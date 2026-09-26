@@ -1,3 +1,5 @@
+import { installAccountRecovery } from './account-recovery.js';
+import { listProjects, archiveProject } from './project-list.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
@@ -29,7 +31,7 @@ import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -78,6 +80,7 @@ export function createServer(settings: Settings = {}) {
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
   installAuth(app,auth);
+  installAccountRecovery(app,auth);
   // #17: the worker runtime executes queued runs; the synthetic flag remains for older tests.
   const runRuntime=settings.enableRunRuntime ?? process.env.BB_RUN_RUNTIME_ENABLED==='1';
   const queueEnabled=!!settings.enableSyntheticQueue||runRuntime;
@@ -106,7 +109,7 @@ export function createServer(settings: Settings = {}) {
     if(digest(bytes)!==artifact.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
     return bytes;
   }
-  installAdminRoutes(app,{db,blobs:blob,owner});
+  installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installEventStreams(app,{db,owner},settings.stream);
   const trial=settings.trial ?? trialConfigFromEnv();
   installTrialRoutes(app,{db,blobs,owner,config:trial});
@@ -121,12 +124,10 @@ export function createServer(settings: Settings = {}) {
   app.get('/openapi.json', async () => openApiDocument());
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   installFactReviewRoutes(app,{db,owner});
-  app.get('/api/v1/projects', async request => {
-    const user = await owner(request); const cursor = (request.query as {cursor?:string}).cursor;
-    const rows = await db().query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND deleted_at IS NULL AND ($2::text IS NULL OR id>$2) ORDER BY id LIMIT 51',[user,cursor ?? null]);
-    const items = rows.rows.slice(0,50).map(p => ({project_id:p.id,name:p.name,draft_revision:p.draft_revision,updated_at:date(p.updated_at)}));
-    return { items, page:{has_more:rows.rows.length>50,next_cursor:rows.rows.length>50 ? items.at(-1)?.project_id : null} };
-  });
+  app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
+    listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
+  app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
+    archiveProject(db(),await owner(request),param(request,'project_id'),body<{archived:boolean}>(request).archived));
   app.post('/api/v1/projects',{schema:{body:schemas.ProjectCreateRequest}},async (request,reply) => {
     const user=await owner(request), b=body<{name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);

@@ -48,7 +48,7 @@ export class ApiClient {
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
     const signal = signalOverride ?? this.controller.signal;
     let response = await this.send(method, path, body, headers, signal);
-    const authenticated = !['/auth/login', '/auth/register', '/auth/agreement'].includes(path);
+    const authenticated = !path.startsWith('/auth/recovery/') && !['/auth/login', '/auth/register', '/auth/agreement'].includes(path);
     if (response.status === 401 && authenticated && document.cookie.includes('bb_csrf=')) {
       if (!this.refresh) {
         const pending = this.send('POST', '/auth/refresh', undefined, {}, signal).then(async res => {
@@ -79,6 +79,16 @@ export class ApiClient {
   register(input: Dto<'RegisterRequest'>) { return this.request<Dto<'SessionResponse'>>('POST', '/auth/register', input); }
   agreement() { return this.request<AgreementResponse>('GET', '/auth/agreement'); }
   logout() { return this.request<void>('POST', '/auth/logout'); }
+  recoveryInfo() { return this.request<Dto<'RecoveryInfoResponse'>>('GET', '/auth/recovery/info'); }
+  recoveryAccount() { return this.request<Dto<'RecoveryAccountResponse'>>('GET', '/account/recovery'); }
+  recoveryBind(input: Dto<'RecoveryBindingRequest'>) { return this.request<Dto<'RecoveryBindingResponse'>>('POST', '/account/recovery/bindings', input); }
+  recoveryConfirm(id: string, code: string) { return this.request<Dto<'RecoveryAccountResponse'>>('POST', `/account/recovery/bindings/${encodeURIComponent(id)}/confirm`, { code }); }
+  recoveryRequest(username: string) { return this.request<Dto<'RecoveryTicketResponse'>>('POST', '/auth/recovery/requests', { username }); }
+  recoveryReset(token: string, new_password: string) { return this.request<Dto<'RecoveryResetResponse'>>('POST', '/auth/recovery/reset', { token, new_password }); }
+  supportBinding(id: string) { return this.request<Dto<'RecoverySupportBindingResponse'>>('GET', `/admin/account-recovery/bindings/${encodeURIComponent(id)}`); }
+  supportCode(id: string) { return this.request<Dto<'RecoverySupportCodeResponse'>>('POST', `/admin/account-recovery/bindings/${encodeURIComponent(id)}/code`); }
+  supportTicket(id: string) { return this.request<Dto<'RecoverySupportTicketResponse'>>('GET', `/admin/account-recovery/tickets/${encodeURIComponent(id)}`); }
+  supportIssue(id: string, binding_id: string) { return this.request<Dto<'RecoveryLinkResponse'>>('POST', `/admin/account-recovery/tickets/${encodeURIComponent(id)}/issue`, {binding_id, confirmed_original_channel:true}); }
   account() { return this.request<Dto<'AccountResponse'>>('GET', '/account'); }
   sessions() { return this.request<Dto<'AccountSessionListResponse'>>('GET', '/account/sessions'); }
   revokeSession(sessionId: string) { return this.request<void>('DELETE', `/account/sessions/${encodeURIComponent(sessionId)}`); }
@@ -86,7 +96,13 @@ export class ApiClient {
   changePassword(input: Dto<'PasswordChangeRequest'>) { return this.request<Dto<'PasswordChangeResponse'>>('POST', '/account/password', input); }
   closurePreview() { return this.request<Dto<'AccountClosurePreviewResponse'>>('GET', '/account/closure'); }
   closeAccount(input: Dto<'AccountClosureRequest'>) { return this.request<Dto<'AccountClosureResponse'>>('POST', '/account/closure', input); }
-  projects(cursor?: string) { return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
+  projects(cursor?: string, filters: Dto<'ProjectListQuery'> = {}, signal?: AbortSignal) {
+    const query = new URLSearchParams(filters);
+    if (cursor) query.set('cursor', cursor);
+    return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {}, signal);
+  }
+  archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
+  artifact(id: string) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`); }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
   deleteMaterial(id: string, materialId: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }

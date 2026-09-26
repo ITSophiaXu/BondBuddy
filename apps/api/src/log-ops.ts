@@ -18,20 +18,665 @@ const int = (value: unknown) => value === null || value === undefined ? null : N
 // ---------------------------------------------------------------- scrubbing
 
 export const SCRUB_VERSION = 'scrub_v1';
+const MAX_DIAGNOSTIC_BYTES = 10 * 1024 * 1024;
+const MAX_JSON_DEPTH = 1024;
+const MAX_JSON_STRING_LAYERS = 4;
+const sensitiveField = /^(?:setcookie|cookie|sessioncookie|authorization|proxyauthorization|apikey|xapikey|accesskey|clientsecret|secret|(?:access|refresh|bearer|id|session|auth)?token|(?:onetime)?password(?:confirmation)?|passwd|pwd|otp(?:code)?|captcha|verificationcode|验证码|校验码|动态码|短信码)$/iu;
+const redacted = '[REDACTED]';
+const isSensitiveField = (key: string) => sensitiveField.test(key.replace(/[_ -]/g, ''));
+class DiagnosticScrubError extends Error {
+  constructor() { super('Diagnostic body rejected'); this.name = 'DiagnosticScrubError'; }
+}
+class ScanLimitError extends DiagnosticScrubError {}
 const scrubRules: Array<[RegExp, string]> = [
-  [/\b(set-cookie|cookie)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
-  [/\b(authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
+  [/\b(set-cookie|cookie)([ \t]*[:=][ \t]*)[^\r\n]*/gi, '$1$2[REDACTED]'],
+  [/\b(authorization|proxy-authorization)([ \t]*[:=][ \t]*)[^\r\n]*/gi, '$1$2[REDACTED]'],
   [/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[REDACTED_JWT]'],
   [/\b(sk|rk|pk)-[A-Za-z0-9_-]{16,}/g, '[REDACTED_KEY]'],
-  [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
-  [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
+  [/\b(set[_-]?cookie|session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)((?:[ \t]*["'][ \t]*|[ \t]*)[:=][ \t]*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
+  [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)((?:[ \t]*["'][ \t]*|[ \t]*)[:=][ \t]*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
+  [/\b(otp(?:[_-]?code)?|captcha|verification[_ -]?code)((?:[ \t]*["'][ \t]*|[ \t]*)[:=][ \t]*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
+  [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)((?:[ \t]*[:：=是为][ \t]*|[ \t]*))[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
-/** Removes credentials, captcha/OTP codes and cookies before a prompt body is stored anywhere. */
-export function scrubSecrets(text: string) {
+function applyProseRules(text: string, budget: ScanBudget): string {
   let value = text;
-  for (const [pattern, replacement] of scrubRules) value = value.replace(pattern, replacement);
+  for (const [pattern, replacement] of scrubRules) {
+    spend(budget, value.length);
+    value = value.replace(pattern, replacement);
+  }
   return value;
+}
+type Edits = { starts: number[]; ends: number[]; values: string[]; resultLength: number };
+const newEdits = (length: number): Edits => ({ starts: [], ends: [], values: [], resultLength: length });
+const addEdit = (edits: Edits, start: number, end: number, value: string) => {
+  edits.resultLength += value.length - (end - start);
+  if (edits.resultLength > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  edits.starts.push(start); edits.ends.push(end); edits.values.push(value);
+};
+const space = (char: string) => char === ' ' || char === '\n' || char === '\r' || char === '\t';
+type ScanBudget = { remaining: number };
+function spend(budget: ScanBudget, units: number) {
+  budget.remaining -= units;
+  if (budget.remaining < 0) throw new ScanLimitError();
+}
+
+/** One syntax character, either literal or escaped by bounded JSON layers.
+ * Leave invalid escapes as prose; callers reject only if they form a field. */
+function syntaxAt(text: string, start: number, budget: ScanBudget): { char: string; end: number } | null {
+  if (start >= text.length) return null;
+  if (text[start] !== '\\') { spend(budget, 1); return { char: text[start], end: start + 1 }; }
+  let end = start + 1;
+  while (text[end] === '\\') end++;
+  const count = end - start;
+  if (text[end] === 'u' && /^[0-9a-fA-F]{4}$/.test(text.slice(end + 1, end + 5))) {
+    spend(budget, end + 5 - start);
+    return { char: String.fromCharCode(parseInt(text.slice(end + 1, end + 5), 16)), end: end + 5 };
+  }
+  spend(budget, end + 1 - start);
+  if (text[end] === '"' && (count === 1 || Number.isInteger(Math.log2(count + 1))))
+    return { char: '"', end: end + 1 };
+  return null;
+}
+
+function separatorAt(text: string, start: number, budget: ScanBudget): boolean {
+  let pos = start;
+  while (space(text[pos])) pos++;
+  spend(budget, pos - start);
+  let next = syntaxAt(text, pos, budget);
+  if (next?.char === '"') {
+    pos = next.end;
+    const before = pos;
+    while (space(text[pos])) pos++;
+    spend(budget, pos - before);
+    next = syntaxAt(text, pos, budget);
+  }
+  return next?.char === ':' || next?.char === '=';
+}
+
+function hasUnpairedSurrogate(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      if (++i >= value.length || value.charCodeAt(i) < 0xdc00 || value.charCodeAt(i) > 0xdfff) return true;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return true;
+  }
+  return false;
+}
+
+/** Decode a complete quoted field followed by ':' outside a JSON candidate.
+ * Invalid JSON escapes and lone surrogates are rejected before any Blob write. */
+function quotedFieldAt(text: string, start: number, layer: number, budget: ScanBudget): string | null {
+  if (text[start] === '\\' && text[start - 1] === '\\') return null;
+  const opening = syntaxAt(text, start, budget);
+  if (opening?.char === '"' && text[opening.end - 5] === 'u') {
+    // Consume the complete token. A long run of spaces may still normalize
+    // to a short known key; retain only the bounded normalized spelling.
+    let at = opening.end, key = '', invalid = false, closed = false, tooLong = false, high = false;
+    while (at < text.length) {
+      const unit = syntaxAt(text, at, budget);
+      if (unit?.char === '"') { at = unit.end; closed = true; break; }
+      if (text[at] === '\\' && !unit) invalid = true;
+      const char = unit?.char ?? text[at];
+      const code = char.charCodeAt(0);
+      if (high && (code < 0xdc00 || code > 0xdfff)) invalid = true;
+      if (!high && code >= 0xdc00 && code <= 0xdfff) invalid = true;
+      high = code >= 0xd800 && code <= 0xdbff;
+      if (code < 0x20) invalid = true;
+      if (char !== ' ' && char !== '_' && char !== '-') {
+        if (key.length + char.length <= 64) key += char;
+        else tooLong = true;
+      }
+      at = unit?.end ?? at + 1;
+    }
+    spend(budget, at - start);
+    if (!closed || !separatorAt(text, at, budget)) return null;
+    if (invalid || high) throw new DiagnosticScrubError();
+    return tooLong ? '' : key;
+  }
+  let layers = 0;
+  let openingEnd = start + 1;
+  if (text[start] === '\\' && text[start - 1] !== '\\') {
+    let quote = start + 1;
+    while (text[quote] === '\\') quote++;
+    const run = quote - start;
+    if (text[quote] !== '"' || !Number.isInteger(Math.log2(run + 1))) return null;
+    layers = Math.log2(run + 1);
+    openingEnd = quote + 1;
+  } else if (text[start] === '"') {
+    let precedingSlashes = 0;
+    while (text[start - precedingSlashes - 1] === '\\') precedingSlashes++;
+    if (precedingSlashes % 2 === 1) return null;
+  } else return null;
+  // Only the first slash in a delimiter run starts a candidate. This and the
+  // quote parity below keep repeated escaped quotes at linear work.
+  let end = -1;
+  const delimiter = 2 ** layers - 1;
+  const period = 2 ** (layers + 1);
+  for (let i = openingEnd; i < text.length; i++) {
+    if (text[i] === '\\') {
+      let next = i + 1;
+      while (text[next] === '\\') next++;
+      if (text[next] === '"') {
+        if ((next - i) % period === delimiter) { end = next + 1; break; }
+        i = next;
+      } else if (text[next] === 'u' && text.slice(next + 1, next + 5).toLowerCase() === '0022') {
+        end = next + 5;
+        break;
+      } else i = next - 1;
+    } else if (!layers && text[i] === '"') { end = i + 1; break; }
+  }
+  spend(budget, (end < 0 ? text.length : end) - start);
+  if (end < 0) return null;
+  if (!separatorAt(text, end, budget)) return null;
+  try {
+    if (layer + layers > MAX_JSON_STRING_LAYERS) throw new ScanLimitError();
+    let decoded = text.slice(start, end);
+    for (let layer = 0; layer < layers; layer++) decoded = JSON.parse(`"${decoded}"`) as string;
+    const key = JSON.parse(decoded) as string;
+    if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
+    return key;
+  } catch (error) { if (error instanceof ScanLimitError) throw error;
+    throw new DiagnosticScrubError(); }
+}
+
+/** Consume a loose key run once. Keep only the last 64 normalized characters
+ * and word starts, so a sensitive suffix after ordinary prose is still seen
+ * without rescanning an arbitrarily long run for each word. */
+function bareFieldAt(text: string, start: number, budget: ScanBudget): { key: string; end: number; encoded: boolean } | null {
+  if (!/[\p{L}_]/u.test(text[start] ?? '') && !(text[start] === '\\' && text[start + 1] === 'u')) return null;
+  let end = start, encoded = false, invalid = false, afterSpace = false;
+  let normalized = '';
+  let starts = [0];
+  while (end < text.length) {
+    const at = end;
+    let char = text[end];
+    if (char === '\\') {
+      const unit = syntaxAt(text, end, budget);
+      if (unit === null) { invalid = true; end++; continue; }
+      char = unit.char;
+      end = unit.end;
+      encoded = true;
+      const code = char.charCodeAt(0);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = syntaxAt(text, end, budget);
+        const low = next?.char.charCodeAt(0);
+        if (low !== undefined && low >= 0xdc00 && low <= 0xdfff) {
+          char = String.fromCodePoint(0x10000 + (code - 0xd800) * 0x400 + low - 0xdc00);
+          end = next!.end;
+        } else invalid = true;
+      } else if (code >= 0xdc00 && code <= 0xdfff) invalid = true;
+    } else { spend(budget, 1); end++; }
+    if (char === ':' || char === '=') { end = at; break; }
+    if (char === ' ' || char === '\t' || char === '_' || char === '-') {
+      if (char === ' ' || char === '\t') afterSpace = true;
+      continue;
+    }
+    if (!/[\p{L}\p{N}]/u.test(char)) {
+      if (invalid) continue;
+      if (char.length === 2 && end > at && normalized.length === 0)
+        return { key: '', end, encoded };
+      end = at; break;
+    }
+    if (afterSpace) { starts.push(normalized.length); afterSpace = false; }
+    normalized += char;
+    if (normalized.length > 64) {
+      normalized = normalized.slice(-64);
+      starts = starts.map(index => index - 1).filter(index => index >= 0);
+    }
+  }
+  if (end === start) return null;
+  if (!separatorAt(text, end, budget)) return { key: '', end, encoded };
+  if (invalid) throw new DiagnosticScrubError();
+  for (const index of starts) {
+    const key = normalized.slice(index);
+    if (isSensitiveField(key)) return { key, end, encoded };
+  }
+  return { key: '', end, encoded };
+}
+
+/** Find a candidate's boundary once. An unclosed prose bracket is ordinary text
+ * unless a known field occurs inside it. This scan never retries inner brackets. */
+function candidateEnd(text: string, start: number, encoded: boolean, budget: ScanBudget): number {
+  const stack: string[] = [];
+  let quoted = false, slash = false;
+  for (let i = start; i < text.length; i++) {
+    spend(budget, 1);
+    const char = text[i];
+    if (encoded && char === '\\') {
+      let next = i + 1;
+      while (text[next] === '\\') next++;
+      spend(budget, next - i - 1);
+      if (text[next] === '"') {
+        if ((next - i) % 4 === 1) quoted = !quoted;
+        i = next;
+        continue;
+      }
+      i = next - 1;
+      continue;
+    }
+    if (quoted) {
+      if (slash) slash = false;
+      else if (char === '\\') slash = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') { quoted = true; continue; }
+    if (char === '{' || char === '[') {
+      stack.push(char);
+      if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
+    } else if (char === '}' || char === ']') {
+      // A mismatched closer is malformed content inside this candidate. Ending
+      // here would let later fields escape the known-key rejection scan.
+      if (stack[stack.length - 1] !== (char === '}' ? '{' : '[')) continue;
+      stack.pop();
+      if (!stack.length) return i + 1;
+    }
+  }
+  return text.length;
+}
+
+function plainBracketEnd(text: string, start: number, budget: ScanBudget): { end: number; closed: boolean } {
+  const stack: string[] = [];
+  for (let i = start; i < text.length; i++) {
+    spend(budget, 1);
+    const char = text[i];
+    if (char === '\r' || char === '\n') return { end: i, closed: false };
+    if (char === '{' || char === '[') {
+      stack.push(char);
+      if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
+    } else if (char === '}' || char === ']') {
+      if (stack[stack.length - 1] !== (char === '}' ? '{' : '[')) continue;
+      stack.pop();
+      if (!stack.length) return { end: i + 1, closed: true };
+    }
+  }
+  return { end: text.length, closed: false };
+}
+
+/** Inspect the entire bounded fragment, including fields after ordinary first fields. */
+function hasKnownSensitiveKey(fragment: string, budget: ScanBudget): boolean {
+  spend(budget, fragment.length);
+  const words = /[\p{L}_][\p{L}\p{N}_-]*/gu;
+  for (const match of fragment.matchAll(words)) {
+    if (match[0].length > 64 || !isSensitiveField(match[0])) continue;
+    let before = match.index - 1;
+    while (before >= 0 && /\s/.test(fragment[before])) before--;
+    let after = match.index + match[0].length;
+    while (fragment[after] === '\\') after++;
+    if (fragment[after] === '"') after++;
+    while (after < fragment.length && /\s/.test(fragment[after])) after++;
+    // A known key at a field boundary is suspicious even when its colon is missing.
+    if (fragment[after] === ':' || fragment[before] === '{' || fragment[before] === ',' ||
+        fragment[before] === '"' && fragment[after] === ':') return true;
+  }
+  return false;
+}
+
+/** Inspect the final decoded string layer without descending again. This sees
+ * field syntax even when there is no surrounding object or array delimiter. */
+function hasEmbeddedSensitiveField(text: string, layer: number, budget: ScanBudget): boolean {
+  spend(budget, text.length);
+  for (let i = 0; i < text.length;) {
+    if (layer > MAX_JSON_STRING_LAYERS && text[i] === '\\' &&
+        ['"', '{', '['].includes(syntaxAt(text, i, budget)?.char ?? '')) return true;
+    if (text[i] === '"' || text[i] === '\\') {
+      const key = quotedFieldAt(text, i, layer, budget);
+      if (key !== null && (isSensitiveField(key) || layer > MAX_JSON_STRING_LAYERS)) return true;
+      if (text[i] === '"') {
+        // Inspect each complete quoted value once. A malformed enclosing
+        // bracket must not hide an encoded field in a later ordinary value.
+        let end = i + 1;
+        while (end < text.length) {
+          if (text[end] === '\\') { end += 2; continue; }
+          if (text[end++] === '"') break;
+        }
+        if (text[end - 1] === '"') {
+          try {
+            const decoded = JSON.parse(text.slice(i, end)) as string;
+            // A complete quoted token consumes one more encoding layer. At
+            // the boundary, classify its decoded contents with this same
+            // lexer; beyond it, a further quoted token is ambiguous and is
+            // rejected before storage. This keeps the cursor monotone and
+            // prevents the last layer from falling back to literal words.
+            if (layer > MAX_JSON_STRING_LAYERS) return true;
+            if (layer < MAX_JSON_STRING_LAYERS) {
+              if (scrubText(decoded, layer + 1, budget) !== decoded) return true;
+            } else if (hasEmbeddedSensitiveField(decoded, layer + 1, budget)) return true;
+            i = end;
+            continue;
+          } catch (error) {
+            if (error instanceof DiagnosticScrubError) throw error;
+          }
+        }
+      }
+    }
+    const bare = bareFieldAt(text, i, budget);
+    if (bare !== null) {
+      let end = bare.end;
+      if (isSensitiveField(bare.key)) {
+        if (separatorAt(text, end, budget)) return true;
+      }
+      i = bare.end;
+    } else i++;
+  }
+  return false;
+}
+
+/** Consume one complete JSON string token in prose. Invalid quotes remain
+ * prose unless the surrounding field classifier finds sensitive evidence. */
+function quotedValueAt(text: string, start: number, budget: ScanBudget): { end: number; value: string } | null {
+  if (text[start] !== '"') return null;
+  let precedingSlashes = 0;
+  while (text[start - precedingSlashes - 1] === '\\') precedingSlashes++;
+  if (precedingSlashes % 2) return null;
+  let end = start + 1;
+  for (; end < text.length; end++) {
+    if (text[end] === '\\') { end++; continue; }
+    if (text[end] === '"') break;
+  }
+  spend(budget, Math.min(end + 1, text.length) - start);
+  if (end >= text.length) return null;
+  try { return { end: end + 1, value: JSON.parse(text.slice(start, end + 1)) as string }; }
+  catch { return null; }
+}
+
+/** A quoted value ends at its matching quote. Only a single unquoted scalar
+ * ending at CR/LF or EOF has a provable boundary; mixed prose is rejected. */
+function plainFieldValue(text: string, separator: number, budget: ScanBudget): { begin: number; end: number } {
+  let at = separator;
+  while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
+  let unit = syntaxAt(text, at, budget);
+  if (unit?.char === '"') {
+    at = unit.end;
+    while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
+    unit = syntaxAt(text, at, budget);
+  }
+  if (unit?.char !== ':' && unit?.char !== '=') throw new DiagnosticScrubError();
+  at = unit.end;
+  while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
+  if (!text[at] || text[at] === '\r' || text[at] === '\n') throw new DiagnosticScrubError();
+  const begin = at;
+  if (text[at] === '"' || text[at] === "'") {
+    const quote = text[at++];
+    let closed = false;
+    for (; at < text.length; at++) {
+      spend(budget, 1);
+      if (text[at] === '\\') {
+        if (at + 1 >= text.length) throw new DiagnosticScrubError();
+        at++; spend(budget, 1); continue;
+      }
+      if (text[at] === quote) { at++; closed = true; break; }
+    }
+    if (!closed) throw new DiagnosticScrubError();
+    // Punctuation only separates a quoted value from ordinary prose when the
+    // next token starts after whitespace (or at EOF). A glued bare suffix may
+    // still be part of the secret. Check literal and encoded punctuation alike.
+    let afterQuote = at;
+    while (space(text[afterQuote])) { afterQuote++; spend(budget, 1); }
+    const punctuation = syntaxAt(text, afterQuote, budget);
+    if (punctuation && ',;，；'.includes(punctuation.char)) {
+      if (punctuation.end < text.length && !space(text[punctuation.end])) throw new DiagnosticScrubError();
+    } else if (at < text.length && !space(text[at])) throw new DiagnosticScrubError();
+  } else {
+    while (at < text.length && text[at] !== '\r' && text[at] !== '\n') {
+      spend(budget, 1);
+      // A second word or punctuation may be ordinary business content, or
+      // may belong to the secret. Neither interpretation is safe to store.
+      if (!/[A-Za-z0-9_~+\/=-]/.test(text[at])) throw new DiagnosticScrubError();
+      at++;
+    }
+  }
+  if (at === begin) throw new DiagnosticScrubError();
+  return { begin, end: at };
+}
+
+function applyEdits(text: string, edits: Edits): string {
+  if (!edits.starts.length) return text;
+  const chunks: string[] = [];
+  let previous = 0, current = '';
+  for (let index = 0; index < edits.starts.length; index++) {
+    current += text.slice(previous, edits.starts[index]) + edits.values[index];
+    if (current.length >= 64 * 1024) { chunks.push(current); current = ''; }
+    previous = edits.ends[index];
+  }
+  chunks.push(current, text.slice(previous));
+  return chunks.join('');
+}
+
+/** Run legacy prose patterns only over untouched source ranges. Replacement
+ * markers are already safe and must never be parsed as a second field value. */
+function applyProseOutsideEdits(text: string, edits: Edits, budget: ScanBudget): string {
+  if (!edits.starts.length) return applyProseRules(text, budget);
+  const chunks: string[] = [];
+  let previous = 0, length = 0;
+  for (let index = 0; index < edits.starts.length; index++) {
+    const prose = applyProseRules(text.slice(previous, edits.starts[index]), budget);
+    const value = edits.values[index];
+    length += prose.length + value.length;
+    if (length > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+    chunks.push(prose, value);
+    previous = edits.ends[index];
+  }
+  const tail = applyProseRules(text.slice(previous), budget);
+  length += tail.length;
+  if (length > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  chunks.push(tail);
+  return chunks.join('');
+}
+
+/** Validate JSON without constructing an object tree; retain only the nesting
+ * stack and source intervals that actually require replacement. */
+function parseCandidate(text: string, layer: number, markSensitive: () => void, budget: ScanBudget): string {
+  spend(budget, text.length);
+  type Frame = { kind: '{' | '['; state: number; sensitive: boolean; suppressed: boolean; valueStart: number };
+  const stack: Frame[] = [];
+  const edits = newEdits(text.length);
+  let i = 0;
+  const whitespace = () => { while (space(text[i])) i++; };
+  const stringEnd = () => {
+    const start = i++;
+    for (; i < text.length; i++) {
+      const char = text[i];
+      if (char === '\\') { i++; continue; }
+      if (char === '"') { i++; return start; }
+      if (char < ' ') throw new DiagnosticScrubError();
+    }
+    throw new DiagnosticScrubError();
+  };
+  const valueDone = () => {
+    if (!stack.length) return;
+    const frame = stack[stack.length - 1];
+    if (frame.kind === '{' && frame.sensitive && !frame.suppressed) {
+      addEdit(edits, frame.valueStart, i, JSON.stringify(redacted));
+      frame.sensitive = false;
+    }
+    frame.state = frame.kind === '{' ? 3 : 1;
+  };
+  const value = () => {
+    whitespace();
+    const start = i;
+    const char = text[i];
+    if (char === '{' || char === '[') {
+      const parent = stack[stack.length - 1];
+      stack.push({ kind: char, state: 0, sensitive: false,
+        suppressed: !!parent && (parent.suppressed || parent.kind === '{' && parent.sensitive), valueStart: 0 });
+      if (stack.length > MAX_JSON_DEPTH) throw new DiagnosticScrubError();
+      i++;
+    } else if (char === '"') {
+      stringEnd();
+      const raw = text.slice(start, i);
+      let decoded: string;
+      try { decoded = JSON.parse(raw) as string; } catch { throw new DiagnosticScrubError(); }
+      const frame = stack[stack.length - 1];
+      const inspectString = !frame?.suppressed && !(frame?.kind === '{' && frame.sensitive);
+      if (inspectString && layer >= MAX_JSON_STRING_LAYERS) {
+        // Every decoded value reaches the same field classifier at this last
+        // layer. A field hidden behind another encoding fails closed.
+        const trimmed = decoded.trimStart();
+        let moreScalar = false;
+        if (trimmed[0] === '"' && trimmed.endsWith('"')) {
+          spend(budget, trimmed.length);
+          try { moreScalar = typeof JSON.parse(trimmed) === 'string'; } catch { /* ordinary quoted prose */ }
+        }
+        const moreJson = moreScalar || /^\{\s*"/.test(trimmed) ||
+          /^\[\s*[\[{"0-9tfn-]/.test(trimmed);
+        if (moreJson || hasEmbeddedSensitiveField(decoded, layer, budget)) {
+          markSensitive();
+          throw new DiagnosticScrubError();
+        }
+      } else if (inspectString) {
+        let cleaned: string;
+        try { cleaned = scrubText(decoded, layer + 1, budget); }
+        catch { markSensitive(); throw new DiagnosticScrubError(); }
+        if (cleaned !== decoded) addEdit(edits, start, i, JSON.stringify(cleaned));
+      }
+      valueDone();
+    } else {
+      const match = /(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)/y;
+      match.lastIndex = i;
+      const token = match.exec(text);
+      if (!token) throw new DiagnosticScrubError();
+      i = match.lastIndex;
+      valueDone();
+    }
+  };
+  value();
+  while (stack.length) {
+    whitespace();
+    const frame = stack[stack.length - 1];
+    if (frame.kind === '{') {
+      if (frame.state === 0 || frame.state === 4) {
+        if (text[i] === '}' && frame.state === 0) { i++; stack.pop(); valueDone(); continue; }
+        if (text[i] !== '"') throw new DiagnosticScrubError();
+        const start = stringEnd();
+        let key = '';
+        try { key = JSON.parse(text.slice(start, i)) as string; } catch { throw new DiagnosticScrubError(); }
+        if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
+        frame.sensitive = !frame.suppressed && isSensitiveField(key);
+        if (frame.sensitive) markSensitive();
+        frame.state = 1;
+      } else if (frame.state === 1) {
+        if (text[i++] !== ':') throw new DiagnosticScrubError();
+        frame.state = 2;
+      } else if (frame.state === 2) {
+        whitespace(); frame.valueStart = i; value();
+      } else {
+        if (text[i] === ',') { i++; frame.state = 4; }
+        else if (text[i] === '}') { i++; stack.pop(); valueDone(); }
+        else throw new DiagnosticScrubError();
+      }
+    } else if (frame.state === 0 || frame.state === 2) {
+      if (text[i] === ']' && frame.state === 0) { i++; stack.pop(); valueDone(); }
+      else value();
+    } else {
+      if (text[i] === ',') { i++; frame.state = 2; }
+      else if (text[i] === ']') { i++; stack.pop(); valueDone(); }
+      else throw new DiagnosticScrubError();
+    }
+  }
+  whitespace();
+  if (i !== text.length) throw new DiagnosticScrubError();
+  return applyEdits(text, edits);
+}
+
+function scrubText(text: string, layer: number, budget: ScanBudget): string {
+  if (layer > MAX_JSON_STRING_LAYERS) throw new ScanLimitError();
+  spend(budget, text.length);
+  // A non-sensitive JSON string value may itself be a complete encoded JSON
+  // string. Consume that entire scalar before looking for loose fields; each
+  // decode advances one bounded layer, including bare key/value fragments.
+  if (text[0] === '"' && text[text.length - 1] === '"') {
+    try { return parseCandidate(text, layer, () => undefined, budget); }
+    catch (error) { if (error instanceof ScanLimitError || error instanceof DiagnosticScrubError && layer > 0) throw error; }
+  }
+  const edits = newEdits(text.length);
+  let openPlain = false;
+  for (let start = 0; start < text.length;) {
+    if (text[start] !== '{' && text[start] !== '[') {
+      // An arbitrary closer cannot prove an earlier prose bracket was closed.
+      // Keep scanning known fields conservatively until the input ends.
+      if (text[start] === '\\' && text[start + 1] === 'u' && openPlain) throw new DiagnosticScrubError();
+      const quotedKey = quotedFieldAt(text, start, layer, budget);
+      if (quotedKey !== null && isSensitiveField(quotedKey)) throw new DiagnosticScrubError();
+      const quotedValue = quotedValueAt(text, start, budget);
+      if (quotedValue !== null && quotedKey !== null) {
+        start = quotedValue.end;
+        continue;
+      }
+      if (quotedValue !== null && quotedKey === null) {
+        if (layer >= MAX_JSON_STRING_LAYERS) {
+          if (hasEmbeddedSensitiveField(quotedValue.value, layer + 1, budget)) throw new DiagnosticScrubError();
+        } else {
+          const cleaned = scrubText(quotedValue.value, layer + 1, budget);
+          if (cleaned !== quotedValue.value) addEdit(edits, start, quotedValue.end, JSON.stringify(cleaned));
+        }
+        start = quotedValue.end;
+        continue;
+      }
+      const bare = bareFieldAt(text, start, budget);
+      if (bare !== null) {
+        let end = bare.end;
+        if (isSensitiveField(bare.key)) {
+          const hasSeparator = separatorAt(text, end, budget);
+          // Quoted fields outside a complete JSON candidate are still structured
+          // evidence. Never leave their values to the plain-text regexes.
+          if (hasSeparator) {
+            let before = start - 1;
+            while (before >= 0 && space(text[before])) before--;
+            if (layer > 0 || bare.encoded || text[end] === '\\' || syntaxAt(text, end, budget)?.char === ':' &&
+                (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? ''))) throw new DiagnosticScrubError();
+            const field = plainFieldValue(text, end, budget);
+            addEdit(edits, start, field.end, text.slice(start, field.begin) + redacted);
+            start = field.end;
+            continue;
+          }
+        }
+        start = bare.end;
+      } else start++;
+      continue;
+    }
+    let probe = start + 1;
+    while (space(text[probe])) probe++;
+    const encoded = text[probe] === '\\' && text[probe + 1] === '"';
+    const jsonEvidence = encoded || text[start] === '{' && text[probe] === '"' ||
+      text[start] === '[' && /[\[{"0-9tfn-]/.test(text[probe] ?? '');
+    if (!jsonEvidence) {
+      const plain = plainBracketEnd(text, start, budget);
+      const ordinary = text.slice(start, plain.end);
+      if (hasKnownSensitiveKey(ordinary, budget) || hasEmbeddedSensitiveField(ordinary, layer, budget)) throw new DiagnosticScrubError();
+      openPlain ||= !plain.closed;
+      start = plain.end;
+      continue;
+    }
+    const end = candidateEnd(text, start, encoded, budget);
+    const raw = text.slice(start, end);
+    const suspicious = hasKnownSensitiveKey(raw, budget);
+    if (jsonEvidence) {
+      let mustReject = false;
+      try {
+        const decoded = encoded ? JSON.parse(`"${raw}"`) as string : raw;
+        const cleaned = parseCandidate(decoded, layer, () => { mustReject = true; }, budget);
+        if (cleaned !== decoded) {
+          mustReject = true;
+          addEdit(edits, start, end, encoded ? JSON.stringify(cleaned).slice(1, -1) : cleaned);
+        }
+      } catch (error) { if (error instanceof ScanLimitError) throw error;
+        if (suspicious || mustReject || raw.includes('\\u') || hasEmbeddedSensitiveField(raw, layer, budget))
+          throw new DiagnosticScrubError(); }
+    }
+    start = end;
+  }
+  return applyProseOutsideEdits(text, edits, budget);
+}
+
+/** Bounded scrub: rejects malformed/oversized JSON before any diagnostic Blob write. */
+export function scrubSecrets(text: string) {
+  if (Buffer.byteLength(text, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  const budget: ScanBudget = { remaining: text.length * 64 + 65_536 };
+  const cleaned = scrubText(text, 0, budget);
+  if (Buffer.byteLength(cleaned, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  return cleaned;
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */
@@ -175,6 +820,7 @@ export async function checkLogHealth(pool: Pool, thresholds: { maxBacklogAgeSeco
 
 // ---------------------------------------------------------------- retention
 
+class BlobPurgeError extends Error {}
 export type LogRetentionPolicy = { contentRetentionDays: number; policyVersion?: string; batchSize?: number; now?: () => Date;
   /** #6: content of a user-deleted project is purged this many days after deletion (the storage purge window). */ deletedProjectPurgeDays?: number;
   /** Test/restore-verifier scope only. The CLI never sets it. */ ownerScope?: string[] };
@@ -212,13 +858,25 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
     ORDER BY created_at,id LIMIT $2`, [cutoff, batch, policy.ownerScope ?? null, deletedCutoff])).rows;
   let purged = 0, failed = 0;
   for (const row of due) {
-    try { await blobs.delete(row.object_key); }
-    catch { failed++; await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } }); continue; }
-    await transaction(pool, async client => {
-      const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
-      if (inserted.rowCount) await emitInternal(client, internalEvent({ kind: 'log.content_purged', owner: row.owner_user_id, projectId: row.project_id, traceId: row.id, stage: row.reason, promptSnapshotRef: row.kind === 'prompt_snapshot' ? row.id : null }));
-    });
-    purged++;
+    try {
+      const deleted = await transaction(pool, async client => {
+        // The prompt view holds this same lock through response completion. Deletion and
+        // tombstoning must be one serialized operation, including the Blob I/O window.
+        if (row.kind === 'prompt_snapshot') await client.query("SELECT pg_advisory_xact_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [row.id]);
+        const existing = await client.query('SELECT 1 FROM bb_log_content_tombstones WHERE content_kind=$1 AND content_id=$2', [row.kind, row.id]);
+        if (existing.rowCount) return false;
+        try { await blobs.delete(row.object_key); }
+        catch { throw new BlobPurgeError('Private content deletion failed'); }
+        const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
+        if (inserted.rowCount) await emitInternal(client, internalEvent({ kind: 'log.content_purged', owner: row.owner_user_id, projectId: row.project_id, traceId: row.id, stage: row.reason, promptSnapshotRef: row.kind === 'prompt_snapshot' ? row.id : null }));
+        return !!inserted.rowCount;
+      });
+      if (deleted) purged++;
+    } catch (error) {
+      if (!(error instanceof BlobPurgeError)) throw error;
+      failed++;
+      await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } });
+    }
   }
   return { due: due.length, purged, failed };
 }
@@ -361,19 +1019,135 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
   });
 }
 
-/** Plaintext is only returned after the audit row commits; a purged or foreign-looking ref is 404. */
-export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string) {
+const promptAbort = () => new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+
+/** PostgreSQL, rather than an HTTP Promise.race, stops an active query by the route deadline. */
+async function setPromptStatementTimeout(client: PoolClient, deadlineAt?: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw promptAbort();
+  if (deadlineAt === undefined) return;
+  const remaining = Math.ceil(deadlineAt - performance.now());
+  if (remaining <= 0) throw promptAbort();
+  await client.query("SELECT set_config('statement_timeout',$1,false)", [String(remaining)]);
+  if (signal?.aborted) throw promptAbort();
+}
+
+/** Return a connection that arrives after the HTTP waiter has disconnected. */
+function connectPrompt(pool: Pool, signal?: AbortSignal): Promise<PoolClient> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(promptAbort()); return; }
+    let settled = false;
+    const abort = () => { if (!settled) { settled = true; reject(promptAbort()); } };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    void pool.connect().then(client => {
+      if (settled) { client.release(); return; }
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) { client.release(); reject(promptAbort()); }
+      else resolve(client);
+    }, error => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      reject(error);
+    });
+  });
+}
+
+function waitPromptRetry(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(promptAbort()); return; }
+    const abort = () => { clearTimeout(timer); reject(promptAbort()); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, milliseconds);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+/** A try-lock never blocks a pool connection behind another HTTP response. */
+async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortSignal, deadlineAt?: number): Promise<PoolClient> {
+  let retryMs = 25;
+  for (;;) {
+    if (signal?.aborted) throw promptAbort();
+    // Do not leave a cancelled prompt in pg-pool's unabortable connect queue.
+    if (pool.idleCount === 0 && pool.totalCount >= (pool.options.max ?? 10)) {
+      await waitPromptRetry(retryMs, signal);
+      retryMs = Math.min(retryMs * 2, 250);
+      continue;
+    }
+    const client = await connectPrompt(pool, signal);
+    let locked = false;
+    try {
+      if (signal?.aborted) throw promptAbort();
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      locked = (await client.query("SELECT pg_try_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text)) locked", [snapshotId])).rows[0].locked === true;
+      if (signal?.aborted) throw promptAbort();
+      if (locked) return client;
+      // This session carries a route-specific statement_timeout. Never lend it
+      // to unrelated pool work, even though it did not acquire the lock.
+      client.release(true);
+    } catch (error) {
+      // Destroying this session releases a lock even if the query raced the abort.
+      client.release(true);
+      throw error;
+    }
+    await waitPromptRetry(retryMs, signal);
+    retryMs = Math.min(retryMs * 2, 250);
+  }
+}
+
+/** The caller must hold release until the HTTP response finishes or aborts. */
+export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string, signal?: AbortSignal, deadlineAt?: number) {
   if (!validId(snapshotId)) throw missing();
   if (!safeCode.test(reasonCode)) throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
-  const { snapshot, auditId } = await transaction(pool, async client => {
-    const snapshot = (await client.query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id WHERE s.id=$1", [snapshotId])).rows[0];
-    const auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
-    return { snapshot, auditId };
-  });
-  if (!snapshot || snapshot.tombstone) throw missing();
-  const bytes = await blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
-  if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
-  return { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId };
+  const client = await acquirePromptLock(pool, snapshotId, signal, deadlineAt);
+  let releasePromise: Promise<void> | undefined;
+  const release = () => releasePromise ??= (async () => {
+    // Closing the session releases the advisory lock without queuing an unlock
+    // behind a still-running query. It must never re-enter the pool with a lock.
+    client.release(true);
+  })();
+  const abort = () => { void release(); };
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
+  try {
+    if (signal?.aborted) throw promptAbort();
+    // Audit commits before any plaintext read. The session lock survives that commit.
+    const query = async (sql: string, params?: unknown[]) => {
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      return client.query(sql, params);
+    };
+    await query('BEGIN');
+    let snapshot: any, auditId: string;
+    try {
+      snapshot = (await query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
+      await query('COMMIT');
+    } catch (error) {
+      // A deadline/cancel leaves the transaction and session unfit for reuse.
+      // Do not enqueue ROLLBACK behind a stalled query on an aborted response.
+      if (!signal?.aborted && !(error instanceof Error && 'code' in error && error.code === '57014')) await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+    if (!snapshot || snapshot.tombstone) throw missing();
+    if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+    // A Blob request may never settle after a TCP disconnect. Promise.race observes its
+    // eventual result/rejection, while the abort path releases the session lock now.
+    const blobRead = blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted'));
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    let bytes: Buffer | null;
+    try { bytes = await Promise.race([blobRead, aborted]); }
+    finally { if (onAbort) signal?.removeEventListener('abort', onAbort); }
+    if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+    if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
+    return { view: { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId }, release };
+  } catch (error) { await release(); throw error; }
+  finally { signal?.removeEventListener('abort', abort); }
 }
 
 export async function adminAlerts(pool: Pool, actorId: string) {

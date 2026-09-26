@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import codecs
 import hashlib
 import io
 import json
@@ -23,11 +24,12 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.3"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.6"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
 MAX_TEXT_BYTES = 100 * 1024 * 1024
+MAX_TEXT_LINE_CHARS = 16 * 1024
 
 MEDIA_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MEDIA_PDF = "application/pdf"
@@ -193,10 +195,12 @@ def _walk_docx_blocks(parent: Any, prefix: tuple[dict[str, int], ...] = ()) -> I
         elif child.tag == qn("w:tbl"):
             table_index += 1
             table = Table(child, parent)
-            seen: set[int] = set()
+            # Keep XML cell objects alive while deduplicating merged cells.
+            # Temporary proxy ids can be reused and must not identify cells.
+            seen: set[Any] = set()
             for row_index, row in enumerate(table.rows, 1):
                 for column_index, cell in enumerate(row.cells, 1):
-                    identity = id(cell._tc)
+                    identity = cell._tc
                     if identity in seen:
                         continue
                     seen.add(identity)
@@ -327,47 +331,52 @@ def _parse_pdf(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]
             if page_count > max_pages:
                 raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", f"PDF has {page_count} pages; parser limit is {max_pages}")
             for page_number, page in enumerate(pdf.pages, 1):
-                if page.images:
-                    image_pages.append(page_number)
-                words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False, extra_attrs=["fontname", "size"]) or []
-                if not words:
-                    blank_pages.append(page_number)
-                    continue
-                lines: list[list[dict[str, Any]]] = []
-                for word in sorted(words, key=lambda item: (round(float(item["top"]), 1), float(item["x0"]))):
-                    if not lines or abs(float(word["top"]) - float(lines[-1][0]["top"])) > 3:
-                        lines.append([word])
-                    else:
-                        lines[-1].append(word)
-                for line_number, line in enumerate(lines, 1):
-                    line.sort(key=lambda item: float(item["x0"]))
-                    text = " ".join(str(item["text"]) for item in line).strip()
-                    if not text:
+                # pdfplumber caches layout objects per page; without closing each page a 50-page text PDF
+                # peaked at ~700 MiB, above the 320M production worker limit (#17 capacity).
+                try:
+                    if page.images:
+                        image_pages.append(page_number)
+                    words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False, extra_attrs=["fontname", "size"]) or []
+                    if not words:
+                        blank_pages.append(page_number)
                         continue
-                    bbox = {
-                        "x0": round(min(float(item["x0"]) for item in line), 3),
-                        "top": round(min(float(item["top"]) for item in line), 3),
-                        "x1": round(max(float(item["x1"]) for item in line), 3),
-                        "bottom": round(max(float(item["bottom"]) for item in line), 3),
-                    }
-                    locator = {"page": page_number, "line": line_number, "bbox": bbox, "stable_ref": f"pdf:p{page_number:04d}:l{line_number:04d}"}
-                    fonts: dict[tuple[str, float], int] = {}
-                    word_boxes: list[dict[str, Any]] = []
-                    for item in line:
-                        font_key = (str(item.get("fontname") or ""), round(float(item.get("size") or 0), 3))
-                        fonts[font_key] = fonts.get(font_key, 0) + len(str(item["text"]))
-                        word_boxes.append({
-                            "text": str(item["text"]),
-                            "x0": round(float(item["x0"]), 3),
-                            "top": round(float(item["top"]), 3),
-                            "x1": round(float(item["x1"]), 3),
-                            "bottom": round(float(item["bottom"]), 3),
-                        })
-                    formatting = {
-                        "fonts": [{"font_name": key[0], "size": key[1], "characters": count} for key, count in fonts.items()],
-                        "word_boxes": word_boxes,
-                    }
-                    records.append(_record(len(records) + 1, "pdf_bbox", locator, text, context=f"PDF page {page_number}", formatting=formatting))
+                    lines: list[list[dict[str, Any]]] = []
+                    for word in sorted(words, key=lambda item: (round(float(item["top"]), 1), float(item["x0"]))):
+                        if not lines or abs(float(word["top"]) - float(lines[-1][0]["top"])) > 3:
+                            lines.append([word])
+                        else:
+                            lines[-1].append(word)
+                    for line_number, line in enumerate(lines, 1):
+                        line.sort(key=lambda item: float(item["x0"]))
+                        text = " ".join(str(item["text"]) for item in line).strip()
+                        if not text:
+                            continue
+                        bbox = {
+                            "x0": round(min(float(item["x0"]) for item in line), 3),
+                            "top": round(min(float(item["top"]) for item in line), 3),
+                            "x1": round(max(float(item["x1"]) for item in line), 3),
+                            "bottom": round(max(float(item["bottom"]) for item in line), 3),
+                        }
+                        locator = {"page": page_number, "line": line_number, "bbox": bbox, "stable_ref": f"pdf:p{page_number:04d}:l{line_number:04d}"}
+                        fonts: dict[tuple[str, float], int] = {}
+                        word_boxes: list[dict[str, Any]] = []
+                        for item in line:
+                            font_key = (str(item.get("fontname") or ""), round(float(item.get("size") or 0), 3))
+                            fonts[font_key] = fonts.get(font_key, 0) + len(str(item["text"]))
+                            word_boxes.append({
+                                "text": str(item["text"]),
+                                "x0": round(float(item["x0"]), 3),
+                                "top": round(float(item["top"]), 3),
+                                "x1": round(float(item["x1"]), 3),
+                                "bottom": round(float(item["bottom"]), 3),
+                            })
+                        formatting = {
+                            "fonts": [{"font_name": key[0], "size": key[1], "characters": count} for key, count in fonts.items()],
+                            "word_boxes": word_boxes,
+                        }
+                        records.append(_record(len(records) + 1, "pdf_bbox", locator, text, context=f"PDF page {page_number}", formatting=formatting))
+                finally:
+                    page.close()
     except ParseFailure:
         raise
     except Exception as exc:
@@ -382,6 +391,230 @@ def _parse_pdf(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]
     if not records:
         raise ParseFailure("MATERIAL_UNREADABLE", "PDF contains no native text; OCR is required")
     return records, warnings, {"page_count": page_count, "pages_without_native_text": blank_pages, "pages_with_images": image_pages}
+
+
+def _iter_pdf_records(path: Path, options: dict[str, Any], metadata: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Yield one PDF evidence record at a time; keep only the current page's layout alive."""
+    max_pages = options.get("max_pages", DEFAULT_MAX_PAGES)
+    if not isinstance(max_pages, int) or isinstance(max_pages, bool) or max_pages < 1 or max_pages > DEFAULT_MAX_PAGES:
+        raise ParseFailure("INVALID_PARSE_REQUEST", f"max_pages must be between 1 and {DEFAULT_MAX_PAGES}")
+    blank_pages: list[int] = []
+    image_pages: list[int] = []
+    try:
+        if PdfReader(path).is_encrypted:
+            raise ParseFailure("MATERIAL_ENCRYPTED", "PDF is encrypted; provide an authorized readable copy")
+        with pdfplumber.open(path) as pdf:
+            page_count = len(pdf.pages)
+            if page_count > max_pages:
+                raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", f"PDF has {page_count} pages; parser limit is {max_pages}")
+            metadata["document"] = {"page_count": page_count}
+            record_index = 0
+            for page_number, page in enumerate(pdf.pages, 1):
+                try:
+                    if page.images:
+                        image_pages.append(page_number)
+                    words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False, extra_attrs=["fontname", "size"]) or []
+                    if not words:
+                        blank_pages.append(page_number)
+                        continue
+                    lines: list[list[dict[str, Any]]] = []
+                    for word in sorted(words, key=lambda item: (round(float(item["top"]), 1), float(item["x0"]))):
+                        if not lines or abs(float(word["top"]) - float(lines[-1][0]["top"])) > 3:
+                            lines.append([word])
+                        else:
+                            lines[-1].append(word)
+                    for line_number, line in enumerate(lines, 1):
+                        line.sort(key=lambda item: float(item["x0"]))
+                        text = " ".join(str(item["text"]) for item in line).strip()
+                        if not text:
+                            continue
+                        bbox = {
+                            "x0": round(min(float(item["x0"]) for item in line), 3),
+                            "top": round(min(float(item["top"]) for item in line), 3),
+                            "x1": round(max(float(item["x1"]) for item in line), 3),
+                            "bottom": round(max(float(item["bottom"]) for item in line), 3),
+                        }
+                        locator = {"page": page_number, "line": line_number, "bbox": bbox, "stable_ref": f"pdf:p{page_number:04d}:l{line_number:04d}"}
+                        fonts: dict[tuple[str, float], int] = {}
+                        word_boxes: list[dict[str, Any]] = []
+                        for item in line:
+                            font_key = (str(item.get("fontname") or ""), round(float(item.get("size") or 0), 3))
+                            fonts[font_key] = fonts.get(font_key, 0) + len(str(item["text"]))
+                            word_boxes.append({
+                                "text": str(item["text"]),
+                                "x0": round(float(item["x0"]), 3),
+                                "top": round(float(item["top"]), 3),
+                                "x1": round(float(item["x1"]), 3),
+                                "bottom": round(float(item["bottom"]), 3),
+                            })
+                        formatting = {
+                            "fonts": [{"font_name": key[0], "size": key[1], "characters": count} for key, count in fonts.items()],
+                            "word_boxes": word_boxes,
+                        }
+                        record_index += 1
+                        yield _record(record_index, "pdf_bbox", locator, text, context=f"PDF page {page_number}", formatting=formatting)
+                finally:
+                    page.close()
+    except ParseFailure:
+        raise
+    except Exception as exc:
+        message = str(exc).lower()
+        if "password" in message or "encrypt" in message:
+            raise ParseFailure("MATERIAL_ENCRYPTED", "PDF is encrypted; provide an authorized readable copy") from exc
+        raise ParseFailure("MATERIAL_UNREADABLE", "PDF is damaged or unreadable") from exc
+    metadata["document"] = {"page_count": page_count, "pages_without_native_text": blank_pages, "pages_with_images": image_pages}
+    if blank_pages:
+        metadata.setdefault("warnings", []).append({"code": "PDF_PAGES_WITHOUT_TEXT", "message": f"No native text was extracted from page(s): {','.join(map(str, blank_pages))}. OCR is required before those pages can be treated as covered."})
+    if image_pages:
+        metadata.setdefault("warnings", []).append({"code": "PDF_IMAGES_NOT_OCRD", "message": f"Image content on {len(image_pages)} page(s) was not OCR processed by this parser."})
+
+
+def _detect_text_encoding(path: Path) -> str:
+    if path.stat().st_size > MAX_TEXT_BYTES:
+        raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "Text material exceeds the parser byte limit")
+    for encoding in ("utf-8-sig", "gb18030"):
+        decoder = codecs.getincrementaldecoder(encoding)(errors="strict")
+        try:
+            with path.open("rb") as stream:
+                for block in iter(lambda: stream.read(64 * 1024), b""):
+                    if b"\x00" in block:
+                        raise ParseFailure("MATERIAL_CONTENT_MISMATCH", "Text material contains binary null bytes")
+                    decoder.decode(block)
+                decoder.decode(b"", final=True)
+            return encoding
+        except UnicodeDecodeError:
+            continue
+    raise ParseFailure("MATERIAL_UNREADABLE", "Text encoding is unsupported; provide UTF-8 or GB18030")
+
+
+def _iter_text_records(path: Path, encoding: str) -> Iterator[dict[str, Any]]:
+    """Decode a bounded line at a time so text size does not multiply into Python objects."""
+    endings = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"
+
+    def record(line_number: int, part: str) -> dict[str, Any] | None:
+        value = part[:-2] if part.endswith("\r\n") else part[:-1] if part and part[-1] in endings else part
+        if len(value) > MAX_TEXT_LINE_CHARS:
+            raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "Text line exceeds the parser record limit")
+        if not value.strip():
+            return None
+        return _record(line_number, "text_line", {"line": line_number, "stable_ref": f"text:l{line_number:06d}"}, value)
+
+    try:
+        with path.open("rb") as raw:
+            with io.TextIOWrapper(raw, encoding=encoding, errors="strict", newline=None) as stream:
+                carry = ""
+                line_number = 0
+                record_index = 0
+                while True:
+                    chunk = stream.read(64 * 1024)
+                    if not chunk:
+                        break
+                    parts = (carry + chunk).splitlines(keepends=True)
+                    carry = ""
+                    if parts and (not parts[-1] or parts[-1][-1] not in endings):
+                        carry = parts.pop()
+                    if len(carry) > MAX_TEXT_LINE_CHARS:
+                        raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "Text line exceeds the parser record limit")
+                    for part in parts:
+                        line_number += 1
+                        item = record(line_number, part)
+                        if item is not None:
+                            record_index += 1
+                            item["record_id"] = f"evidence-{record_index:06d}"
+                            yield item
+                if carry:
+                    line_number += 1
+                    item = record(line_number, carry)
+                    if item is not None:
+                        record_index += 1
+                        item["record_id"] = f"evidence-{record_index:06d}"
+                        yield item
+    except ParseFailure:
+        raise
+    except Exception as exc:
+        raise ParseFailure("MATERIAL_UNREADABLE", "Text encoding is unsupported; provide UTF-8 or GB18030") from exc
+
+
+def stream_parse_request(payload: Any, output: Any) -> None:
+    """Write a bounded NDJSON record stream for PDF/TXT materials; no whole-response record list."""
+    request_id: str | None = None
+    material: dict[str, Any] | None = None
+
+    def emit(event: dict[str, Any]) -> None:
+        output.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+        output.write("\n")
+
+    try:
+        if not isinstance(payload, dict) or payload.get("schema_version") != REQUEST_SCHEMA_VERSION:
+            raise ParseFailure("INVALID_PARSE_REQUEST", f"schema_version must be {REQUEST_SCHEMA_VERSION}")
+        request_id = _require_string(payload.get("request_id"), "request_id", r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+        material = payload.get("material")
+        if not isinstance(material, dict):
+            raise ParseFailure("INVALID_PARSE_REQUEST", "material is required")
+        material_id = _require_string(material.get("material_id"), "material.material_id", r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+        version = material.get("material_version")
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise ParseFailure("INVALID_PARSE_REQUEST", "material.material_version must be a positive integer")
+        media_type = _require_string(material.get("media_type"), "material.media_type")
+        if media_type not in {MEDIA_PDF, MEDIA_TEXT}:
+            raise ParseFailure("INVALID_PARSE_REQUEST", "streaming parser supports PDF and plain text only")
+        expected_hash = _require_string(material.get("sha256"), "material.sha256", r"[a-f0-9]{64}")
+        authorized_path = _require_string(material.get("authorized_local_path"), "material.authorized_local_path")
+        path = Path(authorized_path)
+        if not path.is_absolute() or not path.is_file() or path.is_symlink():
+            raise ParseFailure("MATERIAL_UNREADABLE", "Authorized material handle is unavailable")
+        if _sha256(path) != expected_hash:
+            raise ParseFailure("MATERIAL_CONTENT_MISMATCH", "Material bytes do not match the immutable SHA-256")
+        options = payload.get("options", {})
+        if not isinstance(options, dict) or set(options) - {"max_pages"}:
+            raise ParseFailure("INVALID_PARSE_REQUEST", "options contains unsupported fields")
+        safe_material = {"material_id": material_id, "material_version": version, "sha256": expected_hash, "media_type": media_type}
+        metadata: dict[str, Any] = {"warnings": []}
+
+        if media_type == MEDIA_PDF:
+            records = _iter_pdf_records(path, options, metadata)
+            first = next(records, None)  # Initialize PDF metadata before emitting the stream header.
+            document = metadata.get("document", {"page_count": None})
+            if document.get("page_count") is None:
+                raise ParseFailure("MATERIAL_UNREADABLE", "PDF has no readable pages")
+        else:
+            encoding = _detect_text_encoding(path)
+            document = {"page_count": None, "encoding": encoding}
+            records = _iter_text_records(path, encoding)
+            first = next(records, None)
+
+        emit({"type": "start", "schema_version": "document-parse-stream-v1", "request_id": request_id,
+              "parser_version": PARSER_VERSION, "material": safe_material, "document": document})
+        count = 0
+        has_uncertainty = False
+
+        def write_record(record: dict[str, Any] | None) -> None:
+            nonlocal count, has_uncertainty
+            if record is None:
+                return
+            record["material_id"] = material_id
+            record["material_version"] = version
+            record["content_hash"] = expected_hash
+            count += 1
+            has_uncertainty = has_uncertainty or bool(record["uncertainty"])
+            emit({"type": "record", "record": record})
+
+        write_record(first)
+        for record in records:
+            write_record(record)
+        if count == 0:
+            raise ParseFailure("MATERIAL_UNREADABLE", "Material contains no extractable native text")
+        warnings = metadata.get("warnings", [])
+        status = "needs_confirmation" if warnings or has_uncertainty else "parsed"
+        if media_type == MEDIA_PDF:
+            document = metadata["document"]
+        emit({"type": "end", "record_count": count, "has_uncertainty": has_uncertainty,
+              "response": {"schema_version": RESPONSE_SCHEMA_VERSION, "request_id": request_id, "parser_version": PARSER_VERSION,
+                           "status": status, "material": safe_material, "warnings": warnings, "document": document, "error": None}})
+    except ParseFailure as exc:
+        emit({"type": "failure", "response": failure_response(request_id, material, exc.code, exc.safe_message)})
+    except Exception as exc:
+        emit({"type": "failure", "response": failure_response(request_id, material, "MATERIAL_UNREADABLE", f"Unable to parse material: {type(exc).__name__}")})
 
 
 def _cell_text(value: Any) -> str:
@@ -420,6 +653,8 @@ def _parse_xlsx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
                     raw_value = cell.value
                     cached_value = value_sheet[cell.coordinate].value
                     if raw_value is None:
+                        continue
+                    if isinstance(raw_value, str) and not raw_value.strip():
                         continue
                     uncertainty: list[str] = []
                     formatting = {"number_format": cell.number_format, "data_type": cell.data_type, "sheet_state": sheet.sheet_state}

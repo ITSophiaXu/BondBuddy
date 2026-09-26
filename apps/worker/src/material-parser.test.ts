@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,8 @@ import { Pool } from 'pg';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { runDocumentParser, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
 import {
+  M1_PARSE_BYTE_LIMITS,
+  M1_PARSE_OUTPUT_BUDGET_BYTES,
   parseAuthorizedMaterial,
   type MaterialParserDependencies,
   type MaterialParserPool,
@@ -75,7 +77,7 @@ function responseFor(request: DocumentParseRequest): DocumentParseResponse {
 }
 
 async function temporaryRoot(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'bb-material-parser-test-'));
+  return realpath(await mkdtemp(join(tmpdir(), 'bb-material-parser-test-')));
 }
 
 function dependencies(options: {
@@ -202,7 +204,7 @@ test('bridge rejects blob hash or size mismatch before staging or parsing', asyn
     parser,
   }), input), /MATERIAL_INTEGRITY_MISMATCH/);
   assert.equal(parserCalls, 0);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('unsupported media types are rejected without fetching bytes or invoking parser', async (t) => {
@@ -219,6 +221,70 @@ test('unsupported media types are rejected without fetching bytes or invoking pa
   await assert.rejects(parseAuthorizedMaterial(deps, input), /UNSUPPORTED_MEDIA_TYPE/);
   assert.equal(blobCalls, 0);
   assert.equal(parserCalls, 0);
+});
+
+test('XLSX staging uses a trusted suffix required by openpyxl and removes the private copy', async t => {
+  const root = await temporaryRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const deps = dependencies({
+    tempRoot: root,
+    material: { ...row, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', role: 'financial' },
+    parser: async request => {
+      assert.equal(request.material.authorized_local_path.split('/').at(-1), 'source.xlsx');
+      assert.deepEqual(await readFile(request.material.authorized_local_path), bytes);
+      return { ...responseFor(request), status: 'failed', records: [], document: { page_count: null },
+        error: { code: 'SYNTHETIC_FAILURE', message: 'synthetic parser failure' } };
+    },
+  });
+  const result = await parseAuthorizedMaterial(deps, input);
+  assert.equal(result.status, 'failed');
+  assert.equal((await readdir(root)).filter(name => name.startsWith('bb-material-')).length, 0);
+});
+
+test('#17 capacity: oversized materials fail before any byte is read, and over-budget output is its own code', async (t) => {
+  const root = await temporaryRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal(M1_PARSE_BYTE_LIMITS['text/plain'], 20 * 1024 * 1024);
+  assert.equal(M1_PARSE_BYTE_LIMITS['application/pdf'], 100 * 1024 * 1024);
+  assert.equal(M1_PARSE_OUTPUT_BUDGET_BYTES, 16 * 1024 * 1024);
+  let blobCalls = 0;
+  let parserCalls = 0;
+  const limited = { ...dependencies({ tempRoot: root, onBlob: () => { blobCalls += 1; },
+    parser: async (request) => { parserCalls += 1; return responseFor(request); } }), byteLimits: { 'text/plain': bytes.byteLength - 1 } };
+  await assert.rejects(parseAuthorizedMaterial(limited, input), /MATERIAL_PARSE_SIZE_LIMIT/);
+  assert.equal(blobCalls, 0);
+  assert.equal(parserCalls, 0);
+  const overBudget = dependencies({ tempRoot: root, parser: async () => { throw new Error('DOCUMENT_PARSER_OUTPUT_LIMIT'); } });
+  await assert.rejects(parseAuthorizedMaterial(overBudget, input), /MATERIAL_PARSE_OUTPUT_LIMIT/);
+  const oomKilled = dependencies({ tempRoot: root, parser: async () => { throw new Error('DOCUMENT_PARSER_MEMORY_LIMIT'); } });
+  await assert.rejects(parseAuthorizedMaterial(oomKilled, input), /MATERIAL_PARSE_MEMORY_LIMIT/);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
+});
+
+test('#17 bridge streams bytes to the staging file when the store supports it and still verifies them', async (t) => {
+  const root = await temporaryRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { writeFile } = await import('node:fs/promises');
+  const limits: number[] = [];
+  const streaming = (content: Buffer): MaterialParserDependencies => ({
+    ...dependencies({ tempRoot: root, parser: async (request) => {
+      assert.deepEqual(await readFile(request.material.authorized_local_path), bytes);
+      return responseFor(request);
+    } }),
+    blobs: {
+      async getPrivate() { throw new Error('buffered read must not be used'); },
+      async readToFile(_key, path, maxBytes) {
+        limits.push(maxBytes);
+        await writeFile(path, content, { flag: 'wx', mode: 0o600 });
+        return { byteSize: content.byteLength, sha256: createHash('sha256').update(content).digest('hex') };
+      },
+    },
+  });
+  const response = await parseAuthorizedMaterial(streaming(bytes), input);
+  assert.equal(response.status, 'parsed');
+  assert.deepEqual(limits, [bytes.byteLength]);
+  await assert.rejects(parseAuthorizedMaterial(streaming(Buffer.from('tampered')), input), /MATERIAL_INTEGRITY_MISMATCH/);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('bridge binds parser request and response to the authorized immutable material and cleans up', async (t) => {
@@ -250,7 +316,7 @@ test('bridge binds parser request and response to the authorized immutable mater
   assert.equal(JSON.stringify(result).includes(String(row.object_key)), false);
   assert.equal(JSON.stringify(result).includes(stagedPath), false);
   assert.equal(existsSync(stagedPath), false);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('staged bytes are cleaned when parser throws and the private error text is hidden', async (t) => {
@@ -272,7 +338,7 @@ test('staged bytes are cleaned when parser throws and the private error text is 
   });
   assert.notEqual(stagedPath, '');
   assert.equal(existsSync(stagedPath), false);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('bridge refuses parser output that contains the private blob key or staging path', async (t) => {
@@ -304,7 +370,7 @@ test('bridge rejects parser responses rebound to another material', async (t) =>
     },
   });
   await assert.rejects(parseAuthorizedMaterial(deps, input), /MATERIAL_PARSE_FAILED/);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('private cache reuses same-owner content across renamed materials and rebinds the current request', async (t) => {
@@ -458,7 +524,7 @@ test('bridge parses synthetic text through the actual Python subprocess when the
   const result = await parseAuthorizedMaterial(deps, input);
   assert.equal(result.status, 'parsed');
   assert.equal(result.records.some((record) => record.literal_quote.includes('synthetic authorized material')), true);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('opt-in authorized historical DOCX parses through Python and reuses owner-scoped cache by content', {
@@ -546,7 +612,7 @@ test('opt-in authorized historical DOCX parses through Python and reuses owner-s
   assert.equal(cache.size(), 2);
   assert.deepEqual([...cache.rows.values()].map((entry) => entry.owner_user_id).sort(),
     ['authorized-owner-alice', 'authorized-owner-bob']);
-  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
 test('migrated PostgreSQL and actual Python reuse content only within the owner account', {
@@ -586,7 +652,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
       return runDocumentParser(request, { pythonExecutable: localPython, repoRoot: repositoryRoot });
     },
     parseCache: { dependencies: { pool: db, blobs: privateBlobs }, versions: {
-      parserVersion: 'bondbuddy-document-parser-1.0.3',
+      parserVersion: documentParserVersion(),
       ocrVersion: 'native-text-1',
       basisVersion: 'evidence-basis-1',
     } },
@@ -629,7 +695,7 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
     const cacheRows = await client.query('SELECT owner_user_id FROM bb_parse_cache WHERE owner_user_id = ANY($1::text[])',
       [[ownerA, ownerB]]);
     assert.deepEqual(cacheRows.rows.map((record) => record.owner_user_id).sort(), [ownerA, ownerB].sort());
-    assert.deepEqual(await readdir(root), []);
+    assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
   } finally {
     await client.query('ROLLBACK');
     client.release();
