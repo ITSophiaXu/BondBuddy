@@ -309,7 +309,7 @@ function legacyV1Recognition(response: DocumentParseResponse): Recognition {
   const latestPeriod = periods.reduce((latest, period) => period.end! > latest.end! ? period : latest);
   const legacyVersion = (value: string | null) => {
     if (value === null) throw new Error('synthetic recognition must have native parser provenance');
-    return value.replace(/^historical-native-recognition-v2\//, 'historical-native-recognition-v1/');
+    return value.replace(/^historical-native-recognition-v3\//, 'historical-native-recognition-v1/');
   };
   return {
     ...current,
@@ -334,14 +334,14 @@ function seedProfile(db: CompositionDatabase, recognition: Recognition, writeKin
     correction_evidence_refs: [], created_at: new Date('2026-09-24T00:00:00Z') });
 }
 
-test('reruns a v1 recognition under v2 and adds the newly recognized half-year period', async () => {
+test('reruns a v1 recognition under v3 and adds the newly recognized half-year period', async () => {
   const db = new CompositionDatabase();
   const tempRoot = await mkdtemp(join(tmpdir(), 'bb-history-v2-rerun-'));
   let parserCalls = 0;
   const deps: MaterialParserDependencies = {
     ...dependencies({ parser: async request => { parserCalls += 1; return parseWithHalfYear(request); } }),
     pool: { query: (sql, values) => db.query(sql, values) },
-    blobs: { async getPrivate() { return bytes; } }, tempRoot,
+    blobs: { async getPrivate() { return bytes; } }, tempRoot: process.platform === 'win32' ? undefined : tempRoot,
   };
   const evidence: ParseEvidenceDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'legacy-snapshot' };
   const profiles: HistoricalProfileDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'v2-profile-event' };
@@ -359,7 +359,7 @@ test('reruns a v1 recognition under v2 and adds the newly recognized half-year p
       ['2022-12-31', '2023-12-31', '2024-12-31', '2025-06-30']);
     assert.equal(upgraded.profile.recognition.latest_reporting_cutoff.value, '2025-06-30');
     assert.match(upgraded.profile.recognition.source_market.provenance.extractor_version!,
-      /^historical-native-recognition-v2\//);
+      /^historical-native-recognition-v3\//);
     assert.equal(parserCalls, 1, 'v2 can recognize the immutable parser snapshot without reparsing the same bytes');
   } finally { await rm(tempRoot, { recursive: true, force: true }); }
 });
@@ -371,7 +371,7 @@ test('precheck recovers a corrected v1 profile without rerunning recognition or 
   const deps: MaterialParserDependencies = {
     ...dependencies({ parser: async request => { parserCalls += 1; return recognizedParse(request); } }),
     pool: { query: (sql, values) => db.query(sql, values) },
-    blobs: { async getPrivate() { return bytes; } }, tempRoot,
+    blobs: { async getPrivate() { return bytes; } }, tempRoot: process.platform === 'win32' ? undefined : tempRoot,
   };
   const evidence: ParseEvidenceDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'corrected-legacy-snapshot' };
   const profiles: HistoricalProfileDependencies = { pool: { connect: async () => db, query: (sql, values) => db.query(sql, values) }, newId: () => 'legacy-correction-event' };
@@ -407,7 +407,8 @@ test('trusted composition persists the parse snapshot before profile, reuses exa
     ...dependencies({ parser: async request => { parserCalls += 1; return recognizedParse(request); } }),
     pool: { query: (sql, values) => db.query(sql, values) },
     blobs: { async getPrivate() { blobReads += 1; return bytes; } },
-    tempRoot,
+    // Managed flock-based staging is Linux-only; this test verifies composition, not flock.
+    tempRoot: process.platform === 'win32' ? undefined : tempRoot,
   };
   const shared = {
     material: deps,

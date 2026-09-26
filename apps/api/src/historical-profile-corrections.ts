@@ -65,7 +65,7 @@ function parseNativeIdentity(value: unknown): { algorithmVersion: string; parser
 
 function parseOcrIdentity(value: unknown): { snapshotId: string; resultSha256: string } | null {
   if (typeof value !== 'string') return null;
-  const match = /^historical-ocr-recognition-v1:([A-Za-z0-9][A-Za-z0-9._:-]{0,127}):([a-f0-9]{64})$/.exec(value);
+  const match = /^historical-ocr-recognition-v[12]:([A-Za-z0-9][A-Za-z0-9._:-]{0,127}):([a-f0-9]{64})$/.exec(value);
   return match ? { snapshotId: match[1]!, resultSha256: match[2]! } : null;
 }
 

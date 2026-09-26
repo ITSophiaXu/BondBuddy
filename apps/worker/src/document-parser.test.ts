@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { runDocumentParser, runDocumentParserToFile, type DocumentParseRequest } from './document-parser.js';
@@ -23,6 +23,18 @@ const request:DocumentParseRequest={
   },
   options:{},
 };
+
+test('trusted staging handles accept host-native absolute paths and reject relative paths before Python', async () => {
+  let invocations = 0;
+  const invoke = async () => { invocations += 1; return JSON.stringify(response); };
+  const hostPath = resolve(tmpdir(), 'synthetic-material.txt');
+  await runDocumentParser({ ...request, material: { ...request.material, authorized_local_path: hostPath } }, { invoke });
+  assert.equal(invocations, 1);
+  for (const path of ['relative.txt', '../material.txt', 'C:relative.txt']) {
+    await assert.rejects(runDocumentParser({ ...request, material: { ...request.material, authorized_local_path: path } }, { invoke }), /INVALID_PARSE_REQUEST/);
+  }
+  assert.equal(invocations, 1);
+});
 
 const response={
   schema_version:'document-parse-response-v1',

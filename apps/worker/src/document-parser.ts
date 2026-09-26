@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { open, rm } from 'node:fs/promises';
 import { once } from 'node:events';
 import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDiagnostic } from './parser-diagnostics.js';
@@ -88,7 +88,7 @@ function validateRequest(request:DocumentParseRequest):void {
   if(request.schema_version!==DOCUMENT_PARSE_REQUEST_VERSION || !safeId(request.request_id) || !safeId(request.material.material_id) ||
     !Number.isSafeInteger(request.material.material_version) || request.material.material_version<1 ||
     !DOCUMENT_PARSER_MEDIA_TYPES.includes(request.material.media_type) || !/^[a-f0-9]{64}$/.test(request.material.sha256) ||
-    !request.material.authorized_local_path.startsWith('/') ||
+    !isAbsolute(request.material.authorized_local_path) ||
     (request.options.max_pages!==undefined && (!Number.isSafeInteger(request.options.max_pages) || request.options.max_pages<1 || request.options.max_pages>1500))) {
     throw parserError('INVALID_PARSE_REQUEST');
   }
@@ -301,7 +301,7 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
 const invokePython:Invoke = (serializedRequest,{pythonExecutable,repoRoot,timeoutMs,maxOutputBytes}) => new Promise((resolveOutput,reject)=>{
   const child=spawn(pythonExecutable,['-m','bondbuddy_document_parser'],{
     cwd:repoRoot,
-    env:{...process.env,PYTHONPATH:resolve(repoRoot,'python')},
+    env:{...process.env,PYTHONPATH:resolve(repoRoot,'python'),PYTHONIOENCODING:'utf-8'},
     stdio:['pipe','pipe','pipe'],
   });
   const stdout:Buffer[]=[];
@@ -378,7 +378,7 @@ export async function runDocumentParserToFile(request:DocumentParseRequest,recor
   const privatePaths=[request.material.authorized_local_path,resolve(request.material.authorized_local_path,'..'),repoRoot];
   const serialized=JSON.stringify(request);
   const child=spawn(options.pythonExecutable??'python3',['-m','bondbuddy_document_parser','--stream'],{
-    cwd:repoRoot,env:{...process.env,PYTHONPATH:resolve(repoRoot,'python')},stdio:['pipe','pipe','pipe'],
+    cwd:repoRoot,env:{...process.env,PYTHONPATH:resolve(repoRoot,'python'),PYTHONIOENCODING:'utf-8'},stdio:['pipe','pipe','pipe'],
   });
   const stderr:Buffer[]=[];
   let stderrBytes=0,capturedStderr=0,outputBytes=0,textBytes=0,recordCount=0,hasUncertainty=false,pageCount:number|null=null;
