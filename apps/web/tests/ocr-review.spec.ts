@@ -23,10 +23,10 @@ function review(): OcrReview {
 }
 type State = {
   review: OcrReview; images: number; imageFailures: number; writes: OcrCorrectionRequest[]; failWrite: boolean; conflict: boolean;
-  holdImage?: () => Promise<void>; calls: { method: string; path: string }[];
+  holdImage?: () => Promise<void>; holdReview?: () => Promise<void>; readFailures: number; reads: number; calls: { method: string; path: string }[];
 };
 async function open(page: Page) {
-  const state: State = { review: review(), images: 0, imageFailures: 0, writes: [], failWrite: false, conflict: false, calls: [] };
+  const state: State = { review: review(), images: 0, imageFailures: 0, writes: [], failWrite: false, conflict: false, readFailures: 0, reads: 0, calls: [] };
   expect(Value.Check(OcrReviewSchema, state.review)).toBe(true);
   await page.route('**/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), endpoint = url.pathname.replace('/api/v1', '');
@@ -40,7 +40,13 @@ async function open(page: Page) {
       if (state.imageFailures > 0) { state.imageFailures--; return json(503, { code: 'DATA_UNAVAILABLE' }); }
       return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'cache-control': 'no-store' }, body: image });
     }
-    if (endpoint === path) return json(200, state.review);
+    if (endpoint === path) {
+      state.reads++;
+      const response = structuredClone(state.review);
+      if (state.holdReview) await state.holdReview();
+      if (state.readFailures > 0) { state.readFailures--; return json(503, { code: 'DATA_UNAVAILABLE' }); }
+      return json(200, response);
+    }
     if (endpoint === `${path}/corrections`) {
       const input = request.postDataJSON() as OcrCorrectionRequest;
       state.writes.push(input);
@@ -185,4 +191,124 @@ test('conflict preserves inputs and narrow-screen navigation stays usable', asyn
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath('ocr-review-desktop.png'), fullPage: true });
+});
+
+const reloadCorrection = (page: Page) => page.getByRole('button', { name: '读取最新校正', exact: true });
+const acknowledge = (page: Page) => page.getByRole('button', { name: '已核对最新记录，继续使用本次输入', exact: true });
+function concurrentCorrection(state: State, revision = 1) {
+  state.review.corrections.push({ correction_id: `other-${revision}`, record_id: 'record-0', revision,
+    original_text: '(1,234.50)', corrected_text: `其他页面输入 ${revision}`, reason: 'synthetic 另一次用户说明',
+    period: '2024 年末', unit: '亿元', scope: '合成母公司', actor_user_id: 'synthetic-owner',
+    created_at: '2026-09-26T13:00:00Z', status: 'user_asserted', eligible_for_manuscript: false });
+}
+async function conflictingDraft(page: Page) {
+  const state = await open(page); state.conflict = true;
+  await record(page, 0).click(); await expect(save(page)).toBeEnabled();
+  await page.getByLabel('校正后文字或数值').fill('0');
+  await page.getByLabel('所属期间').fill('2025 年末');
+  await page.getByLabel('单位', { exact: true }).fill('万元');
+  await page.getByLabel('主体与合并口径').fill('合成合并口径');
+  await page.getByLabel('校正依据 / 说明').fill('synthetic 本次输入');
+  await save(page).click(); await expect(page.locator('#ocr-save-status')).toContainText('当前输入保留');
+  return state;
+}
+test('conflict requires reading and acknowledging latest correction before an explicit new save', async ({ page }, testInfo) => {
+  const state = await conflictingDraft(page); concurrentCorrection(state);
+  await expect(save(page)).toBeDisabled();
+  await reloadCorrection(page).click();
+  await expect(page.locator('#ocr-conflict-latest')).toContainText('v1');
+  for (const value of ['其他页面输入 1', '2024 年末', '亿元', '合成母公司', 'synthetic 另一次用户说明']) {
+    await expect(page.locator('#ocr-conflict-latest')).toContainText(value);
+  }
+  await expect(page.getByLabel('校正后文字或数值')).toHaveValue('0');
+  await expect(page.getByLabel('所属期间')).toHaveValue('2025 年末');
+  await expect(page.getByLabel('单位', { exact: true })).toHaveValue('万元');
+  await expect(page.getByLabel('主体与合并口径')).toHaveValue('合成合并口径');
+  await expect(page.getByLabel('校正依据 / 说明')).toHaveValue('synthetic 本次输入');
+  await expect(save(page)).toBeDisabled(); expect(state.writes).toHaveLength(1);
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect(page.locator('#ocr-conflict')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await page.screenshot({ path: testInfo.outputPath(`conflict-${viewport.width}.png`), fullPage: true });
+  }
+  await acknowledge(page).click(); await expect(save(page)).toBeEnabled();
+  expect(state.writes).toHaveLength(1);
+  await expect(page.locator('.ocr-history summary')).toContainText('1');
+  state.conflict = false; state.failWrite = true;
+  await save(page).click(); await expect(save(page)).toBeEnabled();
+  await save(page).click();
+  await expect(page.locator('#ocr-save-status')).toContainText('用户校正已保存');
+  expect(state.writes).toHaveLength(3);
+  expect(state.writes[1]).toMatchObject({ expected_revision: 1, snapshot_id: 'synthetic-snapshot', corrected_text: '0' });
+  expect(state.writes[1].request_id).not.toBe(state.writes[0].request_id);
+  expect(state.writes[2]).toEqual(state.writes[1]);
+  expect(state.review.corrections.map(c => c.revision)).toEqual([1, 2]);
+  expect(state.review.corrections.every(c => c.status === 'user_asserted' && !c.eligible_for_manuscript)).toBe(true);
+});
+
+test('failed conflict reload retains input and retries without permitting a stale save', async ({ page }) => {
+  const state = await conflictingDraft(page); concurrentCorrection(state); state.readFailures = 1;
+  await reloadCorrection(page).click();
+  await expect(page.locator('#ocr-save-status')).toContainText('暂时无法完成');
+  await expect(save(page)).toBeDisabled(); await expect(acknowledge(page)).toBeHidden();
+  await expect(page.getByLabel('校正后文字或数值')).toHaveValue('0');
+  await reloadCorrection(page).click(); await expect(acknowledge(page)).toBeVisible();
+  expect(state.writes).toHaveLength(1);
+});
+
+for (const change of ['snapshot', 'hash', 'material-version', 'record-missing'] as const) {
+  test(`conflict reload refuses to transfer old inputs when ${change} changes`, async ({ page }) => {
+    const state = await conflictingDraft(page);
+    if (change === 'snapshot') state.review.snapshot_id = 'replacement-snapshot';
+    if (change === 'hash') state.review.result_sha256 = 'b'.repeat(64);
+    if (change === 'material-version') state.review.material_version++;
+    if (change === 'record-missing') state.review.records = state.review.records.filter(r => r.record_id !== 'record-0');
+    await reloadCorrection(page).click();
+    await expect(page.locator('#ocr-save-status')).toContainText('识别原文已变化');
+    await expect(save(page)).toBeDisabled(); await expect(acknowledge(page)).toBeHidden();
+    await expect(page.getByLabel('校正后文字或数值')).toHaveValue('0');
+    expect(state.writes).toHaveLength(1);
+  });
+}
+
+test('a second concurrent correction reopens the conflict instead of silently overwriting it', async ({ page }) => {
+  const state = await conflictingDraft(page); concurrentCorrection(state);
+  await reloadCorrection(page).click(); await acknowledge(page).click();
+  concurrentCorrection(state, 2);
+  await save(page).click(); await expect(save(page)).toBeDisabled();
+  await reloadCorrection(page).click();
+  await expect(page.locator('#ocr-conflict-latest')).toContainText('其他页面输入 2');
+  await expect(save(page)).toBeDisabled();
+  expect(state.writes).toHaveLength(2); expect(state.writes[1].expected_revision).toBe(1);
+});
+
+test('late conflict reload cannot replace the selected record or restore a disposed page', async ({ page }) => {
+  const state = await conflictingDraft(page); concurrentCorrection(state);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; }); state.holdReview = () => pending;
+  await reloadCorrection(page).click(); await expect.poll(() => state.reads).toBe(2);
+  page.once('dialog', dialog => dialog.accept()); await record(page, 1).click();
+  release(); state.holdReview = undefined;
+  await expect(save(page)).toBeEnabled(); await expect(acknowledge(page)).toBeHidden();
+  await expect(page.getByLabel('校正后文字或数值')).toHaveValue('(1,234.50)');
+  await page.getByRole('link', { name: '我的项目', exact: true }).click();
+  await expect(page.locator('#ocr-conflict-latest')).toHaveCount(0);
+  expect(errors).toEqual([]); expect(state.writes).toHaveLength(1);
+});
+
+test('leaving during conflict reload discards the late response', async ({ page }) => {
+  const state = await conflictingDraft(page); concurrentCorrection(state);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; }); state.holdReview = () => pending;
+  await reloadCorrection(page).click(); await expect.poll(() => state.reads).toBe(2);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('link', { name: '我的项目', exact: true }).click();
+  const response = page.waitForResponse(r => r.url().endsWith(path));
+  release(); await response;
+  await expect(page.locator('#ocr-conflict-latest')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  expect(state.writes).toHaveLength(1); expect(errors).toEqual([]);
 });
