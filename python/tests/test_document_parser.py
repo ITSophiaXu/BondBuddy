@@ -96,6 +96,34 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
 
+    def test_docx_table_cells_keep_element_identity_and_deduplicate_real_merges(self):
+        path = self.root / "cell-identity.docx"
+        document = Document()
+        table = document.add_table(rows=32, cols=4)
+        table.cell(0, 0).merge(table.cell(0, 1)).text = "merged-cell"
+        expected = ["merged-cell"]
+        for column in range(2, 4):
+            value = f"cell-1-{column + 1}"
+            table.cell(0, column).text = value
+            expected.append(value)
+        for row in range(1, 32):
+            for column in range(4):
+                value = f"cell-{row + 1}-{column + 1}"
+                table.cell(row, column).text = value
+                expected.append(value)
+        document.save(path)
+
+        first = self.request(path, MEDIA_DOCX)
+        second = self.request(path, MEDIA_DOCX)
+        quotes = [record["literal_quote"] for record in first["records"]]
+        self.assertEqual(first["status"], "parsed")
+        self.assertEqual(quotes, expected)
+        self.assertEqual([record["literal_quote"] for record in second["records"]], expected)
+        self.assertEqual(first["records"], second["records"])
+        self.assertEqual(quotes.count("merged-cell"), 1)
+        merged = first["records"][0]
+        self.assertEqual(merged["locator"]["path"][0], {"table": 1, "row": 1, "column": 1})
+
     def test_docx_move_revisions_use_current_amount_and_preserve_order(self):
         path = self.root / "moved-amount.docx"
         document = Document()
