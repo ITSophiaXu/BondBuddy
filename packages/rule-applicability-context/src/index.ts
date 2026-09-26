@@ -489,6 +489,37 @@ export async function createRuleApplicabilityContextDraft(
   } finally { client.release(); }
 }
 
+export interface RuleApplicabilityContextDraftRef {
+  readonly contextId: string;
+  readonly version: number;
+  readonly contentHash: string;
+  readonly sourceInputRevision: number;
+  readonly sourceInputHash: string;
+  readonly status: 'needs_review';
+}
+
+/** Read only the exact owner-scoped draft reference; never returns an eligibility signal. */
+export async function readRuleApplicabilityContextDraftRef(
+  db: QueryLike,
+  expected: { readonly ownerUserId: string; readonly projectId: string; readonly contextId: string; readonly version: number },
+): Promise<RuleApplicabilityContextDraftRef | null> {
+  const selected = await db.query(`SELECT * FROM bb_rule_applicability_context_drafts
+    WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4`,
+  [expected.ownerUserId, expected.projectId, expected.contextId, expected.version]);
+  if (!selected.rows.length) return null;
+  const row = selected.rows[0] as JsonRecord;
+  const contextPin = mapPin(row, await readCandidates(db, expected.ownerUserId, expected.projectId, expected.contextId, expected.version));
+  const contentHash = String(row.content_hash).trim();
+  if (contextPin.status !== 'needs_review' || ruleApplicabilityContextHash(contextPin) !== contentHash) {
+    throw fail('RULE_CONTEXT_STORED_HASH_MISMATCH');
+  }
+  return {
+    contextId: String(row.id), version: Number(row.version), contentHash,
+    sourceInputRevision: Number(row.source_input_revision), sourceInputHash: String(row.source_input_hash).trim(),
+    status: 'needs_review',
+  };
+}
+
 /**
  * Load an exact context pin on the caller's transaction client and recheck its current source evidence. This slice
  * intentionally has no approved branch until taxonomy and reviewer thresholds
