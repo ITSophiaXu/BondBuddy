@@ -94,6 +94,9 @@ services:
       <<: *bb-policy-env
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
+      # #17: stage materials on disk; the /tmp tmpfs is charged to the worker memory limit and a
+      # 100 MiB DOCX staged there OOM-killed the parser on the 320M production profile.
+      BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
       # #17 WorkerRuntime (apps/worker/src/runtime.ts): bounded slots over run and parse jobs.
       BB_WORKER_CONCURRENCY: ${BB_WORKER_CONCURRENCY:-2}
       BB_WORKER_DRAIN_MS: ${BB_WORKER_DRAIN_MS:-20000}
@@ -112,6 +115,7 @@ services:
       BB_CODEX_WORK_ROOT: /tmp/bb-codex
       # #79/#16 operator-only platform probe (POST /api/v1/admin/probes/model). Off by default.
       BB_PLATFORM_PROBE_ENABLED: ${BB_PLATFORM_PROBE_ENABLED:-0}
+    volumes: [parsestaging:/var/lib/bondbuddy/parse-staging]
     networks: [backend]
     depends_on:
       postgres: {condition: service_healthy}
@@ -201,3 +205,4 @@ volumes:
   blobdata:
   logsink:
   uploadspool:
+  parsestaging:

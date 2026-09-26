@@ -139,15 +139,10 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     [file.file_id, owner, projectId, uploadId, file.original_filename, file.media_type, file.bytes, contentHash,
       `synthetic-test/material/${file.file_id}`]);
 
-    // Until the #196 Node response schema lands, assert cached_formula_results is zero above and
-    // project only that field out for this PG producer test. This does not verify the complete
-    // Python→Node response bridge; #196 must absorb the schema change before full bridge acceptance.
-    const { cached_formula_results: _zeroCachedResults, ...contractDocument } = parsed.document;
-    const responseForCurrentSnapshotContract: DocumentParseResponse = { ...parsed, document: contractDocument };
     const savedSnapshot = await persistParseSnapshot({ pool, newId: () => snapshotId }, {
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1, requestId,
     }, { mediaType: file.media_type as DocumentParseRequest['material']['media_type'], sha256: contentHash },
-    responseForCurrentSnapshotContract);
+    parsed);
     assert.equal(savedSnapshot.parserVersion, parsed.parser_version);
     assert.equal(savedSnapshot.evidence.length, 1392);
 
