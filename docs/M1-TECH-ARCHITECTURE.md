@@ -382,7 +382,9 @@ This is 31 disabled research candidates, not a production checker or release. Of
 
 ### #17 用户参考稿结构锁（2026-09-26）
 
-用户主动上传的相似稿与平台参考库分开锁定。新增 `0046_m1_user_reference_pins.sql`，保存追加式审核结论和每个 input revision 的不可变 pin；迁移不预置审核权限或通过结论。input lock 只接受 generation 中已列入 manifest 的本人项目 `reference` 材料版本，核对 SHA-256 和同源 parsed snapshot。pin 同时进入 `input_hash`，包含材料版本/hash、snapshot、授权/可读性/目标适用状态、目标市场/发行方式/品种/文书阶段、审核引用和事实隔离检查版本。审核必须匹配完整目标且授权仍有效；没有已审核结论时为 `needs_review`，后续审核只能创建新 input revision。`user-reference-outline-v1` 在后台任务进程重验材料、snapshot、审核和 grant 后只投影审核过的章节顺序与标题；解析正文和参考发行人事实不进入模型输入。未选择用户参考稿时，#33 继续使用 #77 库选择链。业务审核口径和授权由业务负责人确定，此切片不增加前台选择页或审核入口。
+用户主动上传的相似稿与平台参考库分开锁定。新增 `0046_m1_user_reference_pins.sql`，保存追加式审核结论和每个 input revision 的不可变 pin；迁移不预置审核权限或通过结论。input lock 只接受 generation 中已列入 manifest 的本人项目 `reference` 材料版本，核对 SHA-256 和同源解析 snapshot。pin 同时进入 `input_hash`，包含材料版本/hash、snapshot、授权/可读性/目标适用状态、目标市场/发行方式/品种/文书阶段、审核引用和事实隔离检查版本。审核必须匹配完整目标且授权仍有效；没有已审核结论时为 `needs_review`，后续审核只能创建新 input revision。`user-reference-outline-v1` 在后台任务进程重验材料、snapshot、审核和 grant 后只投影审核过的章节顺序与标题；解析正文和参考发行人事实不进入模型输入。未选择用户参考稿时，#33 继续使用 #77 库选择链。业务审核口径和授权由业务负责人确定，此切片不增加前台选择页或审核入口。
+
+`0047_m1_user_reference_review_evidence.sql` 补上独立、不可变的项目已审目标 context，以及审核针对精确 parse response SHA、warning code 集合和章节标题的签认。现有 #19 context 草稿只有 `document_purpose` 且状态固定 `needs_review`，不能推导已审 product/stage；故本切片用独立目标快照，按 owner/project、审核授权和内容 hash 读取。请求的 product/stage 仅作断言，不匹配返回 422；无受信目标时 pin 留在 `needs_review`，目标字段为空。解析 `needs_confirmation` 仅在 DOCX 1.0.6 的 `DOCX_DRAWINGS`、`DOCX_AUXILIARY_PARTS` 两种 warning 构成完整集合、审核逐项确认、coverage 非 `incomplete`、证据记录数等于 snapshot 记录数且无局部不确定记录时可被接受；其他 warning、确认缺项及未签认标题均保持 `needs_review`。锁定与运行时重验调用同一契约判定。0047 不自动授予审核权；既有缺少签认证据的 accepted pin 在运行时保持待审。目标及事实隔离审核的业务口径仍由负责人确定。
 
 ## #17 发行人身份观察审核接口（2026-09-26）
 
