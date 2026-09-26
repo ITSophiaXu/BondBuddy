@@ -11,7 +11,7 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
-import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, type Lease } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
@@ -346,8 +346,11 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (saved && !stage.replay) { ctx.values.set(stage.name, saved); continue; }
       const outcome = await stage.run(ctx);
       if (outcome.kind === 'done') {
-        if (!saved || outcome.upgradeCheckpoint) {
+        if (!saved) {
           await checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {});
+          checkpoint[stage.name] = outcome.checkpoint ?? {};
+        } else if (outcome.upgradeCheckpoint) {
+          await upgradeStageCheckpoint(pool, lease, stage.name, outcome.checkpoint ?? {});
           checkpoint[stage.name] = outcome.checkpoint ?? {};
         }
         ctx.values.set(stage.name, outcome.value ?? outcome.checkpoint ?? {});
