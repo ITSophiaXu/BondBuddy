@@ -158,8 +158,20 @@ function validRuleSelection(rule: TrustedRuleSelection, scope: NoHistoryRunScope
 }
 
 function validTargetFacts(snapshot: TargetFactsSnapshot, scope: NoHistoryRunScope): boolean {
-  return sameScope(snapshot, scope) && snapshot.facts.length > 0
-    && snapshot.facts.every(fact => fact.status === 'verified' && !!fact.factId.trim() && !!fact.statement.trim() && fact.evidenceRefs.length > 0);
+  if (!sameScope(snapshot, scope) || !Array.isArray(snapshot.facts) || snapshot.facts.length === 0) return false;
+  const seenFactIds = new Set<string>();
+  return snapshot.facts.every(fact => {
+    if (typeof fact !== 'object' || fact === null || Array.isArray(fact) ||
+        fact.status !== 'verified' || typeof fact.factId !== 'string' || !fact.factId.trim() ||
+        typeof fact.statement !== 'string' || !fact.statement.trim() || !Array.isArray(fact.evidenceRefs) ||
+        fact.evidenceRefs.length === 0 || fact.evidenceRefs.some((reference: unknown) => typeof reference !== 'string' || !reference.trim())) {
+      return false;
+    }
+    const normalizedFactId = fact.factId.trim();
+    if (seenFactIds.has(normalizedFactId)) return false;
+    seenFactIds.add(normalizedFactId);
+    return true;
+  });
 }
 
 export function validateNoHistoryDraft(value: unknown, allowedFactIds: ReadonlySet<string>): boolean {
