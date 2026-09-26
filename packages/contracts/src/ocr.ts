@@ -52,3 +52,83 @@ export type OcrEngineResponse = Static<typeof OcrEngineResponseSchema>;
 export type OcrReview = Static<typeof OcrReviewSchema>;
 export type OcrCorrectionRequest = Static<typeof OcrCorrectionRequestSchema>;
 export type OcrCorrection = Static<typeof OcrCorrectionSchema>;
+
+// Internal v2 contract only: no v1 processor, HTTP route or durable snapshot is upgraded.
+export const OCR_V2_LIMITS = { batch_pages: 50, preflight_pages: 5, document_pages: 1500, page_pixels: 20_000_000 } as const;
+const version = Type.String({ minLength: 1, maxLength: 100, pattern: '\\S' });
+const physicalPage = Type.Integer({ minimum: 1, maximum: OCR_V2_LIMITS.document_pages });
+export const OcrDocumentIdentityV2Schema = object({
+  owner_user_id: id, project_id: id,
+  material: OcrEngineResponseSchema.properties.material,
+  page_count: physicalPage, processor_version: version,
+  engine: object({
+    name: version, version, language: Type.String({ minLength: 1, maxLength: 100, pattern: '^[a-z_]+(?:\\+[a-z_]+)*$' }),
+    language_data_sha256: Type.Record(Type.String({ pattern: '^[a-z_]+$' }), hash, { minProperties: 1 }),
+    parameters_sha256: hash
+  }),
+  rendering: object({
+    renderer: version, renderer_version: version, dpi: Type.Integer({ minimum: 1, maximum: 1200 }),
+    max_page_pixels: Type.Integer({ minimum: 1, maximum: OCR_V2_LIMITS.page_pixels }),
+    parameters_sha256: hash
+  })
+});
+export const OcrPageIdentityV2Schema = object({ document: OcrDocumentIdentityV2Schema, page: physicalPage });
+export const OcrPageResultV2Schema = object({
+  page: Type.Omit(OcrPageSchema, ['image_base64']),
+  records: Type.Array(OcrRecordSchema, { maxItems: 100000 }),
+  status: Type.Literal('needs_confirmation'), eligible_for_manuscript: Type.Literal(false)
+});
+export const OcrPageCheckpointV2Schema = object({
+  schema_version: Type.Literal('ocr-page-checkpoint-v2'),
+  identity: OcrPageIdentityV2Schema, identity_sha256: hash, result_sha256: hash,
+  source_request_id: id, result: OcrPageResultV2Schema
+});
+export const OcrCheckpointRefV2Schema = object({
+  page: physicalPage, identity_sha256: hash, result_sha256: hash, source_request_id: id
+});
+const trialCost = { billable: Type.Literal(false), cost_payer: Type.Literal('platform') };
+export const OcrExecutionContextV2Schema = Type.Union([
+  object({ purpose: Type.Literal('source_preflight'), run: Type.Null(), ...trialCost }),
+  object({
+    purpose: Type.Literal('full_ocr'),
+    run: object({ run_id: id, execution_request_id: id, input_revision: positive, input_hash: hash }),
+    ...trialCost
+  })
+]);
+export const OcrBatchRequestV2Schema = object({
+  schema_version: Type.Literal('ocr-request-v2'), request_id: id,
+  document: OcrDocumentIdentityV2Schema, context: OcrExecutionContextV2Schema,
+  pages: Type.Array(physicalPage, { minItems: 1, maxItems: OCR_V2_LIMITS.batch_pages, uniqueItems: true }),
+  reuse: Type.Array(OcrCheckpointRefV2Schema, { maxItems: OCR_V2_LIMITS.batch_pages })
+});
+export const OcrBatchResponseV2Schema = object({
+  schema_version: Type.Literal('ocr-response-v2'), request_id: id,
+  document: OcrDocumentIdentityV2Schema, context: OcrExecutionContextV2Schema,
+  page_results: Type.Array(Type.Union([
+    object({ page: physicalPage, status: Type.Literal('succeeded'), reused: Type.Boolean(), checkpoint: OcrCheckpointRefV2Schema }),
+    object({
+      page: physicalPage, status: Type.Literal('failed'),
+      attempted: Type.Union([Type.Boolean(), Type.Null()]), retryable: Type.Boolean(),
+      error: Type.String({ minLength: 1, maxLength: 200 }), warnings
+    })
+  ]), { minItems: 1, maxItems: OCR_V2_LIMITS.batch_pages }),
+  // One page attempt per batch, including failures; null means its consumption is unknown.
+  attempted_pages: Type.Union([Type.Integer({ minimum: 0, maximum: OCR_V2_LIMITS.batch_pages }), Type.Null()]),
+  coverage: Type.Union([Type.Literal('none'), Type.Literal('partial')]),
+  eligible_for_manuscript: Type.Literal(false)
+});
+export const OcrAggregateV2Schema = object({
+  schema_version: Type.Literal('ocr-aggregate-v2'), document: OcrDocumentIdentityV2Schema,
+  context: OcrExecutionContextV2Schema,
+  successful_pages: Type.Array(OcrCheckpointRefV2Schema, { maxItems: OCR_V2_LIMITS.document_pages }),
+  coverage: OcrEngineResponseSchema.properties.coverage, eligible_for_manuscript: Type.Literal(false)
+});
+export type OcrDocumentIdentityV2 = Static<typeof OcrDocumentIdentityV2Schema>;
+export type OcrPageIdentityV2 = Static<typeof OcrPageIdentityV2Schema>;
+export type OcrPageResultV2 = Static<typeof OcrPageResultV2Schema>;
+export type OcrPageCheckpointV2 = Static<typeof OcrPageCheckpointV2Schema>;
+export type OcrCheckpointRefV2 = Static<typeof OcrCheckpointRefV2Schema>;
+export type OcrExecutionContextV2 = Static<typeof OcrExecutionContextV2Schema>;
+export type OcrBatchRequestV2 = Static<typeof OcrBatchRequestV2Schema>;
+export type OcrBatchResponseV2 = Static<typeof OcrBatchResponseV2Schema>;
+export type OcrAggregateV2 = Static<typeof OcrAggregateV2Schema>;

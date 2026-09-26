@@ -1,5 +1,11 @@
 # M1 public contract (Issue #6)
 
+## #14 internal OCR v2 contract (runtime not implemented)
+
+`src/ocr.ts` adds independent physical-page batch, successful checkpoint/reference and aggregate schemas/types; `src/ocr-v2.ts` adds identity/result SHA-256 and semantic validators. Import both through `@bondbuddy/contracts`. These internal v2 schemas are not advertised in public OpenAPI and do not replace the v1 processor, API, correction schema or 50-page limit. A schema check alone does not prove matching identities, attempt accounting, page integrity or complete coverage; use the exported validators with trusted expected identities and an owner-authorized read-back callback.
+
+`examples/ocr-v2.json` is synthetic, and `npm run check:ocr-v2 -w @bondbuddy/contracts` checks it plus generated 70/74-page bounded batches, independent failed-page retries, verified reuse and negative cases. It also runs under `npm run check:contracts` after building. The field dictionary, canonical hash format, preflight/full-execution boundary and unimplemented runtime/migration follow-ups are in [OCR-HANDOFF.md](../../python/OCR-HANDOFF.md#v2-物理页批次与-checkpoint-契约2026-09-26).
+
 ## Current #11 addition
 
 The original #6 skeleton description below is historical. For current persistent endpoints and auth see `apps/api/README.md`; the integrated Vite client is documented in `apps/web/README.md`. `src/update-project.ts` is the single public definition of `UpdateDetailsSchema`, money units/precision, purpose codes/material hints, field limits and semantic date/amount validation. `MARKET_LABELS`/`OFFERING_LABELS` sit beside the existing enums in `src/index.ts`. UI imports these; it does not maintain a second market dictionary.
