@@ -39,10 +39,10 @@ DOCX, so this regression records the platform-paid native parse event; it does
 not exercise scan OCR or establish OCR accuracy or professional acceptance.
 
 ```sh
+npm run build
 BB_RUN_AUTHORIZED_SAMPLE_PG_E2E=1 \
 BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
 BB_PYTHON=/path/to/python \
-npm run build && \
 node --test apps/worker/dist/authorized-sample-pg-e2e.test.js
 ```
 
