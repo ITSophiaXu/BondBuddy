@@ -166,6 +166,47 @@ test('missing target facts pauses before a reference can be locked', async () =>
   assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 });
 });
 
+test('invalid target facts pause before reference lock or model setup', async () => {
+  const invalidFacts: Array<[string, readonly unknown[]]> = [
+    ['duplicate fact IDs after trimming', [
+      { factId: 'target-fact-1', statement: '事实甲。', evidenceRefs: ['target-audit-p1'], status: 'verified' },
+      { factId: ' target-fact-1 ', statement: '事实乙。', evidenceRefs: ['target-audit-p2'], status: 'verified' },
+    ]],
+    ['blank evidence reference', [
+      { factId: 'target-fact-1', statement: '事实甲。', evidenceRefs: [' \t '], status: 'verified' },
+    ]],
+    ['null fact entry', [null]],
+    ['string fact entry', ['not-a-fact']],
+  ];
+  for (const [description, facts] of invalidFacts) {
+    const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+    const stage = noHistoryModelGenerationStage(adapters({ loadTargetFacts: async () => {
+      counts.facts++;
+      return { ...scope, facts: facts as never };
+    } }, counts));
+    assert.deepEqual(await stage.run(context()), {
+      kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:target_issuer_facts_missing_or_unreviewed',
+    }, description);
+    assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 }, description);
+  }
+});
+
+test('multiple valid target facts pass validation and continue to reference selection', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({ loadTargetFacts: async () => {
+    counts.facts++;
+    return { ...scope, facts: [
+      { factId: 'target-fact-1', statement: '事实甲已核实。', evidenceRefs: ['target-audit-p1'], status: 'verified' },
+      { factId: 'target-fact-2', statement: '事实乙已核实。', evidenceRefs: ['target-audit-p2', 'target-notes-p8'], status: 'verified' },
+    ] };
+  } }, counts));
+  assert.deepEqual(await stage.run(context()), {
+    kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:reference_selection_needs_review',
+  });
+  assert.deepEqual(counts, { config: 0, rules: 1, select: 1, facts: 1 },
+    'valid facts reach reference selection while model setup remains behind its existing lock gate');
+});
+
 test('generation prompt contains target issuer evidence and drops any non-allowlisted reference payload', () => {
   const prompt = buildNoHistoryGenerationPrompt({ scope, profile, facts: [{ factId: 'target-fact-1', statement: 'Target has verified revenue.', evidenceRefs: ['target-audit-p1'], status: 'verified' }],
     rule, chapters: [{ order: 2, heading: 'Business Overview', issuerFacts: 'REFERENCE ISSUER SECRET: Never disclose this' }, { order: 1, heading: 'Summary' }] as never });
