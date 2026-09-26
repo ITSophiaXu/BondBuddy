@@ -32,7 +32,9 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   await expect(page.getByRole('heading', { name: '合成 DFI 完整恢复验收', exact: true })).toBeVisible();
   const route = new URL(page.url()).hash;
   const id = route.split('/').at(-1)!;
-  const saved = await (await page.request.get(`/api/v1/projects/${id}`)).json();
+  const savedResponse = await page.request.get(`/api/v1/projects/${id}`);
+  expect(savedResponse.status(), await savedResponse.text()).toBe(200);
+  const saved = await savedResponse.json();
   expect(saved.update_details.registration_amount).toBeNull();
   expect(saved.update_details.issuance_amount).toBeNull();
   expect(saved.update_details.target_reporting_periods).toEqual([{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }]);

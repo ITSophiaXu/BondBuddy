@@ -157,6 +157,20 @@ test('does not turn an incidental DFI citation into the instrument for an MTN is
   assert.match(value.source_offering.uncertainty.join(' '), /不能据此判定/);
 });
 
+test('#11 DFI coverage lists do not become a tranche, while contradictory document claims stay pending', () => {
+  const base = [ ...marketRecords('nafmii'),
+    record('dfi-cover', '本次DFI统一注册文件覆盖MTN、CP及SCP。', '募集说明书封面'),
+    record('dfi-arrangement', '本次储架发行统一注册，拟发行工具包括SCP。', '本次发行概况') ];
+  const result = recognizeHistoricalNativeText(response(base), { profileVersion: 1 });
+  assert.equal(result.source_offering.value, 'dfi');
+  assert.deepEqual(result.source_offering.provenance.evidence_refs, ['dfi-cover', 'dfi-arrangement']);
+  const conflict = recognizeHistoricalNativeText(response([...base,
+    record('conflict', '本期债券为MTN中期票据。', '本期条款')]), { profileVersion: 2 });
+  assert.equal(conflict.source_offering.value, null);
+  assert.equal(conflict.source_offering.status, 'needs_confirmation');
+  assert.ok(conflict.source_offering.provenance.evidence_refs.includes('conflict'));
+});
+
 test('extracts three annual periods and 2025 Q1 from financial period text, not a cover issue date', () => {
   const value = recognizeHistoricalNativeText(response([
     ...marketRecords('sse'), ...offeringRecords('sse', 'private'),
@@ -195,7 +209,7 @@ test('recognizes explicit half-year labels from financial section evidence and d
     raw_value: '2025年半年度；2025年上半年；2025年1-6月',
     provenance: {
       material_id: material.material_id, material_version: material.material_version, method: 'native_text',
-      extractor_version: 'historical-native-recognition-v2/synthetic-native-1',
+      extractor_version: 'historical-native-recognition-v3/synthetic-native-1',
       evidence_refs: ['half-year-label', 'first-half-label', 'half-year-range'],
     },
     uncertainty: [], status: 'recognized',
