@@ -79,6 +79,10 @@
     "./library": {
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"
+    },
+    "./credit-facility-supplements-repository": {
+      "types": "./dist/credit-facility-supplements-repository.d.ts",
+      "default": "./dist/credit-facility-supplements-repository.js"
     }
   },
   "scripts": {

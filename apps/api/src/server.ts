@@ -27,6 +27,7 @@ import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
+import { installCreditFacilitySupplementRoutes } from './credit-facility-supplements.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
@@ -192,6 +193,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/openapi.json', async () => openApiDocument());
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   installFactReviewRoutes(app,{db,owner});
+  installCreditFacilitySupplementRoutes(app,{db,owner});
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>

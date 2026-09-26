@@ -235,20 +235,20 @@ candidate once selected. A decision is not audit verification or permission to
 generate; no public fact-resolution API or production processor uses it yet.
 Its live PostgreSQL test uses synthetic candidates and a disposable database.
 
-`credit-facility-supplement-repository.ts` is a separate internal #15 seam for
-user-supplied total/used/unused credit assertions. It calls the existing domain
-validator, preserves each opaque source statement ID and date (including
-incomplete values needing confirmation), and records only `user_asserted`,
-`needs_confirmation`, or `conflicted`; even arithmetic agreement is never
-verified or manuscript-ready here. The trusted caller must resolve and verify
-that each source ID belongs to the authenticated owner/project and represents
-the stated user message before invoking this repository. This storage layer
-does not invent material evidence anchors or expose a public read API. Same
-request retries are idempotent only for the same payload, and the append plus
-outbox event is atomic. Migration `0015_m1_credit_facility_supplements.sql`
-keeps these snapshots immutable. Its optional live PostgreSQL 16 test uses
-synthetic owner/project fixtures and a disposable database; set
-`CREDIT_FACILITY_SUPPLEMENT_TEST_DATABASE_URL` after applying migrations.
+`credit-facility-supplement-repository.ts` remains as a worker compatibility
+re-export of the API-owned #15 repository implementation; there is one storage
+implementation. The API validates and preserves opaque source labels and
+statement dates, including incomplete values needing confirmation, and records
+only `user_asserted`, `needs_confirmation`, or `conflicted`; arithmetic
+agreement is never verified or manuscript-ready. Source labels are not
+independent authorization or evidence anchors. The owner-scoped API, exact
+version reads, idempotent append, immutable predecessor chain and atomic outbox
+are documented in `apps/api/README.md`; migration 0050 adds version ancestry
+while retaining 0015 rows at version 1. PostgreSQL 16 API regression:
+`CREDIT_FACILITY_SUPPLEMENT_API_TEST_DATABASE_URL` must point at a disposable,
+fully migrated template; it verifies owner/project denial, replay/conflict,
+revisions, pending/conflicted values, outbox and immutability. This slice does
+not persist #18 conversation messages or pin these records into input revisions.
 
 The fact repository has an optional live PostgreSQL 16 test. After applying
 the repository migrations to a disposable database, set

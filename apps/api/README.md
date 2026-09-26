@@ -1,5 +1,13 @@
 # M1 persistent API and M1-02 session slice
 
+## #15 structured credit-facility assertions (migration 0050)
+
+`POST /api/v1/projects/{project_id}/credit-facility-supplements` appends a trusted-session, owner/project-scoped assertion containing separate total/used/unused bank, as-of, currency, unit, basis, scope, decimal amount, source label and statement date. The request does not accept an owner ID. Same `request_id` and content replays the exact row (HTTP 200); changed content conflicts (409). An optional `supersedes` must identify the exact same-project predecessor ID/version; revisions are immutable, sequential and cannot fork. `GET /api/v1/projects/{project_id}/credit-facility-supplements/{supplement_id}/versions/{version}` reads that exact version and returns owner-safe 404 for a foreign owner or project.
+
+The shared DTO preserves blank or malformed dates/units as submitted so domain validation can retain the record as `needs_confirmation`; inconsistent arithmetic is `conflicted`. All outputs remain `user_asserted`, `needs_confirmation` or `conflicted` with `eligible_for_manuscript=false`. `source_id` is an opaque user label, not proof of a message, material or source authorization. The transaction writes the immutable assertion and outbox event together. Migration `0050_m1_credit_facility_supplement_versions.sql` adds exact version ancestry to existing 0015 rows (default version 1) without editing old migrations.
+
+This API does not persist #18 conversation messages, execute a run, or lock these records into `input_revision`; the latter needs a later snapshot-contract slice. It is not a verified credit fact or manuscript-ready value.
+
 ## #12 upload reuse and capacity follow-up
 
 Apply append-only migration `0018_m1_upload_reuse.sql` before this API. Equal verified content within one owner/project/role resolves to the existing live material and exact version, even when renamed or completed concurrently. Completion can return the canonical material's earlier filename/upload ID; its public DTO is unchanged. The private immutable reuse receipt and `upload.reused` outbox commit together. A duplicate never inserts a second `material.persisted` or project material event. Completion retries recheck canonical Blob size/hash, fail closed on missing bytes, and cannot revive deleted materials.
