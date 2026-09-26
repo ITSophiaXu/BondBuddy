@@ -51,6 +51,7 @@ function failureMessage(code: MaterialParseJob['error_code']) {
     case 'MATERIAL_ENCRYPTED': return '文件加密，无法解析。请提供可读取的副本。';
     case 'MATERIAL_UNREADABLE': return '文件无法解析。请检查原文件是否损坏，必要时重新导出并上传。';
     case 'MATERIAL_CONTENT_MISMATCH': return '文件内容核验未通过，请检查原文件并提供正确副本。';
+    case 'MATERIAL_TOO_LARGE': return '文件内容超出 M1 可解析的规模。请拆分为较小的文件，或提供精简的文字版后重新上传。';
     case 'MATERIAL_FORMAT_UNSUPPORTED': return '当前解析服务不支持此文件格式，请提供支持的格式。';
     case 'CAPABILITY_NOT_READY': return '所需解析能力暂不可用，请联系支持。';
     default: return '解析未完成，请稍后读取状态；持续失败时请联系支持。';

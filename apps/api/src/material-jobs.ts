@@ -8,7 +8,7 @@ import { date, material, missing, Problem, transaction, uid } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
 
 // Must equal python/bondbuddy_document_parser PARSER_VERSION; the worker rejects a snapshot from any other parser.
-export const DEFAULT_DOCUMENT_PARSER_VERSION = 'bondbuddy-document-parser-1.0.3';
+export const DEFAULT_DOCUMENT_PARSER_VERSION = 'bondbuddy-document-parser-1.0.6';
 export const DEFAULT_MATERIAL_PARSE_MAX_ATTEMPTS = 3;
 export const documentParserVersion = () => process.env.BB_DOCUMENT_PARSER_VERSION ?? DEFAULT_DOCUMENT_PARSER_VERSION;
 

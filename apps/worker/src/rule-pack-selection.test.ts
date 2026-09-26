@@ -31,6 +31,6 @@ test('self-asserted test or production metadata cannot satisfy the missing authe
   for (const channel of ['test', 'production']) {
     const manifest = { rule_pack_pin: { pack_id: 'synthetic-pack', version: 'synthetic.1', content_hash: hash, channel } };
     const result = await inputLockStage.run(stageContext(manifest, 'synthetic.1'));
-    assert.deepEqual(result, { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_selector_unavailable' });
+    assert.deepEqual(result, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_pack_pin_missing' });
   }
 });

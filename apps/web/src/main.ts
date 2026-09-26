@@ -1,5 +1,6 @@
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
+import { ArtifactPage } from './artifact-page';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
@@ -29,6 +30,7 @@ let draft: Draft | undefined;
 let newDirty = false;
 let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
+let artifactPage: ArtifactPage | undefined;
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
 type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
@@ -58,6 +60,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  artifactPage?.dispose(); artifactPage = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   factReview?.dispose(); factReview = undefined;
@@ -262,6 +265,7 @@ async function renderRoute() {
   }
   draft?.dispose(); draft = undefined;
   projectBrowser?.dispose(); projectBrowser = undefined;
+  artifactPage?.dispose(); artifactPage = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   factReview?.dispose(); factReview = undefined;
@@ -270,6 +274,8 @@ async function renderRoute() {
   if (requested === '/account') { await renderAccount(accountPage); return; }
   if (requested === '/data-policy') { await renderDataPolicyPage(api, shell, () => token === epoch); return; }
   if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch); await projectBrowser.render(); return; }
+  const artifactMatch = requested.match(/^\/artifacts\/([^/]+)$/);
+  if (artifactMatch) { artifactPage = new ArtifactPage(api, shell, () => token === epoch); await artifactPage.render(decodeURIComponent(artifactMatch[1])); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
   if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
   const match = requested.match(/^\/projects\/([^/]+)$/);

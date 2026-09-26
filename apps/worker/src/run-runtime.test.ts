@@ -37,10 +37,10 @@ const PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD
 
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   const m = request.material;
-  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: 'bondbuddy-document-parser-1.0.3', status: 'parsed',
+  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: documentParserVersion(), status: 'parsed',
     material: { material_id: m.material_id, material_version: m.material_version, media_type: m.media_type, sha256: m.sha256 },
     records: [{ record_id: 'line-1', material_id: m.material_id, material_version: m.material_version, content_hash: m.sha256, locator_type: 'text_line', locator: { line: 1, stable_ref: 'text:l000001' },
-      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: 'bondbuddy-document-parser-1.0.3', confidence: 1, uncertainty: [], formatting: {} }],
+      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: documentParserVersion(), confidence: 1, uncertainty: [], formatting: {} }],
     warnings: [], document: { page_count: null, encoding: 'utf-8' }, error: null } as DocumentParseResponse;
 }
 
@@ -282,7 +282,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
     row = await runRow(notReadyRun);
     const pauseReason = (await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [notReadyRun])).rows[0].reason;
-    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_pack_pin_missing'); assert.equal(row.artifact_id, null);
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_applicability_reference_missing'); assert.equal(row.artifact_id, null);
     assert.equal((await send('POST', `/api/v1/runs/${notReadyRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
 
     // 8. Pinned materials still parsing -> awaiting_materials; the runtime sweep re-queues after parse succeeds.

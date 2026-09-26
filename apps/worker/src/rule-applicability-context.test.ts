@@ -133,6 +133,15 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.ok(loaded.reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
       assert.equal('request' in loaded, false, 'draft must never return a production rule request');
 
+      await pool.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
+      const staleSelection = await loadInTransaction(pool, { ...exact, mode: 'selection' });
+      assert.ok(staleSelection.reasons.includes('rule_applicability_current_draft_stale'),
+        'a new selection must reject an old project draft');
+      const historicalReplay = await loadInTransaction(pool, { ...exact, mode: 'replay' });
+      assert.ok(!historicalReplay.reasons.includes('rule_applicability_current_draft_stale'),
+        'editing the project draft must not invalidate an immutable source pin');
+      await pool.query('UPDATE bb_projects SET draft_revision=1 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
+
       const replay = await createRuleApplicabilityContextDraft(pool, request);
       assert.equal(replay.contextId, created.contextId);
       assert.equal(replay.replayed, true);
@@ -246,6 +255,9 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       if (stale.status !== 'needs_review') assert.fail('revoked sources unexpectedly became production-ready');
       assert.ok(stale.reasons.includes('rule_applicability_issuer_identity_stale'));
       assert.ok(stale.reasons.includes(`rule_applicability_material_stale:${materialId}:1`));
+      const replacedReplay = await loadInTransaction(pool, { ...exact, mode: 'replay' });
+      assert.ok(replacedReplay.reasons.includes(`rule_applicability_material_stale:${materialId}:1`),
+        'replay must still reject a replaced or deleted pinned material');
       await pool.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
       const draftDrift = await loadInTransaction(pool, { ...exact, currentDraftRevision: 2 });
       assert.deepEqual(draftDrift, { status: 'needs_review', reasons: ['rule_applicability_context_pin_mismatch'] },

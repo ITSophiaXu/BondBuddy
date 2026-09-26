@@ -1,16 +1,26 @@
-import { FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from '@bondbuddy/contracts';
+import { FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type TargetReportingPeriod, type UpdateDetails } from '@bondbuddy/contracts';
 import { changeMarket, marketValue, materialHints, type ProjectCreate } from './form-model.js';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const option = (value: string, label: string, active: unknown) => `<option value="${esc(value)}"${value === active ? ' selected' : ''}>${esc(label)}</option>`;
 const note = (name: string, label: string, value: unknown, placeholder: string) => `<div class="update-field full"><label for="${name}">${label}</label><textarea id="${name}" name="${name}" maxlength="${PROJECT_FIELD_LIMITS.notes}" placeholder="${esc(placeholder)}">${esc(value)}</textarea></div>`;
 const money = (name: string, label: string, value: Money | null) => `<div class="update-field"><label for="${name}">${label}</label><div class="money-input"><input id="${name}" name="${name}" inputmode="decimal" maxlength="40" value="${esc(value?.value)}" placeholder="未确定可留空"><select name="${name}_unit" aria-label="${label}单位">${MONEY_UNITS.map(unit => option(unit.code, unit.label, value?.unit ?? 'hundred_million')).join('')}</select></div></div>`;
+const TARGET_PERIOD_LIMIT = 30;
 
 export function offeringOptions(draft: ProjectCreate) {
   return `<option value="">${draft.market ? '请选择' : '请先选择发行市场'}</option>${(draft.market ? MARKET_OFFERINGS[draft.market] : []).map(o => option(o, OFFERING_LABELS[o], draft.offering)).join('')}`;
 }
 export function fundingRows(details: UpdateDetails) {
   return details.funding_uses.map((use, i) => `<section class="funding-row" aria-label="资金用途 ${i + 1}"><h3>资金用途 ${i + 1}</h3><div class="update-grid"><div class="update-field"><label for="purpose_${i}">用途</label><select id="purpose_${i}" name="purpose_${i}" data-purpose="${i}"><option value="">请选择</option>${FUNDING_PURPOSES.map(p => option(p.code, p.label, use.purpose)).join('')}</select></div>${money(`use_amount_${i}`, '拟使用金额', use.amount)}${note(`use_target_${i}`, '涉及项目 / 投资标的 / 基金', use.target, '可填写名称、主体或尚待确定的安排')}${note(`use_details_${i}`, '具体安排', use.details, '分别说明拟使用金额、计划和相关依据。')}</div><p class="field-hint" data-purpose-hint="${i}">${esc(purposeHint(use.purpose))}</p><button type="button" class="text-button" data-remove-purpose="${i}">删除此用途</button></section>`).join('');
+}
+export function targetReportingRows(periods: TargetReportingPeriod[] = []) {
+  return periods.map((period, i) => `<section class="target-period-row" aria-label="本次目标报告期 ${i + 1}"><h3>目标报告期 ${i + 1}</h3><div class="update-grid">
+    <div class="update-field"><label for="target_period_start_${i}">起始日</label><input type="date" id="target_period_start_${i}" name="target_period_start_${i}" value="${esc(period.start)}"></div>
+    <div class="update-field"><label for="target_period_end_${i}">截止日</label><input type="date" id="target_period_end_${i}" name="target_period_end_${i}" value="${esc(period.end)}"></div>
+    <div class="update-field"><label for="target_period_kind_${i}">期间类型</label><select id="target_period_kind_${i}" name="target_period_kind_${i}"><option value="">请选择</option>${option('annual', '年度', period.period_kind)}${option('interim', '中期', period.period_kind)}</select></div>
+    <div class="update-field"><label for="target_period_scope_${i}">报表口径</label><select id="target_period_scope_${i}" name="target_period_scope_${i}"><option value="">请选择</option>${option('consolidated', '合并口径', period.scope)}${option('parent', '母公司口径', period.scope)}</select></div>
+    <div class="update-field full"><label for="target_period_status_${i}">填写状态</label><select id="target_period_status_${i}" name="target_period_status_${i}" data-target-period-status="${i}"><option value="user_asserted"${period.status === 'user_asserted' && period.start && period.end && period.period_kind && period.scope ? ' selected' : ''}>我填写，待来源核对</option><option value="needs_confirmation"${!period.start || !period.end || !period.period_kind || !period.scope || period.status !== 'user_asserted' ? ' selected' : ''}>仍需人工确认</option></select><small>“我填写，待来源核对”仅表示用户陈述；两种状态都不是审计事实或已核验期间。</small></div>
+  </div><button type="button" class="text-button" data-remove-target-period="${i}">删除此目标报告期</button></section>`).join('');
 }
 function purposeHint(purpose: UpdateDetails['funding_uses'][number]['purpose']) { return FUNDING_PURPOSES.find(p => p.code === purpose)?.materials ?? '用途未定可留空，已确定的安排可以先填写。'; }
 export function updateFormFields(value: ProjectCreate) {
@@ -21,7 +31,8 @@ export function updateFormFields(value: ProjectCreate) {
     <div class="update-field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(value.issuer_name)}" placeholder="填写发行人法定全称"></div>
     <div class="update-field"><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${MARKETS.map(m => option(m, MARKET_LABELS[m], value.market)).join('')}</select></div>
     <div class="update-field"><label for="offering">发行方式</label><select id="offering" name="offering"${!value.market ? ' disabled' : ''}>${offeringOptions(value)}</select></div>
-    <div class="update-field"><label for="reporting_cutoff">目标最新报告截止日</label><input type="date" id="reporting_cutoff" name="reporting_cutoff" value="${esc(d.reporting_cutoff)}"><small>填写本次拟使用的最新财务报表截止日。</small></div></div><p id="market-notice" class="field-hint" role="status"></p></section>
+    <div class="update-field"><label for="reporting_cutoff">旧版单一报告截止日</label><input type="date" id="reporting_cutoff" name="reporting_cutoff" value="${esc(d.reporting_cutoff)}"><small>为兼容旧项目保留；不代表完整目标报告期间集合。</small></div></div><p id="market-notice" class="field-hint" role="status"></p></section>
+  <section class="update-section target-periods-section"><h2>本次目标报告期间 <span class="optional">选填，可添加多期</span></h2><p class="field-hint">这里填写本次更新目标，与历史募集书识别出的原稿期间分开保存。用户填写不代表来源已核对，也不代表审计确认；不确定的日期、类型或口径请保留“仍需人工确认”。</p><div id="target-reporting-period-rows">${targetReportingRows(d.target_reporting_periods ?? [])}</div><button type="button" id="add-target-reporting-period" class="button secondary"${(d.target_reporting_periods?.length ?? 0) >= TARGET_PERIOD_LIMIT ? ' disabled' : ''}>＋ 添加目标报告期间</button><small class="period-limit-note">最多 ${TARGET_PERIOD_LIMIT} 项；完整、部分填写和待确认期间都会保留。</small></section>
   <section class="update-section"><h2>发行规模与债券安排 <span class="optional">选填</span></h2><p class="field-hint">不同品种的期限、含权条款和用途会影响募集书多个章节。如有多个品种，请分别说明。</p><div class="update-grid">${money('registration_amount', '申报 / 注册总额', d.registration_amount)}${money('issuance_amount', '本期发行规模', d.issuance_amount)}${note('bond_terms', '债券安排', d.bond_terms, '例如：本期拟发行不超过10亿元，3年期。如有多个品种，请分别说明金额、期限、利率方式、还本付息、回售 / 赎回 / 调息、增信和用途差异及回拨安排。未确定的内容可注明待定。')}</div></section>
   <section class="update-section"><h2>参与机构 <span class="optional">选填</span></h2><p class="field-hint">仅一家主承销商时填名称即可；多家参与时再说明牵头、联席及其他分工，未定角色可留空。</p>${note('underwriting', '承销安排', d.underwriting, '例如：XX证券担任主承销商。或：XX证券牵头、YY银行联席，XX证券兼任簿记管理人。')}${note('other_agencies', '其他参与机构与分工', d.other_agencies, '如受托管理人、会计师事务所、律师事务所等。')}</section>
   <section class="update-section"><h2>评级与增信 <span class="optional">选填</span></h2><p class="field-hint">分清主体、债项、保证人评级；未确定可留空，后续提供评级或担保资料。</p>${note('rating_enhancement', '评级与增信安排', d.rating_enhancement, '可填写评级对象、等级、评级机构、保证人、担保方式或抵质押物等已知信息。')}</section>
@@ -36,12 +47,24 @@ function readMoney(data: FormData, name: string): Money | null {
   const value = text(data, name);
   return value === null ? null : { value, unit: data.get(`${name}_unit`) as Money['unit'] };
 }
+export function readTargetReportingPeriods(data: Pick<FormData, 'get'>, rowCount: number): TargetReportingPeriod[] {
+  return Array.from({ length: rowCount }, (_, i) => {
+    const start = String(data.get(`target_period_start_${i}`) ?? '').trim() || null;
+    const end = String(data.get(`target_period_end_${i}`) ?? '').trim() || null;
+    const period_kind = (String(data.get(`target_period_kind_${i}`) ?? '') || null) as TargetReportingPeriod['period_kind'];
+    const scope = (String(data.get(`target_period_scope_${i}`) ?? '') || null) as TargetReportingPeriod['scope'];
+    const complete = Boolean(start && end && period_kind && scope);
+    const selectedStatus = data.get(`target_period_status_${i}`) === 'user_asserted' ? 'user_asserted' : 'needs_confirmation';
+    return { start, end, period_kind, scope, status: complete ? selectedStatus : 'needs_confirmation', evidence_refs: [] };
+  });
+}
 export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
   const data = new FormData(form);
+  const targetRows = form.querySelectorAll('[data-remove-target-period]');
   return { kind: 'update', name: String(data.get('name') ?? ''), issuer_name: text(data, 'issuer'), market: marketValue(String(data.get('market') ?? '')), offering: text(data, 'offering') as Offering | null,
     update_details: {
       has_historical: data.get('has_historical') === 'yes' ? true : data.get('has_historical') === 'no' ? false : null,
-      reporting_cutoff: text(data, 'reporting_cutoff'), registration_amount: readMoney(data, 'registration_amount'), issuance_amount: readMoney(data, 'issuance_amount'),
+      reporting_cutoff: text(data, 'reporting_cutoff'), target_reporting_periods: readTargetReportingPeriods(data, targetRows.length), registration_amount: readMoney(data, 'registration_amount'), issuance_amount: readMoney(data, 'issuance_amount'),
       bond_terms: text(data, 'bond_terms'), underwriting: text(data, 'underwriting'), other_agencies: text(data, 'other_agencies'), rating_enhancement: text(data, 'rating_enhancement'),
       funding_uses: [...form.querySelectorAll('[data-purpose]')].map((_, i) => ({ purpose: text(data, `purpose_${i}`) as UpdateDetails['funding_uses'][number]['purpose'], amount: readMoney(data, `use_amount_${i}`), details: text(data, `use_details_${i}`), target: text(data, `use_target_${i}`) })),
       other_information: text(data, 'other_information'), supplementary_notes: text(data, 'supplementary_notes')
@@ -50,8 +73,17 @@ export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
 }
 export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCreate) => void) {
   const emit = () => changed(readUpdateForm(form));
-  form.addEventListener('input', event => { if (!(event as InputEvent).isComposing) emit(); });
-  form.addEventListener('compositionend', emit);
+  const enforceIncompletePeriods = () => {
+    const details = readUpdateForm(form).update_details!;
+    details.target_reporting_periods?.forEach((period, i) => {
+      if (!period.start || !period.end || !period.period_kind || !period.scope) {
+        const status = form.querySelector<HTMLSelectElement>(`[data-target-period-status="${i}"]`);
+        if (status) status.value = 'needs_confirmation';
+      }
+    });
+  };
+  form.addEventListener('input', event => { if (!(event as InputEvent).isComposing) { enforceIncompletePeriods(); emit(); } });
+  form.addEventListener('compositionend', () => { enforceIncompletePeriods(); emit(); });
   form.addEventListener('change', event => {
     const target = event.target as HTMLInputElement;
     if (target.name === 'market') {
@@ -60,6 +92,7 @@ export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCr
       select.innerHTML = offeringOptions(result.draft); select.disabled = !result.draft.market;
       form.querySelector('#market-notice')!.textContent = result.cleared ? '发行市场已更改，请重新选择适用的发行方式；其他填写内容已保留。' : '发行市场已更改，其他填写内容已保留。';
     }
+    enforceIncompletePeriods();
     const value = readUpdateForm(form);
     form.querySelector('#material-hints')!.innerHTML = materialHints(value.update_details!).map(h => `<li>${esc(h)}</li>`).join('');
     form.querySelector<HTMLElement>('#dfi-material-hint')!.hidden = value.offering !== 'dfi';
@@ -67,14 +100,34 @@ export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCr
     emit();
   });
   form.addEventListener('click', event => {
-    const target = (event.target as HTMLElement).closest<HTMLButtonElement>('#add-purpose, [data-remove-purpose]');
+    const target = (event.target as HTMLElement).closest<HTMLButtonElement>('#add-purpose, [data-remove-purpose], #add-target-reporting-period, [data-remove-target-period]');
     if (!target) return;
     const details = readUpdateForm(form).update_details!;
-    if (target.id === 'add-purpose') { if (details.funding_uses.length >= PROJECT_FIELD_LIMITS.fundingUses) return; details.funding_uses.push({ purpose: null, amount: null, details: null, target: null }); }
-    else if (window.confirm('确定删除这一项资金用途及已填写的信息吗？')) details.funding_uses.splice(Number(target.dataset.removePurpose), 1);
-    else return;
-    form.querySelector('#funding-rows')!.innerHTML = fundingRows(details);
-    form.querySelector<HTMLButtonElement>('#add-purpose')!.disabled = details.funding_uses.length >= PROJECT_FIELD_LIMITS.fundingUses;
+    if (target.id === 'add-target-reporting-period') {
+      const periods = details.target_reporting_periods ?? [];
+      if (periods.length >= TARGET_PERIOD_LIMIT) return;
+      periods.push({ start: null, end: null, period_kind: null, scope: null, status: 'needs_confirmation', evidence_refs: [] });
+      details.target_reporting_periods = periods;
+      form.querySelector('#target-reporting-period-rows')!.innerHTML = targetReportingRows(periods);
+      form.querySelector<HTMLButtonElement>('#add-target-reporting-period')!.disabled = periods.length >= TARGET_PERIOD_LIMIT;
+    }
+    else if (target.hasAttribute('data-remove-target-period')) {
+      if (!window.confirm('确定删除这一项目标报告期间及已填写的信息吗？')) return;
+      details.target_reporting_periods?.splice(Number(target.dataset.removeTargetPeriod), 1);
+      form.querySelector('#target-reporting-period-rows')!.innerHTML = targetReportingRows(details.target_reporting_periods);
+      form.querySelector<HTMLButtonElement>('#add-target-reporting-period')!.disabled = (details.target_reporting_periods?.length ?? 0) >= TARGET_PERIOD_LIMIT;
+    }
+    else if (target.id === 'add-purpose') { if (details.funding_uses.length >= PROJECT_FIELD_LIMITS.fundingUses) return; details.funding_uses.push({ purpose: null, amount: null, details: null, target: null }); }
+    else if (target.hasAttribute('data-remove-purpose')) {
+      if (!window.confirm('确定删除这一项资金用途及已填写的信息吗？')) return;
+      details.funding_uses.splice(Number(target.dataset.removePurpose), 1);
+    } else return;
+    if (target.id !== 'add-target-reporting-period') {
+      if (target.id === 'add-purpose' || target.hasAttribute('data-remove-purpose')) {
+        form.querySelector('#funding-rows')!.innerHTML = fundingRows(details);
+        form.querySelector<HTMLButtonElement>('#add-purpose')!.disabled = details.funding_uses.length >= PROJECT_FIELD_LIMITS.fundingUses;
+      }
+    }
     emit();
   });
 }

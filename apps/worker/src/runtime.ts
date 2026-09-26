@@ -18,6 +18,8 @@ import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
 import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
+import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { sweepParseStaging } from './parse-staging.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -36,6 +38,8 @@ export type WorkerRuntimeOptions = {
   concurrency?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   runStages?: RunStage[];
+  /** #15/#19 reviewed context loader; absent until owner producer and review policy are installed. */
+  reviewedContextLoader?: ReviewedContextLoader;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
   parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
@@ -49,6 +53,7 @@ export type WorkerRuntimeOptions = {
   workerId?: string; heartbeatMs?: number;
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
+  stagingRoot?: string;
 };
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
@@ -67,8 +72,8 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'reviewedContextLoader' | 'stagingRoot'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'stagingRoot'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
@@ -82,6 +87,7 @@ export class WorkerRuntime {
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     this.loops.push(this.sweepLoop());
     this.loops.push(this.heartbeatLoop());
+    if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
     if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
     return this;
   }
@@ -98,6 +104,7 @@ export class WorkerRuntime {
         try {
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
+              reviewedContextLoader: this.o.reviewedContextLoader,
               onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
@@ -127,6 +134,16 @@ export class WorkerRuntime {
     while (!this.stopping) {
       try { await this.sweep(); } catch { this.counters.errors++; }
       await sleep(this.o.sweepMs, this.stopSignal.signal);
+    }
+  }
+
+  private async stagingLoop(root: string) {
+    while (!this.stopping) {
+      try {
+        const result = await sweepParseStaging(root);
+        if (result.removed) this.emit({ kind: 'parse_staging_cleanup', removed: result.removed, bytes: result.bytes });
+      } catch { this.counters.errors++; this.emit({ kind: 'parse_staging_cleanup', outcome: 'error' }); }
+      await sleep(5 * 60 * 1000, this.stopSignal.signal);
     }
   }
 
@@ -219,12 +236,16 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     platformProbe = { config, pollMs: intEnv(env, 'BB_PLATFORM_PROBE_POLL_MS', 5000, 500, 600000) };
   }
   return {
-    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages: defaultRunStages({ model_generation: modelGenerationRouter() }),
+    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages: defaultRunStages({ model_generation: modelGenerationRouter(),
+      word_delivery: historicalWordDeliveryStage() }),
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
-    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key) }, ...(parseCache ? { parseCache } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
+    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key),
+      ...(blobs.readToFile ? { readToFile: (key: string, path: string, max: number) => blobs.readToFile!(key, path, max) } : {}) },
+      ...(parseCache ? { parseCache } : {}), ...(env.BB_PARSE_STAGING_DIR ? { tempRoot: env.BB_PARSE_STAGING_DIR } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
       ocr: ocrEnabled ? ocr?.(pool, blobs) : undefined },
+    ...(env.BB_PARSE_STAGING_DIR ? { stagingRoot: env.BB_PARSE_STAGING_DIR } : {}),
     ocrEnabled,
     logSink: env.BB_LOG_NDJSON_PATH ? ndjsonFileSink(env.BB_LOG_NDJSON_PATH, 'ndjson_file', ndjsonSizeCapFromEnv(env)) : null,
     ...(platformProbe ? { platformProbe } : {}),
@@ -237,6 +258,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
   const { processOcrMaterial } = await import('./ocr.js');
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
+  if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
   process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, concurrency: options.concurrency, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
   let shuttingDown = false;

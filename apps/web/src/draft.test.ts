@@ -61,3 +61,48 @@ test('invalid date/amount never saves, and a disposed draft ignores late respons
   release({ ...project, draft_revision: 2 });
   assert.equal(await saving, false); assert.equal(draft.project.draft_revision, 1);
 });
+
+test('saved target period set survives unrelated edits, cross-market changes, and remains in PATCH payload', async () => {
+  const period = { start: '2025-01-01', end: '2025-06-30', period_kind: 'interim' as const, scope: 'consolidated' as const, status: 'needs_confirmation' as const, evidence_refs: [] };
+  const saved = { ...project, update_details: { ...emptyUpdateDetails(), target_reporting_periods: [period] } };
+  let payload: Dto<'ProjectPatchRequest'> | undefined;
+  const draft = new Draft(saved, { patch: async (_id, revision, fields) => {
+    payload = structuredClone(fields);
+    return { ...saved, ...fields, draft_revision: revision + 1 };
+  } } as ApiClient, () => {});
+  draft.edit({ market: 'sse', offering: null, update_details: { ...draft.fields.update_details, supplementary_notes: '仅修改其他信息' } });
+  assert.equal(await draft.save(), true);
+  assert.deepEqual(payload?.update_details?.target_reporting_periods, [period]);
+  assert.equal(draft.project.update_details?.target_reporting_periods?.[0].status, 'needs_confirmation');
+  draft.dispose();
+});
+
+test('explicitly removed final target period is sent as an empty list', async () => {
+  const saved = { ...project, update_details: { ...emptyUpdateDetails(), target_reporting_periods: [
+    { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual' as const, scope: 'parent' as const, status: 'user_asserted' as const, evidence_refs: [] }
+  ] } };
+  let payload: Dto<'ProjectPatchRequest'> | undefined;
+  const draft = new Draft(saved, { patch: async (_id, revision, fields) => {
+    payload = structuredClone(fields);
+    return { ...saved, ...fields, draft_revision: revision + 1 };
+  } } as ApiClient, () => {});
+  draft.edit({ update_details: { ...draft.fields.update_details, target_reporting_periods: [] } });
+  assert.equal(await draft.save(), true);
+  assert.deepEqual(payload?.update_details?.target_reporting_periods, []);
+  draft.dispose();
+});
+
+test('invalid target calendar date and duplicate periods are rejected before PATCH', async () => {
+  let calls = 0;
+  const draft = new Draft(project, { patch: async () => { calls++; return project; } } as unknown as ApiClient, () => {});
+  const period = { start: '2025-02-29', end: '2025-12-31', period_kind: 'annual' as const, scope: 'consolidated' as const, status: 'user_asserted' as const, evidence_refs: [] };
+  draft.edit({ update_details: { ...emptyUpdateDetails(), target_reporting_periods: [period] } });
+  assert.match(draft.validationErrors.join(), /有效的目标报告期日期/);
+  assert.equal(await draft.save(), false);
+  const valid = { ...period, start: '2024-01-01' };
+  draft.edit({ update_details: { ...emptyUpdateDetails(), target_reporting_periods: [valid, { ...valid }] } });
+  assert.match(draft.validationErrors.join(), /完全重复/);
+  assert.equal(await draft.save(), false);
+  assert.equal(calls, 0);
+  draft.dispose();
+});
