@@ -15,3 +15,8 @@
 .data-policy-section { margin-top: 16px; }
 .data-policy-section p { line-height: 1.7; }
 .login-panel .settings-note{line-height:1.6}.agreement-row{margin-top:24px}.agreement-row label{margin:0;font-size:13px;line-height:1.7}.agreement-row a,.switch-note a{color:#3e6247;text-decoration:underline}.switch-note{font-size:14px;margin-top:20px;text-align:center}
+
+/* Manual recovery uses the existing account form layout. */
+#account-recovery select,#recovery-public-body select{font:inherit;width:100%;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink)}
+#account-recovery code,#recovery-public-body code{overflow-wrap:anywhere}
+#account-recovery h3{margin-top:20px}#support-record{margin-top:16px}#support-secret{font-family:monospace}
