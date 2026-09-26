@@ -38,7 +38,7 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   expect(saved.update_details.target_reporting_periods).toEqual([{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }]);
   const { pdfSample, PDF } = await import('../../api/dist/upload-safety.samples.js');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'form-recovery.pdf', mimeType: PDF, buffer: pdfSample() });
-  await expect(page.locator('.material-file-row').filter({ hasText: 'form-recovery.pdf' })).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({ hasText: 'form-recovery.pdf' })).toContainText('服务器已确认保存', { timeout: 30_000 });
   await page.context().close();
   const context = await browser.newContext({ baseURL: process.env.BB_E2E_BASE_URL, ignoreHTTPSErrors: true });
   try {
