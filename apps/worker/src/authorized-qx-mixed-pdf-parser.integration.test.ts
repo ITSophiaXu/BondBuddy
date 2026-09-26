@@ -82,8 +82,10 @@ test('authorized qx-202606-02 mixed-scan PDF keeps native anchors and marks scan
     const document = parsed.response.document as { page_count: number; pages_without_native_text: number[]; pages_with_images: number[] };
     assert.equal(document.page_count, 74);
     // The manifest's pypdf precheck lists every page without extracted text, but is not the
-    // parser's ground truth. This regression pins only the independently visually confirmed scan page 3.
+    // parser's ground truth. Pin the visually confirmed audit-opinion scan page 3
+    // and the registered final no-text page to guard against silent tail truncation.
     assert.ok(document.pages_without_native_text.includes(3), 'known scanned audit-opinion page 3 must remain uncovered');
+    assert.ok(document.pages_without_native_text.includes(74), 'scanned final page must not be silently omitted');
     assert.ok(parsed.response.warnings.some((warning) => warning.code === 'PDF_PAGES_WITHOUT_TEXT'));
     assert.ok(parsed.response.warnings.some((warning) => warning.code === 'PDF_IMAGES_NOT_OCRD'),
       'native parser must not imply OCR ran on image pages');
