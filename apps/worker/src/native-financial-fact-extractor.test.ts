@@ -199,9 +199,12 @@ test('real authorized zq XLSX parses through Python and maps A5/C5 with manifest
     },
     options: {},
   };
+  // Before #196 lands, the checkout parser is the unsupported interim 1.0.4.1.
+  // Point the opt-in at the exact 1.0.6 source tree under integration review.
+  const parserSourceRoot = process.env.BB_PARSER_106_SOURCE_ROOT?.trim() || sourceRoot;
   const processResult = spawnSync(sampleParserPython, ['-m', 'bondbuddy_document_parser'], {
-    cwd: sourceRoot,
-    env: { ...process.env, PYTHONPATH: join(sourceRoot, 'python') },
+    cwd: parserSourceRoot,
+    env: { ...process.env, PYTHONPATH: join(parserSourceRoot, 'python') },
     input: JSON.stringify(parseRequest),
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -233,34 +236,4 @@ test('real authorized zq XLSX parses through Python and maps A5/C5 with manifest
   assert.equal(refs.get(fact.evidence_refs[5]!)?.literal_quote, '其中：营业收入');
   assert.equal(refs.get(fact.evidence_refs[6]!)?.literal_quote, '3894631419.08');
 
-  // Supply the #196 checkout/worktree after its final parser and Node schema land. Without this
-  // override the opt-in exercises the parser available in this checkout (currently interim 1.0.4);
-  // it does not claim that current develop has the complete 1.0.6 Python→Node bridge.
-  const parser106Root = process.env.BB_PARSER_106_SOURCE_ROOT?.trim();
-  if (parser106Root) {
-    const parser106Result = spawnSync(sampleParserPython, ['-m', 'bondbuddy_document_parser'], {
-      cwd: parser106Root,
-      env: { ...process.env, PYTHONPATH: join(parser106Root, 'python') },
-      input: JSON.stringify(parseRequest),
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    assert.ifError(parser106Result.error);
-    assert.equal(parser106Result.status, 0, `Python 1.0.6 parser failed: ${parser106Result.stderr}`);
-    const parsed106 = JSON.parse(parser106Result.stdout) as DocumentParseResponse;
-    assert.equal(parsed106.parser_version, 'bondbuddy-document-parser-1.0.6');
-    assert.equal(parsed106.status, parsed.status);
-    assert.deepEqual(parsed106.warnings, parsed.warnings);
-    assert.deepEqual(parsed106.document, parsed.document);
-    assert.deepEqual(parsed106.records.map(({ extractor_version: _version, ...record }) => record),
-      parsed.records.map(({ extractor_version: _version, ...record }) => record));
-
-    const mapped106 = await createNativeFinancialFactExtractor(async () => ({ status: parsed106.status, warnings: parsed106.warnings }))
-      .extract(request(parsed106.records, parsed106.parser_version));
-    assert.equal(mapped106.facts.length, 1);
-    assert.equal(mapped106.facts[0]?.identity.metric, 'operating_revenue');
-    const refs106 = new Map(parsed106.records.map((record) => [record.record_id, record]));
-    assert.deepEqual(mapped106.facts[0]!.evidence_refs.map((id) => refs106.get(id)?.locator.cell),
-      ['A1', 'B2', 'C2', 'E2', 'C3', 'A5', 'C5']);
-  }
 });
