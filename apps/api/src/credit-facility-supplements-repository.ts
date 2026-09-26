@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type {
+  CreditFacilitySupplementResponse,
+  CreditFacilitySupplementVersionRef,
+} from '@bondbuddy/contracts';
 import {
   validateCreditFacilitySupplement,
   type CreditFacilitySupplementAmount,
@@ -57,6 +61,11 @@ export interface ExactCreditFacilitySupplementReadContext {
   readonly projectId: string;
   readonly supplementId: string;
   readonly version: number;
+}
+
+export interface LockedCreditFacilitySupplementPin extends CreditFacilitySupplementVersionRef {
+  readonly status: CreditFacilitySupplementResponse['status'];
+  readonly eligible_for_manuscript: false;
 }
 
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -287,4 +296,48 @@ export async function getCreditFacilitySupplementVersion(
   if (result.rows.length === 0) return null;
   if (result.rows.length !== 1) throw fail('INVALID_CREDIT_SUPPLEMENT_ROW');
   return mapRow(result.rows[0]!, false);
+}
+
+/** Resolve exact public refs from trusted owner/project rows while the caller's input transaction is open. */
+export async function lockCreditFacilitySupplementPins(
+  client: Pick<CreditFacilitySupplementClient, 'query'>,
+  context: Pick<TrustedCreditFacilitySupplementContext, 'ownerUserId' | 'projectId'>,
+  references: readonly CreditFacilitySupplementVersionRef[],
+): Promise<LockedCreditFacilitySupplementPin[]> {
+  if (!Array.isArray(references) || references.length > 60 ||
+      ![context.ownerUserId, context.projectId].every(value => typeof value === 'string' && identifier.test(value)))
+    throw fail('INVALID_CREDIT_FACILITY_SUPPLEMENT_PIN');
+  const seen = new Set<string>();
+  const normalized = references.map(reference => {
+    if (!isRecord(reference) || Object.keys(reference).some(key => !['supplement_id', 'version', 'request_hash'].includes(key)) ||
+        !identifier.test(String(reference.supplement_id ?? '')) || !Number.isSafeInteger(reference.version) || Number(reference.version) < 1 ||
+        typeof reference.request_hash !== 'string' || !/^[a-f0-9]{64}$/.test(reference.request_hash))
+      throw fail('INVALID_CREDIT_FACILITY_SUPPLEMENT_PIN');
+    return { supplement_id: reference.supplement_id as string, version: Number(reference.version), request_hash: reference.request_hash };
+  });
+  const sorted = normalized.sort((a, b) => a.supplement_id < b.supplement_id ? -1 : a.supplement_id > b.supplement_id ? 1 : 0);
+  const pins: LockedCreditFacilitySupplementPin[] = [];
+  for (const reference of sorted) {
+    if (seen.has(reference.supplement_id)) throw fail('DUPLICATE_CREDIT_FACILITY_SUPPLEMENT_PIN');
+    seen.add(reference.supplement_id);
+    const row = await client.query(
+      `SELECT s.id,s.supplement_version,s.request_hash,s.status,s.supplement
+         FROM bb_credit_facility_supplements s
+         JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id
+        WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.id=$3 AND s.supplement_version=$4
+          AND p.deleted_at IS NULL FOR SHARE OF s,p`,
+      [context.ownerUserId, context.projectId, reference.supplement_id, reference.version],
+    );
+    if (row.rows.length !== 1) throw fail('CREDIT_SUPPLEMENT_PIN_NOT_FOUND');
+    const value = row.rows[0]!;
+    const requestHash = typeof value.request_hash === 'string' ? value.request_hash.trim() : '';
+    if (requestHash !== reference.request_hash) throw fail('CREDIT_SUPPLEMENT_PIN_HASH_MISMATCH');
+    const stored = parseJson(value.supplement);
+    if (!['user_asserted', 'needs_confirmation', 'conflicted'].includes(String(value.status)) ||
+        !isRecord(stored) || stored.status !== value.status || stored.eligibleForManuscript !== false)
+      throw fail('INVALID_CREDIT_SUPPLEMENT_ROW');
+    pins.push({ supplement_id: reference.supplement_id, version: Number(value.supplement_version), request_hash: requestHash,
+      status: value.status as LockedCreditFacilitySupplementPin['status'], eligible_for_manuscript: false });
+  }
+  return pins;
 }
