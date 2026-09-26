@@ -258,6 +258,8 @@ test('#17 capacity: oversized materials fail before any byte is read, and over-b
   await assert.rejects(parseAuthorizedMaterial(overBudget, input), /MATERIAL_PARSE_OUTPUT_LIMIT/);
   const oomKilled = dependencies({ tempRoot: root, parser: async () => { throw new Error('DOCUMENT_PARSER_MEMORY_LIMIT'); } });
   await assert.rejects(parseAuthorizedMaterial(oomKilled, input), /MATERIAL_PARSE_MEMORY_LIMIT/);
+  const timedOut = dependencies({ tempRoot: root, parser: async () => { throw new Error('DOCUMENT_PARSER_TIMEOUT'); } });
+  await assert.rejects(parseAuthorizedMaterial(timedOut, input), /MATERIAL_PARSE_TIMEOUT/);
   assert.deepEqual((await readdir(root)).filter(name => name.startsWith('bb-material-')), []);
 });
 
