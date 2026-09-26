@@ -37,7 +37,31 @@ export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Pro
 export const date = (value: Date | string) => new Date(value).toISOString();
 export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
 export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error });
-export const inputDto = (i: any) => ({ project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), material_versions: i.material_versions, rule_pack_version: i.rule_pack_version, template_version: i.template_version, reference_release: i.reference_release, created_at: date(i.created_at) });
+const inputCreditSupplementRefs = (manifest: unknown) => {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || !Object.hasOwn(manifest, 'credit_facility_supplements')) return undefined;
+  const pins = (manifest as Record<string, unknown>).credit_facility_supplements;
+  if (!Array.isArray(pins) || pins.length > 60) throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are invalid');
+  const seen = new Set<string>();
+  return pins.map(pin => {
+    if (!pin || typeof pin !== 'object' || Array.isArray(pin)) throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are invalid');
+    const value = pin as Record<string, unknown>;
+    if (typeof value.supplement_id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.supplement_id) ||
+        !Number.isSafeInteger(value.version) || Number(value.version) < 1 || typeof value.request_hash !== 'string' || !/^[a-f0-9]{64}$/.test(value.request_hash))
+      throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are invalid');
+    if (!['user_asserted', 'needs_confirmation', 'conflicted'].includes(String(value.status)) || value.eligible_for_manuscript !== false)
+      throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement status is invalid');
+    const key = value.supplement_id;
+    if (seen.has(key)) throw new Problem(503, 'DATA_UNAVAILABLE', 'Stored input supplement references are duplicated');
+    seen.add(key);
+    return { supplement_id: value.supplement_id, version: value.version, request_hash: value.request_hash };
+  });
+};
+export const inputDto = (i: any) => {
+  const pins = inputCreditSupplementRefs(i.manifest);
+  return { project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), material_versions: i.material_versions,
+    ...(pins?.length ? { credit_facility_supplements: pins } : {}), rule_pack_version: i.rule_pack_version, template_version: i.template_version,
+    reference_release: i.reference_release, created_at: date(i.created_at) };
+};
 export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: 'platform_trial', reservation_id: null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
 export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
   const result = await pool.query(`SELECT p.*,i.input_hash FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);

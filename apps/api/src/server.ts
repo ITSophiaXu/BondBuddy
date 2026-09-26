@@ -28,6 +28,7 @@ import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, mater
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
 import { installCreditFacilitySupplementRoutes } from './credit-facility-supplements.js';
+import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-repository.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
@@ -317,7 +318,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef}>(request);
+    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[]}>(request);
     if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
@@ -349,6 +350,19 @@ export function createServer(settings: Settings = {}) {
       const referenceScope={owner:user,projectId:id,revision,market:String(p.market),offering:String(p.offering)};
       const userReference=b.user_reference
         ?await resolveUserReferencePin(client,referenceScope,b.user_reference,resolved):null;
+      let creditFacilitySupplementPins: Awaited<ReturnType<typeof lockCreditFacilitySupplementPins>> | undefined;
+      if(b.credit_facility_supplements?.length){
+        try {
+          creditFacilitySupplementPins=await lockCreditFacilitySupplementPins(client,{ownerUserId:user,projectId:id},b.credit_facility_supplements);
+        } catch(error) {
+          const code=error instanceof Error?error.message:'';
+          if(code==='CREDIT_SUPPLEMENT_PIN_NOT_FOUND')throw missing();
+          if(code==='CREDIT_SUPPLEMENT_PIN_HASH_MISMATCH')throw conflict('INPUT_REVISION_CONFLICT','Credit supplement version hash changed');
+          if(code==='INVALID_CREDIT_FACILITY_SUPPLEMENT_PIN'||code==='DUPLICATE_CREDIT_FACILITY_SUPPLEMENT_PIN')
+            throw new Problem(422,'VALIDATION_FAILED','Credit supplement references are invalid or duplicated');
+          throw new Problem(503,'DATA_UNAVAILABLE','Stored credit supplement could not be verified');
+        }
+      }
       // Update generation must only see the reviewed historical issuer name, never the browser draft label.
       const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
       if(p.kind==='update'){
@@ -370,6 +384,7 @@ export function createServer(settings: Settings = {}) {
         rule_pack_version:ruleBinding.status==='selected'?ruleBinding.pin.version:null,
         template_version:ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null});
       if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
+      if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       const hash=inputManifestHash(manifest);
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]',ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
       if(userReference)await insertUserReferencePin(client,referenceScope,userReference.pin,userReference.outline);
@@ -857,6 +872,34 @@ export function createServer(settings: Settings = {}) {
         if(manifest.kind==='generation'&&manifest.user_reference_pin){
           const pin=manifest.user_reference_pin as {status?:string};
           if(pin.status!=='accepted')missingInputs.push(`user_reference_needs_review:${pin.status??'invalid'}`);
+        }
+        if(Object.hasOwn(manifest,'credit_facility_supplements')){
+          const rawPins=manifest.credit_facility_supplements;
+          if(!Array.isArray(rawPins)||rawPins.length<1||rawPins.length>60){
+            uncertainty.push('credit_facility_supplement_pin_invalid');
+          }else{
+            try{
+              const references=rawPins.map(value=>{
+                if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('INVALID_CREDIT_FACILITY_SUPPLEMENT_PIN');
+                const pin=value as Record<string,unknown>;
+                if(typeof pin.supplement_id!=='string'||!Number.isSafeInteger(pin.version)||typeof pin.request_hash!=='string')throw new Error('INVALID_CREDIT_FACILITY_SUPPLEMENT_PIN');
+                return {supplement_id:pin.supplement_id,version:Number(pin.version),request_hash:pin.request_hash};
+              });
+              const verifiedPins=await lockCreditFacilitySupplementPins(client,{ownerUserId:user,projectId:id},references);
+              const originalById=new Map(rawPins.map(value=>[(value as Record<string,unknown>).supplement_id,value as Record<string,unknown>]));
+              for(const pin of verifiedPins){
+                const original=originalById.get(pin.supplement_id);
+                if(!original||original.version!==pin.version||original.request_hash!==pin.request_hash||original.status!==pin.status||original.eligible_for_manuscript!==false){
+                  uncertainty.push('credit_facility_supplement_pin_stale');
+                  break;
+                }
+                uncertainty.push(`credit_facility_supplement_${pin.status}:${pin.supplement_id}:${pin.version}`);
+              }
+            }catch{
+              // User-entered assertions remain locally uncertain; a stale or malformed pin never promotes them.
+              uncertainty.push('credit_facility_supplement_pin_stale');
+            }
+          }
         }
         let updateDifficulty: StoredUpdateDifficultySnapshot | undefined;
         if(manifest.kind==='update'){

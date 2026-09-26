@@ -6,7 +6,9 @@
 
 The shared DTO preserves blank or malformed dates/units as submitted so domain validation can retain the record as `needs_confirmation`; inconsistent arithmetic is `conflicted`. All outputs remain `user_asserted`, `needs_confirmation` or `conflicted` with `eligible_for_manuscript=false`. `source_id` is an opaque user label, not proof of a message, material or source authorization. The transaction writes the immutable assertion and outbox event together. Migration `0050_m1_credit_facility_supplement_versions.sql` adds exact version ancestry to existing 0015 rows (default version 1) without editing old migrations.
 
-This API does not persist #18 conversation messages, execute a run, or lock these records into `input_revision`; the latter needs a later snapshot-contract slice. It is not a verified credit fact or manuscript-ready value.
+This API does not persist #18 conversation messages or execute a run. The locked assertion is not a verified credit fact or manuscript-ready value.
+
+The optional `credit_facility_supplements` list on `POST /api/v1/projects/{project_id}/input-revisions` now accepts only exact `{supplement_id, version, request_hash}` references (maximum 60; duplicate supplement IDs are rejected). In the same project/input transaction, the API resolves each reference under the authenticated owner and project, checks the active project and immutable stored hash/status, and places server-derived references in the input manifest/hash. The response and exact input-revision GET return the same refs; they never accept or return client-supplied status/amount as trust. Omitted and empty lists both omit the manifest field. Later supplement revisions create a new input revision; prior revisions and runs remain unchanged. Preflight rechecks these exact records and reports their `user_asserted` / `needs_confirmation` / `conflicted` state as local uncertainty, not a global hard block. No worker stage consumes the declarations or promotes them to verified/manuscript-ready facts; #18 remains separate.
 
 ## #12 upload reuse and capacity follow-up
 

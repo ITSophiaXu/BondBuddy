@@ -28,6 +28,12 @@ const CreditFacilitySupersedesSchema = Type.Object({
   version: Type.Integer({ minimum: 1 }),
 }, { additionalProperties: false });
 
+const CreditFacilitySupplementVersionRefSchema = Type.Object({
+  supplement_id: id,
+  version: Type.Integer({ minimum: 1 }),
+  request_hash: Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Exact immutable content hash returned by the owner-scoped supplement endpoint.' }),
+}, { additionalProperties: false });
+
 const CreditFacilitySupplementReasonSchema = Type.Union([
   Type.Literal('missing_source'), Type.Literal('invalid_statement_date'), Type.Literal('invalid_as_of'),
   Type.Literal('missing_context'), Type.Literal('missing_amount'), Type.Literal('invalid_amount'), Type.Literal('context_mismatch'),
@@ -36,6 +42,7 @@ const CreditFacilitySupplementReasonSchema = Type.Union([
 export const creditFacilitySupplementSchemas = {
   CreditFacilitySupplementAmount: CreditFacilitySupplementAmountSchema,
   CreditFacilityAmounts: CreditFacilityAmountsSchema,
+  CreditFacilitySupplementVersionRef: CreditFacilitySupplementVersionRefSchema,
   CreditFacilitySupplementRequest: Type.Object({
     request_id: id,
     amounts: CreditFacilityAmountsSchema,
@@ -62,3 +69,4 @@ export const creditFacilitySupplementSchemas = {
 
 export type CreditFacilitySupplementRequest = Static<typeof creditFacilitySupplementSchemas.CreditFacilitySupplementRequest>;
 export type CreditFacilitySupplementResponse = Static<typeof creditFacilitySupplementSchemas.CreditFacilitySupplementResponse>;
+export type CreditFacilitySupplementVersionRef = Static<typeof creditFacilitySupplementSchemas.CreditFacilitySupplementVersionRef>;
