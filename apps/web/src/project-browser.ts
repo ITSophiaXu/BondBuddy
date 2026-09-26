@@ -1,4 +1,4 @@
-import { PROJECT_STATES, PROJECT_ARCHIVE_VIEWS, TASK_KINDS } from '@bondbuddy/contracts';
+import { PROJECT_STATES, PROJECT_ARCHIVE_VIEWS, PROJECT_FIELD_LIMITS, TASK_KINDS } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, type Dto } from './api';
 import { date, esc, icon } from './ui';
 import './project-browser.css';
@@ -26,14 +26,14 @@ export class ProjectBrowser {
 
   async render() {
     const saved = new URLSearchParams(location.hash.split('?')[1]);
-    this.filters = {q:(saved.get('q') ?? '').slice(0,200)};
+    this.filters = {q:(saved.get('q') ?? '').slice(0,PROJECT_FIELD_LIMITS.issuer)};
     for (const [key, values] of [['kind',TASK_KINDS],['status',PROJECT_STATES],['archive',PROJECT_ARCHIVE_VIEWS]] as const) {
       const value = saved.get(key);
       if (value && (values as readonly string[]).includes(value)) Object.assign(this.filters,{[key]:value});
     }
     this.shell(`<div class="page-heading"><div><p class="eyebrow">从上次停下的地方继续</p><h1>我的项目</h1><p class="muted">查找已保存的资料，继续准备下一次更新。</p></div><a class="button primary" href="#/new">新建更新项目</a></div>
       <section class="panel" aria-labelledby="projects-title"><div class="panel-heading"><h2 id="projects-title">项目列表</h2><button class="text-button" id="refresh-projects">刷新列表</button></div>
-      <form id="project-filters" class="project-filters"><div class="search-field"><label for="project-search">搜索项目名称或发行人</label><input id="project-search" name="q" type="search" maxlength="200" value="${esc(this.filters.q ?? '')}" placeholder="输入名称或发行人" autocomplete="off"/></div>
+      <form id="project-filters" class="project-filters"><div class="search-field"><label for="project-search">搜索项目名称或发行人</label><input id="project-search" name="q" type="search" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(this.filters.q ?? '')}" placeholder="输入名称或发行人" autocomplete="off"/></div>
       <div><label for="project-kind">项目类型</label><select id="project-kind" name="kind"><option value="">全部类型</option>${options(TASK_KINDS,kinds,this.filters.kind)}</select></div>
       <div><label for="project-status">任务状态</label><select id="project-status" name="status"><option value="">全部状态</option>${options(PROJECT_STATES,states,this.filters.status)}</select></div>
       <div><label for="project-archive">项目范围</label><select id="project-archive" name="archive">${options(PROJECT_ARCHIVE_VIEWS,{active:'未归档',archived:'已归档',all:'全部项目'},this.filters.archive ?? 'active')}</select></div>
