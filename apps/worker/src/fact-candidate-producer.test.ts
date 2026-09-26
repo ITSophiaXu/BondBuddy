@@ -240,7 +240,7 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       await pool.query(`DROP FUNCTION bb_test_fail_fact_extraction_outbox()`);
       assert.equal((await listFactCandidates({ pool }, ownerScope)).length, 8);
       assert.equal((await pool.query(`SELECT id FROM bb_fact_extraction_runs WHERE owner_user_id=$1 AND project_id=$2`, [owner, projectId])).rowCount, 4);
-      await pool.query(`UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1`, [reviewerGrantId]);
+      await pool.query(`UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1`, [reviewerGrantId, grantorId]);
       await assert.rejects(produceParsedFactCandidates({ pool, extractor: { ...extractor, version: '1.0.3' } }, context),
         /FACT_EXTRACTION_ISSUER_IDENTITY_STALE/);
     } finally {

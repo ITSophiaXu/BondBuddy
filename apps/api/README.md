@@ -129,3 +129,6 @@ Set `BB_ALLOWED_ORIGIN` to the exact HTTPS browser origin and `BB_TERMS_VERSION`
 Behind Nginx, set `BB_TRUSTED_PROXY_CIDR` to the controlled proxy address or CIDR so source limits use the actual client address. Leave it unset without a trusted proxy; arbitrary forwarded headers are then ignored. Size this setting to the deployment network, never an open client range. Expired login-limit rows require periodic retention cleanup in release operations.
 
 Existing phone-only users remain separate and cannot gain a password by choosing a username. SMS endpoints are removed. Migration 0008 is append-only. Manual password recovery is implemented by #9; legacy account migration remains unsupported; real browser/TLS and release verification remain open. Production execute still returns 501.
+### 发行人身份观察审核授权
+
+数据库表 owner 或 superuser 使用 `DATABASE_URL=... node apps/api/dist/issuer-reviewer-grants.js grant <reviewer_user_id> <grantor_user_id> <reason_code> <basis>` 授权；撤权时将 `grant` 改为 `revoke`，第二个用户 ID 为实际执行撤权者。`basis` 是不为空的审核依据说明，`reason_code` 使用小写下划线代码。脚本校验双方为有效账号，记录授予人、依据、原因、时间及撤权审计。迁移 0045 不预置任何 grant，也没有公开创建授权接口。审核决定只接受当前会话身份和有效 grant；审核后须创建新的 input revision 才能绑定 verified 来源。

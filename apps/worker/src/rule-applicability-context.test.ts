@@ -248,7 +248,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.ok(superseded.reasons.includes('rule_applicability_issuer_identity_stale'));
       assert.equal(superseded.contextPin?.id, created.contextId, 'superseded context remains inspectable by its immutable pin');
 
-      await pool.query('UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1', [reviewerGrantId]);
+      await pool.query("UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1", [reviewerGrantId, grantorId]);
       await pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=1',
         [owner, projectId, materialId]);
       const stale = await loadInTransaction(pool, exact);

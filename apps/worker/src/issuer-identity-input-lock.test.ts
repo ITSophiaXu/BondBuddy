@@ -232,7 +232,7 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       assert.deepEqual(trusted, { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_reference_missing' },
         'a current verified identity still needs independently reviewed rule applicability');
 
-      await connection.query('UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1', [grantId]);
+      await connection.query("UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1", [grantId, grantorId]);
       const revoked = await inputLockStage.run(ctx);
       assert.deepEqual(revoked, { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_issuer_identity_stale' },
         'the run cannot reach later stages after reviewer grant revocation');

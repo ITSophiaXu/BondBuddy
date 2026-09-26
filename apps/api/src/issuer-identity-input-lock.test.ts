@@ -123,6 +123,19 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       const sourceA = grants[0]!;
       const sourceB = grants[1]!;
       const observationA = await addSource(historicalA, sourceA.evidenceA, '合成发行人甲', 'entity-synthetic-a');
+      const observationsUrl = `/api/v1/projects/${projectId}/materials/${historicalA}/versions/1/issuer-identity/observations`;
+      const listed = await send('GET', observationsUrl);
+      assert.equal(listed.statusCode, 200, listed.body);
+      assert.equal(listed.json().status, 'needs_review');
+      assert.equal(listed.json().items[0].evidence_record_id, sourceA.evidenceA);
+      assert.deepEqual(listed.json().items[0].locator, { page: 1, bbox: [0, 0, 1, 1] });
+      activeOwner = foreignOwner;
+      assert.equal((await send('GET', observationsUrl)).statusCode, 404, 'another account cannot inspect evidence');
+      activeOwner = reviewerId;
+      const reviewUrl = `${observationsUrl}/${observationA.id}/review`;
+      const reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified'};
+      assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'no reviewer grant');
+      activeOwner = owner;
       const unreviewedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
       assert.deepEqual(unreviewedInput.manifest.issuer_identity, {
         status: 'pending', reason: 'issuer_identity_source_missing_unreviewed_or_conflicting',
@@ -135,15 +148,24 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
         VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [grantId, reviewerId, grantorId]);
       const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId);
       assert.ok(reviewer);
-      await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
-        ownerUserId: owner, projectId, materialId: historicalA, materialVersion: 1,
-        sourceRecordRowId: observationA.id, reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified',
-      });
+      activeOwner=reviewerId;
+      const reviewed=await send('POST',reviewUrl,reviewBody);
+      assert.equal(reviewed.statusCode,201,reviewed.body);
+      const replay=await send('POST',reviewUrl,reviewBody);
+      assert.equal(replay.statusCode,201,replay.body);assert.equal(replay.json().replayed,true);
+      assert.equal(replay.json().review_id,reviewed.json().review_id);
+      assert.equal((await send('POST',reviewUrl,{...reviewBody,decision:'rejected'})).statusCode,409);
+      activeOwner=owner;
+      assert.equal((await send('GET',observationsUrl)).json().status,'verified');
       const observationB = await addSource(historicalB, sourceB.evidenceA, '合成发行人乙', 'entity-synthetic-b');
       await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId: historicalB, materialVersion: 1,
         sourceRecordRowId: observationB.id, reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified',
       });
+
+      const oldInput=(await connection.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+        [owner,projectId,unreviewedInput.input_revision])).rows[0].manifest as Record<string,unknown>;
+      assert.equal((oldInput.issuer_identity as Record<string,unknown>).status,'pending','review never rewrites a locked input revision');
 
       const verifiedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
       assert.notEqual(verifiedInput.input_hash, firstHash, 'reviewed identity changes the canonical input hash');
@@ -201,7 +223,11 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       });
       assert.equal(beforeRevoke.statusCode, 200, beforeRevoke.body);
       assert.ok(!beforeRevoke.json().missing_inputs.some((value: string) => value.startsWith(`issuer_identity_stale:${historicalB}:`)));
-      await connection.query('UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1', [grantId]);
+      await connection.query("UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1", [grantId, grantorId]);
+      activeOwner=reviewerId;
+      assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'revoked grant cannot replay or review');
+      activeOwner=owner;
+      assert.equal((await send('GET',observationsUrl)).json().status,'needs_review','revoked review cannot count as verified');
       const staleReview = await send('POST', '/api/v1/projects/' + projectId + '/preflight', {
         input_revision: verifiedInputB.input_revision, input_hash: verifiedInputB.input_hash,
       });

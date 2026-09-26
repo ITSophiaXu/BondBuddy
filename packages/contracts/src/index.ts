@@ -21,6 +21,7 @@ export * from './reference-library.js';
 export * from './platform-probe.js'; // #79/#16 platform probe
 import { agreementSchemas, agreementOpenApiPaths } from './agreement.js'; export * from './agreement.js'; // #7 registration agreement
 import { factSchemas } from './facts.js'; export * from './facts.js'; // #15 owner-scoped fact review API
+import { issuerIdentityReviewSchemas } from './issuer-identity-review.js'; export * from './issuer-identity-review.js';
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -122,6 +123,7 @@ const ObservabilityErrorSchema = obj({ error_id: id, code: errorCode, category: 
 const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Type.Literal(1), kind: observabilityEventKind, occurred_at: utc, operation_id: id, request_id: id, trace_id: id, span_id: id, parent_span_id: nullable(id), actor_type: enumOf(['user', 'system', 'operator'] as const), user_id: nullable(id), project_id: nullable(id), conversation_id: nullable(id), message_id: nullable(id), job_id: nullable(id), parent_job_id: nullable(id), run_id: nullable(id), work_item_id: nullable(id), logical_call_id: nullable(id), call_id: nullable(id), attempt_no: nullable(revision), job_kind: nullable(jobKind), stage: nullable(Type.String()), status: nullable(jobStatus), prompt_snapshot_ref: nullable(id), error: nullable(ObservabilityErrorSchema), usage: nullable(UsageObservationSchema) });
 
 export const schemas = {
+  ...issuerIdentityReviewSchemas,
   ...recoverySchemas,
   ...adminSchemas,
   ...runtimeSchemas, // #17 worker runtime
@@ -232,6 +234,8 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get', '/projects/{project_id}/materials/{material_id}/versions/{material_version}/issuer-identity/observations', 'Read owned issuer identity observations and evidence anchors', 'IssuerIdentityObservationListResponse', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/materials/{material_id}/versions/{material_version}/issuer-identity/observations/{source_record_id}/review', 'Review a source observation with an active reviewer grant', 'IssuerIdentityReviewResponse', 201, 'IssuerIdentityReviewRequest', [403, 404, 409]),
   op('get', '/projects/{project_id}/materials/{material_id}/ocr', 'Read latest owned OCR review, not audited facts', 'OcrReview', 200, undefined, [404]),
   op('post', '/projects/{project_id}/materials/{material_id}/ocr/corrections', 'Append a versioned user correction without verifying the source', 'OcrCorrection', 201, 'OcrCorrectionRequest', [404,409]),
   op('post', '/auth/register', 'Register username and password; accept current agreement and issue cookie session', 'SessionResponse', 201, 'RegisterRequest', [409,422]),

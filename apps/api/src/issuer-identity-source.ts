@@ -89,6 +89,40 @@ export interface VerifiedIssuerIdentitySourceRecord {
   readonly reviewedAt: string;
 }
 
+export async function listIssuerIdentitySourceRecords(
+  pool: Pick<IssuerIdentitySourcePool, 'query'>, scope: IssuerIdentitySourceScope,
+) {
+  validateScope(scope);
+  const material = await pool.query(`SELECT 1 FROM bb_material_versions m JOIN bb_projects p
+    ON p.owner_user_id=m.owner_user_id AND p.id=m.project_id AND p.deleted_at IS NULL
+    WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.version=$4 AND m.deleted_at IS NULL`,
+  [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion]);
+  if (material.rows.length !== 1) throw fail('ISSUER_IDENTITY_MATERIAL_NOT_FOUND');
+  const result = await pool.query(`SELECT ${recordColumns}, rv.created_at AS reviewed_at,
+    g.id AS active_grant_id FROM bb_issuer_identity_source_records r
+    LEFT JOIN bb_issuer_identity_source_reviews rv ON rv.owner_user_id=r.owner_user_id AND rv.project_id=r.project_id
+      AND rv.material_id=r.material_id AND rv.material_version=r.material_version AND rv.source_record_id=r.id
+    LEFT JOIN bb_issuer_identity_reviewer_grants g ON g.id=rv.reviewer_grant_id
+      AND g.user_id=rv.reviewer_user_id AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
+    WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.material_id=$3 AND r.material_version=$4
+    ORDER BY r.identity_version`, [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion]);
+  const items = result.rows.map(row => {
+    const stored = mapRow(row, false);
+    const status = row.active_grant_id ? stored.reviewDecision ?? 'needs_review' : 'needs_review';
+    return { source_record_id: stored.id, identity_version: stored.identityVersion, snapshot_id: stored.snapshotId,
+      evidence_record_id: stored.sourceRecordId, source_record_sha256: stored.sourceRecordSha256,
+      source_content_sha256: stored.sourceContentSha256, content_sha256: stored.contentSha256,
+      locator_type: stored.sourceLocatorType, locator: stored.sourceLocator, quote: stored.sourceQuote,
+      issuer_display_name: stored.issuerDisplayName, entity_id: stored.entityId, status,
+      reviewed_at: row.active_grant_id && row.reviewed_at ? new Date(String(row.reviewed_at)).toISOString() : null };
+  });
+  const verifiedEntities = new Set(items.filter(item => item.status === 'verified').map(item => item.entity_id));
+  const status = items.some(item => item.status === 'conflict') || verifiedEntities.size > 1 ? 'conflict'
+    : items.some(item => item.status === 'needs_review') || items.length === 0 ? 'needs_review'
+    : verifiedEntities.size === 1 ? 'verified' : 'rejected';
+  return { project_id: scope.projectId, material_id: scope.materialId, material_version: scope.materialVersion, status, items };
+}
+
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const shaPattern = /^[a-f0-9]{64}$/;
 const reasonPattern = /^[a-z][a-z0-9_]{0,63}$/;
