@@ -196,6 +196,11 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   assert.throws(() => scrubSecrets(layered), /Diagnostic body rejected/);
   assert.equal(scrubSecrets('普通正文未闭合 { 和 [\r\n下一段业务内容'), '普通正文未闭合 { 和 [\r\n下一段业务内容');
   assert.equal(scrubSecrets('普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容'), '普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容');
+  const windowsPath = JSON.stringify({ note: String.raw`C:\users\docs` });
+  assert.equal(scrubSecrets(windowsPath), windowsPath);
+  const pathInProse = String.raw`{path: C:\users\docs}`;
+  assert.equal(scrubSecrets(pathInProse), pathInProse);
+  assert.throws(() => scrubSecrets(String.raw`Cookie\u003ASYN_ROOT_SECRET`), /Diagnostic body rejected/);
   assert.equal(scrubSecrets('{} setCookie=SYN_PLAIN_COOKIE'), '{} setCookie=[REDACTED]');
   const layeredBrackets = JSON.stringify({ note: 'SYN_ORDINARY four layers { [ and CRLF\r\n' });
   let wrappedBrackets = layeredBrackets;
@@ -293,16 +298,19 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       facts: [{ statement: 'SYN_ORDINARY_NO_HISTORY', evidence_refs: ['synthetic-evidence'] }],
       Cookie: 'SYN_NO_HISTORY_COOKIE' }).padEnd(263_273, ' ');
     const nearLimit = JSON.stringify({ note: 'A'.repeat(10 * 1024 * 1024 - 90), otp: 'SYN_NEAR_LIMIT_OTP' });
+    const nearLimitUnicode = JSON.stringify({ note: '债'.repeat(Math.floor((10 * 1024 * 1024 - 80) / 3)) });
     for (const [index, [body, ordinary, secret]] of ([
       [historical, 'SYN_ORDINARY_HISTORICAL', 'SYN_HISTORICAL_COOKIE'],
       [largerHistorical, 'SYN_ORDINARY_LARGE', 'SYN_NONE'],
       [noHistory, 'SYN_ORDINARY_NO_HISTORY', 'SYN_NO_HISTORY_COOKIE'],
       [nearLimit, 'A'.repeat(100), 'SYN_NEAR_LIMIT_OTP'],
+      [nearLimitUnicode, '债'.repeat(100), 'SYN_NONE'],
       ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_UNICODE_BUSINESS"', 'SYN_UNICODE_BUSINESS', 'SYN_NONE'],
       [JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }), 'SYN_ORDINARY quoted', 'SYN_NONE'],
       [JSON.stringify({ note: 'SYN_ORDINARY Cookie 政策；\\uD83D\\uDE00债券名称: 正文' }), 'SYN_ORDINARY Cookie 政策', 'SYN_NONE'],
+      [JSON.stringify({ note: String.raw`SYN_ORDINARY C:\users\docs` }), JSON.stringify(String.raw`C:\users\docs`).slice(1, -1), 'SYN_NONE'],
       [JSON.stringify({ note: '{"Cookie":"SYN_INNER_COOKIE","note":"SYN_INNER_BUSINESS"}' }), 'SYN_INNER_BUSINESS', 'SYN_INNER_COOKIE'],
       [wrappedOrdinaryBrackets(), 'SYN_ORDINARY_FOUR_LAYERS', 'SYN_NONE'],
       ['普通正文\r\n{} setCookie=SYN_PLAIN_COOKIE\r\n后文', '后文', 'SYN_PLAIN_COOKIE'],
@@ -352,6 +360,10 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
+    await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+      kind: 'structured_input', version: 1,
+      body: `{] ${JSON.stringify({ note: String.raw`Co\u006Fkie\u003ASYN_LEAK_MARKER` })}` }),
+    error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     const keys = ['Cookie', 'CoOkIe', 'setCookie', 'SET-COOKIE', 'otp', 'OtP', 'secret', 'SECRET',
       'session_cookie', 'SESSION-COOKIE', 'x-api-key', 'X_API_KEY', 'one_time_password', 'ONE-TIME-PASSWORD',
       'Authorization', 'AUTHORIZATION', 'token', 'password'];
@@ -377,6 +389,23 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
         fragment = JSON.stringify(fragment);
       }
+    }
+    for (const form of [String.raw`Cookie\u003ASYN_LEAK_MARKER`, String.raw`"Cookie"\u003A"SYN_LEAK_MARKER"`,
+      String.raw`Cookie\u003DSYN_LEAK_MARKER`, String.raw`"Cookie"\u003D"SYN_LEAK_MARKER"`,
+      String.raw`Co\u006Fkie\u003ASYN_LEAK_MARKER`]) {
+      let fragment = form;
+      for (let layer = 1; layer <= 4; layer++) {
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        fragment = JSON.stringify(fragment);
+      }
+    }
+    for (const form of [String.raw`\u0022Cookie\u0022\u003ASYN_LEAK_MARKER`,
+      String.raw`\u0043ookie\u003ASYN_LEAK_MARKER`]) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body: JSON.stringify({ note: form }) }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
     for (const key of ['Cookie', 'Authorization', 'setCookie', 'otp', 'x_api_key', 'one_time_password']) {
       for (const position of [0, Math.floor(key.length / 2), key.length - 1]) {
@@ -556,6 +585,34 @@ test('#79 dense ordinary colon strings stay bounded when every value is scanned'
     assert.equal(metrics.accepted, true);
     assert.ok(metrics.elapsedMs < 2500);
     t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B dense colon input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 near-limit multibyte ordinary JSON remains complete in bounded heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const body = JSON.stringify({note:'债'.repeat(Math.floor((10 * 1024 * 1024 - 80) / 3))});
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({accepted:result===body, inputBytes:Buffer.byteLength(body),
+        elapsedMs:Math.round(performance.now()-started), peakRssMiB:Math.round(process.resourceUsage().maxRSS/1024)}));
+      if (result !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.inputBytes <= 10 * 1024 * 1024 && metrics.inputBytes > 10_000_000);
+    assert.ok(metrics.elapsedMs < 3000);
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B multibyte: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
   }
 });
 

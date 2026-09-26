@@ -47,6 +47,34 @@ const addEdit = (edits: Edits, start: number, end: number, value: string) => {
 };
 const space = (char: string) => char === ' ' || char === '\n' || char === '\r' || char === '\t';
 
+/** One syntax character, either literal or escaped by bounded JSON layers.
+ * Leave invalid escapes as prose; callers reject only if they form a field. */
+function syntaxAt(text: string, start: number): { char: string; end: number } | null {
+  if (start >= text.length) return null;
+  if (text[start] !== '\\') return { char: text[start], end: start + 1 };
+  let end = start + 1;
+  while (text[end] === '\\') end++;
+  const count = end - start;
+  if (text[end] === 'u' && /^[0-9a-fA-F]{4}$/.test(text.slice(end + 1, end + 5))) {
+    return { char: String.fromCharCode(parseInt(text.slice(end + 1, end + 5), 16)), end: end + 5 };
+  }
+  if (text[end] === '"' && (count === 1 || Number.isInteger(Math.log2(count + 1))))
+    return { char: '"', end: end + 1 };
+  return null;
+}
+
+function separatorAt(text: string, start: number): boolean {
+  let pos = start;
+  while (space(text[pos])) pos++;
+  let next = syntaxAt(text, pos);
+  if (next?.char === '"') {
+    pos = next.end;
+    while (space(text[pos])) pos++;
+    next = syntaxAt(text, pos);
+  }
+  return next?.char === ':' || next?.char === '=';
+}
+
 function hasUnpairedSurrogate(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
@@ -60,6 +88,23 @@ function hasUnpairedSurrogate(value: string): boolean {
 /** Decode a complete quoted field followed by ':' outside a JSON candidate.
  * Invalid JSON escapes and lone surrogates are rejected before any Blob write. */
 function quotedFieldAt(text: string, start: number): string | null {
+  if (text[start] === '\\' && text[start - 1] === '\\') return null;
+  const opening = syntaxAt(text, start);
+  if (opening?.char === '"' && text[opening.end - 5] === 'u') {
+    // A Unicode-escaped quote is itself a delimiter. Decode the complete
+    // bounded key and its closing quote before classifying the field.
+    let at = opening.end, key = '', invalid = false, closed = false;
+    while (at < text.length && at - start <= 512 && key.length <= 64) {
+      const unit = syntaxAt(text, at);
+      if (unit?.char === '"') { at = unit.end; closed = true; break; }
+      if (text[at] === '\\' && !unit) invalid = true;
+      key += unit?.char ?? text[at];
+      at = unit?.end ?? at + 1;
+    }
+    if (!closed || !separatorAt(text, at)) return null;
+    if (invalid || hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
+    return key;
+  }
   let layers = 0;
   let openingEnd = start + 1;
   if (text[start] === '\\' && text[start - 1] !== '\\') {
@@ -86,13 +131,14 @@ function quotedFieldAt(text: string, start: number): string | null {
       if (text[next] === '"') {
         if ((next - i) % period === delimiter) { end = next + 1; break; }
         i = next;
+      } else if (text[next] === 'u' && text.slice(next + 1, next + 5).toLowerCase() === '0022') {
+        end = next + 5;
+        break;
       } else i = next - 1;
     } else if (!layers && text[i] === '"') { end = i + 1; break; }
   }
   if (end < 0) return null;
-  let after = end;
-  while (space(text[after])) after++;
-  if (text[after] !== ':') return null;
+  if (!separatorAt(text, end)) return null;
   try {
     if (layers > MAX_JSON_STRING_LAYERS) throw new DiagnosticScrubError();
     let decoded = text.slice(start, end);
@@ -111,18 +157,34 @@ function bareFieldAt(text: string, start: number): { key: string; end: number; e
   while (end < text.length) {
     if (/[\p{L}\p{N}_-]/u.test(text[end])) { end++; continue; }
     if (text[end] === '\\' && text[end + 1] === 'u') {
-      if (!/^[0-9a-fA-F]{4}$/.test(text.slice(end + 2, end + 6))) throw new DiagnosticScrubError();
+      if (!/^[0-9a-fA-F]{4}$/.test(text.slice(end + 2, end + 6))) {
+        // An invalid escape in a would-be field is ambiguous; the same bytes
+        // in an ordinary Windows path are harmless prose.
+        let probe = end + 2;
+        while (probe < text.length && probe - end < 128 && text[probe] !== '\\' &&
+               !space(text[probe]) && !/[;,}\]]/.test(text[probe])) {
+          if (text[probe] === ':' || text[probe] === '=') throw new DiagnosticScrubError();
+          probe++;
+        }
+        break;
+      }
+      const code = parseInt(text.slice(end + 2, end + 6), 16);
+      if (code === 0x3a || code === 0x3d || code === 0x22 || code <= 0x20) break;
       encoded = true;
       end += 6;
       continue;
     }
     break;
   }
+  if (end === start) return null;
   const raw = text.slice(start, end);
   let key = raw;
   if (encoded) {
     try { key = JSON.parse(`"${raw}"`) as string; } catch { throw new DiagnosticScrubError(); }
-    if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
+    if (hasUnpairedSurrogate(key)) {
+      if (separatorAt(text, end)) throw new DiagnosticScrubError();
+      return { key: '', end, encoded: true };
+    }
   }
   return { key, end, encoded };
 }
@@ -203,20 +265,38 @@ function hasKnownSensitiveKey(fragment: string): boolean {
 
 /** Inspect the final decoded string layer without descending again. This sees
  * field syntax even when there is no surrounding object or array delimiter. */
-function hasEmbeddedSensitiveField(text: string): boolean {
+function hasEmbeddedSensitiveField(text: string, layer = 0): boolean {
   for (let i = 0; i < text.length;) {
     if (text[i] === '"' || text[i] === '\\') {
       const key = quotedFieldAt(text, i);
       if (key !== null && isSensitiveField(key)) return true;
+      if (text[i] === '"') {
+        // Inspect each complete quoted value once. A malformed enclosing
+        // bracket must not hide an encoded field in a later ordinary value.
+        let end = i + 1;
+        while (end < text.length) {
+          if (text[end] === '\\') { end += 2; continue; }
+          if (text[end++] === '"') break;
+        }
+        if (text[end - 1] === '"') {
+          try {
+            const decoded = JSON.parse(text.slice(i, end)) as string;
+            if (layer < MAX_JSON_STRING_LAYERS) {
+              if (scrubText(decoded, layer + 1) !== decoded) return true;
+            } else if (hasKnownSensitiveKey(decoded)) return true;
+            i = end;
+            continue;
+          } catch (error) {
+            if (error instanceof DiagnosticScrubError) throw error;
+          }
+        }
+      }
     }
     const bare = bareFieldAt(text, i);
     if (bare !== null) {
       let end = bare.end;
       if (isSensitiveField(bare.key)) {
-        while (text[end] === '\\') end++;
-        if (text[end] === '"') end++;
-        while (space(text[end])) end++;
-        if (text[end] === ':' || text[end] === '=') return true;
+        if (separatorAt(text, end)) return true;
       }
       i = bare.end;
     } else i++;
@@ -344,6 +424,13 @@ function parseCandidate(text: string, layer: number, markSensitive: () => void):
 }
 
 function scrubText(text: string, layer: number): string {
+  // A non-sensitive JSON string value may itself be a complete encoded JSON
+  // string. Consume that entire scalar before looking for loose fields; each
+  // decode advances one bounded layer, including bare key/value fragments.
+  if (text[0] === '"' && text[text.length - 1] === '"') {
+    try { return parseCandidate(text, layer, () => undefined); }
+    catch (error) { if (error instanceof DiagnosticScrubError && layer > 0) throw error; }
+  }
   const edits = newEdits(text.length);
   let openPlain = false;
   for (let start = 0; start < text.length;) {
@@ -357,15 +444,13 @@ function scrubText(text: string, layer: number): string {
       if (bare !== null) {
         let end = bare.end;
         if (isSensitiveField(bare.key)) {
-          while (text[end] === '\\') end++;
-          if (text[end] === '"') end++;
-          while (space(text[end])) end++;
+          const hasSeparator = separatorAt(text, end);
           // Quoted fields outside a complete JSON candidate are still structured
           // evidence. Never leave their values to the plain-text regexes.
-          if (text[end] === ':' || text[end] === '=') {
+          if (hasSeparator) {
             let before = start - 1;
             while (before >= 0 && space(text[before])) before--;
-            if (layer > 0 || bare.encoded || text[end] === ':' &&
+            if (layer > 0 || bare.encoded || text[end] === '\\' || syntaxAt(text, end)?.char === ':' &&
                 (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? ''))) throw new DiagnosticScrubError();
           }
         }
@@ -381,7 +466,7 @@ function scrubText(text: string, layer: number): string {
     if (!jsonEvidence) {
       const plain = plainBracketEnd(text, start);
       const ordinary = text.slice(start, plain.end);
-      if (hasKnownSensitiveKey(ordinary) || ordinary.includes('\\u')) throw new DiagnosticScrubError();
+      if (hasKnownSensitiveKey(ordinary) || hasEmbeddedSensitiveField(ordinary)) throw new DiagnosticScrubError();
       openPlain ||= !plain.closed;
       start = plain.end;
       continue;
