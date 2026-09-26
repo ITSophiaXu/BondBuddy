@@ -1,5 +1,6 @@
 import { PROJECT_STATES, PROJECT_ARCHIVE_VIEWS, PROJECT_FIELD_LIMITS, TASK_KINDS } from '@bondbuddy/contracts';
-import { ApiClient, friendlyError, type Dto } from './api';
+import { ApiClient, ApiError, friendlyError, type Dto } from './api';
+import { ArtifactDownloads, artifactError } from './artifact-download';
 import { date, esc, icon } from './ui';
 import './project-browser.css';
 
@@ -21,8 +22,10 @@ export class ProjectBrowser {
   private controller = new AbortController();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private filters: Filters = {};
+  private downloads = new ArtifactDownloads();
+  private downloading = new Set<string>();
   constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private current: () => boolean) {}
-  dispose() { this.generation++; this.controller.abort(); clearTimeout(this.timer); }
+  dispose() { this.generation++; this.controller.abort(); clearTimeout(this.timer); this.downloads.dispose(); this.downloading.clear(); }
 
   async render() {
     const saved = new URLSearchParams(location.hash.split('?')[1]);
@@ -64,7 +67,11 @@ export class ProjectBrowser {
 
   private async load(reset: boolean) {
     if (!this.current() || (!reset && this.busy)) return;
-    if (reset) {this.controller.abort();this.controller=new AbortController();this.generation++;this.items=[];this.cursor=null;}
+    if (reset) {
+      this.controller.abort();this.controller=new AbortController();this.generation++;this.items=[];this.cursor=null;
+      if(this.downloading.size)document.querySelector('#project-action-status')!.textContent='';
+      this.downloading.clear();
+    }
     const generation=this.generation;
     this.busy=true;
     const button=document.querySelector<HTMLButtonElement>('#load-more')!;
@@ -96,7 +103,7 @@ export class ProjectBrowser {
     const list=document.querySelector<HTMLElement>('#project-list')!;
     list.innerHTML=this.items.length?`<ul class="project-list">${this.items.map(item=>`<li class="managed-project" data-project-id="${esc(item.project_id)}">
       <a class="project-row" href="#/projects/${encodeURIComponent(item.project_id)}"><span class="project-icon">${folder}</span><div class="project-info"><h3>${esc(item.name)}</h3><p>${esc(item.issuer_name || '发行人待填写')} · ${item.kind?kinds[item.kind]:'项目资料已保存'}</p><span class="project-state">${item.status?states[item.status]:'已保存'}</span>${item.archived_at?'<span class="project-state">已归档</span>':''}</div><time datetime="${esc(item.updated_at)}">${esc(date(item.updated_at))}</time><span class="row-arrow" aria-hidden="true">↗</span></a>
-      <div class="project-row-actions">${item.latest_artifact?`<span>最近成果 v${item.latest_artifact.version} · ${esc(date(item.latest_artifact.created_at))}</span><button class="text-button" data-download="${esc(item.project_id)}">下载最近成果</button>`:'<span>尚无成功成果</span>'}
+      <div class="project-row-actions">${item.latest_artifact?`<span>最近成果 v${item.latest_artifact.version} · ${esc(date(item.latest_artifact.created_at))}</span><a class="text-button" href="#/artifacts/${encodeURIComponent(item.latest_artifact.artifact_id)}">查看成果与下载</a><button class="text-button" data-download="${esc(item.project_id)}">下载最近成果</button>`:'<span>尚无成功成果</span>'}
       <button class="text-button" data-archive="${esc(item.project_id)}" aria-label="${item.archived_at?'恢复':'归档'} ${esc(item.name)}">${item.archived_at?'恢复项目':'归档'}</button></div></li>`).join('')}</ul>`:
       `<div class="empty-state"><div class="empty-icon">${folder}</div><h3>${filtered?'没有找到匹配的项目':'还没有项目'}</h3><p>${filtered?'试试其他名称或发行人，或调整筛选条件。':'创建第一个更新项目，先把基本资料保存下来。'}</p>${filtered?'<button class="button secondary" id="reset-project-filters">清除筛选</button>':'<a class="button secondary" href="#/new">新建更新项目</a>'}</div>`;
     list.querySelector('#reset-project-filters')?.addEventListener('click',()=>{
@@ -105,7 +112,10 @@ export class ProjectBrowser {
       (form.elements.namedItem('archive') as HTMLSelectElement).value='active';form.requestSubmit();
     });
     list.querySelectorAll<HTMLButtonElement>('[data-archive]').forEach(button=>button.addEventListener('click',()=>{void this.archive(button);}));
-    list.querySelectorAll<HTMLButtonElement>('[data-download]').forEach(button=>button.addEventListener('click',()=>{void this.download(button);}));
+    list.querySelectorAll<HTMLButtonElement>('[data-download]').forEach(button=>{
+      button.disabled=this.downloading.has(button.dataset.download!);
+      button.addEventListener('click',()=>{void this.download(button);});
+    });
   }
 
   private async archive(button: HTMLButtonElement) {
@@ -123,14 +133,35 @@ export class ProjectBrowser {
 
   private async download(button: HTMLButtonElement) {
     const item=this.items.find(item=>item.project_id===button.dataset.download)!;
+    if(this.downloading.has(item.project_id))return;
+    const latest=item.latest_artifact!;
+    const generation=this.generation, signal=this.controller.signal;
+    const current=()=>this.current() && generation===this.generation && !signal.aborted;
+    const feedback=document.querySelector<HTMLElement>('#project-action-status')!;
+    this.downloading.add(item.project_id);
     button.disabled=true;
+    feedback.textContent='正在读取并核验文件…';
     try {
-      const artifact=await this.api.artifact(item.latest_artifact!.artifact_id);
-      if(!this.current())return;
-      const url=new URL(artifact.download_url,location.origin);
-      if(url.origin!==location.origin || !url.pathname.startsWith('/api/v1/artifacts/'))throw new Error('Invalid download URL');
-      const link=document.createElement('a');link.href=url.href;link.download=`${item.name}.docx`;link.click();
-    } catch(error) {if(this.current())document.querySelector('#project-action-status')!.textContent=friendlyError(error);}
-    finally {button.disabled=false;}
+      const artifact=await this.api.artifact(latest.artifact_id,signal);
+      if(!current())return;
+      if(artifact.artifact_id!==latest.artifact_id || artifact.run_id!==latest.run_id || artifact.version!==latest.version ||
+        artifact.quality_status!=='passed' || artifact.delivery_status!=='available')throw new ApiError(0,'DATA_UNAVAILABLE');
+      const run=await this.api.run(artifact.run_id,signal);
+      if(!current())return;
+      if(run.run_id!==artifact.run_id || run.project_id!==item.project_id || run.state!=='succeeded' || run.artifact_id!==artifact.artifact_id)throw new ApiError(0,'DATA_UNAVAILABLE');
+      const bytes=await this.api.artifactBytes(artifact,signal);
+      if(!current())return;
+      this.downloads.save(bytes,`${item.name}-v${artifact.version}.docx`);
+      feedback.textContent='文件已交给浏览器下载，请在浏览器下载列表中查看。';
+    } catch(error) {if(current())feedback.textContent=artifactError(error);}
+    finally {
+      if(current()) {
+        this.downloading.delete(item.project_id);
+        // Pagination may have replaced the original button while the download was pending.
+        document.querySelectorAll<HTMLButtonElement>('[data-download]').forEach(candidate=>{
+          if(candidate.dataset.download===item.project_id)candidate.disabled=false;
+        });
+      }
+    }
   }
 }

@@ -45,7 +45,7 @@ export class ApiClient {
     });
   }
 
-  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
+  private async response(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<Response> {
     const signal = signalOverride ?? this.controller.signal;
     let response = await this.send(method, path, body, headers, signal);
     const authenticated = !path.startsWith('/auth/recovery/') && !['/auth/login', '/auth/register', '/auth/agreement'].includes(path);
@@ -71,6 +71,11 @@ export class ApiClient {
       if (response.status === 401 && authenticated) this.sessionLost();
       throw new ApiError(response.status, problem.code ?? 'DATA_UNAVAILABLE');
     }
+    return response;
+  }
+
+  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
+    const response = await this.response(method, path, body, headers, signalOverride);
     return response.status === 204 ? undefined as T : response.json();
   }
 
@@ -102,11 +107,32 @@ export class ApiClient {
     return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {}, signal);
   }
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
-  artifact(id: string) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`); }
+  artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }
+  run(id: string, signal?: AbortSignal) { return this.request<Dto<'RunResponse'>>('GET', `/runs/${encodeURIComponent(id)}`, undefined, {}, signal); }
+  async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal): Promise<Blob> {
+    const activeSignal = signal ?? this.controller.signal;
+    const url = new URL(artifact.download_url, location.origin);
+    const path = `/api/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`;
+    if (url.origin !== location.origin || url.pathname !== path || url.username || url.password || url.hash) {
+      throw new ApiError(0, 'DATA_UNAVAILABLE');
+    }
+    const response = await this.response('GET', `${url.pathname.slice('/api/v1'.length)}${url.search}`, undefined, {}, activeSignal);
+    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const bytes = await response.arrayBuffer();
+    activeSignal.throwIfAborted();
+    if (!bytes.byteLength) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    // Check the bytes received by the browser against the freshly authorized metadata.
+    // A matching MIME type alone cannot detect truncation or same-length corruption.
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    activeSignal.throwIfAborted();
+    const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    if (sha256 !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    return new Blob([bytes], { type: artifact.media_type });
+  }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
   deleteMaterial(id: string, materialId: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`); }
-  project(id: string) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`); }
+  project(id: string, signal?: AbortSignal) { return this.request<Dto<'ProjectResponse'>>('GET', `/projects/${encodeURIComponent(id)}`, undefined, {}, signal); }
   material(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}`, undefined, {}, signal);
   }
