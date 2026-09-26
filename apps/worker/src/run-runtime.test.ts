@@ -16,7 +16,7 @@ import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
-import { resumePausedRun } from '@bondbuddy/api/queue';
+import { checkpointStage, claim, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
@@ -364,6 +364,12 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(factExtractCalls, 1);
     assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'succeeded');
     const factCheckpoint = (await runRow(materialsRun)).checkpoint.stages.materials_ready;
+    const newStageEvents = (await pool.query(`SELECT id FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'`, [materialsRun])).rows;
+    assert.equal(newStageEvents.length, 1, 'a newly completed materials stage emits one completion event');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_type='run' AND aggregate_id=$1
+      AND event_type='run.progress' AND payload->>'event_id'=$2`, [materialsRun, newStageEvents[0]!.id])).rows[0].n, 1,
+    'the new completion event has one durable outbox record');
     assert.equal(factCheckpoint.extractions.length, 1);
     assert.equal(factCheckpoint.extractions[0].candidate_count, 1);
     assert.equal(factCheckpoint.extractions[0].needs_review_count, 1);
@@ -388,18 +394,85 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
       await pool.query('UPDATE bb_jobs SET checkpoint=$2::jsonb WHERE run_id=$1',
         [runId, JSON.stringify({ stages: { materials_ready: { materials } } })]);
     };
+    const checkpointWithoutLegacyRun = (await execute(p7)).json().run_id as string;
+    const checkpointWithoutLegacyLease = await claim(pool, 30);
+    assert.ok(checkpointWithoutLegacyLease);
+    assert.equal(checkpointWithoutLegacyLease.runId, checkpointWithoutLegacyRun);
+    const checkpointBeforeRejectedUpgrade = (await runRow(checkpointWithoutLegacyRun)).checkpoint;
+    await assert.rejects(upgradeStageCheckpoint(pool, checkpointWithoutLegacyLease, 'materials_ready', { materials: legacyMaterials, extractions: [] }),
+      /STAGE_CHECKPOINT_UPGRADE_REQUIRES_EXISTING_CHECKPOINT/);
+    assert.deepEqual((await runRow(checkpointWithoutLegacyRun)).checkpoint, checkpointBeforeRejectedUpgrade,
+      'an upgrade without a prior stage checkpoint rolls back');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [checkpointWithoutLegacyRun])).rows[0].n, 0,
+      'a rejected upgrade does not emit a completion event');
+    assert.equal((await send('POST', `/api/v1/runs/${checkpointWithoutLegacyRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
+
     const legacyFactRun = (await execute(p7)).json().run_id as string;
-    await seedLegacyCheckpoint(legacyFactRun, legacyMaterials);
-    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'paused', 'old checkpoint still needs the trusted adapter');
+    const legacyLease = await claim(pool, 30);
+    assert.ok(legacyLease);
+    assert.equal(legacyLease.runId, legacyFactRun);
+    await checkpointStage(pool, legacyLease, 'materials_ready', { materials: legacyMaterials });
+    const originalStageEvent = (await pool.query(`SELECT id,seq,type,state,stage,payload FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed' ORDER BY seq`, [legacyFactRun])).rows;
+    assert.equal(originalStageEvent.length, 1);
+    const originalStageOutbox = (await pool.query(`SELECT id,event_type,payload FROM bb_outbox
+      WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress' AND payload->>'event_id'=$2`,
+    [legacyFactRun, originalStageEvent[0].id])).rows;
+    assert.equal(originalStageOutbox.length, 1);
+    await expire(legacyLease.jobId);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'paused',
+      'legacy checkpoint still pauses when the trusted producer is not installed');
     assert.deepEqual((await runRow(legacyFactRun)).checkpoint.stages.materials_ready, { materials: legacyMaterials });
-    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyFactRun])).rows[0].n, 0);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyFactRun])).rows[0].n, 0,
+      'missing producer does not create a model request snapshot');
+    assert.deepEqual((await pool.query(`SELECT id,seq,type,state,stage,payload FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed' ORDER BY seq`, [legacyFactRun])).rows,
+    originalStageEvent, 'the pre-existing completion event survives the safe pause');
+    assert.deepEqual((await pool.query(`SELECT id,event_type,payload FROM bb_outbox
+      WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress' AND payload->>'event_id'=$2`,
+    [legacyFactRun, originalStageEvent[0].id])).rows, originalStageOutbox,
+    'the pre-existing outbox record survives the safe pause');
     assert.equal(await resumePausedRun(pool, alice, legacyFactRun, 'materials_ready'), true);
-    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'succeeded');
+
+    let enteredUpgrade!: () => void, releaseUpgrade!: () => void;
+    const upgradeEntered = new Promise<void>(resolve => { enteredUpgrade = resolve; });
+    const upgradeGate = new Promise<void>(resolve => { releaseUpgrade = resolve; });
+    const gatedLegacyMaterialStage: RunStage = { ...materialStage, run: async context => {
+      const outcome = await materialStage.run(context);
+      enteredUpgrade();
+      await upgradeGate;
+      return outcome;
+    } };
+    const interruptedUpgrade = runPipelineOnce({ pool, blobs, stages: stages({ materials: gatedLegacyMaterialStage }),
+      afterStage: async stage => { if (stage === 'materials_ready') throw new Error('SYNTHETIC_CRASH'); } });
+    await upgradeEntered;
+    assert.equal(await claim(pool, 30), null, 'a concurrent worker cannot claim the active upgrade lease');
+    releaseUpgrade();
+    await assert.rejects(interruptedUpgrade, /SYNTHETIC_CRASH/);
     const upgraded = (await runRow(legacyFactRun)).checkpoint.stages.materials_ready;
     assert.deepEqual(upgraded.materials, legacyMaterials);
     assert.deepEqual(upgraded.extractions, factCheckpoint.extractions);
-    assert.equal(factExtractCalls, factExtractCallsBeforeLegacy, 'legacy upgrade reuses the persisted extraction run');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_fact_extraction_runs WHERE id=$1`,
+      [factCheckpoint.extractions[0]!.extraction_run_id])).rows[0].n, 1,
+      'the extractor ledger remains independently unique for the locked source');
+    assert.equal(factExtractCalls, factExtractCallsBeforeLegacy,
+      'existing extractor output is reused, independently of stage event cardinality');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [legacyFactRun])).rows[0].n, 1,
+      'checkpoint upgrade did not append a second logical completion');
+    await expire(legacyLease.jobId);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'succeeded',
+      'replay after the committed upgrade continues from the durable checkpoint');
+    assert.deepEqual((await runRow(legacyFactRun)).checkpoint.stages.materials_ready, upgraded);
+    const retainedStageEvents = (await pool.query(`SELECT id,seq,type,state,stage,payload FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed' ORDER BY seq`, [legacyFactRun])).rows;
+    const retainedStageOutbox = (await pool.query(`SELECT id,event_type,payload FROM bb_outbox
+      WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress' AND payload->>'event_id'=$2`,
+    [legacyFactRun, originalStageEvent[0].id])).rows;
+    assert.deepEqual(retainedStageEvents, originalStageEvent, 'the exact historical event remains unchanged after replay');
+    assert.deepEqual(retainedStageOutbox, originalStageOutbox, 'the corresponding durable outbox record remains unchanged');
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [legacyFactRun])).rows[0].n, 1);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_type='run' AND aggregate_id=$1
+      AND event_type='run.progress' AND payload->>'stage'='materials_ready' AND payload->>'reason'='stage_completed'`, [legacyFactRun])).rows[0].n, 1);
 
     const mismatchedLedgerRun = (await execute(p7)).json().run_id as string;
     await seedLegacyCheckpoint(mismatchedLedgerRun, legacyMaterials);
