@@ -5,6 +5,7 @@
  * delivery remain a separate required pipeline stage.
  */
 import { hasLib01AAutoMatchBasis, type AnnualBusinessProfile, type ReferenceTarget } from '@bondbuddy/domain/reference-match';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { LibrarySelectionSnapshot, NoHistoryLibrarySelectionInput } from './reference-library-selection.js';
 import { codexModelStage, type RunStage, type StageContext, type StageOutcome } from './run-pipeline.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
@@ -28,6 +29,8 @@ export const noHistoryManuscriptDraftSchema: Record<string, unknown> = {
     open_questions: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 2000 } },
   },
 };
+
+const validateNoHistoryDraftSchema = new Ajv2020({ allErrors: true, strict: false }).compile(noHistoryManuscriptDraftSchema);
 
 export interface NoHistoryRunScope {
   readonly ownerUserId: string;
@@ -160,18 +163,12 @@ function validTargetFacts(snapshot: TargetFactsSnapshot, scope: NoHistoryRunScop
 }
 
 export function validateNoHistoryDraft(value: unknown, allowedFactIds: ReadonlySet<string>): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const draft = value as Record<string, unknown>;
-  if (draft.schema_version !== NO_HISTORY_DRAFT_SCHEMA_VERSION || !Array.isArray(draft.sections) || draft.sections.length === 0
-    || !Array.isArray(draft.fact_claims) || draft.fact_claims.length === 0 || !Array.isArray(draft.open_questions)) return false;
-  const factIds = new Set(draft.fact_claims.flatMap(claim => claim && typeof claim === 'object' && Array.isArray((claim as Record<string, unknown>).target_fact_ids)
-    ? ((claim as Record<string, unknown>).target_fact_ids as unknown[]).filter((id): id is string => typeof id === 'string') : []));
-  return draft.sections.every(section => !!section && typeof section === 'object' && typeof (section as Record<string, unknown>).heading === 'string'
-      && typeof (section as Record<string, unknown>).body === 'string')
-    && draft.fact_claims.every(claim => !!claim && typeof claim === 'object' && typeof (claim as Record<string, unknown>).claim === 'string'
-      && Array.isArray((claim as Record<string, unknown>).target_fact_ids) && ((claim as Record<string, unknown>).target_fact_ids as unknown[]).length > 0
-      && ((claim as Record<string, unknown>).target_fact_ids as unknown[]).every(id => typeof id === 'string' && allowedFactIds.has(id)))
-    && draft.open_questions.every(question => typeof question === 'string') && factIds.size > 0;
+  if (!validateNoHistoryDraftSchema(value)) return false;
+  const draft = value as {
+    fact_claims: readonly { target_fact_ids: readonly string[] }[];
+  };
+  const factIds = draft.fact_claims.flatMap(claim => claim.target_fact_ids);
+  return factIds.length > 0 && factIds.every(factId => allowedFactIds.has(factId));
 }
 
 export function buildNoHistoryGenerationPrompt(input: {
