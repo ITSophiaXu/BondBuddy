@@ -96,6 +96,19 @@ The bridge alone does not queue uploaded materials. The separate evidence
 repository below persists parsed records; scanned images and PDF OCR remain
 #14 work.
 
+`no-history-word-bridge.ts` is a guarded #33 seam to the existing deterministic
+`bondbuddy_no_history_word` renderer. It accepts only the versioned
+`no-history-manuscript-draft-v1` model shape and a separately supplied target
+fact-ID set derived from a trusted, same-run facts snapshot; IDs present only in
+model JSON cannot authorize themselves. The renderer runs with stdin JSON in a
+private `0700` temporary directory, bounded output buffers and a timeout. The
+bridge reads only its fixed output name, verifies the strict summary schema,
+writer version, counts, size, DOCX signature and SHA-256, then removes the
+staging directory. It returns bytes and metadata pinned to the active run's
+owner/project/input revision/hash, while explicitly recording that factual
+correctness and delivery checks are still false. It is not installed in the
+runtime pipeline and does not promote an artifact or mark a run successful.
+
 The parser response validator now rejects malformed version/status fields,
 duplicate evidence IDs, unlocatable or wrong-media anchors, fabricated DOCX
 pages, out-of-range PDF pages, and incomplete warnings or uncertainty. The
