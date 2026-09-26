@@ -12,6 +12,7 @@ export const NATIVE_FINANCIAL_FACT_EXTRACTOR_VERSION = '1.0.0' as const;
 const SUPPORTED_PARSER_VERSIONS = new Set([
   'bondbuddy-document-parser-1.0.3',
   'bondbuddy-document-parser-1.0.5',
+  'bondbuddy-document-parser-1.0.6',
 ]);
 const TARGET_SHEET = '合并利润表';
 const TARGET_METRIC = 'operating_revenue';
