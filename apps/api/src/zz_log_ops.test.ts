@@ -200,12 +200,20 @@ test('#79 scrubber bounds JSON depth, body length and malformed brace work', () 
   assert.equal(scrubSecrets(windowsPath), windowsPath);
   const pathInProse = String.raw`{path: C:\users\docs}`;
   assert.equal(scrubSecrets(pathInProse), pathInProse);
+  const longBusinessKey = String.raw`\u0022` + 'Co' + ' '.repeat(65) + 'bond_name' + String.raw`\u0022\u003A` + 'SYN_ORDINARY_LONG_KEY';
+  assert.equal(scrubSecrets(JSON.stringify({ note: longBusinessKey })), JSON.stringify({ note: longBusinessKey }));
+  let excessiveLayers = JSON.stringify({ note: 'SYN_ORDINARY_DEEP' });
+  for (let layer = 0; layer < 21; layer++) excessiveLayers = JSON.stringify({ note: excessiveLayers });
+  assert.throws(() => scrubSecrets(excessiveLayers), /Diagnostic body rejected/);
   assert.throws(() => scrubSecrets(String.raw`Cookie\u003ASYN_ROOT_SECRET`), /Diagnostic body rejected/);
   assert.equal(scrubSecrets('{} setCookie=SYN_PLAIN_COOKIE'), '{} setCookie=[REDACTED]');
   const layeredBrackets = JSON.stringify({ note: 'SYN_ORDINARY four layers { [ and CRLF\r\n' });
   let wrappedBrackets = layeredBrackets;
   for (let layer = 0; layer < 4; layer++) wrappedBrackets = JSON.stringify({ note: wrappedBrackets });
   assert.equal(scrubSecrets(wrappedBrackets), wrappedBrackets);
+  let quotedProse = JSON.stringify({ note: '"SYN_ORDINARY" prose continues' });
+  for (let layer = 0; layer < 4; layer++) quotedProse = JSON.stringify({ note: quotedProse });
+  assert.equal(scrubSecrets(quotedProse), quotedProse);
   assert.equal(scrubSecrets(JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' })),
     JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }));
   const mixed = scrubSecrets('普通正文未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_COOKIE","note":"SYN_MIXED_BUSINESS"}');
@@ -311,6 +319,7 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       [JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }), 'SYN_ORDINARY quoted', 'SYN_NONE'],
       [JSON.stringify({ note: 'SYN_ORDINARY Cookie 政策；\\uD83D\\uDE00债券名称: 正文' }), 'SYN_ORDINARY Cookie 政策', 'SYN_NONE'],
       [JSON.stringify({ note: String.raw`SYN_ORDINARY C:\users\docs` }), JSON.stringify(String.raw`C:\users\docs`).slice(1, -1), 'SYN_NONE'],
+      [JSON.stringify({ note: String.raw`\u0022Co` + ' '.repeat(65) + String.raw`bond_name\u0022\u003ASYN_ORDINARY_LONG_KEY` }), 'SYN_ORDINARY_LONG_KEY', 'SYN_NONE'],
       [JSON.stringify({ note: '{"Cookie":"SYN_INNER_COOKIE","note":"SYN_INNER_BUSINESS"}' }), 'SYN_INNER_BUSINESS', 'SYN_INNER_COOKIE'],
       [wrappedOrdinaryBrackets(), 'SYN_ORDINARY_FOUR_LAYERS', 'SYN_NONE'],
       ['普通正文\r\n{} setCookie=SYN_PLAIN_COOKIE\r\n后文', '后文', 'SYN_PLAIN_COOKIE'],
@@ -407,6 +416,15 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
         kind: 'structured_input', version: 1, body: JSON.stringify({ note: form }) }),
       error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
     }
+    for (const spaces of [59, 63, 64, 65]) {
+      let fragment = String.raw`\u0022Co` + ' '.repeat(spaces) + String.raw`okie\u0022\u003A"SYN_LEAK_MARKER"`;
+      for (let layer = 1; layer <= 4; layer++) {
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        fragment = JSON.stringify(fragment);
+      }
+    }
     for (const key of ['Cookie', 'Authorization', 'setCookie', 'otp', 'x_api_key', 'one_time_password']) {
       for (const position of [0, Math.floor(key.length / 2), key.length - 1]) {
         const escaped = key.slice(0, position) + `\\u${key.charCodeAt(position).toString(16).padStart(4, '0')}` + key.slice(position + 1);
@@ -500,6 +518,35 @@ test('#79 repeated non-delimiting escaped quotes have linear bounded work', asyn
     assert.equal(metrics.accepted, true);
     assert.ok(metrics.elapsedMs < 2000);
     t.diagnostic(`${heapMiB} MiB heap / 4 MiB quote runs: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 dense short strings and long escaped quotes share bounded scan work', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) for (const kind of ['dense', 'long_key'] as const) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const body = ${kind === 'dense'
+        ? `'[' + '"x",'.repeat(900000).slice(0,-1) + ']'`
+        : `String.raw\`\\u0022business\` + ' '.repeat(9*1024*1024) + String.raw\`name\\u0022\\u003Aordinary\``};
+      const started = performance.now();
+      const output = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({accepted:output===body, bytes:Buffer.byteLength(body),
+        elapsedMs:Math.round(performance.now()-started), peakRssMiB:Math.round(process.resourceUsage().maxRSS/1024)}));
+      if (output !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0, `${heapMiB} MiB / ${kind}`);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 5000);
+    t.diagnostic(`${heapMiB} MiB heap / ${kind} ${metrics.bytes} B: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
   }
 });
 

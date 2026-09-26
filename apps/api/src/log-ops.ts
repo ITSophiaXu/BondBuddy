@@ -27,6 +27,7 @@ const isSensitiveField = (key: string) => sensitiveField.test(key.replace(/[_ -]
 class DiagnosticScrubError extends Error {
   constructor() { super('Diagnostic body rejected'); this.name = 'DiagnosticScrubError'; }
 }
+class ScanLimitError extends DiagnosticScrubError {}
 const scrubRules: Array<[RegExp, string]> = [
   [/\b(set-cookie|cookie)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
   [/\b(authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
@@ -46,6 +47,11 @@ const addEdit = (edits: Edits, start: number, end: number, value: string) => {
   edits.starts.push(start); edits.ends.push(end); edits.values.push(value);
 };
 const space = (char: string) => char === ' ' || char === '\n' || char === '\r' || char === '\t';
+type ScanBudget = { remaining: number };
+function spend(budget: ScanBudget, units: number) {
+  budget.remaining -= units;
+  if (budget.remaining < 0) throw new ScanLimitError();
+}
 
 /** One syntax character, either literal or escaped by bounded JSON layers.
  * Leave invalid escapes as prose; callers reject only if they form a field. */
@@ -87,23 +93,33 @@ function hasUnpairedSurrogate(value: string): boolean {
 
 /** Decode a complete quoted field followed by ':' outside a JSON candidate.
  * Invalid JSON escapes and lone surrogates are rejected before any Blob write. */
-function quotedFieldAt(text: string, start: number): string | null {
+function quotedFieldAt(text: string, start: number, layer: number, budget: ScanBudget): string | null {
   if (text[start] === '\\' && text[start - 1] === '\\') return null;
   const opening = syntaxAt(text, start);
   if (opening?.char === '"' && text[opening.end - 5] === 'u') {
-    // A Unicode-escaped quote is itself a delimiter. Decode the complete
-    // bounded key and its closing quote before classifying the field.
-    let at = opening.end, key = '', invalid = false, closed = false;
-    while (at < text.length && at - start <= 512 && key.length <= 64) {
+    // Consume the complete token. A long run of spaces may still normalize
+    // to a short known key; retain only the bounded normalized spelling.
+    let at = opening.end, key = '', invalid = false, closed = false, tooLong = false, high = false;
+    while (at < text.length) {
       const unit = syntaxAt(text, at);
       if (unit?.char === '"') { at = unit.end; closed = true; break; }
       if (text[at] === '\\' && !unit) invalid = true;
-      key += unit?.char ?? text[at];
+      const char = unit?.char ?? text[at];
+      const code = char.charCodeAt(0);
+      if (high && (code < 0xdc00 || code > 0xdfff)) invalid = true;
+      if (!high && code >= 0xdc00 && code <= 0xdfff) invalid = true;
+      high = code >= 0xd800 && code <= 0xdbff;
+      if (code < 0x20) invalid = true;
+      if (char !== ' ' && char !== '_' && char !== '-') {
+        if (key.length + char.length <= 64) key += char;
+        else tooLong = true;
+      }
       at = unit?.end ?? at + 1;
     }
+    spend(budget, at - start);
     if (!closed || !separatorAt(text, at)) return null;
-    if (invalid || hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
-    return key;
+    if (invalid || high) throw new DiagnosticScrubError();
+    return tooLong ? '' : key;
   }
   let layers = 0;
   let openingEnd = start + 1;
@@ -137,16 +153,18 @@ function quotedFieldAt(text: string, start: number): string | null {
       } else i = next - 1;
     } else if (!layers && text[i] === '"') { end = i + 1; break; }
   }
+  spend(budget, (end < 0 ? text.length : end) - start);
   if (end < 0) return null;
   if (!separatorAt(text, end)) return null;
   try {
-    if (layers > MAX_JSON_STRING_LAYERS) throw new DiagnosticScrubError();
+    if (layer + layers > MAX_JSON_STRING_LAYERS) throw new ScanLimitError();
     let decoded = text.slice(start, end);
     for (let layer = 0; layer < layers; layer++) decoded = JSON.parse(`"${decoded}"`) as string;
     const key = JSON.parse(decoded) as string;
     if (hasUnpairedSurrogate(key)) throw new DiagnosticScrubError();
     return key;
-  } catch { throw new DiagnosticScrubError(); }
+  } catch (error) { if (error instanceof ScanLimitError) throw error;
+    throw new DiagnosticScrubError(); }
 }
 
 /** Read a loose field name using the same JSON Unicode decoding as quoted
@@ -265,10 +283,11 @@ function hasKnownSensitiveKey(fragment: string): boolean {
 
 /** Inspect the final decoded string layer without descending again. This sees
  * field syntax even when there is no surrounding object or array delimiter. */
-function hasEmbeddedSensitiveField(text: string, layer = 0): boolean {
+function hasEmbeddedSensitiveField(text: string, layer: number, budget: ScanBudget): boolean {
+  spend(budget, text.length);
   for (let i = 0; i < text.length;) {
     if (text[i] === '"' || text[i] === '\\') {
-      const key = quotedFieldAt(text, i);
+      const key = quotedFieldAt(text, i, layer, budget);
       if (key !== null && isSensitiveField(key)) return true;
       if (text[i] === '"') {
         // Inspect each complete quoted value once. A malformed enclosing
@@ -282,7 +301,7 @@ function hasEmbeddedSensitiveField(text: string, layer = 0): boolean {
           try {
             const decoded = JSON.parse(text.slice(i, end)) as string;
             if (layer < MAX_JSON_STRING_LAYERS) {
-              if (scrubText(decoded, layer + 1) !== decoded) return true;
+              if (scrubText(decoded, layer + 1, budget) !== decoded) return true;
             } else if (hasKnownSensitiveKey(decoded)) return true;
             i = end;
             continue;
@@ -319,7 +338,8 @@ function applyEdits(text: string, edits: Edits): string {
 
 /** Validate JSON without constructing an object tree; retain only the nesting
  * stack and source intervals that actually require replacement. */
-function parseCandidate(text: string, layer: number, markSensitive: () => void): string {
+function parseCandidate(text: string, layer: number, markSensitive: () => void, budget: ScanBudget): string {
+  spend(budget, text.length);
   type Frame = { kind: '{' | '['; state: number; sensitive: boolean; suppressed: boolean; valueStart: number };
   const stack: Frame[] = [];
   const edits = newEdits(text.length);
@@ -364,13 +384,21 @@ function parseCandidate(text: string, layer: number, markSensitive: () => void):
       if (inspectString && layer >= MAX_JSON_STRING_LAYERS) {
         // Every decoded value reaches the same field classifier at this last
         // layer. A field hidden behind another encoding fails closed.
-        if (hasEmbeddedSensitiveField(decoded) || hasKnownSensitiveKey(decoded)) {
+        const trimmed = decoded.trimStart();
+        let moreScalar = false;
+        if (trimmed[0] === '"' && trimmed.endsWith('"')) {
+          spend(budget, trimmed.length);
+          try { moreScalar = typeof JSON.parse(trimmed) === 'string'; } catch { /* ordinary quoted prose */ }
+        }
+        const moreJson = moreScalar || /^\{\s*"/.test(trimmed) ||
+          /^\[\s*[\[{"0-9tfn-]/.test(trimmed);
+        if (moreJson || hasEmbeddedSensitiveField(decoded, layer, budget) || hasKnownSensitiveKey(decoded)) {
           markSensitive();
           throw new DiagnosticScrubError();
         }
       } else if (inspectString) {
         let cleaned: string;
-        try { cleaned = scrubText(decoded, layer + 1); }
+        try { cleaned = scrubText(decoded, layer + 1, budget); }
         catch { markSensitive(); throw new DiagnosticScrubError(); }
         if (cleaned !== decoded) addEdit(edits, start, i, JSON.stringify(cleaned));
       }
@@ -423,13 +451,15 @@ function parseCandidate(text: string, layer: number, markSensitive: () => void):
   return applyEdits(text, edits);
 }
 
-function scrubText(text: string, layer: number): string {
+function scrubText(text: string, layer: number, budget: ScanBudget): string {
+  if (layer > MAX_JSON_STRING_LAYERS) throw new ScanLimitError();
+  spend(budget, text.length);
   // A non-sensitive JSON string value may itself be a complete encoded JSON
   // string. Consume that entire scalar before looking for loose fields; each
   // decode advances one bounded layer, including bare key/value fragments.
   if (text[0] === '"' && text[text.length - 1] === '"') {
-    try { return parseCandidate(text, layer, () => undefined); }
-    catch (error) { if (error instanceof DiagnosticScrubError && layer > 0) throw error; }
+    try { return parseCandidate(text, layer, () => undefined, budget); }
+    catch (error) { if (error instanceof ScanLimitError || error instanceof DiagnosticScrubError && layer > 0) throw error; }
   }
   const edits = newEdits(text.length);
   let openPlain = false;
@@ -438,7 +468,7 @@ function scrubText(text: string, layer: number): string {
       // An arbitrary closer cannot prove an earlier prose bracket was closed.
       // Keep scanning known fields conservatively until the input ends.
       if (text[start] === '\\' && text[start + 1] === 'u' && openPlain) throw new DiagnosticScrubError();
-      const quotedKey = quotedFieldAt(text, start);
+      const quotedKey = quotedFieldAt(text, start, layer, budget);
       if (quotedKey !== null && isSensitiveField(quotedKey)) throw new DiagnosticScrubError();
       const bare = bareFieldAt(text, start);
       if (bare !== null) {
@@ -466,7 +496,7 @@ function scrubText(text: string, layer: number): string {
     if (!jsonEvidence) {
       const plain = plainBracketEnd(text, start);
       const ordinary = text.slice(start, plain.end);
-      if (hasKnownSensitiveKey(ordinary) || hasEmbeddedSensitiveField(ordinary)) throw new DiagnosticScrubError();
+      if (hasKnownSensitiveKey(ordinary) || hasEmbeddedSensitiveField(ordinary, layer, budget)) throw new DiagnosticScrubError();
       openPlain ||= !plain.closed;
       start = plain.end;
       continue;
@@ -478,12 +508,13 @@ function scrubText(text: string, layer: number): string {
       let mustReject = false;
       try {
         const decoded = encoded ? JSON.parse(`"${raw}"`) as string : raw;
-        const cleaned = parseCandidate(decoded, layer, () => { mustReject = true; });
+        const cleaned = parseCandidate(decoded, layer, () => { mustReject = true; }, budget);
         if (cleaned !== decoded) {
           mustReject = true;
           addEdit(edits, start, end, encoded ? JSON.stringify(cleaned).slice(1, -1) : cleaned);
         }
-      } catch { if (suspicious || mustReject || raw.includes('\\u')) throw new DiagnosticScrubError(); }
+      } catch (error) { if (error instanceof ScanLimitError) throw error;
+        if (suspicious || mustReject || raw.includes('\\u')) throw new DiagnosticScrubError(); }
     }
     start = end;
   }
@@ -495,7 +526,8 @@ function scrubText(text: string, layer: number): string {
 /** Bounded scrub: rejects malformed/oversized JSON before any diagnostic Blob write. */
 export function scrubSecrets(text: string) {
   if (Buffer.byteLength(text, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
-  const cleaned = scrubText(text, 0);
+  const budget: ScanBudget = { remaining: text.length * 64 + 65_536 };
+  const cleaned = scrubText(text, 0, budget);
   if (Buffer.byteLength(cleaned, 'utf8') > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
   return cleaned;
 }
