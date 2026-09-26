@@ -6,7 +6,7 @@ export * from './platform-processing-cost.js';
 export * from './ocr.js';
 export * from './ocr-v2.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
-import { UpdateDetailsSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
+import { UpdateDetailsSchema, TargetReportingPeriodSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
@@ -29,6 +29,7 @@ import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
 export const OFFERINGS = ['private', 'public', 'public_all', 'ppn', 'mtn', 'cp', 'scp', 'dfi'] as const;
+export const DOCUMENT_PURPOSES = ['registration', 'issuance'] as const;
 export const MARKET_OFFERINGS = { sse: ['private', 'public', 'public_all'], szse: ['private', 'public', 'public_all'], nafmii: ['ppn', 'mtn', 'cp', 'scp', 'dfi'] } as const;
 export const MARKET_LABELS = { sse: '上交所', szse: '深交所', nafmii: '交易商协会' } as const;
 export const OFFERING_LABELS = { private: '普通私募公司债', public: '小公募', public_all: '大公募', ppn: 'PPN · 定向债务融资工具', mtn: 'MTN · 中期票据', cp: 'CP · 短期融资券', scp: 'SCP · 超短期融资券', dfi: 'DFI · 储架发行' } as const;
@@ -96,6 +97,11 @@ const cursor = nullable(Type.String({ minLength: 1, description: 'Opaque cursor;
 
 const market = enumOf(MARKETS);
 const offering = enumOf(OFFERINGS);
+const TargetConfirmationRequestSchema = obj({ market, offering, document_purpose: nullable(enumOf(DOCUMENT_PURPOSES)), as_of: nullable(date), target_reporting_periods: Type.Array(TargetReportingPeriodSchema, { maxItems: 30, description: 'The complete target period set from the current draft, not source evidence.' }) });
+const TargetConfirmationSchema = Type.Union([
+  obj({ status: Type.Literal('confirmed'), market, offering, document_purpose: nullable(enumOf(DOCUMENT_PURPOSES)), as_of: nullable(date), target_reporting_periods: Type.Array(TargetReportingPeriodSchema, { maxItems: 30 }), confirmed_by: id, confirmed_at: utc }),
+  obj({ status: Type.Literal('unconfirmed'), market: Type.Null(), offering: Type.Null(), document_purpose: Type.Null(), as_of: Type.Null(), target_reporting_periods: Type.Array(TargetReportingPeriodSchema, { maxItems: 0 }), confirmed_by: Type.Null(), confirmed_at: Type.Null() })
+], { description: 'User-declared target intent only; neither source fact nor professional review.' });
 const runState = enumOf(RUN_STATES);
 const materialState = enumOf(MATERIAL_STATES);
 const profileState = enumOf(PROFILE_STATES);
@@ -166,8 +172,8 @@ export const schemas = {
     latest_run: Type.Optional(nullable(obj({ run_id: id, state: runState, updated_at: utc }))),
     latest_artifact: Type.Optional(nullable(obj({ artifact_id: id, run_id: id, version: revision, created_at: utc })))
   })), page: PageSchema }),
-  InputRevisionCreateRequest: obj({ draft_revision: revision, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), requirement_message_ids: Type.Array(id), user_reference: Type.Optional(obj({ material_id: id, material_version: revision, material_sha256: hash, parse_snapshot_id: id, target_product: id, target_document_stage: id })), rule_applicability_context_ref: Type.Optional(obj({ context_id: id, version: revision, content_hash: hash, source_input_revision: revision, source_input_hash: hash })), credit_facility_supplements: Type.Optional(Type.Array(creditFacilitySupplementSchemas.CreditFacilitySupplementVersionRef, { maxItems: 60, description: 'Optional exact same-project user assertion versions to lock into this immutable input revision; never indicates verification.' })) }),
-  InputRevisionResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), credit_facility_supplements: Type.Optional(Type.Array(creditFacilitySupplementSchemas.CreditFacilitySupplementVersionRef, { maxItems: 60, description: 'Exact user-asserted supplement versions pinned by this immutable input revision; not verified facts.' })), rule_pack_version: nullable(Type.String()), template_version: nullable(Type.String()), reference_release: nullable(Type.String()), created_at: utc }),
+  InputRevisionCreateRequest: obj({ draft_revision: revision, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), requirement_message_ids: Type.Array(id), target_confirmation: Type.Optional(TargetConfirmationRequestSchema), user_reference: Type.Optional(obj({ material_id: id, material_version: revision, material_sha256: hash, parse_snapshot_id: id, target_product: id, target_document_stage: id })), rule_applicability_context_ref: Type.Optional(obj({ context_id: id, version: revision, content_hash: hash, source_input_revision: revision, source_input_hash: hash })), credit_facility_supplements: Type.Optional(Type.Array(creditFacilitySupplementSchemas.CreditFacilitySupplementVersionRef, { maxItems: 60, description: 'Optional exact same-project user assertion versions to lock into this immutable input revision; never indicates verification.' })) }),
+  InputRevisionResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, target_confirmation: TargetConfirmationSchema, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), credit_facility_supplements: Type.Optional(Type.Array(creditFacilitySupplementSchemas.CreditFacilitySupplementVersionRef, { maxItems: 60, description: 'Exact user-asserted supplement versions pinned by this immutable input revision; not verified facts.' })), rule_pack_version: nullable(Type.String()), template_version: nullable(Type.String()), reference_release: nullable(Type.String()), created_at: utc }),
   UploadCreateRequest: Type.Object({ filename: Type.String({ minLength: 1 }), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, role: materialRole }, { additionalProperties: false, if: { properties: { role: { enum: ['historical', 'reference'] } } }, then: { properties: { media_type: { enum: [M1_UPLOAD_MIME_TYPES[0], M1_UPLOAD_MIME_TYPES[1]] } } } }),
   UploadSessionResponse: obj({ upload_id: id, state: Type.Literal('uploading'), upload_url: Type.String({ description: 'Short-lived, scoped URL; never store or log it.' }), expires_at: utc, max_bytes: Type.Integer({ minimum: 1 }) }),
   UploadCompleteRequest: obj({ byte_size: Type.Integer({ minimum: 1 }), sha256: hash }),
@@ -264,7 +270,7 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}', 'Read owner project (contract only)', 'ProjectResponse', 200, undefined, [404]),
   op('delete', '/projects/{project_id}', 'Delete an owned project: access ends now; bytes and derived content purge after the published window', 'ProjectResponse', 204, undefined, [404, 409]),
   op('patch', '/projects/{project_id}', 'Patch draft with If-Match revision (contract only)', 'ProjectResponse', 200, 'ProjectPatchRequest', [404, 409]),
-  op('post', '/projects/{project_id}/input-revisions', 'Lock verified owner material and draft versions; server computes hash (contract only)', 'InputRevisionResponse', 201, 'InputRevisionCreateRequest', [404, 409]),
+  op('post', '/projects/{project_id}/input-revisions', 'Lock owner material and draft versions, with optional user-declared target intent; confirmation is neither source fact nor professional review', 'InputRevisionResponse', 201, 'InputRevisionCreateRequest', [404, 409, 422]),
   op('get', '/projects/{project_id}/input-revisions/{input_revision}', 'Read immutable input snapshot (contract only)', 'InputRevisionResponse', 200, undefined, [404]),
   op('post', '/projects/{project_id}/input-revisions/{input_revision}/rule-applicability-context-drafts', 'Create an owner-scoped needs_review applicability draft from a locked input revision', 'RuleApplicabilityContextDraftResponse', 201, 'RuleApplicabilityContextDraftCreateRequest', [404, 409, 422]),
   op('get', '/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}', 'Read an exact owner-scoped applicability draft reference; never production eligible', 'RuleApplicabilityContextDraftResponse', 200, undefined, [404]),

@@ -58,7 +58,7 @@ const inputCreditSupplementRefs = (manifest: unknown) => {
 };
 export const inputDto = (i: any) => {
   const pins = inputCreditSupplementRefs(i.manifest);
-  return { project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), material_versions: i.material_versions,
+  return { project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), target_confirmation: i.manifest?.target_confirmation ?? {status:'unconfirmed',market:null,offering:null,document_purpose:null,as_of:null,target_reporting_periods:[],confirmed_by:null,confirmed_at:null}, material_versions: i.material_versions,
     ...(pins?.length ? { credit_facility_supplements: pins } : {}), rule_pack_version: i.rule_pack_version, template_version: i.template_version,
     reference_release: i.reference_release, created_at: date(i.created_at) };
 };

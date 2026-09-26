@@ -32,6 +32,7 @@ import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
+import { confirmTargetIntent, type TargetConfirmationRequest } from './target-confirmation.js';
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
@@ -318,11 +319,22 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[]}>(request);
+    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[]}>(request);
     if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
       if(p.draft_revision!==b.draft_revision) throw conflict('INPUT_REVISION_CONFLICT','Draft revision changed');
+      let targetConfirmation;
+      if (b.target_confirmation) {
+        try {
+          targetConfirmation=confirmTargetIntent(b.target_confirmation,{market:p.market,offering:p.offering,
+            target_reporting_periods:projectDto(p).update_details?.target_reporting_periods},user,new Date().toISOString());
+        } catch (error) {
+          if (error instanceof Error && ['TARGET_DRAFT_MISMATCH','TARGET_DATE_INVALID','TARGET_PERIOD_CONFLICT'].includes(error.message))
+            throw new Problem(422,'VALIDATION_FAILED','Target confirmation must match the current draft and valid date');
+          throw error;
+        }
+      }
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
@@ -365,6 +377,7 @@ export function createServer(settings: Settings = {}) {
       }
       // Update generation must only see the reviewed historical issuer name, never the browser draft label.
       const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      Object.assign(manifest,{target_confirmation:targetConfirmation??{status:'unconfirmed',market:null,offering:null,document_purpose:null,as_of:null,target_reporting_periods:[],confirmed_by:null,confirmed_at:null}});
       if(p.kind==='update'){
         Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
       }
@@ -387,6 +400,10 @@ export function createServer(settings: Settings = {}) {
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       const hash=inputManifestHash(manifest);
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]',ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
+      if(targetConfirmation)await client.query(`INSERT INTO bb_input_revision_target_confirmations
+        (owner_user_id,project_id,input_revision,market,offering,document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[user,id,revision,targetConfirmation.market,targetConfirmation.offering,
+          targetConfirmation.document_purpose,targetConfirmation.as_of,JSON.stringify(targetConfirmation.target_reporting_periods),user,targetConfirmation.confirmed_at]);
       if(userReference)await insertUserReferencePin(client,referenceScope,userReference.pin,userReference.outline);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.input_locked',{project_id:id,input_revision:revision,input_hash:hash}]);
