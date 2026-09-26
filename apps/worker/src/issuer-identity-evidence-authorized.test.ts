@@ -197,12 +197,22 @@ test('authorized rq-202506 DOCX keeps issuer identity selection review-only unde
     assert.equal(pending.statusCode, 200, pending.body);
     assert.deepEqual(pending.json().items.map((item: { evidence_record_id: string }) => item.evidence_record_id), expectedAnchorIds);
     assert.ok(pending.json().items.every((item: { status: string }) => item.status === 'needs_review'));
-    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,authorization_basis)
-      VALUES($1,$2,'issuer_identity_reviewer',$3,'authorized_test','authorized regression')`, [randomUUID(), reviewer, grantor]);
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants
+      (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'authorized_test','authorized regression',$4,$5)`,
+    [randomUUID(), reviewer, grantor, owner, projectId]);
     principal = reviewer;
+    const reviewerUrl = `/api/v1/reviewer/projects/${projectId}/materials/${materialId}/versions/1/issuer-identity/observations`;
+    const reviewerRead=await send('GET',reviewerUrl);
+    assert.equal(reviewerRead.statusCode,200,reviewerRead.body);
+    assert.deepEqual(reviewerRead.json().items.map((item: { evidence_record_id: string }) => item.evidence_record_id),expectedAnchorIds);
+    assert.ok(reviewerRead.json().items.every((item: { coverage: string }) => item.coverage === 'incomplete'));
+    assert.ok(reviewerRead.json().items.every((item: { parse_warnings: {code:string}[] }) =>
+      item.parse_warnings.some(warning => warning.code === 'DOCX_DRAWINGS')));
     const reviewedId = 'uscc:91310000MA1FL00008';
-    for (const item of pending.json().items as { source_record_id: string }[]) {
+    for (const item of reviewerRead.json().items as { source_record_id: string; content_sha256:string; snapshot_sha256:string }[]) {
       const reviewed = await send('POST', `${url}/${item.source_record_id}/review`, { decision: 'verified', reason_code: 'source_checked',
+        expected_content_sha256:item.content_sha256,expected_snapshot_sha256:item.snapshot_sha256,
         verified_entity_id: reviewedId, entity_basis_kind: 'uscc', entity_basis_ref: reviewedId.slice(5) });
       assert.equal(reviewed.statusCode, 201, reviewed.body);
     }

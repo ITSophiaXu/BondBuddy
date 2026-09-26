@@ -66,6 +66,9 @@ export interface ReviewIssuerIdentitySourceRecordInput {
   readonly reviewer: TrustedIssuerIdentityReviewer;
   readonly decision: 'verified' | 'rejected' | 'conflict';
   readonly reasonCode: string;
+  /** Exact hashes returned by the reviewer read. */
+  readonly expectedContentSha256?: string;
+  readonly expectedSnapshotSha256?: string;
   readonly verifiedEntityId?: string;
   readonly entityBasisKind?: 'uscc' | 'registry_record' | 'manual_attestation';
   readonly entityBasisRef?: string;
@@ -106,8 +109,11 @@ export async function listIssuerIdentitySourceRecords(
   [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion]);
   if (material.rows.length !== 1) throw fail('ISSUER_IDENTITY_MATERIAL_NOT_FOUND');
   const result = await pool.query(`SELECT ${recordColumns}, rv.created_at AS reviewed_at,
+    s.response_sha256 AS snapshot_sha256, s.response_meta AS snapshot_meta,
     rv.verified_entity_id, rv.entity_basis_kind, rv.entity_basis_ref,
     g.id AS active_grant_id FROM bb_issuer_identity_source_records r
+    JOIN bb_parse_snapshots s ON s.owner_user_id=r.owner_user_id AND s.project_id=r.project_id
+      AND s.material_id=r.material_id AND s.material_version=r.material_version AND s.id=r.snapshot_id
     LEFT JOIN bb_issuer_identity_source_reviews rv ON rv.owner_user_id=r.owner_user_id AND rv.project_id=r.project_id
       AND rv.material_id=r.material_id AND rv.material_version=r.material_version AND rv.source_record_id=r.id
     LEFT JOIN bb_issuer_identity_reviewer_grants g ON g.id=rv.reviewer_grant_id
@@ -116,12 +122,20 @@ export async function listIssuerIdentitySourceRecords(
     ORDER BY r.identity_version`, [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion]);
   const items = result.rows.map(row => {
     const stored = mapRow(row, false);
+    const meta = parseJson(row.snapshot_meta);
+    if (!isObject(meta) || !Array.isArray(meta.warnings) || !shaPattern.test(String(row.snapshot_sha256).trim()) ||
+        !meta.warnings.every(warning => isObject(warning) && typeof warning.code === 'string' && typeof warning.message === 'string')) {
+      throw fail('INVALID_ISSUER_IDENTITY_SNAPSHOT_ROW');
+    }
+    const warnings = meta.warnings as {code:string;message:string}[];
     const reviewedEntity = validStoredReviewBasis(row) ? String(row.verified_entity_id) : null;
     const status = row.active_grant_id ? stored.reviewDecision === 'verified' && !reviewedEntity
       ? 'needs_review' : stored.reviewDecision ?? 'needs_review' : 'needs_review';
     return { source_record_id: stored.id, identity_version: stored.identityVersion, snapshot_id: stored.snapshotId,
       evidence_record_id: stored.sourceRecordId, source_record_sha256: stored.sourceRecordSha256,
       source_content_sha256: stored.sourceContentSha256, content_sha256: stored.contentSha256,
+      snapshot_sha256: String(row.snapshot_sha256).trim(), parse_warnings: warnings,
+      coverage: warnings.length ? 'incomplete' as const : 'complete' as const,
       locator_type: stored.sourceLocatorType, locator: stored.sourceLocator, quote: stored.sourceQuote,
       issuer_display_name: stored.issuerDisplayName, candidate_key: stored.entityId,
       verified_entity_id: status === 'verified' ? reviewedEntity : null,
@@ -355,8 +369,9 @@ export async function reviewIssuerIdentitySourceRecord(
     await db.query('BEGIN');
     const grant = await db.query(
       `SELECT id FROM bb_issuer_identity_reviewer_grants
-        WHERE id=$1 AND user_id=$2 AND role='issuer_identity_reviewer' AND revoked_at IS NULL FOR SHARE`,
-      [input.reviewer.grantId, input.reviewer.userId]);
+        WHERE id=$1 AND user_id=$2 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
+          AND (scope_owner_user_id IS NULL OR (scope_owner_user_id=$3 AND scope_project_id=$4)) FOR SHARE`,
+      [input.reviewer.grantId, input.reviewer.userId,input.ownerUserId,input.projectId]);
     if (grant.rows.length !== 1) throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
     const sourceResult = await db.query(
       `SELECT *, NULL::text AS review_decision FROM bb_issuer_identity_source_records
@@ -365,6 +380,15 @@ export async function reviewIssuerIdentitySourceRecord(
     if (sourceResult.rows.length !== 1) throw fail('ISSUER_IDENTITY_SOURCE_RECORD_NOT_FOUND');
     const source = sourceResult.rows[0]!;
     mapRow(source, false);
+    if (input.expectedContentSha256 !== undefined || input.expectedSnapshotSha256 !== undefined) {
+      if (!shaPattern.test(input.expectedContentSha256 ?? '') || !shaPattern.test(input.expectedSnapshotSha256 ?? '') ||
+          String(source.content_sha256).trim() !== input.expectedContentSha256) throw fail('ISSUER_IDENTITY_SNAPSHOT_STALE');
+      const snapshot = await db.query(`SELECT response_sha256 FROM bb_parse_snapshots
+        WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND id=$5 FOR SHARE`,
+      [input.ownerUserId,input.projectId,input.materialId,input.materialVersion,source.snapshot_id]);
+      if (snapshot.rows.length !== 1 || String(snapshot.rows[0]!.response_sha256).trim() !== input.expectedSnapshotSha256)
+        throw fail('ISSUER_IDENTITY_SNAPSHOT_STALE');
+    }
     const prior = await db.query(
       `SELECT id, decision, reason_code, reviewer_user_id, reviewer_grant_id, verified_entity_id,
         entity_basis_kind, entity_basis_ref, created_at FROM bb_issuer_identity_source_reviews

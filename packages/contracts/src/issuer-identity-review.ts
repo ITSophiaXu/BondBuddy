@@ -9,14 +9,15 @@ export const VERIFIED_ISSUER_ENTITY_PATTERN = '^(?:uscc:[0-9A-HJ-NPQRTUWXY]{18}|
 export const ISSUER_ENTITY_BASIS_KINDS = ['uscc', 'registry_record', 'manual_attestation'] as const;
 const reason = Type.String({ pattern: '^[a-z][a-z0-9_]{0,63}$' });
 const basis = Type.String({ minLength: 1, maxLength: 512 });
+const observedHashes = { expected_content_sha256: hash, expected_snapshot_sha256: hash };
 export const issuerIdentityReviewSchemas = {
   IssuerIdentityReviewRequest: Type.Union([
-    Type.Object({ decision: Type.Literal('verified'), reason_code: reason,
+    Type.Object({ decision: Type.Literal('verified'), reason_code: reason, ...observedHashes,
       verified_entity_id: Type.String({ pattern: VERIFIED_ISSUER_ENTITY_PATTERN }),
       entity_basis_kind: Type.Union(ISSUER_ENTITY_BASIS_KINDS.map(value => Type.Literal(value))),
       entity_basis_ref: basis }, { additionalProperties: false }),
-    Type.Object({ decision: Type.Literal('rejected'), reason_code: reason }, { additionalProperties: false }),
-    Type.Object({ decision: Type.Literal('conflict'), reason_code: reason }, { additionalProperties: false }),
+    Type.Object({ decision: Type.Literal('rejected'), reason_code: reason, ...observedHashes }, { additionalProperties: false }),
+    Type.Object({ decision: Type.Literal('conflict'), reason_code: reason, ...observedHashes }, { additionalProperties: false }),
   ]),
   IssuerIdentityReviewResponse: Type.Object({
     review_id: id, source_record_id: id,
@@ -29,7 +30,10 @@ export const issuerIdentityReviewSchemas = {
     items: Type.Array(Type.Object({
       source_record_id: id, identity_version: Type.Integer({ minimum: 1 }), snapshot_id: id,
       evidence_record_id: id, source_record_sha256: hash, source_content_sha256: hash,
-      content_sha256: hash, locator_type: Type.String(), locator: Type.Record(Type.String(), Type.Unknown()),
+      content_sha256: hash, snapshot_sha256: hash,
+      parse_warnings: Type.Array(Type.Object({ code: Type.String(), message: Type.String() })),
+      coverage: Type.Union([Type.Literal('complete'), Type.Literal('incomplete')]),
+      locator_type: Type.String(), locator: Type.Record(Type.String(), Type.Unknown()),
       quote: Type.String(), issuer_display_name: Type.String(),
       candidate_key: Type.String({ minLength: 1, maxLength: 128, description: 'Review-only candidate clustering key; production issuer-name:v1 is not a legal entity ID.' }),
       verified_entity_id: Type.Union([Type.String({ pattern: VERIFIED_ISSUER_ENTITY_PATTERN }), Type.Null()]),

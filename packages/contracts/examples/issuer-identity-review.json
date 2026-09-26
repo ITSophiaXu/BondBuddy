@@ -36,7 +36,15 @@
             "candidate_key": "issuer-name:v1:4b3d190d3e742448afb2773f3b37db77",
             "verified_entity_id": null,
             "entity_basis_kind": null,
-            "entity_basis_ref": null
+            "entity_basis_ref": null,
+            "snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "parse_warnings": [
+              {
+                "code": "DOCX_DRAWINGS",
+                "message": "Synthetic omitted drawing content"
+              }
+            ],
+            "coverage": "incomplete"
           }
         ]
       }
@@ -50,7 +58,9 @@
         "reason_code": "source_checked",
         "verified_entity_id": "uscc:91310000MA1FL00008",
         "entity_basis_kind": "uscc",
-        "entity_basis_ref": "91310000MA1FL00008"
+        "entity_basis_ref": "91310000MA1FL00008",
+        "expected_content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "expected_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
       }
     },
     {
@@ -63,7 +73,9 @@
         "verified_entity_id": "uscc:91310000MA1FL00008",
         "entity_basis_kind": "uscc",
         "entity_basis_ref": "91310000MA1FL00008",
-        "reviewer_user_id": "forged"
+        "reviewer_user_id": "forged",
+        "expected_content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "expected_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
       }
     },
     {
@@ -72,7 +84,9 @@
       "valid": false,
       "value": {
         "decision": "verified",
-        "reason_code": "source_checked"
+        "reason_code": "source_checked",
+        "expected_content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "expected_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
       }
     },
     {
@@ -84,7 +98,9 @@
         "reason_code": "source_checked",
         "verified_entity_id": "issuer-name:v1:4b3d190d3e742448afb2773f3b37db77",
         "entity_basis_kind": "uscc",
-        "entity_basis_ref": "91310000MA1FL00008"
+        "entity_basis_ref": "91310000MA1FL00008",
+        "expected_content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "expected_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
       }
     },
     {
@@ -93,7 +109,9 @@
       "valid": true,
       "value": {
         "decision": "rejected",
-        "reason_code": "insufficient_source"
+        "reason_code": "insufficient_source",
+        "expected_content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "expected_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
       }
     },
     {
