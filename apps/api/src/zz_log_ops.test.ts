@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -10,7 +11,7 @@ import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest, transaction, uid } from './data.js';
 import { emitInternal, internalEvent, observeUsage } from './observability.js';
-import { action, recordPotentialCall, type Lease } from './queue.js';
+import { action, finish, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
 
@@ -19,7 +20,15 @@ const connection = process.env.BB_TEST_DATABASE_URL;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
-const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913. Cookie: bb_session=abc123secret. api_key=sk-synthetictestkey000000000000. Authorization: Bearer syntheticbearertoken';
+const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913.\nCookie: "bb_session=abc123secret"\napi_key="sk-synthetictestkey000000000000"\nAuthorization: "Bearer syntheticbearertoken"';
+const GLUED_QUOTED_SUFFIXES = [
+  ...['secret', 'password', 'C_o_o_k_i_e', String.raw`Co\u006Fkie`].flatMap(key =>
+    [',', ';', '，', '；', String.raw`\u002C`, String.raw`\u003B`, String.raw`\uFF0C`, String.raw`\uFF1B`]
+      .map(punctuation => `${key}="SYN_LEFT"${punctuation}SYN_RIGHT`)),
+  'secret="SYN_LEFT\\\"MID",SYN_RIGHT',
+  'secret="SYN_LEFT\\\\MID";SYN_RIGHT',
+  'secret="SYN_LEFT\nMID"，SYN_RIGHT'
+];
 
 async function user(pool: Pool, prefix: string) {
   const id = `${prefix}-${uid().slice(0, 8)}`;
@@ -55,6 +64,21 @@ async function fixture(pool: Pool) {
     return { project, runId, lease, inputHash: input.input_hash as string };
   }
   return { ownerA, ownerB, reader, viewer, nobody, operatorUser, app, as, runFor };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+async function rawGetSocket(address: string, path: string) {
+  const target = new URL(address);
+  const socket = connect({ host: '127.0.0.1', port: Number(target.port) });
+  socket.on('error', () => undefined);
+  await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('error', reject); });
+  socket.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
+  return socket;
 }
 
 class MemorySink implements LogSink {
@@ -95,6 +119,856 @@ test('#79 scrubber removes secrets, captcha codes and cookies', () => {
   const out = scrubSecrets(SECRET_PROMPT + '\nset-cookie: x=1\npassword: hunter2hunter2\neyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U');
   for (const leaked of ['482913', 'abc123secret', 'sk-synthetictestkey', 'syntheticbearertoken', 'hunter2hunter2', 'eyJhbGciOiJIUzI1NiJ9', 'x=1']) assert.ok(!out.includes(leaked), leaked);
   assert.ok(out.includes('PLAINTEXT_MARKER_79'), 'ordinary prompt text survives');
+});
+
+test('#79 normalized loose keys never leave synthetic values in diagnostics', () => {
+  for (const key of ['C_o_o_k_i_e', 'C-o-o-k-i-e', 'C o o k i e', String.raw`C \u006F o k i e`]) {
+    for (const prefix of ['', '业务前文 ', '{} ', '{] ']) {
+      for (const delimiter of ['=', ':', String.raw`\u003A`]) {
+        const input = `${prefix}${key}${delimiter}SYN_LOOSE_SECRET`;
+        try { assert.ok(!scrubSecrets(input).includes('SYN_LOOSE_SECRET')); }
+        catch (error) { assert.equal((error as Error).message, 'Diagnostic body rejected'); }
+      }
+    }
+  }
+  for (const key of ['Cookie', 'session_cookie', 'x_api_key', 'one_time_password', 'otp']) {
+    assert.equal(scrubSecrets(`${key}=SYN_PLAIN_SECRET`), `${key}=[REDACTED]`);
+  }
+});
+
+test('#79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject', () => {
+  const accepted = [
+    'secret="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
+    'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
+    'secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"; 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"， 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"； 普通业务事实',
+    String.raw`secret="SYN_LEFT,SYN_RIGHT"\u002C 普通业务事实`,
+    String.raw`secret="SYN_LEFT,SYN_RIGHT"\uFF1B 普通业务事实`,
+    'secret="SYN_LEFT,SYN_RIGHT" 普通业务事实',
+    '前文 secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT",\r\n普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT";\r\n普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"\r\n普通业务事实',
+    'secret="SYN_LEFT\\\"SYN_RIGHT" tail SYN_ORDINARY',
+    'secret="SYN_LEFT\\\\SYN_RIGHT"; 普通业务事实',
+    'secret="SYN_LEFT\\,SYN_RIGHT" tail SYN_ORDINARY',
+    'secret="SYN_LEFT\nSYN_RIGHT" tail SYN_ORDINARY',
+    '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}',
+    '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}',
+    '{"Co\\u006Fkie":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}'
+  ];
+  for (const body of accepted) {
+    const cleaned = scrubSecrets(body);
+    assert.ok(!cleaned.includes('SYN_LEFT') && !cleaned.includes('SYN_RIGHT'));
+    if (body.includes('普通业务事实')) assert.ok(cleaned.endsWith(body.slice(body.indexOf('普通业务事实'))));
+    else assert.ok(cleaned.includes('SYN_ORDINARY'));
+    if (body.includes('secret="SYN_LEFT,SYN_RIGHT"'))
+      assert.equal(cleaned, body.replace('secret="SYN_LEFT,SYN_RIGHT"', 'secret=[REDACTED]'));
+  }
+  for (const body of [...GLUED_QUOTED_SUFFIXES, 'secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
+    'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY', 'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+    'secret=SYN_SECRET 普通业务事实', 'secret=SYN_SECRET, 普通业务事实', 'secret=SYN_SECRET; 普通业务事实',
+    'secret=SYN_SECRET:普通业务事实'])
+    assert.throws(() => scrubSecrets(body), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('secret=SYN_SINGLE\r\n普通业务事实'), 'secret=[REDACTED]\r\n普通业务事实');
+});
+
+test('#79 entire prose values and nested fields are safe in real Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic whole-value scrub');
+    const fragments = [
+      'secret="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
+      'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
+      'secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"; 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"， 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"； 普通业务事实',
+      String.raw`secret="SYN_LEFT,SYN_RIGHT"\u002C 普通业务事实`,
+      String.raw`secret="SYN_LEFT,SYN_RIGHT"\uFF1B 普通业务事实`,
+      'secret="SYN_LEFT,SYN_RIGHT" 普通业务事实',
+      '前文 secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT",\r\n普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT";\r\n普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"\r\n普通业务事实',
+      'secret="SYN_LEFT\\\"SYN_RIGHT" tail SYN_ORDINARY',
+      'secret="SYN_LEFT\\\\SYN_RIGHT"; 普通业务事实',
+      'secret="SYN_LEFT\\,SYN_RIGHT" tail SYN_ORDINARY',
+      'secret="SYN_LEFT\nSYN_RIGHT" tail SYN_ORDINARY',
+      'C_o_o_k_i_e="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
+      '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}',
+      '{"Co\\u006Fkie":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}'
+    ];
+    const bodies = [...fragments];
+    let nested = '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}';
+    for (let layer = 1; layer <= 4; layer++) {
+      nested = JSON.stringify({ note: nested });
+      bodies.push(nested);
+    }
+    let encodedNested = '{"Co\\u006Fkie":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}';
+    for (let layer = 1; layer <= 4; layer++) {
+      encodedNested = JSON.stringify({ note: encodedNested });
+      bodies.push(encodedNested);
+    }
+    let puts = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    const countRefs = async () => Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2',
+      [f.ownerA, project])).rows[0].n);
+    for (const [index, body] of bodies.entries()) {
+      const beforePuts = puts, beforeRefs = await countRefs();
+      const id = await savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: index + 1, body });
+      const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
+      const stored = (await blobs.get(row.object_key)).toString('utf8');
+      assert.ok(!stored.includes('SYN_LEFT') && !stored.includes('SYN_RIGHT'), `case ${index} retained a value`);
+      if (body.includes('普通业务事实')) assert.ok(stored.includes('普通业务事实'));
+      else assert.ok(stored.includes('SYN_ORDINARY'));
+      if (body.includes('secret="SYN_LEFT,SYN_RIGHT"'))
+        assert.equal(stored, body.replace('secret="SYN_LEFT,SYN_RIGHT"', 'secret=[REDACTED]'));
+      assert.equal(row.content_sha256, digest(stored));
+      assert.equal(row.redaction_version, 'scrub_v1');
+      assert.equal(puts, beforePuts + 1);
+      assert.equal(await countRefs(), beforeRefs + 1);
+    }
+    for (const body of [...GLUED_QUOTED_SUFFIXES, 'secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
+      'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY', 'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+      'secret=SYN_SECRET 普通业务事实', 'secret=SYN_SECRET, 普通业务事实', 'secret=SYN_SECRET; 普通业务事实',
+      'secret=SYN_SECRET:普通业务事实',
+      '前文 secret=SYN_SECRET 普通业务事实']) {
+      const beforeRefs = await countRefs(), beforePuts = puts;
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 99, body }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+      assert.equal(puts, beforePuts);
+      assert.equal(await countRefs(), beforeRefs);
+    }
+    for (const fragment of ['secret="SYN_LEFT,SYN_RIGHT"', 'password="SYN_LEFT SYN_RIGHT"',
+      'secret="SYN_LEFT\\\"SYN_RIGHT"', 'secret="SYN_LEFT\\,SYN_RIGHT"',
+      'secret="SYN_LEFT\nSYN_RIGHT"', 'secret="SYN_LEFT,SYN_RIGHT']) {
+      let body = fragment;
+      for (let layer = 1; layer <= 4; layer++) {
+        body = JSON.stringify({ note: body });
+        const beforeRefs = await countRefs(), beforePuts = puts;
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 100 + layer, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        assert.equal(puts, beforePuts);
+        assert.equal(await countRefs(), beforeRefs);
+      }
+    }
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 ambiguous diagnostic rejection leaves structured run error evidence writable', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project, runId, lease } = await f.runFor(f.ownerA, 'Synthetic rejected diagnostic run');
+    let puts = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+      runId, kind: 'model_request', version: 1, body: 'secret=SYN_SECRET 普通业务事实' }),
+    error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    assert.equal(puts, 0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE run_id=$1', [runId])).rows[0].n, 0);
+    await finish(pool, lease, 'failed', { errorCode: 'DATA_UNAVAILABLE', failedStage: 'model_generation' });
+    const error = (await pool.query('SELECT code,category,stage,trace_id FROM bb_observability_errors WHERE job_id=$1', [lease.jobId])).rows[0];
+    assert.deepEqual(error, { code: 'DATA_UNAVAILABLE', category: 'internal', stage: 'model_generation', trace_id: runId });
+    assert.deepEqual((await pool.query('SELECT state,error_code FROM bb_jobs WHERE id=$1', [lease.jobId])).rows[0],
+      { state: 'failed', error_code: 'DATA_UNAVAILABLE' });
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+function* syntheticFieldMatrix() {
+  let seed = 0x237a1303;
+  const next = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed; };
+  const keys = ['Cookie', 'CoOkIe', 'C_o_o_k_i_e', 'C-o-o-k-i-e', 'C o o k i e',
+    'setCookie', 'otp', 'secret', 'x_api_key', 'one_time_password', 'Authorization'];
+  const delimiters = [':', '=', String.raw`\u003A`, String.raw`\u003D`];
+  const contexts = [(value: string) => value, (value: string) => `前文 ${value} 后文`,
+    (value: string) => `{} ${value}`, (value: string) => `{] ${value}`,
+    (value: string) => JSON.stringify({ note: value })];
+  for (let index = 0; index < 1400; index++) {
+    const key = keys[next() % keys.length];
+    const delimiter = delimiters[next() % delimiters.length];
+    const context = contexts[next() % contexts.length];
+    const layers = next() % 5;
+    const marker = `SYN_MATRIX_${index}_MARKER`;
+    const spelling = next() % 3 === 0 ? key.replace(/o/i, String.raw`\u006F`) : key;
+    const quote = index % 2 === 0 ? '"' : '';
+    let body = context(`${quote}${spelling}${quote}${delimiter}${quote}${marker}${quote}`);
+    for (let layer = 0; layer < layers; layer++) body = JSON.stringify({ note: body });
+    yield { index, body, marker, key, delimiter, layers, context: contexts.indexOf(context), quoted: !!quote };
+  }
+}
+
+test('#79 fixed-seed decoded field matrix does not retain synthetic values', () => {
+  for (const { index, body, marker } of syntheticFieldMatrix()) {
+    try { assert.ok(!scrubSecrets(body).includes(marker), `matrix ${index} retained a value`); }
+    catch (error) { assert.equal((error as Error).message, 'Diagnostic body rejected'); }
+  }
+});
+
+test('#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text', () => {
+  const cases = [
+    '{"Cookie":"SYN_COOKIE_A","nested":[{"otp":"654321","Authorization":"Bearer SYN_AUTH_A","token":"SYN_TOKEN_A","password":"SYN_PASSWORD_A","apiKey":"SYN_APIKEY_A","access_token":"SYN_ACCESS_A"}],"ordinary":"SYN_BUSINESS_A","token_budget":"SYN_BUDGET_A"}',
+    '前文 SYN_BUSINESS_B\r\nbody={"cOoKiE":"SYN_COOKIE_B","OTP":"123456","验证码":"876543","验证码提示":"SYN_UNICODE_OK"}; tail SYN_TAIL_B\r\n',
+    'prefix | {\\"Cookie\\":\\"SYN_COOKIE_C\\",\\"otp\\":\\"234567\\"} | suffix',
+    '{"nested_json":"{\\"Cookie\\":\\"SYN_COOKIE_D\\",\\"otp\\":\\"345678\\"}","plain":"SYN_BUSINESS_D"}'
+  ];
+  for (const [index, input] of cases.entries()) {
+    const output = scrubSecrets(input);
+    for (const secret of ['SYN_COOKIE_A', '654321', 'SYN_AUTH_A', 'SYN_TOKEN_A', 'SYN_PASSWORD_A', 'SYN_APIKEY_A', 'SYN_ACCESS_A',
+      'SYN_COOKIE_B', '123456', '876543', 'SYN_COOKIE_C', '234567', 'SYN_COOKIE_D', '345678']) {
+      assert.ok(!output.includes(secret), `case ${index}: ${secret}`);
+    }
+    if (index === 0) assert.ok(output.includes('SYN_BUSINESS_A') && output.includes('SYN_BUDGET_A'));
+    if (index === 1) {
+      assert.ok(output.includes('SYN_BUSINESS_B\r\n'));
+      assert.ok(output.includes('SYN_UNICODE_OK'));
+      assert.ok(output.includes('SYN_TAIL_B\r\n'));
+    }
+    if (index === 2) assert.ok(output.includes('prefix | ') && output.includes(' | suffix'));
+    if (index === 3) assert.ok(output.includes('SYN_BUSINESS_D'));
+  }
+});
+
+test('#79 escaped JSON with quoted prose and Chinese business placeholders stays usable', () => {
+  const note = 'He said "SYN_ORDINARY" and used \\ a path';
+  const escaped = JSON.stringify(JSON.stringify({ Cookie: 'SYN_ESCAPED_COOKIE', note })).slice(1, -1);
+  const placeholder = '{债券名称: 本期公司债}';
+  const cleaned = scrubSecrets(`业务前文\r\n${escaped}\r\n${placeholder}\r\n业务后文`);
+  assert.ok(!cleaned.includes('SYN_ESCAPED_COOKIE'));
+  assert.ok(cleaned.includes(`业务前文\r\n`) && cleaned.includes(`${placeholder}\r\n业务后文`));
+  const encoded = cleaned.split('\r\n')[1];
+  const parsed = JSON.parse(JSON.parse(`"${encoded}"`));
+  assert.equal(parsed.note, note);
+  assert.equal(parsed.Cookie, '[REDACTED]');
+});
+
+test('#79 scrubber bounds JSON depth, body length and malformed brace work', () => {
+  const inside = '{"session_cookie":"SYN_DEEP_SECRET"}';
+  const nested = (depth: number) => '{"v":'.repeat(depth - 1) + inside + '}'.repeat(depth - 1);
+  const accepted = scrubSecrets(nested(64));
+  assert.ok(!accepted.includes('SYN_DEEP_SECRET'));
+  for (const input of [nested(5000), '{'.repeat(20000) + '}'.repeat(20000), '{session_cookie:"SYN_MALFORMED"}', '{session_cookie SYN_BAD}', '{note: text, setCookie: SYN_LEAK_MARKER}', '{"session_cookie":"SYN_UNCLOSED"',
+    '{] "Cookie":"SYN_LEAK_MARKER"}', '{] "setCookie":"SYN_LEAK_MARKER"}', '{] "otp":"SYN_LEAK_MARKER"}',
+    '{note: text, ] "Cookie":"SYN_LEAK_MARKER"}', '{"note":"ordinary",] "Cookie":"SYN_LEAK_MARKER"}',
+    '{"note":"ordinary"}{] "Cookie":"SYN_LEAK_MARKER"}', '{[} "Cookie":"SYN_LEAK_MARKER"}]',
+    '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
+    '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"']) {
+    const start = performance.now();
+    assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    assert.ok(performance.now() - start < 2000, 'rejection remains bounded for malformed or deep input');
+  }
+  const ordinaryBraces = '{section} 业务正文\r\n'.repeat(20000);
+  const proseStart = performance.now();
+  assert.equal(scrubSecrets(ordinaryBraces), ordinaryBraces);
+  assert.ok(performance.now() - proseStart < 2000, 'many ordinary braces stay linear and unchanged');
+  const businessPlaceholders = '{债券名称: 本期公司债}\r\n'.repeat(20000);
+  const placeholderStart = performance.now();
+  assert.equal(scrubSecrets(businessPlaceholders), businessPlaceholders);
+  assert.ok(performance.now() - placeholderStart < 2000, 'many business placeholders stay bounded and unchanged');
+  const plainKeys = scrubSecrets('session_cookie=SYN_PLAIN_COOKIE\r\nx_api_key=SYN_PLAIN_KEY\r\none_time_password=SYN_PLAIN_PASSWORD\r\notp=SYN_PLAIN_OTP\r\n业务正文');
+  for (const secret of ['SYN_PLAIN_COOKIE', 'SYN_PLAIN_KEY', 'SYN_PLAIN_PASSWORD', 'SYN_PLAIN_OTP']) assert.ok(!plainKeys.includes(secret));
+  assert.ok(plainKeys.endsWith('业务正文'));
+  assert.ok(!scrubSecrets('{"\\u0043ookie":"SYN_ENCODED_KEY"}').includes('SYN_ENCODED_KEY'));
+  for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} "\\u0043ookie":"SYN_LEAK_MARKER"',
+    '{} "Cookie":"SYN_LEAK_MARKER"', '{} "\\uD800":"SYN_INVALID_KEY"',
+    '{"\\uD800":"SYN_INVALID_KEY"}', '{} "\\u00ZZ":"SYN_INVALID_ESCAPE"'])
+    assert.throws(() => scrubSecrets(body), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_ORDINARY_UNICODE"'),
+    '业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_ORDINARY_UNICODE"');
+  let layeredOutside = '"Co\\u006Fkie":"SYN_LAYERED_OUTSIDE"';
+  let ordinaryOutside = '"债券名称":"SYN_LAYERED_BUSINESS"';
+  for (let layer = 0; layer <= 5; layer++) {
+    assert.throws(() => scrubSecrets(`{} ${layeredOutside}`), /Diagnostic body rejected/);
+    if (layer <= 4) assert.equal(scrubSecrets(`{} ${ordinaryOutside}`), `{} ${ordinaryOutside}`);
+    layeredOutside = JSON.stringify(layeredOutside).slice(1, -1);
+    ordinaryOutside = JSON.stringify(ordinaryOutside).slice(1, -1);
+  }
+  assert.throws(() => scrubSecrets('{"\\u0043ookie":"SYN_MALFORMED_UNICODE"'), /Diagnostic body rejected/);
+  const layered = Array.from({ length: 6 }).reduce<string>(value => JSON.stringify({ note: value }), '{"Cookie":"SYN_LAYERED_SECRET"}');
+  assert.throws(() => scrubSecrets(layered), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('普通正文未闭合 { 和 [\r\n下一段业务内容'), '普通正文未闭合 { 和 [\r\n下一段业务内容');
+  assert.equal(scrubSecrets('普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容'), '普通正文孤立 ]、[、{ 和 }\r\n下一段业务内容');
+  const windowsPath = JSON.stringify({ note: String.raw`C:\users\docs` });
+  assert.equal(scrubSecrets(windowsPath), windowsPath);
+  const pathInProse = String.raw`{path: C:\users\docs}`;
+  assert.equal(scrubSecrets(pathInProse), pathInProse);
+  const longBusinessKey = String.raw`\u0022` + 'Co' + ' '.repeat(65) + 'bond_name' + String.raw`\u0022\u003A` + 'SYN_ORDINARY_LONG_KEY';
+  assert.equal(scrubSecrets(JSON.stringify({ note: longBusinessKey })), JSON.stringify({ note: longBusinessKey }));
+  let excessiveLayers = JSON.stringify({ note: 'SYN_ORDINARY_DEEP' });
+  for (let layer = 0; layer < 21; layer++) excessiveLayers = JSON.stringify({ note: excessiveLayers });
+  assert.throws(() => scrubSecrets(excessiveLayers), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets(String.raw`Cookie\u003ASYN_ROOT_SECRET`), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('{} setCookie=SYN_PLAIN_COOKIE'), '{} setCookie=[REDACTED]');
+  const layeredBrackets = JSON.stringify({ note: 'SYN_ORDINARY four layers { [ and CRLF\r\n' });
+  let wrappedBrackets = layeredBrackets;
+  for (let layer = 0; layer < 4; layer++) wrappedBrackets = JSON.stringify({ note: wrappedBrackets });
+  assert.equal(scrubSecrets(wrappedBrackets), wrappedBrackets);
+  let quotedProse = JSON.stringify({ note: '"SYN_ORDINARY" prose continues' });
+  for (let layer = 0; layer < 4; layer++) quotedProse = JSON.stringify({ note: quotedProse });
+  assert.equal(scrubSecrets(quotedProse), quotedProse);
+  assert.equal(scrubSecrets(JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' })),
+    JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }));
+  const mixed = scrubSecrets('普通正文未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_COOKIE","note":"SYN_MIXED_BUSINESS"}');
+  assert.ok(mixed.includes('普通正文未闭合 { 和 [\r\n') && mixed.includes('SYN_MIXED_BUSINESS'));
+  assert.ok(!mixed.includes('SYN_MIXED_COOKIE'));
+  assert.throws(() => scrubSecrets('{note: text,\r\n setCookie: SYN_MULTILINE_LEAK}'), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('{note: text,\r\n "Cookie":"SYN_MULTILINE_QUOTED"}'), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('{note: text,\r\n "\\u0043ookie":"SYN_MULTILINE_UNICODE"}'), /Diagnostic body rejected/);
+  assert.throws(() => scrubSecrets('{note: text, "\\u0043ookie":"SYN_INLINE_UNICODE"}'), /Diagnostic body rejected/);
+  const maxBody = 'A'.repeat(10 * 1024 * 1024);
+  assert.equal(scrubSecrets(maxBody).length, maxBody.length);
+  assert.throws(() => scrubSecrets(maxBody + 'B'), /Diagnostic body rejected/);
+});
+
+test('#79 large legal JSON and prompt-shaped text retain the full body', () => {
+  const nearFragment = JSON.stringify({ note: 'A'.repeat(256 * 1024 - 100), Cookie: 'SYN_LIMIT_COOKIE' });
+  const accepted = scrubSecrets(nearFragment);
+  assert.ok(accepted.includes('A'.repeat(100)) && !accepted.includes('SYN_LIMIT_COOKIE'));
+  const overFragment = JSON.stringify({ note: 'A'.repeat(256 * 1024), Cookie: 'SYN_OVER_COOKIE' });
+  const larger = scrubSecrets(overFragment);
+  assert.ok(larger.includes('A'.repeat(256 * 1024)) && !larger.includes('SYN_OVER_COOKIE'));
+  const smallObject = '{"note":"x"}';
+  assert.ok(scrubSecrets(smallObject.repeat(1024)).includes('"note"'));
+  assert.ok(scrubSecrets(smallObject.repeat(1025)).includes('"note"'));
+  const aggregate = JSON.stringify({ note: 'A'.repeat(200 * 1024) });
+  assert.equal(scrubSecrets(aggregate.repeat(6)), aggregate.repeat(6));
+  const wide = '[' + '0,'.repeat(5000).slice(0, -1) + ']';
+  assert.equal(scrubSecrets(wide), wide);
+});
+
+test('#79 structured secrets are absent from the private diagnostic Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic structured scrub');
+    const body = 'business SYN_VISIBLE\r\n' + JSON.stringify({
+      Cookie: 'SYN_COOKIE_BLOB', nested: [{ otp: '456789', Authorization: 'SYN_AUTH_BLOB', token: 'SYN_TOKEN_BLOB', password: 'SYN_PASSWORD_BLOB' }],
+      session_cookie: 'SYN_SESSION_COOKIE_BLOB', x_api_key: 'SYN_X_API_KEY_BLOB', one_time_password: 'SYN_ONE_TIME_PASSWORD_BLOB',
+      note: 'SYN_BUSINESS_BLOB', 验证码提示: 'SYN_UNICODE_BLOB'
+    }) + '\r\nmore={\\"Cookie\\":\\"SYN_ESCAPED_BLOB\\",\\"otp\\":\\"567890\\"}';
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body });
+    const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
+    const stored = (await blobs.get(row.object_key)).toString('utf8');
+    for (const secret of ['SYN_COOKIE_BLOB', '456789', 'SYN_AUTH_BLOB', 'SYN_TOKEN_BLOB', 'SYN_PASSWORD_BLOB', 'SYN_ESCAPED_BLOB', '567890',
+      'SYN_SESSION_COOKIE_BLOB', 'SYN_X_API_KEY_BLOB', 'SYN_ONE_TIME_PASSWORD_BLOB'])
+      assert.ok(!stored.includes(secret), `Blob contains ${secret}`);
+    for (const ordinary of ['SYN_VISIBLE\r\n', 'SYN_BUSINESS_BLOB', 'SYN_UNICODE_BLOB']) assert.ok(stored.includes(ordinary));
+    assert.equal(row.content_sha256, digest(stored));
+    assert.equal(row.redaction_version, 'scrub_v1');
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 fixed-seed field matrix stays safe through real Blob and reference writes', { skip }, async t => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic field matrix');
+    const generated = [...syntheticFieldMatrix()];
+    const covered = new Set<string>();
+    const selected: typeof generated = [];
+    for (const item of generated) {
+      const dimensions = [`key:${item.key}`, `delimiter:${item.delimiter}`, `layer:${item.layers}`,
+        `context:${item.context}`, `quote:${item.quoted}`];
+      if (dimensions.some(dimension => !covered.has(dimension))) {
+        selected.push(item);
+        dimensions.forEach(dimension => covered.add(dimension));
+      }
+    }
+    for (let index = 0; selected.length < 140 && index < generated.length; index += 9)
+      if (!selected.includes(generated[index])) selected.push(generated[index]);
+    assert.equal(selected.length, 140);
+    for (const index of [5, 657, 693, 729, 837, 1089, 1125])
+      assert.ok(selected.some(item => item.index === index), `previous Blob failure ${index} stays sampled`);
+    let puts = 0, rejected = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    const countRefs = async () => Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2',
+      [f.ownerA, project])).rows[0].n);
+    for (const { index, body, marker } of selected) {
+      const beforePuts = puts, beforeRefs = await countRefs();
+      try {
+        const id = await savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: index + 1, body });
+        const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
+        const stored = (await blobs.get(row.object_key)).toString('utf8');
+        assert.ok(!stored.includes(marker), `matrix ${index} retained a value in Blob`);
+        assert.equal(row.content_sha256, digest(stored));
+        assert.equal(row.redaction_version, 'scrub_v1');
+        assert.equal(puts, beforePuts + 1);
+        assert.equal(await countRefs(), beforeRefs + 1);
+      } catch (error) {
+        assert.equal((error as Error).message, 'Diagnostic body rejected');
+        assert.equal(puts, beforePuts, `matrix ${index} put a Blob before rejection`);
+        assert.equal(await countRefs(), beforeRefs, `matrix ${index} left a reference`);
+        rejected++;
+      }
+    }
+    t.diagnostic(`140 real field-matrix probes: ${puts} safe Blob writes, ${rejected} zero-write rejections`);
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 escaped quotes and business placeholders survive private Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic escaped quote scrub');
+    const note = 'He said "SYN_ORDINARY_BLOB" with \\ a path';
+    const escaped = JSON.stringify(JSON.stringify({ Cookie: 'SYN_ESCAPED_COOKIE_BLOB', note })).slice(1, -1);
+    const placeholder = '{债券名称: 本期公司债}';
+    const body = `业务前文\r\n${escaped}\r\n${placeholder}\r\n业务后文`;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body });
+    const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
+    const stored = (await blobs.get(row.object_key)).toString('utf8');
+    assert.ok(!stored.includes('SYN_ESCAPED_COOKIE_BLOB'));
+    assert.ok(stored.includes(`业务前文\r\n`) && stored.includes(`${placeholder}\r\n业务后文`));
+    const parsed = JSON.parse(JSON.parse(`"${stored.split('\r\n')[1]}"`));
+    assert.equal(parsed.note, note);
+    assert.equal(parsed.Cookie, '[REDACTED]');
+    assert.equal(row.content_sha256, digest(stored));
+    assert.equal(row.redaction_version, 'scrub_v1');
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 full-size synthetic model diagnostics survive private Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic full-size diagnostic');
+    const facts = Array.from({ length: 46 }, (_, i) => ({ candidate_id: `synthetic-fact-${i}`, identity: { metric: `synthetic-metric-${i}` },
+      evidence: [{ evidence_id: `synthetic-evidence-${i}`, status: 'verified' }], status: 'extracted' }));
+    const historical = JSON.stringify({ candidate_facts: facts, original_blocks: [{ quote: 'SYN_ORDINARY_HISTORICAL' }],
+      nested: { session_cookie: 'SYN_HISTORICAL_COOKIE' } }).padEnd(43_660, ' ');
+    const largerHistorical = JSON.stringify({ candidate_facts: Array.from({ length: 250 }, (_, i) => ({ ...facts[i % facts.length], candidate_id: `fact-${i}` })),
+      original_blocks: [{ quote: 'SYN_ORDINARY_LARGE' }] }).padEnd(239_000, ' ');
+    const noHistory = JSON.stringify({ schema_version: 'no-history-generation-input-v1',
+      facts: [{ statement: 'SYN_ORDINARY_NO_HISTORY', evidence_refs: ['synthetic-evidence'] }],
+      Cookie: 'SYN_NO_HISTORY_COOKIE' }).padEnd(263_273, ' ');
+    const nearLimit = JSON.stringify({ note: 'A'.repeat(10 * 1024 * 1024 - 90), otp: 'SYN_NEAR_LIMIT_OTP' });
+    const nearLimitUnicode = JSON.stringify({ note: '债'.repeat(Math.floor((10 * 1024 * 1024 - 80) / 3)) });
+    for (const [index, [body, ordinary, secret]] of ([
+      [historical, 'SYN_ORDINARY_HISTORICAL', 'SYN_HISTORICAL_COOKIE'],
+      [largerHistorical, 'SYN_ORDINARY_LARGE', 'SYN_NONE'],
+      [noHistory, 'SYN_ORDINARY_NO_HISTORY', 'SYN_NO_HISTORY_COOKIE'],
+      [nearLimit, 'A'.repeat(100), 'SYN_NEAR_LIMIT_OTP'],
+      [nearLimitUnicode, '债'.repeat(100), 'SYN_NONE'],
+      ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
+      [`otp${' '.repeat(32_000)}X`, `otp${' '.repeat(32_000)}X`, 'SYN_NONE'],
+      ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
+      ['业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_UNICODE_BUSINESS"', 'SYN_UNICODE_BUSINESS', 'SYN_NONE'],
+      [JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }), 'SYN_ORDINARY quoted', 'SYN_NONE'],
+      [JSON.stringify({ note: 'SYN_ORDINARY Cookie 政策；\\uD83D\\uDE00债券名称: 正文' }), 'SYN_ORDINARY Cookie 政策', 'SYN_NONE'],
+      [JSON.stringify({ note: String.raw`SYN_ORDINARY C:\users\docs` }), JSON.stringify(String.raw`C:\users\docs`).slice(1, -1), 'SYN_NONE'],
+      [JSON.stringify({ note: String.raw`\u0022Co` + ' '.repeat(65) + String.raw`bond_name\u0022\u003ASYN_ORDINARY_LONG_KEY` }), 'SYN_ORDINARY_LONG_KEY', 'SYN_NONE'],
+      [JSON.stringify({ note: '{"Cookie":"SYN_INNER_COOKIE","note":"SYN_INNER_BUSINESS"}' }), 'SYN_INNER_BUSINESS', 'SYN_INNER_COOKIE'],
+      [wrappedOrdinaryBrackets(), 'SYN_ORDINARY_FOUR_LAYERS', 'SYN_NONE'],
+      ['普通正文\r\n{} setCookie=SYN_PLAIN_COOKIE\r\n后文', '后文', 'SYN_PLAIN_COOKIE'],
+      ['普通正文\r\notp=SYN_PLAIN_OTP\r\n后文', '后文', 'SYN_PLAIN_OTP'],
+      ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
+    ] as const).entries()) {
+      assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
+      const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project,
+        kind: 'model_request', version: index + 1, body }).catch(error => {
+        throw new Error(`synthetic positive diagnostic ${index} rejected`, { cause: error });
+      });
+      const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
+      const stored = (await blobs.get(row.object_key)).toString('utf8');
+      assert.ok(stored.includes(ordinary));
+      assert.ok(!stored.includes(secret));
+      assert.equal(row.content_sha256, digest(stored));
+      assert.equal(row.redaction_version, 'scrub_v1');
+    }
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+function wrappedOrdinaryBrackets(): string {
+  let body = JSON.stringify({ note: 'SYN_ORDINARY_FOUR_LAYERS { [ "business": text\r\n' });
+  for (let layer = 0; layer < 4; layer++) body = JSON.stringify({ note: body });
+  return body;
+}
+
+test('#79 rejected diagnostics never call Blob put or register a partial snapshot', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic scrub rejection');
+    const before = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
+    let puts = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    const deep = '{"v":'.repeat(5000) + '{"session_cookie":"SYN_REJECT_SECRET"}' + '}'.repeat(5000);
+    const denseUnit = '{"Cookie":"S"},';
+    const dense = '[' + denseUnit.repeat(Math.floor(9 * 1024 * 1024 / denseUnit.length)).slice(0, -1) + ']';
+    for (const body of [deep, '{'.repeat(20000) + '}'.repeat(20000), '{"x_api_key":"SYN_BAD_JSON"',
+      '{"\\u0043ookie":"SYN_BAD_UNICODE"', '{note: text, setCookie: SYN_LEAK_MARKER}', dense,
+      '{] "Cookie":"SYN_LEAK_MARKER"}', '{] "setCookie":"SYN_LEAK_MARKER"}', '{] "otp":"SYN_LEAK_MARKER"}',
+      '{note: text, ] "Cookie":"SYN_LEAK_MARKER"}', '{"note":"ordinary",] "Cookie":"SYN_LEAK_MARKER"}',
+      '{"note":"ordinary"}{] "Cookie":"SYN_LEAK_MARKER"}', '{[} "Cookie":"SYN_LEAK_MARKER"}]',
+      '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
+      '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"',
+      '{} setCookie:SYN_LEAK_MARKER', '[] otp:SYN_LEAK_MARKER', '{} secret:SYN_LEAK_MARKER',
+      String.raw`C \u006F o k i e\u003ASYN_A14_ENCODED_MARKER`,
+      '{"note":? , "C o o k i e":"SYN_A14_MALFORMED_MARKER"}',
+      '{note: text, } setCookie:SYN_LEAK_MARKER',
+      'A'.repeat(10 * 1024 * 1024 + 1)]) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+      kind: 'structured_input', version: 1,
+      body: `{] ${JSON.stringify({ note: String.raw`Co\u006Fkie\u003ASYN_LEAK_MARKER` })}` }),
+    error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    const keys = ['Cookie', 'CoOkIe', 'setCookie', 'SET-COOKIE', 'otp', 'OtP', 'secret', 'SECRET',
+      'session_cookie', 'SESSION-COOKIE', 'x-api-key', 'X_API_KEY', 'one_time_password', 'ONE-TIME-PASSWORD',
+      'Authorization', 'AUTHORIZATION', 'token', 'password'];
+    const prefixes = ['{} ', '[] ', '{] } ', '{"note":"ordinary"} ', '业务 ] '];
+    for (const key of keys) for (const prefix of prefixes) for (const position of [0, Math.floor(key.length / 2), key.length - 1]) {
+      const escaped = key.slice(0, position) + `\\u${key.charCodeAt(position).toString(16).padStart(4, '0')}` + key.slice(position + 1);
+      const body = `${prefix}"${escaped}":"SYN_LEAK_MARKER"`;
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    for (const key of keys) for (const prefix of ['{} ', '[] ', '{] } ']) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body: `${prefix}${key}:SYN_LEAK_MARKER` }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    // Complete outer JSON can conceal a key/value fragment in an ordinary
+    // string value, without any inner object or array bracket.
+    for (const key of ['Cookie', 'Authorization', 'setCookie', 'Co\\u006Fkie']) {
+      let fragment = `"${key}":"SYN_LEAK_MARKER"`;
+      for (let layer = 1; layer <= 4; layer++) {
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        fragment = JSON.stringify(fragment);
+      }
+    }
+    for (const form of [String.raw`Cookie\u003ASYN_LEAK_MARKER`, String.raw`"Cookie"\u003A"SYN_LEAK_MARKER"`,
+      String.raw`Cookie\u003DSYN_LEAK_MARKER`, String.raw`"Cookie"\u003D"SYN_LEAK_MARKER"`,
+      String.raw`Co\u006Fkie\u003ASYN_LEAK_MARKER`]) {
+      let fragment = form;
+      for (let layer = 1; layer <= 4; layer++) {
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        fragment = JSON.stringify(fragment);
+      }
+    }
+    // A complete quoted subtoken inside ordinary prose must use the same
+    // decoded field classifier even at the final permitted string layer.
+    for (const key of [String.raw`Co\u006Fkie`, 'setCookie', 'otp', 'secret']) {
+      let fragment = String.raw`${key}\u003ASYN_LEAK_MARKER`;
+      for (let layer = 1; layer <= 4; layer++) {
+        for (const note of [JSON.stringify(fragment), `业务前文 ${JSON.stringify(fragment)} 业务后文`,
+          `{} ${JSON.stringify(fragment)}`]) {
+          await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+            kind: 'structured_input', version: 1, body: JSON.stringify({ note }) }),
+          error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        }
+        fragment = JSON.stringify(fragment);
+      }
+    }
+    for (const form of [String.raw`\u0022Cookie\u0022\u003ASYN_LEAK_MARKER`,
+      String.raw`\u0043ookie\u003ASYN_LEAK_MARKER`]) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body: JSON.stringify({ note: form }) }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    for (const spaces of [59, 63, 64, 65]) {
+      let fragment = String.raw`\u0022Co` + ' '.repeat(spaces) + String.raw`okie\u0022\u003A"SYN_LEAK_MARKER"`;
+      for (let layer = 1; layer <= 4; layer++) {
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        fragment = JSON.stringify(fragment);
+      }
+    }
+    for (const key of ['Cookie', 'Authorization', 'setCookie', 'otp', 'x_api_key', 'one_time_password']) {
+      for (const position of [0, Math.floor(key.length / 2), key.length - 1]) {
+        const escaped = key.slice(0, position) + `\\u${key.charCodeAt(position).toString(16).padStart(4, '0')}` + key.slice(position + 1);
+        let fragment = `"${escaped}":"SYN_LEAK_MARKER"`;
+        for (let layer = 1; layer <= 5; layer++) {
+          await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+            kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+          error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+          fragment = JSON.stringify(fragment);
+        }
+      }
+    }
+    for (const fragment of ['otp:SYN_LEAK_MARKER', 'setCookie=SYN_LEAK_MARKER', 'secret:SYN_LEAK_MARKER',
+      'Co\\u006Fkie:SYN_LEAK_MARKER', '\\u0043ookie=SYN_LEAK_MARKER',
+      '"\\uD800":"SYN_LEAK_MARKER"', '"\\u00ZZ":"SYN_LEAK_MARKER"',
+      '\\uD800:SYN_LEAK_MARKER', 'Co\\u00ZZkie:SYN_LEAK_MARKER']) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body: JSON.stringify({ note: fragment }) }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
+    for (const body of ['{} "Co\\u006Fkie":"SYN_LEAK_MARKER"', '{} \\"Co\\\\u006Fkie\\":\\"SYN_LEAK_MARKER\\"',
+      '{} "\\uD800":"SYN_INVALID_KEY"', '{"\\uD800":"SYN_INVALID_KEY"}', '{} "\\u00ZZ":"SYN_INVALID_ESCAPE"'])
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    let layeredField = '"Co\\u006Fkie":"SYN_LAYERED_LEAK"';
+    for (let layer = 0; layer <= 5; layer++) {
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body: `{} ${layeredField}` }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+      layeredField = JSON.stringify(layeredField).slice(1, -1);
+    }
+    // Former matrix leaks may now be safely redacted and saved; the separate
+    // 140-case real Blob matrix verifies their readback and references.
+    assert.equal(puts, 0, 'scrub rejects before Blob put');
+    const after = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
+    assert.equal(after, before, 'no partial snapshot reference');
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 wide JSON arrays stay bounded in 128/256 MiB child heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) for (const sizeMiB of [4, 9]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"note":"synthetic"},';
+      const count = Math.ceil(${sizeMiB} * 1024 * 1024 / unit.length);
+      const body = '[' + unit.repeat(count).slice(0, -1) + ']';
+      const started = performance.now();
+      const stored = scrubSecrets(body);
+      const elapsedMs = Math.round(performance.now() - started);
+      process.stdout.write(JSON.stringify({ accepted: stored === body, elapsedMs, peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024), inputMiB: ${sizeMiB} }));
+      if (stored !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source], {
+        env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl }
+      });
+      let stdout = '';
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume();
+      child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0, `${heapMiB} MiB heap, ${sizeMiB} MiB input`);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 2000, 'wide input parses without object-tree allocation');
+    t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 prose rules scale linearly on long ordinary whitespace in bounded child heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const times: number[] = [];
+    for (const spaces of [2_000, 4_000, 8_000, 16_000, 32_000]) {
+      const source = `import { performance } from 'node:perf_hooks';
+        const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+        const body = 'otp' + ' '.repeat(${spaces}) + 'X';
+        const started = performance.now();
+        const accepted = scrubSecrets(body) === body;
+        process.stdout.write(JSON.stringify({ accepted, elapsedMs: performance.now() - started,
+          peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+        if (!accepted) process.exitCode = 1;`;
+      const result = await new Promise<{ code: number | null; stdout: string; timedOut: boolean }>((resolve, reject) => {
+        const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+          { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+        let stdout = '', timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 8_000);
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.resume();
+        child.on('error', reject);
+        child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, timedOut }); });
+      });
+      assert.equal(result.timedOut, false, `${heapMiB} MiB heap / ${spaces} spaces timed out`);
+      assert.equal(result.code, 0);
+      const metrics = JSON.parse(result.stdout);
+      assert.equal(metrics.accepted, true);
+      assert.ok(metrics.elapsedMs < 500, 'ordinary whitespace should not trigger backtracking growth');
+      times.push(metrics.elapsedMs);
+      t.diagnostic(`${heapMiB} MiB heap / ${spaces} spaces: ${metrics.elapsedMs.toFixed(1)} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+    }
+    assert.ok(times[4] < Math.max(25, times[1] * 8), '32k input scales near linearly from 4k');
+  }
+});
+
+test('#79 repeated non-delimiting escaped quotes have linear bounded work', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = String.fromCharCode(92).repeat(3) + String.fromCharCode(34);
+      const body = unit.repeat(1024 * 1024);
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({ accepted: result === body, elapsedMs: Math.round(performance.now() - started),
+        peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (result !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 2000);
+    t.diagnostic(`${heapMiB} MiB heap / 4 MiB quote runs: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 dense short strings and long escaped quotes share bounded scan work', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) for (const kind of ['dense', 'long_key'] as const) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const body = ${kind === 'dense'
+        ? `'[' + '"x",'.repeat(900000).slice(0,-1) + ']'`
+        : `String.raw\`\\u0022business\` + ' '.repeat(9*1024*1024) + String.raw\`name\\u0022\\u003Aordinary\``};
+      const started = performance.now();
+      const output = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({accepted:output===body, bytes:Buffer.byteLength(body),
+        elapsedMs:Math.round(performance.now()-started), peakRssMiB:Math.round(process.resourceUsage().maxRSS/1024)}));
+      if (output !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0, `${heapMiB} MiB / ${kind}`);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 5000);
+    t.diagnostic(`${heapMiB} MiB heap / ${kind} ${metrics.bytes} B: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"Cookie":"S"},';
+      const body = '[' + unit.repeat(Math.floor(9 * 1024 * 1024 / unit.length)).slice(0, -1) + ']';
+      const started = performance.now();
+      let safe = false;
+      try { scrubSecrets(body); } catch (error) { safe = error?.message === 'Diagnostic body rejected' && !String(error?.stack).includes('Cookie'); }
+      process.stdout.write(JSON.stringify({ safe, elapsedMs: Math.round(performance.now() - started), peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (!safe) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.safe, true);
+    assert.ok(metrics.elapsedMs < 2000);
+    t.diagnostic(`${heapMiB} MiB heap / 9 MiB dense sensitive input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 densely redacted valid 10 MiB arrays fit bounded child heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"Cookie":"ABCDEFGHIJKL"},';
+      const body = '[' + unit.repeat(Math.floor(10 * 1024 * 1024 / unit.length)).slice(0, -1) + ']';
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      const safe = result.includes('[REDACTED]') && !result.includes('ABCDEFGHIJKL');
+      process.stdout.write(JSON.stringify({ safe, inputBytes: body.length, outputBytes: result.length,
+        elapsedMs: Math.round(performance.now() - started), peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (!safe) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.safe, true);
+    assert.ok(metrics.elapsedMs < 2000);
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B dense valid input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 dense ordinary colon strings stay bounded when every value is scanned', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const unit = '{"note":"synthetic: content"},';
+      const body = '[' + unit.repeat(Math.floor((10 * 1024 * 1024 - 2) / unit.length)).slice(0, -1) + ']';
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({ accepted: result === body, inputBytes: body.length,
+        elapsedMs: Math.round(performance.now() - started), peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+      if (result !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.elapsedMs < 2500);
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B dense colon input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 near-limit multibyte ordinary JSON remains complete in bounded heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const source = `import { performance } from 'node:perf_hooks';
+      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const body = JSON.stringify({note:'债'.repeat(Math.floor((10 * 1024 * 1024 - 80) / 3))});
+      const started = performance.now();
+      const result = scrubSecrets(body);
+      process.stdout.write(JSON.stringify({accepted:result===body, inputBytes:Buffer.byteLength(body),
+        elapsedMs:Math.round(performance.now()-started), peakRssMiB:Math.round(process.resourceUsage().maxRSS/1024)}));
+      if (result !== body) process.exitCode = 1;`;
+    const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+        { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+      let stdout = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.resume(); child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout }));
+    });
+    assert.equal(result.code, 0);
+    const metrics = JSON.parse(result.stdout);
+    assert.equal(metrics.accepted, true);
+    assert.ok(metrics.inputBytes <= 10 * 1024 * 1024 && metrics.inputBytes > 10_000_000);
+    assert.ok(metrics.elapsedMs < 3000);
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B multibyte: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
 });
 
 test('#79 NDJSON sink cannot be split by log injection', async () => {
@@ -670,4 +1544,407 @@ test('#79 orphan prompt Blob intent survives failed compensation, restart and de
     assert.notEqual(validKey, orphan.object_key);
     assert.equal((await retryPool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE id=$1', [valid])).rows[0].n, 1);
   } finally { await f.app.close(); await retryPool?.end(); await pool.end(); }
+});
+
+test('#79 prompt response and purge serialize through delivery, with audit and owner boundary', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let releaseSend!: () => void;
+  const sendGate = new Promise<void>(resolve => { releaseSend = resolve; });
+  let enteredSend!: () => void;
+  const inSend = new Promise<void>(resolve => { enteredSend = resolve; });
+  let url = '';
+  try {
+    f.app.addHook('onSend', async (request, reply, payload) => {
+      if (request.url === url && reply.statusCode === 200) { enteredSend(); await sendGate; }
+      return payload;
+    });
+    const project = (await f.as(f.ownerB)('POST', '/api/v1/projects', { name: 'Synthetic purge race', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerB, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic prompt RACE_MARKER_79' });
+    url = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    assert.equal((await f.as(f.ownerA)('GET', url)).statusCode, 404, 'ordinary user cannot view another account');
+    const response = f.as(f.viewer)('GET', url);
+    await inSend; // Blob bytes have been read, but HTTP has not sent them.
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerB]);
+    let finished = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerB] }).then(result => { finished = true; return result; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge must wait for the unsent response');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [snapshot])).rows[0].n, 0);
+    releaseSend();
+    const sent = await response;
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.ok(sent.json().body.includes('RACE_MARKER_79'));
+    assert.deepEqual([ (await purge).purged, finished ], [1, true]);
+    assert.equal((await f.as(f.viewer)('GET', url)).statusCode, 404, 'after completed purge no body is returned');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 2, 'successful and denied reads are audited');
+  } finally { releaseSend(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 in-flight Blob purge blocks prompt read and failed delete remains replayable', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let allowDelete!: () => void;
+  const deleteGate = new Promise<void>(resolve => { allowDelete = resolve; });
+  let enteredDelete!: () => void;
+  const inDelete = new Promise<void>(resolve => { enteredDelete = resolve; });
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic expiry race', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic prompt PURGE_FIRST_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const later = () => new Date(Date.now() + 31 * 86_400_000);
+    const failingBlobs = { ...blobs, delete: async (_key: string) => { throw new Error('synthetic Blob outage'); } };
+    const failed = await purgeLogContent(pool, failingBlobs, { contentRetentionDays: 30, now: later, ownerScope: [f.ownerA] });
+    assert.deepEqual([failed.purged, failed.failed], [0, 1]);
+    assert.equal(await blobs.exists(key), true);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [snapshot])).rows[0].n, 0);
+    const pausedBlobs = { ...blobs, delete: async (objectKey: string) => { enteredDelete(); await deleteGate; await blobs.delete(objectKey); } };
+    const purge = purgeLogContent(pool, pausedBlobs, { contentRetentionDays: 30, now: later, ownerScope: [f.ownerA] });
+    await inDelete;
+    let delivered = false;
+    const response = f.as(f.viewer)('GET', `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`).then(result => { delivered = true; return result; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(delivered, false, 'read waits while purge holds the object lock');
+    allowDelete();
+    assert.equal((await purge).purged, 1);
+    assert.equal((await response).statusCode, 404);
+    assert.equal(await blobs.exists(key), false);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 1);
+  } finally { allowDelete(); await f.app.close(); await pool.end(); }
+});
+
+for (const late of ['resolve', 'reject'] as const) test(`#79 TCP abort releases prompt lock during pending Blob read (${late} late)`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>();
+  const held = deferred<Buffer | null>();
+  let app: ReturnType<typeof createServer> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic TCP abort', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic TCP_ABORT_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    const blobs = { ...realBlobs, getIfExistsBounded: async () => { entered.resolve(); return held.promise; } };
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    const socket = await rawGetSocket(address, path);
+    await entered.promise; // The audit committed, and the Blob read is still pending.
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let purged = false;
+    const purge = purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { purged = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(purged, false, 'live read still owns the lock');
+    const closed = new Promise<void>(resolve => socket.once('close', () => resolve()));
+    socket.destroy();
+    await closed;
+    const result = await Promise.race([purge, new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('purge waited for a disconnected Blob read')), 1500))]);
+    assert.equal(result.purged, 1, 'purge completes before the held Blob promise settles');
+    assert.equal(await realBlobs.exists(key), false);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1, 'pool remains usable after the abort');
+    assert.equal(pool.idleCount, pool.totalCount, 'all PG connections returned while Blob remains pending');
+    if (late === 'resolve') held.resolve(original);
+    else held.reject(new Error('synthetic late Blob failure'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const after = await fetch(`${address}${path}`);
+    assert.equal(after.status, 404);
+    assert.ok(!(await after.text()).includes('TCP_ABORT_MARKER_79'));
+  } finally { held.resolve(null); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 real TCP slow response and onSend failure release the prompt lock', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined;
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  try {
+    const project = (await f.as(f.ownerB)('POST', '/api/v1/projects', { name: 'Synthetic slow TCP', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const slow = await savePromptSnapshot(pool, blobs, { owner: f.ownerB, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic SLOW_TCP_MARKER_79' });
+    const errorProject = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic onSend error', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const failedSnapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: errorProject, kind: 'user_prompt', version: 1, body: 'synthetic ONSEND_MARKER_79' });
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(slow)) { sendEntered.resolve(); await sendGate.promise; }
+      if (reply.statusCode === 200 && request.url.includes(failedSnapshot)) throw new Error('synthetic onSend failure');
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const slowPath = `/api/v1/admin/prompts/${slow}?reason_code=support_case`;
+    const response = fetch(`${address}${slowPath}`);
+    await sendEntered.promise;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerB]);
+    let finished = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerB] }).then(value => { finished = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge cannot finish before the slow TCP response');
+    sendGate.resolve();
+    const sent = await response;
+    assert.equal(sent.status, 200);
+    assert.ok((await sent.text()).includes('SLOW_TCP_MARKER_79'));
+    assert.equal((await purge).purged, 1);
+    assert.equal((await fetch(`${address}${slowPath}`)).status, 404);
+
+    // A separate active snapshot exercises Fastify's failed onSend path over TCP.
+    const failedUrl = `${address}/api/v1/admin/prompts/${failedSnapshot}?reason_code=support_case`;
+    const failed = await fetch(failedUrl);
+    assert.equal(failed.status, 500);
+    assert.ok(!(await failed.text()).includes('ONSEND_MARKER_79'));
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] })).purged, 1);
+    assert.equal(pool.idleCount, pool.totalCount, 'onSend error returned every PG connection');
+  } finally { sendGate.resolve(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const firstOutcome of ['success', 'failure'] as const) test(`#79 disconnected lock waiter frees a two-connection PG pool (${firstOutcome} first read)`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const firstRead = deferred<Buffer | null>(), readEntered = deferred<void>(), secondEntered = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined;
+  let first: ReturnType<typeof connect> | undefined, second: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic two-socket lock', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic TWO_SOCKET_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    let reads = 0, requests = 0;
+    const blobs = { ...realBlobs, getIfExistsBounded: async (objectKey: string, limit: number) => {
+      if (objectKey === key && ++reads === 1) { readEntered.resolve(); return firstRead.promise; }
+      return realBlobs.getIfExistsBounded(objectKey, limit);
+    } };
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    app.addHook('onRequest', async request => { if (request.url === path && ++requests === 2) secondEntered.resolve(); });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    first = await rawGetSocket(address, path);
+    let firstResponse = '';
+    first.on('data', chunk => { firstResponse += chunk.toString(); });
+    await readEntered.promise; // First socket owns the advisory lock and holds Blob I/O.
+    second = await rawGetSocket(address, path);
+    await secondEntered.promise;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const secondClosed = new Promise<void>(resolve => second!.once('close', () => resolve()));
+    second.destroy();
+    await secondClosed;
+    const probe = await Promise.race([pool.query('SELECT 1'), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('disconnected lock waiter exhausted the PG pool')), 1500))]);
+    assert.equal(probe.rowCount, 1);
+    assert.equal(pool.waitingCount, 0);
+    assert.equal(pool.totalCount - pool.idleCount, 1, 'only the first live reader retains a connection');
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let finished = false;
+    const purge = purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { finished = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge waits for the live first response');
+    const firstClosed = new Promise<void>(resolve => first!.once('close', () => resolve()));
+    if (firstOutcome === 'success') firstRead.resolve(original);
+    else firstRead.reject(new Error('synthetic first Blob failure'));
+    await firstClosed;
+    assert.equal(firstResponse.includes('TWO_SOCKET_MARKER_79'), firstOutcome === 'success');
+    assert.equal((await purge).purged, 1);
+    const after = await fetch(`${address}${path}`);
+    assert.equal(after.status, 404);
+    assert.ok(!(await after.text()).includes('TWO_SOCKET_MARKER_79'));
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally {
+    firstRead.resolve(null);
+    first?.destroy(); second?.destroy();
+    await app?.close(); await f.app.close(); await pool.end();
+  }
+});
+
+test('#79 prompt deadline ends a live TCP Blob read and permits purge', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>(), held = deferred<Buffer | null>();
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline Blob', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_BLOB_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    const blobs = { ...realBlobs, getIfExistsBounded: async () => { entered.resolve(); return held.promise; } };
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    let received = '';
+    socket.on('data', chunk => { received += chunk.toString(); });
+    await entered.promise;
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const result = await Promise.race([purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('deadline failed to release pending Blob lock')), 1500))]);
+    assert.equal(result.purged, 1);
+    assert.ok(!received.includes('DEADLINE_BLOB_MARKER_79'));
+    assert.equal(pool.idleCount, pool.totalCount);
+    held.resolve(original); // A late Blob result must not send plaintext.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+  } finally { held.resolve(null); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt deadline stops a connected lock waiter without retaining its PG connection', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  const holder = await pool.connect();
+  let holderReleased = false;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline waiter', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_WAIT_MARKER_79' });
+    await holder.query("SELECT pg_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(pool.totalCount - pool.idleCount, 1, 'only the external holder uses a connection');
+    assert.equal(pool.waitingCount, 0);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    assert.equal((await pool.query('SHOW statement_timeout')).rows[0].statement_timeout, '0', 'deadline setting must not leak into unrelated pool work');
+    await holder.query("SELECT pg_advisory_unlock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
+    holder.release();
+    holderReleased = true;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] })).purged, 1);
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { socket?.destroy(); if (!holderReleased) { await holder.query('SELECT pg_advisory_unlock_all()').catch(() => undefined); holder.release(); } await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const readMode of ['unread', 'trickle'] as const) test(`#79 prompt deadline closes a ${readMode} live TCP response and releases purge`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  let drip: NodeJS.Timeout | undefined;
+  let drippedBytes = 0;
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline unread', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'UNREAD_MARKER_79' + 'x'.repeat(9 * 1024 * 1024) });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 1000, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(snapshot)) { sendEntered.resolve(); await sendGate.promise; }
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    socket.pause();
+    if (readMode === 'trickle') drip = setInterval(() => { if (socket?.read(1)) drippedBytes++; }, 10);
+    await sendEntered.promise;
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let completed = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { completed = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(completed, false, 'unread response retains the lock before the deadline');
+    sendGate.resolve();
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(completed, false, 'slow reader cannot complete the HTTP send immediately');
+    const result = await Promise.race([purge, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('unread response held prompt lock past deadline')), 3000))]);
+    assert.equal(result.purged, 1);
+    if (readMode === 'trickle') assert.ok(drippedBytes > 0, 'client actually read response bytes in small increments');
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    assert.equal(pool.idleCount, pool.totalCount);
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+  } finally { sendGate.resolve(); if (drip) clearInterval(drip); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt deadline allows a normal TCP response and ends a stuck onSend', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline onSend', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const normal = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_NORMAL_MARKER_79' });
+    const stuck = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 2, body: 'synthetic DEADLINE_ONSEND_MARKER_79' });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 350, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(stuck)) { sendEntered.resolve(); await sendGate.promise; }
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const normalPath = `/api/v1/admin/prompts/${normal}?reason_code=support_case`;
+    const normalResponse = await fetch(`${address}${normalPath}`);
+    assert.equal(normalResponse.status, 200);
+    assert.ok((await normalResponse.text()).includes('DEADLINE_NORMAL_MARKER_79'));
+    for (let i = 0; i < 20 && pool.idleCount !== pool.totalCount; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(pool.idleCount, pool.totalCount);
+    const stuckPath = `/api/v1/admin/prompts/${stuck}?reason_code=support_case`;
+    socket = await rawGetSocket(address, stuckPath);
+    let received = '';
+    socket.on('data', chunk => { received += chunk.toString(); });
+    await sendEntered.promise;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const purged = await Promise.race([purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('onSend held lock past deadline')), 2000))]);
+    assert.equal(purged.purged, 2);
+    sendGate.resolve();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.ok(!received.includes('DEADLINE_ONSEND_MARKER_79'));
+    assert.equal((await fetch(`${address}${stuckPath}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { sendGate.resolve(); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const stalledStage of ['snapshot', 'audit'] as const) test(`#79 PG statement deadline cancels a 3-second ${stalledStage} query holding the prompt lock`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const observer = new Pool({ connectionString: connection, max: 1 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined, backendPid: number | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic PG deadline', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: `synthetic PG_DEADLINE_${stalledStage}_79` });
+    const connectOriginal = pool.connect.bind(pool);
+    let injected = false;
+    pool.connect = ((callback?: any) => {
+      if (callback) return connectOriginal(callback);
+      return (async () => {
+      const client = await connectOriginal();
+      const queryOriginal = client.query.bind(client);
+      client.query = (async (...args: any[]) => {
+        const sql = args[0];
+        const matches = typeof sql === 'string' && (stalledStage === 'snapshot' ? sql.includes('SELECT s.*,t.id tombstone') : sql.includes('INSERT INTO bb_log_access_audit'));
+        if (!injected && matches) {
+          injected = true;
+          backendPid = (await queryOriginal('SELECT pg_backend_pid()')).rows[0].pg_backend_pid;
+          entered.resolve();
+          await queryOriginal('SELECT pg_sleep(3)');
+        }
+        return queryOriginal(...args as [string]);
+      }) as typeof client.query;
+      return client;
+      })();
+    }) as typeof pool.connect;
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    const reading = fetch(`${address}${path}`).catch(() => undefined);
+    await Promise.race([entered.promise, reading.then(response => { throw new Error(`prompt request finished before PG stall: ${response?.status ?? 'disconnected'}`); }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('prompt request never reached injected PG query')), 1500))]);
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_stat_activity WHERE pid=$1 AND state='active' AND query LIKE '%pg_sleep%'", [backendPid])).rows[0].n, 1, '3-second PostgreSQL query actually entered the server');
+    const started = performance.now();
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const result = await Promise.race([purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('PG stall outlived the prompt deadline')), 1000))]);
+    assert.equal(result.purged, 1);
+    assert.ok(performance.now() - started < 1000, 'purge finishes before the injected 3-second query');
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND granted", [backendPid])).rows[0].n, 0);
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_stat_activity WHERE pid=$1 AND state='active' AND query LIKE '%pg_sleep%'", [backendPid])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    const response = await reading;
+    if (response) assert.ok(!(await response.text()).includes(`PG_DEADLINE_${stalledStage}_79`));
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { await app?.close(); await f.app.close(); await pool.end(); await observer.end(); }
 });

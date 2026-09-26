@@ -1,3 +1,5 @@
+import { renderRecoveryPage } from './recovery';
+import { ProjectBrowser } from './project-browser';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
@@ -26,9 +28,7 @@ let currentRoute = '/';
 let draft: Draft | undefined;
 let newDirty = false;
 let creating = false;
-let items: Dto<'ProjectListResponse'>['items'] = [];
-let nextCursor: string | null = null;
-let listBusy = false;
+let projectBrowser: ProjectBrowser | undefined;
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
 type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
@@ -65,7 +65,7 @@ function clearPrivateState() {
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();
   epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
-  identity = undefined; items = []; nextCursor = null; listBusy = false;
+  identity = undefined; projectBrowser?.dispose(); projectBrowser = undefined;
 }
 
 function signedOut(message = '') {
@@ -79,10 +79,29 @@ function signedOut(message = '') {
 sessionChannel?.addEventListener('message', () => signedOut('账号会话已在其他页面更改，请重新登录。'));
 
 let signedOutView = false;
+let recoveryToken: string | undefined;
+function captureResetToken() {
+  const match=location.hash.match(/^#\/reset\/([A-Za-z0-9_-]{43})$/);
+  if(!match)return false;
+  recoveryToken=match[1];
+  history.replaceState(null,'',`${location.pathname}${location.search}#/reset`);
+  return true;
+}
+function publicRecovery(mode: 'request' | 'reset') {
+  signedOutView=true;
+  const token=++epoch;
+  void renderRecoveryPage(api,root,mode,recoveryToken,()=>token===epoch,()=>{
+    recoveryToken=undefined;signedOut('密码已重置，请使用新密码重新登录。');sessionChannel?.postMessage('changed');
+  });
+}
 function routeSignedOut(hash = location.hash) {
-  const route = ['#/data-policy', '#/register'].includes(hash) ? hash : '#/';
+  epoch++;
+  const route = ['#/data-policy', '#/register', '#/recover', '#/reset'].includes(hash) ? hash : '#/';
+  if(route!=='#/reset')recoveryToken=undefined;
   if (location.hash !== route) history.replaceState(null, '', `${location.pathname}${location.search}${route}`);
-  if (route === '#/data-policy') renderPublicPolicy();
+  if (route === '#/recover') publicRecovery('request');
+  else if (route === '#/reset') publicRecovery('reset');
+  else if (route === '#/data-policy') renderPublicPolicy();
   else if (route === '#/register') renderLogin('', 'register');
   else renderLogin();
 }
@@ -111,7 +130,7 @@ function renderLogin(message = '', mode: 'login' | 'register' = 'login') {
     : `<form id="login-form"><label for="username">用户名</label><input id="username" name="username" autocomplete="username" required minlength="3" maxlength="32" autocapitalize="none" spellcheck="false"/>
       <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="512"/>
       <p id="login-message" class="form-message" role="status">${esc(message)}</p><button class="button primary" type="submit">登录</button></form>
-      <p class="switch-note">没有账号？<a id="to-register" href="#/register">注册</a></p>`;
+      <p class="switch-note">没有账号？<a id="to-register" href="#/register">注册</a></p><p id="login-recovery" class="switch-note"></p>`;
   root.innerHTML = `<main id="main" class="login-layout" tabindex="-1">
     <div class="login-intro"><a class="brand" href="#/"><img src="/favicon.svg" alt=""/>BondBuddy</a>
       <div><p class="eyebrow">债券项目工作空间</p><h1>把每一次准备，<br/>接着做下去。</h1><p>项目资料按账号保存。重新登录，<br/>继续上次的工作。</p></div>
@@ -121,7 +140,11 @@ function renderLogin(message = '', mode: 'login' | 'register' = 'login') {
       : '<p class="eyebrow">欢迎回来</p><h2 id="login-title">登录工作区</h2><p class="muted">使用已有的用户名和密码登录。</p>'}
       ${form}
       <p class="privacy-note">项目资料保存在平台工作区，仅限当前账号访问。</p></section></main>`;
-  if (registering) bindRegister(); else bindLogin();
+  if (registering) bindRegister(); else {
+    bindLogin();
+    const link=document.querySelector<HTMLElement>('#login-recovery');
+    void api.recoveryInfo().then(info=>{if(link?.isConnected && info.enabled)link.innerHTML='<a href="#/recover">忘记密码？联系客服找回</a>';}).catch(()=>{});
+  }
 }
 
 function bindLogin() {
@@ -238,7 +261,7 @@ async function renderRoute() {
     }
   }
   draft?.dispose(); draft = undefined;
-  items = []; nextCursor = null; listBusy = false;
+  projectBrowser?.dispose(); projectBrowser = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   factReview?.dispose(); factReview = undefined;
@@ -246,7 +269,7 @@ async function renderRoute() {
   if (requested === '/new') { renderNew(); return; }
   if (requested === '/account') { await renderAccount(accountPage); return; }
   if (requested === '/data-policy') { await renderDataPolicyPage(api, shell, () => token === epoch); return; }
-  if (requested === '/') { renderProjects(); await loadProjects(token); return; }
+  if (requested === '/' || requested.startsWith('/?')) { projectBrowser = new ProjectBrowser(api,shell,() => token === epoch); await projectBrowser.render(); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
   if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
   const match = requested.match(/^\/projects\/([^/]+)$/);
@@ -261,47 +284,6 @@ async function renderRoute() {
     shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, 'projects');
     document.querySelector('#retry-project')!.addEventListener('click', () => { void renderRoute(); });
   }
-}
-
-function renderProjects() {
-  shell(`<div class="page-heading"><div><p class="eyebrow">从上次停下的地方继续</p><h1>我的项目</h1><p class="muted">查找已保存的资料，继续准备下一次更新。</p></div><a class="button primary" href="#/new">${plus}新建更新项目</a></div>
-    <section class="panel" aria-labelledby="projects-title"><div class="panel-heading"><h2 id="projects-title">项目列表</h2><button class="text-button" id="refresh-projects">刷新列表</button></div>
-    <div class="list-toolbar"><div class="search-field"><label for="project-search">搜索已加载的项目名称</label><input id="project-search" type="search" placeholder="输入项目名称" autocomplete="off"/></div><p class="muted" id="list-count" role="status">正在加载…</p></div>
-    <p id="page-error" class="form-message" role="alert" hidden></p><div id="project-list" aria-live="polite"></div><div class="list-footer"><button class="button secondary" id="load-more" hidden>加载更多项目</button></div></section>
-    <p class="page-footnote">可保存项目、上传材料并查看解析状态。全文更新将在完成验证后开放。</p>`, 'projects');
-  document.querySelector('#project-search')!.addEventListener('input', renderItems);
-  document.querySelector('#load-more')!.addEventListener('click', () => { void loadProjects(epoch); });
-  document.querySelector('#refresh-projects')!.addEventListener('click', () => { void renderRoute(); });
-}
-
-async function loadProjects(token: number) {
-  if (listBusy || token !== epoch) return;
-  listBusy = true;
-  const button = document.querySelector<HTMLButtonElement>('#load-more')!;
-  const error = document.querySelector<HTMLElement>('#page-error')!;
-  button.disabled = true; error.hidden = true;
-  try {
-    const result = await api.projects(nextCursor ?? undefined);
-    if (token !== epoch) return;
-    const seen = new Map(items.map(item => [item.project_id, item]));
-    result.items.forEach(item => seen.set(item.project_id, item));
-    items = [...seen.values()];
-    nextCursor = result.page.has_more ? result.page.next_cursor : null;
-    renderItems();
-  } catch (error) {
-    if (token !== epoch) return;
-    showError(error);
-    document.querySelector('#list-count')!.textContent = '列表未能同步，请刷新重试。';
-  } finally {
-    if (token === epoch) { listBusy = false; button.disabled = false; button.hidden = !nextCursor; }
-  }
-}
-
-function renderItems() {
-  const query = document.querySelector<HTMLInputElement>('#project-search')!.value.trim().toLocaleLowerCase();
-  const shown = items.filter(item => item.name.toLocaleLowerCase().includes(query)).sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.project_id.localeCompare(b.project_id));
-  document.querySelector('#list-count')!.textContent = `${query ? `匹配 ${shown.length} 个 · ` : ''}已加载 ${items.length} 个项目${nextCursor ? '，可继续加载' : ''}`;
-  document.querySelector('#project-list')!.innerHTML = shown.length ? `<ul class="project-list">${shown.map(item => `<li><a class="project-row" href="#/projects/${encodeURIComponent(item.project_id)}"><span class="project-icon">${folder}</span><div class="project-info"><h3>${esc(item.name)}</h3><p>项目资料已保存</p></div><time datetime="${esc(item.updated_at)}">${esc(date(item.updated_at))}</time><span class="row-arrow" aria-hidden="true">↗</span></a></li>`).join('')}</ul>` : `<div class="empty-state"><div class="empty-icon">${folder}</div><h3>${query ? '没有找到匹配的项目' : '还没有项目'}</h3><p>${query ? '试试其他名称，或加载更多项目。' : '创建第一个更新项目，先把基本资料保存下来。'}</p>${query ? '' : '<a class="button secondary" href="#/new">新建更新项目</a>'}</div>`;
 }
 
 function renderNew() {
@@ -832,7 +814,7 @@ function bindMaterialWorkspace(projectId: string) {
   });
 }
 
-window.addEventListener('hashchange', () => { if (!identity) { if (signedOutView) routeSignedOut(); return; } void renderRoute(); });
+window.addEventListener('hashchange', () => { if(captureResetToken()){clearPrivateState();publicRecovery('reset');return;} if (!identity) { if (signedOutView) routeSignedOut(); return; } void renderRoute(); });
 document.querySelector('.skip-link')!.addEventListener('click', event => {
   event.preventDefault(); document.querySelector<HTMLElement>('#main')?.focus();
 });
@@ -853,6 +835,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function start() {
+  if(captureResetToken() || location.hash==='#/reset'){publicRecovery('reset');return;}
   const token = ++epoch;
   try {
     const me = await api.me();

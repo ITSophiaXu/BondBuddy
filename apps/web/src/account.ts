@@ -1,3 +1,4 @@
+import { mountRecoveryAccount } from './recovery';
 import type { CLOSURE_RETAINED_RECORDS, RUN_STATES } from '@bondbuddy/contracts';
 import { ApiError, friendlyError, type ApiClient, type Dto } from './api';
 import { date, esc } from './ui';
@@ -67,6 +68,7 @@ export async function renderAccount(ctx: AccountContext) {
     <section class="panel" aria-labelledby="sessions-title"><div class="panel-heading sessions-heading"><div><h2 id="sessions-title">登录会话</h2><p class="muted">每次登录会创建一个会话。撤销后，该会话立即无法继续访问账号。</p></div><button class="button secondary" id="revoke-others" type="button">退出其他全部会话</button></div>
     <p id="sessions-message" class="form-message session-message" role="status" hidden></p><ul class="session-list" id="session-list"></ul></section>
     <section class="panel form-panel" aria-labelledby="password-title"><h2 id="password-title">修改密码</h2>${username ? passwordForm(username) : legacyNote}</section>
+    <section class="panel form-panel" id="account-recovery"><h2>账号找回</h2><p role="status">正在读取恢复联系方式…</p></section>
     <section class="panel form-panel danger-panel" aria-labelledby="closure-title"><h2 id="closure-title">注销账号</h2><p class="muted">注销会关闭账号，并停止访问账号下的全部项目、材料和成果。完成后无法恢复。</p><div id="closure-body">${username ? closureStart : legacyNote}</div></section>
     </div><aside class="context-panel"><h2>数据服务说明</h2><p>上传的材料会在平台服务器保存一份账号隔离的副本，用于核验和你发起的处理；浏览器中的文件不是唯一副本。</p><p>注销账号后，项目、材料和成果会立即停止访问。保存期限、删除时限与备份清理规则见<a href="#/data-policy">数据保存与删除说明</a>。</p><p>下载到本机的 Word 或其他文件由你自行保管，不受平台删除影响。</p>
     <div class="context-divider"></div><h3>当前为受控试用</h3><p>试用期间不涉及积分、充值或退款。</p></aside></div>`, 'account');
@@ -81,7 +83,7 @@ export async function renderAccount(ctx: AccountContext) {
       ['注册时间', esc(date(account.created_at))],
       ['密码最近修改', esc(account.password_updated_at ? date(account.password_updated_at) : '—')],
       ['服务协议', accepted + current],
-      ['找回账号', '目前没有可靠的身份核验渠道，暂不提供自助找回，也不提供客服重置密码。请妥善保管密码；人工找回流程确定后会在这里说明。'],
+      ['找回账号', '人工找回需核验事先绑定的联系方式。请在下方查看绑定状态；没有可靠旧记录时不能重置。'],
       ['联系客服', esc(account.support_contact ?? '客服入口尚未公布')]
     ].map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('');
   };
@@ -104,6 +106,7 @@ export async function renderAccount(ctx: AccountContext) {
     catch { /* The shown values stay; the next visit reloads them. */ }
   };
   paintInfo(); paintSessions();
+  void mountRecoveryAccount(ctx.api,live);
 
   document.querySelector('#session-list')!.addEventListener('click', async event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-revoke-session]');
