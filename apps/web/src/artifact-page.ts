@@ -1,4 +1,5 @@
-import { ApiClient, ApiError, friendlyError, type Dto } from './api';
+import { ApiClient, ApiError, type Dto } from './api';
+import { ArtifactDownloads, artifactError } from './artifact-download';
 import { date, esc } from './ui';
 import './artifact-page.css';
 
@@ -10,26 +11,16 @@ const variants: Record<Variant, { label: string; description: string }> = {
   baseline: { label: '有效基线', description: '本轮修改前的有效正文副本，用于对照；上传原件保持不变。' }
 };
 
-function resultError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 404) return '成果或下载授权不可用，请重新读取；也可能已移除或不属于当前账号。';
-    if (error.code === 'DATA_UNAVAILABLE') return '成果文件暂时无法读取或校验未通过，请稍后重试。';
-    return friendlyError(error);
-  }
-  return '连接中断，成果尚未读取完成，请重试。';
-}
-
 export class ArtifactPage {
   private controller = new AbortController();
   private generation = 0;
-  private objectUrls = new Map<string, ReturnType<typeof setTimeout>>();
+  private downloads = new ArtifactDownloads();
   constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private current: () => boolean) {}
 
   dispose() {
     this.generation++;
     this.controller.abort();
-    for (const [url, timer] of this.objectUrls) { clearTimeout(timer); URL.revokeObjectURL(url); }
-    this.objectUrls.clear();
+    this.downloads.dispose();
   }
 
   async render(id: string) {
@@ -51,7 +42,7 @@ export class ArtifactPage {
       this.show(artifact, run, project, generation);
     } catch (error) {
       if (!this.current() || generation !== this.generation || signal.aborted) return;
-      this.shell(`<a class="back-link" href="#/">← 返回我的项目</a><section class="panel artifact-page"><h1>成果暂时无法打开</h1><p role="alert">${esc(resultError(error))}</p><button class="button secondary" id="retry-artifact">重新读取成果</button></section>`, 'projects');
+      this.shell(`<a class="back-link" href="#/">← 返回我的项目</a><section class="panel artifact-page"><h1>成果暂时无法打开</h1><p role="alert">${esc(artifactError(error))}</p><button class="button secondary" id="retry-artifact">重新读取成果</button></section>`, 'projects');
       document.querySelector('#retry-artifact')!.addEventListener('click', () => { void this.render(id); });
     }
   }
@@ -93,15 +84,10 @@ export class ArtifactPage {
             (file.variant && (fresh.word_delivery?.variant !== file.variant || fresh.word_delivery.revision_artifact_id !== delivery?.revision_artifact_id))) throw new ApiError(0, 'DATA_UNAVAILABLE');
           const bytes = await this.api.artifactBytes(fresh, signal);
           if (!this.current() || generation !== this.generation || signal.aborted) return;
-          const url = URL.createObjectURL(bytes);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `${project.name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')}-v${artifact.version}-${file.label}.docx`;
-          document.body.append(link); link.click(); link.remove();
-          this.objectUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); this.objectUrls.delete(url); }, 60_000));
+          this.downloads.save(bytes, `${project.name}-v${artifact.version}-${file.label}.docx`);
           status.textContent = '文件已交给浏览器下载，请在浏览器下载列表中查看。';
         } catch (error) {
-          if (this.current() && generation === this.generation && !signal.aborted) status.textContent = resultError(error);
+          if (this.current() && generation === this.generation && !signal.aborted) status.textContent = artifactError(error);
         } finally { button.disabled = false; }
       });
     });

@@ -28,6 +28,7 @@ type State = {
   changedRun: boolean; runState: Dto<'RunResponse'>['state']; urlOverride?: string; wrongMediaType: boolean;
   pendingCount?: number; pendingItems?: typeof summary.pending_review;
   downloadBody?: Buffer;
+  moreProjects?: boolean;
 };
 const state = (): State => ({ calls: [], metadataReads: {}, grants: [], metadataStatus: 200, downloadStatus: 200,
   loggedOut: false, missingSummary: false, changedRun: false, runState: 'succeeded', wrongMediaType: false });
@@ -42,7 +43,8 @@ async function installApi(page: Page, data: State) {
     if (path === '/auth/refresh' || data.loggedOut) return json(route, 401, { code: 'UNAUTHENTICATED' });
     if (path === '/me') return json(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
     if (path === '/projects') return json(route, 200, { items: [{ ...project, status: 'failed', latest_run: { run_id: 'newer-failed-run', state: 'failed', updated_at: now },
-      latest_artifact: { artifact_id: ids.revision, run_id: runId, version: 1, created_at: now } }], page: { next_cursor: null, has_more: false } });
+      latest_artifact: { artifact_id: ids.revision, run_id: runId, version: 1, created_at: now } }],
+      page: { next_cursor: data.moreProjects && !url.searchParams.has('cursor') ? 'synthetic-next' : null, has_more: !!data.moreProjects && !url.searchParams.has('cursor') } });
     if (path === `/projects/${projectId}`) return json(route, 200, project);
     if (path === `/runs/${runId}`) return json(route, 200, { ...run, state: data.runState });
     const match = path.match(/^\/artifacts\/([^/]+)(\/download)?$/);
@@ -224,3 +226,105 @@ for (const scenario of ['same-length corruption', 'truncated body', 'partial res
     expect(data.calls.every(call => call.method === 'GET')).toBe(true);
   });
 }
+
+for (const scenario of ['corrupt bytes', 'partial response', 'unavailable bytes'] as const) {
+  test(`project-list download refuses ${scenario} and retries with a fresh grant`, async ({ page }) => {
+    const data = state(); await installApi(page, data);
+    let downloads = 0; page.on('download', () => downloads++);
+    await page.goto('/');
+    if (scenario === 'corrupt bytes') data.downloadBody = Buffer.from('corrupt synthetic document');
+    if (scenario === 'partial response') data.downloadStatus = 206;
+    if (scenario === 'unavailable bytes') data.downloadStatus = 503;
+    const button = page.getByRole('button', { name: '下载最近成果' });
+    await button.click();
+    await expect(page.locator('#project-action-status')).toContainText('校验未通过');
+    expect(downloads).toBe(0);
+    await expect(button).toBeEnabled();
+    data.downloadBody = undefined; data.downloadStatus = 200;
+    const downloaded = page.waitForEvent('download');
+    await button.click();
+    const download = await downloaded;
+    expect(await download.failure()).toBeNull();
+    expect(download.suggestedFilename()).toBe('合成成果项目-v1.docx');
+    expect(data.grants).toEqual(['fresh-1', 'fresh-2']);
+    expect(data.calls.every(call => call.method === 'GET')).toBe(true);
+    await expect(page).toHaveURL(/\/$/);
+  });
+}
+
+for (const scenario of ['changed run', 'unfinished run'] as const) {
+  test(`project-list download rejects ${scenario} before reading file bytes`, async ({ page }) => {
+    const data = state(); await installApi(page, data);
+    if (scenario === 'changed run') data.changedRun = true;
+    if (scenario === 'unfinished run') data.runState = 'delivering';
+    await page.goto('/');
+    await page.getByRole('button', { name: '下载最近成果' }).click();
+    await expect(page.locator('#project-action-status')).toContainText('校验未通过');
+    expect(data.grants).toEqual([]);
+  });
+}
+
+for (const action of ['navigate', 'refresh', 'switch account'] as const) {
+  test(`project-list download is cancelled on ${action}`, async ({ page }) => {
+    const data = state(); await installApi(page, data);
+    await page.addInitScript(() => {
+      const originalFetch = window.fetch.bind(window);
+      Object.assign(window, { downloadAborted: false });
+      window.fetch = (input, init) => {
+        if (String(input).includes('/download?')) init?.signal?.addEventListener('abort', () => Object.assign(window, { downloadAborted: true }));
+        return originalFetch(input, init);
+      };
+    });
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    let started!: () => void;
+    const requested = new Promise<void>(resolve => { started = resolve; });
+    await page.route('**/api/v1/artifacts/word-revision/download?*', async route => {
+      started(); await pending;
+      await route.fulfill({ status: 200, contentType: mediaType, body: bytes }).catch(() => {});
+    });
+    let downloads = 0; page.on('download', () => downloads++);
+    await page.goto('/');
+    await page.getByRole('button', { name: '下载最近成果' }).click(); await requested;
+    await expect(page.getByRole('button', { name: '下载最近成果' })).toBeDisabled();
+    if (action === 'navigate') {
+      await page.getByRole('link', { name: '查看成果与下载' }).click();
+      await expect(page.locator('#artifact-summary')).toBeVisible();
+    } else if (action === 'refresh') {
+      await page.getByRole('button', { name: '刷新列表' }).click();
+      await expect(page.getByRole('button', { name: '下载最近成果' })).toBeEnabled();
+    } else {
+      await page.evaluate(() => { const channel = new BroadcastChannel('bondbuddy-session'); channel.postMessage('changed'); channel.close(); });
+      await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
+      await expect(page.getByText('合成成果项目')).toHaveCount(0);
+    }
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, 'downloadAborted'))).toBe(true);
+    release();
+    expect(downloads).toBe(0);
+  });
+}
+
+test('project-list pagination keeps a pending download disabled and releases it once complete', async ({ page }) => {
+  const data = state(); data.moreProjects = true; await installApi(page, data);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let started!: () => void;
+  const requested = new Promise<void>(resolve => { started = resolve; });
+  let byteRequests = 0;
+  await page.route('**/api/v1/artifacts/word-revision/download?*', async route => {
+    byteRequests++; started(); await pending;
+    await route.fulfill({ status: 200, contentType: mediaType, body: bytes });
+  });
+  await page.goto('/');
+  const button = page.getByRole('button', { name: '下载最近成果' });
+  await button.click(); await requested;
+  await page.getByRole('button', { name: '加载更多项目' }).click();
+  await expect(page.getByRole('button', { name: '加载更多项目' })).toBeHidden();
+  await expect(button).toBeDisabled();
+  const downloaded = page.waitForEvent('download');
+  release();
+  expect(await (await downloaded).failure()).toBeNull();
+  await expect(button).toBeEnabled();
+  expect(byteRequests).toBe(1);
+  expect(data.metadataReads[ids.revision]).toBe(1);
+});
