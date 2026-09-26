@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { VERIFIED_ISSUER_ENTITY_PATTERN, ISSUER_ENTITY_BASIS_KINDS } from '@bondbuddy/contracts';
 
+function utcTimestamp(value: unknown): string {
+  const date = value instanceof Date ? value : new Date(String(value));
+  return date.toISOString();
+}
+
 export interface IssuerIdentitySourcePool {
   connect(): Promise<IssuerIdentitySourceClient>;
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -143,7 +148,7 @@ export async function listIssuerIdentitySourceRecords(
       verified_entity_id: status === 'verified' ? reviewedEntity : null,
       entity_basis_kind: status === 'verified' ? String(row.entity_basis_kind) : null,
       entity_basis_ref: status === 'verified' ? String(row.entity_basis_ref) : null, status,
-      reviewed_at: row.active_grant_id && row.reviewed_at ? new Date(String(row.reviewed_at)).toISOString() : null };
+      reviewed_at: row.active_grant_id && row.reviewed_at ? utcTimestamp(row.reviewed_at) : null };
   });
   const verifiedEntities = new Set(items.filter(item => item.status === 'verified').map(item => item.verified_entity_id));
   for (const item of items) {
@@ -243,7 +248,7 @@ function mapRow(row: Record<string, unknown>, replayed: boolean): StoredIssuerId
     ...content, id: String(row.id), requestId: String(row.request_id), requestHash: String(row.request_hash).trim(),
     contentSha256: String(row.content_sha256).trim(), state: 'needs_review',
     reviewDecision: (review ?? null) as StoredIssuerIdentitySourceRecord['reviewDecision'],
-    createdAt: new Date(String(row.created_at)).toISOString(), replayed,
+    createdAt: utcTimestamp(row.created_at), replayed,
   };
 }
 
@@ -409,7 +414,7 @@ export async function reviewIssuerIdentitySourceRecord(
       }
       await db.query('COMMIT');
       return { reviewId: String(row.id), sourceRecordId: input.sourceRecordRowId,
-        decision: input.decision, createdAt: new Date(String(row.created_at)).toISOString(), replayed: true };
+        decision: input.decision, createdAt: utcTimestamp(row.created_at), replayed: true };
     }
     const reviewId = newId();
     const inserted = await db.query(
@@ -430,7 +435,7 @@ export async function reviewIssuerIdentitySourceRecord(
         identity_version: Number(source.identity_version), decision: input.decision, reviewer_user_id: input.reviewer.userId })]);
     await db.query('COMMIT');
     return { reviewId, sourceRecordId: input.sourceRecordRowId, decision: input.decision,
-      createdAt: new Date(String(inserted.rows[0]?.created_at)).toISOString(), replayed: false };
+      createdAt: utcTimestamp(inserted.rows[0]?.created_at), replayed: false };
   } catch (error) {
     await db.query('ROLLBACK').catch(() => undefined);
     throw error;
@@ -499,6 +504,6 @@ export async function loadVerifiedIssuerIdentitySourceRecord(
     materialId: String(row.material_id), materialVersion: Number(row.material_version),
     sourceSnapshotId: String(row.snapshot_id), sourceRecordId: String(row.source_record_id),
     sourceRecordSha256: String(row.source_record_sha256).trim(), sourceContentSha256: String(row.source_content_sha256).trim(),
-    reviewedBy: String(row.reviewer_user_id), reviewedAt: new Date(String(row.reviewed_at)).toISOString(),
+    reviewedBy: String(row.reviewer_user_id), reviewedAt: utcTimestamp(row.reviewed_at),
   };
 }

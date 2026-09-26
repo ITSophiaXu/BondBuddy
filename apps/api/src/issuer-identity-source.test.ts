@@ -337,9 +337,15 @@ test('PostgreSQL 16: owner/evidence binding, privileged review, append-only vers
         /bb_issuer_review_verified_entity_basis/);
         await connection.query('ROLLBACK TO SAVEPOINT invalid_verified_basis');
       }
-      await reviewIssuerIdentitySourceRecord(deps, { ...liveScope, sourceRecordRowId: observationA.id,
+      const review = await reviewIssuerIdentitySourceRecord(deps, { ...liveScope, sourceRecordRowId: observationA.id,
         reviewer, decision: 'verified', ...verifiedA, reasonCode: 'identity_verified' });
       const verified = await loadVerifiedIssuerIdentitySourceRecord(scopedPool, liveScope);
+      const storedReview = await connection.query('SELECT created_at FROM bb_issuer_identity_source_reviews WHERE id=$1', [review.reviewId]);
+      const reviewedAt = (storedReview.rows[0]!.created_at as Date).toISOString();
+      assert.equal(review.createdAt, reviewedAt, 'review response retains the database timestamp');
+      assert.equal(verified?.reviewedAt, reviewedAt, 'identity binding loader retains the database timestamp');
+      const listed = await listIssuerIdentitySourceRecords(scopedPool, liveScope);
+      assert.equal(listed.items[0]?.reviewed_at, reviewedAt, 'review listing retains the database timestamp');
       assert.equal(verified?.recordId, observationA.id);
       assert.equal(verified?.contentHash, observationA.contentSha256);
       assert.equal(verified?.entityId, verifiedA.verifiedEntityId);

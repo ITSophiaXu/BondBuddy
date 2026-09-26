@@ -100,6 +100,11 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       const lockedInput = await pool.query(`SELECT manifest FROM bb_input_revisions
         WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [owner, projectId, input.input_revision]);
       const expectedIssuerBinding = (lockedInput.rows[0]!.manifest as { issuer_identity: ReviewedIssuerBinding }).issuer_identity;
+      const storedReview = await pool.query('SELECT created_at FROM bb_issuer_identity_source_reviews WHERE source_record_id=$1', [identitySource.id]);
+      const reviewedAt = storedReview.rows[0]!.created_at as Date;
+      assert.notEqual(reviewedAt.getUTCMilliseconds(), 0, 'the PostgreSQL review timestamp must exercise subsecond precision');
+      assert.equal(expectedIssuerBinding.reviewed_at, reviewedAt.toISOString(),
+        'the immutable input revision must retain the exact PostgreSQL review timestamp');
       const currentMaterialVersions = (lockedInput.rows[0]!.manifest as { materials: { material_id: string; material_version: number; sha256: string }[] }).materials
         .map(({ material_id, material_version, sha256 }) => ({ materialId: material_id, materialVersion: material_version, sha256 }));
       const request: CreateRuleApplicabilityContextDraftRequest = {
@@ -131,8 +136,14 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
         expectedSourceInputHash: input.input_hash, expectedIssuerBinding, currentDraftRevision: 1, currentMaterialVersions };
       const loaded = await loadInTransaction(pool, exact);
       if (loaded.status !== 'needs_review') assert.fail('draft unexpectedly became production-ready');
+      assert.ok(!loaded.reasons.includes('rule_applicability_issuer_identity_stale'),
+        'an unchanged PostgreSQL review must survive rule applicability revalidation');
       assert.ok(loaded.reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
       assert.equal('request' in loaded, false, 'draft must never return a production rule request');
+      const oldBinding = { ...expectedIssuerBinding, reviewed_at: new Date(Math.floor(reviewedAt.getTime() / 1000) * 1000).toISOString() };
+      const oldRevision = await loadInTransaction(pool, { ...exact, expectedIssuerBinding: oldBinding });
+      assert.ok(oldRevision.reasons.includes('rule_applicability_issuer_identity_stale'),
+        'an old revision with a truncated review timestamp must remain stale');
 
       await pool.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
       const staleSelection = await loadInTransaction(pool, { ...exact, mode: 'selection' });
