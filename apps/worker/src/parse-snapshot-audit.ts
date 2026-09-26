@@ -309,7 +309,7 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
     const result = {
       schema_version: 'parse-snapshot-audit-v1',
       database_access: 'read_only_transaction',
-      audit_status: anchorBindingMatches ? 'complete' : 'failed_anchor_binding',
+      audit_status: anchorBindingMatches ? 'reported_not_source_verified' : 'failed_anchor_binding',
       docx_jobs: {
         a: snapshotMetric(docxA.snapshot, docxA.evidence),
         b: snapshotMetric(docxB.snapshot, docxB.evidence),
@@ -336,7 +336,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   runParseSnapshotAudit(process.env.BB_PARSE_AUDIT_DATABASE_URL, process.env.BB_PARSE_AUDIT_TARGETS_JSON)
     .then((report) => {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-      if (report.audit_status !== 'complete') process.exitCode = 1;
+      if (report.audit_status === 'failed_anchor_binding') process.exitCode = 1;
     })
     .catch((error: unknown) => {
       const code = error instanceof Error && /^AUDIT_[A-Z0-9_]+$/.test(error.message) ? ` (${error.message})` : '';
