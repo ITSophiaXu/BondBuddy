@@ -63,7 +63,8 @@ class TransactionMock implements CreditFacilitySupplementClient {
       const row = {
         id: values[0], owner_user_id: values[1], project_id: values[2], request_id: values[3], request_hash: values[4],
         status: values[5], total_source_id: values[6], used_source_id: values[8], unused_source_id: values[10],
-        supplement: result, created_at: new Date('2025-03-04T10:00:00Z'),
+        supplement: result, supplement_version: values[13] ?? 1, supersedes_supplement_id: values[14] ?? null,
+        supersedes_version: values[15] ?? null, created_at: new Date('2025-03-04T10:00:00Z'),
       };
       this.rows.push(row);
       return { rows: [row] };
