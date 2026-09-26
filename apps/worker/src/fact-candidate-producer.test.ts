@@ -78,8 +78,8 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       const observation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: owner, projectId,
         materialId: historical, materialVersion: 1, requestId: `identity-request-${suffix}`,
         sourceRecordId: historicalRecordId, issuerDisplayName: '合成发行人', entityId: `issuer-${suffix}` });
-      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [reviewerGrantId, reviewerId, grantorId]);
+      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [reviewerGrantId, reviewerId, grantorId, owner, projectId]);
       const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
       assert.ok(reviewer);
       await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: owner, projectId, materialId: historical, materialVersion: 1,

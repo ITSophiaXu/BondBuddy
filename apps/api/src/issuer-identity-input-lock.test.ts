@@ -54,8 +54,11 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
     const projectId = `input-project-${suffix}`, reviewProjectId = `input-review-project-${suffix}`;
     const foreignProjectId = `input-foreign-project-${suffix}`;
     const historicalA = `input-historical-a-${suffix}`, historicalB = `input-historical-b-${suffix}`;
+    const reviewProjectMaterial = `input-review-project-material-${suffix}`;
     const auditMaterial = `input-audit-${suffix}`;
     const grantId = `input-review-grant-${suffix}`;
+    const secondProjectGrantId = `input-review-project-grant-${suffix}`;
+    const legacyGrantId = `input-legacy-review-grant-${suffix}`;
     const grants = [historicalA, historicalB].map(id => ({
       materialId: id, materialVersion: 1, uploadId: `upload-${id}`, snapshotId: `snapshot-${id}`,
       contentHash: sha(`synthetic bytes ${id}`), evidenceA: `evidence-a-${id}`, evidenceB: `evidence-b-${id}`,
@@ -127,9 +130,39 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
         }
       }
 
+      const reviewProjectBytes = sha(`synthetic bytes ${reviewProjectMaterial}`);
+      const reviewProjectUpload = `upload-${reviewProjectMaterial}`;
+      const reviewProjectSnapshot = `snapshot-${reviewProjectMaterial}`;
+      const reviewProjectEvidence = `evidence-${reviewProjectMaterial}`;
+      await connection.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,
+        state,received_sha256,received_bytes) VALUES($1,$2,$3,'synthetic.pdf','application/pdf',10,$4,'historical',$5,now()+interval '1 hour','completed',$4,10)`,
+      [reviewProjectUpload, owner, reviewProjectId, reviewProjectBytes, `synthetic/${reviewProjectUpload}`]);
+      await connection.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+        VALUES($1,1,$2,$3,$4,'historical','synthetic.pdf','application/pdf',10,$5,$6,'parsed')`,
+      [reviewProjectMaterial, owner, reviewProjectId, reviewProjectUpload, reviewProjectBytes, `users/${owner}/projects/${reviewProjectId}/${reviewProjectMaterial}`]);
+      const reviewMeta = { schema_version: 'document-parse-response-v1', request_id: `parse-${reviewProjectSnapshot}`, status: 'parsed',
+        parser_version: `parser-${suffix}`, material: { material_id: reviewProjectMaterial, material_version: 1, media_type: 'application/pdf', sha256: reviewProjectBytes },
+        warnings: [], document: { page_count: 1 }, error: null };
+      await connection.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,
+        response_status,response_schema_version,response_sha256,record_count,response_meta)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'parsed','document-parse-response-v1',$8,1,$9::jsonb)`,
+      [reviewProjectSnapshot, owner, reviewProjectId, reviewProjectMaterial, reviewProjectBytes, `parser-${suffix}`,
+        sha(`parse-request-${reviewProjectSnapshot}`), sha(`parse-response-${reviewProjectSnapshot}`), JSON.stringify(reviewMeta)]);
+      await connection.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,
+        locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,1,$4,$5,$6,'pdf_bbox',$7::jsonb,'合成第二项目发行人','synthetic test evidence','native_text',$8,0.99,'[]','{}',$9,0)`,
+      [owner, reviewProjectId, reviewProjectMaterial, reviewProjectSnapshot, reviewProjectEvidence, reviewProjectBytes,
+        JSON.stringify({ page: 1, bbox: [0, 0, 1, 1] }), `parser-${suffix}`, sha(reviewProjectEvidence)]);
+
       const sourceA = grants[0]!;
       const sourceB = grants[1]!;
       const observationA = await addSource(historicalA, sourceA.evidenceA, '合成发行人甲', 'entity-synthetic-a');
+      const observationB = await addSource(historicalB, sourceB.evidenceA, '合成发行人乙', 'entity-synthetic-b');
+      const observationC = await appendIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
+        ownerUserId: owner, projectId: reviewProjectId, materialId: reviewProjectMaterial, materialVersion: 1,
+        requestId: `request-${reviewProjectEvidence}`, sourceRecordId: reviewProjectEvidence,
+        issuerDisplayName: '合成第二项目发行人', entityId: 'entity-synthetic-c',
+      });
       const observationsUrl = `/api/v1/projects/${projectId}/materials/${historicalA}/versions/1/issuer-identity/observations`;
       const listed = await send('GET', observationsUrl);
       assert.equal(listed.statusCode, 200, listed.body);
@@ -147,8 +180,26 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       let reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified',verified_entity_id:verifiedA,
         ...observedHashes,
         entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic identity review'};
-      assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'no reviewer grant');
-      assert.equal((await send('GET',reviewerUrl)).statusCode,404,'no reviewer grant cannot read');
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'legacy_test')`, [legacyGrantId, reviewerId, grantorId]);
+      await connection.query(`INSERT INTO bb_issuer_identity_source_reviews
+        (id,owner_user_id,project_id,material_id,material_version,source_record_id,identity_version,content_sha256,entity_id,
+         reviewer_user_id,reviewer_grant_id,decision,reason_code,verified_entity_id,entity_basis_kind,entity_basis_ref)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,$9,$10,'verified','legacy_review', $11,'manual_attestation','synthetic legacy review')`,
+      [`legacy-review-${suffix}`, owner, projectId, historicalB, observationB.id, observationB.identityVersion,
+        observationB.contentSha256, observationB.entityId, reviewerId, legacyGrantId, verifiedB]);
+      assert.equal((await loadVerifiedIssuerIdentitySourceRecord(scopedPool, { ownerUserId: owner, projectId, materialId: historicalB, materialVersion: 1 }))?.entityId,
+        verifiedB, 'an existing verified review tied to an active legacy grant remains valid history');
+      const secondProjectObservations = `/api/v1/projects/${reviewProjectId}/materials/${reviewProjectMaterial}/versions/1/issuer-identity/observations`;
+      const secondProjectReviewUrl = `${secondProjectObservations}/${observationC.id}/review`;
+      const legacyOnlyBody = {decision:'verified',reason_code:'synthetic_identity_verified',verified_entity_id:verifiedA,
+        expected_content_sha256:observationC.contentSha256,expected_snapshot_sha256:sha(`parse-response-${reviewProjectSnapshot}`),
+        entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic identity review'};
+      assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'legacy unscoped grant cannot authorize a new review');
+      assert.equal((await send('POST',secondProjectReviewUrl,legacyOnlyBody)).statusCode,404,'legacy grant cannot authorize another project');
+      assert.equal((await send('GET',reviewerUrl)).statusCode,404,'legacy unscoped grant cannot read reviewer observations');
+      assert.equal((await send('GET',`/api/v1/reviewer/projects/${reviewProjectId}/materials/${reviewProjectMaterial}/versions/1/issuer-identity/observations`)).statusCode,404,
+        'legacy unscoped grant cannot read another project');
       activeOwner = owner;
       const unreviewedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
       assert.deepEqual(unreviewedInput.manifest.issuer_identity, {
@@ -161,7 +212,7 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants
         (id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
         VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [grantId, reviewerId, grantorId, owner, projectId]);
-      const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId);
+      const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId,{ownerUserId:owner,projectId});
       assert.ok(reviewer);
       activeOwner=reviewerId;
       const reviewerRead=await send('GET',reviewerUrl);
@@ -170,10 +221,41 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       assert.deepEqual(reviewerRead.json().items[0].locator,{page:1,bbox:[0,0,1,1]});
       assert.equal(reviewerRead.json().items[0].coverage,'complete');
       assert.deepEqual(reviewerRead.json().items[0].parse_warnings,[]);
-      assert.equal((await send('GET',reviewerUrl.replace(projectId,reviewProjectId))).statusCode,404,'reviewer scope excludes another project');
+      const secondProjectReviewerUrl = `/api/v1/reviewer/projects/${reviewProjectId}/materials/${reviewProjectMaterial}/versions/1/issuer-identity/observations`;
+      assert.equal((await send('POST',secondProjectReviewUrl,legacyOnlyBody)).statusCode,404,
+        'the first project grant cannot authorize a review POST for a second project');
       assert.equal((await send('GET',reviewerUrl.replace(projectId,foreignProjectId))).statusCode,404,'reviewer scope excludes another owner');
-      assert.equal((await send('POST',reviewUrl.replace(projectId,reviewProjectId),reviewBody)).statusCode,404,
-        'scoped grant cannot review another project');
+      const crossOwnerReviewUrl = `/api/v1/projects/${foreignProjectId}/materials/${reviewProjectMaterial}/versions/1/issuer-identity/observations/${observationC.id}/review`;
+      assert.equal((await send('POST',crossOwnerReviewUrl,reviewBody)).statusCode,404,
+        'a grant for another owner/project cannot authorize a review POST');
+      await assert.rejects(reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
+        ownerUserId: owner, projectId: reviewProjectId, materialId: reviewProjectMaterial, materialVersion: 1,
+        sourceRecordRowId: observationC.id, reviewer, decision: 'verified', ...reviewBasis(verifiedA), reasonCode: 'cross_project_attempt',
+      }), /REVIEWER_NOT_AUTHORIZED/);
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants
+        (id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [secondProjectGrantId, reviewerId, grantorId, owner, reviewProjectId]);
+      await connection.query('SAVEPOINT duplicate_project_grant');
+      await assert.rejects(connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants
+        (id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`,
+      [`duplicate-${suffix}`, reviewerId, grantorId, owner, projectId]), /unique|duplicate/i,
+      'the database enforces one active grant per reviewer/owner/project');
+      await connection.query('ROLLBACK TO SAVEPOINT duplicate_project_grant');
+      const secondProjectReviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId,{ownerUserId:owner,projectId:reviewProjectId});
+      assert.ok(secondProjectReviewer);
+      assert.equal(await authorizeIssuerIdentityReviewer(scopedPool, reviewerId),null,
+        'an unscoped resolver refuses to guess when multiple project grants exist');
+      const secondProjectRead = await send('GET', secondProjectReviewerUrl);
+      assert.equal(secondProjectRead.statusCode,200,secondProjectRead.body);
+      assert.equal(secondProjectRead.json().items[0].quote,'合成第二项目发行人');
+      const secondProjectReviewBody = {...legacyOnlyBody,
+        expected_content_sha256:secondProjectRead.json().items[0].content_sha256,
+        expected_snapshot_sha256:secondProjectRead.json().items[0].snapshot_sha256};
+      assert.equal((await send('POST',secondProjectReviewUrl,secondProjectReviewBody)).statusCode,201,
+        'the same reviewer can write through a second exact project grant');
+      assert.equal((await loadVerifiedIssuerIdentitySourceRecord(scopedPool,{ownerUserId:owner,projectId:reviewProjectId,
+        materialId:reviewProjectMaterial,materialVersion:1}))?.entityId,verifiedA);
       const readAudit=await connection.query(`SELECT payload FROM bb_outbox WHERE event_type='issuer.identity_source.reviewer_read'
         AND owner_user_id=$1 AND aggregate_id=$2`,[owner,projectId]);
       assert.equal(readAudit.rows.length,1);
@@ -204,11 +286,8 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
         expected_content_sha256:reviewBody.expected_content_sha256,expected_snapshot_sha256:reviewBody.expected_snapshot_sha256})).statusCode,409);
       activeOwner=owner;
       assert.equal((await send('GET',observationsUrl)).json().status,'verified');
-      const observationB = await addSource(historicalB, sourceB.evidenceA, '合成发行人乙', 'entity-synthetic-b');
-      await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
-        ownerUserId: owner, projectId, materialId: historicalB, materialVersion: 1,
-        sourceRecordRowId: observationB.id, reviewer, decision: 'verified', ...reviewBasis(verifiedB), reasonCode: 'synthetic_identity_verified',
-      });
+      assert.equal((await send('GET',observationsUrl.replace(historicalA,historicalB))).json().status,'verified',
+        'the active legacy grant continues to back an existing verified review');
 
       const oldInput=(await connection.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
         [owner,projectId,unreviewedInput.input_revision])).rows[0].manifest as Record<string,unknown>;
@@ -274,13 +353,23 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       activeOwner=reviewerId;
       assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'revoked grant cannot replay or review');
       assert.equal((await send('GET',reviewerUrl)).statusCode,404,'revoked grant cannot read');
+      assert.equal((await send('GET',`/api/v1/reviewer/projects/${reviewProjectId}/materials/${reviewProjectMaterial}/versions/1/issuer-identity/observations`)).statusCode,200,
+        'revoking one project grant does not revoke another project grant for the same reviewer');
       activeOwner=owner;
       assert.equal((await send('GET',observationsUrl)).json().status,'needs_review','revoked review cannot count as verified');
+      assert.equal((await connection.query('SELECT count(*)::int n FROM bb_issuer_identity_source_reviews WHERE source_record_id=$1',[observationA.id])).rows[0].n,1,
+        'revocation preserves the append-only review history');
+      assert.equal((await loadVerifiedIssuerIdentitySourceRecord(scopedPool,{ownerUserId:owner,projectId,materialId:historicalA,materialVersion:1})),null,
+        'revoking the scoped grant removes its review from the active verified binding');
+      assert.equal((await connection.query('SELECT count(*)::int n FROM bb_issuer_identity_source_reviews WHERE source_record_id=$1',[observationB.id])).rows[0].n,1,
+        'the legacy verified decision remains in historical storage');
+      assert.equal((await loadVerifiedIssuerIdentitySourceRecord(scopedPool,{ownerUserId:owner,projectId,materialId:historicalB,materialVersion:1}))?.entityId,verifiedB,
+        'an active legacy grant continues to support its existing verified review');
       const staleReview = await send('POST', '/api/v1/projects/' + projectId + '/preflight', {
         input_revision: verifiedInputB.input_revision, input_hash: verifiedInputB.input_hash,
       });
       assert.equal(staleReview.statusCode, 200, staleReview.body);
-      assert.ok(staleReview.json().missing_inputs.includes(`issuer_identity_stale:${historicalB}:1`), 'revoking the grant invalidates preflight for the immutable old revision');
+      assert.ok(!staleReview.json().missing_inputs.includes(`issuer_identity_stale:${historicalB}:1`), 'the active legacy review remains usable for the existing immutable revision');
       const staleOriginal = await send('POST', '/api/v1/projects/' + projectId + '/preflight', {
         input_revision: verifiedInput.input_revision, input_hash: verifiedInput.input_hash,
       });

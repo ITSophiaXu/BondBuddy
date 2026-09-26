@@ -245,12 +245,12 @@ export function createServer(settings: Settings = {}) {
   });
   app.post(`${issuerObservations}/:source_record_id/review`,{schema:{body:schemas.IssuerIdentityReviewRequest,response:{201:schemas.IssuerIdentityReviewResponse}}},async(request,reply)=>{
     const reviewerUserId=await owner(request);
-    const reviewer=await authorizeIssuerIdentityReviewer(db(),reviewerUserId);
-    if(!reviewer)throw missing();
     const projectId=param(request,'project_id');
     const owned=await db().query('SELECT owner_user_id FROM bb_projects WHERE id=$1 AND deleted_at IS NULL',[projectId]);
     if(owned.rows.length!==1)throw missing();
     const scope=issuerScope(request,String(owned.rows[0].owner_user_id));
+    const reviewer=await authorizeIssuerIdentityReviewer(db(),reviewerUserId,{ownerUserId:scope.ownerUserId,projectId:scope.projectId});
+    if(!reviewer)throw missing();
     const input=body<{decision:'verified'|'rejected'|'conflict';reason_code:string;expected_content_sha256:string;expected_snapshot_sha256:string;verified_entity_id?:string;entity_basis_kind?:'uscc'|'registry_record'|'manual_attestation';entity_basis_ref?:string}>(request);
     try{
       const result=await reviewIssuerIdentitySourceRecord({pool:db()},{...scope,sourceRecordRowId:param(request,'source_record_id'),reviewer,decision:input.decision,reasonCode:input.reason_code,
