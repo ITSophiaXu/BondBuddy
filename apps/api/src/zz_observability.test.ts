@@ -23,7 +23,7 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     const production=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
     try {
       const own=await production.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:request});
-      const foreign=await production.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:{...request,project_id:foreignProject}});
+      const foreign=await production.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:{...request,project_id:foreignProject,execution_request_id:'synthetic-log-foreign'}});
       assert.equal(own.statusCode,501);assert.equal(foreign.statusCode,501);
       assert.equal(own.json().code,foreign.json().code,'foreign project is not enumerable from production rejection');
       const records=await pool.query("SELECT * FROM bb_operations WHERE owner_user_id=$1 AND error_code='CAPABILITY_NOT_READY' ORDER BY created_at,id",[owner]);
@@ -37,11 +37,11 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
       assert.equal(actor.rows[0].event.actor_type,'user');
       assert.equal(actor.rows[0].event.project_id,project);
     } finally {await production.close();}
-    const rejection=await send('POST','/api/v1/runs/execute',{...request,input_hash:'0'.repeat(64)});
+    const rejection=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-log-bad-hash',input_hash:'0'.repeat(64)});
     assert.equal(rejection.statusCode,409);
     const rejected=await pool.query("SELECT * FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND status='rejected' AND error_code='INPUT_REVISION_CONFLICT'",[owner,project]);
     assert.equal(rejected.rowCount,1);assert.equal(rejected.rows[0].run_id,null);
-    const created=await send('POST','/api/v1/runs/execute',request);assert.equal(created.statusCode,202,created.body);
+    const created=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-log-run'});assert.equal(created.statusCode,202,created.body);
     const runId=created.json().run_id;
     const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,runId);
     const blobs=azureBlobs(blob!);
