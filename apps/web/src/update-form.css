@@ -6,7 +6,7 @@
 .update-form input,.update-form select,.update-form textarea{font:inherit;width:100%;min-width:0;border:1px solid #d5dece;border-radius:7px;background:white;padding:12px;color:var(--ink)}
 .update-form textarea{min-height:108px;resize:vertical;line-height:1.8;font-size:13px}.money-input{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:8px}
 .update-form .history-answer{display:flex;gap:16px}.update-form .history-choice{display:flex;align-items:center;gap:10px;border:1px solid var(--line);padding:12px 22px;border-radius:8px;cursor:pointer;margin:8px 0}
-.update-form .history-choice input{width:auto;min-height:0;accent-color:var(--green)}.funding-row{border:1px solid var(--line);border-radius:9px;padding:16px;margin:16px 0}.funding-row h3{font-size:14px}
+.update-form .history-choice input{width:auto;min-height:0;accent-color:var(--green)}.funding-row,.target-period-row{border:1px solid var(--line);border-radius:9px;padding:16px;margin:16px 0}.funding-row h3,.target-period-row h3{font-size:14px}.target-period-row small{display:block;margin-top:7px}.target-period-row .text-button{margin-top:12px}.period-limit-note{display:block;margin-top:8px}
 .supplement-panel{position:sticky;top:24px}.supplement-panel ul{padding-left:20px;font-size:13px;line-height:2}
 .update-form .detail-layout{align-items:start}.update-form .form-panel{min-width:0}.update-form .context-panel{min-width:0}
 @media(max-width:1100px){.update-grid{grid-template-columns:1fr}}@media(max-width:900px){.supplement-panel{position:static}}
