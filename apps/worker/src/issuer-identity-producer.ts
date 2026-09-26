@@ -9,7 +9,7 @@ export function issuerNameKey(name: string): string {
   return `issuer-name:v1:${createHash('sha256').update(normalized).digest('hex').slice(0, 32)}`;
 }
 
-/** An observation represents one name and its complete anchor set, not a selected legal entity. */
+/** Each observation represents one name and one immutable parser anchor, not a selected legal entity. */
 export function createIssuerIdentityProducer(pool: Pool, options: {
   loadSnapshot?: (context: IssuerIdentityObservationContext) => Promise<StoredParseSnapshot | null>;
   warn?: (code: string) => void;
@@ -34,15 +34,17 @@ export function createIssuerIdentityProducer(pool: Pool, options: {
       warn('ISSUER_IDENTITY_SELECTION_ANCHOR_MISMATCH');
       return [];
     }
-    return selection.candidates.map(candidate => {
-      const anchors = candidate.evidence.map(anchor => anchor.sourceRecordId).sort();
+    return selection.candidates.flatMap(candidate => {
       const normalizedName = candidate.issuerDisplayName.normalize('NFKC').trim().replace(/\s+/gu, ' ');
-      const digest = createHash('sha256').update(JSON.stringify({ snapshotId: context.snapshotId, name: normalizedName, anchors })).digest('hex');
-      return {
-        sourceRecordId: anchors[0]!, issuerDisplayName: candidate.issuerDisplayName,
-        entityId: issuerNameKey(candidate.issuerDisplayName), observationId: `issuer-observation:v1:${digest}`,
-        requestId: `issuer-${digest}`,
-      };
+      return candidate.evidence.map(anchor => {
+        const digest = createHash('sha256').update(JSON.stringify({ snapshotId: context.snapshotId,
+          name: normalizedName, anchor: anchor.sourceRecordId })).digest('hex');
+        return {
+          sourceRecordId: anchor.sourceRecordId, issuerDisplayName: candidate.issuerDisplayName,
+          entityId: issuerNameKey(candidate.issuerDisplayName), observationId: `issuer-observation:v1:${digest}`,
+          requestId: `issuer-${digest}`,
+        };
+      });
     });
   };
 }

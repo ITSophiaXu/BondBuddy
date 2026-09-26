@@ -106,7 +106,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
       assert.ok(reviewer);
       await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: observation.id,
-        reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified',
+        reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+        entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic issuer evidence', reasonCode: 'synthetic_identity_verified',
       });
       const response = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
         payload: { draft_revision: 1, material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [] } });
@@ -167,7 +168,7 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
           assert.equal(args.contextId, contextRef.context_id);
           assert.equal(args.expectedSourceInputRevision, input.input_revision);
           assert.equal(args.expectedSourceInputHash, input.input_hash);
-          assert.equal(args.expectedIssuerBinding.entity_id, 'entity-synthetic-reviewed');
+          assert.equal(args.expectedIssuerBinding.entity_id, 'entity:11111111-1111-4111-8111-111111111111');
           assert.equal(args.currentDraftRevision, 1);
           assert.deepEqual(args.currentMaterialVersions, [{ materialId, materialVersion: 1, sha256: contentHash }]);
           return { request, contextPin: reviewedContextPin };

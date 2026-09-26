@@ -56,6 +56,22 @@ test('needs_review and conflict retain each candidate with stable replay and nam
   assert.ok(first.every(item => item.observationId?.startsWith('issuer-observation:v1:')));
 });
 
+test('two anchors for one name yield separately reviewable stable observations', async () => {
+  const produce = producer(snapshot(['发行人：合成甲有限公司。', '发行人名称：合成甲有限公司。']));
+  const first = await produce(context);
+  assert.deepEqual(first.map(item => item.sourceRecordId), ['record-a', 'record-b']);
+  assert.equal(new Set(first.map(item => item.requestId)).size, 2);
+  assert.deepEqual(await produce(context), first, 'parse replay keeps both observation and request IDs');
+});
+
+test('two names on one anchor have different replay keys', async () => {
+  const selected = await producer(snapshot(['发行人：合成甲有限公司。 发行人名称：合成乙有限公司。']))(context);
+  assert.equal(selected.length, 2);
+  assert.deepEqual(selected.map(item => item.sourceRecordId), ['record-a', 'record-a']);
+  assert.equal(new Set(selected.map(item => item.requestId)).size, 2);
+  assert.equal(new Set(selected.map(item => item.observationId)).size, 2);
+});
+
 test('selector errors fail closed without rejecting parse work', async () => {
   const warnings: string[] = [];
   const invalid = { ...snapshot(['发行人：合成甲有限公司。']), ownerUserId: 'other-owner' };

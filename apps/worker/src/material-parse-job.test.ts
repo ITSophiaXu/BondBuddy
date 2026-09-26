@@ -226,7 +226,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.ok(reviewer);
     await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId: identityProjectId,
       materialId: identityMaterialId, materialVersion: 1, sourceRecordRowId: observationId,
-      reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+      reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+      entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic parse identity', reasonCode: 'synthetic_identity_verified' });
     const locked = await send('POST', `/api/v1/projects/${identityProjectId}/input-revisions`,
       { draft_revision: 1, material_versions: [{ material_id: identityMaterialId, material_version: 1 }], requirement_message_ids: [] });
     assert.equal(locked.statusCode, 201, locked.body);

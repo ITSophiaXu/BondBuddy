@@ -14,6 +14,10 @@ import type { IssuerIdentitySourcePool } from './issuer-identity-source.js';
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const origin = 'http://bondbuddy.test';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+const verifiedA = 'entity:11111111-1111-4111-8111-111111111111';
+const verifiedB = 'entity:22222222-2222-4222-8222-222222222222';
+const reviewBasis = (verifiedEntityId: string) => ({ verifiedEntityId, entityBasisKind: 'manual_attestation' as const,
+  entityBasisRef: 'synthetic identity review' });
 
 function savepointPool(connection: PoolClient): Pool {
   let next = 0;
@@ -133,7 +137,8 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       assert.equal((await send('GET', observationsUrl)).statusCode, 404, 'another account cannot inspect evidence');
       activeOwner = reviewerId;
       const reviewUrl = `${observationsUrl}/${observationA.id}/review`;
-      const reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified'};
+      const reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified',verified_entity_id:verifiedA,
+        entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic identity review'};
       assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'no reviewer grant');
       activeOwner = owner;
       const unreviewedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
@@ -149,18 +154,28 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId);
       assert.ok(reviewer);
       activeOwner=reviewerId;
+      for (const invalid of [
+        { decision: 'verified', reason_code: 'synthetic_identity_verified' },
+        { ...reviewBody, verified_entity_id: 'issuer-name:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+        { ...reviewBody, verified_entity_id: 'uscc:91310000MA1FL00008', entity_basis_kind: 'uscc', entity_basis_ref: '91310000MA1FL00009' },
+      ]) {
+        const rejected = await send('POST', reviewUrl, invalid);
+        assert.equal(rejected.statusCode, 400, rejected.body);
+        assert.equal(rejected.json().code, 'ISSUER_IDENTITY_VERIFICATION_INVALID');
+      }
+      assert.equal((await connection.query('SELECT count(*)::int n FROM bb_issuer_identity_source_reviews WHERE source_record_id=$1', [observationA.id])).rows[0].n, 0);
       const reviewed=await send('POST',reviewUrl,reviewBody);
       assert.equal(reviewed.statusCode,201,reviewed.body);
       const replay=await send('POST',reviewUrl,reviewBody);
       assert.equal(replay.statusCode,201,replay.body);assert.equal(replay.json().replayed,true);
       assert.equal(replay.json().review_id,reviewed.json().review_id);
-      assert.equal((await send('POST',reviewUrl,{...reviewBody,decision:'rejected'})).statusCode,409);
+      assert.equal((await send('POST',reviewUrl,{decision:'rejected',reason_code:'synthetic_identity_verified'})).statusCode,409);
       activeOwner=owner;
       assert.equal((await send('GET',observationsUrl)).json().status,'verified');
       const observationB = await addSource(historicalB, sourceB.evidenceA, '合成发行人乙', 'entity-synthetic-b');
       await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId: historicalB, materialVersion: 1,
-        sourceRecordRowId: observationB.id, reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified',
+        sourceRecordRowId: observationB.id, reviewer, decision: 'verified', ...reviewBasis(verifiedB), reasonCode: 'synthetic_identity_verified',
       });
 
       const oldInput=(await connection.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
@@ -169,7 +184,7 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
 
       const verifiedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
       assert.notEqual(verifiedInput.input_hash, firstHash, 'reviewed identity changes the canonical input hash');
-      assert.equal(verifiedInput.manifest.issuer_entity_id, 'entity-synthetic-a', 'the submitted historical version selects its own source, even when another historical source exists');
+      assert.equal(verifiedInput.manifest.issuer_entity_id, verifiedA, 'the submitted historical version selects its own source, even when another historical source exists');
       assert.equal(verifiedInput.manifest.issuer_name, '合成发行人甲', 'model input uses the reviewed source name, not the browser label');
       assert.equal(verifiedInput.manifest.issuer_identity && (verifiedInput.manifest.issuer_identity as Record<string, unknown>).record_id, observationA.id);
       assert.equal((verifiedInput.manifest.issuer_identity as Record<string, unknown>).version, observationA.identityVersion);
@@ -178,7 +193,7 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       assert.equal((verifiedInput.manifest.issuer_identity as Record<string, unknown>).source_record_id, sourceA.evidenceA);
       assert.ok(!('issuer_identity' in verifiedInput), 'public input DTO does not expose the internal reviewer/source pin');
       const verifiedInputB = await lockInput(projectId, [{ material_id: historicalB, material_version: 1 }]);
-      assert.equal(verifiedInputB.manifest.issuer_entity_id, 'entity-synthetic-b');
+      assert.equal(verifiedInputB.manifest.issuer_entity_id, verifiedB);
       const wrongVersion = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, {
         draft_revision: 1, material_versions: [{ material_id: historicalA, material_version: 2 }], requirement_message_ids: [],
       });

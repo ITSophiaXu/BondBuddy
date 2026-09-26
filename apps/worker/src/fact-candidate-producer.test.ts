@@ -83,15 +83,19 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
       assert.ok(reviewer);
       await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: owner, projectId, materialId: historical, materialVersion: 1,
-        sourceRecordRowId: observation.id, reviewer, decision: 'verified', reasonCode: 'synthetic_verified' });
+        sourceRecordRowId: observation.id, reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+        entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic identity A', reasonCode: 'synthetic_verified' });
       const identityRecord = await import('@bondbuddy/api/issuer-identity-source').then(({ loadVerifiedIssuerIdentitySourceRecord }) =>
         loadVerifiedIssuerIdentitySourceRecord(pool, { ownerUserId: owner, projectId, materialId: historical, materialVersion: 1 }));
       assert.ok(identityRecord);
+      assert.equal(identityRecord.entityId, 'entity:11111111-1111-4111-8111-111111111111');
+      assert.notEqual(identityRecord.entityId, observation.entityId, 'fact identity must not reuse the observation candidate key');
       const correctedObservation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: owner, projectId,
         materialId: historical, materialVersion: 2, requestId: `identity-request-v2-${suffix}`,
         sourceRecordId: historicalV2RecordId, issuerDisplayName: '更正后的合成发行人', entityId: `issuer-corrected-${suffix}` });
       await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: owner, projectId, materialId: historical, materialVersion: 2,
-        sourceRecordRowId: correctedObservation.id, reviewer, decision: 'verified', reasonCode: 'synthetic_verified_correction' });
+        sourceRecordRowId: correctedObservation.id, reviewer, decision: 'verified', verifiedEntityId: 'entity:22222222-2222-4222-8222-222222222222',
+        entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic identity B', reasonCode: 'synthetic_verified_correction' });
       const correctedIdentityRecord = await import('@bondbuddy/api/issuer-identity-source').then(({ loadVerifiedIssuerIdentitySourceRecord }) =>
         loadVerifiedIssuerIdentitySourceRecord(pool, { ownerUserId: owner, projectId, materialId: historical, materialVersion: 2 }));
       assert.ok(correctedIdentityRecord);

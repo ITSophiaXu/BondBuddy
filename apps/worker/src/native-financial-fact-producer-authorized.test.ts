@@ -178,7 +178,8 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     });
     await reviewIssuerIdentitySourceRecord({ pool }, {
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1,
-      sourceRecordRowId: observation.id, reviewer, decision: 'verified', reasonCode: 'synthetic_test_fixture',
+      sourceRecordRowId: observation.id, reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+      entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic authorized test', reasonCode: 'synthetic_test_fixture',
     });
     const verifiedIdentity = await loadVerifiedIssuerIdentitySourceRecord(pool, {
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1,

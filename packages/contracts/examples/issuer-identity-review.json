@@ -31,9 +31,12 @@
             },
             "quote": "合成发行人甲",
             "issuer_display_name": "合成发行人甲",
-            "entity_id": "issuer-name:v1:4b3d190d3e742448afb2773f3b37db77",
             "status": "needs_review",
-            "reviewed_at": null
+            "reviewed_at": null,
+            "candidate_key": "issuer-name:v1:4b3d190d3e742448afb2773f3b37db77",
+            "verified_entity_id": null,
+            "entity_basis_kind": null,
+            "entity_basis_ref": null
           }
         ]
       }
@@ -44,7 +47,10 @@
       "valid": true,
       "value": {
         "decision": "verified",
-        "reason_code": "source_checked"
+        "reason_code": "source_checked",
+        "verified_entity_id": "uscc:91310000MA1FL00008",
+        "entity_basis_kind": "uscc",
+        "entity_basis_ref": "91310000MA1FL00008"
       }
     },
     {
@@ -54,7 +60,40 @@
       "value": {
         "decision": "verified",
         "reason_code": "source_checked",
+        "verified_entity_id": "uscc:91310000MA1FL00008",
+        "entity_basis_kind": "uscc",
+        "entity_basis_ref": "91310000MA1FL00008",
         "reviewer_user_id": "forged"
+      }
+    },
+    {
+      "name": "issuer-review-request-missing-entity",
+      "schema": "IssuerIdentityReviewRequest",
+      "valid": false,
+      "value": {
+        "decision": "verified",
+        "reason_code": "source_checked"
+      }
+    },
+    {
+      "name": "issuer-review-request-name-key",
+      "schema": "IssuerIdentityReviewRequest",
+      "valid": false,
+      "value": {
+        "decision": "verified",
+        "reason_code": "source_checked",
+        "verified_entity_id": "issuer-name:v1:4b3d190d3e742448afb2773f3b37db77",
+        "entity_basis_kind": "uscc",
+        "entity_basis_ref": "91310000MA1FL00008"
+      }
+    },
+    {
+      "name": "issuer-review-request-rejected",
+      "schema": "IssuerIdentityReviewRequest",
+      "valid": true,
+      "value": {
+        "decision": "rejected",
+        "reason_code": "insufficient_source"
       }
     },
     {
