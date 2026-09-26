@@ -31,6 +31,17 @@ const until = async <T>(read: () => Promise<T | undefined | null | false>, ms = 
   for (;;) { const v = await read(); if (v) return v; if (Date.now() > end) throw new Error('timed out'); await new Promise(r => setTimeout(r, 100)); }
 };
 
+test('production options install the controlled fact producer into the materials stage', () => {
+  const options = workerRuntimeOptionsFromEnv({} as Pool, {} as ReturnType<typeof azureBlobs>, { BB_WORKER_JOB_KINDS: 'run' });
+  assert.equal(typeof options.factCandidateProducer, 'function');
+  const runtime = new WorkerRuntime(options);
+  const installed = (runtime as unknown as { o: { runStages: NonNullable<typeof options.runStages> } }).o.runStages;
+  const original = options.runStages!.find(stage => stage.name === 'materials_ready');
+  const materials = installed.find(stage => stage.name === 'materials_ready');
+  assert.ok(original && materials);
+  assert.notEqual(materials.run, original.run, 'the production constructor replaces the factory placeholder');
+});
+
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   const m = request.material;
   return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: DEFAULT_DOCUMENT_PARSER_VERSION, status: 'parsed',

@@ -11,7 +11,7 @@ import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Le
 import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
-import { defaultRunStages, materialsReadiness, runPipelineOnce, type RunStage } from './run-pipeline.js';
+import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type ParsedFactProducer, type RunStage } from './run-pipeline.js';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
@@ -21,6 +21,7 @@ import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { sweepParseStaging } from './parse-staging.js';
 import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
+import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -39,6 +40,8 @@ export type WorkerRuntimeOptions = {
   concurrency?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   runStages?: RunStage[];
+  /** Trusted #15 producer binding. With runStages, only the environment factory's materials stage may be replaced. */
+  factCandidateProducer?: ParsedFactProducer;
   /** #15/#19 reviewed context loader; absent until owner producer and review policy are installed. */
   reviewedContextLoader?: ReviewedContextLoader;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
@@ -57,6 +60,8 @@ export type WorkerRuntimeOptions = {
   stagingRoot?: string;
 };
 
+const environmentMaterialsStages = new WeakMap<RunStage, { run: RunStage['run']; replay: RunStage['replay'] }>();
+
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
   if (signal?.aborted) return resolve();
   const done = () => { signal?.removeEventListener('abort', abort); resolve(); };
@@ -73,14 +78,24 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'reviewedContextLoader' | 'stagingRoot'>>
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'stagingRoot'>>
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'stagingRoot'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters }),
-        word_delivery: historicalWordDeliveryStage() }),
+        word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
+    // The environment factory supplies stages before the trusted producer can be installed.
+    // Never replace a caller's explicit materials stage without its own integration decision.
+    if (options.factCandidateProducer && options.runStages) {
+      const materials = options.runStages.filter(stage => stage.name === 'materials_ready');
+      const factoryStage = materials.length === 1 ? environmentMaterialsStages.get(materials[0]!) : undefined;
+      if (!factoryStage || materials[0]!.run !== factoryStage.run || materials[0]!.replay !== factoryStage.replay)
+        throw new Error('factCandidateProducer conflicts with explicit materials_ready stage');
+      this.o.runStages = this.o.runStages.map(stage => stage.name === 'materials_ready'
+        ? createMaterialsReadyStage(options.factCandidateProducer) : stage);
+    }
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
   }
 
@@ -167,7 +182,7 @@ export class WorkerRuntime {
     const { pool } = this.o;
     this.counters.sweeps++;
     for (const r of await pausedRuns(pool, 'awaiting_materials')) {
-      const run = (await pool.query('SELECT owner_user_id,project_id,input_revision FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [r.run_id, r.owner_user_id])).rows[0];
+      const run = (await pool.query('SELECT owner_user_id,project_id,input_revision,input_hash FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [r.run_id, r.owner_user_id])).rows[0];
       if (!run) continue;
       const readiness = await materialsReadiness(pool, run);
       // A failed material is decided on the next claim (the stage fails the run with its code).
@@ -236,9 +251,13 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     assertProbeConfig(config, env);
     platformProbe = { config, pollMs: intEnv(env, 'BB_PLATFORM_PROBE_POLL_MS', 5000, 500, 600000) };
   }
+  const runStages = defaultRunStages({ model_generation: modelGenerationRouter(),
+    word_delivery: historicalWordDeliveryStage() });
+  const materials = runStages.find(stage => stage.name === 'materials_ready')!;
+  environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
-    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages: defaultRunStages({ model_generation: modelGenerationRouter(),
-      word_delivery: historicalWordDeliveryStage() }),
+    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages,
+    factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),

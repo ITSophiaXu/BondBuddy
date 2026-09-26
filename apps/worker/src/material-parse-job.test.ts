@@ -225,7 +225,7 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
       VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test','synthetic integration',$4,$5)`,
       [randomUUID(), reviewerId, grantorId, alice, identityProjectId]);
-    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
+    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId, { ownerUserId: alice, projectId: identityProjectId });
     assert.ok(reviewer);
     await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId: identityProjectId,
       materialId: identityMaterialId, materialVersion: 1, sourceRecordRowId: observationId,

@@ -421,6 +421,21 @@ export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:R
   });
 }
 
+/** Upgrade an already completed stage's checkpoint without publishing another completion event. */
+export async function upgradeStageCheckpoint(pool:Pool,lease:Lease,stage:string,value:Record<string,unknown>) {
+  if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
+  await transaction(pool,async client=>{
+    const {j}=await lockedLease(client,lease);
+    const stages=j.checkpoint?.stages;
+    if(!stages || typeof stages!=='object' || Array.isArray(stages) || !Object.prototype.hasOwnProperty.call(stages,stage))
+      throw new Error('STAGE_CHECKPOINT_UPGRADE_REQUIRES_EXISTING_CHECKPOINT');
+    const q=await client.query(`UPDATE bb_jobs SET stage=$2,updated_at=now(),
+      checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
+      WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
+    lease.checkpoint=q.rows[0].checkpoint;
+  });
+}
+
 /**
  * Parks a run that cannot progress yet (a stage is not implemented, pinned materials are still
  * parsing). It keeps its checkpoint and is never reported as success; resume re-queues it.
@@ -454,11 +469,11 @@ export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number]
 }
 
 /** Graceful shutdown: expire our lease now so the next claim resumes from the checkpoint without waiting. */
-export async function releaseLease(pool:Pool,lease:Lease) {
+export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released') {
   await transaction(pool,async client=>{
     let locked;
     try { locked=await lockedLease(client,lease); } catch { return; }
     await client.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1",[lease.jobId]);
-    await event(client,locked.r,'running',locked.j.stage,'lease_released',undefined,'run.progress');
+    await event(client,locked.r,'running',locked.j.stage,reason,undefined,'run.progress');
   });
 }

@@ -16,13 +16,15 @@ import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
+import { checkpointStage, claim, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
-import { codexModelStage, defaultRunStages, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage } from './run-pipeline.js';
-import { WorkerRuntime, type ProviderCallReconciler } from './runtime.js';
+import { codexModelStage, createMaterialsReadyStage, defaultRunStages, materialsReadiness, materialsReadyStage, runPipelineOnce, wordDeliveryStage, type RunStage, type StageContext } from './run-pipeline.js';
+import { produceParsedFactCandidates, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION, type SemanticFactExtractor } from './fact-candidate-producer.js';
+import { WorkerRuntime, workerRuntimeOptionsFromEnv, type ProviderCallReconciler } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection = await isolatedTestDatabase('BB_TEST_RUNTIME_DATABASE_URL');
@@ -71,7 +73,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     return { kind: 'done', checkpoint: { input_revision: run.input_revision, input_hash: run.input_hash.trim(), material_versions: input.material_versions,
       rule_pack_version: input.rule_pack_version ?? null, template_version: input.template_version ?? null, reference_release: input.reference_release ?? null } };
   } };
-  const stages = (extra: Partial<Record<'model' | 'word', RunStage>> = {}): RunStage[] => [syntheticInputLockStage, materialsReadyStage, extra.model ?? model(), extra.word ?? word()];
+  const stages = (extra: Partial<Record<'materials' | 'model' | 'word', RunStage>> = {}): RunStage[] => [syntheticInputLockStage, extra.materials ?? materialsReadyStage, extra.model ?? model(), extra.word ?? word()];
   const expire = (jobId: string) => pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [jobId]);
   const runRow = async (runId: string) => (await pool.query('SELECT r.*,j.id AS job_id,j.state AS job_state,j.stage AS job_stage,j.checkpoint,j.error_code AS job_error FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE r.id=$1', [runId])).rows[0];
   const terminalEvents = async (runId: string) => (await pool.query("SELECT state FROM bb_run_events WHERE run_id=$1 AND state IN ('succeeded','failed','cancelled','rejected')", [runId])).rows.map(r => r.state);
@@ -102,7 +104,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const observation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
       requestId: randomUUID(), sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: 'synthetic-runtime-issuer' });
     await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
-      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test',$4,$5)`,
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test',$4,$5) ON CONFLICT DO NOTHING`,
       [randomUUID(), reviewer, grantor, alice, projectId]);
     const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer, { ownerUserId: alice, projectId });
     assert.ok(trustedReviewer);
@@ -309,7 +311,259 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(parseStream2.at(-1)!.data.reason, 'terminal');
     await runtime.sweep();
     assert.equal((await runRow(materialsRun)).state, 'queued');
+    const pinnedRun = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1', [materialsRun])).rows[0];
+    const materialContext = { pool, run: pinnedRun } as StageContext;
+    assert.deepEqual(await createMaterialsReadyStage().run(materialContext),
+      { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidate_producer_unavailable' });
+    const productionMaterials = workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' })
+      .runStages?.find(stage => stage.name === 'materials_ready');
+    assert.deepEqual(await productionMaterials?.run(materialContext),
+      { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidate_producer_unavailable' });
+    let factExtractCalls = 0;
+    const extractor: SemanticFactExtractor = { id: 'synthetic-runtime-financial', version: '1.0.0', extract: async request => {
+      factExtractCalls++;
+      assert.equal(request.owner_user_id, alice);
+      assert.equal(request.project_id, p7Project);
+      assert.equal(request.input_revision, p7.inputRevision);
+      assert.equal(request.input_hash, p7.inputHash);
+      assert.equal(request.material_id, m.material_id);
+      assert.equal(request.material_version, m.material_version);
+      const evidence = request.records[0]!;
+      return { schema_version: SEMANTIC_FACT_EXTRACTION_RESULT_VERSION,
+        extractor: { id: 'synthetic-runtime-financial', version: '1.0.0' },
+        parse_snapshot: { snapshot_id: request.parse_snapshot_id, response_sha256: request.parse_response_sha256,
+          parser_version: request.parser_version, material_id: request.material_id, material_version: request.material_version,
+          content_sha256: request.material_sha256 },
+        facts: [{ extraction_id: 'synthetic-revenue', identity: { scope: 'consolidated', metric: 'operating_revenue',
+          period: { start: '2024-01-01', end: '2024-12-31' }, currency: 'CNY', unit: 'yuan', basis: 'reported_financial_statement' },
+          value: { kind: 'known', decimalOrText: '123.45' }, source_kind: 'audited', confidence: 1, uncertainty: [],
+          evidence_refs: [evidence.record_id] }],
+        needs_review: [{ evidence_refs: [evidence.record_id], reason_code: 'SYNTHETIC_ADJACENT_GAP' }] };
+    } };
+    const factCandidateProducer = (context: Parameters<typeof produceParsedFactCandidates>[1]) =>
+      produceParsedFactCandidates({ pool, extractor }, context);
+    const customMaterials: RunStage = { name: 'materials_ready', run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'custom_materials_gate' }) };
+    assert.throws(() => new WorkerRuntime({ pool, blobs, runStages: stages({ materials: customMaterials }), factCandidateProducer }),
+      /factCandidateProducer conflicts with explicit materials_ready stage/);
+    const changedFactoryOptions = workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' });
+    changedFactoryOptions.runStages = changedFactoryOptions.runStages!.map(stage => stage.name === 'materials_ready' ? customMaterials : stage);
+    assert.throws(() => new WorkerRuntime({ ...changedFactoryOptions, factCandidateProducer }),
+      /factCandidateProducer conflicts with explicit materials_ready stage/);
+    assert.equal(factExtractCalls, 0, 'rejected stage compositions cannot invoke the producer');
+    const envRuntime = new WorkerRuntime({
+      ...workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' }), factCandidateProducer,
+    });
+    const materialStage = (envRuntime as unknown as { o: { runStages: RunStage[] } }).o.runStages.find(stage => stage.name === 'materials_ready');
+    assert.ok(materialStage, 'environment runtime retains the materials stage');
+    assert.equal((await materialStage.run(materialContext)).kind, 'done', 'environment runtime binds the trusted producer');
+    assert.equal(factExtractCalls, 1);
+    assert.equal((await materialStage.run(materialContext)).kind, 'done', 'same locked source reuses the ledger');
+    assert.equal(factExtractCalls, 1);
+    assert.equal((await materialStage.run({ ...materialContext, run: { ...pinnedRun, owner_user_id: mallory } })).kind, 'fail');
+    assert.equal((await materialStage.run({ ...materialContext, run: { ...pinnedRun, input_hash: hashText('wrong input') } })).kind, 'fail');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [materialsRun])).rows[0].n, 0);
+    assert.equal((await materialStage.run(materialContext)).kind, 'done', 'producer persists before the stage checkpoint');
+    assert.equal((await materialStage.run(materialContext)).kind, 'done', 'crash replay uses the persisted extraction');
+    assert.equal(factExtractCalls, 1);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'succeeded');
+    const factCheckpoint = (await runRow(materialsRun)).checkpoint.stages.materials_ready;
+    const newStageEvents = (await pool.query(`SELECT id FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'`, [materialsRun])).rows;
+    assert.equal(newStageEvents.length, 1, 'a newly completed materials stage emits one completion event');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_type='run' AND aggregate_id=$1
+      AND event_type='run.progress' AND payload->>'event_id'=$2`, [materialsRun, newStageEvents[0]!.id])).rows[0].n, 1,
+    'the new completion event has one durable outbox record');
+    assert.equal(factCheckpoint.extractions.length, 1);
+    assert.equal(factCheckpoint.extractions[0].candidate_count, 1);
+    assert.equal(factCheckpoint.extractions[0].needs_review_count, 1);
+    assert.equal(factExtractCalls, 1);
+    assert.equal((await materialStage.run({ ...materialContext, checkpoint: { materials_ready: factCheckpoint } })).kind, 'done');
+    assert.deepEqual(await materialStage.run({ ...materialContext, checkpoint: { materials_ready: {
+      ...factCheckpoint, extractions: [{ ...factCheckpoint.extractions[0], extraction_run_id: 'wrong-run' }] } } }),
+    { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_extraction_checkpoint_mismatch' });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id=$1 AND aggregate_id=$2 AND event_type='fact.extraction.completed'", [alice, p7Project])).rows[0].n, 1);
+    assert.equal((await createMaterialsReadyStage().run({ ...materialContext, run: { ...pinnedRun, owner_user_id: mallory } })).kind, 'fail');
+    assert.equal((await createMaterialsReadyStage().run({ ...materialContext, run: { ...pinnedRun, input_hash: hashText('wrong input') } })).kind, 'fail');
+    const reviewOnlyExtractor: SemanticFactExtractor = { id: 'synthetic-review-only', version: '1.0.0', extract: async request => {
+      const mapped = await extractor.extract(request);
+      return { ...mapped, extractor: { id: 'synthetic-review-only', version: '1.0.0' }, facts: [] };
+    } };
+    assert.deepEqual(await createMaterialsReadyStage(context => produceParsedFactCandidates({ pool, extractor: reviewOnlyExtractor }, context)).run(materialContext),
+      { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidates_unavailable' });
+
+    const legacyMaterials = factCheckpoint.materials as { material_id: string; material_version: number; outcome: string | null }[];
+    const factExtractCallsBeforeLegacy = factExtractCalls;
+    const seedLegacyCheckpoint = async (runId: string, materials: typeof legacyMaterials) => {
+      await pool.query('UPDATE bb_jobs SET checkpoint=$2::jsonb WHERE run_id=$1',
+        [runId, JSON.stringify({ stages: { materials_ready: { materials } } })]);
+    };
+    const checkpointWithoutLegacyRun = (await execute(p7)).json().run_id as string;
+    const checkpointWithoutLegacyLease = await claim(pool, 30);
+    assert.ok(checkpointWithoutLegacyLease);
+    assert.equal(checkpointWithoutLegacyLease.runId, checkpointWithoutLegacyRun);
+    const checkpointBeforeRejectedUpgrade = (await runRow(checkpointWithoutLegacyRun)).checkpoint;
+    await assert.rejects(upgradeStageCheckpoint(pool, checkpointWithoutLegacyLease, 'materials_ready', { materials: legacyMaterials, extractions: [] }),
+      /STAGE_CHECKPOINT_UPGRADE_REQUIRES_EXISTING_CHECKPOINT/);
+    assert.deepEqual((await runRow(checkpointWithoutLegacyRun)).checkpoint, checkpointBeforeRejectedUpgrade,
+      'an upgrade without a prior stage checkpoint rolls back');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [checkpointWithoutLegacyRun])).rows[0].n, 0,
+      'a rejected upgrade does not emit a completion event');
+    assert.equal((await send('POST', `/api/v1/runs/${checkpointWithoutLegacyRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
+
+    const legacyFactRun = (await execute(p7)).json().run_id as string;
+    const legacyLease = await claim(pool, 30);
+    assert.ok(legacyLease);
+    assert.equal(legacyLease.runId, legacyFactRun);
+    await checkpointStage(pool, legacyLease, 'materials_ready', { materials: legacyMaterials });
+    const originalStageEvent = (await pool.query(`SELECT id,seq,type,state,stage,payload FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed' ORDER BY seq`, [legacyFactRun])).rows;
+    assert.equal(originalStageEvent.length, 1);
+    const originalStageOutbox = (await pool.query(`SELECT id,event_type,payload FROM bb_outbox
+      WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress' AND payload->>'event_id'=$2`,
+    [legacyFactRun, originalStageEvent[0].id])).rows;
+    assert.equal(originalStageOutbox.length, 1);
+    await expire(legacyLease.jobId);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'paused',
+      'legacy checkpoint still pauses when the trusted producer is not installed');
+    assert.deepEqual((await runRow(legacyFactRun)).checkpoint.stages.materials_ready, { materials: legacyMaterials });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyFactRun])).rows[0].n, 0,
+      'missing producer does not create a model request snapshot');
+    assert.deepEqual((await pool.query(`SELECT id,seq,type,state,stage,payload FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed' ORDER BY seq`, [legacyFactRun])).rows,
+    originalStageEvent, 'the pre-existing completion event survives the safe pause');
+    assert.deepEqual((await pool.query(`SELECT id,event_type,payload FROM bb_outbox
+      WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress' AND payload->>'event_id'=$2`,
+    [legacyFactRun, originalStageEvent[0].id])).rows, originalStageOutbox,
+    'the pre-existing outbox record survives the safe pause');
+    assert.equal(await resumePausedRun(pool, alice, legacyFactRun, 'materials_ready'), true);
+
+    let enteredUpgrade!: () => void, releaseUpgrade!: () => void;
+    const upgradeEntered = new Promise<void>(resolve => { enteredUpgrade = resolve; });
+    const upgradeGate = new Promise<void>(resolve => { releaseUpgrade = resolve; });
+    const gatedLegacyMaterialStage: RunStage = { ...materialStage, run: async context => {
+      const outcome = await materialStage.run(context);
+      enteredUpgrade();
+      await upgradeGate;
+      return outcome;
+    } };
+    const interruptedUpgrade = runPipelineOnce({ pool, blobs, stages: stages({ materials: gatedLegacyMaterialStage }),
+      afterStage: async stage => { if (stage === 'materials_ready') throw new Error('SYNTHETIC_CRASH'); } });
+    await upgradeEntered;
+    assert.equal(await claim(pool, 30), null, 'a concurrent worker cannot claim the active upgrade lease');
+    releaseUpgrade();
+    await assert.rejects(interruptedUpgrade, /SYNTHETIC_CRASH/);
+    const upgraded = (await runRow(legacyFactRun)).checkpoint.stages.materials_ready;
+    assert.deepEqual(upgraded.materials, legacyMaterials);
+    assert.deepEqual(upgraded.extractions, factCheckpoint.extractions);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_fact_extraction_runs WHERE id=$1`,
+      [factCheckpoint.extractions[0]!.extraction_run_id])).rows[0].n, 1,
+      'the extractor ledger remains independently unique for the locked source');
+    assert.equal(factExtractCalls, factExtractCallsBeforeLegacy,
+      'existing extractor output is reused, independently of stage event cardinality');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [legacyFactRun])).rows[0].n, 1,
+      'checkpoint upgrade did not append a second logical completion');
+    await expire(legacyLease.jobId);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'succeeded',
+      'replay after the committed upgrade continues from the durable checkpoint');
+    assert.deepEqual((await runRow(legacyFactRun)).checkpoint.stages.materials_ready, upgraded);
+    const retainedStageEvents = (await pool.query(`SELECT id,seq,type,state,stage,payload FROM bb_run_events
+      WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed' ORDER BY seq`, [legacyFactRun])).rows;
+    const retainedStageOutbox = (await pool.query(`SELECT id,event_type,payload FROM bb_outbox
+      WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress' AND payload->>'event_id'=$2`,
+    [legacyFactRun, originalStageEvent[0].id])).rows;
+    assert.deepEqual(retainedStageEvents, originalStageEvent, 'the exact historical event remains unchanged after replay');
+    assert.deepEqual(retainedStageOutbox, originalStageOutbox, 'the corresponding durable outbox record remains unchanged');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_run_events WHERE run_id=$1 AND stage='materials_ready' AND payload->>'reason'='stage_completed'", [legacyFactRun])).rows[0].n, 1);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_type='run' AND aggregate_id=$1
+      AND event_type='run.progress' AND payload->>'stage'='materials_ready' AND payload->>'reason'='stage_completed'`, [legacyFactRun])).rows[0].n, 1);
+
+    const mismatchedLedgerRun = (await execute(p7)).json().run_id as string;
+    await seedLegacyCheckpoint(mismatchedLedgerRun, legacyMaterials);
+    const untrustedLedgerStage = createMaterialsReadyStage(async context => ({
+      ...await produceParsedFactCandidates({ pool, extractor }, context), extractionRunId: 'synthetic-missing-ledger' }));
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: untrustedLedgerStage }) }), 'retry');
+    assert.deepEqual((await runRow(mismatchedLedgerRun)).checkpoint.stages.materials_ready, { materials: legacyMaterials });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [mismatchedLedgerRun])).rows[0].n, 0);
+    assert.ok((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1", [mismatchedLedgerRun])).rows
+      .some(row => row.reason === 'material_fact_stage_failed'));
+    assert.equal((await send('POST', `/api/v1/runs/${mismatchedLedgerRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
+
+    const mismatchedLegacyRun = (await execute(p7)).json().run_id as string;
+    const wrongLegacyMaterials = legacyMaterials.map((material, index) => index === 0 ?
+      { ...material, material_version: material.material_version + 1 } : material);
+    await seedLegacyCheckpoint(mismatchedLegacyRun, wrongLegacyMaterials);
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: materialStage }) }), 'paused');
+    assert.equal((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [mismatchedLegacyRun])).rows[0].reason,
+      'fact_extraction_checkpoint_mismatch');
+    assert.deepEqual((await runRow(mismatchedLegacyRun)).checkpoint.stages.materials_ready, { materials: wrongLegacyMaterials });
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [mismatchedLegacyRun])).rows[0].n, 0);
+    assert.equal((await send('POST', `/api/v1/runs/${mismatchedLegacyRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
+
+    const noFinancialInput = await project('legacy without financial material');
+    const noFinancialRun = (await execute(noFinancialInput)).json().run_id as string;
+    const noFinancialRow = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1', [noFinancialRun])).rows[0];
+    const nonfinancialReady = await materialsReadiness(pool, noFinancialRow);
+    assert.equal(nonfinancialReady.status, 'ready');
+    await seedLegacyCheckpoint(noFinancialRun, nonfinancialReady.materials.map(({ material_id, material_version, outcome }) =>
+      ({ material_id, material_version, outcome })));
     assert.equal(await runPipelineOnce({ pool, blobs, stages: stages() }), 'succeeded');
+    assert.deepEqual((await runRow(noFinancialRun)).checkpoint.stages.materials_ready.extractions, []);
+
+    // Two pinned financial sources: a producer error after the first commit cannot checkpoint
+    // the stage or enter the model. Recovery reuses that ledger and follows manifest order.
+    const multiProject = (await send('POST', '/api/v1/projects', { name: 'Synthetic ordered facts', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id as string;
+    const multiA = await upload(multiProject, Buffer.from(`synthetic finance A ${randomUUID()}`), 'text/plain', 'audit', 'a.txt');
+    const multiB = await upload(multiProject, Buffer.from(`synthetic finance B ${randomUUID()}`), 'text/plain', 'financial', 'b.txt');
+    assert.notEqual(multiA.material_id, multiB.material_id);
+    const multiInput = await project('multi', [multiA, multiB].map(material => ({ material_id: material.material_id,
+      material_version: material.material_version })), multiProject);
+    const multiRun = (await execute(multiInput)).json().run_id as string;
+    assert.equal(await runMaterialParseOnce(parseDeps), 'succeeded');
+    assert.equal(await runMaterialParseOnce(parseDeps), 'succeeded');
+    const pinnedFinancial = (await pool.query(`SELECT material_versions FROM bb_input_revisions
+      WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [alice, multiProject, multiInput.inputRevision])).rows[0].material_versions
+      .filter((ref: { material_id: string }) => [multiA.material_id, multiB.material_id].includes(ref.material_id)) as { material_id: string; material_version: number }[];
+    const multiExtractor: SemanticFactExtractor = { id: 'synthetic-ordered-financial', version: '1.0.0', extract: async request => ({
+      schema_version: SEMANTIC_FACT_EXTRACTION_RESULT_VERSION,
+      extractor: { id: 'synthetic-ordered-financial', version: '1.0.0' },
+      parse_snapshot: { snapshot_id: request.parse_snapshot_id, response_sha256: request.parse_response_sha256,
+        parser_version: request.parser_version, material_id: request.material_id, material_version: request.material_version,
+        content_sha256: request.material_sha256 },
+      facts: [{ extraction_id: `synthetic-${request.material_id}`, identity: { scope: 'consolidated', metric: 'operating_revenue',
+        period: { start: '2024-01-01', end: '2024-12-31' }, currency: 'CNY', unit: 'yuan', basis: 'reported_financial_statement' },
+        value: { kind: 'known', decimalOrText: '1' }, source_kind: request.material_id === multiB.material_id ? 'external' : 'audited', confidence: 1, uncertainty: [],
+        evidence_refs: [request.records[0]!.record_id] }], needs_review: [],
+    }) };
+    const seenMaterials: string[] = [];
+    let failSecond = true;
+    const multiStage = createMaterialsReadyStage(async context => {
+      seenMaterials.push(context.materialId);
+      if (failSecond && context.materialId === pinnedFinancial[1]!.material_id) throw new Error('SYNTHETIC_PRODUCER_UNAVAILABLE');
+      return produceParsedFactCandidates({ pool, extractor: multiExtractor }, context);
+    });
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: multiStage }) }), 'retry');
+    assert.deepEqual(seenMaterials, pinnedFinancial.map(ref => ref.material_id));
+    assert.equal((await runRow(multiRun)).checkpoint.stages.materials_ready, undefined);
+    assert.deepEqual(await attempts((await runRow(multiRun)).job_id), []);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [multiRun])).rows[0].n, 0);
+    assert.ok((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1", [multiRun])).rows.some(row => row.reason === 'material_fact_stage_failed'));
+    assert.ok((await pool.query("SELECT payload->>'reason' AS reason FROM bb_outbox WHERE aggregate_type='run' AND aggregate_id=$1 AND event_type='run.progress'", [multiRun])).rows.some(row => row.reason === 'material_fact_stage_failed'));
+    failSecond = false;
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: multiStage }) }), 'succeeded');
+    assert.deepEqual(seenMaterials, [...pinnedFinancial.map(ref => ref.material_id), ...pinnedFinancial.map(ref => ref.material_id)]);
+    assert.deepEqual((await runRow(multiRun)).checkpoint.stages.materials_ready.extractions.map((item: { material_id: string }) => item.material_id),
+      pinnedFinancial.map(ref => ref.material_id));
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id=$1 AND aggregate_id=$2 AND event_type='fact.extraction.completed'", [alice, multiProject])).rows[0].n, 2);
+
+    const legacyOrderedRun = (await execute(multiInput)).json().run_id as string;
+    const orderedMaterials = (await runRow(multiRun)).checkpoint.stages.materials_ready.materials as typeof legacyMaterials;
+    await seedLegacyCheckpoint(legacyOrderedRun, [...orderedMaterials].reverse());
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: stages({ materials: multiStage }) }), 'paused');
+    assert.deepEqual((await runRow(legacyOrderedRun)).checkpoint.stages.materials_ready, { materials: [...orderedMaterials].reverse() });
+    assert.equal((await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [legacyOrderedRun])).rows[0].reason,
+      'fact_extraction_checkpoint_mismatch');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [legacyOrderedRun])).rows[0].n, 0);
+    assert.equal((await send('POST', `/api/v1/runs/${legacyOrderedRun}/cancel`, { reason: 'synthetic cleanup' })).statusCode, 200);
 
     // 9. Graceful shutdown: in-flight work past the drain window is aborted and its lease released at once.
     const p8 = await project('shutdown');
