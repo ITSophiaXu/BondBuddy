@@ -1,13 +1,16 @@
 import type { FactStatus } from './facts.js';
 import type { RulePack } from './index.js';
+import { evaluateFinancialCheck, type FinancialCheckInput } from './sse-private-financial-checks.js';
 
 /** Internal, pure research evaluator. Not an API DTO, fact verifier or release authority. */
-export const SSE_PRIVATE_CHECKER_VERSION = '1';
+export const SSE_PRIVATE_CHECKER_VERSION = '2';
 export const SSE_PRIVATE_CHECKER_ID = 'sse-private-structured-evidence';
 export const SSE_PRIVATE_CHECKED_RULES = [
   'sse-private-private-investors', 'sse-private-financial-validity-sse',
   'sse-private-private-use-change', 'sse-private-idle-proceeds-2026',
   'sse-private-continuing-disclosure',
+  'sse-private-period-window', 'sse-private-audit-opinion',
+  'sse-private-financial-statements', 'sse-private-mdna-thresholds',
 ] as const;
 type RuleId = typeof SSE_PRIVATE_CHECKED_RULES[number];
 type Outcome = 'pass' | 'issue' | 'needs_evidence' | 'needs_judgement' | 'not_applicable';
@@ -17,7 +20,7 @@ export interface CheckEvidence<T> {
   /** Exact version-bound source anchors; supplied by the trusted fact/review adapter. */
   anchors: readonly string[];
 }
-export interface SsePrivateCheckInput {
+export interface SsePrivateCheckInput extends FinancialCheckInput {
   market: string | null;
   offering: string | null;
   /** Rule applicability date, never substituted with the financial cutoff. */
@@ -195,13 +198,15 @@ export function evaluateSsePrivateDraftChecks(pack: RulePack, input: SsePrivateC
       const deadline = [monthsAfter(start, 12), ...nodes].sort()[0]!;
       add('temporary_repayment_deadline', repayment < start || repayment > deadline ? 'issue' : repayment === deadline ? 'needs_judgement' : 'pass',
         `回收期限取12个月和原用途付款节点（如有）的孰早日${deadline}；正好落在边界日时须核对“日前”的合同安排，不能自动放行。`, data?.start, data?.repayment, data?.paymentNodes);
-    } else {
+    } else if (ruleId === 'sse-private-continuing-disclosure') {
       const data = input.continuingDisclosure;
       const yearEnd = day('financial_year_end', data?.financialYearEnd), halfEnd = day('half_year_end', data?.halfYearEnd);
       const annual = day('annual_disclosure_by', data?.promisedAnnualBy), interim = day('interim_disclosure_by', data?.promisedInterimBy);
       if (yearEnd && annual) add('annual_disclosure', annual >= yearEnd && annual <= reportingDeadline(yearEnd, 4) ? 'pass' : 'issue', '募集说明书约定年后4个月内披露上年度经审计财务报告。', data?.financialYearEnd, data?.promisedAnnualBy);
       if (halfEnd && interim) add('interim_disclosure', interim >= halfEnd && interim <= reportingDeadline(halfEnd, 2) ? 'pass' : 'issue', '募集说明书约定上半年结束后2个月内披露中期报告。', data?.halfYearEnd, data?.promisedInterimBy);
       expect('annual_audited', data?.annualAudited, true, '约定披露的年度财务报告应经审计。');
+    } else {
+      evaluateFinancialCheck(ruleId, input, asOf, { add, read, bool, day, expect });
     }
   }
   return {

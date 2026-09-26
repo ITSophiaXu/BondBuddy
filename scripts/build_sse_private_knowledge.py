@@ -9,6 +9,7 @@ from sse_private_knowledge_content import (
     VERSION, PREVIOUS_VERSION, EVIDENCE_VERSION, AUTHORED_AT,
     MAPPINGS, OVERRIDES, EXTRA_RULES, EXECUTABLE_CHECKS,
 )
+from sse_private_review_items import REVIEW_ITEMS
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / 'knowledge/exchange-bonds'
@@ -148,6 +149,7 @@ def apply_overlay(pack, template, coverage, documents):
     coverage_by_id = {item['item_id']: item for item in coverage['items']}
     chapter_by_id = {c['chapter_id']: c for c in template['chapters']}
     assert {r['rule_id'].removeprefix('sse-private-') for r in pack['rules']} == set(MAPPINGS)
+    assert set(REVIEW_ITEMS) == set(MAPPINGS)
     for rule in pack['rules']:
         key = rule['rule_id'].removeprefix('sse-private-')
         chapters, pairs, limit = MAPPINGS[key]
@@ -163,9 +165,9 @@ def apply_overlay(pack, template, coverage, documents):
             rule['boundaries'][0] = OVERRIDES[key]
         rule['boundaries'].append('官方取证与待验收边界：' + limit)
         if key in EXECUTABLE_CHECKS:
-            rule['version'] = '3'
+            rule['version'] = '4'
             rule['checker'] = {'checker_id':'sse-private-structured-evidence',
-                               'checker_version':'1','parameter_version':VERSION}
+                               'checker_version':'2','parameter_version':VERSION}
             rule['boundaries'][1] = '已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。'
         item = coverage_by_id.get(key, {'item_id':key,'area':rule['title'],'document_stages':['registration','issuance']})
         item.update(disposition='uncovered', source_ref_ids=rule['source_ref_ids'],
@@ -184,7 +186,7 @@ def apply_overlay(pack, template, coverage, documents):
                 'effective_to':documents[d]['effective_to']} for d,loc in pairs],
             'not_applicable_or_uncovered':limit, 'professional_review':'pending',
             'result_acceptance':'pending',
-            'engineering_check': 'bounded-research-check-v1' if key in EXECUTABLE_CHECKS else 'unimplemented',
+            'engineering_check': 'bounded-research-check-v2' if key in EXECUTABLE_CHECKS else 'unimplemented',
         })
     pack['sources'] = list(sources.values())
     coverage['items'] = list(coverage_by_id.values())
@@ -203,6 +205,18 @@ def apply_overlay(pack, template, coverage, documents):
         'chapters':[{'chapter_id':c['chapter_id'], 'rule_ids':[r['rule_id'] for r in rule_map if c['chapter_id'] in r['chapter_ids']],
                      'uncovered': '税务现行依据与具体税率待核；不因目录有税项就认定合规覆盖。' if c['chapter_id']=='tax' else '须在真实成果中逐项确认披露和证据。'} for c in template['chapters']],
     })
+    lines = ['# #20 逐条规则审核清单', '', f'版本：`{VERSION}`。31条全部待业务审核；9条有受限检查，22条尚未实现。', '',
+             '由 `scripts/sse_private_review_items.py` 与来源映射生成，不在本文件直接签认。正式审核记录须绑定此版本/commit、实际审核人及权限、时间、决定、理由和证据；本表不写入发布审批。', '',
+             '每条可选择同意、修改或待补证；同意文本方法不等于批准来源现行效力、真实财务事实或最终Word。工程检查的合成用例见 [交接](EXECUTABLE-CHECKS.md)，真实成果另填 [验收表](ACCEPTANCE.md)。', '']
+    for row in rule_map:
+        key = row['rule_id'].removeprefix('sse-private-')
+        decision, next_step = REVIEW_ITEMS[key]
+        refs = ' · '.join(f'[{d}/{loc}](../../verification/2026-09-26/sources/{d}.md#{loc.lower()})' for d, loc in MAPPINGS[key][1]) or '本切片尚无经登记的官方依据，待补齐。'
+        lines += [f'## {row["title"]}', '', f'规则：`{row["rule_id"]}`；工程：{row["engineering_check"]}；业务审核：待填写。', '',
+                  '具体审核决定/反例：' + decision, '', '依据：' + refs, '',
+                  '范围与保留项：' + row['not_applicable_or_uncovered'], '', '下一份交付：' + next_step, '',
+                  '审核决定、理由、证据记录：待填写。', '']
+    (BASE / 'drafts/sse-private/RULE-REVIEW-CHECKLIST.md').write_text('\n'.join(lines), 'utf8')
     return pack, template, coverage
 
 

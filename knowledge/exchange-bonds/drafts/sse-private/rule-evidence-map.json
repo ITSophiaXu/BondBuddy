@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.26-draft.3",
+  "version": "2026.09.26-draft.4",
   "status": "research_only",
   "rules": [
     {
@@ -107,7 +107,7 @@
       "not_applicable_or_uncovered": "8.1.4是财务材料两年及一期要求，不自动缩短业务、评级、重组等独立回溯期间；年末、成立不足两年及豁免按证据判断。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-evidence-state",
@@ -246,7 +246,7 @@
       "not_applicable_or_uncovered": "200人分别检查发行及同次债券转让后持有人；机构适当性分类、穿透或例外仍需投资者适当性完整规则。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v1"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-financial-validity-sse",
@@ -301,7 +301,7 @@
       "not_applicable_or_uncovered": "有效期截止日后新申报应更新材料；在审封卷延期不是自动宽限，须申请和交易所同意。缺申报日/批准证据不能判通过。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v1"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-current-terms",
@@ -505,7 +505,7 @@
       "not_applicable_or_uncovered": "3.2中公募跨用途类别的会议要求不直接变成所有私募要求；私募仍受8.4.1的未约定/重大影响和3.1限定偿债限制。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v1"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-funds-simulation",
@@ -764,7 +764,7 @@
       "not_applicable_or_uncovered": "非标事项说明应来自有权机构/会计师。中期未经审计不可写成审计通过；缺意见页仍可生成标记缺口的工作稿。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-financial-statements",
@@ -783,6 +783,7 @@
         "ex038-p00618",
         "ex038-p00619",
         "ex038-p00623",
+        "ov-sse-application-2023-p00195",
         "ov-sse-application-2023-p00196",
         "ov-sse-application-2023-p00199",
         "ov-sse-application-2023-p00200",
@@ -790,6 +791,13 @@
         "ov-sse-application-2023-p00443"
       ],
       "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00195",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
         {
           "document_id": "sse-application-2023",
           "locator": "P00196",
@@ -829,7 +837,7 @@
       "not_applicable_or_uncovered": "私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-indicators",
@@ -908,7 +916,7 @@
       "not_applicable_or_uncovered": "10%以上/30%以上保留原文字义；低于阈值不豁免重大事项，零/负基数不机械使用百分比。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-cause-evidence",
@@ -1564,7 +1572,7 @@
       "not_applicable_or_uncovered": "受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v1"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-continuing-disclosure",
@@ -1608,7 +1616,7 @@
       "not_applicable_or_uncovered": "此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v1"
+      "engineering_check": "bounded-research-check-v2"
     },
     {
       "rule_id": "sse-private-disclosure-officer-2026",
