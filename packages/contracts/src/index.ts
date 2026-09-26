@@ -18,6 +18,7 @@ export * from './ops-scheduler.js'; // #79 scheduled ops
 // --- end #17 worker runtime ---
 import { trialSchemas, TRIAL_GUARD_ERROR_CODES, TRIAL_ADMIN_OPERATIONS, trialOpenApiPaths } from './trial-guard.js'; export * from './trial-guard.js'; // #35 trial guard
 export * from './reference-library.js';
+export * from './user-reference.js';
 export * from './platform-probe.js'; // #79/#16 platform probe
 import { agreementSchemas, agreementOpenApiPaths } from './agreement.js'; export * from './agreement.js'; // #7 registration agreement
 import { factSchemas } from './facts.js'; export * from './facts.js'; // #15 owner-scoped fact review API
@@ -159,7 +160,7 @@ export const schemas = {
     latest_run: Type.Optional(nullable(obj({ run_id: id, state: runState, updated_at: utc }))),
     latest_artifact: Type.Optional(nullable(obj({ artifact_id: id, run_id: id, version: revision, created_at: utc })))
   })), page: PageSchema }),
-  InputRevisionCreateRequest: obj({ draft_revision: revision, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), requirement_message_ids: Type.Array(id), rule_applicability_context_ref: Type.Optional(obj({ context_id: id, version: revision, content_hash: hash, source_input_revision: revision, source_input_hash: hash })) }),
+  InputRevisionCreateRequest: obj({ draft_revision: revision, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), requirement_message_ids: Type.Array(id), user_reference: Type.Optional(obj({ material_id: id, material_version: revision, material_sha256: hash, parse_snapshot_id: id, target_product: id, target_document_stage: id })), rule_applicability_context_ref: Type.Optional(obj({ context_id: id, version: revision, content_hash: hash, source_input_revision: revision, source_input_hash: hash })) }),
   InputRevisionResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), rule_pack_version: nullable(Type.String()), template_version: nullable(Type.String()), reference_release: nullable(Type.String()), created_at: utc }),
   UploadCreateRequest: Type.Object({ filename: Type.String({ minLength: 1 }), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, role: materialRole }, { additionalProperties: false, if: { properties: { role: { enum: ['historical', 'reference'] } } }, then: { properties: { media_type: { enum: [M1_UPLOAD_MIME_TYPES[0], M1_UPLOAD_MIME_TYPES[1]] } } } }),
   UploadSessionResponse: obj({ upload_id: id, state: Type.Literal('uploading'), upload_url: Type.String({ description: 'Short-lived, scoped URL; never store or log it.' }), expires_at: utc, max_bytes: Type.Integer({ minimum: 1 }) }),

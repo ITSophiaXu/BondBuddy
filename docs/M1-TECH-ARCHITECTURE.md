@@ -375,3 +375,7 @@ This is 31 disabled research candidates, not a production checker or release. Of
 `python/bondbuddy_ocr` 提供独立 `ocr-request-v1`/`ocr-response-v1`，保留 #13 原生契约。受信 worker 校验 owner、不可变材料和 hash，运行 Tesseract 并将派生页面/结果写私有 Blob；source_preflight 默认三页、最多五页，完整 OCR 必须绑定已有有效 run 和其材料快照，M1 均 platform-paid。原页坐标、识别/方向版本、语言包 hash、表格候选、数值原文及 uncertainty 一并保留。
 
 `0017_m1_ocr_review.sql` 保存追加式快照引用和用户校正；`apps/api/src/ocr.ts` 提供 owner 限定读取、原页及带 expected_revision 的校正，状态 outbox 不含正文。`apps/web/src/ocr-review.ts` 提供原页片段核对；所有 OCR 和用户校正仍不具备 manuscript eligibility，不能用用户说明替代审计事实。上传自动预检调度、#15/#76 适配、复杂跨页表格准确率和派生文件物理清理尚待对应流程。详细契约/运行/验收边界见 `python/OCR-HANDOFF.md`。
+
+### #17 用户参考稿结构锁（2026-09-26）
+
+用户主动上传的相似稿与平台参考库分开锁定。新增 `0046_m1_user_reference_pins.sql`，保存追加式审核结论和每个 input revision 的不可变 pin；迁移不预置审核权限或通过结论。input lock 只接受 generation 中已列入 manifest 的本人项目 `reference` 材料版本，核对 SHA-256 和同源 parsed snapshot。pin 同时进入 `input_hash`，包含材料版本/hash、snapshot、授权/可读性/目标适用状态、目标市场/发行方式/品种/文书阶段、审核引用和事实隔离检查版本。审核必须匹配完整目标且授权仍有效；没有已审核结论时为 `needs_review`，后续审核只能创建新 input revision。`user-reference-outline-v1` 在后台任务进程重验材料、snapshot、审核和 grant 后只投影审核过的章节顺序与标题；解析正文和参考发行人事实不进入模型输入。未选择用户参考稿时，#33 继续使用 #77 库选择链。业务审核口径和授权由业务负责人确定，此切片不增加前台选择页或审核入口。
