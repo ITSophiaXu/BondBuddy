@@ -1,3 +1,4 @@
+import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
@@ -78,10 +79,29 @@ function signedOut(message = '') {
 sessionChannel?.addEventListener('message', () => signedOut('账号会话已在其他页面更改，请重新登录。'));
 
 let signedOutView = false;
+let recoveryToken: string | undefined;
+function captureResetToken() {
+  const match=location.hash.match(/^#\/reset\/([A-Za-z0-9_-]{43})$/);
+  if(!match)return false;
+  recoveryToken=match[1];
+  history.replaceState(null,'',`${location.pathname}${location.search}#/reset`);
+  return true;
+}
+function publicRecovery(mode: 'request' | 'reset') {
+  signedOutView=true;
+  const token=++epoch;
+  void renderRecoveryPage(api,root,mode,recoveryToken,()=>token===epoch,()=>{
+    recoveryToken=undefined;signedOut('密码已重置，请使用新密码重新登录。');sessionChannel?.postMessage('changed');
+  });
+}
 function routeSignedOut(hash = location.hash) {
-  const route = ['#/data-policy', '#/register'].includes(hash) ? hash : '#/';
+  epoch++;
+  const route = ['#/data-policy', '#/register', '#/recover', '#/reset'].includes(hash) ? hash : '#/';
+  if(route!=='#/reset')recoveryToken=undefined;
   if (location.hash !== route) history.replaceState(null, '', `${location.pathname}${location.search}${route}`);
-  if (route === '#/data-policy') renderPublicPolicy();
+  if (route === '#/recover') publicRecovery('request');
+  else if (route === '#/reset') publicRecovery('reset');
+  else if (route === '#/data-policy') renderPublicPolicy();
   else if (route === '#/register') renderLogin('', 'register');
   else renderLogin();
 }
@@ -110,7 +130,7 @@ function renderLogin(message = '', mode: 'login' | 'register' = 'login') {
     : `<form id="login-form"><label for="username">用户名</label><input id="username" name="username" autocomplete="username" required minlength="3" maxlength="32" autocapitalize="none" spellcheck="false"/>
       <label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="512"/>
       <p id="login-message" class="form-message" role="status">${esc(message)}</p><button class="button primary" type="submit">登录</button></form>
-      <p class="switch-note">没有账号？<a id="to-register" href="#/register">注册</a></p>`;
+      <p class="switch-note">没有账号？<a id="to-register" href="#/register">注册</a></p><p id="login-recovery" class="switch-note"></p>`;
   root.innerHTML = `<main id="main" class="login-layout" tabindex="-1">
     <div class="login-intro"><a class="brand" href="#/"><img src="/favicon.svg" alt=""/>BondBuddy</a>
       <div><p class="eyebrow">债券项目工作空间</p><h1>把每一次准备，<br/>接着做下去。</h1><p>项目资料按账号保存。重新登录，<br/>继续上次的工作。</p></div>
@@ -120,7 +140,11 @@ function renderLogin(message = '', mode: 'login' | 'register' = 'login') {
       : '<p class="eyebrow">欢迎回来</p><h2 id="login-title">登录工作区</h2><p class="muted">使用已有的用户名和密码登录。</p>'}
       ${form}
       <p class="privacy-note">项目资料保存在平台工作区，仅限当前账号访问。</p></section></main>`;
-  if (registering) bindRegister(); else bindLogin();
+  if (registering) bindRegister(); else {
+    bindLogin();
+    const link=document.querySelector<HTMLElement>('#login-recovery');
+    void api.recoveryInfo().then(info=>{if(link?.isConnected && info.enabled)link.innerHTML='<a href="#/recover">忘记密码？联系客服找回</a>';}).catch(()=>{});
+  }
 }
 
 function bindLogin() {
@@ -790,7 +814,7 @@ function bindMaterialWorkspace(projectId: string) {
   });
 }
 
-window.addEventListener('hashchange', () => { if (!identity) { if (signedOutView) routeSignedOut(); return; } void renderRoute(); });
+window.addEventListener('hashchange', () => { if(captureResetToken()){clearPrivateState();publicRecovery('reset');return;} if (!identity) { if (signedOutView) routeSignedOut(); return; } void renderRoute(); });
 document.querySelector('.skip-link')!.addEventListener('click', event => {
   event.preventDefault(); document.querySelector<HTMLElement>('#main')?.focus();
 });
@@ -811,6 +835,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function start() {
+  if(captureResetToken() || location.hash==='#/reset'){publicRecovery('reset');return;}
   const token = ++epoch;
   try {
     const me = await api.me();
