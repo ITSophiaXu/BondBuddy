@@ -10,11 +10,12 @@ import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 import pdfplumber
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
@@ -27,6 +28,7 @@ from bondbuddy_document_parser.parser import (
     MEDIA_XLSX,
     parse_request,
 )
+from bondbuddy_document_parser import parser as parser_module
 
 
 def digest(path: Path) -> str:
@@ -396,6 +398,60 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["document"]["cached_formula_results"], 1)
         self.assertTrue(any(warning["code"] == "XLSX_FORMULA_CACHE_UNVERIFIED" for warning in result["warnings"]))
         self.assertEqual(result["status"], "needs_confirmation")
+
+    def test_xlsx_external_workbook_cache_is_unverified_without_loading_target(self):
+        source = self.root / "external-formula-source.xlsx"
+        path = self.root / "external-formula.xlsx"
+        book = Workbook()
+        book.active["A1"] = "=[1]Source!A1"
+        book.save(source)
+
+        sheet_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        package_rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+        type_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as target:
+            for info in original.infolist():
+                payload = original.read(info.filename)
+                if info.filename == "xl/worksheets/sheet1.xml":
+                    root = ET.fromstring(payload)
+                    cell = root.find(f".//{{{sheet_ns}}}c[@r='A1']")
+                    self.assertIsNotNone(cell)
+                    value = cell.find(f"{{{sheet_ns}}}v")
+                    if value is None:
+                        value = ET.SubElement(cell, f"{{{sheet_ns}}}v")
+                    value.text = "42"
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif info.filename == "xl/workbook.xml":
+                    root = ET.fromstring(payload)
+                    references = ET.SubElement(root, f"{{{sheet_ns}}}externalReferences")
+                    ET.SubElement(references, f"{{{sheet_ns}}}externalReference", {f"{{{rel_ns}}}id": "rIdExternal"})
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif info.filename == "xl/_rels/workbook.xml.rels":
+                    root = ET.fromstring(payload)
+                    ET.SubElement(root, f"{{{package_rel_ns}}}Relationship", {
+                        "Id": "rIdExternal", "Type": f"{rel_ns}/externalLink", "Target": "externalLinks/externalLink1.xml",
+                    })
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif info.filename == "[Content_Types].xml":
+                    root = ET.fromstring(payload)
+                    ET.SubElement(root, f"{{{type_ns}}}Override", {
+                        "PartName": "/xl/externalLinks/externalLink1.xml",
+                        "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml",
+                    })
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                target.writestr(info, payload)
+            target.writestr("xl/externalLinks/externalLink1.xml", f'<externalLink xmlns="{sheet_ns}" xmlns:r="{rel_ns}"><externalBook r:id="rId1"/></externalLink>')
+            target.writestr("xl/externalLinks/_rels/externalLink1.xml.rels", f'<Relationships xmlns="{package_rel_ns}"><Relationship Id="rId1" Type="{rel_ns}/externalLinkPath" Target="file:///nonexistent/synthetic-source.xlsx" TargetMode="External"/></Relationships>')
+
+        with patch.object(parser_module, "load_workbook", wraps=load_workbook) as loader:
+            result = self.request(path, MEDIA_XLSX)
+        self.assertEqual([call.kwargs["keep_links"] for call in loader.call_args_list], [False, False])
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertEqual(result["document"]["cached_formula_results"], 1)
+        formula = next(record for record in result["records"] if record["literal_quote"] == "=[1]Source!A1")
+        self.assertEqual(formula["formatting"]["cached_formula_result"], "42")
+        self.assertIn("formula_cached_result_unverified", formula["uncertainty"])
 
     def test_csv_and_text_have_native_positions(self):
         csv_path = self.root / "synthetic.csv"

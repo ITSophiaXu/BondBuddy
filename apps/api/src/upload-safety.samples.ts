@@ -148,7 +148,7 @@ const xlsxContentTypes = Buffer.from(
   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>'
 );
 
-function xlsxParts(sheet = worksheet, extra: readonly ZipPart[] = []): ZipPart[] {
+function xlsxParts(sheet: Buffer = worksheet, extra: readonly ZipPart[] = []): ZipPart[] {
   return [
     { name: '[Content_Types].xml', contents: xlsxContentTypes },
     { name: '_rels/.rels', contents: Buffer.from(wordRelationships.toString().replace('word/document.xml', 'xl/workbook.xml')) },
@@ -182,8 +182,9 @@ export function externalRelationshipXlsxSample(target: string): Promise<Buffer> 
   return createZip(xlsxParts().map(part => part.name === 'xl/_rels/workbook.xml.rels' ? { ...part, contents: rels } : part));
 }
 
-export function externalLinkPartXlsxSample(): Promise<Buffer> {
-  const parts = xlsxParts().map(part => {
+export function externalLinkPartXlsxSample(options: { linkXml?: string; extraParts?: ZipPart[]; sheet?: Buffer } = {}): Promise<Buffer> {
+  const linkedSheet = options.sheet ?? Buffer.from('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><f>[1]Source!A1</f><v>42</v></c></row></sheetData></worksheet>');
+  const parts = xlsxParts(linkedSheet, options.extraParts).map(part => {
     if (part.name === '[Content_Types].xml') return {
       ...part,
       contents: Buffer.from(part.contents.toString().replace('</Types>', '<Override PartName="/xl/externalLinks/externalLink1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml"/></Types>'))
@@ -200,7 +201,7 @@ export function externalLinkPartXlsxSample(): Promise<Buffer> {
   });
   return createZip([
     ...parts,
-    { name: 'xl/externalLinks/externalLink1.xml', contents: Buffer.from('<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/></externalLink>') },
+    { name: 'xl/externalLinks/externalLink1.xml', contents: Buffer.from(options.linkXml ?? '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/></externalLink>') },
     { name: 'xl/externalLinks/_rels/externalLink1.xml.rels', contents: Buffer.from('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/source.xlsx" TargetMode="External"/></Relationships>') }
   ]);
 }

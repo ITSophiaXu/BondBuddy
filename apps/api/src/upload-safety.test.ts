@@ -114,15 +114,21 @@ test('only bounded, absolute DOCX http/https/mailto hyperlink relationships are 
   await expectInspectionFailure(await externalRelationshipXlsxSample('https://example.invalid'), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
 });
 
-test('XLSX external-link package parts stay rejected on both upload inspection paths', async () => {
+test('passive XLSX workbook links are accepted on both upload inspection paths', async () => {
   const bytes = await externalLinkPartXlsxSample();
-  const rejected = await outcome(verifiedMedia(bytes, XLSX));
-  assert.deepEqual(rejected, {
-    status: 415,
-    code: 'MATERIAL_FORMAT_UNSUPPORTED',
-    message: 'Office package contains embedded, macro, externally loaded, or nested-container content'
-  });
-  assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, XLSX))), rejected);
+  assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+  assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+});
+
+test('XLSX external links never grant DDE, OLE, macros or malformed XML a path through inspection', async () => {
+  const wrapper = (body: string) => `<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${body}</externalLink>`;
+  for (const tag of ['ddeLink', 'oleLink']) {
+    await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: wrapper(`<${tag}/>`)}), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  }
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ extraParts: [{ name: 'xl/vbaProject.bin', contents: Buffer.from('synthetic macro') }] }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: wrapper('<externalBook r:id="rId1">') }), XLSX, 422, 'MATERIAL_UNREADABLE');
+  const unknown = Buffer.from('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><f>[2]Source!A1</f><v>42</v></c></row></sheetData></worksheet>');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ sheet: unknown }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
 });
 
 test('Office XML parts remain capped at 16 MiB despite the authorized large document', async () => {
