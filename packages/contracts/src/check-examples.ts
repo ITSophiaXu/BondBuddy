@@ -2,7 +2,7 @@ import { Ajv } from 'ajv';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, type SchemaName } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, type SchemaName } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -32,6 +32,14 @@ const recoveryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examp
 assert.equal(recoveryExamples.synthetic,true); data.cases.push(...recoveryExamples.cases);
 const issuerReviewExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/issuer-identity-review.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(issuerReviewExamples.synthetic,true); data.cases.push(...issuerReviewExamples.cases);
+const userReferenceReview = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/user-reference-review.json', import.meta.url)), 'utf8')) as {
+  synthetic: boolean; snapshot: Parameters<typeof userReferenceParseReviewAccepted>[0];
+  review: { confirmed_warning_codes: string[]; outline: unknown; signed_outline_sha256: string };
+};
+assert.equal(userReferenceReview.synthetic,true);
+assert.ok(validUserReferenceOutline(userReferenceReview.review.outline));
+assert.match(userReferenceReview.review.signed_outline_sha256,/^[a-f0-9]{64}$/);
+assert.equal(userReferenceParseReviewAccepted(userReferenceReview.snapshot,userReferenceReview.review.confirmed_warning_codes),true);
 assert.equal(data.synthetic, true);
 // #78 internal library query v1: validated here, and proven absent from the public OpenAPI document.
 const libraryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/reference-library.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Array<{ name: string; schema: keyof typeof referenceLibrarySchemas; valid: boolean; value: unknown }> };

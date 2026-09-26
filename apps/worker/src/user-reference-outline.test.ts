@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool, type PoolClient } from 'pg';
 import { createServer } from '@bondbuddy/api';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { loadUserReferenceOutline } from './user-reference-outline.js';
 
 const url = process.env.BB_TEST_DATABASE_URL;
@@ -39,12 +40,13 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
   let activeOwner = owner;
   const app = createServer({ pool, allowedOrigin: origin, enableRunRuntime: true,
     principal: async () => ({ userId: activeOwner, csrfVerified: true }) });
-  const request = (material: string, hash = materialHash, inputOwner = owner) => {
+  const request = (material: string, hash = materialHash, inputOwner = owner,
+    targetProduct = 'synthetic_bond', targetStage = 'draft', parseId = snapshotId) => {
     activeOwner = inputOwner;
     return app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin }, payload: {
       draft_revision: 1, material_versions: [{ material_id: material, material_version: 1 }], requirement_message_ids: [],
       user_reference: { material_id: material, material_version: 1, material_sha256: hash,
-        parse_snapshot_id: snapshotId, target_product: 'synthetic_bond', target_document_stage: 'draft' },
+        parse_snapshot_id: parseId, target_product: targetProduct, target_document_stage: targetStage },
     } });
   };
   try {
@@ -70,6 +72,14 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
       response_status,response_schema_version,response_sha256,record_count,response_meta)
       VALUES($1,$2,$3,$4,1,$5,'synthetic-parser',$6,'parsed','document-parse-response-v1',$7,1,$8)`,
       [snapshotId,owner,projectId,materialId,materialHash,sha(`request${suffix}`),sha(`response${suffix}`),JSON.stringify(meta)]);
+    const addEvidence = async (parseId:string) => connection.query(`INSERT INTO bb_parse_evidence
+      (owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,
+       locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,
+       uncertainty,formatting,record_sha256,ordinal)
+      VALUES($1,$2,$3,1,$4,$5,$6,'docx_block','{}','发行概况','',
+        'native_text','synthetic-parser',1,'[]','{}',$7,0)`,
+    [owner,projectId,materialId,parseId,`record${parseId}`,materialHash,sha(`record${parseId}`)]);
+    await addEvidence(snapshotId);
 
     assert.equal((await request(materialId, materialHash, foreign)).statusCode, 404, 'foreign owner cannot lock');
     assert.equal((await request(wrongRoleId)).statusCode, 422, 'wrong role cannot lock');
@@ -100,13 +110,25 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
     const grantId = `refgrant${suffix}`, reviewId = `refreview${suffix}`;
     await connection.query(`INSERT INTO bb_user_reference_reviewer_grants(id,reviewer_user_id,granted_by)
       VALUES($1,$2,$3)`, [grantId,reviewer,grantor]);
+    const targetHash = inputManifestHash({ market:'sse',offering:'private',product:'synthetic_bond',document_stage:'draft' });
+    await connection.query(`INSERT INTO bb_user_reference_target_contexts(id,owner_user_id,project_id,target_market,
+      target_offering,target_product,target_document_stage,content_hash,status,reviewer_user_id,reviewer_grant_id)
+      VALUES($1,$2,$3,'sse','private','synthetic_bond','draft',$4,'accepted',$5,$6)`,
+      [`reftarget${suffix}`,owner,projectId,targetHash,reviewer,grantId]);
+    assert.equal((await request(materialId,materialHash,owner,'other_bond','draft')).statusCode,422,
+      'client product cannot select a different reviewed target');
+    assert.equal((await request(materialId,materialHash,owner,'synthetic_bond','issuance')).statusCode,422,
+      'client document stage cannot select a different reviewed target');
+    const signedOutline = [{ order: 1, heading: '发行概况' }];
     await connection.query(`INSERT INTO bb_user_reference_reviews(id,owner_user_id,project_id,material_id,material_version,
       material_sha256,parse_snapshot_id,target_market,target_offering,target_product,target_document_stage,
       authorization_status,readability_status,applicability_status,status,fact_isolation_check_version,outline,
+      confirmed_warning_codes,parse_response_sha256,signed_outline_sha256,
       reviewer_user_id,reviewer_grant_id)
       VALUES($1,$2,$3,$4,1,$5,$6,'sse','private','synthetic_bond','draft',
-        'accepted','accepted','accepted','accepted','synthetic-isolation-v1',$7,$8,$9)`,
-      [reviewId,owner,projectId,materialId,materialHash,snapshotId,JSON.stringify([{ order: 1, heading: '发行概况' }]),reviewer,grantId]);
+        'accepted','accepted','accepted','accepted','synthetic-isolation-v1',$7,'[]',$8,$9,$10,$11)`,
+      [reviewId,owner,projectId,materialId,materialHash,snapshotId,JSON.stringify(signedOutline),
+        sha(`response${suffix}`),inputManifestHash(signedOutline),reviewer,grantId]);
     const accepted = await request(materialId);
     assert.equal(accepted.statusCode, 201, accepted.body);
     const second = accepted.json();
@@ -119,10 +141,36 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
       assert.deepEqual(Object.keys(loaded.outline.chapters[0]!).sort(), ['heading','order'], 'no source facts or body fields');
     }
     assert.notEqual(first.input_hash, second.input_hash, 'review decision produces a new immutable input');
+    const warningSnapshotId = `refwarnsnapshot${suffix}`, warningResponseHash = sha(`warningresponse${suffix}`);
+    const warningMeta = { ...meta, request_id:`warningparse${suffix}`,status:'needs_confirmation',
+      parser_version:'synthetic-parser-warning',warnings:[
+        {code:'DOCX_DRAWINGS',message:'synthetic drawing'},
+        {code:'DOCX_AUXILIARY_PARTS',message:'synthetic auxiliary part'}] };
+    await connection.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,
+      content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,
+      record_count,response_meta) VALUES($1,$2,$3,$4,1,$5,'synthetic-parser-warning',$6,
+      'needs_confirmation','document-parse-response-v1',$7,1,$8)`,
+      [warningSnapshotId,owner,projectId,materialId,materialHash,sha(`warningrequest${suffix}`),
+        warningResponseHash,JSON.stringify(warningMeta)]);
+    await addEvidence(warningSnapshotId);
+    await connection.query(`INSERT INTO bb_user_reference_reviews(id,owner_user_id,project_id,material_id,material_version,
+      material_sha256,parse_snapshot_id,target_market,target_offering,target_product,target_document_stage,
+      authorization_status,readability_status,applicability_status,status,fact_isolation_check_version,outline,
+      confirmed_warning_codes,parse_response_sha256,signed_outline_sha256,reviewer_user_id,reviewer_grant_id)
+      VALUES($1,$2,$3,$4,1,$5,$6,'sse','private','synthetic_bond','draft',
+      'accepted','accepted','accepted','accepted','synthetic-isolation-v1',$7,$8,$9,$10,$11,$12)`,
+      [`refwarnreview${suffix}`,owner,projectId,materialId,materialHash,warningSnapshotId,
+        JSON.stringify(signedOutline),JSON.stringify(['DOCX_AUXILIARY_PARTS','DOCX_DRAWINGS']),
+        warningResponseHash,inputManifestHash(signedOutline),reviewer,grantId]);
+    const warningAccepted = await request(materialId,materialHash,owner,'synthetic_bond','draft',warningSnapshotId);
+    assert.equal(warningAccepted.statusCode,201,warningAccepted.body);
+    const warningInput = warningAccepted.json();
+    assert.equal((await loadUserReferenceOutline(pool,{...scope,inputRevision:warningInput.input_revision,
+      inputHash:warningInput.input_hash})).status,'accepted','confirmed body-safe DOCX warnings may be accepted');
     const changedReplay = await execute({ ...execution, input_revision: second.input_revision, input_hash: second.input_hash });
     assert.equal(changedReplay.statusCode, 409, 'same execution key cannot switch its locked input');
     await connection.query('UPDATE bb_user_reference_reviewer_grants SET revoked_at=now() WHERE id=$1', [grantId]);
-    assert.deepEqual(await loadUserReferenceOutline(pool, acceptedScope), { status: 'needs_review', reason: 'review_stale' },
+    assert.deepEqual(await loadUserReferenceOutline(pool, acceptedScope), { status: 'needs_review', reason: 'target_context_stale' },
       'revoking a reviewer grant pauses the same immutable input');
     await connection.query('SAVEPOINT immutable_pin');
     await assert.rejects(connection.query(`UPDATE bb_user_reference_pins SET status='rejected' WHERE project_id=$1 AND input_revision=$2`,
