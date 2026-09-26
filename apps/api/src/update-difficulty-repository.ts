@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
-import { M1_MATERIAL_PARTITIONS, emptyUpdateDetails, schemas, updateDetailsErrors, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, emptyUpdateDetails, isMarketOffering, MARKETS, OFFERINGS, schemas, updateDetailsErrors, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
 import { estimateUpdateDifficulty, type CutoffDecision, type TargetReportingPeriod, type UpdateDifficultyEstimate, type UserAssertedTargetPeriod } from '@bondbuddy/domain/update-difficulty';
 import { parseHistoricalNativeExtractorVersion } from '@bondbuddy/domain/historical-native-extractor-version';
+import { canonicalTargetPeriods, type TargetConfirmation } from './target-confirmation.js';
 
 export interface UpdateDifficultyClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -34,6 +35,8 @@ export interface TrustedUpdateDifficultyInput {
   readonly financialMaterialVersions: readonly { readonly materialId: string; readonly materialVersion: number }[];
   /** Periods and decisions come from a trusted server-side target/material workflow. */
   readonly targetReportingPeriods: readonly TargetReportingPeriod[];
+  /** Explicit user intent from the exact locked revision; never financial evidence. */
+  readonly targetConfirmation?: TargetConfirmation;
   readonly replacements: readonly CutoffDecision[];
   readonly restatements: readonly CutoffDecision[];
   readonly requestId: string;
@@ -60,6 +63,7 @@ export interface StoredUpdateDifficultySnapshot {
     readonly targetReportingPeriods: readonly TargetReportingPeriod[];
     readonly replacements: readonly CutoffDecision[];
     readonly restatements: readonly CutoffDecision[];
+    readonly targetConfirmation?: TargetConfirmation;
   };
   /** The profile does not currently carry a reviewed document-level completeness assessment. */
   readonly oldProfileCompleteness: 'complete' | 'incomplete' | 'undetermined';
@@ -133,6 +137,8 @@ export function classifyUpdateDifficultyFailure(error: unknown): ClassifiedUpdat
     FINANCIAL_MATERIAL_NOT_IN_INPUT_REVISION: 'data_integrity',
     HISTORICAL_MATERIAL_SELECTION_MISMATCH: 'data_integrity',
     TARGET_REPORTING_PERIODS_LOCK_MISMATCH: 'data_integrity',
+    TARGET_CONFIRMATION_REQUIRED: 'pending_input',
+    TARGET_CONFIRMATION_INVALID: 'data_integrity',
   };
   return { category: categories[code] ?? 'internal', code };
 }
@@ -150,6 +156,7 @@ function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput): string {
     source: input.source,
     financialMaterialVersions,
     targetReportingPeriods: input.targetReportingPeriods,
+    targetConfirmation: input.targetConfirmation ?? null,
     replacements: input.replacements,
     restatements: input.restatements,
   };
@@ -190,7 +197,8 @@ function mapRow(row: Record<string, unknown>, replayed: boolean): StoredUpdateDi
   const estimate = parseJson(row.estimate);
   if (!Array.isArray(materials) || !materials.every(item => isRecord(item) && typeof item.materialId === 'string' && Number.isSafeInteger(item.materialVersion)) ||
       !isRecord(comparisonInput) || !Array.isArray(comparisonInput.targetReportingPeriods) || !Array.isArray(comparisonInput.replacements) ||
-      !Array.isArray(comparisonInput.restatements) || !isRecord(estimate) || !validateEstimate(estimate)) throw fail('INVALID_UPDATE_DIFFICULTY_ROW');
+      !Array.isArray(comparisonInput.restatements) || !isRecord(estimate) || !validateEstimate(estimate) ||
+      (comparisonInput.targetConfirmation !== undefined && !isRecord(comparisonInput.targetConfirmation))) throw fail('INVALID_UPDATE_DIFFICULTY_ROW');
   return {
     id: String(row.id), ownerUserId: String(row.owner_user_id), projectId: String(row.project_id), requestId: String(row.request_id),
     requestHash: String(row.request_hash).trim(), sourceMaterialId: String(row.source_material_id),
@@ -234,6 +242,53 @@ function manifestTargetPeriods(manifest: Record<string, unknown>): UserAssertedT
   return periods;
 }
 
+function normalizedTimestamp(value: unknown): number | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+function isMarket(value: unknown): value is Market { return typeof value === 'string' && MARKETS.some(market => market === value); }
+function isOffering(value: unknown): value is Offering { return typeof value === 'string' && OFFERINGS.some(offering => offering === value); }
+
+function sameTargetConfirmation(manifest: Record<string, unknown>, persisted: TargetConfirmation | null,
+  periods: readonly TargetReportingPeriod[], project: Record<string, unknown>): TargetConfirmation {
+  const asserted = manifest.target_confirmation;
+  if (!isRecord(asserted) || asserted.status !== 'confirmed') {
+    if (isRecord(asserted) && asserted.status === 'unconfirmed') throw fail('TARGET_CONFIRMATION_REQUIRED');
+    throw fail('TARGET_CONFIRMATION_INVALID');
+  }
+  if (persisted === null) throw fail('TARGET_CONFIRMATION_INVALID');
+  const assertedAt = normalizedTimestamp(asserted.confirmed_at);
+  const persistedAt = normalizedTimestamp(persisted.confirmed_at);
+  const purpose = asserted.document_purpose;
+  const asOf = asserted.as_of;
+  const validAsOf = asOf === null || (typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asOf) &&
+    !Number.isNaN(Date.parse(`${asOf}T00:00:00.000Z`)) && new Date(`${asOf}T00:00:00.000Z`).toISOString().slice(0, 10) === asOf);
+  const normalizedPeriodSet = (value: unknown): unknown => {
+    if (!Array.isArray(value)) throw fail('TARGET_CONFIRMATION_INVALID');
+    try {
+      const validated = value.map(targetPeriodFromManifest).map(period => ({ ...period, evidence_refs: [] as string[] }));
+      return canonicalTargetPeriods(validated);
+    } catch { throw fail('TARGET_CONFIRMATION_INVALID'); }
+  };
+  const normalizedAssertedPeriods = normalizedPeriodSet(asserted.target_reporting_periods);
+  const normalizedPersistedPeriods = normalizedPeriodSet(persisted.target_reporting_periods);
+  const normalizedManifestPeriods = normalizedPeriodSet(periods);
+  if (!isMarket(asserted.market) || !isOffering(asserted.offering) || !isMarketOffering(asserted.market, asserted.offering) ||
+      asserted.market !== project.market || asserted.offering !== project.offering ||
+      asserted.market !== manifest.market || asserted.offering !== manifest.offering ||
+      (purpose !== null && purpose !== 'registration' && purpose !== 'issuance') || !validAsOf ||
+      typeof asserted.confirmed_by !== 'string' || asserted.confirmed_by.length === 0 || assertedAt === null ||
+      persisted.market !== asserted.market || persisted.offering !== asserted.offering ||
+      persisted.document_purpose !== purpose || persisted.as_of !== asOf ||
+      persisted.confirmed_by !== asserted.confirmed_by || persistedAt === null || persistedAt !== assertedAt ||
+      canonical(normalizedAssertedPeriods) !== canonical(normalizedPersistedPeriods) ||
+      canonical(normalizedAssertedPeriods) !== canonical(normalizedManifestPeriods)) {
+    throw fail('TARGET_CONFIRMATION_INVALID');
+  }
+  return persisted;
+}
+
 function targetPeriodMatches(left: readonly TargetReportingPeriod[], right: readonly TargetReportingPeriod[]): boolean {
   const targetPeriodKeys = ['end', 'evidence_refs', 'period_kind', 'scope', 'start', 'status'];
   const periodKey = (period: TargetReportingPeriod): unknown => ({ start: period.start, end: period.end,
@@ -257,7 +312,7 @@ export async function loadLockedUpdateDifficultyInputWithClient(
       !Number.isSafeInteger(request.inputRevision) || request.inputRevision < 1 || !/^[a-f0-9]{64}$/.test(request.inputHash)) {
     throw fail('INVALID_UPDATE_DIFFICULTY_CONTEXT');
   }
-  const project = await client.query(`SELECT draft_revision,latest_input_revision FROM bb_projects
+  const project = await client.query(`SELECT draft_revision,latest_input_revision,market,offering FROM bb_projects
       WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE`, [request.ownerUserId, request.projectId]);
     if (project.rows.length !== 1) throw fail('PROJECT_NOT_FOUND');
     if (Number(project.rows[0]!.latest_input_revision) !== request.inputRevision) throw fail('TARGET_INPUT_REVISION_STALE');
@@ -304,12 +359,25 @@ export async function loadLockedUpdateDifficultyInputWithClient(
     [request.ownerUserId, request.projectId, sourceMaterial.material_id, sourceMaterial.material_version]);
     if (profile.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
     const targetReportingPeriods = manifestTargetPeriods(manifest);
+    const confirmationRows = await client.query(`SELECT market,offering,document_purpose,as_of::text AS as_of,target_reporting_periods,confirmed_by,confirmed_at
+      FROM bb_input_revision_target_confirmations WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3`,
+    [request.ownerUserId, request.projectId, request.inputRevision]);
+    const confirmationRow = confirmationRows.rows.length === 1 ? confirmationRows.rows[0]! : null;
+    const persistedConfirmation: TargetConfirmation | null = confirmationRow === null ? null : {
+      status: 'confirmed', market: confirmationRow.market as TargetConfirmation['market'], offering: confirmationRow.offering as TargetConfirmation['offering'],
+      document_purpose: confirmationRow.document_purpose as TargetConfirmation['document_purpose'],
+      as_of: confirmationRow.as_of === null ? null : String(confirmationRow.as_of),
+      target_reporting_periods: parseJson(confirmationRow.target_reporting_periods) as TargetConfirmation['target_reporting_periods'],
+      confirmed_by: String(confirmationRow.confirmed_by),
+      confirmed_at: confirmationRow.confirmed_at instanceof Date ? confirmationRow.confirmed_at.toISOString() : String(confirmationRow.confirmed_at),
+    };
+    const targetConfirmation = sameTargetConfirmation(manifest, persistedConfirmation, targetReportingPeriods, project.rows[0]!);
     const source = { materialId: String(sourceMaterial.material_id), materialVersion: Number(sourceMaterial.material_version),
       profileVersion: Number(profile.rows[0]!.profile_version) };
     const financialMaterialVersions = finance.map(item => ({ materialId: String(item.material_id), materialVersion: Number(item.material_version) }));
   return { ownerUserId: request.ownerUserId, projectId: request.projectId, source,
       targetRevision: Number(project.rows[0]!.draft_revision), inputRevision: request.inputRevision, inputHash: request.inputHash,
-      financialMaterialVersions, targetReportingPeriods,
+      financialMaterialVersions, targetReportingPeriods, targetConfirmation,
       replacements: request.replacements ?? [], restatements: request.restatements ?? [], requestId: request.requestId };
 }
 
@@ -546,11 +614,13 @@ export async function createUpdateDifficultySnapshotWithClient(
       source: { market: sourceMarket, offering: sourceOffering, reportingPeriods: recognition.reporting_periods },
       target: { market: project.rows[0]!.market as Market | null, offering: project.rows[0]!.offering as Offering | null,
         reportingPeriods: input.targetReportingPeriods }, replacements: input.replacements, restatements: input.restatements });
-    const gatedEstimate = state === 'ready' && hasAnchoredRecognizedFields(recognition) && evidenceBound ? estimate : {
+    const targetIntentConfirmed = input.inputRevision === undefined || input.targetConfirmation?.status === 'confirmed';
+    const gatedEstimate = state === 'ready' && hasAnchoredRecognizedFields(recognition) && evidenceBound && targetIntentConfirmed ? estimate : {
       ...estimate, status: 'needs_confirmation' as const, estimatedN: null,
       confirmationReasons: [...new Set([...estimate.confirmationReasons,
         state !== 'ready' || !hasAnchoredRecognizedFields(recognition) ? 'source_profile_needs_confirmation' : '',
         !evidenceBound ? 'period_evidence_missing_or_unverified' : '',
+        !targetIntentConfirmed ? 'target_intent_needs_confirmation' : '',
       ].filter(Boolean))].sort(),
     };
     // Recognition only records source fields/periods. Completeness of the historical
@@ -569,6 +639,7 @@ export async function createUpdateDifficultySnapshotWithClient(
         recognition.source_offering.status === 'recognized' ? recognition.source_offering.value : null,
         project.rows[0]!.market as Market | null, project.rows[0]!.offering as Offering | null, input.inputRevision ?? null, input.inputHash ?? null,
         JSON.stringify(normalizedMaterials), JSON.stringify({ targetReportingPeriods: input.targetReportingPeriods,
+          ...(input.targetConfirmation ? { targetConfirmation: input.targetConfirmation } : {}),
           replacements: input.replacements, restatements: input.restatements }), completeness, JSON.stringify(gatedEstimate)]);
     await client.query(
       `INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
