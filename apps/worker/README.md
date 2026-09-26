@@ -88,6 +88,26 @@ BB_PYTHON=/path/to/python \
 node --test apps/worker/dist/authorized-qx-mixed-pdf-upload-parse.integration.test.js
 ```
 
+The separately opt-in #13 `authorized-qx04-public-upload-parse.integration.test.ts`
+checks registered `qx-202606-04` (`interimFinancial`) through the normal Fastify
+upload/preflight path, Azurite private Blob, PostgreSQL 16 durable parse job,
+real Python parser and persisted parse snapshot/evidence. It pins the manifest
+size/SHA, parsed status and current 446-record output; identical PUT/completion
+retries must reuse the same material/job, a native PDF bbox is independently
+recovered from the original page, and foreign material/job reads return 404.
+The PDF has native text; OCR is not invoked. This is local engineering evidence,
+not preproduction replay or professional/financial acceptance. Use disposable
+migrated PostgreSQL 16 and Azurite:
+
+```sh
+npm run build
+BB_RUN_AUTHORIZED_QX04_UPLOAD_PARSE=1 \
+BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
+BB_TEST_AZURITE_CONNECTION_STRING='UseDevelopmentStorage=true' \
+BB_PYTHON=/path/to/python \
+node --test apps/worker/dist/authorized-qx04-public-upload-parse.integration.test.js
+```
+
 #31 的内部历史稿修改计划、锁定材料/事实读取入口、#34 消费约定及未完成验收项见 [HISTORICAL-UPDATE-HANDOFF.md](HISTORICAL-UPDATE-HANDOFF.md)。本切片不开放生产任务或生成 Word 成功成果。
 
 `historical-native-recognition.ts` is a conservative #76 native-text
