@@ -131,8 +131,8 @@ services:
 
   # #79/#35 ops scheduler: log forwarding + health, storage/deletion purge, trial-guard health and
   # worker heartbeat staleness, each under a PostgreSQL lease (0028) so extra replicas never double-run.
-  # The staging NDJSON sink does not rotate: stale forwarders can replay after any finite archive is gone.
-  # Batches exceeding BB_LOG_SINK_MAX_BYTES fail closed; existing keys remain replayable from active/legacy .1 files.
+  # Archive mode requires migration 0041 and a private Blob container. Keep disabled until #226
+  # and this branch are integrated and the old scheduler has stopped.
   ops:
     image: bondbuddy-m1-worker:${BB_IMAGE_TAG:?set by deploy.sh}
     restart: unless-stopped
@@ -144,6 +144,9 @@ services:
       NODE_OPTIONS: --max-old-space-size=256
       BB_LOG_SINK_FILE: ${BB_LOG_SINK_FILE:-/var/lib/bb-logs/observability.ndjson}
       BB_LOG_SINK_MAX_BYTES: ${BB_LOG_SINK_MAX_BYTES:-67108864}
+      BB_LOG_ARCHIVE_ENABLED: ${BB_LOG_ARCHIVE_ENABLED:-0}
+      BB_LOG_ARCHIVE_LOCAL_MAX_BYTES: ${BB_LOG_ARCHIVE_LOCAL_MAX_BYTES:-268435456}
+      BB_LOG_ARCHIVE_CONTAINER: ${BB_LOG_ARCHIVE_CONTAINER:-bondbuddy-private}
       BB_OPS_PARSE_BACKFILL: ${BB_OPS_PARSE_BACKFILL:-off}
       # #78 scheduled library sync (off by default; raise this service's memory limit before enabling).
       BB_OPS_LIBRARY_SYNC: ${BB_OPS_LIBRARY_SYNC:-off}
@@ -162,7 +165,7 @@ services:
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
-    deploy: {resources: {limits: {cpus: '0.25', memory: 64M}}}
+    deploy: {resources: {limits: {cpus: '0.5', memory: 384M}}}
 
   egress:
     image: bondbuddy-m1-egress:${BB_IMAGE_TAG:?set by deploy.sh}

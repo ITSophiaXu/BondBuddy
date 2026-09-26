@@ -3,8 +3,8 @@ import {test} from 'node:test';
 import {Pool} from 'pg';
 import {createServer} from './server.js';
 import {claimOutbox,ackOutbox,observeUsage,queryTimeline,queryUsage,usageTotals,recordStructuredError,saveSnapshotRef} from './observability.js';
-import {claim,recordPotentialCall} from './queue.js';
-import {azureBlobs,digest} from './data.js';
+import {recordPotentialCall} from './queue.js';
+import {azureBlobs,digest,uid} from './data.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
 const blob=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -43,7 +43,12 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     assert.equal(rejected.rowCount,1);assert.equal(rejected.rows[0].run_id,null);
     const created=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-log-run'});assert.equal(created.statusCode,202,created.body);
     const runId=created.json().run_id;
-    const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,runId);
+    // Older suites can leave expired jobs in this shared database; bind this fixture to its own run.
+    const token=uid();
+    const job=(await pool.query("UPDATE bb_jobs SET state='running',stage='claimed',lease_token=$2,lease_until=now()+interval '60 seconds',attempts=attempts+1 WHERE run_id=$1 RETURNING id,checkpoint,attempts",[runId,token])).rows[0];
+    assert.ok(job);
+    await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1",[runId]);
+    const lease={jobId:job.id as string,runId,owner,token,checkpoint:job.checkpoint,attempts:job.attempts as number};
     const blobs=azureBlobs(blob!);
     const promptKey=`users/${owner}/projects/${project}/snapshots/synthetic_prompt_v1`;
     await blobs.put(promptKey,Buffer.from('synthetic prompt body containing OTP 123456 and Cookie secret'),'text/plain');

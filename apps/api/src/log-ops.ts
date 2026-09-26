@@ -680,20 +680,50 @@ export function scrubSecrets(text: string) {
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */
-export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string }) {
+export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
   const scrubbed = scrubSecrets(input.body);
   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
-  await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
+  const intentId = uid();
+  // This commit is the recovery address. No Blob write is allowed before it exists.
+  await pool.query('INSERT INTO bb_prompt_blob_intents(id,owner_user_id,project_id,object_key) VALUES($1,$2,$3,$4)', [intentId, input.owner, input.projectId, objectKey]);
   try {
-    return await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: SCRUB_VERSION, blobs });
-  } catch (error) { await blobs.delete(objectKey).catch(() => undefined); throw error; }
+    return await transaction(pool, async client => {
+      // Keep the intent locked across Blob IO and reference commit. The sweeper
+      // cannot delete an in-flight write even when it passes its grace period.
+      await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
+      await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
+      const id = await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: input.redactionVersion ?? SCRUB_VERSION, blobs }, client);
+      await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
+      return id;
+    });
+  } catch (error) {
+    // A failed compensation still leaves the committed intent for the next
+    // retention run. A COMMIT whose acknowledgement was lost might have saved
+    // a valid reference, so never delete without checking under the same lock.
+    try {
+      await transaction(pool, async client => {
+        const intent = (await client.query('SELECT * FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId])).rows[0];
+        if (!intent || intent.registered_at || intent.cleared_at) return;
+        const ref = await client.query('SELECT 1 FROM bb_snapshot_refs WHERE object_key=$1', [objectKey]);
+        if (ref.rowCount) {
+          await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
+          return;
+        }
+        await blobs.delete(objectKey);
+        await client.query('UPDATE bb_prompt_blob_intents SET cleared_at=now() WHERE id=$1', [intentId]);
+      });
+    } catch {
+      await pool.query('UPDATE bb_prompt_blob_intents SET cleanup_after=now() WHERE id=$1 AND registered_at IS NULL AND cleared_at IS NULL', [intentId]).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------- forwarding
 
 export type LogRecord = { delivery_key: string; outbox_id: string; event: Record<string, unknown> };
 /** A sink must treat delivery_key as an idempotency key: the same key may arrive again after a crash. */
-export interface LogSink { name: string; deliver(records: LogRecord[]): Promise<void> }
+export interface LogSink { name: string; archiveEnabled?: boolean; deliver(records: LogRecord[]): Promise<void> }
 
 export function ndjsonSizeCapFromEnv(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.BB_LOG_SINK_MAX_BYTES;
@@ -703,7 +733,7 @@ export function ndjsonSizeCapFromEnv(env: NodeJS.ProcessEnv = process.env): numb
 }
 
 /** Run every file write under the same OS lock across processes. */
-async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: number): Promise<void> {
+async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: number, archive?: { sink: string; localBudget: number }): Promise<void> {
   const lock = await open(`${path}.lock`, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
   try {
     const stat = await lock.stat();
@@ -718,17 +748,29 @@ async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: 
       child.on('close', code => resolve(code ?? 1));
     });
     child.stdin!.on('error', () => undefined); // child failure is reported by its exit code
-    child.stdin!.end(JSON.stringify({ records, maxBytes }));
+    child.stdin!.end(JSON.stringify({ records, maxBytes, archive }));
     if (await exited !== 0) throw new Error(`NDJSON sink refused delivery: ${errorText || 'writer failed'}`);
   } finally { await lock.close(); }
 }
 
 /** Active NDJSON and any legacy .1 segment are the key journal; new bytes obey the size cap. */
-export function ndjsonFileSink(path: string, name = 'ndjson_file', maxBytes?: number): LogSink {
-  return { name, async deliver(records) {
-    if (!records.length) return;
-    await lockedNdjsonWrite(path, records, maxBytes);
+export function ndjsonFileSink(path: string, name = 'ndjson_file', maxBytes?: number,
+  archive?: { localBudget: number }): LogSink {
+  return { name, archiveEnabled: !!archive, async deliver(records) {
+    if (!records.length && !archive) return;
+    await lockedNdjsonWrite(path, records, maxBytes, archive && { sink: name, localBudget: archive.localBudget });
   } };
+}
+
+export function logArchiveOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): { localBudget: number } | undefined {
+  if (env.BB_LOG_ARCHIVE_ENABLED !== '1') {
+    if (env.BB_LOG_ARCHIVE_ENABLED && env.BB_LOG_ARCHIVE_ENABLED !== '0') throw new Error('Invalid BB_LOG_ARCHIVE_ENABLED');
+    return undefined;
+  }
+  const localBudget = Number(env.BB_LOG_ARCHIVE_LOCAL_MAX_BYTES ?? 256 * 1024 * 1024);
+  if (!Number.isSafeInteger(localBudget) || localBudget < ndjsonSizeCapFromEnv(env) * 2 || localBudget > 4 * 1024 ** 3 ||
+    !env.DATABASE_URL || !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Invalid log archive configuration');
+  return { localBudget };
 }
 
 export type ForwardOptions = { batchSize?: number; leaseSeconds?: number; retrySeconds?: number; afterSinkAccept?: () => Promise<void> };
@@ -770,6 +812,7 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
     // Outage: release the lease with backoff; nothing is marked delivered, so the backlog replays.
     await pool.query("UPDATE bb_outbox SET lease_token=NULL,lease_until=NULL,last_delivery_error='sink_unavailable',next_attempt_at=now()+($3::integer*interval '1 second') WHERE id=ANY($1) AND lease_token=$2", [claimed.map(r => r.id), token, retry]);
     await raiseAlert(pool, { kind: 'log_sink_unavailable', severity: 'critical', scope: sink.name, detail: { sink: sink.name, batch: claimed.length } });
+    if (sink.archiveEnabled) await tripEvidenceGate(pool, 'log_archive_unavailable');
     return { claimed: claimed.length, delivered: 0, failed: claimed.length };
   }
   await options.afterSinkAccept?.();
@@ -865,7 +908,34 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
       await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } });
     }
   }
-  return { due: due.length, purged, failed };
+  // Intents are bounded, private object addresses, never a broad prefix scan.
+  // Registered objects remain governed by the retention query above.
+  const orphanIds = (await pool.query(`SELECT i.id FROM bb_prompt_blob_intents i
+    WHERE i.registered_at IS NULL AND i.cleared_at IS NULL AND i.cleanup_after<=$1
+      AND ($3::text[] IS NULL OR i.owner_user_id=ANY($3))
+    ORDER BY i.cleanup_after,i.id LIMIT $2`, [now, batch, policy.ownerScope ?? null])).rows;
+  let orphanPurged = 0, orphanFailed = 0;
+  for (const { id } of orphanIds) {
+    try {
+      const cleared = await transaction(pool, async client => {
+        const intent = (await client.query('SELECT * FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [id])).rows[0];
+        if (!intent || intent.registered_at || intent.cleared_at || new Date(intent.cleanup_after) > now) return false;
+        const ref = await client.query('SELECT 1 FROM bb_snapshot_refs WHERE object_key=$1', [intent.object_key]);
+        if (ref.rowCount) {
+          await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [id]);
+          return false;
+        }
+        await blobs.delete(intent.object_key);
+        await client.query('UPDATE bb_prompt_blob_intents SET cleared_at=now() WHERE id=$1', [id]);
+        return true;
+      });
+      if (cleared) orphanPurged++;
+    } catch {
+      orphanFailed++;
+      await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: 'orphan_prompt_snapshot' } });
+    }
+  }
+  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed };
 }
 
 // ---------------------------------------------------------------- operator access
@@ -1176,7 +1246,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
     if (command === 'forward') {
       if (!process.env.BB_LOG_SINK_FILE) throw new Error('BB_LOG_SINK_FILE required');
-      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, ndjsonFileSink(process.env.BB_LOG_SINK_FILE, 'ndjson_file', ndjsonSizeCapFromEnv())))}\n`);
+      const archive = logArchiveOptionsFromEnv();
+      const sink = ndjsonFileSink(process.env.BB_LOG_SINK_FILE, 'ndjson_file', ndjsonSizeCapFromEnv(), archive);
+      if (archive) try { await sink.deliver([]); }
+      catch (error) { await tripEvidenceGate(pool, 'log_archive_unavailable'); throw error; }
+      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, sink))}\n`);
     } else if (command === 'health') {
       process.stdout.write(`${JSON.stringify(await checkLogHealth(pool, { maxBacklogAgeSeconds: Number(process.env.BB_LOG_BACKLOG_ALERT_SECONDS ?? '300') }))}\n`);
     } else if (command === 'retention') {

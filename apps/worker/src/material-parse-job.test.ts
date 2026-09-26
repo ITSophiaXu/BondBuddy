@@ -56,6 +56,7 @@ test('#17 capacity failures are terminal MATERIAL_TOO_LARGE; infrastructure fail
     assert.deepEqual(classifyMaterialParseError(new Error(code)), { code: 'MATERIAL_TOO_LARGE', retryable: false, category: 'material_parse' });
   }
   assert.deepEqual(classifyMaterialParseError(new Error('MATERIAL_BYTES_UNAVAILABLE')), { code: 'DATA_UNAVAILABLE', retryable: true, category: 'material_parse' });
+  assert.deepEqual(classifyMaterialParseError(new Error('MATERIAL_PARSE_TIMEOUT')), { code: 'MATERIAL_PARSE_TIMEOUT', retryable: true, category: 'material_parse' });
 });
 
 test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, cancel race, owner 404 and #79 rows', { skip: !connection || !blobConnection }, async () => {
@@ -188,6 +189,19 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     const cancelFailed = await send('POST', `/api/v1/projects/${projectId}/materials/${textId}/parse-job/cancel`, { reason: 'synthetic' });
     assert.equal(cancelFailed.statusCode, 409); assert.equal(cancelFailed.json().code, 'ALREADY_TERMINAL');
     assert.equal((await operations('material_parse_cancel', 'rejected'))[0].error_code, 'ALREADY_TERMINAL');
+
+    // A subprocess deadline leaves the material pending and records the timeout distinctly.
+    const timeoutText = Buffer.from('Synthetic delayed text\n', 'utf8');
+    const timeoutId = (await complete(projectId, await startUpload(projectId, timeoutText, 'text/plain', 'audit', 'delayed.txt'), timeoutText)).json().material_id as string;
+    parser = async () => { throw new Error('DOCUMENT_PARSER_TIMEOUT'); };
+    assert.equal(await runMaterialParseOnce(deps()), 'retry_scheduled');
+    let [timeoutJob] = await jobFor(timeoutId);
+    assert.equal(timeoutJob.state, 'queued'); assert.equal(timeoutJob.error_code, null); assert.equal(timeoutJob.attempts, 1);
+    assert.deepEqual((await errors(timeoutJob.id)).map(e => [e.code, e.recovery_status]), [['MATERIAL_PARSE_TIMEOUT', 'retry_scheduled']]);
+    parser = async request => syntheticParse(request);
+    assert.equal(await runMaterialParseOnce(deps()), 'succeeded');
+    [timeoutJob] = await jobFor(timeoutId);
+    assert.equal(timeoutJob.state, 'succeeded'); assert.equal(timeoutJob.attempts, 2);
 
     // A crash on the final attempt is also bounded: the recovered lease fails instead of running again.
     parser = async request => { parserCalls++; return syntheticParse(request); };
