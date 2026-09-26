@@ -16,7 +16,7 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   await page.getByLabel('发行人全称', { exact: true }).fill('合成测试发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('nafmii');
   await page.getByLabel('发行方式', { exact: true }).selectOption('dfi');
-  await page.getByLabel('目标最新报告截止日').fill('2026-06-30');
+  await page.getByLabel('旧版单一报告截止日').fill('2026-06-30');
   await page.getByRole('button', { name: '＋ 添加目标报告期间' }).click();
   await page.getByLabel('起始日').fill('2025-01-01');
   await page.getByLabel('截止日').fill('2025-12-31');
