@@ -1,0 +1,256 @@
+{
+  "version": "2026.09.26-evidence.1",
+  "observed_on": "2026-09-26",
+  "scope": "sse-private",
+  "status": "documentary_evidence_only",
+  "documents": [
+    {
+      "document_id": "sse-application-2023",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/c_20250519_10779380.shtml",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+      "published_on": "2023-10-20",
+      "effective_from": "2023-10-20",
+      "effective_to": null,
+      "effectivity_observation": "官网详情页明确列示发布日期、生效日期及“现行有效”。",
+      "document_kind": "formal_rule",
+      "replaces": "上证发〔2021〕27号，自2023-10-20同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+      "bytes": 137633,
+      "provided_source_matches": [
+        "EX001"
+      ],
+      "original_path": "originals/EX001.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-application-2023.html",
+      "notice_sha256": "46af497813b357ef04f2d4258b70ba6e93bb9ab6452d3654f2efff297eb910ce"
+    },
+    {
+      "document_id": "sse-focus-2025",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/c_20250519_10779394.shtml",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+      "published_on": "2025-03-28",
+      "effective_from": "2025-03-28",
+      "effective_to": null,
+      "effectivity_observation": "官网详情页明确列示发布日期、生效日期及“现行有效”。",
+      "document_kind": "formal_rule",
+      "replaces": "上证发〔2023〕169号，自2025-03-28同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+      "bytes": 42034,
+      "provided_source_matches": [
+        "EX006"
+      ],
+      "original_path": "originals/EX006.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-focus-2025.html",
+      "notice_sha256": "ab0aa170f31b0f6777c7c2d8d4d6cff52723e9bbb014988b143a5dbc498cf121"
+    },
+    {
+      "document_id": "sse-mature-2026",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10831327/files/5d96a33eb9104d9d912bce016bfede45.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/c_20260904_10831327.shtml",
+      "title": "上海证券交易所公司债券发行上市审核规则适用指引第6号——知名成熟发行人优化审核（2026年修订）",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "effectivity_observation": "官网详情页明确列示发布日期、生效日期及“现行有效”。",
+      "document_kind": "formal_rule",
+      "replaces": "上证发〔2023〕172号（EX009所供2023版），自2026-09-04同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163",
+      "bytes": 37430,
+      "provided_source_matches": [],
+      "original_path": "verification/2026-09-26/originals/sse-mature-2026.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-mature-2026.html",
+      "notice_sha256": "4a0b752c22d860f5c12760dd5f982ba2c60a5cd291c74e2e44ad9cc616ffe883"
+    },
+    {
+      "document_id": "sse-private-listing-2023",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/c_20250520_10779473.shtml",
+      "title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+      "published_on": "2023-10-20",
+      "effective_from": "2023-10-20",
+      "effective_to": null,
+      "effectivity_observation": "官网详情页明确列示发布日期、生效日期及“现行有效”。",
+      "document_kind": "formal_rule",
+      "replaces": "上证发〔2022〕59号，自2023-10-20同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+      "bytes": 44184,
+      "provided_source_matches": [],
+      "original_path": "verification/2026-09-26/originals/sse-private-listing-2023.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-private-listing-2023.html",
+      "notice_sha256": "e1334c8b38ca03cfabae5359c47f8c596d5cf461414b6c8e9cd41cb2bcc678c7"
+    },
+    {
+      "document_id": "sse-disclosure-2023",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/c_20250520_10779485.shtml",
+      "title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+      "published_on": "2023-10-20",
+      "effective_from": "2023-10-20",
+      "effective_to": null,
+      "effectivity_observation": "官网详情页明确列示发布日期、生效日期及“现行有效”。",
+      "document_kind": "formal_rule",
+      "replaces": "上证发〔2023〕77号（2023年5月版），自2023-10-20同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+      "bytes": 97116,
+      "provided_source_matches": [],
+      "original_path": "verification/2026-09-26/originals/sse-disclosure-2023.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-disclosure-2023.html",
+      "notice_sha256": "7c67961ce4ae582b3d971e94db07cc00ed72c879faa8bf7c1b05e54931e428ef"
+    },
+    {
+      "document_id": "sse-protection-2021",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10116459/files/8af394ffe63249a0b8e3be5aec06e85c.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/c_20210813_5543887.shtml",
+      "title": "上海证券交易所公司债券发行上市审核业务指南第2号——投资者权益保护（参考文本）",
+      "published_on": "2021-08-13",
+      "effective_from": null,
+      "effective_to": null,
+      "effectivity_observation": "官网指南目录及通知仍可访问；通知未单列生效日。可参照文本，不将发布日期补作法定生效日。",
+      "document_kind": "official_reference_template",
+      "replaces": "所读通知未声明替代关系，不据此推定不存在其他衔接规定。",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "c4a19e6be63b27c3eb0962561bbca44a3a8761549328614375b6c315b2423620",
+      "bytes": 170746,
+      "provided_source_matches": [
+        "EX015"
+      ],
+      "original_path": "originals/EX015.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-protection-2021.html",
+      "notice_sha256": "db4b4d36d7ba3a34b515348f6ac741b960923c6eb240a1f0c6422265e93fbbce"
+    },
+    {
+      "document_id": "sse-proceeds-2026",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/c_20260227_10810440.shtml",
+      "title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+      "published_on": "2026-02-27",
+      "effective_from": "2026-02-27",
+      "effective_to": null,
+      "effectivity_observation": "官网通知明确自发布之日起施行；指南目录仍列示。",
+      "document_kind": "official_business_guide",
+      "replaces": "上证函〔2023〕3747号（试行版），自2026-02-27同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+      "bytes": 28927,
+      "provided_source_matches": [],
+      "original_path": "verification/2026-09-26/originals/sse-proceeds-2026.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-proceeds-2026.html",
+      "notice_sha256": "b3f5dda28f37fc42dfff8b4115d4b646315c6453f9ab134c469b22e06540d127"
+    },
+    {
+      "document_id": "csrc-measures-2023",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/regulations/csrcorder/c/10747815/files/4030433c068d42eeaaf90845b23d8bc8.pdf",
+      "notice_url": "https://www.sse.com.cn/lawandrules/regulations/csrcorder/",
+      "title": "公司债券发行与交易管理办法（证监会令第222号）",
+      "published_on": "2023-10-20",
+      "effective_from": "2023-10-20",
+      "effective_to": null,
+      "effectivity_observation": "上交所部门规章目录列示第222号令及2023-10-20日期；原文第80条规定自公布日起施行。已取得官方转载原件，发布机关目录的独立现行核验仍待补。",
+      "document_kind": "formal_rule",
+      "replaces": "证监会令第180号，自公布日起同时废止",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+      "bytes": 236765,
+      "provided_source_matches": [
+        "EX035"
+      ],
+      "original_path": "originals/EX035.pdf",
+      "notice_path": "verification/2026-09-26/notices/csrc-measures-2023.html",
+      "notice_sha256": "b7e45afa4367e6313a03ee65997f0a726e28b9fd8426952ac265587993981fc7"
+    },
+    {
+      "document_id": "sse-officer-2025",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/c_20251226_10803074.shtml",
+      "title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+      "published_on": "2025-12-26",
+      "effective_from": "2026-05-01",
+      "effective_to": null,
+      "effectivity_observation": "官网详情页明确列示发布日期、生效日期及“现行有效”。",
+      "document_kind": "formal_rule",
+      "replaces": "所读通知未声明替代关系，不据此推定不存在其他衔接规定。",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+      "bytes": 22331,
+      "provided_source_matches": [],
+      "original_path": "verification/2026-09-26/originals/sse-officer-2025.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-officer-2025.html",
+      "notice_sha256": "c0c29c2d17f5afd1fc8fe59cae147c91aa1d9229a0fdeb05a62a5c93a6298dd5"
+    },
+    {
+      "document_id": "sse-trustee-2025",
+      "attachment_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10802771/files/9b4967b582704681861dfdafb6d45e20.docx",
+      "notice_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/c_20251224_10802771.shtml",
+      "title": "上海证券交易所债券存续期业务指南第5号——公司债券受托管理",
+      "published_on": "2025-12-24",
+      "effective_from": "2025-12-24",
+      "effective_to": null,
+      "effectivity_observation": "官网通知明确自发布之日起施行；指南目录仍列示。",
+      "document_kind": "official_business_guide",
+      "replaces": "所读通知未声明替代关系，不据此推定不存在其他衔接规定。",
+      "transition_review": "通知中未发现另设过渡期；具体项目的存量协议、申报阶段及特殊安排仍须逐项核验。",
+      "industry_review": {
+        "status": "pending",
+        "reviewer_id": null,
+        "reviewed_at": null
+      },
+      "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166",
+      "bytes": 34387,
+      "provided_source_matches": [],
+      "original_path": "verification/2026-09-26/originals/sse-trustee-2025.docx",
+      "notice_path": "verification/2026-09-26/notices/sse-trustee-2025.html",
+      "notice_sha256": "3059c5a9295e839b7f89cb5f9488d522d3ddb2da1aeba3b0bdada4187719d95e"
+    }
+  ]
+}

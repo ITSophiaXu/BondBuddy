@@ -246,6 +246,12 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 
 ## 5. 四人工作面与交接
 
+### #20 SSE private documentary evidence overlay (2026-09-26)
+
+`scripts/build_exchange_knowledge.py` now composes the SSE-private-only overlay in `scripts/build_sse_private_knowledge.py` and `scripts/sse_private_knowledge_content.py`. The immutable official attachment/notice catalog is `knowledge/exchange-bonds/verification/2026-09-26/catalog.json`; rebuilding verifies both hashes and the notice-to-attachment link, then produces existing #19 RulePack/ChapterTemplate/CoverageManifest shapes and an authoring evidence map. Ten official artifacts reuse four exact intake files and add six independent originals. `OV-*` records use the existing prototype source-record shape; `NOTICE` locates the archived announcement body. Other five exchange scopes retain their prior bundles. SSE-private research retrieval excludes the superseded EX009 optimization text and uses the directly obtained disclosure attachment instead of EX003's different bytes.
+
+This is 31 disabled research candidates, not a production checker or release. Official type/date observations remain separate from real source-verifier identity, professional result acceptance and #19 publication. No public contract, migration, grant or worker install is changed. `drafts/sse-private/ACCEPTANCE.md` defines evidence requirements for existing applicability-context fields and four authorized samples; the producer's `needs_review` state is not changed. #19 applicability/release/pin integration, #35 real generation logs/artifacts and #146 WPS/Word evidence remain required.
+
 ### #31 历史原文修改计划切片（2026-09-25）
 
 `packages/domain/src/historical-update.ts` 以锁定的本发行人有效历史正文、#76 profile、#15 事实和上游语义引用清单生成 `historical-update-plan-v1`。它使用精确算术，在原文 UTF-16 锚点上计划局部替换/简单表格新增期间列，保留旧年、风险与未改文字，输出修改前后、理由、公式、来源状态和证据。只有无文档级警告、明确绑定到记录的局部存疑可让独立的已证实修改继续规划；该记录仍待人工确认，PDF 重建、结构不匹配和来源画像不确定仍阻断全局。`apps/worker/src/historical-update.ts` 核验材料 hash、解析快照、识别版本及不可变候选清单，读取 owner/project/精确身份的最新事实决策并将决策版本绑定到计划 hash；未解决冲突、OCR 存疑和用户陈述不会升级为已核实事实。内部计划不使用参考库。
