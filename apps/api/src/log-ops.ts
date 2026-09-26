@@ -409,9 +409,15 @@ function plainFieldValue(text: string, separator: number, budget: ScanBudget): {
       if (text[at] === quote) { at++; closed = true; break; }
     }
     if (!closed) throw new DiagnosticScrubError();
-    // Comma and semicolon separate ordinary prose from a complete quoted
-    // value. A glued bare character is ambiguous. JSON is parsed separately.
-    if (at < text.length && !space(text[at]) && !',;，；'.includes(text[at])) throw new DiagnosticScrubError();
+    // Punctuation only separates a quoted value from ordinary prose when the
+    // next token starts after whitespace (or at EOF). A glued bare suffix may
+    // still be part of the secret. Check literal and encoded punctuation alike.
+    let afterQuote = at;
+    while (space(text[afterQuote])) { afterQuote++; spend(budget, 1); }
+    const punctuation = syntaxAt(text, afterQuote, budget);
+    if (punctuation && ',;，；'.includes(punctuation.char)) {
+      if (punctuation.end < text.length && !space(text[punctuation.end])) throw new DiagnosticScrubError();
+    } else if (at < text.length && !space(text[at])) throw new DiagnosticScrubError();
   } else {
     while (at < text.length && text[at] !== '\r' && text[at] !== '\n') {
       spend(budget, 1);

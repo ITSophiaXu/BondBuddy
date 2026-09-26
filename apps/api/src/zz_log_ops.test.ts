@@ -21,6 +21,14 @@ const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
 const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913.\nCookie: "bb_session=abc123secret"\napi_key="sk-synthetictestkey000000000000"\nAuthorization: "Bearer syntheticbearertoken"';
+const GLUED_QUOTED_SUFFIXES = [
+  ...['secret', 'password', 'C_o_o_k_i_e', String.raw`Co\u006Fkie`].flatMap(key =>
+    [',', ';', '，', '；', String.raw`\u002C`, String.raw`\u003B`, String.raw`\uFF0C`, String.raw`\uFF1B`]
+      .map(punctuation => `${key}="SYN_LEFT"${punctuation}SYN_RIGHT`)),
+  'secret="SYN_LEFT\\\"MID",SYN_RIGHT',
+  'secret="SYN_LEFT\\\\MID";SYN_RIGHT',
+  'secret="SYN_LEFT\nMID"，SYN_RIGHT'
+];
 
 async function user(pool: Pool, prefix: string) {
   const id = `${prefix}-${uid().slice(0, 8)}`;
@@ -134,6 +142,8 @@ test('#79 quoted fields preserve ordinary continuation and ambiguous unquoted fi
     'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
     'secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
     'secret="SYN_LEFT,SYN_RIGHT"; 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"， 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"； 普通业务事实',
     'secret="SYN_LEFT,SYN_RIGHT" 普通业务事实',
     '前文 secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
     'secret="SYN_LEFT,SYN_RIGHT",\r\n普通业务事实',
@@ -155,7 +165,7 @@ test('#79 quoted fields preserve ordinary continuation and ambiguous unquoted fi
     if (body.includes('secret="SYN_LEFT,SYN_RIGHT"'))
       assert.equal(cleaned, body.replace('secret="SYN_LEFT,SYN_RIGHT"', 'secret=[REDACTED]'));
   }
-  for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
+  for (const body of [...GLUED_QUOTED_SUFFIXES, 'secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
     'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY', 'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
     'secret=SYN_SECRET 普通业务事实', 'secret=SYN_SECRET, 普通业务事实', 'secret=SYN_SECRET; 普通业务事实',
     'secret=SYN_SECRET:普通业务事实'])
@@ -174,6 +184,8 @@ test('#79 entire prose values and nested fields are safe in real Blob readback',
       'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
       'secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
       'secret="SYN_LEFT,SYN_RIGHT"; 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"， 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"； 普通业务事实',
       'secret="SYN_LEFT,SYN_RIGHT" 普通业务事实',
       '前文 secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
       'secret="SYN_LEFT,SYN_RIGHT",\r\n普通业务事实',
@@ -218,7 +230,7 @@ test('#79 entire prose values and nested fields are safe in real Blob readback',
       assert.equal(puts, beforePuts + 1);
       assert.equal(await countRefs(), beforeRefs + 1);
     }
-    for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
+    for (const body of [...GLUED_QUOTED_SUFFIXES, 'secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
       'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY', 'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
       'secret=SYN_SECRET 普通业务事实', 'secret=SYN_SECRET, 普通业务事实', 'secret=SYN_SECRET; 普通业务事实',
       'secret=SYN_SECRET:普通业务事实',
