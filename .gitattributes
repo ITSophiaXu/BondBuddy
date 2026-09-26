@@ -1,0 +1,6 @@
+# Official evidence is hashed as downloaded. Never normalize its line endings.
+/knowledge/exchange-bonds/verification/*/notices/*.html binary
+/knowledge/exchange-bonds/verification/*/originals/* binary
+# Generated views remain readable, while the curated scripts/catalog lead PR review.
+/knowledge/exchange-bonds/verification/*/sources/*.md linguist-generated=true
+/knowledge/exchange-bonds/records/OV-*.json linguist-generated=true

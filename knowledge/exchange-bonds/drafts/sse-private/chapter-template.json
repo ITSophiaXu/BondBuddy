@@ -1,7 +1,7 @@
 {
   "schema_version": "chapter-template-v1",
   "template_id": "sse-private-chapters",
-  "version": "2026.09.25-draft.1",
+  "version": "2026.09.26-draft.2",
   "rule_pack_id": "sse-private",
   "market": "sse",
   "offering": "private",
@@ -17,7 +17,37 @@
         "EX017:P00329"
       ],
       "source_ref_ids": [
-        "ex017-p00329"
+        "ex017-p00329",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-disclosure-2023-p00024",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00443",
+        "ov-sse-application-2023-p00453",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00186",
+        "ov-sse-application-2023-p00094",
+        "ov-sse-application-2023-p00200",
+        "ov-csrc-measures-2023-page011",
+        "ov-csrc-measures-2023-page012",
+        "ov-sse-private-listing-2023-p00011",
+        "ov-sse-private-listing-2023-p00025",
+        "ov-sse-private-listing-2023-p00022",
+        "ov-sse-private-listing-2023-p00038",
+        "ov-sse-private-listing-2023-p00018",
+        "ov-sse-application-2023-p00198",
+        "ov-sse-application-2023-p00201",
+        "ov-sse-application-2023-p00210",
+        "ov-sse-application-2023-p00212",
+        "ov-sse-application-2023-p00222",
+        "ov-sse-application-2023-p00225",
+        "ov-sse-application-2023-p00231",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00090",
+        "ov-sse-application-2023-p00109",
+        "ov-sse-disclosure-2023-p00028",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442"
       ],
       "required_fields": [
         "issue_identity",
@@ -25,7 +55,7 @@
         "risk_summary",
         "definitions"
       ],
-      "applicability": "本期身份/期限/规模/评级与正文一致；重大事项最后回写；不全局替换历史日期。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "本期身份/期限/规模/评级与正文一致；重大事项最后回写；不全局替换历史日期。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "risk",
@@ -34,14 +64,47 @@
         "EX017:P00462"
       ],
       "source_ref_ids": [
-        "ex017-p00462"
+        "ex017-p00462",
+        "ov-sse-application-2023-p00181",
+        "ov-sse-application-2023-p00182",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00184",
+        "ov-sse-application-2023-p00198",
+        "ov-sse-application-2023-p00443",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-disclosure-2023-p00024",
+        "ov-sse-application-2023-p00205",
+        "ov-sse-application-2023-p00217",
+        "ov-sse-application-2023-p00218",
+        "ov-sse-application-2023-p00219",
+        "ov-sse-application-2023-p00206",
+        "ov-sse-application-2023-p00207",
+        "ov-sse-application-2023-p00208",
+        "ov-sse-application-2023-p00210",
+        "ov-sse-application-2023-p00212",
+        "ov-sse-application-2023-p00222",
+        "ov-sse-application-2023-p00225",
+        "ov-sse-application-2023-p00231",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00090",
+        "ov-sse-application-2023-p00109",
+        "ov-sse-disclosure-2023-p00028",
+        "ov-sse-focus-2025-p00030",
+        "ov-sse-focus-2025-p00052",
+        "ov-sse-focus-2025-p00095",
+        "ov-sse-focus-2025-p00096",
+        "ov-sse-focus-2025-p00097",
+        "ov-sse-focus-2025-p00098",
+        "ov-sse-focus-2025-p00099",
+        "ov-sse-focus-2025-p00100",
+        "ov-sse-focus-2025-p00101"
       ],
       "required_fields": [
         "financial_risks",
         "business_risks",
         "terms_risks"
       ],
-      "applicability": "财务与业务重算后重写风险，量化余额及占比，保留仍成立的历史风险。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "财务与业务重算后重写风险，量化余额及占比，保留仍成立的历史风险。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "terms",
@@ -50,7 +113,18 @@
         "EX017:P00487"
       ],
       "source_ref_ids": [
-        "ex017-p00487"
+        "ex017-p00487",
+        "ov-csrc-measures-2023-page011",
+        "ov-csrc-measures-2023-page012",
+        "ov-sse-private-listing-2023-p00011",
+        "ov-sse-private-listing-2023-p00025",
+        "ov-sse-private-listing-2023-p00022",
+        "ov-sse-private-listing-2023-p00038",
+        "ov-sse-private-listing-2023-p00018",
+        "ov-sse-application-2023-p00455",
+        "ov-sse-application-2023-p00456",
+        "ov-sse-mature-2026-p00010",
+        "ov-sse-mature-2026-p00054"
       ],
       "required_fields": [
         "approvals",
@@ -58,7 +132,7 @@
         "options",
         "institutions"
       ],
-      "applicability": "有权决议/批文/本期方案逐项核对，多品种逐一拆分，不复制旧批文及机构。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "有权决议/批文/本期方案逐项核对，多品种逐一拆分，不复制旧批文及机构。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "funds",
@@ -67,7 +141,42 @@
         "EX017:P00544"
       ],
       "source_ref_ids": [
-        "ex017-p00544"
+        "ex017-p00544",
+        "ov-sse-proceeds-2026-p00009",
+        "ov-sse-proceeds-2026-p00010",
+        "ov-sse-proceeds-2026-p00011",
+        "ov-sse-proceeds-2026-p00014",
+        "ov-sse-proceeds-2026-p00018",
+        "ov-sse-application-2023-p00458",
+        "ov-sse-application-2023-p00459",
+        "ov-sse-proceeds-2026-p00028",
+        "ov-sse-proceeds-2026-p00029",
+        "ov-sse-proceeds-2026-p00030",
+        "ov-sse-proceeds-2026-p00031",
+        "ov-sse-proceeds-2026-p00032",
+        "ov-sse-proceeds-2026-p00033",
+        "ov-sse-proceeds-2026-p00035",
+        "ov-sse-proceeds-2026-p00036",
+        "ov-sse-proceeds-2026-p00037",
+        "ov-sse-proceeds-2026-p00038",
+        "ov-sse-proceeds-2026-p00039",
+        "ov-sse-proceeds-2026-p00040",
+        "ov-sse-proceeds-2026-p00041",
+        "ov-sse-focus-2025-p00030",
+        "ov-sse-focus-2025-p00052",
+        "ov-sse-focus-2025-p00095",
+        "ov-sse-focus-2025-p00096",
+        "ov-sse-focus-2025-p00097",
+        "ov-sse-focus-2025-p00098",
+        "ov-sse-focus-2025-p00099",
+        "ov-sse-focus-2025-p00100",
+        "ov-sse-focus-2025-p00101",
+        "ov-sse-proceeds-2026-p00023",
+        "ov-sse-proceeds-2026-p00024",
+        "ov-sse-proceeds-2026-p00025",
+        "ov-sse-proceeds-2026-p00026",
+        "ov-sse-mature-2026-p00010",
+        "ov-sse-mature-2026-p00054"
       ],
       "required_fields": [
         "use_items",
@@ -75,7 +184,7 @@
         "debt_details",
         "simulation"
       ],
-      "applicability": "按用途组合收集偿债/项目/股权/基金资料；更新专户、变更权限和发行后模拟。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "按用途组合收集偿债/项目/股权/基金资料；更新专户、变更权限和发行后模拟。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "issuer",
@@ -84,7 +193,48 @@
         "EX017:P00640"
       ],
       "source_ref_ids": [
-        "ex017-p00640"
+        "ex017-p00640",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-disclosure-2023-p00024",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00443",
+        "ov-sse-application-2023-p00453",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00186",
+        "ov-sse-application-2023-p00094",
+        "ov-sse-application-2023-p00200",
+        "ov-sse-application-2023-p00171",
+        "ov-sse-application-2023-p00175",
+        "ov-sse-application-2023-p00177",
+        "ov-sse-application-2023-p00178",
+        "ov-sse-application-2023-p00179",
+        "ov-sse-application-2023-p00187",
+        "ov-sse-application-2023-p00181",
+        "ov-sse-application-2023-p00182",
+        "ov-sse-application-2023-p00184",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-application-2023-p00206",
+        "ov-sse-application-2023-p00207",
+        "ov-sse-application-2023-p00208",
+        "ov-sse-focus-2025-p00030",
+        "ov-sse-focus-2025-p00052",
+        "ov-sse-focus-2025-p00095",
+        "ov-sse-focus-2025-p00096",
+        "ov-sse-focus-2025-p00097",
+        "ov-sse-focus-2025-p00098",
+        "ov-sse-focus-2025-p00099",
+        "ov-sse-focus-2025-p00100",
+        "ov-sse-focus-2025-p00101",
+        "ov-sse-application-2023-p00455",
+        "ov-sse-application-2023-p00456",
+        "ov-sse-officer-2025-p00007",
+        "ov-sse-officer-2025-p00008",
+        "ov-sse-officer-2025-p00009",
+        "ov-sse-officer-2025-p00010",
+        "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00016",
+        "ov-sse-officer-2025-p00017",
+        "ov-sse-officer-2025-p00018"
       ],
       "required_fields": [
         "registry",
@@ -93,7 +243,7 @@
         "segments",
         "restructuring"
       ],
-      "applicability": "工商与章程、业务财务、合并范围相互核对；经营进度不按日期机械外推。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "工商与章程、业务财务、合并范围相互核对；经营进度不按日期机械外推。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "financial",
@@ -102,7 +252,55 @@
         "EX017:P00730"
       ],
       "source_ref_ids": [
-        "ex017-p00730"
+        "ex017-p00730",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-disclosure-2023-p00024",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00443",
+        "ov-sse-application-2023-p00453",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00186",
+        "ov-sse-application-2023-p00094",
+        "ov-sse-application-2023-p00200",
+        "ov-sse-application-2023-p00445",
+        "ov-sse-application-2023-p00446",
+        "ov-sse-application-2023-p00447",
+        "ov-sse-application-2023-p00452",
+        "ov-sse-proceeds-2026-p00035",
+        "ov-sse-proceeds-2026-p00036",
+        "ov-sse-proceeds-2026-p00037",
+        "ov-sse-proceeds-2026-p00038",
+        "ov-sse-proceeds-2026-p00039",
+        "ov-sse-proceeds-2026-p00040",
+        "ov-sse-proceeds-2026-p00041",
+        "ov-sse-application-2023-p00181",
+        "ov-sse-application-2023-p00182",
+        "ov-sse-application-2023-p00184",
+        "ov-sse-application-2023-p00198",
+        "ov-sse-application-2023-p00196",
+        "ov-sse-application-2023-p00199",
+        "ov-sse-application-2023-p00202",
+        "ov-sse-application-2023-p00201",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-application-2023-p00204",
+        "ov-sse-application-2023-p00205",
+        "ov-sse-application-2023-p00217",
+        "ov-sse-application-2023-p00218",
+        "ov-sse-application-2023-p00219",
+        "ov-sse-application-2023-p00206",
+        "ov-sse-application-2023-p00207",
+        "ov-sse-application-2023-p00208",
+        "ov-sse-focus-2025-p00030",
+        "ov-sse-focus-2025-p00052",
+        "ov-sse-focus-2025-p00095",
+        "ov-sse-focus-2025-p00096",
+        "ov-sse-focus-2025-p00097",
+        "ov-sse-focus-2025-p00098",
+        "ov-sse-focus-2025-p00099",
+        "ov-sse-focus-2025-p00100",
+        "ov-sse-focus-2025-p00101",
+        "ov-sse-application-2023-p00455",
+        "ov-sse-application-2023-p00456"
       ],
       "required_fields": [
         "statements",
@@ -112,7 +310,7 @@
         "debt",
         "contingencies"
       ],
-      "applicability": "六张表滚动窗口、审计意见、重述、合并范围、指标、MD&A、债务和或有事项全量更新。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "六张表滚动窗口、审计意见、重述、合并范围、指标、MD&A、债务和或有事项全量更新。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "credit",
@@ -121,7 +319,16 @@
         "EX017:P00814"
       ],
       "source_ref_ids": [
-        "ex017-p00814"
+        "ex017-p00814",
+        "ov-sse-application-2023-p00205",
+        "ov-sse-application-2023-p00217",
+        "ov-sse-application-2023-p00218",
+        "ov-sse-application-2023-p00219",
+        "ov-sse-application-2023-p00210",
+        "ov-sse-application-2023-p00212",
+        "ov-sse-application-2023-p00222",
+        "ov-sse-application-2023-p00225",
+        "ov-sse-application-2023-p00231"
       ],
       "required_fields": [
         "ratings",
@@ -129,7 +336,7 @@
         "outstanding_bonds",
         "defaults"
       ],
-      "applicability": "分开无评级/仅主体/主体及债项；授信及债券清单更新到实际证据时点。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "分开无评级/仅主体/主体及债项；授信及债券清单更新到实际证据时点。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "enhancement",
@@ -138,7 +345,22 @@
         "EX017:P00849"
       ],
       "source_ref_ids": [
-        "ex017-p00849"
+        "ex017-p00849",
+        "ov-sse-application-2023-p00210",
+        "ov-sse-application-2023-p00212",
+        "ov-sse-application-2023-p00222",
+        "ov-sse-application-2023-p00225",
+        "ov-sse-application-2023-p00231",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462"
       ],
       "required_fields": [
         "enhancement_type",
@@ -146,7 +368,7 @@
         "collateral",
         "contracts"
       ],
-      "applicability": "无增信简述；有增信核对合同、担保主体、范围、期限和履行方式。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "无增信简述；有增信核对合同、担保主体、范围、期限和履行方式。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "tax",
@@ -155,13 +377,18 @@
         "EX017:P00890"
       ],
       "source_ref_ids": [
-        "ex017-p00890"
+        "ex017-p00890",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442"
       ],
       "required_fields": [
         "tax_basis",
         "tax_risk"
       ],
-      "applicability": "核对当期有效税务依据，不沿用未经核查的税率或个税结论。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "核对当期有效税务依据，不沿用未经核查的税率或个税结论。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "disclosure",
@@ -170,14 +397,30 @@
         "EX017:P00893"
       ],
       "source_ref_ids": [
-        "ex017-p00893"
+        "ex017-p00893",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442",
+        "ov-sse-application-2023-p00461",
+        "ov-sse-disclosure-2023-p00009",
+        "ov-sse-disclosure-2023-p00023",
+        "ov-sse-officer-2025-p00007",
+        "ov-sse-officer-2025-p00008",
+        "ov-sse-officer-2025-p00009",
+        "ov-sse-officer-2025-p00010",
+        "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00016",
+        "ov-sse-officer-2025-p00017",
+        "ov-sse-officer-2025-p00018"
       ],
       "required_fields": [
         "disclosure_officer",
         "periodic_reports",
         "material_events"
       ],
-      "applicability": "核对现行持续披露规则、本期负责人、定期/临时/兑付安排及专项义务。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "核对现行持续披露规则、本期负责人、定期/临时/兑付安排及专项义务。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "protection",
@@ -186,14 +429,32 @@
         "EX017:P00896"
       ],
       "source_ref_ids": [
-        "ex017-p00896"
+        "ex017-p00896",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462",
+        "ov-sse-proceeds-2026-p00023",
+        "ov-sse-proceeds-2026-p00024",
+        "ov-sse-proceeds-2026-p00025",
+        "ov-sse-proceeds-2026-p00026",
+        "ov-sse-trustee-2025-p00005",
+        "ov-sse-trustee-2025-p00007",
+        "ov-sse-trustee-2025-p00012",
+        "ov-sse-trustee-2025-p00013"
       ],
       "required_fields": [
         "covenants",
         "triggers",
         "remedies"
       ],
-      "applicability": "与本期持有人规则/受托协议共同核对保护条款、触发及救济。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "与本期持有人规则/受托协议共同核对保护条款、触发及救济。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "default",
@@ -202,14 +463,24 @@
         "EX017:P00901"
       ],
       "source_ref_ids": [
-        "ex017-p00901"
+        "ex017-p00901",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462"
       ],
       "required_fields": [
         "default_events",
         "liability",
         "dispute_resolution"
       ],
-      "applicability": "违约事件、责任、纠纷解决依本期协议，不凭生成器添加承诺。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "违约事件、责任、纠纷解决依本期协议，不凭生成器添加承诺。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "holders",
@@ -218,14 +489,36 @@
         "EX017:P00904"
       ],
       "source_ref_ids": [
-        "ex017-p00904"
+        "ex017-p00904",
+        "ov-sse-application-2023-p00458",
+        "ov-sse-application-2023-p00459",
+        "ov-sse-proceeds-2026-p00028",
+        "ov-sse-proceeds-2026-p00029",
+        "ov-sse-proceeds-2026-p00030",
+        "ov-sse-proceeds-2026-p00031",
+        "ov-sse-proceeds-2026-p00032",
+        "ov-sse-proceeds-2026-p00033",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462",
+        "ov-sse-trustee-2025-p00005",
+        "ov-sse-trustee-2025-p00007",
+        "ov-sse-trustee-2025-p00012",
+        "ov-sse-trustee-2025-p00013"
       ],
       "required_fields": [
         "meeting_rules",
         "voting",
         "change_process"
       ],
-      "applicability": "取得当前签署/拟签署文本，核对召开、表决、约束力和用途调整程序。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "取得当前签署/拟签署文本，核对召开、表决、约束力和用途调整程序。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "trustee",
@@ -234,7 +527,29 @@
         "EX017:P00907"
       ],
       "source_ref_ids": [
-        "ex017-p00907"
+        "ex017-p00907",
+        "ov-sse-application-2023-p00458",
+        "ov-sse-application-2023-p00459",
+        "ov-sse-proceeds-2026-p00028",
+        "ov-sse-proceeds-2026-p00029",
+        "ov-sse-proceeds-2026-p00030",
+        "ov-sse-proceeds-2026-p00031",
+        "ov-sse-proceeds-2026-p00032",
+        "ov-sse-proceeds-2026-p00033",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462",
+        "ov-sse-trustee-2025-p00005",
+        "ov-sse-trustee-2025-p00007",
+        "ov-sse-trustee-2025-p00012",
+        "ov-sse-trustee-2025-p00013"
       ],
       "required_fields": [
         "trustee_agreement",
@@ -242,7 +557,7 @@
         "duties",
         "contacts"
       ],
-      "applicability": "更换受托人时连同职责、地址、电话及关联引用全部更新。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "更换受托人时连同职责、地址、电话及关联引用全部更新。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "institutions",
@@ -251,14 +566,17 @@
         "EX017:P00914"
       ],
       "source_ref_ids": [
-        "ex017-p00914"
+        "ex017-p00914",
+        "ov-sse-private-listing-2023-p00022",
+        "ov-sse-private-listing-2023-p00038",
+        "ov-sse-private-listing-2023-p00018"
       ],
       "required_fields": [
         "institutions",
         "contacts",
         "interests"
       ],
-      "applicability": "按本期机构名单及利害关系确认更新，只有一家主承销商时不造联席。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "按本期机构名单及利害关系确认更新，只有一家主承销商时不造联席。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "declarations",
@@ -267,14 +585,37 @@
         "EX017:P00926"
       ],
       "source_ref_ids": [
-        "ex017-p00926"
+        "ex017-p00926",
+        "ov-sse-private-listing-2023-p00022",
+        "ov-sse-private-listing-2023-p00038",
+        "ov-sse-private-listing-2023-p00018",
+        "ov-sse-application-2023-p00171",
+        "ov-sse-application-2023-p00175",
+        "ov-sse-application-2023-p00177",
+        "ov-sse-application-2023-p00178",
+        "ov-sse-application-2023-p00179",
+        "ov-sse-application-2023-p00186",
+        "ov-sse-application-2023-p00187",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442",
+        "ov-sse-officer-2025-p00007",
+        "ov-sse-officer-2025-p00008",
+        "ov-sse-officer-2025-p00009",
+        "ov-sse-officer-2025-p00010",
+        "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00016",
+        "ov-sse-officer-2025-p00017",
+        "ov-sse-officer-2025-p00018"
       ],
       "required_fields": [
         "signatories",
         "statement_types",
         "signature_dates"
       ],
-      "applicability": "按当期任职和适用声明类型匹配签章，不自动签字或推定同意。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "按当期任职和适用声明类型匹配签章，不自动签字或推定同意。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     },
     {
       "chapter_id": "reference",
@@ -283,14 +624,28 @@
         "EX017:P00929"
       ],
       "source_ref_ids": [
-        "ex017-p00929"
+        "ex017-p00929",
+        "ov-sse-application-2023-p00445",
+        "ov-sse-application-2023-p00446",
+        "ov-sse-application-2023-p00447",
+        "ov-sse-application-2023-p00452",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442",
+        "ov-sse-application-2023-p00461",
+        "ov-sse-disclosure-2023-p00009",
+        "ov-sse-disclosure-2023-p00023",
+        "ov-sse-mature-2026-p00010",
+        "ov-sse-mature-2026-p00054"
       ],
       "required_fields": [
         "reference_files",
         "inspection_location",
         "contacts"
       ],
-      "applicability": "列真实已备文件、查阅地点与联系方式；目录/引用同步。 公募分支还须叠加对应差异规则；原文目录为工作骨架，尚非专业验收。"
+      "applicability": "列真实已备文件、查阅地点与联系方式；目录/引用同步。 原文目录为工作骨架，尚非专业验收。 本次为私募范围；8.1章优先于公开发行专用文字。目录为专家工作骨架，可按有效原稿结构映射。"
     }
   ]
 }

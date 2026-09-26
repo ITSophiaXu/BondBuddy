@@ -12,8 +12,26 @@ test('six exchange scopes have separate update and review research routes',async
     assert.equal(knowledge.status,'research_draft');
     assert.equal(knowledge.rules.length,item.ruleCount);
     assert.ok(knowledge.sourceChunks.length);
-    assert.ok(knowledge.sourceChunks.every(chunk=>chunk.records.every(record=>/^(P\d{5}|PAGE\d{3})$/.test(record.locator))));
+    assert.ok(knowledge.sourceChunks.every(chunk=>chunk.records.every(record=>/^(P\d{5}|PAGE\d{3}|NOTICE)$/.test(record.locator))));
     assert.ok(!knowledge.sourceChunks.some(chunk=>chunk.documentId==='EX021'));
+  }
+});
+
+test('#20 official evidence is routed only to SSE private; superseded 2023 optimization text is not retrieved',async()=>{
+  for(const kind of ['update','review']){
+    const knowledge=await loadKnowledge('sse-private',kind);
+    assert.equal(knowledge.version,'2026.09.26-draft.2');
+    assert.equal(knowledge.rules.length,31);
+    assert.ok(knowledge.sources.includes('OV-sse-mature-2026'));
+    assert.ok(knowledge.sources.includes('OV-sse-disclosure-2023'));
+    assert.ok(!knowledge.sources.includes('EX009'));
+    assert.ok(!knowledge.sources.includes('EX003'));
+    assert.ok(knowledge.sourceChunks.some(c=>c.documentId==='OV-sse-protection-2021' && c.records.some(r=>r.locator==='NOTICE')));
+    assert.ok(knowledge.rules.some(r=>r.rule_id==='sse-private-disclosure-officer-2026'));
+    assert.equal(knowledge.productionReady,false);
+    const other=await loadKnowledge('sse-public',kind);
+    assert.equal(other.version,'2026.09.25-draft.1');
+    assert.ok(!other.sources.some(id=>id.startsWith('OV-')));
   }
 });
 
