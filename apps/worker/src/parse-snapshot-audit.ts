@@ -297,12 +297,12 @@ export async function runParseSnapshotAudit(databaseUrl: string | undefined, tar
   try {
     await client.query('BEGIN READ ONLY');
     await client.query("SET LOCAL statement_timeout = '60s'");
-    const [docxA, docxB, anchors, xlsx] = await Promise.all([
-      readSnapshot(client, targets.docx_a_job_id, DOCX_MEDIA),
-      readSnapshot(client, targets.docx_b_job_id, DOCX_MEDIA),
-      readSnapshot(client, targets.anchor_docx_job_id, DOCX_MEDIA),
-      readSnapshot(client, targets.xlsx_job_id, XLSX_MEDIA),
-    ]);
+    // One transaction uses one pg client; concurrent query() calls on that client are
+    // deprecated and will fail in pg 9. Keep the exact snapshot reads sequential.
+    const docxA = await readSnapshot(client, targets.docx_a_job_id, DOCX_MEDIA);
+    const docxB = await readSnapshot(client, targets.docx_b_job_id, DOCX_MEDIA);
+    const anchors = await readSnapshot(client, targets.anchor_docx_job_id, DOCX_MEDIA);
+    const xlsx = await readSnapshot(client, targets.xlsx_job_id, XLSX_MEDIA);
     const anchorBindingMatches = anchorSnapshotMatchesDocxPair(anchors.snapshot, docxA.snapshot, docxB.snapshot);
     const docxComparison = compareDocxSnapshots(targets.docx_a_job_id, docxA.snapshot, docxA.evidence,
       targets.docx_b_job_id, docxB.snapshot, docxB.evidence);
