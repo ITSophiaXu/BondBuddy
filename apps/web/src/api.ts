@@ -110,17 +110,24 @@ export class ApiClient {
   artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }
   run(id: string, signal?: AbortSignal) { return this.request<Dto<'RunResponse'>>('GET', `/runs/${encodeURIComponent(id)}`, undefined, {}, signal); }
   async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal): Promise<Blob> {
+    const activeSignal = signal ?? this.controller.signal;
     const url = new URL(artifact.download_url, location.origin);
     const path = `/api/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`;
     if (url.origin !== location.origin || url.pathname !== path || url.username || url.password || url.hash) {
       throw new ApiError(0, 'DATA_UNAVAILABLE');
     }
-    const response = await this.response('GET', `${url.pathname.slice('/api/v1'.length)}${url.search}`, undefined, {}, signal);
-    if (response.headers.get('content-type')?.split(';')[0].trim() !== artifact.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await response.blob();
-    (signal ?? this.controller.signal).throwIfAborted();
-    if (!bytes.size) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    return bytes;
+    const response = await this.response('GET', `${url.pathname.slice('/api/v1'.length)}${url.search}`, undefined, {}, activeSignal);
+    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    const bytes = await response.arrayBuffer();
+    activeSignal.throwIfAborted();
+    if (!bytes.byteLength) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    // Check the bytes received by the browser against the freshly authorized metadata.
+    // A matching MIME type alone cannot detect truncation or same-length corruption.
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    activeSignal.throwIfAborted();
+    const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    if (sha256 !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
+    return new Blob([bytes], { type: artifact.media_type });
   }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }

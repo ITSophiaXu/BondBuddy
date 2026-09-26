@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import type { Dto } from '../src/api';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 
 // Synthetic HTTP fixtures test browser behavior, not DOCX generation or Office compatibility.
 const now = '2026-09-26T02:00:00Z';
@@ -26,6 +27,7 @@ type State = {
   metadataStatus: number; downloadStatus: number; loggedOut: boolean; missingSummary: boolean;
   changedRun: boolean; runState: Dto<'RunResponse'>['state']; urlOverride?: string; wrongMediaType: boolean;
   pendingCount?: number; pendingItems?: typeof summary.pending_review;
+  downloadBody?: Buffer;
 };
 const state = (): State => ({ calls: [], metadataReads: {}, grants: [], metadataStatus: 200, downloadStatus: 200,
   loggedOut: false, missingSummary: false, changedRun: false, runState: 'succeeded', wrongMediaType: false });
@@ -50,13 +52,13 @@ async function installApi(page: Page, data: State) {
       if (!variant) return json(route, 404, { code: 'NOT_FOUND' });
       if (match[2]) {
         data.grants.push(url.searchParams.get('grant') ?? '');
-        if (data.downloadStatus !== 200) return json(route, data.downloadStatus, { code: data.downloadStatus === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE' });
-        return route.fulfill({ status: 200, contentType: data.wrongMediaType ? 'text/html' : mediaType, body: bytes });
+        if (![200, 206].includes(data.downloadStatus)) return json(route, data.downloadStatus, { code: data.downloadStatus === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE' });
+        return route.fulfill({ status: data.downloadStatus, contentType: data.wrongMediaType ? 'text/html' : mediaType, body: data.downloadBody ?? bytes });
       }
       data.metadataReads[id] = (data.metadataReads[id] ?? 0) + 1;
       if (data.metadataStatus !== 200) return json(route, data.metadataStatus, { code: data.metadataStatus === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE' });
       const artifact: Dto<'ArtifactResponse'> = { artifact_id: id, run_id: data.changedRun ? 'other-run' : runId, version: 1,
-        media_type: mediaType, sha256: '9'.repeat(64), quality_status: 'passed', delivery_status: 'available',
+        media_type: mediaType, sha256: createHash('sha256').update(bytes).digest('hex'), quality_status: 'passed', delivery_status: 'available',
         download_url: data.urlOverride ?? `/api/v1/artifacts/${id}/download?grant=fresh-${data.metadataReads[id]}`,
         expires_at: '2026-09-26T02:05:00Z',
         ...(data.missingSummary ? {} : { word_delivery: { ...summary, variant,
@@ -196,3 +198,29 @@ test('navigation cancels an in-flight download and suppresses late completion', 
   await expect(page.locator('.artifact-review')).toHaveCount(0);
   expect(downloads).toBe(0);
 });
+
+for (const scenario of ['same-length corruption', 'truncated body', 'partial response'] as const) {
+  test(`refuses ${scenario} and retries the same artifact without a new task`, async ({ page }) => {
+    const data = state(); await installApi(page, data);
+    let downloads = 0; page.on('download', () => downloads++);
+    await page.goto('/#/artifacts/word-revision');
+    await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeVisible();
+    if (scenario === 'same-length corruption') {
+      data.downloadBody = Buffer.from(bytes);
+      data.downloadBody[0] ^= 1;
+    }
+    if (scenario === 'truncated body') data.downloadBody = bytes.subarray(0, bytes.length - 1);
+    // Even a 206 carrying the expected bytes is not a complete-download response.
+    if (scenario === 'partial response') data.downloadStatus = 206;
+    await page.getByRole('button', { name: '下载修订版', exact: true }).click();
+    await expect(page.locator('[data-download-status="0"]')).toContainText('校验未通过');
+    expect(downloads).toBe(0);
+    await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeEnabled();
+    data.downloadBody = undefined; data.downloadStatus = 200;
+    const downloaded = page.waitForEvent('download');
+    await page.getByRole('button', { name: '下载修订版', exact: true }).click();
+    expect(await (await downloaded).failure()).toBeNull();
+    expect(data.grants).toEqual(['fresh-2', 'fresh-3']);
+    expect(data.calls.every(call => call.method === 'GET')).toBe(true);
+  });
+}
