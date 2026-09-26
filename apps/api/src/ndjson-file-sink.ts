@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 import { isDeepStrictEqual } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { LogRecord } from './log-ops.js';
+import { writeArchivedNdjson } from './archived-ndjson.js';
 
 const keyPattern = /^[a-f0-9]{64}$/;
 
@@ -103,10 +104,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const chunks: Buffer[] = [];
   process.stdin.on('data', chunk => chunks.push(Buffer.from(chunk)));
   process.stdin.on('end', () => {
-    let input: { records: LogRecord[]; maxBytes?: number };
+    let input: { records: LogRecord[]; maxBytes?: number; archive?: { sink: string; localBudget: number } };
     try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
     catch { process.stderr.write('Invalid NDJSON writer input\n'); process.exitCode = 1; return; }
-    void writeLocked(process.argv[2], input.records, input.maxBytes).catch(error => {
+    const write = input.archive
+      ? writeArchivedNdjson(process.argv[2], input.archive.sink, input.records, input.maxBytes!, input.archive.localBudget)
+      : writeLocked(process.argv[2], input.records, input.maxBytes);
+    void write.catch(error => {
       process.stderr.write(`${error instanceof Error ? error.message : 'NDJSON write failed'}\n`);
       process.exitCode = 1;
     });
