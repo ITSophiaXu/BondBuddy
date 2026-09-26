@@ -379,3 +379,5 @@ This is 31 disabled research candidates, not a production checker or release. Of
 ### #17 用户参考稿结构锁（2026-09-26）
 
 用户主动上传的相似稿与平台参考库分开锁定。新增 `0046_m1_user_reference_pins.sql`，保存追加式审核结论和每个 input revision 的不可变 pin；迁移不预置审核权限或通过结论。input lock 只接受 generation 中已列入 manifest 的本人项目 `reference` 材料版本，核对 SHA-256 和同源 parsed snapshot。pin 同时进入 `input_hash`，包含材料版本/hash、snapshot、授权/可读性/目标适用状态、目标市场/发行方式/品种/文书阶段、审核引用和事实隔离检查版本。审核必须匹配完整目标且授权仍有效；没有已审核结论时为 `needs_review`，后续审核只能创建新 input revision。`user-reference-outline-v1` 在后台任务进程重验材料、snapshot、审核和 grant 后只投影审核过的章节顺序与标题；解析正文和参考发行人事实不进入模型输入。未选择用户参考稿时，#33 继续使用 #77 库选择链。业务审核口径和授权由业务负责人确定，此切片不增加前台选择页或审核入口。
+
+2026-09-26 核对 UI 修复：在已返回的 `OcrReview.records` 上提供每组 500 条的完整遍历及原件页码筛选，保留原始记录顺序和未保存校正。原页加载失败可保留输入重试，图片显示之前不能保存；切换记录/离页清理旧图片加载，迟到响应不得解锁其他记录。无公开契约、迁移或 OCR runtime 变化；synthetic 浏览器证据见 `apps/web/README.md`，v2 调度、真实 OCR 和财务金标准仍是后续验收。
