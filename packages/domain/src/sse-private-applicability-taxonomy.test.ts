@@ -9,8 +9,9 @@ import {
 
 const validEvidence = {
   materialId: 'material-1',
-  materialVersion: '1',
+  materialVersion: 1,
   materialSha256: 'a'.repeat(64),
+  parseSnapshotId: 'snapshot-1',
   sourceRecordId: 'record-1',
   sourceContentSha256: 'b'.repeat(64),
   locator: 'document.xml//paragraph[1]',
@@ -27,10 +28,7 @@ function dimensions(overrides: Partial<Record<string, Partial<ApplicabilityDimen
 }
 
 function build(input: {
-  industry?: { readonly status: 'unknown' } | {
-    readonly status: 'classified'; readonly standardId: string; readonly standardVersion: string;
-    readonly definitionSha256: string; readonly code: string;
-  };
+  industry?: unknown;
   dimensions?: readonly ApplicabilityDimensionAssessment[] | null;
   dictionaryVersion?: string;
   dictionarySha256?: string;
@@ -38,7 +36,7 @@ function build(input: {
   return buildSsePrivateApplicabilityCandidate({
     dictionaryVersion: input.dictionaryVersion ?? SSE_PRIVATE_APPLICABILITY_DICTIONARY.version,
     dictionarySha256: input.dictionarySha256 ?? SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256,
-    industry: input.industry ?? { status: 'unknown' },
+    industry: Object.hasOwn(input, 'industry') ? input.industry as never : { status: 'unknown' },
     dimensions: input.dimensions === undefined ? dimensions() : input.dimensions,
   });
 }
@@ -94,10 +92,24 @@ test('invalid codes, incomplete evidence, dictionary versions and unbound indust
 
   const noNegativeEvidence = dimensions({ 'real-estate': { evidence: [] } });
   assert.deepEqual(build({ dimensions: noNegativeEvidence }), { accepted: false, reason: 'evidence_required' });
+  assert.deepEqual(build({ dimensions: dimensions({ 'real-estate': { evidence: [{
+    ...validEvidence, materialVersion: 0,
+  }] } }) }), { accepted: false, reason: 'evidence_invalid' });
+  assert.deepEqual(build({ dimensions: dimensions({ 'real-estate': { evidence: [{
+    ...validEvidence, materialVersion: '1' as never,
+  }] } }) }), { accepted: false, reason: 'evidence_invalid' });
+  assert.deepEqual(build({ dimensions: dimensions({ 'real-estate': { evidence: [{
+    ...validEvidence, locator: '   ',
+  }] } }) }), { accepted: false, reason: 'evidence_invalid' });
+  assert.deepEqual(build({ dimensions: dimensions({ 'real-estate': { evidence: [{
+    ...validEvidence, parseSnapshotId: '',
+  }] } }) }), { accepted: false, reason: 'evidence_invalid' });
   assert.deepEqual(build({ dictionaryVersion: 'sse-private-applicability-v0' }), { accepted: false, reason: 'dictionary_version_mismatch' });
   assert.deepEqual(build({ dictionarySha256: '0'.repeat(64) }), { accepted: false, reason: 'invalid_dictionary_hash' });
   assert.deepEqual(build({ industry: {
     status: 'classified', standardId: 'guessed-standard', standardVersion: '1',
     definitionSha256: 'c'.repeat(64), code: 'guessed-industry-code',
   } }), { accepted: false, reason: 'industry_standard_unbound' });
+  assert.deepEqual(build({ industry: null }), { accepted: false, reason: 'invalid_industry_classification' });
+  assert.deepEqual(build({ industry: { status: 'pending' } }), { accepted: false, reason: 'invalid_industry_classification' });
 });

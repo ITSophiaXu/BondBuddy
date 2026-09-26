@@ -93,8 +93,9 @@ export type ApplicabilityDimensionStatus = 'present' | 'absent' | 'not_applicabl
 
 export interface ApplicabilityEvidenceReference {
   readonly materialId: string;
-  readonly materialVersion: string;
+  readonly materialVersion: number;
   readonly materialSha256: string;
+  readonly parseSnapshotId: string;
   readonly sourceRecordId: string;
   readonly sourceContentSha256: string;
   readonly locator: string;
@@ -132,7 +133,7 @@ export type ApplicabilityCandidateResult =
   | {
     readonly accepted: false;
     readonly reason: 'dictionary_version_mismatch' | 'invalid_dictionary_hash' | 'industry_standard_unbound'
-      | 'invalid_industry_binding' | 'invalid_feature_code' | 'incomplete_dimensions'
+      | 'invalid_industry_binding' | 'invalid_industry_classification' | 'invalid_feature_code' | 'incomplete_dimensions'
       | 'invalid_dimension_status' | 'evidence_required' | 'evidence_invalid' | 'reason_required';
   };
 
@@ -147,21 +148,30 @@ function isSha256(value: unknown): value is string {
 function validEvidence(evidence: unknown): evidence is ApplicabilityEvidenceReference {
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
   const ref = evidence as Record<string, unknown>;
-  return isNonBlank(ref.materialId) && isNonBlank(ref.materialVersion) && isSha256(ref.materialSha256)
-    && isNonBlank(ref.sourceRecordId) && isSha256(ref.sourceContentSha256) && isNonBlank(ref.locator);
+  return isNonBlank(ref.materialId) && typeof ref.materialVersion === 'number'
+    && Number.isSafeInteger(ref.materialVersion) && ref.materialVersion > 0 && isSha256(ref.materialSha256)
+    && isNonBlank(ref.parseSnapshotId) && isNonBlank(ref.sourceRecordId)
+    && isSha256(ref.sourceContentSha256) && isNonBlank(ref.locator);
 }
 
-function mapIndustryToSelector(classification: IndustryClassification):
+function mapIndustryToSelector(classification: unknown):
   | { readonly accepted: true; readonly code: string | null }
-  | { readonly accepted: false; readonly reason: 'industry_standard_unbound' | 'invalid_industry_binding' } {
-  if (classification.status === 'unknown') return { accepted: true, code: null };
+  | { readonly accepted: false; readonly reason: 'industry_standard_unbound' | 'invalid_industry_binding' | 'invalid_industry_classification' } {
+  if (!classification || typeof classification !== 'object' || Array.isArray(classification)
+      || !('status' in classification)) {
+    return { accepted: false, reason: 'invalid_industry_classification' };
+  }
+  const value = classification as Partial<IndustryClassification>;
+  if (value.status === 'unknown') return { accepted: true, code: null };
+  if (value.status !== 'classified') return { accepted: false, reason: 'invalid_industry_classification' };
   const binding = SSE_PRIVATE_APPLICABILITY_DICTIONARY.industry.standardBinding;
   if (!binding) return { accepted: false, reason: 'industry_standard_unbound' };
-  if (classification.standardId !== binding.standardId || classification.standardVersion !== binding.standardVersion
-      || classification.definitionSha256 !== binding.definitionSha256 || !binding.codes.includes(classification.code)) {
+  if (value.standardId !== binding.standardId || value.standardVersion !== binding.standardVersion
+      || value.definitionSha256 !== binding.definitionSha256 || typeof value.code !== 'string'
+      || !binding.codes.includes(value.code)) {
     return { accepted: false, reason: 'invalid_industry_binding' };
   }
-  return { accepted: true, code: classification.code };
+  return { accepted: true, code: value.code };
 }
 
 /**
