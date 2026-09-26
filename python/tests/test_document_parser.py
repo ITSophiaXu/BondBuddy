@@ -406,6 +406,32 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(next(record for record in result["records"] if record["literal_quote"] == "附注")["locator"]["merged_range"], "A4:B4")
         self.assertEqual(result["status"], "needs_confirmation")
 
+    def test_xlsx_skips_whitespace_only_strings_and_preserves_record_order(self):
+        path = self.root / "whitespace-cells.xlsx"
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["start", "   ", "\t", "\u3000", 42, "=A1", "end"])
+        book.save(path)
+
+        result = self.request(path, MEDIA_XLSX)
+
+        self.assertEqual(
+            [record["literal_quote"] for record in result["records"]],
+            ["start", "42", "=A1", "end"],
+        )
+        self.assertEqual(
+            [record["record_id"] for record in result["records"]],
+            [f"evidence-{index:06d}" for index in range(1, 5)],
+        )
+        self.assertEqual(
+            [record["locator"]["cell"] for record in result["records"]],
+            ["A1", "E1", "F1", "G1"],
+        )
+        formula = result["records"][2]
+        self.assertEqual(formula["literal_quote"], "=A1")
+        self.assertIn("formula_result_not_cached", formula["uncertainty"])
+        self.assertEqual(result["document"]["cached_formula_results"], 0)
+
     def test_xlsx_preserves_cached_formula_result_as_unverified_evidence(self):
         source = self.root / "formula-source.xlsx"
         path = self.root / "formula-with-cache.xlsx"

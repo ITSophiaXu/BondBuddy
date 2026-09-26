@@ -35,7 +35,7 @@ export interface MaterialParserBlobStore {
 }
 
 /**
- * #17 parse capacity on the M1 production worker profile (320M container, 160 MiB V8 heap). Large
+ * #17 parse capacity on the M1 production worker profile (384M container, 160 MiB V8 heap). Large
  * PDF/TXT evidence uses bounded NDJSON spooled to disk; DOCX/XLSX/CSV retain the bounded JSON bridge.
  * Inputs above a per-type or protocol budget fail with MATERIAL_TOO_LARGE instead of being retried.
  */
@@ -265,7 +265,10 @@ export async function parseAuthorizedMaterial(
     const stagingRoot=dependencies.tempRoot??process.env.BB_PARSE_STAGING_DIR;
     if(stagingRoot){({directory,cleanup}=await createParseStaging(stagingRoot));}
     else {directory=await mkdtemp(join(tmpdir(),'bb-material-'));cleanup=()=>rm(directory!,{recursive:true,force:true});}
-    const authorizedPath = join(directory, 'source');
+    // openpyxl requires the OOXML workbook suffix when given a path. Derive it from the
+    // trusted media type, never from the uploaded filename or object key.
+    const authorizedPath = join(directory, row.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ? 'source.xlsx' : 'source');
     await stageMaterial(dependencies.blobs, row, authorizedPath);
     // Bytes are verified before a cache hit is trusted, as before streaming.
     if (cacheContext !== undefined) {

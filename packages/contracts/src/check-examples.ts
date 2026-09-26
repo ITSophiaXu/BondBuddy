@@ -25,6 +25,9 @@ data.cases.push(...trialExamples.cases);
 const agreementExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/agreement.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(agreementExamples.synthetic, true);
 data.cases.push(...agreementExamples.cases);
+const projectExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/project-list.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(projectExamples.synthetic, true);
+data.cases.push(...projectExamples.cases);
 assert.equal(data.synthetic, true);
 // #78 internal library query v1: validated here, and proven absent from the public OpenAPI document.
 const libraryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/reference-library.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Array<{ name: string; schema: keyof typeof referenceLibrarySchemas; valid: boolean; value: unknown }> };

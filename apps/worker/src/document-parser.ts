@@ -207,7 +207,7 @@ export function validateDocumentParseSummary(value:unknown,request:DocumentParse
           : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             ? {sheet:'S',cell:'A1',merged_range:null,stable_ref:'xlsx:S:cell:A1'}
             : {path:[{paragraph:1}],stable_ref:'docx:p0001'},
-    literal_quote:'stream summary',context:'',extraction_method:'native_text',extractor_version:'bondbuddy-document-parser-1.0.4',
+    literal_quote:'stream summary',context:'',extraction_method:'native_text',extractor_version:String(candidate.parser_version),
     confidence:null,uncertainty:hasUncertainty?['streamed uncertainty']:[],formatting:{},
   }]:[]};
   const validated=validateDocumentParseResponse(summary,request);

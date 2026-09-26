@@ -1,10 +1,14 @@
-import { pathToFileURL } from 'node:url';
-import { appendFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { constants } from 'node:fs';
+import { open } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
+import { Value } from '@sinclair/typebox/value';
 import { Pool, type PoolClient } from 'pg';
-import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, type OperatorRole } from '@bondbuddy/contracts';
+import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
-import { raiseAlert } from './evidence-gate.js';
+import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
 
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const safeCode = /^[a-z][a-z0-9_]{0,63}$/;
@@ -46,9 +50,40 @@ export type LogRecord = { delivery_key: string; outbox_id: string; event: Record
 /** A sink must treat delivery_key as an idempotency key: the same key may arrive again after a crash. */
 export interface LogSink { name: string; deliver(records: LogRecord[]): Promise<void> }
 
-/** NDJSON file sink. JSON encoding escapes CR/LF, so a field value cannot forge another log line. */
-export function ndjsonFileSink(path: string, name = 'ndjson_file'): LogSink {
-  return { name, async deliver(records) { await appendFile(path, records.map(r => JSON.stringify({ delivery_key: r.delivery_key, ...r.event }) + '\n').join(''), { mode: 0o600 }); } };
+export function ndjsonSizeCapFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.BB_LOG_SINK_MAX_BYTES;
+  const value = raw === undefined || raw === '' ? 64 * 1024 * 1024 : Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1024 || value > 1024 ** 3) throw new Error('Invalid BB_LOG_SINK_MAX_BYTES');
+  return value;
+}
+
+/** Run every file write under the same OS lock across processes. */
+async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: number): Promise<void> {
+  const lock = await open(`${path}.lock`, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+  try {
+    const stat = await lock.stat();
+    if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.uid !== process.getuid?.()) throw new Error('Unsafe NDJSON lock permissions');
+    const child = spawn('flock', ['-x', '-F', '/proc/self/fd/3', process.execPath, fileURLToPath(new URL('./ndjson-file-sink.js', import.meta.url)), path],
+      { stdio: ['pipe', 'ignore', 'pipe', lock.fd] });
+    let errorText = '';
+    child.stderr!.setEncoding('utf8');
+    child.stderr!.on('data', chunk => { errorText = (errorText + chunk).slice(0, 4096); });
+    const exited = new Promise<number>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', code => resolve(code ?? 1));
+    });
+    child.stdin!.on('error', () => undefined); // child failure is reported by its exit code
+    child.stdin!.end(JSON.stringify({ records, maxBytes }));
+    if (await exited !== 0) throw new Error(`NDJSON sink refused delivery: ${errorText || 'writer failed'}`);
+  } finally { await lock.close(); }
+}
+
+/** Active NDJSON and any legacy .1 segment are the key journal; new bytes obey the size cap. */
+export function ndjsonFileSink(path: string, name = 'ndjson_file', maxBytes?: number): LogSink {
+  return { name, async deliver(records) {
+    if (!records.length) return;
+    await lockedNdjsonWrite(path, records, maxBytes);
+  } };
 }
 
 export type ForwardOptions = { batchSize?: number; leaseSeconds?: number; retrySeconds?: number; afterSinkAccept?: () => Promise<void> };
@@ -60,11 +95,30 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
       WHERE o.id IN (SELECT id FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL
         AND (lease_until IS NULL OR lease_until<now()) AND (next_attempt_at IS NULL OR next_attempt_at<=now())
         ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT $3)
-      RETURNING o.id,o.aggregate_id,o.delivery_attempts,o.created_at`, [token, lease, batch])).rows);
+      RETURNING o.id,o.aggregate_id,o.owner_user_id,o.event_type,o.payload,o.delivery_attempts,o.created_at`, [token, lease, batch])).rows);
   if (!claimed.length) return { claimed: 0, delivered: 0, failed: 0 };
   claimed.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at) || String(a.id).localeCompare(String(b.id)));
-  const events = new Map((await pool.query('SELECT id,event FROM bb_observability_events WHERE id=ANY($1)', [claimed.map(r => r.aggregate_id)])).rows.map(r => [r.id, r.event]));
-  const records: LogRecord[] = claimed.filter(r => events.has(r.aggregate_id)).map(r => ({ delivery_key: digest(`${sink.name}:${r.id}`), outbox_id: r.id, event: events.get(r.aggregate_id) }));
+  let events: Map<string, { event: Record<string, unknown>; owner_user_id: string; kind: string }>;
+  try {
+    events = new Map((await pool.query('SELECT id,owner_user_id,kind,event FROM bb_observability_events WHERE id=ANY($1)', [claimed.map(r => r.aggregate_id)])).rows.map(r => [r.id, r]));
+  } catch (error) {
+    await tripEvidenceGate(pool, 'log_event_lookup_failed');
+    throw error;
+  }
+  if (claimed.some(r => {
+    const source = events.get(r.aggregate_id);
+    return !source || source.owner_user_id !== r.owner_user_id || source.kind !== r.event_type ||
+      !isDeepStrictEqual(r.payload, { event_id: r.aggregate_id, schema_version: 1 }) ||
+      !Value.Check(schemas.InternalObservabilityEvent, source.event) ||
+      source.event.event_id !== r.aggregate_id ||
+      source.event?.user_id !== r.owner_user_id || source.event?.kind !== r.event_type;
+  })) {
+    // The source and the complete outbox envelope must match the immutable v1 write contract.
+    await tripEvidenceGate(pool, 'log_event_missing');
+    await pool.query("UPDATE bb_outbox SET lease_token=NULL,lease_until=NULL,last_delivery_error='evidence_missing',next_attempt_at=now()+($3::integer*interval '1 second') WHERE id=ANY($1) AND lease_token=$2", [claimed.map(r => r.id), token, retry]);
+    return { claimed: claimed.length, delivered: 0, failed: claimed.length };
+  }
+  const records: LogRecord[] = claimed.map(r => ({ delivery_key: digest(`${sink.name}:${r.id}`), outbox_id: r.id, event: events.get(r.aggregate_id)!.event }));
   try {
     await sink.deliver(records);
   } catch {
@@ -75,10 +129,24 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
   }
   await options.afterSinkAccept?.();
   const byId = new Map(claimed.map(r => [r.id, r]));
-  await transaction(pool, async client => {
-    for (const record of records) await client.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING', [record.outbox_id, sink.name, record.delivery_key, byId.get(record.outbox_id).delivery_attempts]);
-    await client.query('UPDATE bb_outbox SET delivered_at=now(),lease_token=NULL,lease_until=NULL,last_delivery_error=NULL,next_attempt_at=NULL WHERE id=ANY($1) AND lease_token=$2 AND delivered_at IS NULL', [claimed.map(r => r.id), token]);
-  });
+  try {
+    await transaction(pool, async client => {
+      for (const record of records) {
+        await client.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING', [record.outbox_id, sink.name, record.delivery_key, byId.get(record.outbox_id).delivery_attempts]);
+        const receipt = (await client.query(`SELECT d.outbox_id,d.sink,d.delivery_key,o.aggregate_id,e.event
+          FROM bb_log_deliveries d JOIN bb_outbox o ON o.id=d.outbox_id
+          JOIN bb_observability_events e ON e.id=o.aggregate_id
+          WHERE d.delivery_key=$1 OR (d.outbox_id=$2 AND d.sink=$3)`, [record.delivery_key, record.outbox_id, sink.name])).rows;
+        if (receipt.length !== 1 || receipt[0].outbox_id !== record.outbox_id || receipt[0].sink !== sink.name ||
+          receipt[0].delivery_key !== record.delivery_key || receipt[0].aggregate_id !== byId.get(record.outbox_id).aggregate_id ||
+          !isDeepStrictEqual(receipt[0].event, record.event)) throw new Error('Inconsistent log delivery receipt');
+      }
+      await client.query('UPDATE bb_outbox SET delivered_at=now(),lease_token=NULL,lease_until=NULL,last_delivery_error=NULL,next_attempt_at=NULL WHERE id=ANY($1) AND lease_token=$2 AND delivered_at IS NULL', [claimed.map(r => r.id), token]);
+    });
+  } catch (error) {
+    await tripEvidenceGate(pool, 'log_receipt_not_persisted');
+    throw error;
+  }
   return { claimed: claimed.length, delivered: records.length, failed: 0 };
 }
 
@@ -94,6 +162,7 @@ export async function checkLogHealth(pool: Pool, thresholds: { maxBacklogAgeSeco
 
 // ---------------------------------------------------------------- retention
 
+class BlobPurgeError extends Error {}
 export type LogRetentionPolicy = { contentRetentionDays: number; policyVersion?: string; batchSize?: number; now?: () => Date;
   /** #6: content of a user-deleted project is purged this many days after deletion (the storage purge window). */ deletedProjectPurgeDays?: number;
   /** Test/restore-verifier scope only. The CLI never sets it. */ ownerScope?: string[] };
@@ -131,13 +200,25 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
     ORDER BY created_at,id LIMIT $2`, [cutoff, batch, policy.ownerScope ?? null, deletedCutoff])).rows;
   let purged = 0, failed = 0;
   for (const row of due) {
-    try { await blobs.delete(row.object_key); }
-    catch { failed++; await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } }); continue; }
-    await transaction(pool, async client => {
-      const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
-      if (inserted.rowCount) await emitInternal(client, internalEvent({ kind: 'log.content_purged', owner: row.owner_user_id, projectId: row.project_id, traceId: row.id, stage: row.reason, promptSnapshotRef: row.kind === 'prompt_snapshot' ? row.id : null }));
-    });
-    purged++;
+    try {
+      const deleted = await transaction(pool, async client => {
+        // The prompt view holds this same lock through response completion. Deletion and
+        // tombstoning must be one serialized operation, including the Blob I/O window.
+        if (row.kind === 'prompt_snapshot') await client.query("SELECT pg_advisory_xact_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [row.id]);
+        const existing = await client.query('SELECT 1 FROM bb_log_content_tombstones WHERE content_kind=$1 AND content_id=$2', [row.kind, row.id]);
+        if (existing.rowCount) return false;
+        try { await blobs.delete(row.object_key); }
+        catch { throw new BlobPurgeError('Private content deletion failed'); }
+        const inserted = await client.query('INSERT INTO bb_log_content_tombstones(id,owner_user_id,content_kind,content_id,object_key,reason,policy_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [uid(), row.owner_user_id, row.kind, row.id, row.object_key, row.reason, version]);
+        if (inserted.rowCount) await emitInternal(client, internalEvent({ kind: 'log.content_purged', owner: row.owner_user_id, projectId: row.project_id, traceId: row.id, stage: row.reason, promptSnapshotRef: row.kind === 'prompt_snapshot' ? row.id : null }));
+        return !!inserted.rowCount;
+      });
+      if (deleted) purged++;
+    } catch (error) {
+      if (!(error instanceof BlobPurgeError)) throw error;
+      failed++;
+      await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: row.kind } });
+    }
   }
   return { due: due.length, purged, failed };
 }
@@ -280,19 +361,135 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
   });
 }
 
-/** Plaintext is only returned after the audit row commits; a purged or foreign-looking ref is 404. */
-export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string) {
+const promptAbort = () => new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+
+/** PostgreSQL, rather than an HTTP Promise.race, stops an active query by the route deadline. */
+async function setPromptStatementTimeout(client: PoolClient, deadlineAt?: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw promptAbort();
+  if (deadlineAt === undefined) return;
+  const remaining = Math.ceil(deadlineAt - performance.now());
+  if (remaining <= 0) throw promptAbort();
+  await client.query("SELECT set_config('statement_timeout',$1,false)", [String(remaining)]);
+  if (signal?.aborted) throw promptAbort();
+}
+
+/** Return a connection that arrives after the HTTP waiter has disconnected. */
+function connectPrompt(pool: Pool, signal?: AbortSignal): Promise<PoolClient> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(promptAbort()); return; }
+    let settled = false;
+    const abort = () => { if (!settled) { settled = true; reject(promptAbort()); } };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    void pool.connect().then(client => {
+      if (settled) { client.release(); return; }
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) { client.release(); reject(promptAbort()); }
+      else resolve(client);
+    }, error => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      reject(error);
+    });
+  });
+}
+
+function waitPromptRetry(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(promptAbort()); return; }
+    const abort = () => { clearTimeout(timer); reject(promptAbort()); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, milliseconds);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+/** A try-lock never blocks a pool connection behind another HTTP response. */
+async function acquirePromptLock(pool: Pool, snapshotId: string, signal?: AbortSignal, deadlineAt?: number): Promise<PoolClient> {
+  let retryMs = 25;
+  for (;;) {
+    if (signal?.aborted) throw promptAbort();
+    // Do not leave a cancelled prompt in pg-pool's unabortable connect queue.
+    if (pool.idleCount === 0 && pool.totalCount >= (pool.options.max ?? 10)) {
+      await waitPromptRetry(retryMs, signal);
+      retryMs = Math.min(retryMs * 2, 250);
+      continue;
+    }
+    const client = await connectPrompt(pool, signal);
+    let locked = false;
+    try {
+      if (signal?.aborted) throw promptAbort();
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      locked = (await client.query("SELECT pg_try_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text)) locked", [snapshotId])).rows[0].locked === true;
+      if (signal?.aborted) throw promptAbort();
+      if (locked) return client;
+      // This session carries a route-specific statement_timeout. Never lend it
+      // to unrelated pool work, even though it did not acquire the lock.
+      client.release(true);
+    } catch (error) {
+      // Destroying this session releases a lock even if the query raced the abort.
+      client.release(true);
+      throw error;
+    }
+    await waitPromptRetry(retryMs, signal);
+    retryMs = Math.min(retryMs * 2, 250);
+  }
+}
+
+/** The caller must hold release until the HTTP response finishes or aborts. */
+export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: string, snapshotId: string, reasonCode: string, signal?: AbortSignal, deadlineAt?: number) {
   if (!validId(snapshotId)) throw missing();
   if (!safeCode.test(reasonCode)) throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
-  const { snapshot, auditId } = await transaction(pool, async client => {
-    const snapshot = (await client.query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id WHERE s.id=$1", [snapshotId])).rows[0];
-    const auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
-    return { snapshot, auditId };
-  });
-  if (!snapshot || snapshot.tombstone) throw missing();
-  const bytes = await blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
-  if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
-  return { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId };
+  const client = await acquirePromptLock(pool, snapshotId, signal, deadlineAt);
+  let releasePromise: Promise<void> | undefined;
+  const release = () => releasePromise ??= (async () => {
+    // Closing the session releases the advisory lock without queuing an unlock
+    // behind a still-running query. It must never re-enter the pool with a lock.
+    client.release(true);
+  })();
+  const abort = () => { void release(); };
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
+  try {
+    if (signal?.aborted) throw promptAbort();
+    // Audit commits before any plaintext read. The session lock survives that commit.
+    const query = async (sql: string, params?: unknown[]) => {
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      return client.query(sql, params);
+    };
+    await query('BEGIN');
+    let snapshot: any, auditId: string;
+    try {
+      snapshot = (await query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      await setPromptStatementTimeout(client, deadlineAt, signal);
+      auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
+      await query('COMMIT');
+    } catch (error) {
+      // A deadline/cancel leaves the transaction and session unfit for reuse.
+      // Do not enqueue ROLLBACK behind a stalled query on an aborted response.
+      if (!signal?.aborted && !(error instanceof Error && 'code' in error && error.code === '57014')) await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+    if (!snapshot || snapshot.tombstone) throw missing();
+    if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+    // A Blob request may never settle after a TCP disconnect. Promise.race observes its
+    // eventual result/rejection, while the abort path releases the session lock now.
+    const blobRead = blobs.getIfExistsBounded(snapshot.object_key, 10 * 1024 * 1024);
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted'));
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    let bytes: Buffer | null;
+    try { bytes = await Promise.race([blobRead, aborted]); }
+    finally { if (onAbort) signal?.removeEventListener('abort', onAbort); }
+    if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
+    if (!bytes || digest(bytes) !== snapshot.content_sha256.trim()) throw missing();
+    return { view: { snapshot_id: snapshot.id, user_id: snapshot.owner_user_id, project_id: snapshot.project_id, kind: snapshot.snapshot_kind, version: snapshot.version, content_sha256: snapshot.content_sha256.trim(), redaction_version: snapshot.redaction_version, media_type: 'text/plain; charset=utf-8' as const, body: bytes.toString('utf8'), audit_id: auditId }, release };
+  } catch (error) { await release(); throw error; }
+  finally { signal?.removeEventListener('abort', abort); }
 }
 
 export async function adminAlerts(pool: Pool, actorId: string) {
@@ -334,7 +531,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
     if (command === 'forward') {
       if (!process.env.BB_LOG_SINK_FILE) throw new Error('BB_LOG_SINK_FILE required');
-      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, ndjsonFileSink(process.env.BB_LOG_SINK_FILE)))}\n`);
+      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, ndjsonFileSink(process.env.BB_LOG_SINK_FILE, 'ndjson_file', ndjsonSizeCapFromEnv())))}\n`);
     } else if (command === 'health') {
       process.stdout.write(`${JSON.stringify(await checkLogHealth(pool, { maxBacklogAgeSeconds: Number(process.env.BB_LOG_BACKLOG_ALERT_SECONDS ?? '300') }))}\n`);
     } else if (command === 'retention') {

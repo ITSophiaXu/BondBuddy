@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -128,6 +129,50 @@ test('XLSX response accepts the exact cached-formula count and keeps cached valu
 
 const repositoryRoot=join(dirname(fileURLToPath(import.meta.url)),'../../..');
 const localPython=process.env.BB_PYTHON?.trim() || join(repositoryRoot,'.venv','bin','python');
+test('authorized rq-202509-02 XLSX passes the bounded strict Python to Node bridge', {
+  skip: process.env.BB_RUN_AUTHORIZED_LARGE_XLSX === '1' ? false : 'set BB_RUN_AUTHORIZED_LARGE_XLSX=1 with the test Python environment',
+}, async () => {
+  const manifest=JSON.parse(await readFile(join(repositoryRoot,'tests/samples/2026-09-25/manifest.json'),'utf8')) as {
+    cases: Array<{files:Array<{file_id:string;path:string;sha256:string;bytes:number}>}>;
+  };
+  const sample=manifest.cases.flatMap(item=>item.files).find(item=>item.file_id==='rq-202509-02');
+  assert.ok(sample);
+  assert.equal(sample.sha256,'c11db9a211c7e8c21efc5aab6a8e503b3817aa78f3d184cfe5d077b0a32826c2');
+  const path=join(repositoryRoot,'tests/samples/2026-09-25',sample.path);
+  const bytes=await readFile(path);
+  assert.equal(bytes.length,sample.bytes);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),sample.sha256);
+  const xlsxRequest:DocumentParseRequest={...request,request_id:'authorized-rq-202509-02',material:{
+    ...request.material,material_id:'rq-202509-02',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    sha256:sample.sha256,authorized_local_path:path,
+  }};
+  let outputBytes=0;
+  const parsed=await runDocumentParser(xlsxRequest,{maxOutputBytes:32*1024*1024,invoke:async (serialized,options)=>{
+    const child=spawnSync(localPython,['-m','bondbuddy_document_parser'],{
+      cwd:repositoryRoot,env:{...process.env,PYTHONPATH:join(repositoryRoot,'python')},
+      input:serialized,encoding:'utf8',maxBuffer:options.maxOutputBytes,timeout:options.timeoutMs,
+    });
+    assert.equal(child.status,0,'authorized parser process failed');
+    assert.ok(!child.error,'authorized parser process exceeded its bounded output or time');
+    outputBytes=Buffer.byteLength(child.stdout);
+    assert.ok(outputBytes<32*1024*1024);
+    return child.stdout;
+  }});
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.6');
+  assert.equal(parsed.status,'needs_confirmation');
+  assert.equal(parsed.records.length,22014);
+  assert.equal(parsed.document.cached_formula_results,3821);
+  assert.equal(parsed.records.filter(record=>record.uncertainty.includes('formula_cached_result_unverified')).length,3821);
+  parsed.records.forEach((record,index)=>{
+    assert.equal(record.record_id,`evidence-${String(index+1).padStart(6,'0')}`);
+    assert.equal(record.locator_type,'xlsx_cell');
+    assert.ok(typeof record.locator.sheet==='string' && record.locator.sheet.length>0);
+    assert.match(String(record.locator.cell),/^[A-Z]+[1-9][0-9]*$/);
+    assert.ok(record.literal_quote.trim().length>0);
+  });
+  assert.ok(outputBytes>13_000_000 && outputBytes<32*1024*1024);
+  console.log(`authorized rq-202509-02: output_bytes=${outputBytes}, records=${parsed.records.length}, cached=${parsed.document.cached_formula_results}`);
+});
 test('authorized zq-202312-02 XLSX crosses the real Python to Node parser boundary',{
   skip:existsSync(localPython)?false:'repository .venv is not installed',
 },async()=>{
@@ -137,7 +182,7 @@ test('authorized zq-202312-02 XLSX crosses the real Python to Node parser bounda
   const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,material_id:'zq-202312-02',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     sha256,authorized_local_path:path}};
   const parsed=await runDocumentParser(xlsxRequest,{pythonExecutable:localPython,repoRoot:repositoryRoot});
-  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.5');
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.6');
   assert.equal(parsed.status,'parsed');
   assert.equal(parsed.records.length,1392);
   assert.equal(parsed.warnings.length,0);

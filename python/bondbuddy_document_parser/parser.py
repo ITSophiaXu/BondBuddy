@@ -24,7 +24,7 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.5"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.6"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -653,6 +653,8 @@ def _parse_xlsx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
                     raw_value = cell.value
                     cached_value = value_sheet[cell.coordinate].value
                     if raw_value is None:
+                        continue
+                    if isinstance(raw_value, str) and not raw_value.strip():
                         continue
                     uncertainty: list[str] = []
                     formatting = {"number_format": cell.number_format, "data_type": cell.data_type, "sheet_state": sheet.sheet_state}

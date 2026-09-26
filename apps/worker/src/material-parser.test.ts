@@ -223,6 +223,24 @@ test('unsupported media types are rejected without fetching bytes or invoking pa
   assert.equal(parserCalls, 0);
 });
 
+test('XLSX staging uses a trusted suffix required by openpyxl and removes the private copy', async t => {
+  const root = await temporaryRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const deps = dependencies({
+    tempRoot: root,
+    material: { ...row, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', role: 'financial' },
+    parser: async request => {
+      assert.equal(request.material.authorized_local_path.split('/').at(-1), 'source.xlsx');
+      assert.deepEqual(await readFile(request.material.authorized_local_path), bytes);
+      return { ...responseFor(request), status: 'failed', records: [], document: { page_count: null },
+        error: { code: 'SYNTHETIC_FAILURE', message: 'synthetic parser failure' } };
+    },
+  });
+  const result = await parseAuthorizedMaterial(deps, input);
+  assert.equal(result.status, 'failed');
+  assert.equal((await readdir(root)).filter(name => name.startsWith('bb-material-')).length, 0);
+});
+
 test('#17 capacity: oversized materials fail before any byte is read, and over-budget output is its own code', async (t) => {
   const root = await temporaryRoot();
   t.after(() => rm(root, { recursive: true, force: true }));

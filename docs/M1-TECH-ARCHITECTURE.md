@@ -258,7 +258,7 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 
 `apps/web/` 以 Vite、原生 TypeScript 和原型的视觉样式接入现有 `/api/v1`，复用 `packages/contracts` 类型。当前覆盖已有账号登录、会话刷新/退出、本人项目分页列表、已加载名称搜索、新建项目、名称/发行人自动保存，以及按公共固定分区上传文件。每个文件有独立上传会话、XHR 字节进度、服务端保存/核验阶段、失败重试和取消；只有 `complete` 返回材料版本才显示服务端确认成功。刷新恢复读取项目材料事件并按 owner-scoped material ID 拉取当前状态，不从浏览器存储恢复个人数据；#12 的初始 UI 切片缺少服务端事件读取，后续 #8 项目事件切片现已提供此恢复路径。409 保留输入且不覆盖服务端新版本；跨页账号切换清除旧页面内容。
 
-项目材料恢复使用 0011 持久化的 owner-scoped `ProjectEvent` 项目序列；只有 Blob 内容核验并保存成功后才写终态 `material.upload_progress`，事件和材料/outbox 在同一事务提交。分页默认 50 条、上限 100 条；恢复时再通过 owner-scoped 当前材料读取排除已删除或 Blob 缺失记录。该切片不宣称完成 #10/#12：同内容去重、历史稿重复识别抑制、扫描/加密/缺页提示的完整验收仍待完成。默认 upload tests 使用合成 API fixture；独立的 project-events browser integration 运行本地 PostgreSQL/Azurite API 与 Blob，但不构成目标环境/TLS验收。全局搜索、类型/状态筛选、归档仍依赖后续接口；#11 已补齐业务字段，#18、#34 的完整工作区后续接入。不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
+项目材料恢复使用 0011 持久化的 owner-scoped `ProjectEvent` 项目序列；只有 Blob 内容核验并保存成功后才写终态 `material.upload_progress`，事件和材料/outbox 在同一事务提交。分页默认 50 条、上限 100 条；恢复时再通过 owner-scoped 当前材料读取排除已删除或 Blob 缺失记录。该切片不宣称完成 #10/#12：同内容去重、历史稿重复识别抑制、扫描/加密/缺页提示的完整验收仍待完成。默认 upload tests 使用合成 API fixture；独立的 project-events browser integration 运行本地 PostgreSQL/Azurite API 与 Blob，但不构成目标环境/TLS验收。#10 全局搜索、类型/状态筛选、归档接口已补齐（见下节）；#11 已补齐业务字段，#18、#34 的完整工作区后续接入。不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
 
 | 负责人 | 主改动面 | 必须与谁对齐 |
 | --- | --- | --- |
@@ -268,6 +268,16 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 | Xuefeng | 解析/OCR/事实抽取、规则适用与匹配算法、无历史稿编制；复用 `python/` 与 worker 的算法模块 | Maxy 审核专业规则与样本；Felix 对齐 worker 协议；Chris 对齐待确认状态 |
 
 共同约定：每项 issue 从 `develop` 建独立分支和工作区，日常 PR 的 base 为 `develop`；`master` 只接收经审核的 `develop` 发布 PR，生产修复从 `master` 分支并回灌 `develop`。具体操作规则见仓库根目录的 `AGENTS.md`。PR 只改自己负责的模块和必要契约。改 `packages/contracts/`、`db/migrations/`、运行状态机或公共规则枚举时，PR 写清迁移影响，并由受影响的负责人 review（不含 Felix；所有 PR 都不需要 Felix review）。迁移文件只追加，不修改已部署版本。以 OpenAPI/schema 样例和固定材料样本联调，避免口头约定字段。规则与模板数据带版本、来源、适用范围和审核状态；任何专业结论由 Maxy 或指定行业审核人确认。
+
+### #10 全量项目查询和归档（2026-09-26）
+
+新增 `ProjectListQuery`（q/kind/status/archive/limit/cursor）与 `ProjectArchiveRequest`，`ProjectResponse` 兼容增加 `archived_at`，`ProjectListResponse` 兼容增加类型、发行人、市场/方式、归档时间、实际任务状态及最近成功成果引用。`PROJECT_STATES` 只在公共契约中将 `draft` 与既有 `RUN_STATES` 合并，不另造任务状态机。
+
+`GET /api/v1/projects` 先按受信 owner 与未删除条件过滤，名称/发行人作不区分大小写的字面包含搜索；分页默认 50、最多 100。默认 archive=active，archived/all 可显式查询。状态优先采用尚未终态的 run，否则取最新 run，无 run 才是 draft。最近成果独立选取 succeeded run 的 passed/available 主成果，后续失败不覆盖；下载继续走原授权和 Blob hash 校验，查询不承诺字节始终可用。列表按 max(草稿更新时间, 当前 run 更新时间) 及 ID 倒序；游标包含数据库原始微秒时间和 ID，浏览器改筛选时重新从第一页查询。
+
+`POST /api/v1/projects/{id}/archive` 使用 `{archived:boolean}`。新增 `0043_m1_project_archive.sql`（与并行 #79 的 0040–0042 无依赖）：`bb_projects.archived_at` 及 owner/归档/活动、run 项目查询索引。owner 限定行锁内更新可见性并写 project.archived/restored outbox；同状态重试无新增事件。不递增草稿修订、不修改 input hash，不取消运行任务或清理材料/成果；恢复和归档均可直接访问项目及原成果。
+
+浏览器 `project-browser.ts` 复用同源 API client，搜索请求可取消并忽略过期结果，URL 保存筛选但不存账号凭据/项目缓存，退出/切换页面销毁请求。不开放未验收执行或收费入口。验收和相邻功能边界见 `apps/web/README.md` 的 #10 章节；无需其他业务或算法负责人变更规则。
 
 ## 6. 开工顺序与首个可集成切片
 
@@ -305,7 +315,7 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 
 ### #7 用户名密码决策（2026-09-24）
 
-用户选择 M1 使用用户名密码，短信供应商接入不需要。以上 #7 短信切片仅为历史实现记录；公开 `/api/v1` 契约现使用 `auth/register` 和 `auth/login`。`0008_m1_username_password.sql` 追加唯一小写 ASCII 用户名与 Argon2id 凭据；旧手机账号保留，但没有自动用户名、密码或账号接管入口。旧短信路由从 API 和 OpenAPI 移除。登录使用账号及账号/来源组合的 15 分钟失败窗口（分别 10、5 次）；不按共享 IP 单独封禁。密码找回与账号迁移需 #9 单独设计。正式浏览器、TLS 和部署验收仍未完成。
+用户选择 M1 使用用户名密码，短信供应商接入不需要。以上 #7 短信切片仅为历史实现记录；公开 `/api/v1` 契约现使用 `auth/register` 和 `auth/login`。`0008_m1_username_password.sql` 追加唯一小写 ASCII 用户名与 Argon2id 凭据；旧手机账号保留，但没有自动用户名、密码或账号接管入口。旧短信路由从 API 和 OpenAPI 移除。登录使用账号及账号/来源组合的 15 分钟失败窗口（分别 10、5 次）；不按共享 IP 单独封禁。密码找回按第 02 章 2.7 节定稿实现，旧手机身份不自动迁移。正式浏览器、TLS 和部署验收仍未完成。
 
 ### #9 账号设置、会话管理与注销切片（2026-09-24）
 
@@ -313,7 +323,7 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 
 注销先 `GET /account/closure` 列出未结束 run、项目/材料/成果数量、保留记录与 `local_exports=not_affected`；有未终态 run 时 `POST` 返回 409 `ACCOUNT_CLOSURE_BLOCKED`。确认用户名和密码后，同一事务锁定用户行、软删材料（经 0006 触发器写存储墓碑）与项目、撤销成果交付与下载授权、撤销全部会话、删除密码凭据、标记账号关闭并写注销记录和 `user.closed` outbox。用户名保留不可重新注册；协议接受、注册事件、run 历史、#79 操作/用量日志与 outbox 按依法留存保留。并发写入由触发器等待注销事务提交后拒绝。`balance_status` 固定为 `not_applicable_m1`，M2 钱包/退款须以新增状态和迁移接入，不能直接复用。
 
-仍未关闭：无可靠身份核验渠道，因此不提供自助找回，人工找回流程与核验证据需产品/合规定稿，客服不得绕过；被不可变输入快照引用的材料、成果文件字节与 prompt 快照正文还没有注销后的物理清理生命周期。浏览器设置页已在 `apps/web/` 的 `#/account` 接入，只消费上述公共路由，不新增契约或迁移。运行与验证见 `apps/api/README.md` 和 `apps/web/README.md`。
+2026-09-26：#9 人工找回已按用户授权定稿，唯一产品规则见 [02 第 2.7 节](../product-prototype/product-specs/02-注册登录与账号.md#27-m1-人工找回与身份核验定稿-v1)：单客服受理、通过事前绑定渠道确认、一次性限时链接由用户自行设密；没有可靠旧记录不重置。首次绑定/换渠道要求已登录且复验当前密码。恢复渠道持久化、受限签发工具与用户重置入口尚待实现；本次不新增公共 DTO 或迁移，接线时按该规则在 packages/contracts 定义。重置成功要原子更新凭据、消耗授权、撤销全部旧会话及写审计/outbox，保留原 user_id 和项目/任务。当前 self_service_recovery=unavailable；不允许客服直接修改密码表。注销后的物理清理已由 #6 deletion:lifecycle 接入，见上文 #6 用户删除与数据说明；不再列为尚无生命周期。浏览器设置页已在 `apps/web/` 的 `#/account` 接入，只消费上述公共路由，不新增契约或迁移。运行与验证见 `apps/api/README.md` 和 `apps/web/README.md`。
 
 ### #14 OCR 与原页校正切片（2026-09-25）
 

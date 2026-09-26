@@ -102,7 +102,7 @@ async function managedDirectory(base: string, name: string, nonce: string): Prom
   if (!dir.isDirectory() || dir.isSymbolicLink() || dir.uid !== process.getuid?.() || (dir.mode & 0o077) !== 0)
     throw problem('UNMANAGED_ENTRY');
   const names = await readdir(path);
-  if (names.some(item => ![OWNER, OWNER_LOCK, 'source', 'records.ndjson'].includes(item))) throw problem('UNMANAGED_ENTRY');
+  if (names.some(item => ![OWNER, OWNER_LOCK, 'source', 'source.xlsx', 'records.ndjson'].includes(item))) throw problem('UNMANAGED_ENTRY');
   let bytes = 0;
   for (const item of names) {
     await privateFile(join(path, item));

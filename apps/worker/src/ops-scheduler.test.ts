@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { transaction, type PrivateBlobs } from '@bondbuddy/api/data';
+import { ndjsonFileSink } from '@bondbuddy/api/log-ops';
 import { emitInternal, internalEvent } from '@bondbuddy/api/observability';
-import { checkWorkerHeartbeat, claimTask, finishTask, jittered, OpsScheduler, rotateIfLarge, tasksFromEnv, type ScheduledTask } from './ops-scheduler.js';
+import { checkWorkerHeartbeat, claimTask, finishTask, jittered, OpsScheduler, tasksFromEnv, type ScheduledTask } from './ops-scheduler.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 // #79/#35 ops scheduler. Synthetic only: no real sinks, blobs or providers.
@@ -14,22 +16,30 @@ const connection = await isolatedTestDatabase('BB_TEST_RUNTIME_DATABASE_URL');
 const noBlobs = new Proxy({}, { get: () => async () => { throw new Error('no blob access expected'); } }) as PrivateBlobs;
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+async function crashAfterFileAccept(databaseUrl: string, file: string) {
+  const source = `import { Pool } from 'pg';
+    const { forwardLogs, ndjsonFileSink } = await import('@bondbuddy/api/log-ops');
+    const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+    // The pre-fix writer accepted a batch crossing the scheduler's size cap.
+    await forwardLogs(pool, ndjsonFileSink(process.env.BB_TEST_LOG_FILE), {
+      batchSize: 100, afterSinkAccept: async () => process.exit(17)
+    });`;
+  return await new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
+      env: { ...process.env, BB_TEST_DATABASE_URL: databaseUrl, BB_TEST_LOG_FILE: file }
+    });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', code => resolve({ code, stderr }));
+  });
+}
+
 test('jitter stays within the configured band', () => {
   assert.equal(jittered(1000, 0.1, () => 0), 900);
   assert.equal(jittered(1000, 0.1, () => 1), 1100);
   assert.equal(jittered(1000, 0, Math.random), 1000);
-});
-
-test('the NDJSON sink rotates to one .1 file past its size cap', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bb-ops-'));
-  try {
-    const file = join(dir, 'sink.ndjson');
-    assert.equal(await rotateIfLarge(file, 10), false, 'missing file is fine');
-    await writeFile(file, 'x'.repeat(20));
-    assert.equal(await rotateIfLarge(file, 10), true);
-    assert.equal((await stat(`${file}.1`)).size, 20);
-    await assert.rejects(stat(file));
-  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test('env wiring: sink file enables forwarding; purge needs blob; backfill is opt-in', () => {
@@ -128,6 +138,64 @@ test('log forwarding task writes NDJSON to the sink file', { skip: !connection }
     assert.equal(lines.length, pending);
     assert.equal(lines.filter(l => l.user_id === 'synthetic-ops-owner').length, 3);
     assert.deepEqual(await forward.run(), { ok: true, detail: { delivered: 0 } }, 'a second run re-sends nothing');
+  } finally { await pool.end(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('scheduler does not rotate an over-cap segment before or after two-process replay', { skip: !connection }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb-ops-rotation-'));
+  const pool = new Pool({ connectionString: connection });
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const [forward] = tasksFromEnv(pool, { BB_LOG_SINK_FILE: file, BB_LOG_SINK_MAX_BYTES: '1024', BB_TRIAL_GUARD: 'off', BB_STORAGE_PURGE_ENABLED: 'false' });
+    for (let i = 0; i < 35; i++) await transaction(pool, client => emitInternal(client, internalEvent({ kind: 'error.recorded', owner: 'synthetic-rotation', traceId: `synthetic-rotation-${i}`, stage: 'synthetic_stage' })));
+    const pending = (await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n;
+    assert.equal(pending, 35);
+    const before = (await pool.query("SELECT count(*)::int n FROM bb_log_deliveries WHERE sink='ndjson_file'")).rows[0].n;
+    const crashed = await crashAfterFileAccept(connection!, file);
+    assert.equal(crashed.code, 17, crashed.stderr);
+    const acceptedSize = (await stat(file)).size;
+    assert.ok(acceptedSize >= 1024, 'accepted batch crossed the rotation threshold');
+    await assert.rejects(stat(`${file}.1`));
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_deliveries WHERE sink='ndjson_file'")).rows[0].n, before);
+    await pool.query("UPDATE bb_outbox SET lease_until=now()-interval '1 second' WHERE aggregate_type='observability' AND delivered_at IS NULL AND lease_token IS NOT NULL");
+    assert.deepEqual(await forward.run(), { ok: true, detail: { delivered: pending } });
+    await assert.rejects(stat(`${file}.1`), 'unacknowledged lines must not rotate');
+    const firstLines = (await readFile(file, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line));
+    assert.equal(firstLines.length, pending);
+    assert.equal(new Set(firstLines.map(line => line.delivery_key)).size, pending);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_deliveries WHERE sink='ndjson_file'")).rows[0].n, before + pending);
+    assert.deepEqual(await forward.run(), { ok: true, detail: { delivered: 0 } });
+    assert.equal((await stat(file)).size, acceptedSize);
+    await assert.rejects(stat(`${file}.1`), 'no automatic rotation after acknowledgement: stale processes may still send old keys');
+    const old = firstLines[0];
+    const { delivery_key, ...event } = old;
+    await ndjsonFileSink(file, 'ndjson_file', 1024).deliver([{ delivery_key, outbox_id: 'synthetic-late-forwarder', event }]);
+    assert.equal((await stat(file)).size, acceptedSize, 'a late forwarder cannot duplicate a now-acknowledged key');
+    await transaction(pool, client => emitInternal(client, internalEvent({ kind: 'error.recorded', owner: 'synthetic-rotation', traceId: 'synthetic-rotation-next', stage: 'synthetic_stage' })));
+    const capped = await forward.run();
+    assert.equal(capped.ok, false);
+    assert.equal(capped.errorCode, 'sink_unavailable');
+    assert.equal((await stat(file)).size, acceptedSize);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n, 1);
+  } finally { await pool.end(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('scheduler fails closed at cap when pending file keys cannot be reconciled', { skip: !connection }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb-ops-cap-'));
+  const pool = new Pool({ connectionString: connection });
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const oldLine = JSON.stringify({ delivery_key: 'f'.repeat(64), kind: 'synthetic.event', padding: 'x'.repeat(1200) }) + '\n';
+    await writeFile(file, oldLine, { mode: 0o600 }); // valid file key with no PG receipt
+    const pendingBefore = (await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n;
+    await transaction(pool, client => emitInternal(client, internalEvent({ kind: 'error.recorded', owner: 'synthetic-cap', traceId: 'synthetic-cap-trace', stage: 'synthetic_stage' })));
+    const [forward] = tasksFromEnv(pool, { BB_LOG_SINK_FILE: file, BB_LOG_SINK_MAX_BYTES: '1024', BB_TRIAL_GUARD: 'off', BB_STORAGE_PURGE_ENABLED: 'false' });
+    const outcome = await forward.run();
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.errorCode, 'sink_unavailable');
+    assert.equal(await readFile(file, 'utf8'), oldLine);
+    await assert.rejects(stat(`${file}.1`));
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n, pendingBefore + 1);
   } finally { await pool.end(); await rm(dir, { recursive: true, force: true }); }
 });
 
