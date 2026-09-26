@@ -3,6 +3,7 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {evaluateRulePackCapability, publishRulePackBundle, type RulePack, type ChapterTemplate, type CoverageManifest} from './index.js';
+import { SSE_PRIVATE_CHECKED_RULES, SSE_PRIVATE_CHECKER_VERSION } from './sse-private-checks.js';
 
 const base=new URL('../../../knowledge/exchange-bonds/',import.meta.url);
 const json=(path:string)=>JSON.parse(readFileSync(new URL(path,base),'utf8'));
@@ -65,4 +66,32 @@ test('#20 official retrieval and sample target confirmations cannot unlock produ
   assert.throws(()=>publishRulePackBundle(pack,template,coverage,{
     channel:'production',reviews:[],released_by:'synthetic-test-operator',released_at:'2026-09-26T04:46:22Z',reason:'negative test',
   }),/RULE_PACK_COVERAGE_INCOMPLETE/);
+});
+
+test('#20 financial checker citations preserve the actual private exception and financial disclosure clauses', () => {
+  const quotes = (suffix: string) => {
+    const rule = pack.rules.find(row => row.rule_id === `sse-private-${suffix}`)!;
+    return pack.sources.filter(row => rule.source_ref_ids.includes(row.source_id) && row.source_id.startsWith('ov-')).map(row => row.exact_quote).join('\n');
+  };
+  assert.match(quotes('period-window'), /最近两年的财务报告和审计报告/);
+  assert.match(quotes('audit-opinion'), /带强调事项段无保留意见或保留意见/);
+  assert.match(quotes('audit-opinion'), /影响是否已经消除/);
+  assert.match(quotes('financial-statements'), /同时披露合并财务报表和母公司财务报表/);
+  assert.match(quotes('financial-statements'), /除新设子公司外/);
+  assert.match(quotes('mdna-thresholds'), /占总负债百分之十以上/);
+  assert.match(quotes('mdna-thresholds'), /变化幅度在百分之三十以上/);
+});
+
+test('#20 review checklist covers every candidate while executable metadata identifies only the bounded subset', () => {
+  const checklist = readFileSync(new URL('drafts/sse-private/RULE-REVIEW-CHECKLIST.md', base), 'utf8');
+  assert.match(checklist, /31条全部待业务审核/);
+  assert.equal((checklist.match(/审核决定、理由、证据记录：待填写。/g) ?? []).length, 31);
+  assert.equal(SSE_PRIVATE_CHECKED_RULES.length, 9);
+  for (const rule of pack.rules) {
+    assert.ok(checklist.includes(`规则：\`${rule.rule_id}\``));
+    const implemented = (SSE_PRIVATE_CHECKED_RULES as readonly string[]).includes(rule.rule_id);
+    const mapping = map.rules.find((row: any) => row.rule_id === rule.rule_id);
+    assert.equal(mapping.engineering_check, implemented ? `bounded-research-check-v${SSE_PRIVATE_CHECKER_VERSION}` : 'unimplemented');
+    assert.equal(rule.checker.checker_version, implemented ? SSE_PRIVATE_CHECKER_VERSION : 'unimplemented.1');
+  }
 });

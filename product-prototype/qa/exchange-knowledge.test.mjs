@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { loadKnowledge, manifest } from '../lib/knowledge.mjs';
+const privatePack = JSON.parse(readFileSync(new URL('../../knowledge/exchange-bonds/drafts/sse-private/rule-pack.json', import.meta.url), 'utf8'));
 
 test('six exchange scopes have separate update and review research routes',async()=>{
   const items=await manifest();assert.equal(items.length,12);
@@ -20,7 +22,7 @@ test('six exchange scopes have separate update and review research routes',async
 test('#20 official evidence is routed only to SSE private; superseded 2023 optimization text is not retrieved',async()=>{
   for(const kind of ['update','review']){
     const knowledge=await loadKnowledge('sse-private',kind);
-    assert.equal(knowledge.version,'2026.09.26-draft.2');
+    assert.equal(knowledge.version,privatePack.version);
     assert.equal(knowledge.rules.length,31);
     assert.ok(knowledge.sources.includes('OV-sse-mature-2026'));
     assert.ok(knowledge.sources.includes('OV-sse-disclosure-2023'));

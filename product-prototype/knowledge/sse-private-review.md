@@ -1,6 +1,6 @@
 # 上交所 · 普通私募公司债 · 募集说明书复核知识
 
-版本：2026.09.26-draft.3 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
+版本：2026.09.26-draft.4 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
 
 状态：知识研究草稿，尚未发布。章节骨架及方法可供开发；当前不构成合规通过或上线验收。
 ## 逐字段来源与冲突处理
@@ -85,7 +85,7 @@
 
 更新资产负债表、利润表、现金流量表的全部适用期间和科目，合并/母公司分开，原始定位保留。期初与上年期末差异查重述或重分类，不自动勾平；重大重组备考报表及合并范围变化单列。OCR低置信数字需确认，不能成为已证实数值。 边界：私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。
 
-依据：EX038:P00618;EX038:P00619;EX038:P00623;OV-sse-application-2023:P00196;OV-sse-application-2023:P00199;OV-sse-application-2023:P00200;OV-sse-application-2023:P00202;OV-sse-application-2023:P00443。
+依据：EX038:P00618;EX038:P00619;EX038:P00623;OV-sse-application-2023:P00195;OV-sse-application-2023:P00196;OV-sse-application-2023:P00199;OV-sse-application-2023:P00200;OV-sse-application-2023:P00202;OV-sse-application-2023:P00443。
 
 ## 财务指标定义、重算与缺项
 

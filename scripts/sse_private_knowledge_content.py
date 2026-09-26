@@ -4,14 +4,15 @@ References use archived official attachment paragraph indices / physical PDF pag
 The common authoring source and the other five scope drafts stay unchanged.
 """
 
-VERSION = '2026.09.26-draft.3'
-PREVIOUS_VERSION = '2026.09.26-draft.2'
+VERSION = '2026.09.26-draft.4'
+PREVIOUS_VERSION = '2026.09.26-draft.3'
 EVIDENCE_VERSION = '2026.09.26-evidence.1'
-AUTHORED_AT = '2026-09-26T04:46:22Z'
+AUTHORED_AT = '2026-09-26T09:36:34Z'
 
-# Five bounded structured-evidence checks; all other candidates still need implementations.
+# Nine bounded structured-evidence checks; all other candidates still need implementations.
 EXECUTABLE_CHECKS = {'private-investors', 'financial-validity-sse', 'private-use-change',
-                     'idle-proceeds-2026', 'continuing-disclosure'}
+                     'idle-proceeds-2026', 'continuing-disclosure', 'period-window',
+                     'audit-opinion', 'financial-statements', 'mdna-thresholds'}
 
 # key -> chapters, official reference pairs, limitation specific to this rule.
 A = 'sse-application-2023'
@@ -39,7 +40,7 @@ MAPPINGS = {
  'issuer-governance': (['issuer','declarations'], [(A,'P00171'),(A,'P00175'),(A,'P00177'),(A,'P00178'),(A,'P00179'),(A,'P00186'),(A,'P00187')], '重大重组按引用的现行重组规则判断，单一50%启发式不作为已确认事实；公司法任职/监事安排仍须当期核验。'),
  'business-revenue': (['issuer','financial','risk'], [(A,'P00181'),(A,'P00182'),(A,'P00183'),(A,'P00184')], '一般10%以上主要板块是披露要求；后台前三合并主营业务收入匹配不替代全文披露。并列、分类变动和非可比期间须保留。'),
  'audit-opinion': (['financial','front','risk'], [(A,'P00198'),(A,'P00443')], '非标事项说明应来自有权机构/会计师。中期未经审计不可写成审计通过；缺意见页仍可生成标记缺口的工作稿。'),
- 'financial-statements': (['financial'], [(A,'P00196'),(A,'P00199'),(A,'P00200'),(A,'P00202'),(A,'P00443')], '私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。'),
+ 'financial-statements': (['financial'], [(A,'P00195'),(A,'P00196'),(A,'P00199'),(A,'P00200'),(A,'P00202'),(A,'P00443')], '私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。'),
  'indicators': (['financial','front'], [(A,'P00200'),(A,'P00201')], '3.7.2第二段为面向普通投资者公募附加表，不作为私募强制清单。私募仍披露适用指标，定义取本期条款/专业口径。'),
  'mdna-thresholds': (['financial'], [(A,'P00203'),(A,'P00204')], '10%以上/30%以上保留原文字义；低于阈值不豁免重大事项，零/负基数不机械使用百分比。'),
  'cause-evidence': (['issuer','financial','risk'], [(A,'P00203'),(D,'P00024')], '计算差额不证明业务原因；原专家稿的推测仅作为待确认问题。'),

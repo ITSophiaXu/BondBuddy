@@ -396,4 +396,4 @@ This is 31 disabled research candidates, not a production checker or release. Of
 
 ### #20 受限规则检查（2026-09-26）
 
-现有 RulePack 的五条 checker 引用已绑定内部结构化证据检查实现；工程入口、证据输入、版本边界及未覆盖项见 [可执行检查交接](../knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)。全部候选保持 research_only，生产Eligible 始终为 false。它不新增 API、迁移或默认 worker 阶段；#15/#19 可信适配负责事实与审核身份，正式发布仍通过既有 registry。不得把该研究返回值当作 production selector 或行业签认。
+现有 RulePack draft.4 的九条 checker 引用已绑定内部结构化证据检查实现，checker v2拒绝v1或错配参数；工程入口、证据输入、版本边界及未覆盖项见 [可执行检查交接](../knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)。新增财务检查按单报告/单期/单项目运行，可信适配器负责应检查集合的完整枚举；金额阈值采用十进制整数缩放，避免10%/30%边界浮点误差。全部候选保持 research_only，productionEligible 始终为 false。它不新增 API、迁移或默认 worker 阶段；#15/#19 可信适配负责事实与审核身份，正式发布仍通过既有 registry。不得把该研究返回值当作 production selector 或行业签认。31条具体审核决定见 [逐条清单](../knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-CHECKLIST.md)。

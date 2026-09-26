@@ -3,7 +3,7 @@
   "scope": "sse-private",
   "kind": "update",
   "title": "上交所 · 普通私募公司债 · 募集说明书更新知识",
-  "version": "2026.09.26-draft.3",
+  "version": "2026.09.26-draft.4",
   "status": "research_draft",
   "productionReady": false,
   "sourceCatalog": "exchange-bonds-2026.09.26-evidence.1",
@@ -163,7 +163,7 @@
       "trigger": "本期项目事实与法规适用日触发",
       "check_logic": "更新资产负债表、利润表、现金流量表的全部适用期间和科目，合并/母公司分开，原始定位保留。期初与上年期末差异查重述或重分类，不自动勾平；重大重组备考报表及合并范围变化单列。OCR低置信数字需确认，不能成为已证实数值。 边界：私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。",
       "basis_type": "已归档官方证据与内部方法；专业签认和生产发布待完成",
-      "sources": "EX038:P00618;EX038:P00619;EX038:P00623;OV-sse-application-2023:P00196;OV-sse-application-2023:P00199;OV-sse-application-2023:P00200;OV-sse-application-2023:P00202;OV-sse-application-2023:P00443"
+      "sources": "EX038:P00618;EX038:P00619;EX038:P00623;OV-sse-application-2023:P00195;OV-sse-application-2023:P00196;OV-sse-application-2023:P00199;OV-sse-application-2023:P00200;OV-sse-application-2023:P00202;OV-sse-application-2023:P00443"
     },
     {
       "rule_id": "sse-private-indicators",
