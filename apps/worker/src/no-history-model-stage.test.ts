@@ -176,10 +176,30 @@ test('generation prompt contains target issuer evidence and drops any non-allowl
   assert.doesNotMatch(prompt, /reference issuer profile/i);
 });
 
-test('versioned draft validation rejects fact IDs outside the owner-scoped target snapshot', () => {
-  const draft = { schema_version: 'no-history-manuscript-draft-v1', sections: [{ heading: '经营情况', body: '事实见 source.' }],
-    fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['library-fact-unknown'] }], open_questions: [] };
-  assert.equal(validateNoHistoryDraft(draft, new Set(['target-fact-1'])), false);
-  assert.equal(validateNoHistoryDraft({ ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['target-fact-1'] }] }, new Set(['target-fact-1'])), true);
-  assert.equal(validateNoHistoryDraft({ ...draft, sections: [], fact_claims: [] }, new Set(['target-fact-1'])), false);
+test('versioned draft validation enforces the complete schema and target fact allowlist', () => {
+  const allowedFactIds = new Set(['target-fact-1', 'target-fact-2']);
+  const draft = { schema_version: 'no-history-manuscript-draft-v1', sections: [{ heading: '经营情况', body: '事实见来源。' }],
+    fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['target-fact-1'] }], open_questions: [] };
+  assert.equal(validateNoHistoryDraft(draft, allowedFactIds), true);
+
+  const invalidCases: Array<[string, unknown]> = [
+    ['unknown fact ID', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['library-fact-unknown'] }] }],
+    ['root additional property', { ...draft, reference_issuer: 'not permitted' }],
+    ['section additional property', { ...draft, sections: [{ ...draft.sections[0], source: 'not permitted' }] }],
+    ['claim additional property', { ...draft, fact_claims: [{ ...draft.fact_claims[0], confidence: 'high' }] }],
+    ['empty sections', { ...draft, sections: [] }],
+    ['empty fact claims', { ...draft, fact_claims: [] }],
+    ['empty fact reference list', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: [] }] }],
+    ['duplicate fact IDs', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['target-fact-1', 'target-fact-1'] }] }],
+    ['empty heading', { ...draft, sections: [{ heading: '', body: '正文。' }] }],
+    ['heading over maximum', { ...draft, sections: [{ heading: '标'.repeat(201), body: '正文。' }] }],
+    ['body over maximum', { ...draft, sections: [{ heading: '经营情况', body: '文'.repeat(30_001) }] }],
+    ['claim over maximum', { ...draft, fact_claims: [{ claim: '文'.repeat(4_001), target_fact_ids: ['target-fact-1'] }] }],
+    ['fact ID over maximum', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['x'.repeat(129)] }] }],
+    ['open question over maximum', { ...draft, open_questions: ['问'.repeat(2_001)] }],
+    ['wrong schema version', { ...draft, schema_version: 'no-history-manuscript-draft-v2' }],
+  ];
+  for (const [description, candidate] of invalidCases) {
+    assert.equal(validateNoHistoryDraft(candidate, allowedFactIds), false, description);
+  }
 });
