@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 from sse_private_knowledge_content import (
     VERSION, PREVIOUS_VERSION, EVIDENCE_VERSION, AUTHORED_AT,
-    MAPPINGS, OVERRIDES, EXTRA_RULES,
+    MAPPINGS, OVERRIDES, EXTRA_RULES, EXECUTABLE_CHECKS,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -162,9 +162,16 @@ def apply_overlay(pack, template, coverage, documents):
         if key in OVERRIDES:
             rule['boundaries'][0] = OVERRIDES[key]
         rule['boundaries'].append('官方取证与待验收边界：' + limit)
+        if key in EXECUTABLE_CHECKS:
+            rule['version'] = '3'
+            rule['checker'] = {'checker_id':'sse-private-structured-evidence',
+                               'checker_version':'1','parameter_version':VERSION}
+            rule['boundaries'][1] = '已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。'
         item = coverage_by_id.get(key, {'item_id':key,'area':rule['title'],'document_stages':['registration','issuance']})
         item.update(disposition='uncovered', source_ref_ids=rule['source_ref_ids'],
                     rationale='已登记官方证据/内部方法及章节映射；尚无行业签认、执行checker和真实结果验收。' + limit)
+        if key in EXECUTABLE_CHECKS:
+            item['rationale'] = '已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。' + limit
         coverage_by_id[key] = item
         for chapter_id in chapters:
             chapter = chapter_by_id[chapter_id]
@@ -177,6 +184,7 @@ def apply_overlay(pack, template, coverage, documents):
                 'effective_to':documents[d]['effective_to']} for d,loc in pairs],
             'not_applicable_or_uncovered':limit, 'professional_review':'pending',
             'result_acceptance':'pending',
+            'engineering_check': 'bounded-research-check-v1' if key in EXECUTABLE_CHECKS else 'unimplemented',
         })
     pack['sources'] = list(sources.values())
     coverage['items'] = list(coverage_by_id.values())
