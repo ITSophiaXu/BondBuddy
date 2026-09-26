@@ -30,6 +30,7 @@ import { installFactReviewRoutes } from './fact-review.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
+import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
@@ -289,7 +290,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];rule_applicability_context_ref?:RuleApplicabilityContextRef}>(request);
+    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef}>(request);
     if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
@@ -316,6 +317,11 @@ export function createServer(settings: Settings = {}) {
         }
       }
       const revision=(p.latest_input_revision??0)+1;
+      if(b.user_reference && (p.kind!=='generation'||!p.market||!p.offering))
+        throw new Problem(422,'VALIDATION_FAILED','User reference requires a generation target');
+      const referenceScope={owner:user,projectId:id,revision,market:String(p.market),offering:String(p.offering)};
+      const userReference=b.user_reference
+        ?await resolveUserReferencePin(client,referenceScope,b.user_reference,resolved):null;
       // Update generation must only see the reviewed historical issuer name, never the browser draft label.
       const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
       if(p.kind==='update'){
@@ -336,8 +342,10 @@ export function createServer(settings: Settings = {}) {
         }:null,
         rule_pack_version:ruleBinding.status==='selected'?ruleBinding.pin.version:null,
         template_version:ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null});
+      if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
       const hash=inputManifestHash(manifest);
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]',ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
+      if(userReference)await insertUserReferencePin(client,referenceScope,userReference.pin,userReference.outline);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.input_locked',{project_id:id,input_revision:revision,input_hash:hash}]);
       return inputDto(q.rows[0]);
@@ -748,6 +756,10 @@ export function createServer(settings: Settings = {}) {
         const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
         if(ruleCheck.status!=='valid')missingInputs.push(ruleCheck.status==='tampered'&&ruleCheck.reason==='input_manifest_hash_mismatch'
           ?ruleCheck.reason:`rule_pack:${ruleCheck.reason}`);
+        if(manifest.kind==='generation'&&manifest.user_reference_pin){
+          const pin=manifest.user_reference_pin as {status?:string};
+          if(pin.status!=='accepted')missingInputs.push(`user_reference_needs_review:${pin.status??'invalid'}`);
+        }
         let updateDifficulty: StoredUpdateDifficultySnapshot | undefined;
         if(manifest.kind==='update'){
           const binding=manifest.issuer_identity;

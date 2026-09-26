@@ -134,6 +134,12 @@
       "value": { "draft_revision": 7, "material_versions": [{ "material_id": "material-synthetic", "material_version": 1 }], "requirement_message_ids": [] }
     },
     {
+      "name": "lock-user-reference-request",
+      "schema": "InputRevisionCreateRequest",
+      "valid": true,
+      "value": { "draft_revision": 7, "material_versions": [{ "material_id": "reference-synthetic", "material_version": 1 }], "requirement_message_ids": [], "user_reference": { "material_id": "reference-synthetic", "material_version": 1, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parse_snapshot_id": "snapshot-synthetic", "target_product": "synthetic-bond", "target_document_stage": "draft" } }
+    },
+    {
       "name": "locked-input-revision",
       "schema": "InputRevisionResponse",
       "valid": true,

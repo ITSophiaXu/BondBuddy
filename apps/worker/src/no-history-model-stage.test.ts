@@ -55,6 +55,7 @@ function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { 
     selectReference: async () => { counters.select++; return { schema_version: 'reference-selection-v1', query_schema_version: 'reference-library-query-v1.1', status: 'needs_review', selection_hash: 'c'.repeat(64), target: {} as never,
       index_release: null, candidate_decisions: [], selected: null, reasons: ['synthetic_review_gate'] } as unknown as LibrarySelectionSnapshot; },
     loadReferenceOutline: async () => null,
+    loadUserReferenceOutline: async () => ({ status: 'none' }),
     codexConfig: () => { counters.config++; return {} as CodexAdapterConfig; },
     templateVersion: 'no-history-template-v1',
     ...overrides,
@@ -99,6 +100,31 @@ test('non-exact or unlocked v1.1 reference selection pauses after target facts b
   const outcome = await stage.run(context());
   assert.deepEqual(outcome, { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:reference_selection_needs_review' });
   assert.deepEqual(counts, { config: 0, rules: 1, select: 1, facts: 1 });
+});
+
+test('an unreviewed user reference pauses before library selection and model setup', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({
+    loadUserReferenceOutline: async () => ({ status: 'needs_review', reason: 'pin_needs_review' }),
+  }, counts));
+  assert.deepEqual(await stage.run(context()), { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:user_reference_pin_needs_review' });
+  assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 });
+});
+
+test('an accepted structural user reference bypasses library selection but keeps the pre-model gate', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({ loadUserReferenceOutline: async () => ({
+    status: 'accepted', outline: { schema_version: 'user-reference-outline-v1', owner_user_id: scope.ownerUserId,
+      project_id: scope.projectId, run_id: scope.runId, input_revision: scope.inputRevision, input_hash: scope.inputHash,
+      material_id: 'synthetic-reference', material_version: 1, material_sha256: 'd'.repeat(64),
+      parse_snapshot_id: 'synthetic-snapshot', review_id: 'synthetic-review', fact_isolation_check_version: 'synthetic-v1',
+      chapters: [{ order: 1, heading: '发行概况' }],
+    },
+  }) }, counts));
+  const ctx = context();
+  ctx.validateBeforeModelCall = async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'synthetic_gate' });
+  assert.deepEqual(await stage.run(ctx), { kind: 'pause', stage: 'capability_not_ready', reason: 'synthetic_gate' });
+  assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 });
 });
 
 test('a v1-labelled or mismatched lock cannot authorize a v1.1 no-history model call', async () => {
