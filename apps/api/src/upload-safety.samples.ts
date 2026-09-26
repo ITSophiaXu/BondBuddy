@@ -182,6 +182,29 @@ export function externalRelationshipXlsxSample(target: string): Promise<Buffer> 
   return createZip(xlsxParts().map(part => part.name === 'xl/_rels/workbook.xml.rels' ? { ...part, contents: rels } : part));
 }
 
+export function externalLinkPartXlsxSample(): Promise<Buffer> {
+  const parts = xlsxParts().map(part => {
+    if (part.name === '[Content_Types].xml') return {
+      ...part,
+      contents: Buffer.from(part.contents.toString().replace('</Types>', '<Override PartName="/xl/externalLinks/externalLink1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml"/></Types>'))
+    };
+    if (part.name === 'xl/_rels/workbook.xml.rels') return {
+      ...part,
+      contents: Buffer.from(part.contents.toString().replace('</Relationships>', '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink" Target="externalLinks/externalLink1.xml"/></Relationships>'))
+    };
+    if (part.name === 'xl/workbook.xml') return {
+      ...part,
+      contents: Buffer.from(part.contents.toString().replace('</workbook>', '<externalReferences><externalReference r:id="rId2"/></externalReferences></workbook>'))
+    };
+    return part;
+  });
+  return createZip([
+    ...parts,
+    { name: 'xl/externalLinks/externalLink1.xml', contents: Buffer.from('<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/></externalLink>') },
+    { name: 'xl/externalLinks/_rels/externalLink1.xml.rels', contents: Buffer.from('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/source.xlsx" TargetMode="External"/></Relationships>') }
+  ]);
+}
+
 export function activeDocxSample(): Promise<Buffer> {
   return externalRelationshipDocxSample('javascript:alert(1)');
 }

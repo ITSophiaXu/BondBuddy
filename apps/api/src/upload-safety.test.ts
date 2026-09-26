@@ -11,7 +11,7 @@ import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js'
 import { createServer } from './server.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
-  encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
+  encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
   macroDefaultDocxSample, macroDocxSample, neutralExtensionDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
   XLSX, xlsxSample
 } from './upload-safety.samples.js';
@@ -112,6 +112,17 @@ test('only bounded, absolute DOCX http/https/mailto hyperlink relationships are 
     await expectInspectionFailure(await externalRelationshipDocxSample(target, type), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   }
   await expectInspectionFailure(await externalRelationshipXlsxSample('https://example.invalid'), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+});
+
+test('XLSX external-link package parts stay rejected on both upload inspection paths', async () => {
+  const bytes = await externalLinkPartXlsxSample();
+  const rejected = await outcome(verifiedMedia(bytes, XLSX));
+  assert.deepEqual(rejected, {
+    status: 415,
+    code: 'MATERIAL_FORMAT_UNSUPPORTED',
+    message: 'Office package contains embedded, macro, externally loaded, or nested-container content'
+  });
+  assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, XLSX))), rejected);
 });
 
 test('Office XML parts remain capped at 16 MiB despite the authorized large document', async () => {
