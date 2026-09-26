@@ -58,7 +58,7 @@ async function verifyProductionRulePin(pool: Pool, run: RunRow, input: InputRevi
   if (String(input.input_hash).trim() !== run.input_hash.trim())
     return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
   const result = await revalidateStoredProductionRulePin(pool,
-    { ownerUserId: run.owner_user_id, projectId: run.project_id }, input, loader);
+    { ownerUserId: run.owner_user_id, projectId: run.project_id }, input, loader, 'replay');
   if (result.status === 'valid') return null;
   if (result.status === 'tampered') return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
   return { kind: 'pause', stage: 'capability_not_ready', reason: result.reason };

@@ -14,6 +14,8 @@ export type ReviewedContextArgs = {
   expectedSourceInputRevision: number; expectedSourceInputHash: string;
   expectedIssuerBinding: VerifiedIssuerIdentityBinding;
   currentDraftRevision: number;
+  /** Only an already locked run may replay against a later project draft. */
+  mode?: 'selection' | 'replay';
   currentMaterialVersions: readonly { materialId: string; materialVersion: number; sha256: string }[];
 };
 export type ReviewedContextResult =
@@ -99,7 +101,7 @@ export async function verifyRuleApplicabilitySourceLock(db: Db, owner: string, p
 
 export async function loadExactReviewedContext(db: Db, owner: string, projectId: string,
   ref: RuleApplicabilityContextRef, identity: VerifiedIssuerIdentityBinding, current: LockedRuleSource,
-  loader?: ReviewedContextLoader): Promise<ReviewedContextResult> {
+  loader?: ReviewedContextLoader, mode: 'selection' | 'replay' = 'selection'): Promise<ReviewedContextResult> {
   const sourceFailure = await verifyRuleApplicabilitySourceLock(db, owner, projectId, ref, current);
   if (sourceFailure) return { status: 'needs_review', reasons: [sourceFailure] };
   if (!loader) return { status: 'needs_review', reasons: ['rule_applicability_loader_unavailable'] };
@@ -109,7 +111,7 @@ export async function loadExactReviewedContext(db: Db, owner: string, projectId:
   const result = await loader(db, { ownerUserId: owner, projectId, contextId: ref.context_id,
     version: ref.version, contentHash: ref.content_hash, expectedSourceInputRevision: ref.source_input_revision,
     expectedSourceInputHash: ref.source_input_hash, expectedIssuerBinding: identity,
-    currentDraftRevision: current.draftRevision,
+    currentDraftRevision: current.draftRevision, mode,
     currentMaterialVersions: currentMaterials.map(material => ({ materialId: material.material_id,
       materialVersion: material.material_version, sha256: material.sha256 })) });
   if ('status' in result) return result;
@@ -141,7 +143,7 @@ export type StoredRulePinCheck =
 export async function revalidateStoredProductionRulePin(db: Db, scope: { ownerUserId: string; projectId: string },
   input: { input_hash: string; draft_revision: number; material_versions: unknown; manifest: unknown;
     rule_pack_version: string | null; template_version: string | null },
-  loader?: ReviewedContextLoader): Promise<StoredRulePinCheck> {
+  loader?: ReviewedContextLoader, mode: 'selection' | 'replay' = 'selection'): Promise<StoredRulePinCheck> {
   const locked = input.manifest;
   if (!isRecord(locked) || locked.manifest_schema !== 'production_rule_pin_v1')
     return { status: 'blocked', reason: 'rule_pack_pin_missing' };
@@ -177,7 +179,7 @@ export async function revalidateStoredProductionRulePin(db: Db, scope: { ownerUs
         ({ material_id, material_version }) => ({ material_id, material_version }))))
     return { status: 'tampered', reason: 'rule_pack_pin_mismatch' };
   const current = { draftRevision: Number(input.draft_revision), materials: lockedMaterials };
-  const reviewed = await loadExactReviewedContext(db, scope.ownerUserId, scope.projectId, ref, identity, current, loader);
+  const reviewed = await loadExactReviewedContext(db, scope.ownerUserId, scope.projectId, ref, identity, current, loader, mode);
   if ('status' in reviewed)
     return { status: 'blocked', reason: reviewed.reasons[0] ?? 'rule_applicability_needs_review' };
   if (canonicalInputManifest(reviewed.contextPin) !== canonicalInputManifest(contextPin) ||

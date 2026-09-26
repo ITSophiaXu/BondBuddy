@@ -562,6 +562,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         signal: new AbortController().signal, checkpoint: {}, values: new Map(),
         reviewedContextLoader: async (_db, args) => {
           assert.equal(args.currentDraftRevision, 1);
+          assert.equal(args.mode, 'replay');
           assert.deepEqual(args.currentMaterialVersions, []);
           return { request: selectionRequest, contextPin };
         } } as StageContext;
@@ -572,7 +573,11 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         principal: async () => ({ userId: operator, csrfVerified: true }),
         reviewedContextLoader: async (_db, args) => {
           assert.equal(args.currentDraftRevision, 1);
+          assert.equal(args.mode, 'selection');
           assert.deepEqual(args.currentMaterialVersions, []);
+          const draft = await _db.query('SELECT draft_revision FROM bb_projects WHERE owner_user_id=$1 AND id=$2', [operator, projectId]);
+          if (Number(draft.rows[0]?.draft_revision) !== args.currentDraftRevision)
+            return { status: 'needs_review', reasons: ['rule_applicability_current_draft_stale'] };
           return reviewActive ? { request: selectionRequest, contextPin }
             : { status: 'needs_review', reasons: ['rule_applicability_review_revoked'] };
         } });
@@ -583,13 +588,23 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         const initially = await preflight();
         assert.equal(initially.statusCode, 200, initially.body);
         assert.ok(!initially.json().missing_inputs.some((reason: string) => reason.startsWith('rule_pack:')));
+        await client.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [operator, projectId]);
+        assert.deepEqual(await inputLockStage.run(ctx), { kind: 'done' },
+          'a locked run continues after a later project draft edit');
+        const stalePreflight = await preflight();
+        assert.ok(stalePreflight.json().missing_inputs.includes('rule_pack:rule_applicability_current_draft_stale'));
+        assert.deepEqual(await lockProductionRulePack(client, scope, { draftRevision: 2, materials: [] }, identity, ref,
+          async () => ({ request: selectionRequest, contextPin })),
+        { status: 'blocked', reasons: ['rule_applicability_source_draft_mismatch'] },
+        'a new selection still rejects the stale source');
         reviewActive = false;
-        const revokedReview = await preflight();
-        assert.equal(revokedReview.statusCode, 200, revokedReview.body);
-        assert.ok(revokedReview.json().missing_inputs.includes('rule_pack:rule_applicability_review_revoked'));
         assert.deepEqual(await inputLockStage.run({ ...ctx,
           reviewedContextLoader: async () => ({ status: 'needs_review', reasons: ['rule_applicability_review_revoked'] }) }),
         { kind: 'pause', stage: 'capability_not_ready', reason: 'rule_applicability_review_revoked' });
+        await client.query('UPDATE bb_projects SET draft_revision=1 WHERE owner_user_id=$1 AND id=$2', [operator, projectId]);
+        const revokedReview = await preflight();
+        assert.equal(revokedReview.statusCode, 200, revokedReview.body);
+        assert.ok(revokedReview.json().missing_inputs.includes('rule_pack:rule_applicability_review_revoked'));
         reviewActive = true;
         const foreign = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
           principal: async () => ({ userId: admin, csrfVerified: true }) });

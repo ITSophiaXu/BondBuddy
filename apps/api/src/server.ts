@@ -1,3 +1,4 @@
+import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
@@ -80,6 +81,7 @@ export function createServer(settings: Settings = {}) {
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
   installAuth(app,auth);
+  installAccountRecovery(app,auth);
   // #17: the worker runtime executes queued runs; the synthetic flag remains for older tests.
   const runRuntime=settings.enableRunRuntime ?? process.env.BB_RUN_RUNTIME_ENABLED==='1';
   const queueEnabled=!!settings.enableSyntheticQueue||runRuntime;

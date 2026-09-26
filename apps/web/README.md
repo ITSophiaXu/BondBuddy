@@ -33,7 +33,7 @@ npm run migrate:api   # 使用独立开发数据库的 DATABASE_URL
 npm run start:api
 ```
 
-API 按 `apps/api/README.md` 配置 `DATABASE_URL`、`BB_ALLOWED_ORIGIN` 与 `BB_TERMS_VERSION`。`BB_ALLOWED_ORIGIN` 必须精确等于浏览器 origin（协议/主机/端口）。登录页可切换到注册表单：先读取公开的 `GET /api/v1/auth/agreement`（未配置 `BB_TERMS_VERSION` 时返回 503 `CAPABILITY_NOT_READY`，注册保持关闭），提交时带上该协议版本，成功后直接进入工作区。找回 UI 属于 #9。不要使用旧原型的演示账号。
+API 按 `apps/api/README.md` 配置 `DATABASE_URL`、`BB_ALLOWED_ORIGIN` 与 `BB_TERMS_VERSION`。`BB_ALLOWED_ORIGIN` 必须精确等于浏览器 origin（协议/主机/端口）。登录页可切换到注册表单：先读取公开的 `GET /api/v1/auth/agreement`（未配置 `BB_TERMS_VERSION` 时返回 503 `CAPABILITY_NOT_READY`，注册保持关闭），提交时带上该协议版本，成功后直接进入工作区。人工找回 UI 见下文 #9。不要使用旧原型的演示账号。
 
 另一个终端启动前端：
 
@@ -94,7 +94,7 @@ BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TE
 
 `#/account`（侧栏“账号设置”）只调用 #100 已实现的 `/api/v1/account*` 路由，不新增契约或迁移。
 
-- 账号信息：用户名、旧手机号掩码、注册时间、密码最近修改时间、已接受与当前协议版本，以及 `BB_SUPPORT_CONTACT` 客服入口（未配置时显示尚未公布）。服务端值一律按文本渲染。页面说明目前没有自助找回，也没有客服重置入口。
+- 账号信息：用户名、旧手机号掩码、注册时间、密码最近修改时间、已接受与当前协议版本，以及 `BB_SUPPORT_CONTACT` 客服入口（未配置时显示尚未公布）。服务端值一律按文本渲染。页面说明需要事前绑定的人工找回，并显示其当前可用状态。
 - 登录会话：只显示服务端返回的本人会话，并标出当前会话。可以撤销单个其他会话或全部其他会话，完成后重新读取列表；当前会话只能通过“退出”结束。
 - 修改密码：提交前在本地校验 12–128 字符、无控制字符以及两次输入一致。`403 PASSWORD_INVALID` 只提示当前密码错误，不当作会话过期；429 提示稍后重试；成功后显示服务端实际撤销的其他会话数。网络中断时说明结果未确认。
 - 注销：先读取预览，列出将删除或停止访问的数量、依规保留的记录类别、本机导出文件不受影响，以及 M1 不涉及余额退款。有未结束任务时只显示阻断原因和所属项目链接，不显示注销表单。确认需要输入用户名（不区分大小写）、密码并勾选知情确认；提交时遇到 409 会重新读取预览。成功后清除页面内个人数据，通知其他标签页退出，再显示服务端返回的注销结果。网络中断时不宣称已注销。
@@ -102,7 +102,7 @@ BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TE
 
 `tests/account.spec.ts` 用拦截 `/api/v1` 的合成 fixture 覆盖以上分支、CSRF 回传、服务端文本的 HTML 转义、窄屏无横向溢出，以及会话失效后回到登录页。`tests/account-live.spec.ts` 属于 `BB_E2E_LIVE` 套件，用真实 API 和 PostgreSQL 验证：被撤销的会话以及改密后的其他会话返回 401，注销后无法登录、用户名不能再次注册，另一账号不受影响。两个 live 套件共用 `tests/live-helpers.ts` 中的注册/登录辅助函数。
 
-人工找回流程已于 2026-09-26 定稿，见 [02 第 2.7 节](../../product-prototype/product-specs/02-注册登录与账号.md#27-m1-人工找回与身份核验定稿-v1)：单客服、事前绑定渠道核验、用户自行通过一次性链接设密。恢复渠道绑定及重置入口尚未接入，当前页面不宣称可找回；后续接线按该定稿验收。注销后的物理清理已由服务端 `deletion:lifecycle` 实现，页面数据期限以当前 `/data-policy` 配置为准。
+人工找回流程已于 2026-09-26 定稿，见 [02 第 2.7 节](../../product-prototype/product-specs/02-注册登录与账号.md#27-m1-人工找回与身份核验定稿-v1)：单客服、事前绑定渠道核验、用户自行通过一次性链接设密。恢复渠道绑定、客服工具、公开申请与重置页已接入；只有客服已配置且存在有效专用角色时显示找回入口。运行、接口与双浏览器验收见 [#9 运行说明](../../docs/ACCOUNT-RECOVERY.md)。注销后的物理清理已由服务端 `deletion:lifecycle` 实现，页面数据期限以当前 `/data-policy` 配置为准。
 
 ## 复用与交接
 
