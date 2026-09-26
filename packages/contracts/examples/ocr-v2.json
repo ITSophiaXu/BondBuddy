@@ -1,0 +1,78 @@
+{
+  "synthetic": true,
+  "description": "Contract fixtures only. The 1-pixel PNG and records are not OCR accuracy evidence.",
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4AWP4DwQACfsD/c8LaHIAAAAASUVORK5CYII=",
+  "request": {
+    "schema_version": "ocr-request-v2",
+    "request_id": "synthetic-batch-1",
+    "document": {
+      "owner_user_id": "synthetic-owner",
+      "project_id": "synthetic-project",
+      "material": {
+        "material_id": "synthetic-material",
+        "material_version": 1,
+        "media_type": "application/pdf",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "page_count": 74,
+      "processor_version": "synthetic-ocr-v2",
+      "engine": {
+        "name": "synthetic-engine",
+        "version": "synthetic-version",
+        "language": "chi_sim+eng",
+        "language_data_sha256": {
+          "chi_sim": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "eng": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "osd": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "parameters_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "rendering": {
+        "renderer": "synthetic-renderer",
+        "renderer_version": "synthetic-version",
+        "dpi": 250,
+        "max_page_pixels": 20000000,
+        "parameters_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "context": {
+      "purpose": "full_ocr",
+      "run": {
+        "run_id": "synthetic-run",
+        "execution_request_id": "synthetic-execution",
+        "input_revision": 1,
+        "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "billable": false,
+      "cost_payer": "platform"
+    },
+    "pages": [1, 2, 3],
+    "reuse": []
+  },
+  "result": {
+    "page": {
+      "page": 1,
+      "width": 1,
+      "height": 1,
+      "rotation_clockwise": 90,
+      "coordinate_system": "rendered_pixels_top_left",
+      "image_sha256": "dc1ee8a784c37702b5b456b1657db9c8ce3fc98fd4e30c203b300aaf724eae2f",
+      "warnings": ["synthetic_only", "orientation_unverified"]
+    },
+    "records": [
+      {
+        "record_id": "synthetic-p1-r1",
+        "page": 1,
+        "bbox": [0, 0, 1, 1],
+        "text": "(1,234.50)",
+        "confidence": 0.4,
+        "numeric": {"kind": "number", "decimal": "-1234.50", "unit": null},
+        "cell": {"table_id": "synthetic-table", "row": 1, "column": 1, "row_span": 2, "column_span": 3},
+        "uncertainty": ["critical_value_requires_confirmation", "synthetic_only"],
+        "eligible_for_manuscript": false
+      }
+    ],
+    "status": "needs_confirmation",
+    "eligible_for_manuscript": false
+  }
+}
