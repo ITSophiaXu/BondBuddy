@@ -321,7 +321,7 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 
 ### #7 用户名密码决策（2026-09-24）
 
-用户选择 M1 使用用户名密码，短信供应商接入不需要。以上 #7 短信切片仅为历史实现记录；公开 `/api/v1` 契约现使用 `auth/register` 和 `auth/login`。`0008_m1_username_password.sql` 追加唯一小写 ASCII 用户名与 Argon2id 凭据；旧手机账号保留，但没有自动用户名、密码或账号接管入口。旧短信路由从 API 和 OpenAPI 移除。登录使用账号及账号/来源组合的 15 分钟失败窗口（分别 10、5 次）；不按共享 IP 单独封禁。密码找回与账号迁移需 #9 单独设计。正式浏览器、TLS 和部署验收仍未完成。
+用户选择 M1 使用用户名密码，短信供应商接入不需要。以上 #7 短信切片仅为历史实现记录；公开 `/api/v1` 契约现使用 `auth/register` 和 `auth/login`。`0008_m1_username_password.sql` 追加唯一小写 ASCII 用户名与 Argon2id 凭据；旧手机账号保留，但没有自动用户名、密码或账号接管入口。旧短信路由从 API 和 OpenAPI 移除。登录使用账号及账号/来源组合的 15 分钟失败窗口（分别 10、5 次）；不按共享 IP 单独封禁。密码找回按第 02 章 2.7 节定稿实现，旧手机身份不自动迁移。正式浏览器、TLS 和部署验收仍未完成。
 
 ### #9 账号设置、会话管理与注销切片（2026-09-24）
 
@@ -329,7 +329,7 @@ This is a safe persistence seam, not a configured semantic extractor or an activ
 
 注销先 `GET /account/closure` 列出未结束 run、项目/材料/成果数量、保留记录与 `local_exports=not_affected`；有未终态 run 时 `POST` 返回 409 `ACCOUNT_CLOSURE_BLOCKED`。确认用户名和密码后，同一事务锁定用户行、软删材料（经 0006 触发器写存储墓碑）与项目、撤销成果交付与下载授权、撤销全部会话、删除密码凭据、标记账号关闭并写注销记录和 `user.closed` outbox。用户名保留不可重新注册；协议接受、注册事件、run 历史、#79 操作/用量日志与 outbox 按依法留存保留。并发写入由触发器等待注销事务提交后拒绝。`balance_status` 固定为 `not_applicable_m1`，M2 钱包/退款须以新增状态和迁移接入，不能直接复用。
 
-仍未关闭：无可靠身份核验渠道，因此不提供自助找回，人工找回流程与核验证据需产品/合规定稿，客服不得绕过；被不可变输入快照引用的材料、成果文件字节与 prompt 快照正文还没有注销后的物理清理生命周期。浏览器设置页已在 `apps/web/` 的 `#/account` 接入，只消费上述公共路由，不新增契约或迁移。运行与验证见 `apps/api/README.md` 和 `apps/web/README.md`。
+2026-09-26：#9 人工找回已按用户授权定稿，唯一产品规则见 [02 第 2.7 节](../product-prototype/product-specs/02-注册登录与账号.md#27-m1-人工找回与身份核验定稿-v1)：单客服受理、通过事前绑定渠道确认、一次性限时链接由用户自行设密；没有可靠旧记录不重置。首次绑定/换渠道要求已登录且复验当前密码。恢复渠道持久化、受限签发工具与用户重置入口尚待实现；本次不新增公共 DTO 或迁移，接线时按该规则在 packages/contracts 定义。重置成功要原子更新凭据、消耗授权、撤销全部旧会话及写审计/outbox，保留原 user_id 和项目/任务。当前 self_service_recovery=unavailable；不允许客服直接修改密码表。注销后的物理清理已由 #6 deletion:lifecycle 接入，见上文 #6 用户删除与数据说明；不再列为尚无生命周期。浏览器设置页已在 `apps/web/` 的 `#/account` 接入，只消费上述公共路由，不新增契约或迁移。运行与验证见 `apps/api/README.md` 和 `apps/web/README.md`。
 
 ### #14 OCR 与原页校正切片（2026-09-25）
 

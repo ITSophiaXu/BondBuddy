@@ -102,7 +102,7 @@ BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TE
 
 `tests/account.spec.ts` 用拦截 `/api/v1` 的合成 fixture 覆盖以上分支、CSRF 回传、服务端文本的 HTML 转义、窄屏无横向溢出，以及会话失效后回到登录页。`tests/account-live.spec.ts` 属于 `BB_E2E_LIVE` 套件，用真实 API 和 PostgreSQL 验证：被撤销的会话以及改密后的其他会话返回 401，注销后无法登录、用户名不能再次注册，另一账号不受影响。两个 live 套件共用 `tests/live-helpers.ts` 中的注册/登录辅助函数。
 
-仍未关闭：人工找回流程需产品/合规定稿；注销后，被输入快照引用的材料、成果文件字节和 prompt 正文的物理清理属于服务端生命周期；数据保存期限、删除时限与备份清理文案需等 `packages/contracts/WEB-DATA-LIFECYCLE.md` 的发布决定后替换。
+人工找回流程已于 2026-09-26 定稿，见 [02 第 2.7 节](../../product-prototype/product-specs/02-注册登录与账号.md#27-m1-人工找回与身份核验定稿-v1)：单客服、事前绑定渠道核验、用户自行通过一次性链接设密。恢复渠道绑定及重置入口尚未接入，当前页面不宣称可找回；后续接线按该定稿验收。注销后的物理清理已由服务端 `deletion:lifecycle` 实现，页面数据期限以当前 `/data-policy` 配置为准。
 
 ## 复用与交接
 
