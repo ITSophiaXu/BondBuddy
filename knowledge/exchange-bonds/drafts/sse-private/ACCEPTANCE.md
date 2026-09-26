@@ -2,6 +2,8 @@
 
 [规则指南](README.md) · [逐条证据及未覆盖项](rule-evidence-map.json) · [官方取证](../../verification/2026-09-26/README.md) · [已有授权测试材料](../../../../tests/samples/README.md)
 
+业务判定与接口交接见 [APPLICABILITY-POLICY.md](APPLICABILITY-POLICY.md)，具体业务意见和任丘九月未确认项见 [REVIEW-WORKSHEET.md](REVIEW-WORKSHEET.md)。两份文件均未代签，不启用生产规则。
+
 状态：**待真实运行及行业验收**。本清单没有新增用户问卷，也不改变既有目标确认。行业验收人可为用户Maxy，但未经其对具体成果明确确认，不填写通过或代签。
 
 ## 适用范围及输入
@@ -12,7 +14,7 @@
 | --- | --- |
 | market / offering | 本次目标来源于已确认项目输入；历史稿源市场/发行方式独立识别，不相互覆盖 |
 | instrument | 普通公司债；可转/可交换/可续期/专项用途等不能只按名称去掉标签后落入普通债 |
-| documentStage | 使用既有registration/issuance字段；私募registration仅对应挂牌条件确认申报阶段，不能写成证监会公募注册。未明示阶段时保留待确认 |
+| documentPurpose → documentStage | producer候选及顶层使用documentPurpose，审核后映射到selector的documentStage；registration/issuance含义不变。私募registration仅对应挂牌条件确认申报阶段，不能写成证监会公募注册。未明示阶段时保留待确认 |
 | issuerScope / industry | 发行人登记身份、股权/业务与审计附注证据；城建、房地产、集团等按实际触发审核重点，不从公司简称推断或默认排除 |
 | investorScope | 专业投资者及本期发行/转让适当性安排，发行对象和人数均需有本期来源 |
 | specialFeatures | 本期条款、资金用途、发行人特殊身份逐项检查。空列表也需“已核对未发现”的真实证据和审核，不能由缺材料生成 |
@@ -58,7 +60,7 @@
 
 ## 外部依赖与交接
 
-- **#19 / loooo139**：适用上下文分类与审核门槛、生产来源/样本授权签认、正式发布和pin/replay接入。当前草稿不能靠补日期或假审核人绕过。Maxy先对本目录具体规则及待核项作业务审核，按真实身份登记。
+- **#19 / loooo139**：#217的pin/replay接线已合并；仍缺分类及字段/整体审核路径、可批准loader、生产来源/样本签认和正式发布。具体缺口见APPLICABILITY-POLICY第5节。当前草稿不能靠补日期或假审核人绕过。Maxy先对本目录具体规则及待核项作业务审核，按真实身份登记。
 - **#35 / muhualing 与生成负责人**：在现有#31/#34链路上运行任丘九月首个真实任务，回传上述成果与日志证据，再由Maxy作结果验收；本PR没有重新实现模型或Word阶段。
 - **#14及解析链路**：杞县扫描表与不确定数字需要实际OCR证据；原生样本可先推进，不等待所有复杂样本才研究/开发。
 - **#146 / Word-WPS验收**：获取真实桌面软件证据，不能以XML或合成测试代替。
