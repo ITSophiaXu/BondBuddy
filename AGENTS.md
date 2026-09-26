@@ -60,6 +60,8 @@
 
 #20→#19的[适用性业务交接](knowledge/exchange-bonds/drafts/sse-private/APPLICABILITY-POLICY.md)与[业务审核工作表](knowledge/exchange-bonds/drafts/sse-private/REVIEW-WORKSHEET.md)列明逐字段来源、否定特征证据、整体审核条件及现有loader缺口。producer的documentPurpose与selector的documentStage要显式映射；方案、用户目标确认和真实成果签认不能相互替代。
 
+A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/exchange-bonds/drafts/sse-private/APPLICABILITY-DECISIONS-20260926.md)，#19可按其继续分类字典、逐字段/整体审核和批准后加载路径开发，无需重复等待这六项方法确认。具体项目事实、31条法规来源、生产发布及真实成果验收仍须分别完成，不把代录的产品决定冒充系统审核操作。
+
 ## Codex 接到 Issue 后
 
 #20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.26-draft.4`：九组受限结构化检查已有实现（新增报告期、审计意见、报表清单、变动分析），其他22条未实现；全部仍为research_only。完整[31条审核清单](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-CHECKLIST.md)列明具体决定、反例与下一份交付。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。
