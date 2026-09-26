@@ -140,3 +140,5 @@ npm test -w @bondbuddy/web -- artifact-page.spec.ts
 # #12 上传补充验收
 
 上传的条件分区、排队、复用版本与原 session 恢复行为，以及本次取得的真实数据库/浏览器证据，见 [UPLOAD-ACCEPTANCE.md](./UPLOAD-ACCEPTANCE.md)。接口仍复用公共契约；页面不会把文件传完或保存完成当作源信息识别完成。
+
+2026-09-26的[预发真实浏览器验收记录](../../docs/acceptance/issue-11-12-preprod-2026-09-26.md)覆盖市场联动、DFI空额度保存、重登恢复和授权任丘DOCX上传解析。解析流程完成但画像仍needs_confirmation，不能据此关闭#12/#31。Windows下bundle-secrets检查通过当前Node启动本地Vite入口，保留原有全部canary断言，不依赖npx命令封装。
