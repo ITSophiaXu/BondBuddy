@@ -35,6 +35,18 @@ if (runAuthorized && !testDatabaseUrl) {
   throw new Error('BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 requires NATIVE_FINANCIAL_FACT_PRODUCER_TEST_DATABASE_URL or BB_TEST_DATABASE_URL pointing to a fresh migrated PostgreSQL 16 template');
 }
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    return `{${Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+const parseResponseHash = (response: DocumentParseResponse): string => {
+  const { request_id: _requestId, ...stableResult } = response;
+  return sha(canonical(stableResult));
+};
 
 type AuthorizedFile = {
   file_id: string;
@@ -46,9 +58,6 @@ type AuthorizedFile = {
   sha256: string;
 };
 type AuthorizedManifest = { cases: Array<{ case_id: string; files: AuthorizedFile[] }> };
-type PythonXlsxParseResponse = DocumentParseResponse & {
-  document: DocumentParseResponse['document'] & { cached_formula_results: number };
-};
 const SUPPORTED_PARSER_VERSIONS = new Set([
   'bondbuddy-document-parser-1.0.3',
   'bondbuddy-document-parser-1.0.5',
@@ -93,7 +102,10 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
   });
   assert.ifError(python.error);
   assert.equal(python.status, 0, `Python 1.0.6 parser failed: ${python.stderr}`);
-  const parsed = JSON.parse(python.stdout) as PythonXlsxParseResponse;
+  const parsed = JSON.parse(python.stdout) as DocumentParseResponse;
+  assert.equal(parsed.schema_version, 'document-parse-response-v1');
+  assert.equal(parsed.request_id, parseRequest.request_id,
+    'Python response must stay bound to the request sent across the Node bridge');
   assert.ok(SUPPORTED_PARSER_VERSIONS.has(parsed.parser_version),
     `authorized mapper supports only verified parser versions, received ${parsed.parser_version}`);
   assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.6',
@@ -143,7 +155,14 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1, requestId,
     }, { mediaType: file.media_type as DocumentParseRequest['material']['media_type'], sha256: contentHash },
     parsed);
-    assert.equal(savedSnapshot.parserVersion, parsed.parser_version);
+    assert.equal(savedSnapshot.parserVersion, 'bondbuddy-document-parser-1.0.6');
+    assert.equal(savedSnapshot.response.parser_version, parsed.parser_version);
+    assert.equal(savedSnapshot.responseSha256, parseResponseHash(parsed),
+      'PostgreSQL snapshot hash must cover the complete Python response, including cached_formula_results');
+    assert.deepEqual(savedSnapshot.response, parsed,
+      'PostgreSQL snapshot must round-trip the full Python response without projecting schema 1.0.6 fields');
+    assert.deepEqual(savedSnapshot.evidence, parsed.records,
+      'PostgreSQL evidence rows must round-trip every response record in order');
     assert.equal(savedSnapshot.evidence.length, 1392);
 
     const issuerEvidence = parsed.records.find((record) => record.literal_quote.includes('济南章丘控股集团有限公司'));
