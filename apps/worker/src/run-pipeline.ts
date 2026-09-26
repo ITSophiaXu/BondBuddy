@@ -46,7 +46,19 @@ export type RunPipelineDependencies = {
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
+  onUnexpectedError?: (error: { stage: string | null; name: string; message: string; code: string | null }) => void;
 };
+
+/** Keep diagnostic text to fixed identifiers and known PostgreSQL schema messages. */
+export function safeRunError(error: unknown, stage: string | undefined) {
+  const object = error && typeof error === 'object' ? error as { name?: unknown; message?: unknown; code?: unknown } : {};
+  const name = typeof object.name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(object.name) ? object.name : 'UnknownError';
+  const code = typeof object.code === 'string' && /^[A-Z0-9][A-Z0-9_]{0,63}$/.test(object.code) ? object.code : null;
+  const raw = typeof object.message === 'string' ? object.message : '';
+  const message = raw === 'Invalid pause' || /^[A-Z][A-Z0-9_]{2,80}$/.test(raw) ||
+    /^(?:relation|column) "[a-z_][a-z0-9_]*" does not exist$/.test(raw) ? raw : 'redacted';
+  return { stage: stage ?? null, name, message, code };
+}
 
 const lost = (error: unknown) => error instanceof Problem && (error.code === 'ALREADY_TERMINAL' || (error.status === 409 && /lease/i.test(error.message)));
 const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'stage_not_implemented' }) });
@@ -405,6 +417,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
+    deps.onUnexpectedError?.(safeRunError(error, currentStage));
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
       if (lease.attempts < maxAttempts) {

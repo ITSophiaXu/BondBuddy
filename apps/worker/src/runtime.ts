@@ -122,6 +122,7 @@ export class WorkerRuntime {
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
               reviewedContextLoader: this.o.reviewedContextLoader,
+              onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
               onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
               onLease: lease => { if (lease) this.parseLeases.set(slot, lease); else this.parseLeases.delete(slot); } }) : 'idle';
