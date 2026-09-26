@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Ajv } from 'ajv';
-import { M1_MATERIAL_PARTITIONS, emptyUpdateDetails, schemas, updateDetailsErrors, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, emptyUpdateDetails, isMarketOffering, MARKETS, OFFERINGS, schemas, updateDetailsErrors, type Market, type Offering, type Recognition, type ReportingPeriod } from '@bondbuddy/contracts';
 import { estimateUpdateDifficulty, type CutoffDecision, type TargetReportingPeriod, type UpdateDifficultyEstimate, type UserAssertedTargetPeriod } from '@bondbuddy/domain/update-difficulty';
 import { parseHistoricalNativeExtractorVersion } from '@bondbuddy/domain/historical-native-extractor-version';
 import { canonicalTargetPeriods, type TargetConfirmation } from './target-confirmation.js';
@@ -247,6 +247,8 @@ function normalizedTimestamp(value: unknown): number | null {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : null;
 }
+function isMarket(value: unknown): value is Market { return typeof value === 'string' && MARKETS.some(market => market === value); }
+function isOffering(value: unknown): value is Offering { return typeof value === 'string' && OFFERINGS.some(offering => offering === value); }
 
 function sameTargetConfirmation(manifest: Record<string, unknown>, persisted: TargetConfirmation | null,
   periods: readonly TargetReportingPeriod[], project: Record<string, unknown>): TargetConfirmation {
@@ -272,8 +274,7 @@ function sameTargetConfirmation(manifest: Record<string, unknown>, persisted: Ta
   const normalizedAssertedPeriods = normalizedPeriodSet(asserted.target_reporting_periods);
   const normalizedPersistedPeriods = normalizedPeriodSet(persisted.target_reporting_periods);
   const normalizedManifestPeriods = normalizedPeriodSet(periods);
-  if (typeof asserted.market !== 'string' || asserted.market.length === 0 ||
-      typeof asserted.offering !== 'string' || asserted.offering.length === 0 ||
+  if (!isMarket(asserted.market) || !isOffering(asserted.offering) || !isMarketOffering(asserted.market, asserted.offering) ||
       asserted.market !== project.market || asserted.offering !== project.offering ||
       asserted.market !== manifest.market || asserted.offering !== manifest.offering ||
       (purpose !== null && purpose !== 'registration' && purpose !== 'issuance') || !validAsOf ||

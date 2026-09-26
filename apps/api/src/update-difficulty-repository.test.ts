@@ -102,12 +102,13 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
   const manifestFor = (schema?: string) => ({ kind: 'update', draft_revision: input.targetRevision, market: 'sse', offering: 'private',
     materials, update_details: { target_reporting_periods: [] }, target_confirmation: confirmation,
     ...(schema === undefined ? {} : { manifest_schema: schema }) });
-  const run = async (manifest: Record<string, unknown>, storedHash: string, persisted: Record<string, unknown> | null = confirmation) => {
+  const run = async (manifest: Record<string, unknown>, storedHash: string, persisted: Record<string, unknown> | null = confirmation,
+    projectTarget = { market: 'sse', offering: 'private' }) => {
     let materialQueryCount = 0;
     const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
     const client: UpdateDifficultyClient = {
       async query(sql) {
-        if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7, market: 'sse', offering: 'private' }] };
+        if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7, ...projectTarget }] };
         if (sql.includes('FROM bb_input_revisions')) return { rows: [{ input_hash: storedHash, draft_revision: input.targetRevision, manifest, material_versions: refs }] };
         if (sql.includes('FROM bb_input_revision_target_confirmations')) return { rows: persisted ? [{ market: persisted.market, offering: persisted.offering,
           document_purpose: persisted.document_purpose, as_of: null, target_reporting_periods: persisted.target_reporting_periods,
@@ -133,6 +134,11 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
   assert.equal(valid.loaded.targetConfirmation?.status, 'confirmed');
   assert.deepEqual(valid.loaded.targetReportingPeriods, [], 'confirmation is user intent, not a synthesized financial evidence period');
   assert.equal(valid.materialQueryCount, 1);
+
+  const nafmiiConfirmation = { ...confirmation, market: 'nafmii', offering: 'mtn' };
+  const nafmiiManifest = { ...manifestFor(), market: 'nafmii', offering: 'mtn', target_confirmation: nafmiiConfirmation };
+  const nafmii = await run(nafmiiManifest, 'd'.repeat(64), nafmiiConfirmation, { market: 'nafmii', offering: 'mtn' });
+  assert.equal(nafmii.loaded.targetConfirmation?.offering, 'mtn', 'shared market/offering validation accepts an authorized NAfmII product tuple');
 
   const firstPeriod = { start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] };
   const secondPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'needs_confirmation', evidence_refs: [] };
