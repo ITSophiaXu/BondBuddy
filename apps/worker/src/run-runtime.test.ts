@@ -337,7 +337,20 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
           evidence_refs: [evidence.record_id] }],
         needs_review: [{ evidence_refs: [evidence.record_id], reason_code: 'SYNTHETIC_ADJACENT_GAP' }] };
     } };
-    const materialStage = createMaterialsReadyStage(context => produceParsedFactCandidates({ pool, extractor }, context));
+    const factCandidateProducer = (context: Parameters<typeof produceParsedFactCandidates>[1]) =>
+      produceParsedFactCandidates({ pool, extractor }, context);
+    const envRuntime = new WorkerRuntime({
+      ...workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' }), factCandidateProducer,
+    });
+    const materialStage = (envRuntime as unknown as { o: { runStages: RunStage[] } }).o.runStages.find(stage => stage.name === 'materials_ready');
+    assert.ok(materialStage, 'environment runtime retains the materials stage');
+    assert.equal((await materialStage.run(materialContext)).kind, 'done', 'environment runtime binds the trusted producer');
+    assert.equal(factExtractCalls, 1);
+    assert.equal((await materialStage.run(materialContext)).kind, 'done', 'same locked source reuses the ledger');
+    assert.equal(factExtractCalls, 1);
+    assert.equal((await materialStage.run({ ...materialContext, run: { ...pinnedRun, owner_user_id: mallory } })).kind, 'fail');
+    assert.equal((await materialStage.run({ ...materialContext, run: { ...pinnedRun, input_hash: hashText('wrong input') } })).kind, 'fail');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_snapshot_refs WHERE run_id=$1 AND snapshot_kind='model_request'", [materialsRun])).rows[0].n, 0);
     assert.equal((await materialStage.run(materialContext)).kind, 'done', 'producer persists before the stage checkpoint');
     assert.equal((await materialStage.run(materialContext)).kind, 'done', 'crash replay uses the persisted extraction');
     assert.equal(factExtractCalls, 1);

@@ -11,7 +11,7 @@ import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Le
 import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
-import { defaultRunStages, materialsReadiness, runPipelineOnce, type ParsedFactProducer, type RunStage } from './run-pipeline.js';
+import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type ParsedFactProducer, type RunStage } from './run-pipeline.js';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
@@ -77,6 +77,12 @@ export class WorkerRuntime {
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
+    // The environment factory supplies stages before the trusted producer can be installed.
+    // Bind it to the final stage list, keeping the factory's model/Word stages and caller options.
+    if (options.factCandidateProducer && options.runStages) {
+      this.o.runStages = this.o.runStages.map(stage => stage.name === 'materials_ready'
+        ? createMaterialsReadyStage(options.factCandidateProducer) : stage);
+    }
     if (!Number.isInteger(this.o.concurrency) || this.o.concurrency < 1 || this.o.concurrency > 16) throw new Error('Invalid worker concurrency');
   }
 
