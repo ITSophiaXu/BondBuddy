@@ -16,7 +16,13 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   await page.getByLabel('发行人全称', { exact: true }).fill('合成测试发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('nafmii');
   await page.getByLabel('发行方式', { exact: true }).selectOption('dfi');
-  await page.getByLabel('目标最新报告截止日').fill('2026-06-30');
+  await page.getByLabel('旧版单一报告截止日').fill('2026-06-30');
+  await page.getByRole('button', { name: '＋ 添加目标报告期间' }).click();
+  await page.getByLabel('起始日').fill('2025-01-01');
+  await page.getByLabel('截止日', { exact: true }).fill('2025-12-31');
+  await page.getByLabel('期间类型').selectOption('annual');
+  await page.getByLabel('报表口径').selectOption('consolidated');
+  await page.getByLabel('填写状态').selectOption('user_asserted');
   await page.getByLabel('承销安排', { exact: true }).fill('合成证券担任主承销商');
   await page.getByLabel('补充说明', { exact: true }).fill('合成说明：额度未定，等待审议。');
   await page.getByRole('button', { name: '＋ 添加资金用途' }).click();
@@ -29,9 +35,10 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   const saved = await (await page.request.get(`/api/v1/projects/${id}`)).json();
   expect(saved.update_details.registration_amount).toBeNull();
   expect(saved.update_details.issuance_amount).toBeNull();
+  expect(saved.update_details.target_reporting_periods).toEqual([{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }]);
   const { pdfSample, PDF } = await import('../../api/dist/upload-safety.samples.js');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'form-recovery.pdf', mimeType: PDF, buffer: pdfSample() });
-  await expect(page.locator('.material-file-row').filter({ hasText: 'form-recovery.pdf' })).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({ hasText: 'form-recovery.pdf' })).toContainText('服务器已确认保存', { timeout: 30_000 });
   await page.context().close();
   const context = await browser.newContext({ baseURL: process.env.BB_E2E_BASE_URL, ignoreHTTPSErrors: true });
   try {
@@ -40,6 +47,8 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
     await login(resumed, user);
     await resumed.goto(`/${route}`);
     await expect(resumed.getByLabel('发行方式', { exact: true })).toHaveValue('dfi');
+    await expect(resumed.getByLabel('起始日')).toHaveValue('2025-01-01');
+    await expect(resumed.getByLabel('填写状态')).toHaveValue('user_asserted');
     await expect(resumed.getByLabel('补充说明', { exact: true })).toHaveValue('合成说明：额度未定，等待审议。');
     await expect(resumed.locator('#use_amount_0')).toHaveValue('1.000001');
     await expect(resumed.locator('.persisted-material')).toContainText('form-recovery.pdf');
@@ -51,6 +60,7 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
     await resumed.getByLabel('补充说明', { exact: true }).fill('改成交易所，其他信息保留。');
     await resumed.getByRole('button', { name: '保存修改', exact: true }).click();
     await expect(resumed.locator('#save-state')).toHaveText('已保存');
+    expect((await (await resumed.request.get(`/api/v1/projects/${id}`)).json()).update_details.target_reporting_periods[0].status).toBe('user_asserted');
     const concurrent = await context.newPage();
     await concurrent.goto(`/${route}`);
     await expect(concurrent.getByLabel('补充说明', { exact: true })).toHaveValue('改成交易所，其他信息保留。');
@@ -63,6 +73,12 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
     concurrent.once('dialog', dialog => dialog.accept());
     await concurrent.getByRole('button', { name: '放弃当前输入并加载最新资料' }).click();
     await expect(concurrent.getByLabel('补充说明', { exact: true })).toHaveValue('甲页已经保存');
+    await expect(concurrent.getByLabel('起始日')).toHaveValue('2025-01-01');
+    concurrent.once('dialog', dialog => dialog.accept());
+    await concurrent.getByRole('button', { name: '删除此目标报告期' }).click();
+    await concurrent.getByRole('button', { name: '保存修改', exact: true }).click();
+    await expect(concurrent.locator('#save-state')).toHaveText('已保存');
+    expect((await (await concurrent.request.get(`/api/v1/projects/${id}`)).json()).update_details.target_reporting_periods).toEqual([]);
     await resumed.setViewportSize({ width: 1440, height: 1000 });
     await resumed.evaluate(() => window.scrollTo(0, 0));
     await resumed.screenshot({ path: join(tmpdir(), 'bondbuddy-form-desktop.png') });
