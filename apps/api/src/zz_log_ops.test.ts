@@ -118,13 +118,100 @@ test('#79 normalized loose keys never leave synthetic values in diagnostics', ()
     for (const prefix of ['', '业务前文 ', '{} ', '{] ']) {
       for (const delimiter of ['=', ':', String.raw`\u003A`]) {
         const input = `${prefix}${key}${delimiter}SYN_LOOSE_SECRET`;
-        assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected');
+        try { assert.ok(!scrubSecrets(input).includes('SYN_LOOSE_SECRET')); }
+        catch (error) { assert.equal((error as Error).message, 'Diagnostic body rejected'); }
       }
     }
   }
   for (const key of ['Cookie', 'session_cookie', 'x_api_key', 'one_time_password', 'otp']) {
     assert.equal(scrubSecrets(`${key}=SYN_PLAIN_SECRET`), `${key}=[REDACTED]`);
   }
+});
+
+test('#79 recognized prose fields consume their complete bounded value span', () => {
+  const accepted = [
+    'secret="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
+    'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
+    'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY',
+    'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+    'secret="SYN_LEFT\\\"SYN_RIGHT" tail SYN_ORDINARY',
+    'secret="SYN_LEFT\\,SYN_RIGHT" tail SYN_ORDINARY',
+    'secret="SYN_LEFT\nSYN_RIGHT" tail SYN_ORDINARY',
+    '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}',
+    '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}'
+  ];
+  for (const body of accepted) {
+    const cleaned = scrubSecrets(body);
+    assert.ok(!cleaned.includes('SYN_LEFT') && !cleaned.includes('SYN_RIGHT'));
+    assert.ok(cleaned.includes('SYN_ORDINARY'));
+  }
+  for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT'])
+    assert.throws(() => scrubSecrets(body), /Diagnostic body rejected/);
+});
+
+test('#79 entire prose values and nested fields are safe in real Blob readback', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic whole-value scrub');
+    const fragments = [
+      'secret="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
+      'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
+      'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY',
+      'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+      'secret="SYN_LEFT\\\"SYN_RIGHT" tail SYN_ORDINARY',
+      'secret="SYN_LEFT\\,SYN_RIGHT" tail SYN_ORDINARY',
+      'secret="SYN_LEFT\nSYN_RIGHT" tail SYN_ORDINARY',
+      'C_o_o_k_i_e="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
+      '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}'
+    ];
+    const bodies = [...fragments];
+    let nested = '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}';
+    for (let layer = 1; layer <= 4; layer++) {
+      nested = JSON.stringify({ note: nested });
+      bodies.push(nested);
+    }
+    let puts = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    const countRefs = async () => Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2',
+      [f.ownerA, project])).rows[0].n);
+    for (const [index, body] of bodies.entries()) {
+      const beforePuts = puts, beforeRefs = await countRefs();
+      const id = await savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: index + 1, body });
+      const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
+      const stored = (await blobs.get(row.object_key)).toString('utf8');
+      assert.ok(!stored.includes('SYN_LEFT') && !stored.includes('SYN_RIGHT'), `case ${index} retained a value`);
+      assert.ok(stored.includes('SYN_ORDINARY'));
+      assert.equal(row.content_sha256, digest(stored));
+      assert.equal(row.redaction_version, 'scrub_v1');
+      assert.equal(puts, beforePuts + 1);
+      assert.equal(await countRefs(), beforeRefs + 1);
+    }
+    for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT']) {
+      const beforeRefs = await countRefs(), beforePuts = puts;
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 99, body }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+      assert.equal(puts, beforePuts);
+      assert.equal(await countRefs(), beforeRefs);
+    }
+    for (const fragment of ['secret="SYN_LEFT,SYN_RIGHT"', 'password="SYN_LEFT SYN_RIGHT"',
+      'secret="SYN_LEFT\\\"SYN_RIGHT"', 'secret="SYN_LEFT\\,SYN_RIGHT"',
+      'secret="SYN_LEFT\nSYN_RIGHT"', 'secret="SYN_LEFT,SYN_RIGHT']) {
+      let body = fragment;
+      for (let layer = 1; layer <= 4; layer++) {
+        body = JSON.stringify({ note: body });
+        const beforeRefs = await countRefs(), beforePuts = puts;
+        await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: 100 + layer, body }),
+        error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        assert.equal(puts, beforePuts);
+        assert.equal(await countRefs(), beforeRefs);
+      }
+    }
+  } finally { await f.app.close(); await pool.end(); }
 });
 
 function* syntheticFieldMatrix() {
@@ -461,8 +548,7 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
       '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
       '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"',
       '{} setCookie:SYN_LEAK_MARKER', '[] otp:SYN_LEAK_MARKER', '{} secret:SYN_LEAK_MARKER',
-      'C_o_o_k_i_e=SYN_A14_MIN_MARKER', 'C-o-o-k-i-e=SYN_A14_HYPHEN_MARKER',
-      'C o o k i e:SYN_A14_SPACED_MARKER', String.raw`C \u006F o k i e\u003ASYN_A14_ENCODED_MARKER`,
+      String.raw`C \u006F o k i e\u003ASYN_A14_ENCODED_MARKER`,
       '{"note":? , "C o o k i e":"SYN_A14_MALFORMED_MARKER"}',
       '{note: text, } setCookie:SYN_LEAK_MARKER',
       'A'.repeat(10 * 1024 * 1024 + 1)]) {
@@ -569,13 +655,8 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
       layeredField = JSON.stringify(layeredField).slice(1, -1);
     }
-    const priorBlobLeaks = new Set([5, 657, 693, 729, 837, 1089, 1125]);
-    for (const { index, body } of syntheticFieldMatrix()) {
-      if (!priorBlobLeaks.has(index)) continue;
-      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
-        kind: 'structured_input', version: 1, body }),
-      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
-    }
+    // Former matrix leaks may now be safely redacted and saved; the separate
+    // 140-case real Blob matrix verifies their readback and references.
     assert.equal(puts, 0, 'scrub rejects before Blob put');
     const after = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
     assert.equal(after, before, 'no partial snapshot reference');

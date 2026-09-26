@@ -381,9 +381,9 @@ function quotedValueAt(text: string, start: number, budget: ScanBudget): { end: 
   catch { return null; }
 }
 
-/** Bound a plain field's value to one token, except header-like values whose
- * existing prose contract removes the rest of the line. */
-function plainFieldValue(text: string, separator: number, key: string, budget: ScanBudget): { end: number; value: string } {
+/** A quoted value ends at its matching quote. An unquoted prose value has no
+ * reliable internal delimiter, so the entire line is its conservative span. */
+function plainFieldValue(text: string, separator: number, budget: ScanBudget): { begin: number; end: number } {
   let at = separator;
   while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
   let unit = syntaxAt(text, at, budget);
@@ -397,21 +397,26 @@ function plainFieldValue(text: string, separator: number, key: string, budget: S
   while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
   if (!text[at] || text[at] === '\r' || text[at] === '\n') throw new DiagnosticScrubError();
   const begin = at;
-  if (/^(?:cookie|setcookie|sessioncookie|authorization|proxyauthorization)$/i.test(key)) {
-    while (at < text.length && text[at] !== '\r' && text[at] !== '\n') { at++; spend(budget, 1); }
-  } else if (text[at] === '"' || text[at] === "'") {
+  if (text[at] === '"' || text[at] === "'") {
     const quote = text[at++];
+    let closed = false;
     for (; at < text.length; at++) {
       spend(budget, 1);
-      if (text[at] === '\\') { at++; continue; }
-      if (text[at] === quote) { at++; break; }
+      if (text[at] === '\\') {
+        if (at + 1 >= text.length) throw new DiagnosticScrubError();
+        at++; spend(budget, 1); continue;
+      }
+      if (text[at] === quote) { at++; closed = true; break; }
     }
-    if (text[at - 1] !== quote) throw new DiagnosticScrubError();
+    if (!closed) throw new DiagnosticScrubError();
+    // A character glued to the closing quote makes the value boundary
+    // ambiguous. Complete JSON candidates are handled by parseCandidate.
+    if (at < text.length && !space(text[at])) throw new DiagnosticScrubError();
   } else {
-    while (at < text.length && !space(text[at]) && !/[;,}\]]/.test(text[at])) { at++; spend(budget, 1); }
+    while (at < text.length && text[at] !== '\r' && text[at] !== '\n') { at++; spend(budget, 1); }
   }
   if (at === begin) throw new DiagnosticScrubError();
-  return { end: at, value: text.slice(begin, at) };
+  return { begin, end: at };
 }
 
 function applyEdits(text: string, edits: Edits): string {
@@ -424,6 +429,27 @@ function applyEdits(text: string, edits: Edits): string {
     previous = edits.ends[index];
   }
   chunks.push(current, text.slice(previous));
+  return chunks.join('');
+}
+
+/** Run legacy prose patterns only over untouched source ranges. Replacement
+ * markers are already safe and must never be parsed as a second field value. */
+function applyProseOutsideEdits(text: string, edits: Edits, budget: ScanBudget): string {
+  if (!edits.starts.length) return applyProseRules(text, budget);
+  const chunks: string[] = [];
+  let previous = 0, length = 0;
+  for (let index = 0; index < edits.starts.length; index++) {
+    const prose = applyProseRules(text.slice(previous, edits.starts[index]), budget);
+    const value = edits.values[index];
+    length += prose.length + value.length;
+    if (length > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+    chunks.push(prose, value);
+    previous = edits.ends[index];
+  }
+  const tail = applyProseRules(text.slice(previous), budget);
+  length += tail.length;
+  if (length > MAX_DIAGNOSTIC_BYTES) throw new DiagnosticScrubError();
+  chunks.push(tail);
   return chunks.join('');
 }
 
@@ -588,10 +614,8 @@ function scrubText(text: string, layer: number, budget: ScanBudget): string {
             while (before >= 0 && space(text[before])) before--;
             if (layer > 0 || bare.encoded || text[end] === '\\' || syntaxAt(text, end, budget)?.char === ':' &&
                 (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? ''))) throw new DiagnosticScrubError();
-            const field = plainFieldValue(text, end, bare.key, budget);
-            const raw = text.slice(start, field.end);
-            const cleaned = applyProseRules(raw, budget);
-            if (cleaned === raw || cleaned.includes(field.value)) throw new DiagnosticScrubError();
+            const field = plainFieldValue(text, end, budget);
+            addEdit(edits, start, field.end, text.slice(start, field.begin) + redacted);
             start = field.end;
             continue;
           }
@@ -631,7 +655,7 @@ function scrubText(text: string, layer: number, budget: ScanBudget): string {
     }
     start = end;
   }
-  return applyProseRules(applyEdits(text, edits), budget);
+  return applyProseOutsideEdits(text, edits, budget);
 }
 
 /** Bounded scrub: rejects malformed/oversized JSON before any diagnostic Blob write. */
