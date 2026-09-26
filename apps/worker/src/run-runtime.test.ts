@@ -101,7 +101,10 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     [alice, projectId, materialId, snapshotId, evidenceId, contentHash, JSON.stringify({ paragraph: 1 }), parserVersion, hashText(evidenceId)]);
     const observation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
       requestId: randomUUID(), sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: 'synthetic-runtime-issuer' });
-    const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer);
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test',$4,$5)`,
+      [randomUUID(), reviewer, grantor, alice, projectId]);
+    const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer, { ownerUserId: alice, projectId });
     assert.ok(trustedReviewer);
     await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
       sourceRecordRowId: observation.id, reviewer: trustedReviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
@@ -143,10 +146,9 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
 
   try {
     assert.equal(await active(), 0, 'requires a dedicated database');
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [alice, `o${randomUUID().replaceAll('-', '').slice(0, 30)}`]);
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [operator, `u${operator.replace(/-/g, '_').toLowerCase()}`.slice(0, 32)]);
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [reviewer, `r${randomUUID().replaceAll('-', '').slice(0, 30)}`, grantor, `g${randomUUID().replaceAll('-', '').slice(0, 30)}`]);
-    await pool.query("INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test')",
-      [randomUUID(), reviewer, grantor]);
     await grantOperator(pool, { userId: operator, role: 'log_reader', grantedBy: 'synthetic-test', reasonCode: 'runtime_test' });
 
     // 1. Ten concurrent identical submissions -> one run, one job.

@@ -95,6 +95,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     send('POST', `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/complete`, { byte_size: bytes.length, sha256: sha(bytes) });
 
   try {
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',
+      [alice, `o${randomUUID().replaceAll('-', '').slice(0, 30)}`]);
     // Claims are global; retire parse jobs left by an earlier interrupted run of this suite on a reused database.
     await pool.query("UPDATE bb_jobs SET state='cancelled',lease_token=NULL,lease_until=NULL WHERE job_type='parse' AND state NOT IN ('succeeded','failed','cancelled')");
     const project = await send('POST', '/api/v1/projects', { name: 'Synthetic parse hook', kind: 'update', issuer_name: null, market: null, offering: null });
@@ -220,8 +222,9 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     const reviewerId = `identity-reviewer-${suffix}`, grantorId = `identity-grantor-${suffix}`;
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)',
       [reviewerId, `reviewer${suffix}`, grantorId, `grantor${suffix}`]);
-    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,authorization_basis)
-      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test','synthetic integration')`, [randomUUID(), reviewerId, grantorId]);
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test','synthetic integration',$4,$5)`,
+      [randomUUID(), reviewerId, grantorId, alice, identityProjectId]);
     const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
     assert.ok(reviewer);
     await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId: identityProjectId,
