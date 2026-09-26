@@ -1,9 +1,10 @@
 import type { Recognition, ReportingPeriod } from '@bondbuddy/contracts';
 import { parseHistoricalNativeExtractorVersion } from '@bondbuddy/domain/historical-native-extractor-version';
 import type { DocumentParseResponse, DocumentParseRecord } from './document-parser.js';
+import { nafmiiOfferingEvidence } from './nafmii-offering-evidence.js';
 
 /** Conservative native-text subset of historical prospectus recognition. */
-export const HISTORICAL_NATIVE_RECOGNITION_VERSION = 'historical-native-recognition-v2' as const;
+export const HISTORICAL_NATIVE_RECOGNITION_VERSION = 'historical-native-recognition-v3' as const;
 export { parseHistoricalNativeExtractorVersion };
 
 type Market = NonNullable<Recognition['source_market']['value']>;
@@ -136,21 +137,7 @@ function sourceOffering(record: DocumentParseRecord, market: Market | null): Off
   if (!originalIssue) return null;
 
   if (market === 'nafmii') {
-    const explicitDfi = /DFI|储架发行|统一注册/.test(compact);
-    const explicitInstrument = /(?:中期票据|中票|MTN|短期融资券|CP|超短期融资券|SCP|定向债务融资工具|PPN)/i.test(compact);
-    if (explicitInstrument) {
-      const matches: Offering[] = [];
-      if (/定向债务融资工具|PPN/i.test(compact)) matches.push('ppn');
-      if (/中期票据|中票|MTN/i.test(compact)) matches.push('mtn');
-      if (/超短期融资券|SCP/i.test(compact)) matches.push('scp');
-      if (/短期融资券|CP/i.test(compact) && !/超短期融资券|SCP/i.test(compact)) matches.push('cp');
-      return matches.length === 1 ? matches[0]! : null;
-    }
-    // DFI is a registration arrangement; a specific tranche instrument in
-    // the same text takes precedence over an incidental DFI notice.
-    if (explicitDfi && /统一注册文件|采用DFI|DFI储架|储架发行/.test(compact)
-      && !/引用|依据|根据|按照|通知/.test(compact)) return 'dfi';
-    return null;
+    return nafmiiOfferingEvidence(record.literal_quote);
   }
 
   if (market !== 'sse' && market !== 'szse') return null;

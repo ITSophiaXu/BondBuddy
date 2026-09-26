@@ -1,6 +1,7 @@
 import type { OcrReview, Recognition, ReportingPeriod } from '@bondbuddy/contracts';
+import { nafmiiOfferingEvidence } from './nafmii-offering-evidence.js';
 
-export const HISTORICAL_OCR_RECOGNITION_VERSION = 'historical-ocr-recognition-v1';
+export const HISTORICAL_OCR_RECOGNITION_VERSION = 'historical-ocr-recognition-v2';
 
 export function historicalOcrExtractorVersion(snapshotId: string, resultSha256: string): string {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(snapshotId) || !/^[a-f0-9]{64}$/.test(resultSha256)) {
@@ -11,7 +12,7 @@ export function historicalOcrExtractorVersion(snapshotId: string, resultSha256: 
 
 export function parseHistoricalOcrExtractorVersion(value: unknown): { snapshotId: string; resultSha256: string } | null {
   if (typeof value !== 'string') return null;
-  const match = /^historical-ocr-recognition-v1:([A-Za-z0-9][A-Za-z0-9._:-]{0,127}):([a-f0-9]{64})$/.exec(value);
+  const match = /^historical-ocr-recognition-v[12]:([A-Za-z0-9][A-Za-z0-9._:-]{0,127}):([a-f0-9]{64})$/.exec(value);
   return match ? { snapshotId: match[1]!, resultSha256: match[2]! } : null;
 }
 
@@ -97,11 +98,8 @@ export function recognizeHistoricalOcr(review: OcrReview, options: { profileVers
     if (!/本期|本次|发行方式|发行概况|债券名称|注册文件|统一注册/.test(value)) continue;
     const matches: Offering[] = [];
     if (market === 'nafmii') {
-      if (/定向债务融资工具|\bPPN\b/i.test(value)) matches.push('ppn');
-      if (/中期票据|中票|\bMTN\b/i.test(value)) matches.push('mtn');
-      if (/超短期融资券|\bSCP\b/i.test(value)) matches.push('scp');
-      if (/短期融资券|\bCP\b/i.test(value) && !/超短期融资券|\bSCP\b/i.test(value)) matches.push('cp');
-      if (/采用DFI|DFI储架|储架发行|统一注册文件/.test(value) && matches.length === 0) matches.push('dfi');
+      const candidate = nafmiiOfferingEvidence(value);
+      if (candidate) matches.push(candidate);
     } else {
       if (/非公开发行|私募(?:公司债|债券)?|面向合格投资者非公开发行/.test(value)) matches.push('private');
       if (/大公募|面向公众投资者(?:和)?专业投资者公开发行|向公众投资者公开发行/.test(value)) matches.push('public_all');

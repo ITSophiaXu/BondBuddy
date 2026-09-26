@@ -28,13 +28,25 @@ test('corroborated OCR hints retain exact snapshot, result hash and record ancho
   assert.equal(result.source_market.status, 'needs_confirmation');
   assert.equal(result.source_market.provenance.method, 'ocr');
   assert.equal(result.source_market.provenance.extractor_version,
-    `historical-ocr-recognition-v1:${input.snapshot_id}:${input.result_sha256}`);
+    `historical-ocr-recognition-v2:${input.snapshot_id}:${input.result_sha256}`);
   assert.deepEqual(result.source_market.provenance.evidence_refs, ['venue-1', 'venue-2']);
   assert.equal(result.source_offering.value, 'private');
   assert.equal(result.source_offering.status, 'needs_confirmation');
   assert.equal(result.reporting_periods[0]?.end, '2024-12-31');
   assert.equal(result.reporting_periods[0]?.status, 'needs_confirmation');
   assert.match(result.source_market.uncertainty.join(' '), /部分页面/);
+});
+
+test('#11 OCR DFI coverage uses the same classifier and retains its uncertainty and source pages', () => {
+  const result = recognizeHistoricalOcr(review([
+    { id: 'market-a', page: 1, text: '本期债券发行场所：中国银行间市场交易商协会。' },
+    { id: 'market-b', page: 2, text: '本期债券在中国银行间市场交易商协会发行。' },
+    { id: 'dfi-a', page: 1, text: '本次DFI统一注册文件覆盖MTN、CP及SCP。' },
+    { id: 'dfi-b', page: 3, text: '本次储架发行统一注册，拟发行工具包括SCP。' },
+  ]), { profileVersion: 1 });
+  assert.equal(result.source_offering.value, 'dfi');
+  assert.equal(result.source_offering.status, 'needs_confirmation');
+  assert.deepEqual(result.source_offering.provenance.evidence_refs, ['dfi-a', 'dfi-b']);
 });
 
 test('single OCR mention, bare public issue and financial dates without financial context remain unresolved', () => {
