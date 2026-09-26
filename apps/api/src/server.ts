@@ -27,7 +27,7 @@ import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
-import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source.js';
+import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
@@ -91,12 +91,16 @@ export function createServer(settings: Settings = {}) {
     if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
     if (error instanceof Error && 'validation' in error && error.validation) {
       let disposition:{status:number;code:string}={status:422,code:'VALIDATION_FAILED'};
+      if ('validationContext' in error && error.validationContext==='body' && request.routeOptions.url===
+          '/api/v1/projects/:project_id/materials/:material_id/versions/:material_version/issuer-identity/observations/:source_record_id/review') {
+        disposition={status:400,code:'ISSUER_IDENTITY_VERIFICATION_INVALID'};
+      }
       if ('validationContext' in error && error.validationContext==='body' && request.method==='POST' &&
           (request.routeOptions.url==='/api/v1/runs/execute'||request.routeOptions.url==='/api/v1/projects/:project_id/preflight')) {
         try { disposition=await auditSchemaRejection(request); }
         catch { return reply.code(503).send({code:'DATA_UNAVAILABLE',message:'Rejection evidence unavailable',retryable:true,field_errors:[],correlation_id:request.id}); }
       }
-      return reply.code(disposition.status).send({ code: disposition.code, message: disposition.status===422?'Request validation failed':'Request key is bound to another input', retryable: false, field_errors: [], correlation_id: request.id });
+      return reply.code(disposition.status).send({ code: disposition.code, message: disposition.status===422?'Request validation failed':disposition.status===400?'Issuer identity review input is invalid':'Request key is bound to another input', retryable: false, field_errors: [], correlation_id: request.id });
     }
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
@@ -204,6 +208,39 @@ export function createServer(settings: Settings = {}) {
     return reply.code(201).send(value);
   });
   app.get('/api/v1/projects/:project_id',async request=>projectDto(await project(db(),await owner(request),param(request,'project_id'))));
+  const issuerObservations='/api/v1/projects/:project_id/materials/:material_id/versions/:material_version/issuer-identity/observations';
+  const issuerScope=(request:FastifyRequest, ownerUserId:string)=>{
+    const rawVersion=param(request,'material_version');
+    if(!/^[1-9][0-9]*$/.test(rawVersion)||!Number.isSafeInteger(Number(rawVersion)))
+      throw new Problem(422,'VALIDATION_FAILED','Invalid material version');
+    return {ownerUserId,projectId:param(request,'project_id'),materialId:param(request,'material_id'),materialVersion:Number(rawVersion)};
+  };
+  app.get(issuerObservations,{schema:{response:{200:schemas.IssuerIdentityObservationListResponse}}},async request=>{
+    const user=await owner(request);
+    try{return await listIssuerIdentitySourceRecords(db(),issuerScope(request,user));}
+    catch(error){if(error instanceof Error&&error.message==='ISSUER_IDENTITY_MATERIAL_NOT_FOUND')throw missing();throw error;}
+  });
+  app.post(`${issuerObservations}/:source_record_id/review`,{schema:{body:schemas.IssuerIdentityReviewRequest,response:{201:schemas.IssuerIdentityReviewResponse}}},async(request,reply)=>{
+    const reviewerUserId=await owner(request);
+    const reviewer=await authorizeIssuerIdentityReviewer(db(),reviewerUserId);
+    if(!reviewer)throw missing();
+    const projectId=param(request,'project_id');
+    const owned=await db().query('SELECT owner_user_id FROM bb_projects WHERE id=$1 AND deleted_at IS NULL',[projectId]);
+    if(owned.rows.length!==1)throw missing();
+    const scope=issuerScope(request,String(owned.rows[0].owner_user_id));
+    const input=body<{decision:'verified'|'rejected'|'conflict';reason_code:string;verified_entity_id?:string;entity_basis_kind?:'uscc'|'registry_record'|'manual_attestation';entity_basis_ref?:string}>(request);
+    try{
+      const result=await reviewIssuerIdentitySourceRecord({pool:db()},{...scope,sourceRecordRowId:param(request,'source_record_id'),reviewer,decision:input.decision,reasonCode:input.reason_code,
+        verifiedEntityId:input.verified_entity_id,entityBasisKind:input.entity_basis_kind,entityBasisRef:input.entity_basis_ref});
+      reply.code(201);
+      return {review_id:result.reviewId,source_record_id:result.sourceRecordId,decision:result.decision,created_at:result.createdAt,replayed:result.replayed};
+    }catch(error){
+      if(error instanceof Error&&['ISSUER_IDENTITY_SOURCE_RECORD_NOT_FOUND','ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED'].includes(error.message))throw missing();
+      if(error instanceof Error&&error.message==='ISSUER_IDENTITY_REVIEW_ALREADY_DECIDED')throw conflict('INPUT_REVISION_CONFLICT','Observation already has a different review');
+      if(error instanceof Error&&error.message==='ISSUER_IDENTITY_VERIFICATION_INVALID')throw new Problem(400,'ISSUER_IDENTITY_VERIFICATION_INVALID','Issuer identity verification basis is invalid');
+      throw error;
+    }
+  });
   app.patch('/api/v1/projects/:project_id',{schema:{body:schemas.ProjectPatchRequest}},async request=>{
     const user=await owner(request), id=param(request,'project_id'), expected=Number(request.headers['if-match']);
     if (!Number.isInteger(expected)||expected<1) throw new Problem(422,'VALIDATION_FAILED','If-Match draft revision required');

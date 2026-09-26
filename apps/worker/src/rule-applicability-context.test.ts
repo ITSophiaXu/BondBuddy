@@ -89,7 +89,8 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.ok(reviewer);
       const reviewedIdentity = await reviewIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: identitySource.id,
-        reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+        reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+        entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic issuer evidence', reasonCode: 'synthetic_identity_verified' });
       assert.equal(reviewedIdentity.decision, 'verified');
 
       const inputResponse = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
@@ -105,7 +106,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
         ownerUserId: owner, projectId, sourceInputRevision: input.input_revision, sourceInputHash: input.input_hash,
         selectedMaterial: { materialId, materialVersion: 1, sha256: materialHash, parseSnapshotId: snapshotId },
         issuerIdentityBinding: { recordId: identitySource.id, version: identitySource.identityVersion,
-          contentHash: identitySource.contentSha256, entityId: `entity-${suffix}`, materialId, materialVersion: 1 },
+          contentHash: identitySource.contentSha256, entityId: 'entity:11111111-1111-4111-8111-111111111111', materialId, materialVersion: 1 },
         asOf: '2025-09-26', documentPurpose: 'registration', requestId: `draft-request-${suffix}`,
         fieldCandidates: [
           { fieldKey: 'market', value: 'sse', sourceKind: 'parse_evidence', sourceStatus: 'recognized',
@@ -248,7 +249,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.ok(superseded.reasons.includes('rule_applicability_issuer_identity_stale'));
       assert.equal(superseded.contextPin?.id, created.contextId, 'superseded context remains inspectable by its immutable pin');
 
-      await pool.query('UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1', [reviewerGrantId]);
+      await pool.query("UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1", [reviewerGrantId, grantorId]);
       await pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=1',
         [owner, projectId, materialId]);
       const stale = await loadInTransaction(pool, exact);
