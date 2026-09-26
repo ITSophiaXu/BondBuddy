@@ -46,6 +46,24 @@ BB_PYTHON=/path/to/python \
 node --test apps/worker/dist/authorized-sample-pg-e2e.test.js
 ```
 
+The #13 authorized upload-to-parse regression exercises one registered
+`rq-202506-01` DOCX through the public Fastify upload routes, Azurite private
+storage, the durable PostgreSQL parse job, the real Python parser, and an
+independent OOXML check for registered p[4], p[65], and p[249] (table 2, row 28,
+cell 3). It checks complete contiguous evidence ordinals, manifest size/SHA,
+and owner-only job visibility. It does not establish deployment or
+preproduction readiness, professional acceptance, or OCR behavior. Use a
+disposable migrated PostgreSQL 16 template and disposable Azurite instance:
+
+```sh
+npm run build
+BB_RUN_AUTHORIZED_RQ_UPLOAD_PARSE=1 \
+BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
+BB_TEST_AZURITE_CONNECTION_STRING='UseDevelopmentStorage=true' \
+BB_PYTHON=/path/to/python \
+node --test apps/worker/dist/authorized-rq202506-upload-parse.integration.test.js
+```
+
 #31 的内部历史稿修改计划、锁定材料/事实读取入口、#34 消费约定及未完成验收项见 [HISTORICAL-UPDATE-HANDOFF.md](HISTORICAL-UPDATE-HANDOFF.md)。本切片不开放生产任务或生成 Word 成功成果。
 
 `historical-native-recognition.ts` is a conservative #76 native-text
