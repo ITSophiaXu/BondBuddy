@@ -410,6 +410,20 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
         fragment = JSON.stringify(fragment);
       }
     }
+    // A complete quoted subtoken inside ordinary prose must use the same
+    // decoded field classifier even at the final permitted string layer.
+    for (const key of [String.raw`Co\u006Fkie`, 'setCookie', 'otp', 'secret']) {
+      let fragment = String.raw`${key}\u003ASYN_LEAK_MARKER`;
+      for (let layer = 1; layer <= 4; layer++) {
+        for (const note of [JSON.stringify(fragment), `业务前文 ${JSON.stringify(fragment)} 业务后文`,
+          `{} ${JSON.stringify(fragment)}`]) {
+          await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+            kind: 'structured_input', version: 1, body: JSON.stringify({ note }) }),
+          error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+        }
+        fragment = JSON.stringify(fragment);
+      }
+    }
     for (const form of [String.raw`\u0022Cookie\u0022\u003ASYN_LEAK_MARKER`,
       String.raw`\u0043ookie\u003ASYN_LEAK_MARKER`]) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
