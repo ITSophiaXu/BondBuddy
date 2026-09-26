@@ -1,0 +1,91 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "recovery-binding-authenticated",
+      "schema": "RecoveryBindingRequest",
+      "valid": true,
+      "value": {
+        "kind": "email",
+        "contact": "synthetic@example.test",
+        "current_password": "synthetic-current-password"
+      }
+    },
+    {
+      "name": "recovery-binding-no-caller-owner",
+      "schema": "RecoveryBindingRequest",
+      "valid": false,
+      "value": {
+        "kind": "email",
+        "contact": "synthetic@example.test",
+        "current_password": "synthetic-current-password",
+        "user_id": "foreign"
+      }
+    },
+    {
+      "name": "recovery-ticket-generic",
+      "schema": "RecoveryTicketResponse",
+      "valid": true,
+      "value": {
+        "ticket_id": "synthetic-ticket",
+        "status": "received"
+      }
+    },
+    {
+      "name": "recovery-ticket-no-existence-disclosure",
+      "schema": "RecoveryTicketResponse",
+      "valid": false,
+      "value": {
+        "ticket_id": "synthetic-ticket",
+        "status": "received",
+        "exists": true
+      }
+    },
+    {
+      "name": "recovery-reset-capability",
+      "schema": "RecoveryResetRequest",
+      "valid": true,
+      "value": {
+        "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "new_password": "synthetic-new-password"
+      }
+    },
+    {
+      "name": "recovery-reset-reject-wrong-purpose-code",
+      "schema": "RecoveryResetRequest",
+      "valid": false,
+      "value": {
+        "token": "AAAAAAAAAAAA",
+        "new_password": "synthetic-new-password"
+      }
+    },
+    {
+      "name": "recovery-reset-reject-target-switch",
+      "schema": "RecoveryResetRequest",
+      "valid": false,
+      "value": {
+        "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "new_password": "synthetic-new-password",
+        "user_id": "foreign"
+      }
+    },
+    {
+      "name": "recovery-operator-requires-confirmation",
+      "schema": "RecoveryIssueRequest",
+      "valid": false,
+      "value": {
+        "binding_id": "synthetic-binding",
+        "confirmed_original_channel": false
+      }
+    },
+    {
+      "name": "recovery-operator-confirmation",
+      "schema": "RecoveryIssueRequest",
+      "valid": true,
+      "value": {
+        "binding_id": "synthetic-binding",
+        "confirmed_original_channel": true
+      }
+    }
+  ]
+}
