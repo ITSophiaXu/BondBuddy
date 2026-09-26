@@ -5,7 +5,7 @@
 // `succeeded` only via queue.finish after the Word artifact passed inspection and Blob readback.
 // A stage the pipeline needs but that is not implemented pauses the run (`capability_not_ready`).
 import type { Pool } from 'pg';
-import { MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
+import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
@@ -46,7 +46,28 @@ export type RunPipelineDependencies = {
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
+  onUnexpectedError?: (error: { stage: string | null; name: string; message: string; code: string | null }) => void;
 };
+
+/** Keep diagnostic text to fixed identifiers and known PostgreSQL schema messages. */
+export function safeRunError(error: unknown, stage: string | undefined) {
+  const object = error && typeof error === 'object' ? error as { name?: unknown; message?: unknown; code?: unknown } : {};
+  const name = typeof object.name === 'string' && ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AggregateError', 'Problem'].includes(object.name)
+    ? object.name : 'UnknownError';
+  const knownSqlStates = ['42P01', '42703', '23514', '23505', '23503', '40001', '40P01', '08006', '53300', '57P01'];
+  const code = typeof object.code === 'string' && ((ERROR_CODES as readonly string[]).includes(object.code) || knownSqlStates.includes(object.code))
+    ? object.code : null;
+  const raw = typeof object.message === 'string' ? object.message : '';
+  const message = raw === 'Invalid pause' || (ERROR_CODES as readonly string[]).includes(raw) ||
+    /^(?:relation|column) "[a-z_][a-z0-9_]*" does not exist$/.test(raw) ? raw : 'redacted';
+  return { stage: stage ?? null, name, message, code };
+}
+
+/** Event reasons are public machine codes; preflight retains field-level review detail. */
+export function safePauseReason(reason: string) {
+  const prefix = reason.split(':', 1)[0]!;
+  return /^[a-z][a-z0-9_]{0,63}$/.test(prefix) ? prefix : 'rule_applicability_needs_review';
+}
 
 const lost = (error: unknown) => error instanceof Problem && (error.code === 'ALREADY_TERMINAL' || (error.status === 409 && /lease/i.test(error.message)));
 const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'stage_not_implemented' }) });
@@ -361,7 +382,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         await deps.afterStage?.(stage.name, lease);
         continue;
       }
-      if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, outcome.reason); return 'paused'; }
+      if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, safePauseReason(outcome.reason)); return 'paused'; }
       if (outcome.kind === 'fail') { await finish(pool, lease, 'failed', { errorCode: outcome.code, failedStage: stage.name }); return 'failed'; }
       if (outcome.kind === 'stopped') return 'stopped';
       if (Boolean(outcome.cleanBytes) !== Boolean(outcome.baselineBytes) ||
@@ -405,6 +426,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
+    deps.onUnexpectedError?.(safeRunError(error, currentStage));
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
       if (lease.attempts < maxAttempts) {

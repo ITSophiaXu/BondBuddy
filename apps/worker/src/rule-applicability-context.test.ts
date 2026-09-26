@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool, type PoolClient } from 'pg';
-import { createServer } from '@bondbuddy/api';
+import { Ajv } from 'ajv';
+import { schemas } from '@bondbuddy/contracts';
+import { createProductionServer } from '@bondbuddy/api';
+import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer,
   reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext,
@@ -11,6 +14,7 @@ import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityConte
 import type { VerifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import type { ProductionRulePackRequest } from '@bondbuddy/rule-pack-registry';
 import { isolatedTestDatabase } from './test-database.js';
+import { defaultRunStages, runPipelineOnce } from './run-pipeline.js';
 
 const databaseUrl = await isolatedTestDatabase('RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL');
 const schemaReady = async () => {
@@ -23,6 +27,7 @@ const schemaReady = async () => {
 };
 const hasSchema = await schemaReady();
 const origin = 'http://bondbuddy.test';
+const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 type ReviewedIssuerBinding = VerifiedIssuerIdentityBinding;
 type FelixReviewedContextLoader = (db: Pick<PoolClient, 'query'>, args: ReviewedRuleApplicabilityContextArgs) => Promise<
@@ -54,7 +59,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
     const snapshotId = `rule-context-snapshot-${suffix}`, evidenceId = `rule-context-evidence-${suffix}`;
     const reviewerGrantId = `rule-context-grant-${suffix}`, materialHash = sha(`material-${suffix}`);
     const poolLike = pool;
-    const app = createServer({ pool: poolLike, allowedOrigin: origin,
+    const app = createProductionServer({ pool: poolLike, allowedOrigin: origin, enableRunRuntime: true,
       principal: async () => ({ userId: owner, csrfVerified: true }) });
     try {
       for (const [id, label] of [[owner, 'owner'], [reviewerId, 'reviewer'], [grantorId, 'grantor']] as const) {
@@ -131,6 +136,43 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.deepEqual(created.contextPin.sourceMaterials, [{ materialId, materialVersion: 1, sha256: materialHash }],
         'the pin locks the whole input material set, not only selectedMaterial');
       assert.equal(created.contextPin.fieldCandidates.find((candidate) => candidate.fieldKey === 'market')?.evidence?.[0]?.recordSha256, recordHash);
+      if (blobConnection) {
+        const marketDraft = await createRuleApplicabilityContextDraft(pool, { ...request,
+          requestId: `market-review-${suffix}`, fieldCandidates: request.fieldCandidates.map(candidate => candidate.fieldKey === 'market'
+            ? { fieldKey: 'market', value: null, sourceKind: 'unknown', sourceStatus: 'unknown' } : candidate) });
+        const pinnedResponse = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
+          payload: { draft_revision: 1, material_versions: [{ material_id: materialId, material_version: 1 }],
+            requirement_message_ids: [], rule_applicability_context_ref: { context_id: marketDraft.contextId, version: marketDraft.version,
+              content_hash: marketDraft.contentHash, source_input_revision: input.input_revision, source_input_hash: input.input_hash } } });
+        assert.equal(pinnedResponse.statusCode, 201, pinnedResponse.body);
+        const pinned = pinnedResponse.json() as { input_revision: number; input_hash: string };
+        const preflight = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`, headers: { origin },
+          payload: { input_revision: pinned.input_revision, input_hash: pinned.input_hash } });
+        assert.equal(preflight.statusCode, 200, preflight.body);
+        assert.ok((preflight.json() as { missing_inputs: string[] }).missing_inputs.includes('rule_pack:rule_applicability_field_needs_review:market'), preflight.body);
+        const execution = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers: { origin }, payload: {
+          execution_request_id: `rule-context-run-${suffix}`, project_id: projectId, input_revision: pinned.input_revision,
+          input_hash: pinned.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
+          storage_origin: 'cloud', workspace_id: 'synthetic-test' } });
+        assert.equal(execution.statusCode, 202, execution.body);
+        const runId = (execution.json() as { run_id: string }).run_id;
+        const errors: unknown[] = [];
+        const outcome = await runPipelineOnce({ pool, blobs: azureBlobs(blobConnection, `bb-rule-context-${suffix}`),
+          stages: defaultRunStages(), reviewedContextLoader: loadReviewedRuleApplicabilityContext,
+          onUnexpectedError: error => errors.push(error) });
+        assert.equal(outcome, 'paused', JSON.stringify(errors));
+        assert.deepEqual(errors, []);
+        const state = (await pool.query(`SELECT r.state,j.stage,j.error_code,e.payload->>'reason' AS reason
+          FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id JOIN bb_run_events e ON e.run_id=r.id AND e.state='paused'
+          WHERE r.id=$1 ORDER BY e.seq DESC LIMIT 1`, [runId])).rows[0];
+        assert.deepEqual(state && [state.state, state.stage, state.error_code, state.reason],
+          ['paused', 'capability_not_ready', null, 'rule_applicability_field_needs_review']);
+        const events = await app.inject({ method: 'GET', url: `/api/v1/runs/${runId}/events`, headers: { origin } });
+        assert.equal(events.statusCode, 200, events.body);
+        assert.ok(new Ajv().validate(schemas.RunEventsResponse, events.json()), events.body);
+        assert.equal((events.json() as { items: Array<{ state: string; payload: { reason?: string } }> }).items
+          .find(event => event.state === 'paused')?.payload.reason, 'rule_applicability_field_needs_review');
+      }
       const exact = { ownerUserId: owner, projectId, contextId: created.contextId, version: created.version,
         contentHash: created.contentHash, expectedSourceInputRevision: input.input_revision,
         expectedSourceInputHash: input.input_hash, expectedIssuerBinding, currentDraftRevision: 1, currentMaterialVersions };
@@ -174,7 +216,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       const nextInputResponse = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
         payload: { draft_revision: 1, material_versions: [{ material_id: materialId, material_version: 1 }], requirement_message_ids: [] } });
       assert.equal(nextInputResponse.statusCode, 201, nextInputResponse.body);
-      assert.equal(nextInputResponse.json().input_revision, input.input_revision + 1);
+      assert.equal(nextInputResponse.json().input_revision, input.input_revision + (blobConnection ? 2 : 1));
       await assert.rejects(createRuleApplicabilityContextDraft(pool, { ...request, requestId: `stale-source-${suffix}` }),
         /current source revision is unavailable/);
       const historicalPin = await loadInTransaction(pool, exact);
@@ -205,7 +247,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
         ], requirement_message_ids: [] } });
       assert.equal(changedInputResponse.statusCode, 201, changedInputResponse.body);
       const changedInput = changedInputResponse.json() as { input_revision: number; input_hash: string };
-      assert.equal(changedInput.input_revision, input.input_revision + 2);
+      assert.equal(changedInput.input_revision, input.input_revision + (blobConnection ? 3 : 2));
       const addedCase = await loadInTransaction(pool, { ...exact, currentMaterialVersions: [
         { materialId, materialVersion: 1, sha256: materialHash }, { materialId: addedMaterialId, materialVersion: 1, sha256: addedHash },
       ] });
