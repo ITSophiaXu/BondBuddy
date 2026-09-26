@@ -97,7 +97,7 @@ export interface ApplicabilityEvidenceReference {
   readonly materialSha256: string;
   readonly parseSnapshotId: string;
   readonly sourceRecordId: string;
-  readonly sourceContentSha256: string;
+  readonly recordSha256: string;
   readonly locator: string;
 }
 
@@ -151,7 +151,7 @@ function validEvidence(evidence: unknown): evidence is ApplicabilityEvidenceRefe
   return isNonBlank(ref.materialId) && typeof ref.materialVersion === 'number'
     && Number.isSafeInteger(ref.materialVersion) && ref.materialVersion > 0 && isSha256(ref.materialSha256)
     && isNonBlank(ref.parseSnapshotId) && isNonBlank(ref.sourceRecordId)
-    && isSha256(ref.sourceContentSha256) && isNonBlank(ref.locator);
+    && isSha256(ref.recordSha256) && isNonBlank(ref.locator);
 }
 
 function mapIndustryToSelector(classification: unknown):

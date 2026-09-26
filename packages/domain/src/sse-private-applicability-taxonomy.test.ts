@@ -13,7 +13,7 @@ const validEvidence = {
   materialSha256: 'a'.repeat(64),
   parseSnapshotId: 'snapshot-1',
   sourceRecordId: 'record-1',
-  sourceContentSha256: 'b'.repeat(64),
+  recordSha256: 'b'.repeat(64),
   locator: 'document.xml//paragraph[1]',
 };
 
