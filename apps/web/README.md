@@ -114,6 +114,10 @@ BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TE
 
 材料行可打开识别核对页，查看受权 worker 已生成的结果、原页片段及版本化用户校正。读取、图片与写入均走同源 owner API；没有结果时明确显示不可查看。用户校正不等于审计确认。真实 Tesseract、存储、预算和运行说明见 [OCR 交接](../../python/OCR-HANDOFF.md)。自动预检调度和下游事实消费仍待接入，不在上传后偷偷启动全文 OCR。
 
+核对列表按每组最多 500 条浏览全部已返回记录，并可按原件页码和原始识别文字筛选；重复文字及空白单元格不再被前 500 条截断。翻页/筛选保留右侧未保存输入，切换具体记录仍提示放弃确认。原页读取失败可原地重试，保留输入且图片成功显示前禁止保存；切换记录或离开页面清理旧图片回调。所有操作沿用现有 `OcrReview` / `OcrCorrectionRequest`，不启动新的 OCR，不改变部分覆盖、幂等键、校正版本或 `user_asserted` 状态。
+
+独立交互回归：`npm test -w @bondbuddy/web -- ocr-review.spec.ts`，覆盖 600 条重复/空白记录、筛选/翻页、原页失败重试及迟到响应、未保存输入、保存响应丢失后的幂等重试、刷新恢复、409 和窄屏。HTTP/PNG 均为 synthetic；真实 Tesseract/PG/Blob 的 `ocr.integration.spec.ts` 仍需按 OCR 交接单独启用，不能用这组测试替代真实数字准确率或完整 #14 验收。
+
 ## #34 成果摘要与 Word 下载
 
 项目列表的“查看成果与下载”进入 `#/artifacts/{artifact_id}`，读取现有 `ArtifactResponse`、所属成功 `RunResponse` 和本人项目。页面展示该成果对应的输入版本、本轮替换/表格增列计数及待人工确认清单；修订版、清洁版、有效基线分别下载。历史成果缺少 `word_delivery` 时只提供通用 Word 下载，不猜测文档类型或已核验状态。来源核对保留原文件和有效基线 SHA-256。
