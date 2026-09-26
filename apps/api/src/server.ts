@@ -4,7 +4,7 @@ import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
-import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
@@ -32,6 +32,7 @@ import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingI
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
+import { createRuleApplicabilityContextDraft, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -381,6 +382,77 @@ export function createServer(settings: Settings = {}) {
     const q=await db().query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,id,Number(param(request,'input_revision'))]);
     if(!q.rows[0])throw missing();return inputDto(q.rows[0]);
   });
+  const ruleContextDraftPath='/api/v1/projects/:project_id/input-revisions/:input_revision/rule-applicability-context-drafts';
+  app.post(ruleContextDraftPath,{schema:{body:schemas.RuleApplicabilityContextDraftCreateRequest,response:{201:schemas.RuleApplicabilityContextDraftResponse}}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id'),revisionText=param(request,'input_revision');
+    reply.header('cache-control','private, no-store');
+    if(!/^[1-9][0-9]{0,9}$/.test(revisionText)||Number(revisionText)>2147483647)throw new Problem(422,'VALIDATION_FAILED','Input revision is out of range');
+    const revision=Number(revisionText),requestId=body<{request_id:string}>(request).request_id;
+    await project(db(),user,id);
+    const source=(await db().query(`SELECT i.input_hash,i.draft_revision,i.manifest,i.material_versions,p.draft_revision AS current_draft_revision,p.kind,p.deleted_at
+      FROM bb_input_revisions i JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id
+      WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`,[user,id,revision])).rows[0];
+    if(!source||source.deleted_at!==null)throw missing();
+    const stale=()=>conflict('INPUT_REVISION_CONFLICT','Locked input revision, materials, or verified issuer identity changed');
+    if(Number(source.draft_revision)!==Number(source.current_draft_revision))throw stale();
+    const manifest=source.manifest;
+    if(!manifest||typeof manifest!=='object'||Array.isArray(manifest)||inputManifestHash(manifest)!==String(source.input_hash).trim())throw stale();
+    const snapshot=manifest as Record<string,unknown>;
+    if(snapshot.draft_revision!==Number(source.draft_revision)||!Array.isArray(snapshot.materials))throw stale();
+    const materials=snapshot.materials.filter((material):material is Record<string,unknown>=>!!material&&typeof material==='object'&&!Array.isArray(material));
+    const historical=materials.filter(material=>material.role==='historical');
+    if(historical.length!==1)throw stale();
+    const selected=historical[0]!;
+    const identityBinding=snapshot.issuer_identity;
+    if(source.kind!=='update'||!isVerifiedIssuerIdentityBinding(identityBinding)||
+       identityBinding.material_id!==selected.material_id||identityBinding.material_version!==selected.material_version)throw stale();
+    const materialLive=(await db().query(`SELECT role,sha256,deleted_at FROM bb_material_versions
+      WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4`,[user,id,selected.material_id,selected.material_version])).rows[0];
+    if(!materialLive||materialLive.deleted_at!==null||materialLive.role!=='historical'||
+       String(materialLive.sha256).trim().toLowerCase()!==String(selected.sha256).trim().toLowerCase())throw stale();
+    const currentIdentity=await loadVerifiedIssuerIdentitySourceRecord(db(),{ownerUserId:user,projectId:id,
+      materialId:String(selected.material_id),materialVersion:Number(selected.material_version)});
+    if(!currentIdentity||!issuerIdentityBindingMatches(identityBinding,currentIdentity))throw stale();
+    const market=snapshot.market,offering=snapshot.offering;
+    const validMarket=market==='sse'||market==='szse'||market==='nafmii';
+    const validOffering=market==='sse'?MARKET_OFFERINGS.sse.includes(offering as never):
+      market==='szse'?MARKET_OFFERINGS.szse.includes(offering as never):
+      market==='nafmii'?MARKET_OFFERINGS.nafmii.includes(offering as never):false;
+    if((market!==null&&!validMarket)||(offering!==null&&(!validOffering||!validMarket)))throw stale();
+    const unknown=(fieldKey:string)=>({fieldKey,value:null,sourceKind:'unknown' as const,sourceStatus:'unknown' as const});
+    const asserted=(fieldKey:string,value:unknown)=>value===null?unknown(fieldKey):({fieldKey,value,sourceKind:'user_asserted' as const,sourceStatus:'user_asserted' as const});
+    try{
+      const result=await createRuleApplicabilityContextDraft(db(),{
+        ownerUserId:user,projectId:id,sourceInputRevision:revision,sourceInputHash:String(source.input_hash).trim(),
+        selectedMaterial:{materialId:String(selected.material_id),materialVersion:Number(selected.material_version),
+          sha256:String(selected.sha256).trim().toLowerCase(),parseSnapshotId:identityBinding.source_snapshot_id},
+        issuerIdentityBinding:{recordId:identityBinding.record_id,version:identityBinding.version,contentHash:identityBinding.content_hash,
+          entityId:identityBinding.entity_id,materialId:identityBinding.material_id,materialVersion:identityBinding.material_version},
+        asOf:null,documentPurpose:null,requestId,
+        fieldCandidates:[asserted('market',market),asserted('offering',offering),unknown('asOf'),unknown('documentPurpose'),unknown('industry'),unknown('specialFeatures')],
+      });
+      return reply.code(201).send({status:'needs_review',production_eligible:false,context_ref:{context_id:result.contextId,version:result.version,
+        content_hash:result.contentHash,source_input_revision:revision,source_input_hash:String(source.input_hash).trim()}});
+    }catch(error){
+      if(error instanceof Error){
+        if(error.message==='RULE_CONTEXT_IDEMPOTENCY_CONFLICT')throw conflict('IDEMPOTENCY_CONFLICT','Request ID is already bound to another applicability draft');
+        if(error.message.startsWith('RULE_CONTEXT_SOURCE_')||error.message.startsWith('RULE_CONTEXT_SELECTED_')||
+           error.message.startsWith('RULE_CONTEXT_ISSUER_IDENTITY_'))throw stale();
+      }
+      throw error;
+    }
+  });
+  app.get('/api/v1/projects/:project_id/rule-applicability-context-drafts/:context_id/versions/:version',
+    {schema:{response:{200:schemas.RuleApplicabilityContextDraftResponse}}},async(request,reply)=>{
+      const user=await owner(request),id=param(request,'project_id'),versionText=param(request,'version');
+      reply.header('cache-control','private, no-store');
+      await project(db(),user,id);
+      if(!/^[1-9][0-9]{0,9}$/.test(versionText)||Number(versionText)>2147483647)throw missing();
+      const draft=await readRuleApplicabilityContextDraftRef(db(),{ownerUserId:user,projectId:id,contextId:param(request,'context_id'),version:Number(versionText)});
+      if(!draft)throw missing();
+      return {status:'needs_review' as const,production_eligible:false as const,context_ref:{context_id:draft.contextId,version:draft.version,
+        content_hash:draft.contentHash,source_input_revision:draft.sourceInputRevision,source_input_hash:draft.sourceInputHash}};
+    });
   app.post('/api/v1/projects/:project_id/materials/uploads',{schema:{body:schemas.UploadCreateRequest}},async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),b=body<{filename:string;media_type:string;byte_size:number;sha256:string;role:string}>(request);
     await project(db(),user,id);blob();

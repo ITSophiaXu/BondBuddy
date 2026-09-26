@@ -23,6 +23,7 @@ export * from './platform-probe.js'; // #79/#16 platform probe
 import { agreementSchemas, agreementOpenApiPaths } from './agreement.js'; export * from './agreement.js'; // #7 registration agreement
 import { factSchemas } from './facts.js'; export * from './facts.js'; // #15 owner-scoped fact review API
 import { issuerIdentityReviewSchemas } from './issuer-identity-review.js'; export * from './issuer-identity-review.js';
+import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js'; export * from './rule-applicability-context.js';
 
 // Public values live here. Consumers import these constants and inferred types.
 export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
@@ -131,6 +132,7 @@ export const schemas = {
   ...trialSchemas, // #35 trial guard
   ...agreementSchemas, // #7 registration agreement
   ...factSchemas, // #15 fact candidate review and append-only decisions
+  ...ruleApplicabilityContextSchemas, // #19 owner-visible needs_review drafts
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
@@ -262,6 +264,8 @@ export const operations: readonly Operation[] = [
   op('patch', '/projects/{project_id}', 'Patch draft with If-Match revision (contract only)', 'ProjectResponse', 200, 'ProjectPatchRequest', [404, 409]),
   op('post', '/projects/{project_id}/input-revisions', 'Lock verified owner material and draft versions; server computes hash (contract only)', 'InputRevisionResponse', 201, 'InputRevisionCreateRequest', [404, 409]),
   op('get', '/projects/{project_id}/input-revisions/{input_revision}', 'Read immutable input snapshot (contract only)', 'InputRevisionResponse', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/input-revisions/{input_revision}/rule-applicability-context-drafts', 'Create an owner-scoped needs_review applicability draft from a locked input revision', 'RuleApplicabilityContextDraftResponse', 201, 'RuleApplicabilityContextDraftCreateRequest', [404, 409, 422]),
+  op('get', '/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}', 'Read an exact owner-scoped applicability draft reference; never production eligible', 'RuleApplicabilityContextDraftResponse', 200, undefined, [404]),
   op('post', '/projects/{project_id}/materials/uploads', 'Create scoped upload (contract only)', 'UploadSessionResponse', 201, 'UploadCreateRequest', [404, 415, 422]),
   op('post', '/projects/{project_id}/materials/uploads/{upload_id}/complete', 'Verify object bytes/hash and register material idempotently (contract only)', 'MaterialResponse', 200, 'UploadCompleteRequest', [404, 409, 415, 422, 503]),
   op('get', '/projects/{project_id}/materials/{material_id}', 'Read current owner material metadata after checking private object availability', 'MaterialResponse', 200, undefined, [404, 503]),
@@ -356,6 +360,10 @@ export function openApiDocument() {
     get.parameters = [...get.parameters, { name: 'Last-Event-ID', in: 'header', required: false, schema: { type: 'string', pattern: '^(0|[1-9][0-9]{0,9})$' } }, { name: 'after', in: 'query', required: false, schema: { type: 'string', pattern: '^(0|[1-9][0-9]{0,9})$' } }];
     get.responses['200'] = { description: 'Server-sent events: `snapshot` (no id, only without a cursor), persisted events with `id: <seq>`, then `stream.end` (StreamEnd). Reconnect with Last-Event-ID.', content: { 'text/event-stream': { schema: ref(schema) } } };
   }
+  (paths['/api/v1/projects/{project_id}/input-revisions/{input_revision}/rule-applicability-context-drafts'].post as Record<string, unknown>)['x-implementation-status'] =
+    'implemented; requires-valid-session; owner-scoped; needs_review-only; production_eligible=false';
+  (paths['/api/v1/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}'].get as Record<string, unknown>)['x-implementation-status'] =
+    'implemented; requires-valid-session; owner-scoped; historical-read; needs_review-only; production_eligible=false';
   for (const [path, method] of [['/runs/execute', 'post'], ['/runs/{run_id}/cancel', 'post'], ['/runs/{run_id}/resume', 'post']] as const)
     (paths[`/api/v1${path}`][method] as Record<string, unknown>)['x-implementation-status'] = 'implemented; worker-runtime; production-501-unless-BB_RUN_RUNTIME_ENABLED; stages-without-implementation-pause-capability_not_ready';
   // --- end #17 worker runtime ---
