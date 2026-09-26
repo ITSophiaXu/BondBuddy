@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { appendRuleApplicabilityFieldReview, getRuleApplicabilityFieldReview,
+  getRuleApplicabilityFieldReviewTarget } from './rule-applicability-field-reviews.js';
+import { createRuleApplicabilityContextDraft } from '@bondbuddy/rule-applicability-context';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { createProductionServer, createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -23,6 +26,7 @@ test('owner applicability API derives a needs_review ref from locked evidence an
     const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
     const owner = `context-api-owner-${suffix}`, foreign = `context-api-foreign-${suffix}`;
     const reviewerId = `context-api-reviewer-${suffix}`, grantorId = `context-api-grantor-${suffix}`;
+    const ruleReviewerId = `context-api-rule-reviewer-${suffix}`;
     const projectId = `context-api-project-${suffix}`, materialId = `context-api-material-${suffix}`;
     const auditMaterialId = `context-api-audit-${suffix}`, auditUploadId = `context-api-audit-upload-${suffix}`;
     const uploadId = `context-api-upload-${suffix}`, snapshotId = `context-api-snapshot-${suffix}`;
@@ -46,7 +50,8 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       return response.json() as { input_revision: number; input_hash: string };
     };
     try {
-      for (const [id, label] of [[owner, 'owner'], [foreign, 'foreign'], [reviewerId, 'reviewer'], [grantorId, 'grantor']] as const) {
+      for (const [id, label] of [[owner, 'owner'], [foreign, 'foreign'], [reviewerId, 'reviewer'],
+        [grantorId, 'grantor'], [ruleReviewerId, 'rvr']] as const) {
         await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `contextapi${label}${suffix}`]);
       }
       await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details)
@@ -117,6 +122,177 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         assert.equal(fields.get(field)!.candidate_value, null);
         assert.equal(fields.get(field)!.source_status, 'unknown');
       }
+
+      // A separate internal candidate exercises the field ledger against a real immutable parse-evidence anchor.
+      const reviewContext = await createRuleApplicabilityContextDraft(pool, {
+        ownerUserId: owner, projectId, sourceInputRevision: input.input_revision, sourceInputHash: input.input_hash,
+        selectedMaterial: { materialId, materialVersion: 1, sha256: materialHash, parseSnapshotId: snapshotId },
+        issuerIdentityBinding: { recordId: identity.id, version: identity.identityVersion, contentHash: identity.contentSha256,
+          entityId: 'entity:11111111-1111-4111-8111-111111111111', materialId, materialVersion: 1 },
+        asOf: null, documentPurpose: null, requestId: `field-ledger-context-${suffix}`,
+        fieldCandidates: [
+          { fieldKey: 'asOf', value: null, sourceKind: 'unknown', sourceStatus: 'unknown' },
+          { fieldKey: 'documentPurpose', value: null, sourceKind: 'unknown', sourceStatus: 'unknown' },
+          { fieldKey: 'instrument', value: 'ordinary-company-bond', sourceKind: 'parse_evidence', sourceStatus: 'recognized',
+            evidence: [{ materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId,
+              recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }] },
+          { fieldKey: 'instrumentConflict', value: 'ordinary-company-bond', sourceKind: 'parse_evidence', sourceStatus: 'recognized',
+            conflictRefs: [evidenceId], evidence: [{ materialId, materialVersion: 1, materialSha256: materialHash,
+              parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }] },
+          { fieldKey: 'industry', value: 'industry-unapproved', sourceKind: 'parse_evidence', sourceStatus: 'recognized',
+            evidence: [{ materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId,
+              recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }] },
+          { fieldKey: 'specialFeatures', value: ['feature-unapproved'], sourceKind: 'parse_evidence', sourceStatus: 'recognized',
+            evidence: [{ materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId,
+              recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }] },
+        ],
+      });
+      const reviewCandidates = (await pool.query(`SELECT field_key,candidate_id FROM bb_rule_applicability_context_candidates
+        WHERE context_id=$1`, [reviewContext.contextId])).rows;
+      await assert.rejects(pool.query(`INSERT INTO bb_rule_applicability_context_candidates
+        (context_id,owner_user_id,project_id,context_version,candidate_id,field_key,ordinal,candidate_value,
+         source_kind,source_status,conflict_refs,review_decision,review_status)
+        VALUES($1,$2,$3,1,$4,'specialFeatures',99,'[]'::jsonb,'parse_evidence','recognized','[]'::jsonb,NULL,'needs_review')`,
+      [reviewContext.contextId, owner, projectId, `empty-special-features-${suffix}`]), /empty specialFeatures requires/i,
+      'an empty specialFeatures candidate cannot bypass the missing complete negative-evidence ledger');
+      const candidate = reviewCandidates.find((row) => row.field_key === 'instrument')!;
+      const candidateId = String(candidate.candidate_id);
+      const ruleGrantId = `context-api-rule-grant-${suffix}`;
+      await pool.query(`INSERT INTO bb_rule_applicability_reviewer_grants
+        (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'rule_applicability_reviewer',$3,'synthetic_test','Synthetic PG regression only',$4,$5)`,
+      [ruleGrantId, ruleReviewerId, grantorId, owner, projectId]);
+      const reviewScope = { ownerUserId: owner, projectId };
+      const reviewTarget = { contextId: reviewContext.contextId, contextVersion: 1, candidateId, fieldKey: 'instrument' };
+      const trustedTarget = await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, reviewScope, reviewTarget);
+      assert.ok(trustedTarget);
+      assert.equal(trustedTarget.sourceKind, 'parse_evidence');
+      assert.equal(trustedTarget.evidenceRefs.length, 1);
+      const intentOrUnknown = (await pool.query(`SELECT candidate_id,field_key FROM bb_rule_applicability_context_candidates
+        WHERE context_id=$1 AND field_key=ANY($2::text[])`, [createdDto.context_ref.context_id,
+        ['market','offering','industry','specialFeatures']])).rows;
+      for (const row of intentOrUnknown) {
+        const fieldKey = String(row.field_key);
+        const target = { contextId: createdDto.context_ref.context_id, contextVersion: 1,
+          candidateId: String(row.candidate_id), fieldKey };
+        const current = await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, reviewScope, target);
+        assert.ok(current);
+        await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: reviewScope,
+          target: { ...target, candidateHash: current.candidateHash }, requestId: `intent-unknown-${fieldKey}-${suffix}`,
+          action: 'adopt_candidate', reason: 'Target intent is not material evidence; unknown stays unresolved' }),
+        /FIELD_REVIEW_CANDIDATE_NOT_ADOPTABLE/);
+      }
+      for (const fieldKey of ['industry','specialFeatures','instrumentConflict']) {
+        const unapproved = reviewCandidates.find((row) => row.field_key === fieldKey)!;
+        const unapprovedTarget = { contextId: reviewContext.contextId, contextVersion: 1,
+          candidateId: String(unapproved.candidate_id), fieldKey };
+        const unapprovedDigest = await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, reviewScope, unapprovedTarget);
+        assert.ok(unapprovedDigest);
+        await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: reviewScope,
+          target: { ...unapprovedTarget, candidateHash: unapprovedDigest.candidateHash },
+          requestId: `unapproved-${fieldKey}-${suffix}`, action: 'adopt_candidate', reason: 'Taxonomy not approved' }),
+        /FIELD_REVIEW_CANDIDATE_NOT_ADOPTABLE/);
+      }
+      assert.equal(await getRuleApplicabilityFieldReviewTarget(pool, { userId: owner }, reviewScope, reviewTarget), null,
+        'owner cannot self-review');
+      assert.equal(await getRuleApplicabilityFieldReviewTarget(pool, { userId: reviewerId }, reviewScope, reviewTarget), null,
+        'issuer-identity reviewer grant does not authorize applicability review');
+      const forgedTarget = { ...reviewTarget, candidateId: `forged-${suffix}` };
+      assert.equal(await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, reviewScope, forgedTarget), null,
+        'a caller cannot claim a candidate that is absent from the immutable context');
+      await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: reviewScope,
+        target: { ...forgedTarget, candidateHash: trustedTarget.candidateHash }, requestId: `forged-candidate-${suffix}`,
+        action: 'adopt_candidate', reason: 'forged candidate identifier' }), /FIELD_REVIEW_CANDIDATE_NOT_FOUND/);
+      const requestReviewWithId = (requestId: string,
+        action: 'adopt_candidate' | 'request_more_evidence' | 'out_of_scope' = 'adopt_candidate') => appendRuleApplicabilityFieldReview(pool, {
+        principal: { userId: ruleReviewerId }, scope: reviewScope,
+        target: { ...reviewTarget, candidateHash: trustedTarget.candidateHash },
+        requestId, action, reason: 'Synthetic evidence review',
+      });
+      const requestReview = (action: 'adopt_candidate' | 'request_more_evidence' | 'out_of_scope' = 'adopt_candidate') =>
+        requestReviewWithId(`field-review-${suffix}`, action);
+      await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: owner }, scope: reviewScope,
+        target: { ...reviewTarget, candidateHash: trustedTarget.candidateHash }, requestId: `owner-review-${suffix}`,
+        action: 'adopt_candidate', reason: 'self review is forbidden' }), /FIELD_REVIEW_REVIEWER_NOT_AUTHORIZED/);
+      await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: reviewScope,
+        target: { ...reviewTarget, candidateHash: '0'.repeat(64) }, requestId: `forged-hash-${suffix}`,
+        action: 'adopt_candidate', reason: 'forged hash' }), /FIELD_REVIEW_CANDIDATE_HASH_MISMATCH/);
+      const fieldReview = await requestReview();
+      assert.equal(fieldReview.action, 'adopt_candidate');
+      assert.equal(fieldReview.sourceInputHash, input.input_hash);
+      assert.equal(fieldReview.reviewerUserId, ruleReviewerId);
+      assert.equal(fieldReview.reviewerGrantId, ruleGrantId);
+      assert.equal(fieldReview.evidenceRefs[0]!.recordId, evidenceId);
+      assert.equal((await getRuleApplicabilityFieldReview(pool, { userId: ruleReviewerId }, reviewScope, fieldReview.id))?.id, fieldReview.id);
+      const unchangedCandidate = await pool.query(`SELECT review_decision,review_status FROM bb_rule_applicability_context_candidates
+        WHERE context_id=$1 AND candidate_id=$2`, [reviewContext.contextId, candidateId]);
+      assert.equal(unchangedCandidate.rows[0]!.review_decision, null);
+      assert.equal(unchangedCandidate.rows[0]!.review_status, 'needs_review', 'field action never mutates or approves the candidate/context');
+      const replayedReview = await requestReview();
+      assert.equal(replayedReview.id, fieldReview.id);
+      assert.equal(replayedReview.replayed, true, 'same request and content replay the immutable ledger row');
+      await assert.rejects(requestReview('out_of_scope'), /FIELD_REVIEW_IDEMPOTENCY_CONFLICT/);
+      const concurrentRequest = `field-review-concurrent-${suffix}`;
+      const concurrentReviews = await Promise.all([requestReviewWithId(concurrentRequest), requestReviewWithId(concurrentRequest)]);
+      assert.equal(concurrentReviews[0]!.id, concurrentReviews[1]!.id, 'concurrent same-key requests serialize to one immutable decision');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_rule_applicability_field_reviews WHERE request_id=$1',
+        [concurrentRequest])).rows[0]!.n, 1);
+      const beforeCounterfeit = await pool.query('SELECT * FROM bb_rule_applicability_field_reviews WHERE id=$1', [fieldReview.id]);
+      const counterfeit = beforeCounterfeit.rows[0]!;
+      await assert.rejects(pool.query(`INSERT INTO bb_rule_applicability_field_reviews
+        (id,request_id,request_hash,owner_user_id,project_id,context_id,context_version,context_content_hash,
+         source_input_revision,source_input_hash,candidate_id,field_key,candidate_ordinal,candidate_hash,candidate_snapshot,
+         candidate_value,conflict_refs,source_kind,source_status,action,reason,evidence_refs,reviewer_user_id,reviewer_grant_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+      [`counterfeit-${suffix}`, `counterfeit-request-${suffix}`, '1'.repeat(64), counterfeit.owner_user_id, counterfeit.project_id,
+        counterfeit.context_id, counterfeit.context_version, counterfeit.context_content_hash, counterfeit.source_input_revision,
+        counterfeit.source_input_hash, counterfeit.candidate_id, counterfeit.field_key, counterfeit.candidate_ordinal,
+        '0'.repeat(64), JSON.stringify(counterfeit.candidate_snapshot), JSON.stringify(counterfeit.candidate_value),
+        JSON.stringify(counterfeit.conflict_refs), counterfeit.source_kind, counterfeit.source_status,
+        'adopt_candidate', 'counterfeit hash', JSON.stringify(counterfeit.evidence_refs),
+        counterfeit.reviewer_user_id, counterfeit.reviewer_grant_id]), /candidate hash mismatch/i,
+      'DB guard recomputes snapshot hash; direct SQL cannot attach a forged digest');
+      const projectB = `context-api-project-b-${suffix}`;
+      await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details)
+        VALUES($1,$2,'Synthetic other project','update','synthetic','sse','private','{}')`, [projectB, owner]);
+      const wrongProjectScope = { ownerUserId: owner, projectId: projectB };
+      assert.equal(await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, wrongProjectScope, reviewTarget), null,
+        'reviewer grant scope does not extend to another project');
+      assert.equal(await getRuleApplicabilityFieldReview(pool, { userId: ruleReviewerId }, wrongProjectScope, fieldReview.id), null,
+        'the ledger read is exact-project scoped');
+      await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: wrongProjectScope,
+        target: { ...reviewTarget, candidateHash: trustedTarget.candidateHash }, requestId: `cross-project-${suffix}`,
+        action: 'adopt_candidate', reason: 'cross-project attempt' }), /FIELD_REVIEW_REVIEWER_NOT_AUTHORIZED/);
+      const foreignScope = { ownerUserId: foreign, projectId };
+      assert.equal(await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, foreignScope, reviewTarget), null,
+        'review authorization is bound to exact owner as well as project');
+      await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: foreignScope,
+        target: { ...reviewTarget, candidateHash: trustedTarget.candidateHash }, requestId: `cross-owner-${suffix}`,
+        action: 'adopt_candidate', reason: 'cross-owner attempt' }), /FIELD_REVIEW_REVIEWER_NOT_AUTHORIZED/);
+      const denyFunction = `deny_field_review_outbox_${suffix}`;
+      const denyTrigger = `deny_field_review_event_${suffix}`;
+      await pool.query(`CREATE FUNCTION ${denyFunction}() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.aggregate_type='rule_applicability_field_review' THEN RAISE EXCEPTION 'synthetic outbox failure'; END IF; RETURN NEW; END $$`);
+      await pool.query(`CREATE TRIGGER ${denyTrigger} BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION ${denyFunction}()`);
+      try {
+        await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: reviewScope,
+          target: { ...reviewTarget, candidateHash: trustedTarget.candidateHash }, requestId: `atomic-outbox-${suffix}`,
+          action: 'out_of_scope', reason: 'Atomic outbox failure check' }), /synthetic outbox failure/);
+        assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_rule_applicability_field_reviews WHERE request_id=$1`,
+          [`atomic-outbox-${suffix}`])).rows[0]!.n, 0, 'ledger insert rolls back when same-transaction outbox write fails');
+      } finally {
+        await pool.query(`DROP TRIGGER IF EXISTS ${denyTrigger} ON bb_outbox`);
+        await pool.query(`DROP FUNCTION IF EXISTS ${denyFunction}()`);
+      }
+      await pool.query(`UPDATE bb_rule_applicability_reviewer_grants SET revoked_at=now(),revoked_by=$2,
+        revocation_reason_code='synthetic_test',revocation_basis='Synthetic revoke test' WHERE id=$1`, [ruleGrantId, grantorId]);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_rule_applicability_field_reviews WHERE id=$1', [fieldReview.id])).rows[0]!.n, 1,
+        'revoking the grant preserves immutable historical review evidence');
+      assert.equal(await getRuleApplicabilityFieldReview(pool, { userId: ruleReviewerId }, reviewScope, fieldReview.id), null,
+        'revoked reviewers cannot use the current-authority read helper; historical evidence remains stored');
+      await assert.rejects(appendRuleApplicabilityFieldReview(pool, { principal: { userId: ruleReviewerId }, scope: reviewScope,
+        target: { ...reviewTarget, candidateHash: trustedTarget.candidateHash }, requestId: `after-revoke-${suffix}`,
+        action: 'out_of_scope', reason: 'revoked reviewer' }), /FIELD_REVIEW_REVIEWER_NOT_AUTHORIZED/);
 
       const getUrl = `${base}/rule-applicability-context-drafts/${createdDto.context_ref.context_id}/versions/${createdDto.context_ref.version}`;
       const read = await send('GET', getUrl);
