@@ -2,6 +2,10 @@
 
 状态：供 M1 团队评审的技术方案。产品范围和验收以 `product-prototype/product-specs/`、GitHub M1 issue 为准；本文件固定实现方向和跨模块接口。若需改变选型或公共契约，先在同一个 PR 更新本文件及受影响的接口契约，再合并实现。
 
+## #34 浏览器成果交付切片（2026-09-26）
+
+`apps/web/src/artifact-page.ts` 通过现有 `ArtifactResponse` → `RunResponse` → 本人项目读取路径展示成果摘要、待人工确认项与修订/清洁/有效基线下载，不新增契约、迁移或运行状态。项目列表沿用最新成功成果引用，后续 run 失败不覆盖该入口；同一成果 URL 可在刷新后恢复。每次下载重新获得短期授权，由公共 API client 验证同源精确成果路径并处理会话、取消和失败。没有 `word_delivery` 的旧成果保持通用文件展示；不推断其修订或无历史稿身份。完整项目成果历史目录缺少公开列表接口，未在此实现。浏览器合成验收不替代 #35 真实交付与 #146 Office 实机矩阵，详见 `apps/web/README.md`。
+
 ## #34 历史 DOCX Word 交付切片（2026-09-25）
 
 worker 将 #31 锁定的 `historical-update-plan-v1` 交给 Python OOXML writer，产出原稿有效基线、真实修订版与清洁版；原上传材料保持不变。三份成果各自复用现有 `promoteWordArtifact` 检查和 Blob 读回，全部通过后才结束 run。`ArtifactResponse.word_delivery` 可选字段包含三份成果 ID、源和基线 hash、writer 版本、变更计数及局部待确认摘要；公开下载仍使用原有 owner-scoped 临时 grant。没有新增迁移或公开写接口。writer 只处理 #31 当前有历史 DOCX 的上交所普通私募计划；其他场景继续按能力门槛停下，Windows WPS/Word 操作兼容性由 #146 实机验收。
