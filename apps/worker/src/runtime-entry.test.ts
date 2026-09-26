@@ -86,6 +86,7 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     // In-process runtime from the production options; only the parser is the synthetic stand-in.
     const options = workerRuntimeOptionsFromEnv(pool, blobs, env);
     assert.ok(options.platformProbe && options.concurrency === 1 && options.runStages!.length > 0);
+    assert.equal(typeof options.parse?.issuerIdentityProducer, 'function', 'production parser injects issuer observation selection');
     assert.equal(typeof options.parse!.material.blobs.readToFile, 'function', 'production runtime stages Blob bytes to disk');
     assert.deepEqual(options.runStages!.map(stage => stage.name), ['input_lock', 'materials_ready', 'model_generation', 'word_delivery']);
     const workerId = `synthetic-entry-${randomUUID().slice(0, 8)}`;

@@ -99,6 +99,8 @@ deploy/              # Compose、Nginx、部署与回滚
 
 ### #11 更新项目表单与草稿持久化切片（2026-09-24）
 
+2026-09-26 收尾见 [四项验收映射](acceptance/issue-11-closeout-2026-09-26.md)。原生/OCR 共用 DFI 原稿分类：注册覆盖工具列表不自动转为本期工具；明确本期工具、否定和冲突分别保留具体分类或待确认。原生识别版本 v3（读取兼容 v1/v2）、OCR v2（读取兼容 v1），旧画像不改写，无公共 DTO/迁移变更。Python 普通/流式桥固定 UTF-8，接受主机绝对暂存路径并继续拒绝相对路径；四组授权 DOCX 已复验，不代替 DFI 专业验收。
+
 在 #10/#12 已有的 `apps/web/` 中扩展新建及编辑表单，保留同源 API client、登录/会话隔离、项目列表、串行自动保存和材料上传。新增历史稿有/没有、展开的选填信息、市场/发行方式联动、灵活债券与机构描述、多项资金用途和右侧补充说明。DFI 仅属于交易商协会下的发行方式，未定金额为 null；不增加注册模式问卷。409 保留本页输入，用户可自行复制后明确放弃并加载服务器新版；不自动覆盖。嵌套值比较忽略 JSONB 对象键顺序，资金用途数组顺序仍影响草稿变化。运行与测试说明见 `apps/web/README.md`。
 
 `packages/contracts/src/update-project.ts` 补充规格 05 已确认的草稿输入，POST/PATCH/GET 的 `update_details` 为兼容旧客户端而可省略；PATCH 省略时保留，出现时完整替换，null 表示未知。`0013_m1_update_project_details.sql` 仅新增项目 JSONB 列，服务端合并默认值并校验真实日期和不同单位的金额比较。项目改动及 outbox 同事务；新 input manifest 包含完整用户输入，旧快照不重写。目标字段独立于原稿识别；补充输入未经模型处理/证据确认。表单数据与真实 PostgreSQL 16 联调，不代表材料事件恢复、真实多轮对话、模型调用或 Word 交付已打通。公共契约、迁移和 UI 随集成验证；本切片不解除 #8/#16/#18/#79 的剩余联调与上线门槛。
@@ -181,7 +183,7 @@ The #19 shared selector/revalidator was delivered before the #17 call sites abov
 
 #### #19/#15 owner-scoped applicability context producer (2026-09-26)
 
-`@bondbuddy/rule-applicability-context` and additive migration `0039_m1_rule_applicability_context.sql` provide an internal append-only draft/evidence slice. Each immutable context pin stores the original source input revision/hash/draft revision and the complete sorted material ID/version/SHA set (not just the selected parse target), exact selected parse snapshot, #206 issuer identity record/version/hash/entity binding, and per-field candidate provenance/status/conflicts/evidence anchors. At the #17 integration boundary, `loadReviewedRuleApplicabilityContext` additionally requires server-derived `currentDraftRevision` and the complete server-resolved `currentMaterialVersions` set; #217's platform loader interface now passes both, while the owner loader independently rechecks them against the pin and owner-scoped material rows so same-draft add/remove/replace operations cannot reuse an old context. All stored drafts/candidates and this producer's loader remain `needs_review`: Maxy's public field taxonomy, professional approval criteria and absence-evidence standard are not defined here, and this slice does not manufacture an approved rule request or production value. Old pins remain readable for audit; changed current source/material/identity evidence fails the current gate closed. This infrastructure does not close #19 or #15 acceptance.
+`@bondbuddy/rule-applicability-context` and additive migration `0039_m1_rule_applicability_context.sql` provide an internal append-only draft/evidence slice. Each immutable context pin stores the original source input revision/hash/draft revision and the complete sorted material ID/version/SHA set (not just the selected parse target), exact selected parse snapshot, #206 issuer identity record/version/hash/entity binding, and per-field candidate provenance/status/conflicts/evidence anchors. The 0045 migration changes new context pins to reference the review row's `verified_entity_id`; its insert guard and current-source checks compare that reviewed subject, while existing pins remain readable for audit. At the #17 integration boundary, `loadReviewedRuleApplicabilityContext` additionally requires server-derived `currentDraftRevision` and the complete server-resolved `currentMaterialVersions` set; #217's platform loader interface now passes both, while the owner loader independently rechecks them against the pin and owner-scoped material rows so same-draft add/remove/replace operations cannot reuse an old context. All stored drafts/candidates and this producer's loader remain `needs_review`: Maxy's public field taxonomy, professional approval criteria and absence-evidence standard are not defined here, and this slice does not manufacture an approved rule request or production value. Old pins remain readable for audit; changed current source/material/identity evidence fails the current gate closed. This infrastructure does not close #19 or #15 acceptance.
 
 The #20 business handoff is [APPLICABILITY-POLICY.md](../knowledge/exchange-bonds/drafts/sse-private/APPLICABILITY-POLICY.md), with a separate [review worksheet](../knowledge/exchange-bonds/drafts/sse-private/REVIEW-WORKSHEET.md). It proposes per-field evidence and aggregate approval criteria without changing the production schema or supplying attestations. In particular, producer `documentPurpose` maps to selector `documentStage`; target intent must not overwrite historical classification, and overlapping issuer focus categories must not disappear into a single industry label. #19 still owns the versioned taxonomy, real field/aggregate review records, reviewed-absence evidence, message provenance and approved loader branch. The existing implementation still returns only needs_review; this document alone cannot enable it.
 
@@ -301,6 +303,8 @@ This is 31 disabled research candidates, not a production checker or release. Of
 
 ### #10/#12 浏览器项目与材料上传切片（2026-09-24）
 
+2026-09-26 上传侧收尾与剩余依赖见 [#12 验收映射](acceptance/issue-12-upload-closeout-2026-09-26.md)：真实 HTTP/PostgreSQL16/Azurite 保存五份 100 MiB、重读校验并验证满 500 MiB 后复用/超限，新增 opt-in 容量回归。接口/配额/迁移不变。原生缺页/扫描完整性疑点仍需 #13/#14 提供实际证据并接入材料展示；不得将通用文案、合成 UI 测试或 TXT 吞吐称为完整解析验收。#12 暂不关闭。
+
 `apps/web/` 以 Vite、原生 TypeScript 和原型的视觉样式接入现有 `/api/v1`，复用 `packages/contracts` 类型。当前覆盖已有账号登录、会话刷新/退出、本人项目分页列表、已加载名称搜索、新建项目、名称/发行人自动保存，以及按公共固定分区上传文件。每个文件有独立上传会话、XHR 字节进度、服务端保存/核验阶段、失败重试和取消；只有 `complete` 返回材料版本才显示服务端确认成功。刷新恢复读取项目材料事件并按 owner-scoped material ID 拉取当前状态，不从浏览器存储恢复个人数据；#12 的初始 UI 切片缺少服务端事件读取，后续 #8 项目事件切片现已提供此恢复路径。409 保留输入且不覆盖服务端新版本；跨页账号切换清除旧页面内容。
 
 项目材料恢复使用 0011 持久化的 owner-scoped `ProjectEvent` 项目序列；只有 Blob 内容核验并保存成功后才写终态 `material.upload_progress`，事件和材料/outbox 在同一事务提交。分页默认 50 条、上限 100 条；恢复时再通过 owner-scoped 当前材料读取排除已删除或 Blob 缺失记录。该切片不宣称完成 #10/#12：同内容去重、历史稿重复识别抑制、扫描/加密/缺页提示的完整验收仍待完成。默认 upload tests 使用合成 API fixture；独立的 project-events browser integration 运行本地 PostgreSQL/Azurite API 与 Blob，但不构成目标环境/TLS验收。#10 全局搜索、类型/状态筛选、归档接口已补齐（见下节）；#11 已补齐业务字段，#18、#34 的完整工作区后续接入。不迁移旧原型认证/JSON/模拟账务，不开放真实执行。运行、测试与剩余交接见 `apps/web/README.md`。
@@ -380,4 +384,16 @@ This is 31 disabled research candidates, not a production checker or release. Of
 
 用户主动上传的相似稿与平台参考库分开锁定。新增 `0046_m1_user_reference_pins.sql`，保存追加式审核结论和每个 input revision 的不可变 pin；迁移不预置审核权限或通过结论。input lock 只接受 generation 中已列入 manifest 的本人项目 `reference` 材料版本，核对 SHA-256 和同源 parsed snapshot。pin 同时进入 `input_hash`，包含材料版本/hash、snapshot、授权/可读性/目标适用状态、目标市场/发行方式/品种/文书阶段、审核引用和事实隔离检查版本。审核必须匹配完整目标且授权仍有效；没有已审核结论时为 `needs_review`，后续审核只能创建新 input revision。`user-reference-outline-v1` 在后台任务进程重验材料、snapshot、审核和 grant 后只投影审核过的章节顺序与标题；解析正文和参考发行人事实不进入模型输入。未选择用户参考稿时，#33 继续使用 #77 库选择链。业务审核口径和授权由业务负责人确定，此切片不增加前台选择页或审核入口。
 
+## #17 发行人身份观察审核接口（2026-09-26）
+
+`GET /api/v1/projects/{project_id}/materials/{material_id}/versions/{material_version}/issuer-identity/observations` 按 owner 隔离，逐条返回解析证据定位、原文、hash、`candidate_key` 和已审核的 `verified_entity_id`；跨账号返回 404。`POST .../observations/{source_record_id}/review` 使用当前会话身份和有效的 `issuer_identity_reviewer` 授权。verified 决定必须携带 `verified_entity_id`、`entity_basis_kind` 和 `entity_basis_ref`，无可信依据时只能 rejected/conflict。无效或缺失的主体依据返回 400 `ISSUER_IDENTITY_VERIFICATION_INVALID`；同一完整决定重放返回原审核，变更决定或依据返回 409。0045 记录授权/撤权审计和审核后的主体依据，不预置 grant，也不开放授权创建接口。
+
+解析持久化后，生产进程以 owner/项目/材料版本及完整不可变快照运行显式发行人名称选择器。无候选不写入；每个候选的**每个原始证据锚点**各写一条 `needs_review` 观察，冲突候选也全部保留。观察 ID 与重放键由快照、NFKC 规范化并合并空白的名称、单个解析证据 ID 确定。`issuer-name:v1:` 加名称 SHA-256 前 32 位只是 `candidate_key`，用于聚类待审核名称；数据库观察列 `entity_id` 为兼容保持原名，不能作为事实主体键。选择器异常或不完整覆盖记录 warning，不自动确认身份，也不使解析作业失败。
+
+审核行追加保存经依据确认的主体 ID：`uscc:<18 位统一社会信用代码>` 或 `entity:<uuid>`；`uscc` 依据须与代码一致。新审核行受 0045 CHECK 约束，旧 verified 行若缺主体依据则保持历史审计记录但不能绑定。`loadVerifiedIssuerIdentitySourceRecord` 是 input revision、run 和事实键唯一可信入口：该材料版本全部观察均需有效 grant 下的 verified/rejected 决定，至少一条 verified 且其 `verified_entity_id` 唯一；同项目同一 `candidate_key` 在材料间出现不同 verified 主体时也返回 null，GET 显示 conflict。fact key 使用审核后的主体 ID。审核不修改既有 input revision；需新建 revision 才能锁定 verified 绑定。名称选择和合成测试不构成真实身份的专业核验。
+
 2026-09-26 核对 UI 修复：在已返回的 `OcrReview.records` 上提供每组 500 条的完整遍历及原件页码筛选，保留原始记录顺序和未保存校正。原页加载失败可保留输入重试，图片显示之前不能保存；切换记录/离页清理旧图片加载，迟到响应不得解锁其他记录。无公开契约、迁移或 OCR runtime 变化；synthetic 浏览器证据见 `apps/web/README.md`，v2 调度、真实 OCR 和财务金标准仍是后续验收。
+
+### #20 受限规则检查（2026-09-26）
+
+现有 RulePack 的五条 checker 引用已绑定内部结构化证据检查实现；工程入口、证据输入、版本边界及未覆盖项见 [可执行检查交接](../knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)。全部候选保持 research_only，生产Eligible 始终为 false。它不新增 API、迁移或默认 worker 阶段；#15/#19 可信适配负责事实与审核身份，正式发布仍通过既有 registry。不得把该研究返回值当作 production selector 或行业签认。

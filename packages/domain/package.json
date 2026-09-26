@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./sse-private-checks": { "types": "./dist/sse-private-checks.d.ts", "default": "./dist/sse-private-checks.js" },
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./facts": { "types": "./dist/facts.d.ts", "default": "./dist/facts.js" },
     "./historical-update": { "types": "./dist/historical-update.d.ts", "default": "./dist/historical-update.js" },

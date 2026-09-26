@@ -20,6 +20,7 @@ import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { sweepParseStaging } from './parse-staging.js';
+import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -241,7 +242,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
-    parse: { material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key),
+    parse: { issuerIdentityProducer: createIssuerIdentityProducer(pool), material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key),
       ...(blobs.readToFile ? { readToFile: (key: string, path: string, max: number) => blobs.readToFile!(key, path, max) } : {}) },
       ...(parseCache ? { parseCache } : {}), ...(env.BB_PARSE_STAGING_DIR ? { tempRoot: env.BB_PARSE_STAGING_DIR } : {}) }, ocrProfiles: ocrEnabled ? { pool, blobs } : undefined,
       ocr: ocrEnabled ? ocr?.(pool, blobs) : undefined },

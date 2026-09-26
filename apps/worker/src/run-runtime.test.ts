@@ -104,7 +104,8 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer);
     assert.ok(trustedReviewer);
     await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
-      sourceRecordRowId: observation.id, reviewer: trustedReviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+      sourceRecordRowId: observation.id, reviewer: trustedReviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+      entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic runtime identity', reasonCode: 'synthetic_identity_verified' });
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,job_type,subtype,state,project_id,material_id,material_version,material_sha256,
       parser_version,trace_id,max_attempts,result) VALUES($1,$2,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8::jsonb)`,
     [randomUUID(), alice, projectId, materialId, contentHash, parserVersion, randomUUID(), JSON.stringify({ outcome: 'parsed' })]);

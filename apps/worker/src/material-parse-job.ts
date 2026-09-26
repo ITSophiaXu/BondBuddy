@@ -15,6 +15,18 @@ import { recognizeHistoricalNativeText } from './historical-native-recognition.j
 import { performance } from 'node:perf_hooks';
 import { OcrProcessingError, type OcrProcessingMetrics } from './ocr.js';
 import { recordMaterialParseProcessingCost } from '@bondbuddy/api/material-jobs';
+import { createHash } from 'node:crypto';
+import { appendIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
+
+export interface IssuerIdentityObservationContext {
+  ownerUserId: string; projectId: string; materialId: string; materialVersion: number;
+  snapshotId: string; materialSha256: string;
+  evidence: readonly { recordId: string; recordSha256: string; locatorType: string }[];
+}
+export interface IssuerIdentityObservationCandidate {
+  sourceRecordId: string; issuerDisplayName: string; entityId: string;
+  observationId?: string; requestId?: string;
+}
 
 export interface MaterialParseJobDependencies {
   pool: Pool;
@@ -22,6 +34,8 @@ export interface MaterialParseJobDependencies {
   material: MaterialParserDependencies;
   evidence?: ParseEvidenceDependencies;
   profiles?: HistoricalProfileDependencies;
+  /** #15 supplies a reviewed selection algorithm. Absence yields no observations. */
+  issuerIdentityProducer?: (context: IssuerIdentityObservationContext) => Promise<readonly IssuerIdentityObservationCandidate[]>;
   leaseSeconds?: number;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: MaterialParseLease) => Promise<void>;
@@ -157,6 +171,27 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
         throw new StageFailure(code && PARSER_FAILURE[code] ? PARSER_FAILURE[code] : code && (ERROR_CODES as readonly string[]).includes(code) ? code as ErrorCode : 'MATERIAL_UNREADABLE', false);
       }
     }
+    const produceIssuerObservations = async () => {
+      if (dependencies.issuerIdentityProducer && material.role === 'historical' && snapshot) {
+        const anchors = await pool.query(`SELECT record_id, lower(btrim(record_sha256::text)) AS record_sha256, locator_type
+          FROM bb_parse_evidence WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+            AND snapshot_id=$5 AND uncertainty='[]'::jsonb ORDER BY record_id`,
+          [lease.owner, lease.projectId, lease.materialId, lease.materialVersion, snapshot.snapshotId]);
+        const observationContext: IssuerIdentityObservationContext = {
+          ...context, snapshotId: snapshot.snapshotId, materialSha256: lease.materialSha256,
+          evidence: anchors.rows.map(row => ({ recordId: String(row.record_id), recordSha256: String(row.record_sha256), locatorType: String(row.locator_type) })),
+        };
+        const candidates = await dependencies.issuerIdentityProducer(observationContext);
+        const allowed = new Set(observationContext.evidence.map(anchor => anchor.recordId));
+        for (const candidate of candidates) {
+          if (!allowed.has(candidate.sourceRecordId)) throw new Error('INVALID_ISSUER_IDENTITY_SOURCE_ANCHOR');
+          await appendIssuerIdentitySourceRecord({ pool }, { ...context,
+            requestId: candidate.requestId ?? `issuer-${createHash('sha256').update(`${lease.jobId}:${snapshot.snapshotId}:${candidate.sourceRecordId}`).digest('hex')}`,
+            observationId: candidate.observationId, sourceRecordId: candidate.sourceRecordId,
+            issuerDisplayName: candidate.issuerDisplayName, entityId: candidate.entityId });
+        }
+      }
+    };
     let profile: { profile_version: number; state: string } | null = null;
     if (snapshot && needsNativeRecognition) {
       if(!snapshot.evidenceComplete)throw new Error('PARSE_SNAPSHOT_EVIDENCE_INCOMPLETE');
@@ -221,10 +256,12 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
         }
       }
       // OCR text is evidence to review, never a confirmed fact.
+      await produceIssuerObservations();
       await succeedMaterialParse(pool, lease, { outcome: 'needs_confirmation', parse_status: parseStatus, profile_version: profile?.profile_version ?? null, pending_capabilities: [] });
       return 'succeeded';
     }
     const confirmed = parseStatus === 'parsed' && (profile === null || profile.state === 'ready');
+    await produceIssuerObservations();
     await succeedMaterialParse(pool, lease, { outcome: confirmed ? 'parsed' : 'needs_confirmation', parse_status: parseStatus,
       profile_version: profile?.profile_version ?? null, pending_capabilities: [] });
     return 'succeeded';
@@ -246,9 +283,10 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   if (!Number.isInteger(batch) || batch < 1 || batch > 100) throw new Error('Invalid BB_PARSE_JOB_BATCH');
   const pool = new PgPool({ connectionString: process.env.DATABASE_URL });
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
+  const { createIssuerIdentityProducer } = await import('./issuer-identity-producer.js');
   try {
     for (let i = 0; i < batch; i++) {
-      const outcome = await runMaterialParseOnce({ pool, material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), readToFile: (key, path, max) => blobs.readToFile!(key, path, max) } } });
+      const outcome = await runMaterialParseOnce({ pool, issuerIdentityProducer: createIssuerIdentityProducer(pool), material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), readToFile: (key, path, max) => blobs.readToFile!(key, path, max) } } });
       process.stdout.write(`${JSON.stringify({ outcome })}\n`);
       if (outcome === 'idle') break;
     }

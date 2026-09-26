@@ -30,6 +30,8 @@ assert.equal(projectExamples.synthetic, true);
 data.cases.push(...projectExamples.cases);
 const recoveryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/account-recovery.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(recoveryExamples.synthetic,true); data.cases.push(...recoveryExamples.cases);
+const issuerReviewExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/issuer-identity-review.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(issuerReviewExamples.synthetic,true); data.cases.push(...issuerReviewExamples.cases);
 assert.equal(data.synthetic, true);
 // #78 internal library query v1: validated here, and proven absent from the public OpenAPI document.
 const libraryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/reference-library.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Array<{ name: string; schema: keyof typeof referenceLibrarySchemas; valid: boolean; value: unknown }> };

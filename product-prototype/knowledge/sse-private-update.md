@@ -1,6 +1,6 @@
 # 上交所 · 普通私募公司债 · 募集说明书更新知识
 
-版本：2026.09.26-draft.2 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
+版本：2026.09.26-draft.3 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
 
 状态：知识研究草稿，尚未发布。章节骨架及方法可供开发；当前不构成合规通过或上线验收。
 ## 逐字段来源与冲突处理

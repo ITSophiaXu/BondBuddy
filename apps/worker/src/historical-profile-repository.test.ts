@@ -232,7 +232,7 @@ test('OCR profile persistence rereads the owner-bound private snapshot and rejec
   assert.equal(stored.recognition.source_market.status, 'needs_confirmation');
   assert.equal(stored.recognition.source_market.provenance.method, 'ocr');
   assert.equal(stored.recognition.source_market.provenance.extractor_version,
-    `historical-ocr-recognition-v1:${review.snapshot_id}:${review.result_sha256}`);
+    `historical-ocr-recognition-v2:${review.snapshot_id}:${review.result_sha256}`);
   assert.deepEqual([...deps.pageReads.entries()].sort(), [['page-1', 1], ['page-2', 1]],
     'each distinct cited page image is fetched and verified once');
   assert.equal(client.rows.length, 1);
@@ -689,7 +689,7 @@ test('live PostgreSQL 16 and Azurite persist OCR-bound profiles and verify cited
     assert.equal(profile.recognition.source_market.status, 'needs_confirmation');
     assert.equal(profile.recognition.source_market.provenance.method, 'ocr');
     assert.equal(profile.recognition.source_market.provenance.extractor_version,
-      `historical-ocr-recognition-v1:${snapshotId}:${review.result_sha256}`);
+      `historical-ocr-recognition-v2:${snapshotId}:${review.result_sha256}`);
 
     const correction = await correctHistoricalRecognition(deps, { ...liveProfileContext, requestId: `correction-${suffix}` }, {
       profile_version: profile.profileVersion, source_market: 'szse', reason: 'synthetic user correction',
