@@ -1,9 +1,9 @@
 {
-  "catalog_version": "2026.09.25.1",
+  "catalog_version": "2026.09.26.2",
   "received_on": "2026-09-25",
   "authorization": "用户于2026-09-25明确提供四个知识文件夹并要求整理提交到BondBuddy仓库，用于团队开发和专业核验。授权不等于现行效力或专家验收。",
-  "source_occurrences": 38,
-  "unique_sources": 34,
+  "source_occurrences": 40,
+  "unique_sources": 36,
   "sources": [
     {
       "source_id": "EX001",
@@ -962,6 +962,75 @@
         "原文标为Draft_V1 / 供专家Review，问题和批注不是已签认结论。"
       ],
       "provided_version": "expert-draft-v1"
+    },
+    {
+      "source_id": "EX039",
+      "title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "market": "szse",
+      "document_kind": "formal_rule",
+      "original_path": "originals/EX039.docx",
+      "sha256": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "bytes": 49523,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）.docx",
+          "archive_member": "深圳证券交易所公司债券规则/深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）.docx",
+          "intake_id": "EX039",
+          "archive_filename": "深圳证券交易所公司债券规则.zip"
+        }
+      ],
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "current_effectivity": "official_notice_observed_professional_review_pending",
+      "professional_acceptance": "pending",
+      "provided_version": "provided-2026",
+      "notes": [
+        "2026-09-26用户补充沪深法规包；官方公告及附件已归档，未代填专业签认。",
+        "本件为正式条文；与用户所供附件SHA-256相同。"
+      ],
+      "verification_record": "intake/2026-09-26-archives/official-evidence.json"
+    },
+    {
+      "source_id": "EX040",
+      "title": "《深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排》修订说明",
+      "market": "szse",
+      "document_kind": "official_interpretation",
+      "original_path": "originals/EX040.docx",
+      "sha256": "733057fdf4e53ca70431a761b0b9f605f881e8e5c196eb259ac53992306e0a14",
+      "bytes": 20576,
+      "parse_status": "extracted_ooxml",
+      "aliases": [
+        {
+          "folder": "szse-general",
+          "filename": "szse-mature-revision-2026.docx",
+          "archive_member": null,
+          "intake_id": "EX040",
+          "archive_filename": null
+        }
+      ],
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500755462466.docx",
+      "published_on": "2026-09-04",
+      "effective_from": null,
+      "effective_to": null,
+      "current_effectivity": "official_notice_observed_professional_review_pending",
+      "professional_acceptance": "pending",
+      "provided_version": "provided-2026",
+      "notes": [
+        "2026-09-26用户补充沪深法规包；官方公告及附件已归档，未代填专业签认。",
+        "修订说明只解释变更，不替代正式条文及例外条件。"
+      ],
+      "verification_record": "intake/2026-09-26-archives/official-evidence.json"
+    }
+  ],
+  "supplemental_batches": [
+    {
+      "received_on": "2026-09-26",
+      "record_path": "intake/2026-09-26-archives/catalog.json",
+      "authorization": "用户提供两个沪深法规ZIP并要求阅读理解整理、推进issues；延续本会话整理提交git的授权。仅用于规则研究与开发，不代表专业签认。"
     }
   ]
 }

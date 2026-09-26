@@ -1,7 +1,7 @@
 {
   "version": "2026.09.26-draft.4",
-  "sources": 34,
-  "occurrences": 38,
+  "sources": 36,
+  "occurrences": 40,
   "official_evidence_catalog": "verification/2026-09-26/catalog.json",
   "scopes": [
     {
@@ -17,7 +17,7 @@
     {
       "scope": "sse-public",
       "issue": 21,
-      "version": "2026.09.25-draft.1",
+      "version": "2026.09.26-draft.2",
       "status": "draft",
       "production_ready": false,
       "rules": 27,
@@ -27,7 +27,7 @@
     {
       "scope": "sse-public_all",
       "issue": 22,
-      "version": "2026.09.25-draft.1",
+      "version": "2026.09.26-draft.2",
       "status": "draft",
       "production_ready": false,
       "rules": 28,
@@ -37,30 +37,30 @@
     {
       "scope": "szse-private",
       "issue": 23,
-      "version": "2026.09.25-draft.1",
+      "version": "2026.09.26-draft.2",
       "status": "draft",
       "production_ready": false,
-      "rules": 25,
+      "rules": 28,
       "chapters": 14,
       "path": "drafts/szse-private"
     },
     {
       "scope": "szse-public",
       "issue": 24,
-      "version": "2026.09.25-draft.1",
+      "version": "2026.09.26-draft.2",
       "status": "draft",
       "production_ready": false,
-      "rules": 27,
+      "rules": 30,
       "chapters": 14,
       "path": "drafts/szse-public"
     },
     {
       "scope": "szse-public_all",
       "issue": 25,
-      "version": "2026.09.25-draft.1",
+      "version": "2026.09.26-draft.2",
       "status": "draft",
       "production_ready": false,
-      "rules": 28,
+      "rules": 31,
       "chapters": 14,
       "path": "drafts/szse-public_all"
     }

@@ -2,7 +2,7 @@
   "source_id": "EX016",
   "original_sha256": "87dd71922ab8beab39d1d4f80d4b68479f119245f47ac47d5664472ba83254bc",
   "parse_status": "extracted_ooxml",
-  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments separate. Not layout/OCR verification.",
+  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments, footnotes and endnotes separate. Not layout/OCR verification.",
   "records": [
     {
       "locator": "P00001",
@@ -7812,7 +7812,10 @@
     {
       "locator": "P04274",
       "text": "强制付息事件：付息日前XX个月内，发生以下事件的，发行人不得递延当期利息以及按照约定已经递延的所有利息及其孳息：（1）向普通股股东分红；（2）减少注册资本；（3）【其他情形】。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-0"
+      ]
     },
     {
       "locator": "P04275",
@@ -7827,17 +7830,28 @@
     {
       "locator": "P04277",
       "text": "票面利率调整机制：",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-1"
+      ]
     },
     {
       "locator": "P04278",
       "text": "□如果发行人行使续期选择权，本次债券后续每个周期/第XX个周期的票面利率调整为【说明具体利率】",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-2",
+        "FOOTNOTE-3"
+      ]
     },
     {
       "locator": "P04279",
       "text": "□如果发行人行使续期选择权，本次债券后续每个周期/第XX个周期的票面利率调整为当期基准利率加上初始利差再加上/减去XX个基点。当期基准利率为【说明当期基准利率的确定方式】",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-4",
+        "FOOTNOTE-5"
+      ]
     },
     {
       "locator": "P04280",
@@ -7852,7 +7866,10 @@
     {
       "locator": "P04282",
       "text": "会计处理：发行人根据企业会计准则和相关规定，经对发行条款和相关信息全面分析判断，在会计初始确认时将本次债券分类为权益工具/金融负债。本次债券会计师事务所【说明事务所名称】已对前述会计处理情况出具专项意见。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-6"
+      ]
     },
     {
       "locator": "P04283",
@@ -9173,6 +9190,62 @@
       "locator": "P04601",
       "text": "（受托管理人应当在年度受托管理事务报告中披露对中小微企业支持债券募集资金使用情况、中小微企业支持效果等的核查情况）",
       "role": "body"
+    },
+    {
+      "locator": "FOOTNOTE-0",
+      "text": "国有独资企业上缴利润除外，下同。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04274"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-1",
+      "text": "发行人可设置一个或多个重新定价周期，自行约定重新定价周期的利率调整机制，不同的重新定价周期可设置相同或多种不同的利率调整机制。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04277"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-2",
+      "text": "适用于设置相同利率调整机制的发行人。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04278"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-3",
+      "text": "适用于设置不同利率调整机制的发行人，可根据实际情况调整或增加。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04278"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-4",
+      "text": "适用于设置相同利率调整机制的发行人。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04279"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-5",
+      "text": "适用于设置不同利率调整机制的发行人，可根据实际情况调整或增加。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04279"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-6",
+      "text": "会计师事务所应对本次发行可续期公司债券的相关会计处理情况出具专项意见，说明本次发行可续期公司债券计入权益情况及其相关依据。",
+      "role": "footnote",
+      "referenced_by": [
+        "P04282"
+      ]
     }
   ]
 }

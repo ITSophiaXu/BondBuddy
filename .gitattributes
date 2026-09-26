@@ -4,3 +4,5 @@
 # Generated views remain readable, while the curated scripts/catalog lead PR review.
 /knowledge/exchange-bonds/verification/*/sources/*.md linguist-generated=true
 /knowledge/exchange-bonds/records/OV-*.json linguist-generated=true
+/knowledge/exchange-bonds/originals/* binary
+/knowledge/exchange-bonds/intake/*/*.html binary

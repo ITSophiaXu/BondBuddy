@@ -1,6 +1,6 @@
 # 上交所 · 小公募公司债（专业投资者） · 募集说明书复核知识
 
-版本：2026.09.25-draft.1 · 对应 [Issue #21](https://github.com/ITSophiaXu/BondBuddy/issues/21)
+版本：2026.09.26-draft.2 · 对应 [Issue #21](https://github.com/ITSophiaXu/BondBuddy/issues/21)
 
 状态：知识研究草稿，尚未发布。章节骨架及方法可供开发；当前不构成合规通过或上线验收。
 

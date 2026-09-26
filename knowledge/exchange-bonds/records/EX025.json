@@ -2,7 +2,7 @@
   "source_id": "EX025",
   "original_sha256": "b8281ceda4f8af87dc071b1ceca34da958e5c5eaff72501d0c93aec9bb09b704",
   "parse_status": "extracted_ooxml",
-  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments separate. Not layout/OCR verification.",
+  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments, footnotes and endnotes separate. Not layout/OCR verification.",
   "records": [
     {
       "locator": "P00001",
@@ -2942,7 +2942,10 @@
     {
       "locator": "P01731",
       "text": "四、发行人权益投资情况",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-0"
+      ]
     },
     {
       "locator": "P01732",
@@ -3127,7 +3130,10 @@
     {
       "locator": "P01808",
       "text": "是否存在重大违纪违法情况",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-1"
+      ]
     },
     {
       "locator": "P01809",
@@ -3728,6 +3734,22 @@
       "locator": "P02008",
       "text": "单个子公司的净利润或者对单个参股公司的投资收益占发行人合并报表范围净利润达到20%以上的，发行人应当披露公司名称、发行人持股比例，该公司主营业务运营情况和总资产、净资产、主营业务收入、主营业务利润等财务数据。",
       "role": "body"
+    },
+    {
+      "locator": "FOOTNOTE-0",
+      "text": "发行人披露的权益投资情况通常为最近一年末的相关情况，如最近一期或截至募集说明书签署日权益投资情况发生较大变化的，应补充披露。",
+      "role": "footnote",
+      "referenced_by": [
+        "P01731"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-1",
+      "text": "包括发行人董事、监事、高级管理人员涉嫌违法违纪被有权机关调查、被采取强制措施或存在严重失信行为的情况。",
+      "role": "footnote",
+      "referenced_by": [
+        "P01808"
+      ]
     }
   ]
 }

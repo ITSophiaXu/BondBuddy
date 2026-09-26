@@ -14,7 +14,7 @@ test('six exchange scopes have separate update and review research routes',async
     assert.equal(knowledge.status,'research_draft');
     assert.equal(knowledge.rules.length,item.ruleCount);
     assert.ok(knowledge.sourceChunks.length);
-    assert.ok(knowledge.sourceChunks.every(chunk=>chunk.records.every(record=>/^(P\d{5}|PAGE\d{3}|NOTICE)$/.test(record.locator))));
+    assert.ok(knowledge.sourceChunks.every(chunk=>chunk.records.every(record=>/^(P\d{5}|PAGE\d{3}|NOTICE|FOOTNOTE-\d+|ENDNOTE-\d+)$/.test(record.locator))));
     assert.ok(!knowledge.sourceChunks.some(chunk=>chunk.documentId==='EX021'));
   }
 });
@@ -32,8 +32,19 @@ test('#20 official evidence is routed only to SSE private; superseded 2023 optim
     assert.ok(knowledge.rules.some(r=>r.rule_id==='sse-private-disclosure-officer-2026'));
     assert.equal(knowledge.productionReady,false);
     const other=await loadKnowledge('sse-public',kind);
-    assert.equal(other.version,'2026.09.25-draft.1');
+    assert.equal(other.version,'2026.09.26-draft.2');
     assert.ok(!other.sources.some(id=>id.startsWith('OV-')));
+  }
+});
+
+test('source footnotes remain retrievable while comments and superseded versions do not',async()=>{
+  const knowledge=await loadKnowledge('sse-private','update');
+  assert.ok(knowledge.sourceChunks.some(chunk=>chunk.documentId==='EX015' && chunk.records.some(record=>record.locator.startsWith('FOOTNOTE-'))));
+  for(const item of await manifest()){
+    const loaded=await loadKnowledge(item.scope,item.kind);
+    assert.ok(!loaded.sources.some(id=>['EX009','EX028'].includes(id)));
+    assert.ok(loaded.sourceChunks.every(chunk=>chunk.records.every(record=>!record.locator.startsWith('COMMENT-'))));
+    assert.equal(loaded.sources.includes('EX039'),item.scope.startsWith('szse-'));
   }
 });
 

@@ -16,8 +16,8 @@ export async function loadKnowledge(scope,kind) {
   for (const source of data.sources) {
     const extracted=await readJson(join(ROOT,'..','knowledge','exchange-bonds','records',source+'.json'));
     if (extracted.source_id!==source || !extracted.records.length) throw new Error('知识来源尚未解析或身份不匹配。');
-    // Keep original paragraph/page anchors; commentary is not authoritative body text.
-    const records=extracted.records.filter(record=>record.role==='body');
+    // Retain source notes that qualify the text; reviewer comments remain separate.
+    const records=extracted.records.filter(record=>['body','footnote','endnote'].includes(record.role));
     sourceChunks.push(...packDocument({id:source,role:'knowledge',filename:source,records},5000));
   }
   return {...data,handbook:handbook+'\n本项目选择：'+SCOPE_NAMES[scope]+'。小公募面向专业投资者，大公募可包含普通投资者；资格与适当性条件需逐项核实，不能因选项已选而认定已满足。',conflicts:'知识为上传资料整理的研究草稿，现行效力及专业验收待核。规则要求、专家方法、批注意见与项目事实必须区分；未解析来源不能作为依据，不能以知识加载成功宣布生产能力已开放。',sourceChunks};

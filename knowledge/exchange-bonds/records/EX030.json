@@ -2,7 +2,7 @@
   "source_id": "EX030",
   "original_sha256": "b68f55d3412f9f6719514a5be12572d99748048fdc34ee71161a5140351d58d4",
   "parse_status": "extracted_ooxml",
-  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments separate. Not layout/OCR verification.",
+  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments, footnotes and endnotes separate. Not layout/OCR verification.",
   "records": [
     {
       "locator": "P00001",

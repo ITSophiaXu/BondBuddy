@@ -17,8 +17,8 @@ from sse_private_knowledge_content import VERSION as OVERLAY_VERSION, EVIDENCE_V
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / 'knowledge/exchange-bonds'
 PROTOTYPE = ROOT / 'product-prototype/knowledge'
-VERSION = '2026.09.25-draft.1'
-AUTHORED_AT = '2026-09-25T08:57:39Z'
+VERSION = '2026.09.26-draft.2'
+AUTHORED_AT = '2026-09-26T13:45:00Z'
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 
 
@@ -43,10 +43,21 @@ def extract(source):
     if is_zipfile(path):
         with ZipFile(path) as z:
             doc = ET.fromstring(z.read('word/document.xml'))
+            note_paragraphs = {}
             for i, p in enumerate(doc.findall('.//w:p', NS), 1):
                 value = ''.join(t.text or '' for t in p.findall('.//w:t', NS)).strip()
+                locator = f'P{i:05d}'
+                note_refs = []
+                for tag in ('footnote', 'endnote'):
+                    for ref in p.findall(f'.//w:{tag}Reference', NS):
+                        note_id = f'{tag.upper()}-{ref.get("{"+NS["w"]+"}id")}'
+                        note_refs.append(note_id)
+                        note_paragraphs.setdefault(note_id, []).append(locator)
                 if value:
-                    records.append({'locator': f'P{i:05d}', 'text': value, 'role': 'body'})
+                    record = {'locator': locator, 'text': value, 'role': 'body'}
+                    if note_refs:
+                        record['note_references'] = note_refs
+                    records.append(record)
             # Separate comment anchors; no comment is promoted into the正文.
             if 'word/comments.xml' in z.namelist():
                 tree = ET.fromstring(z.read('word/comments.xml'))
@@ -54,6 +65,20 @@ def extract(source):
                     cid = c.get('{'+NS['w']+'}id')
                     value = '\n'.join(''.join(t.text or '' for t in p.findall('.//w:t', NS)) for p in c.findall('.//w:p', NS))
                     records.append({'locator': f'COMMENT-{cid}', 'text': value, 'role': 'comment'})
+            # Preserve qualifying notes without renumbering existing body anchors.
+            for part, tag in [('footnotes', 'footnote'), ('endnotes', 'endnote')]:
+                if f'word/{part}.xml' not in z.namelist():
+                    continue
+                tree = ET.fromstring(z.read(f'word/{part}.xml'))
+                for note in tree.findall(f'w:{tag}', NS):
+                    if note.get('{'+NS['w']+'}type') in ('separator', 'continuationSeparator'):
+                        continue
+                    value = '\n'.join(''.join(t.text or '' for t in p.findall('.//w:t', NS))
+                                      for p in note.findall('.//w:p', NS)).strip()
+                    if value:
+                        locator = f'{tag.upper()}-{note.get("{"+NS["w"]+"}id")}'
+                        records.append({'locator': locator, 'text': value, 'role': tag,
+                                        'referenced_by': note_paragraphs.get(locator, [])})
     elif path.suffix.lower() == '.pdf':
         from pypdf import PdfReader
         for i, page in enumerate(PdfReader(path).pages, 1):
@@ -73,7 +98,7 @@ def main():
         texts[sid] = {r['locator']: r['text'] for r in records}
         write_json(BASE / f'records/{sid}.json', {
             'source_id': sid, 'original_sha256': src['sha256'], 'parse_status': src['parse_status'],
-            'extraction': 'DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments separate. Not layout/OCR verification.',
+            'extraction': 'DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments, footnotes and endnotes separate. Not layout/OCR verification.',
             'records': records,
         })
         lines = [f'# {sid} — {src["title"]}', '',
@@ -83,7 +108,12 @@ def main():
         if not records:
             lines += ['**未解析：加密Office容器，未取得解密后的正文，不参与检索及规则引用。**', '']
         for rec in records:
-            lines += [f'<a id="{rec["locator"].lower()}"></a>', f'## {rec["locator"]}' + ('（原文批注，待判断）' if rec['role']=='comment' else ''), '', rec['text'], '']
+            role_label = {'comment':'（原文批注，待判断）', 'footnote':'（原文脚注）', 'endnote':'（原文尾注）'}.get(rec['role'], '')
+            lines += [f'<a id="{rec["locator"].lower()}"></a>', f'## {rec["locator"]}' + role_label, '', rec['text'], '']
+            if rec.get('note_references'):
+                lines += ['原文注释：' + '、'.join(f'[{loc}](#{loc.lower()})' for loc in rec['note_references']), '']
+            if rec.get('referenced_by'):
+                lines += ['对应原段落：' + '、'.join(f'[{loc}](#{loc.lower()})' for loc in rec['referenced_by']), '']
         write_md(BASE / f'sources/{sid}.md', '\n'.join(lines))
 
     def reference(pair):
@@ -95,8 +125,8 @@ def main():
         # A document styled as an official rule is not yet an official-current verification.
         return {'source_id': f'{sid.lower()}-{loc.lower()}', 'kind': 'unverified_lead',
                 'authority': authority, 'document_title': src['title'], 'source_version': src['provided_version'],
-                'official_url': None, 'document_hash': src['sha256'], 'clause_locator': loc,
-                'exact_quote': texts[sid][loc], 'published_on': None, 'effective_from': None,
+                'official_url': src.get('official_url'), 'document_hash': src['sha256'], 'clause_locator': loc,
+                'exact_quote': texts[sid][loc], 'published_on': src.get('published_on'), 'effective_from': src.get('effective_from'),
                 'effective_to': None, 'verified_by': None, 'verified_at': None}
 
     scope_index = []
@@ -158,9 +188,9 @@ def main():
                 ('publication', 'boundary', 'incomplete coverage cannot be published'),
             ]
             pack = {
-                'schema_version':'rule-pack-v1','pack_id':scope,'version':VERSION,'supersedes_version':None,'status':'draft',
+                'schema_version':'rule-pack-v1','pack_id':scope,'version':VERSION,'supersedes_version':'2026.09.25-draft.1','status':'draft',
                 'scope':{'market':market,'offering':offering,'instruments':['ordinary-company-bond'],'document_stages':['registration','issuance'],'issuer_scopes':['domestic-company']},
-                'validity':{'published_on':None,'effective_from':'2026-09-25','effective_to':None,
+                'validity':{'published_on':None,'effective_from':'2026-09-26','effective_to':None,
                             'transition_terms':['此日期只是知识整理基准日，非法规生效日。全部source有效时点待官方复核；不得用于生产能力开放。']},
                 'sources':list(references.values()),'rules':domain_rules,
                 'sample_suite':{'suite_id':scope+'-engineering-gates','version':'1','data_classification':'synthetic',
@@ -204,6 +234,7 @@ def main():
                 links = '；'.join(f'[{sid} {loc}](../../sources/{sid}.md#{loc.lower()})' for sid,loc in r['refs'])
                 chapter_guide += f'### {r["title"]}\n\n{r["logic"]}\n\n输入：'+ '、'.join(r['inputs']) +f'。\n\n依据：{links}。例外/边界：{r["exception"]}\n\n'
             chapter_guide += '## 未完成项\n\n' + '\n'.join('- '+b['description']+' 所需证据：'+b['required_evidence'] for b in blocker_list)
+            chapter_guide += '\n\n## 2026-09-26补充资料交接\n\n见[两包清点与分市场阅读指南](../../intake/2026-09-26-archives/README.md)及[逐Issue交接](../../intake/2026-09-26-archives/ISSUE-HANDOFF.md)。旧优化审核资料仅保留历史追溯；新增研究候选不构成规则发布。\n'
             write_md(BASE / f'drafts/{scope}/README.md', chapter_guide)
             scope_index.append({'scope':scope,'issue':issue,'version':scope_version,'status':'draft','production_ready':False,'rules':len(pack['rules']),'chapters':len(chapters),'path':f'drafts/{scope}'})
 
@@ -212,6 +243,8 @@ def main():
             applicable_sources = sorted({sid for r in selected for sid,_ in r['refs']} | {expert})
             source_rows = [s for s in sources.values() if s['market'] in (market,'shared') and texts[s['source_id']]]
             applicable_sources = sorted(set(applicable_sources) | {s['source_id'] for s in source_rows})
+            # These are current research views, not historical replay selectors.
+            applicable_sources = sorted(set(applicable_sources) - {'EX009', 'EX028'})
             if scope == 'sse-private':
                 # Preserve old records for replay, but do not retrieve the superseded
                 # optimized-review text or the different supplied disclosure bytes.
@@ -249,7 +282,7 @@ def main():
                                       'official_evidence_catalog':'verification/2026-09-26/catalog.json','scopes':scope_index})
     write_json(PROTOTYPE / 'manifest.json', prototype_index)
     write_json(BASE / 'authoring-rules.json', RULES)
-    catalog_md = '# 原件与来源目录\n\n38个来源条目按字节去重为34份原件；相同内容的别名见 sources.json。所有原件均保留原始字节，当前效力待官方核验。\n\n| ID | 实际市场/类别 | 文件 | 提取 |\n|---|---|---|---|\n'
+    catalog_md = f'# 原件与来源目录\n\n累计{catalog["source_occurrences"]}个来源条目按字节去重为{len(sources)}份原件；相同内容的别名见 sources.json。重复收件另见[两包清单](intake/2026-09-26-archives/README.md)，不重复增加原件。原件保留原始字节，具体官方取证及待审核状态见各来源记录。\n\n| ID | 实际市场/类别 | 文件 | 提取 |\n|---|---|---|---|\n'
     for sid,s in sources.items():
         catalog_md += f'| [{sid}](sources/{sid}.md) | {s["market"]} / {s["document_kind"]} | [{s["title"]}]({s["original_path"]}) | {s["parse_status"]} |\n'
     write_md(BASE / '来源目录.md', catalog_md)

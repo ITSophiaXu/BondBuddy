@@ -1,0 +1,39 @@
+{
+  "observed_on": "2026-09-26",
+  "observed_by": "Codex source retrieval; not an industry signature",
+  "notice_url": "https://investor.szse.cn/lawrules/rule/bond/t20260904_622687.html",
+  "canonical_notice_url": "https://www.szse.cn/lawrules/rule/bond/bonds/list/t20260904_622687.html",
+  "notice_path": "szse-2026-notice.html",
+  "notice_sha256": "77911668e4626daf72866908c81b73df3345288a443a901b436b58493ea8098e",
+  "notice_bytes": 20265,
+  "notice_number": "深证上〔2026〕1227号",
+  "published_on": "2026-09-04",
+  "effective_from": "2026-09-04",
+  "repeals": {
+    "source_id": "EX028",
+    "notice_number": "深证上〔2023〕986号",
+    "effective_from": "2026-09-04"
+  },
+  "attachments": [
+    {
+      "source_id": "EX039",
+      "linked_url": "http://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "original_path": "originals/EX039.docx",
+      "sha256": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534"
+    },
+    {
+      "source_id": "EX040",
+      "linked_url": "http://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500755462466.docx",
+      "url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500755462466.docx",
+      "original_path": "originals/EX040.docx",
+      "sha256": "733057fdf4e53ca70431a761b0b9f605f881e8e5c196eb259ac53992306e0a14"
+    }
+  ],
+  "industry_review": null,
+  "limits": [
+    "仅证明本公告所述发布、生效与替代关系及本次附件字节；不证明其他30份文件全部现行有效。",
+    "主站连接关闭，使用同属szse.cn的投资者服务官方镜像；公告与静态附件均以正常TLS获取。",
+    "未发现明确赋予旧确认函自动展期的条款，不自行作追溯解释。"
+  ]
+}

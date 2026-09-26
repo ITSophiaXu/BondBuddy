@@ -1,9 +1,9 @@
 {
   "schema_version": "capability-coverage-v1",
   "manifest_id": "sse-public_all-coverage",
-  "version": "2026.09.25-draft.1",
+  "version": "2026.09.26-draft.2",
   "rule_pack_id": "sse-public_all",
-  "assessed_at": "2026-09-25T08:57:39Z",
+  "assessed_at": "2026-09-26T13:45:00Z",
   "items": [
     {
       "item_id": "source-authority",

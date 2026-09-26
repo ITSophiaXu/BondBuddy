@@ -60,9 +60,9 @@ test('publication: incomplete coverage cannot be published',()=>{
 });
 
 test('originals, deduplication and exact paragraph/page quotes are reproducible',()=>{
-  assert.equal(sources.sources.length,34);assert.equal(sources.source_occurrences,38);
-  assert.equal(sources.sources.reduce((n,s)=>n+s.aliases.length,0),38);
-  assert.equal(new Set(sources.sources.map(s=>s.sha256)).size,34);
+  assert.equal(sources.sources.length,36);assert.equal(sources.source_occurrences,40);
+  assert.equal(sources.sources.reduce((n,s)=>n+s.aliases.length,0),40);
+  assert.equal(new Set(sources.sources.map(s=>s.sha256)).size,36);
   const map=new Map(sources.sources.map(s=>[s.source_id.toLowerCase(),s]));
   for(const source of sources.sources){
     const bytes=readFileSync(new URL(source.original_path,base));
