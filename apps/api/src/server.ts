@@ -765,7 +765,7 @@ export function createServer(settings: Settings = {}) {
           } catch(error) {
             const classified=classifyUpdateDifficultyFailure(error);
             if(classified.category==='pending_input') missingInputs.push(`update_difficulty_pending:${classified.code.toLowerCase()}`);
-            else if(classified.category==='stale_input') throw conflict('INPUT_REVISION_CONFLICT','Preflight input is no longer current');
+            else if(classified.category==='stale_input') missingInputs.push(`update_difficulty_stale:${classified.code.toLowerCase()}`);
             else if(classified.category==='not_found') throw missing();
             else if(classified.category==='invalid_request') throw new Problem(422,'VALIDATION_FAILED','Invalid preflight input');
             else throw new Problem(503,'DATA_UNAVAILABLE','Update difficulty snapshot could not be verified');

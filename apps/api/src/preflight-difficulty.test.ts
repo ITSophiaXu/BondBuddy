@@ -81,7 +81,11 @@ test('HTTP update preflight returns conservative, owner-scoped immutable difficu
 
     const changedTargetHash = await addLock(2, 2, [period(2026)]);
     const stale = await send(1, firstHash);
-    assert.equal(stale.statusCode, 409);
+    assert.equal(stale.statusCode, 200, stale.body);
+    assert.equal(stale.json().status, 'blocked');
+    assert.ok(stale.json().missing_inputs.some((item: string) => item.startsWith('update_difficulty_stale:')),
+      'an old immutable input remains inspectable but cannot create a current difficulty snapshot');
+    assert.equal(stale.json().update_difficulty, undefined);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_update_difficulty_snapshots WHERE id=$1', [summary1.snapshot_id])).rows[0]!.n, 1,
       'stale target leaves the old snapshot intact');
     const changedTarget = await send(2, changedTargetHash);
