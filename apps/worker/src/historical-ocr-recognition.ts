@@ -27,6 +27,41 @@ function uncertain<T extends string>(value: T | null, raw: string | null, refs: 
     extractor_version: sourceVersion, evidence_refs: refs }, uncertainty: [reason], status: 'needs_confirmation' as const };
 }
 
+/** Bare years are accepted only as members of an explicitly labeled report-period list. */
+function bareAnnualYearsInReportPeriodList(value: string): string[] {
+  const years = new Set<string>();
+  const markers = /报告期(?:间)?\s*(?:为|是|[:：])?/g;
+  const item = /^(20\d{2})\s*年(度|末|全年|半年度|上半年|(?:第\s*)?[一二三四1-4]\s*季度)?/;
+  const periodTerminator = /^\s*(?=$|[；;（(]|合并|母公司|公司本部|财务报表|财务数据|资产负债表|利润表|现金流量表|审计报告)/;
+  const nextField = /^\s*(?:签署日期|签署日|发行日期|发行日|报告日期|批准报出日|审计报告日期)/;
+  for (const marker of value.matchAll(markers)) {
+    let cursor = marker.index! + marker[0].length;
+    while (/\s/.test(value[cursor] ?? '')) cursor++;
+    for (let count = 0; count < 8; count++) {
+      const match = item.exec(value.slice(cursor));
+      if (!match) break;
+      const after = value.slice(cursor + match[0].length);
+      const separator = /^\s*(?:、|,|，|及|和|与)\s*/.exec(after);
+      if (separator) {
+        const rest = after.slice(separator[0].length);
+        const next = item.exec(rest);
+        if (!next) {
+          if (!match[2] && nextField.test(rest)) years.add(match[1]!);
+          break;
+        }
+        if (!match[2]) years.add(match[1]!);
+        cursor += match[0].length + separator[0].length;
+        continue;
+      }
+      if (periodTerminator.test(after)) {
+        if (!match[2]) years.add(match[1]!);
+      }
+      break;
+    }
+  }
+  return [...years];
+}
+
 /** OCR-derived recognition remains provisional regardless of confidence or page coverage. */
 export function recognizeHistoricalOcr(review: OcrReview, options: { profileVersion: number }): Recognition {
   if (!Number.isSafeInteger(options.profileVersion) || options.profileVersion < 1) throw new Error('INVALID_PROFILE_VERSION');
@@ -84,14 +119,26 @@ export function recognizeHistoricalOcr(review: OcrReview, options: { profileVers
   for (const record of records) {
     const value = text(record);
     if (!/报告期|财务报表|财务数据|审计报告|资产负债表|利润表|现金流量表|财务会计信息/.test(value)) continue;
+    // Filenames and legal citations can contain years and finance-related words without
+    // proving that the year is a reporting period. Keep this parser tied to page text.
+    if (/\.(?:pdf|docx?|xlsx?|csv|png|jpe?g|tiff?)\s*$/i.test(value.trim())) continue;
+    if (/(?:根据|依据|按照|参照|遵照|适用).{0,40}(?:办法|规定|规则|指引|准则|通知|法规|条例|第.{0,3}号)/.test(value)) continue;
     periodRecords.push(record);
     const scopeHit = /合并/.test(value) === /母公司|公司本部/.test(value) ? null : /母公司|公司本部/.test(value) ? 'parent' : 'consolidated';
     const uncertainty = ['OCR来源需要人工确认', ...(scopeHit === null ? ['OCR证据未能唯一确定报表口径'] : [])];
     const provenance = { material_id: materialId, material_version: materialVersion, method: 'ocr' as const,
       extractor_version: version, evidence_refs: [record.record_id] };
-    const years = [...value.matchAll(/(20\d{2})\s*年\s*(?:半年度|上半年)/g)];
-    for (const match of years) periods.push({ start: `${match[1]}-01-01`, end: `${match[1]}-06-30`, period_kind: 'interim', scope: scopeHit,
+    for (const match of value.matchAll(/(20\d{2})\s*年\s*(?:半年度|上半年)/g)) periods.push({ start: `${match[1]}-01-01`, end: `${match[1]}-06-30`, period_kind: 'interim', scope: scopeHit,
       raw_value: match[0], provenance, uncertainty: [...uncertainty], status: scopeHit ? 'needs_confirmation' : 'needs_confirmation' });
+    for (const match of value.matchAll(/(20\d{2})\s*年\s*(?:第\s*)?([一二三四1-4])\s*季度/g)) {
+      const year = Number(match[1]);
+      const quarter = ({ 一: 1, 二: 2, 三: 3, 四: 4 } as Record<string, number>)[match[2]!] ?? Number(match[2]);
+      const firstMonth = (quarter - 1) * 3 + 1;
+      const lastMonth = firstMonth + 2;
+      const end = new Date(Date.UTC(year, lastMonth, 0)).getUTCDate();
+      periods.push({ start: `${year}-${String(firstMonth).padStart(2, '0')}-01`, end: `${year}-${String(lastMonth).padStart(2, '0')}-${end}`,
+        period_kind: 'interim', scope: scopeHit, raw_value: match[0], provenance, uncertainty: [...uncertainty], status: 'needs_confirmation' });
+    }
     for (const match of value.matchAll(/(20\d{2})\s*年\s*(\d{1,2})\s*[-—–至到]\s*(\d{1,2})\s*月/g)) {
       const year = Number(match[1]), first = Number(match[2]), last = Number(match[3]);
       if (first < 1 || last < first || last > 12) continue;
@@ -99,10 +146,14 @@ export function recognizeHistoricalOcr(review: OcrReview, options: { profileVers
       periods.push({ start: `${year}-${String(first).padStart(2, '0')}-01`, end: `${year}-${String(last).padStart(2, '0')}-${end}`,
         period_kind: 'interim', scope: scopeHit, raw_value: match[0], provenance, uncertainty: [...uncertainty], status: 'needs_confirmation' });
     }
-    for (const match of value.matchAll(/(20\d{2})\s*年(?!\s*(?:半年度|上半年|\d{1,2}\s*[-—–至到]\s*\d{1,2}\s*月))(?:度|末)?/g)) {
+    // A year by itself is not an annual reporting period: it may be a signing or
+    // issuance date, a filename year, or the prefix of an explicit quarter.
+    for (const match of value.matchAll(/(20\d{2})\s*年\s*(?:度|末|全年)/g)) {
       periods.push({ start: `${match[1]}-01-01`, end: `${match[1]}-12-31`, period_kind: 'annual', scope: scopeHit,
         raw_value: match[0], provenance, uncertainty: [...uncertainty], status: 'needs_confirmation' });
     }
+    for (const year of bareAnnualYearsInReportPeriodList(value)) periods.push({ start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual', scope: scopeHit,
+      raw_value: `${year}年`, provenance, uncertainty: [...uncertainty], status: 'needs_confirmation' });
   }
   const uniquePeriods = [...new Map(periods.map(period => [`${period.start}/${period.end}/${period.scope}`, period])).values()]
     .sort((a, b) => (a.end ?? '').localeCompare(b.end ?? ''));
