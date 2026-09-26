@@ -339,6 +339,14 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     } };
     const factCandidateProducer = (context: Parameters<typeof produceParsedFactCandidates>[1]) =>
       produceParsedFactCandidates({ pool, extractor }, context);
+    const customMaterials: RunStage = { name: 'materials_ready', run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'custom_materials_gate' }) };
+    assert.throws(() => new WorkerRuntime({ pool, blobs, runStages: stages({ materials: customMaterials }), factCandidateProducer }),
+      /factCandidateProducer conflicts with explicit materials_ready stage/);
+    const changedFactoryOptions = workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' });
+    changedFactoryOptions.runStages = changedFactoryOptions.runStages!.map(stage => stage.name === 'materials_ready' ? customMaterials : stage);
+    assert.throws(() => new WorkerRuntime({ ...changedFactoryOptions, factCandidateProducer }),
+      /factCandidateProducer conflicts with explicit materials_ready stage/);
+    assert.equal(factExtractCalls, 0, 'rejected stage compositions cannot invoke the producer');
     const envRuntime = new WorkerRuntime({
       ...workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run' }), factCandidateProducer,
     });

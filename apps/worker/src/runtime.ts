@@ -36,7 +36,7 @@ export type WorkerRuntimeOptions = {
   concurrency?: number; pollMs?: number; leaseSeconds?: number; sweepMs?: number; drainMs?: number;
   kinds?: ('run' | 'parse')[];
   runStages?: RunStage[];
-  /** Trusted #15 producer binding. Production remains parked until the owner installs a reviewed extractor. */
+  /** Trusted #15 producer binding. With runStages, only the environment factory's materials stage may be replaced. */
   factCandidateProducer?: ParsedFactProducer;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
@@ -52,6 +52,8 @@ export type WorkerRuntimeOptions = {
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
 };
+
+const environmentMaterialsStages = new WeakMap<RunStage, { run: RunStage['run']; replay: RunStage['replay'] }>();
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>(resolve => {
   if (signal?.aborted) return resolve();
@@ -78,8 +80,12 @@ export class WorkerRuntime {
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     // The environment factory supplies stages before the trusted producer can be installed.
-    // Bind it to the final stage list, keeping the factory's model/Word stages and caller options.
+    // Never replace a caller's explicit materials stage without its own integration decision.
     if (options.factCandidateProducer && options.runStages) {
+      const materials = options.runStages.filter(stage => stage.name === 'materials_ready');
+      const factoryStage = materials.length === 1 ? environmentMaterialsStages.get(materials[0]!) : undefined;
+      if (!factoryStage || materials[0]!.run !== factoryStage.run || materials[0]!.replay !== factoryStage.replay)
+        throw new Error('factCandidateProducer conflicts with explicit materials_ready stage');
       this.o.runStages = this.o.runStages.map(stage => stage.name === 'materials_ready'
         ? createMaterialsReadyStage(options.factCandidateProducer) : stage);
     }
@@ -226,8 +232,11 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     assertProbeConfig(config, env);
     platformProbe = { config, pollMs: intEnv(env, 'BB_PLATFORM_PROBE_POLL_MS', 5000, 500, 600000) };
   }
+  const runStages = defaultRunStages({ model_generation: modelGenerationRouter() });
+  const materials = runStages.find(stage => stage.name === 'materials_ready')!;
+  environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
-    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages: defaultRunStages({ model_generation: modelGenerationRouter() }),
+    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages,
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
     drainMs: intEnv(env, 'BB_WORKER_DRAIN_MS', 20000, 0, 600000), heartbeatMs: intEnv(env, 'BB_WORKER_HEARTBEAT_MS', 10000, 1000, 300000), ocrRetrySeconds: intEnv(env, 'BB_OCR_RETRY_SECONDS', 300, 0, 86400),
