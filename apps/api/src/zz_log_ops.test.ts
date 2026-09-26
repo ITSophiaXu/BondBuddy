@@ -14,9 +14,10 @@ import { emitInternal, internalEvent, observeUsage } from './observability.js';
 import { action, finish, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
+import { isolatedTestDatabase } from './test-database.js';
 
 // Synthetic data only. No real provider, credential or customer material is used.
-const connection = process.env.BB_TEST_DATABASE_URL;
+const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
@@ -104,7 +105,8 @@ async function forwardInProcess(file: string, sinkName: string, crash: boolean) 
     } finally { await pool.end(); }`;
   return await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
-      env: { ...process.env, BB_TEST_LOG_MODULE: new URL('./log-ops.js', import.meta.url).href, BB_TEST_LOG_FILE: file, BB_TEST_LOG_SINK: sinkName }
+      env: { ...process.env, BB_TEST_DATABASE_URL: connection, BB_TEST_LOG_MODULE: new URL('./log-ops.js', import.meta.url).href,
+        BB_TEST_LOG_FILE: file, BB_TEST_LOG_SINK: sinkName }
     });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');

@@ -693,7 +693,7 @@ export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input:
 
 export type LogRecord = { delivery_key: string; outbox_id: string; event: Record<string, unknown> };
 /** A sink must treat delivery_key as an idempotency key: the same key may arrive again after a crash. */
-export interface LogSink { name: string; deliver(records: LogRecord[]): Promise<void> }
+export interface LogSink { name: string; archiveEnabled?: boolean; deliver(records: LogRecord[]): Promise<void> }
 
 export function ndjsonSizeCapFromEnv(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.BB_LOG_SINK_MAX_BYTES;
@@ -703,7 +703,7 @@ export function ndjsonSizeCapFromEnv(env: NodeJS.ProcessEnv = process.env): numb
 }
 
 /** Run every file write under the same OS lock across processes. */
-async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: number): Promise<void> {
+async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: number, archive?: { sink: string; localBudget: number }): Promise<void> {
   const lock = await open(`${path}.lock`, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
   try {
     const stat = await lock.stat();
@@ -718,17 +718,29 @@ async function lockedNdjsonWrite(path: string, records: LogRecord[], maxBytes?: 
       child.on('close', code => resolve(code ?? 1));
     });
     child.stdin!.on('error', () => undefined); // child failure is reported by its exit code
-    child.stdin!.end(JSON.stringify({ records, maxBytes }));
+    child.stdin!.end(JSON.stringify({ records, maxBytes, archive }));
     if (await exited !== 0) throw new Error(`NDJSON sink refused delivery: ${errorText || 'writer failed'}`);
   } finally { await lock.close(); }
 }
 
 /** Active NDJSON and any legacy .1 segment are the key journal; new bytes obey the size cap. */
-export function ndjsonFileSink(path: string, name = 'ndjson_file', maxBytes?: number): LogSink {
-  return { name, async deliver(records) {
-    if (!records.length) return;
-    await lockedNdjsonWrite(path, records, maxBytes);
+export function ndjsonFileSink(path: string, name = 'ndjson_file', maxBytes?: number,
+  archive?: { localBudget: number }): LogSink {
+  return { name, archiveEnabled: !!archive, async deliver(records) {
+    if (!records.length && !archive) return;
+    await lockedNdjsonWrite(path, records, maxBytes, archive && { sink: name, localBudget: archive.localBudget });
   } };
+}
+
+export function logArchiveOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): { localBudget: number } | undefined {
+  if (env.BB_LOG_ARCHIVE_ENABLED !== '1') {
+    if (env.BB_LOG_ARCHIVE_ENABLED && env.BB_LOG_ARCHIVE_ENABLED !== '0') throw new Error('Invalid BB_LOG_ARCHIVE_ENABLED');
+    return undefined;
+  }
+  const localBudget = Number(env.BB_LOG_ARCHIVE_LOCAL_MAX_BYTES ?? 256 * 1024 * 1024);
+  if (!Number.isSafeInteger(localBudget) || localBudget < ndjsonSizeCapFromEnv(env) * 2 || localBudget > 4 * 1024 ** 3 ||
+    !env.DATABASE_URL || !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Invalid log archive configuration');
+  return { localBudget };
 }
 
 export type ForwardOptions = { batchSize?: number; leaseSeconds?: number; retrySeconds?: number; afterSinkAccept?: () => Promise<void> };
@@ -770,6 +782,7 @@ export async function forwardLogs(pool: Pool, sink: LogSink, options: ForwardOpt
     // Outage: release the lease with backoff; nothing is marked delivered, so the backlog replays.
     await pool.query("UPDATE bb_outbox SET lease_token=NULL,lease_until=NULL,last_delivery_error='sink_unavailable',next_attempt_at=now()+($3::integer*interval '1 second') WHERE id=ANY($1) AND lease_token=$2", [claimed.map(r => r.id), token, retry]);
     await raiseAlert(pool, { kind: 'log_sink_unavailable', severity: 'critical', scope: sink.name, detail: { sink: sink.name, batch: claimed.length } });
+    if (sink.archiveEnabled) await tripEvidenceGate(pool, 'log_archive_unavailable');
     return { claimed: claimed.length, delivered: 0, failed: claimed.length };
   }
   await options.afterSinkAccept?.();
@@ -1176,7 +1189,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
     if (command === 'forward') {
       if (!process.env.BB_LOG_SINK_FILE) throw new Error('BB_LOG_SINK_FILE required');
-      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, ndjsonFileSink(process.env.BB_LOG_SINK_FILE, 'ndjson_file', ndjsonSizeCapFromEnv())))}\n`);
+      const archive = logArchiveOptionsFromEnv();
+      const sink = ndjsonFileSink(process.env.BB_LOG_SINK_FILE, 'ndjson_file', ndjsonSizeCapFromEnv(), archive);
+      if (archive) try { await sink.deliver([]); }
+      catch (error) { await tripEvidenceGate(pool, 'log_archive_unavailable'); throw error; }
+      process.stdout.write(`${JSON.stringify(await forwardLogs(pool, sink))}\n`);
     } else if (command === 'health') {
       process.stdout.write(`${JSON.stringify(await checkLogHealth(pool, { maxBacklogAgeSeconds: Number(process.env.BB_LOG_BACKLOG_ALERT_SECONDS ?? '300') }))}\n`);
     } else if (command === 'retention') {
