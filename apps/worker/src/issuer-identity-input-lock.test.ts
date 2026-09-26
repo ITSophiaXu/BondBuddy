@@ -100,8 +100,8 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
         ownerUserId: owner, projectId, materialId, materialVersion: 1, requestId: `request-${suffix}`,
         sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: 'entity-synthetic-reviewed',
       });
-      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [grantId, reviewerId, grantorId]);
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [grantId, reviewerId, grantorId, owner, projectId]);
       const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId);
       assert.ok(reviewer);
       await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {

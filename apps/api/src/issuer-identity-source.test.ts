@@ -35,7 +35,7 @@ class MemoryClient implements IssuerIdentitySourceClient, IssuerIdentitySourcePo
   records: Record<string, unknown>[] = [];
   reviews: Record<string, unknown>[] = [];
   outbox: Record<string, unknown>[] = [];
-  grants = new Map<string, string>();
+  grants = new Map<string, { userId: string; ownerUserId: string | null; projectId: string | null; revoked: boolean }>();
   anchors = new Map<string, typeof sourceAnchor>([[`${owner}|${project}|${material}|1|${evidenceId}`, sourceAnchor]]);
   materialScopes = new Set([`${owner}|${project}|${material}|1`]);
   calls: { sql: string; values: unknown[] }[] = [];
@@ -50,6 +50,9 @@ class MemoryClient implements IssuerIdentitySourceClient, IssuerIdentitySourcePo
     if (sql === 'COMMIT') { this.snapshot = null; return { rows: [] }; }
     if (sql === 'ROLLBACK') { if (this.snapshot) Object.assign(this, this.snapshot); this.snapshot = null; return { rows: [] }; }
     if (sql.includes('FROM bb_material_versions') && sql.includes('FOR UPDATE')) {
+      const key = values.slice(0, 4).join('|'); return { rows: this.materialScopes.has(key) ? [{ id: values[2] }] : [] };
+    }
+    if (sql.includes('FROM bb_material_versions m JOIN bb_projects')) {
       const key = values.slice(0, 4).join('|'); return { rows: this.materialScopes.has(key) ? [{ id: values[2] }] : [] };
     }
     if (sql.includes('FROM bb_issuer_identity_source_records r') && sql.includes('request_id=$5')) {
@@ -83,11 +86,14 @@ class MemoryClient implements IssuerIdentitySourceClient, IssuerIdentitySourcePo
     }
     if (sql.includes('FROM bb_issuer_identity_reviewer_grants')) {
       if (!sql.includes('WHERE id=$1')) {
-        const grants = [...this.grants].filter(([key, user]) => user === values[0]).map(([key]) => key.slice(String(values[0]).length + 1));
-        return { rows: grants.map(id => ({ id })) };
+        const grants = [...this.grants].filter(([, grant]) => grant.userId === values[0] && !grant.revoked &&
+          grant.ownerUserId === values[1] && grant.projectId === values[2]);
+        return { rows: grants.map(([key]) => ({ id: key.slice(String(values[0]).length + 1) })) };
       }
       const key = `${String(values[1])}|${String(values[0])}`;
-      return { rows: this.grants.get(key) === String(values[1]) ? [{ id: values[0] }] : [] };
+      const grant = this.grants.get(key);
+      return { rows: grant && !grant.revoked && grant.userId === String(values[1]) &&
+        grant.ownerUserId === String(values[2]) && grant.projectId === String(values[3]) ? [{ id: values[0] }] : [] };
     }
     if (sql.includes('FROM bb_issuer_identity_source_records') && sql.includes('FOR UPDATE')) {
       return { rows: this.records.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] &&
@@ -101,7 +107,7 @@ class MemoryClient implements IssuerIdentitySourceClient, IssuerIdentitySourcePo
       const rows = this.records.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] &&
         row.material_id === values[2] && row.material_version === values[3]).map(row => {
           const review = this.reviews.find(item => item.source_record_id === row.id);
-          const grantActive = review && this.grants.get(`${String(review.reviewer_user_id)}|${String(review.reviewer_grant_id)}`) === String(review.reviewer_user_id);
+          const grantActive = review && !this.grants.get(`${String(review.reviewer_user_id)}|${String(review.reviewer_grant_id)}`)?.revoked;
           return { ...this.withReview(row), decision: review?.decision, reviewer_user_id: review?.reviewer_user_id,
             verified_entity_id: review?.verified_entity_id, entity_basis_kind: review?.entity_basis_kind,
             entity_basis_ref: review?.entity_basis_ref,
@@ -163,12 +169,12 @@ test('no reviewer grant means no verified binding; active grant and exact eviden
   const client = new MemoryClient(); const deps = dependencies(client);
   const record = await appendIssuerIdentitySourceRecord(deps, input());
   assert.equal(await loadVerifiedIssuerIdentitySourceRecord(client, scope), null);
-  assert.equal(await authorizeIssuerIdentityReviewer(client, 'reviewer-a'), null);
+  assert.equal(await authorizeIssuerIdentityReviewer(client, 'reviewer-a', scope), null);
   await assert.rejects(reviewIssuerIdentitySourceRecord(deps, { ...scope, sourceRecordRowId: record.id,
     reviewer: { userId: 'reviewer-a', grantId: 'missing-grant' } as never,
     decision: 'verified', ...verifiedA, reasonCode: 'identity_matches_source' }), /INVALID_ISSUER_IDENTITY_REVIEW/);
-  client.grants.set('reviewer-a|review-grant-a', 'reviewer-a');
-  const reviewer = await authorizeIssuerIdentityReviewer(client, 'reviewer-a'); assert.ok(reviewer);
+  client.grants.set('reviewer-a|review-grant-a', { userId: 'reviewer-a', ownerUserId: owner, projectId: project, revoked: false });
+  const reviewer = await authorizeIssuerIdentityReviewer(client, 'reviewer-a', scope); assert.ok(reviewer);
   const reviewed = await reviewIssuerIdentitySourceRecord(deps, { ...scope, sourceRecordRowId: record.id,
     reviewer, decision: 'verified', ...verifiedA, reasonCode: 'identity_matches_source' });
   assert.equal(reviewed.replayed, false);
@@ -185,11 +191,38 @@ test('no reviewer grant means no verified binding; active grant and exact eviden
   assert.equal(await loadVerifiedIssuerIdentitySourceRecord(client, scope), null, 'legacy verified review without a verified entity remains unbound');
 });
 
+test('parallel project grants are selected exactly; unscoped and cross-project contexts cannot review', async () => {
+  const client = new MemoryClient(); const deps = dependencies(client);
+  const otherScope = { ownerUserId: 'identity-owner-b', projectId: 'identity-project-b', materialId: 'identity-material-b', materialVersion: 1 };
+  client.materialScopes.add(`${otherScope.ownerUserId}|${otherScope.projectId}|${otherScope.materialId}|1`);
+  client.anchors.set(`${otherScope.ownerUserId}|${otherScope.projectId}|${otherScope.materialId}|1|identity-evidence-b`, {
+    ...sourceAnchor, snapshot_id: 'identity-snapshot-b', record_id: 'identity-evidence-b', record_sha256: sha('record-b'),
+    content_sha256: sha('material-b'), literal_quote: '合成发行人乙',
+  });
+  const sourceA = await appendIssuerIdentitySourceRecord(deps, input());
+  const sourceB = await appendIssuerIdentitySourceRecord(deps, { ...otherScope, requestId: 'identity-request-b',
+    sourceRecordId: 'identity-evidence-b', issuerDisplayName: '合成发行人乙', entityId: 'entity-issuer-b' });
+  client.grants.set('reviewer-a|legacy-grant', { userId: 'reviewer-a', ownerUserId: null, projectId: null, revoked: false });
+  client.grants.set('reviewer-a|grant-a', { userId: 'reviewer-a', ownerUserId: owner, projectId: project, revoked: false });
+  client.grants.set('reviewer-a|grant-b', { userId: 'reviewer-a', ownerUserId: otherScope.ownerUserId, projectId: otherScope.projectId, revoked: false });
+
+  const reviewerA = await authorizeIssuerIdentityReviewer(client, 'reviewer-a', scope);
+  const reviewerB = await authorizeIssuerIdentityReviewer(client, 'reviewer-a', otherScope);
+  assert.equal(reviewerA?.grantId, 'grant-a'); assert.equal(reviewerB?.grantId, 'grant-b');
+  assert.equal(await authorizeIssuerIdentityReviewer(client, 'reviewer-legacy-only', scope), null);
+  await assert.rejects(reviewIssuerIdentitySourceRecord(deps, { ...otherScope, sourceRecordRowId: sourceB.id,
+    reviewer: reviewerA!, decision: 'verified', ...verifiedA, reasonCode: 'cross_project_attempt' }), /REVIEWER_NOT_AUTHORIZED/);
+  await reviewIssuerIdentitySourceRecord(deps, { ...scope, sourceRecordRowId: sourceA.id,
+    reviewer: reviewerA!, decision: 'verified', ...verifiedA, reasonCode: 'project_a_review' });
+  await reviewIssuerIdentitySourceRecord(deps, { ...otherScope, sourceRecordRowId: sourceB.id,
+    reviewer: reviewerB!, decision: 'verified', ...verifiedB, reasonCode: 'project_b_review' });
+});
+
 test('multiple conflicting verified entities never resolve by first-row ordering; unreviewed observations block', async () => {
   const client = new MemoryClient(); const deps = dependencies(client);
   const first = await appendIssuerIdentitySourceRecord(deps, input());
-  client.grants.set('reviewer-a|review-grant-a', 'reviewer-a');
-  const reviewer = await authorizeIssuerIdentityReviewer(client, 'reviewer-a'); assert.ok(reviewer);
+  client.grants.set('reviewer-a|review-grant-a', { userId: 'reviewer-a', ownerUserId: owner, projectId: project, revoked: false });
+  const reviewer = await authorizeIssuerIdentityReviewer(client, 'reviewer-a', scope); assert.ok(reviewer);
   const review = (record: typeof first, decision: 'verified' | 'rejected' | 'conflict' = 'verified') => reviewIssuerIdentitySourceRecord(deps, {
     ...scope, sourceRecordRowId: record.id, reviewer, decision, ...(decision === 'verified' ? (record === first ? verifiedA : verifiedB) : {}), reasonCode: 'source_identity_reviewed',
   });
@@ -210,7 +243,7 @@ test('observation and review outbox append atomically; evidence or outbox failur
   assert.equal(client.records.length, 0); assert.equal(client.outbox.length, 0);
   client.failOutbox = false;
   const record = await appendIssuerIdentitySourceRecord(deps, input());
-  client.grants.set('reviewer-a|review-grant-a', 'reviewer-a'); const reviewer = await authorizeIssuerIdentityReviewer(client, 'reviewer-a'); assert.ok(reviewer); client.failOutbox = true;
+  client.grants.set('reviewer-a|review-grant-a', { userId: 'reviewer-a', ownerUserId: owner, projectId: project, revoked: false }); const reviewer = await authorizeIssuerIdentityReviewer(client, 'reviewer-a', scope); assert.ok(reviewer); client.failOutbox = true;
   await assert.rejects(reviewIssuerIdentitySourceRecord(deps, { ...scope, sourceRecordRowId: record.id,
     reviewer, decision: 'verified', ...verifiedA, reasonCode: 'identity_matches_source' }), /outbox failure/);
   assert.equal(client.reviews.length, 0); assert.equal(await loadVerifiedIssuerIdentitySourceRecord(client, scope), null);
@@ -283,11 +316,12 @@ test('PostgreSQL 16: owner/evidence binding, privileged review, append-only vers
       const fakeReviewer = { userId: reviewerId, grantId } as never;
       await assert.rejects(reviewIssuerIdentitySourceRecord(deps, { ...liveScope, sourceRecordRowId: observationA.id,
         reviewer: fakeReviewer, decision: 'verified', ...verifiedA, reasonCode: 'identity_verified' }), /INVALID_ISSUER_IDENTITY_REVIEW/);
-      const notGranted = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId);
+      const reviewerScope = { ownerUserId: ownerId, projectId };
+      const notGranted = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId, reviewerScope);
       assert.equal(notGranted, null);
-      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-        VALUES($1,$2,'issuer_identity_reviewer',$3,'test_fixture')`, [grantId, reviewerId, grantorId]);
-      const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId); assert.ok(reviewer);
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'test_fixture',$4,$5)`, [grantId, reviewerId, grantorId, ownerId, projectId]);
+      const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId, reviewerScope); assert.ok(reviewer);
       for (const [verifiedEntityId, basisKind, basisRef] of [
         [null, null, null],
         ['issuer-name:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'manual_attestation', 'synthetic basis'],

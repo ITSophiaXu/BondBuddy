@@ -80,6 +80,8 @@ const trustedReviewerContexts = new WeakSet<object>();
 export interface TrustedIssuerIdentityReviewer {
   readonly userId: string;
   readonly grantId: string;
+  readonly ownerUserId: string;
+  readonly projectId: string;
   readonly [trustedReviewerBrand]: true;
 }
 
@@ -362,6 +364,8 @@ export async function reviewIssuerIdentitySourceRecord(
       !['verified', 'rejected', 'conflict'].includes(input.decision) || !reasonPattern.test(input.reasonCode)) {
     throw fail('INVALID_ISSUER_IDENTITY_REVIEW');
   }
+  if (input.reviewer.ownerUserId !== input.ownerUserId || input.reviewer.projectId !== input.projectId)
+    throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
   if (!validReviewBasis(input)) throw fail('ISSUER_IDENTITY_VERIFICATION_INVALID');
   const db = await dependencies.pool.connect();
   const newId = dependencies.newId ?? randomUUID;
@@ -370,7 +374,7 @@ export async function reviewIssuerIdentitySourceRecord(
     const grant = await db.query(
       `SELECT id FROM bb_issuer_identity_reviewer_grants
         WHERE id=$1 AND user_id=$2 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
-          AND (scope_owner_user_id IS NULL OR (scope_owner_user_id=$3 AND scope_project_id=$4)) FOR SHARE`,
+          AND scope_owner_user_id=$3 AND scope_project_id=$4 FOR SHARE`,
       [input.reviewer.grantId, input.reviewer.userId,input.ownerUserId,input.projectId]);
     if (grant.rows.length !== 1) throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
     const sourceResult = await db.query(
@@ -437,13 +441,23 @@ export async function reviewIssuerIdentitySourceRecord(
 export async function authorizeIssuerIdentityReviewer(
   pool: IssuerIdentitySourcePool,
   authenticatedUserId: string,
+  scope?: Pick<IssuerIdentitySourceScope, 'ownerUserId' | 'projectId'>,
 ): Promise<TrustedIssuerIdentityReviewer | null> {
-  if (!idPattern.test(authenticatedUserId)) throw fail('INVALID_ISSUER_IDENTITY_REVIEWER');
-  const result = await pool.query(
-    `SELECT id FROM bb_issuer_identity_reviewer_grants
-      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL`, [authenticatedUserId]);
+  if (!idPattern.test(authenticatedUserId) || (scope && (!idPattern.test(scope.ownerUserId) || !idPattern.test(scope.projectId))))
+    throw fail('INVALID_ISSUER_IDENTITY_REVIEWER');
+  const result = scope ? await pool.query(
+    `SELECT id, scope_owner_user_id, scope_project_id FROM bb_issuer_identity_reviewer_grants
+      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
+        AND scope_owner_user_id=$2 AND scope_project_id=$3`, [authenticatedUserId,scope.ownerUserId,scope.projectId]) : await pool.query(
+    `SELECT id, scope_owner_user_id, scope_project_id FROM bb_issuer_identity_reviewer_grants
+      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
+        AND scope_owner_user_id IS NOT NULL AND scope_project_id IS NOT NULL`, [authenticatedUserId]);
   if (result.rows.length !== 1 || !idPattern.test(String(result.rows[0]?.id))) return null;
-  const context = Object.freeze({ userId: authenticatedUserId, grantId: String(result.rows[0]!.id), [trustedReviewerBrand]: true as const });
+  const boundOwner = scope?.ownerUserId ?? String(result.rows[0]!.scope_owner_user_id ?? '');
+  const boundProject = scope?.projectId ?? String(result.rows[0]!.scope_project_id ?? '');
+  if (!idPattern.test(boundOwner) || !idPattern.test(boundProject)) return null;
+  const context = Object.freeze({ userId: authenticatedUserId, grantId: String(result.rows[0]!.id),
+    ownerUserId: boundOwner, projectId: boundProject, [trustedReviewerBrand]: true as const });
   trustedReviewerContexts.add(context);
   return context;
 }

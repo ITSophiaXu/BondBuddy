@@ -83,8 +83,8 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       const identitySource = await appendIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId, materialVersion: 1, requestId: `identity-request-${suffix}`,
         sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: `entity-${suffix}` });
-      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [reviewerGrantId, reviewerId, grantorId]);
+      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [reviewerGrantId, reviewerId, grantorId, owner, projectId]);
       const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
       assert.ok(reviewer);
       const reviewedIdentity = await reviewIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {

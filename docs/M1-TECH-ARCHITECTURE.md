@@ -394,6 +394,8 @@ This is 31 disabled research candidates, not a production checker or release. Of
 
 审核行追加保存经依据确认的主体 ID：`uscc:<18 位统一社会信用代码>` 或 `entity:<uuid>`；`uscc` 依据须与代码一致。新审核行受 0045 CHECK 约束，旧 verified 行若缺主体依据则保持历史审计记录但不能绑定。`loadVerifiedIssuerIdentitySourceRecord` 是 input revision、run 和事实键唯一可信入口：该材料版本全部观察均需有效 grant 下的 verified/rejected 决定，至少一条 verified 且其 `verified_entity_id` 唯一；同项目同一 `candidate_key` 在材料间出现不同 verified 主体时也返回 null，GET 显示 conflict。fact key 使用审核后的主体 ID。审核不修改既有 input revision；需新建 revision 才能锁定 verified 绑定。名称选择和合成测试不构成真实身份的专业核验。
 
+`0049_m1_issuer_reviewer_project_grants.sql` 将活动 grant 唯一范围改为 reviewer + owner + project，同一审核人可以并行持有多个项目授权。新 review POST 先从数据库解析目标项目 owner，再按精确 owner/project 取得 scoped grant；写审核事务再次要求该 grant 的范围完全相同。旧 unscoped grant 与已存在审核行保留作审计/历史，其活动记录仍可支撑既有 verified 绑定，但不能读取项目观察或授权新的 POST；撤权后历史审核行保留，绑定失效。grant 仍只通过受限数据库维护入口授予/撤销，没有公开授权 API。
+
 2026-09-26 核对 UI 修复：在已返回的 `OcrReview.records` 上提供每组 500 条的完整遍历及原件页码筛选，保留原始记录顺序和未保存校正。原页加载失败可保留输入重试，图片显示之前不能保存；切换记录/离页清理旧图片加载，迟到响应不得解锁其他记录。无公开契约、迁移或 OCR runtime 变化；synthetic 浏览器证据见 `apps/web/README.md`，v2 调度、真实 OCR 和财务金标准仍是后续验收。
 
 ### #20 受限规则检查（2026-09-26）
