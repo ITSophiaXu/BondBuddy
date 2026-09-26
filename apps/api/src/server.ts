@@ -30,6 +30,7 @@ import { installFactReviewRoutes } from './fact-review.js';
 import { loadVerifiedIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
+import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -710,6 +711,7 @@ export function createServer(settings: Settings = {}) {
         const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
         if(ruleCheck.status!=='valid')missingInputs.push(ruleCheck.status==='tampered'&&ruleCheck.reason==='input_manifest_hash_mismatch'
           ?ruleCheck.reason:`rule_pack:${ruleCheck.reason}`);
+        let updateDifficulty: StoredUpdateDifficultySnapshot | undefined;
         if(manifest.kind==='update'){
           const binding=manifest.issuer_identity;
           if(!isVerifiedIssuerIdentityBinding(binding)){
@@ -751,11 +753,32 @@ export function createServer(settings: Settings = {}) {
             else if(profile.state!=='ready')uncertainty.push(`source_profile_${profile.state}:${key}`);
           }
         }
+        if(manifest.kind==='update'){
+          // Free difficulty evidence is independent of execution capability or
+          // unrelated readiness gaps; the repository itself enforces its pins.
+          try {
+            updateDifficulty=await ensureCurrentUpdateDifficultySnapshotWithClient(client,{
+              ownerUserId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash,
+            });
+            if(updateDifficulty.estimate.status==='needs_confirmation')
+              uncertainty.push('update_difficulty_needs_confirmation');
+          } catch(error) {
+            const classified=classifyUpdateDifficultyFailure(error);
+            if(classified.category==='pending_input') missingInputs.push(`update_difficulty_pending:${classified.code.toLowerCase()}`);
+            else if(classified.category==='stale_input') throw conflict('INPUT_REVISION_CONFLICT','Preflight input is no longer current');
+            else if(classified.category==='not_found') throw missing();
+            else if(classified.category==='invalid_request') throw new Problem(422,'VALIDATION_FAILED','Invalid preflight input');
+            else throw new Problem(503,'DATA_UNAVAILABLE','Update difficulty snapshot could not be verified');
+          }
+        }
         // Execution stays 501 until #16/#79/Word delivery are live, so preflight cannot report an executable input.
         if(!settings.enableRunStaging&&!queueEnabled)missingInputs.push('execution_capability_not_ready');
         const status=missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const;
         await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status});
-        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const};
+        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const,
+          ...(updateDifficulty?{update_difficulty:{snapshot_id:updateDifficulty.id,status:updateDifficulty.estimate.status,estimated_n:updateDifficulty.estimate.estimatedN,
+             structure_adaptation_required:updateDifficulty.estimate.structureAdaptationRequired,confirmation_reasons:updateDifficulty.estimate.confirmationReasons,
+             source_profile_version:updateDifficulty.sourceProfileVersion}}:{})};
       });
     } catch(error) {
       if(error instanceof Problem){
