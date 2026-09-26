@@ -1,22 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { isolatedTestDatabase } from './test-database.js';
 import { createServer } from './server.js';
 import { checkpoint, claim, finish, jobSnapshot, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
 import { azureBlobs, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
+const isolatedConnection=await isolatedTestDatabase();
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor', {skip:!connection||!blobConnection},async()=>{
-  const pool=new Pool({connectionString:connection});
+  const pool=new Pool({connectionString:isolatedConnection});
   let owner='synthetic-queue-a';
   const blobs=azureBlobs(blobConnection!);
   const settings={pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
   const app=createServer(settings);
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   try {
-    await pool.query('TRUNCATE bb_outbox,bb_run_events,bb_model_call_attempts,bb_jobs,bb_artifact_download_grants,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const p=await send('POST','/api/v1/projects',{name:'Synthetic queue',kind:'update',issuer_name:null,market:null,offering:null});
     assert.equal(p.statusCode,201,p.body);
     const projectId=p.json().project_id;

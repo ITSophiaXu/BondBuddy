@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { isolatedTestDatabase } from './test-database.js';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
 import { PDF, pdfSample } from './upload-safety.samples.js';
@@ -31,16 +32,17 @@ test('public registration agreement returns the configured version or a stable 5
 });
 
 const connection=process.env.BB_TEST_DATABASE_URL;
+const ownerIsolationConnection=await isolatedTestDatabase(undefined, 'owner-isolation');
+const sessionConnection=await isolatedTestDatabase(undefined, 'sessions');
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', {skip:!connection||!blobConnection},async()=>{
-  const pool=new Pool({connectionString:connection});
+  const pool=new Pool({connectionString:ownerIsolationConnection});
   let active='synthetic-alice';
   const blobs=azureBlobs(blobConnection!);
   const app=createServer({pool,blobs,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:origin,enableRunStaging:true});
   const send=async(method:string,url:string,payload?:unknown,extra:Record<string,string>={})=>await app.inject({method:method as any,url,headers:{origin,...extra},payload:payload as any});
   const create=async(name:string)=>send('POST','/api/v1/projects',{name,kind:'update',issuer_name:null,market:'nafmii',offering:'mtn'});
   try{
-    await pool.query('TRUNCATE bb_project_events,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const a=await create('Synthetic Alice');assert.equal(a.statusCode,201,a.body);const project=a.json().project_id;
     const patch=await send('PATCH',`/api/v1/projects/${project}`,{name:'Synthetic Updated'}, {'if-match':'1'});assert.equal(patch.statusCode,200,patch.body);
     const stale=await send('PATCH',`/api/v1/projects/${project}`,{name:'Stale'},{'if-match':'1'});assert.equal(stale.statusCode,409);assert.equal(stale.json().code,'INPUT_REVISION_CONFLICT');
@@ -127,7 +129,7 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
 });
 
 test('username/password sessions preserve owner resources across relogin', {skip:!connection||!blobConnection},async()=>{
-  const pool=new Pool({connectionString:connection});
+  const pool=new Pool({connectionString:sessionConnection});
   const app=createServer({pool,blobs:azureBlobs(blobConnection!),allowedOrigin:origin,auth:{termsVersion:'synthetic-v1'},enableRunStaging:true});
   const jar=(response:any)=>Object.fromEntries((response.headers['set-cookie'] as string[]).map((v:string)=>v.split(';')[0].split('=')));
   const cookie=(c:Record<string,string>)=>Object.entries(c).map(([k,v])=>`${k}=${v}`).join('; ');
@@ -135,7 +137,6 @@ test('username/password sessions preserve owner resources across relogin', {skip
   const register=(username:string,password:string)=>send('POST','/api/v1/auth/register',{username,password,accepted_terms_version:'synthetic-v1'});
   const login=(username:string,password:string)=>send('POST','/api/v1/auth/login',{username,password});
   try{
-    await pool.query('TRUNCATE bb_password_login_limits,bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_users,bb_project_events,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const pwd='synthetic password for Alice 123';
     assert.equal((await send('POST','/api/v1/auth/register',{username:'Alice_One',password:pwd,accepted_terms_version:'synthetic-v1'},{},{origin:'https://evil.test'})).statusCode,403);
     assert.equal((await register('alice_one','short')).statusCode,422);

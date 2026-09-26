@@ -14,8 +14,10 @@ import { claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv } from './storage-lifecycle.js';
 import { PDF, pdfSample } from './upload-safety.samples.js';
+import { isolatedTestDatabase } from './test-database.js';
 
 const connection = process.env.BB_TEST_DATABASE_URL;
+const restoreConnection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
 const pdf = pdfSample();
@@ -311,6 +313,7 @@ async function copySyntheticBlobContainer(connectionString: string, sourceName: 
 }
 
 test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve pins without resurrection', { skip: !connection || !blobConnection }, async () => {
+  const connection = restoreConnection;
   const pool = new Pool({ connectionString: connection });
   const ownerId = `restore-${randomUUID()}`;
   const sourceContainer = `bb-restore-${randomUUID().replaceAll('-', '')}`;

@@ -6,8 +6,10 @@ import { createServer } from './server.js';
 import { azureBlobs } from './data.js';
 import { claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { isolatedTestDatabase } from './test-database.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
+const runConnection=await isolatedTestDatabase();
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin='http://bondbuddy.test';
 
@@ -65,7 +67,7 @@ test('#10 PostgreSQL global search, literal names, tied cursor pages, archive is
 });
 
 test('#10 actual run status and previous successful Word remain available after a newer failure and archive', {skip:!connection||!blobConnection},async()=>{
-  const pool=new Pool({connectionString:connection});const owner=`list-${randomUUID()}`;
+  const pool=new Pool({connectionString:runConnection});const owner=`list-${randomUUID()}`;
   const blobs=azureBlobs(blobConnection!);
   const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});

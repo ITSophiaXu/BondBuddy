@@ -2,23 +2,24 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { isolatedTestDatabase } from './test-database.js';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
 import { PDF, pdfSample } from './upload-safety.samples.js';
 
 const origin = 'http://bondbuddy.test';
 const connection = process.env.BB_TEST_DATABASE_URL;
+const isolatedConnection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 
 test('source-profile PATCH appends an owner-scoped asserted profile with verified anchors and atomic audit/outbox',
   { skip: !connection || !blobConnection }, async () => {
-    const pool = new Pool({ connectionString: connection });
+    const pool = new Pool({ connectionString: isolatedConnection });
     let active = 'synthetic-profile-owner';
     const app = createServer({ pool, blobs: azureBlobs(blobConnection!), principal: async () => ({ userId: active, csrfVerified: true }), allowedOrigin: origin });
     const send = async (method: string, url: string, payload?: unknown, extra: Record<string, string> = {}) =>
       app.inject({ method: method as never, url, headers: { origin, ...extra }, payload: payload as never });
     try {
-      await pool.query('TRUNCATE bb_project_events,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_word_delivery_evidence,bb_runs,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
       const created = await send('POST', '/api/v1/projects', { name: 'Synthetic source profile', kind: 'update', issuer_name: null, market: 'sse', offering: 'private' });
       assert.equal(created.statusCode, 201, created.body);
       const project = created.json().project_id as string;
