@@ -21,3 +21,17 @@ The XLSX metric compares `document.cached_formula_results`, evidence rows carryi
 The JSON output deliberately excludes source text, record IDs, material/project/user IDs, snapshot IDs, job IDs, locators beyond fixed anchor names, credentials, and raw database errors. The records are read into process memory to calculate the canonical digest. The CLI does not read Blob objects or source documents. It does not establish full-document coverage, professional acceptance, or production readiness.
 
 Pure helper coverage uses only synthetic values: binding-sensitive full-record hashes, binding-normalized content hashes across two distinct jobs, changed-record comparison, not-comparable source/parser cases, same-job replay marked trivial, anchor source/parser binding checks, object-key canonicalization versus array order, de-identified output properties, locator presence semantics, XLSX cached-result status, and ordinal completeness.
+
+An opt-in integration regression also runs the registered `rq-202506-01` DOCX in two separate synthetic project/material scopes and the registered `rq-202509-02` XLSX through real Python-to-Node durable parse jobs in a disposable, migrated PostgreSQL 16 database. It checks each original against the authorized sample manifest before parsing, then runs this read-only audit against the three completed jobs. It does not exercise the public upload endpoint or Azure Blob, and it cannot substitute for the audit of preproduction job IDs requested in #13.
+
+Build first, then set the variables on the test command itself (`BB_PYTHON` may be omitted when this worktree has a suitable `.venv`):
+
+```sh
+npm run build
+BB_RUN_AUTHORIZED_PARSE_SNAPSHOT_AUDIT=1 \
+BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
+BB_PYTHON=/path/to/python \
+node --test apps/worker/dist/parse-snapshot-audit.authorized-samples.integration.test.js
+```
+
+The database URL must name a disposable, fully migrated template; the test clones and drops its private database and requires a role with `CREATEDB`. No customer material, audit output, or credentials should be committed.
