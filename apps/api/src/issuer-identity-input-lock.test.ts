@@ -52,6 +52,7 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
     const owner = `input-owner-${suffix}`, foreignOwner = `input-foreign-${suffix}`;
     const reviewerId = `input-reviewer-${suffix}`, grantorId = `input-grantor-${suffix}`;
     const projectId = `input-project-${suffix}`, reviewProjectId = `input-review-project-${suffix}`;
+    const foreignProjectId = `input-foreign-project-${suffix}`;
     const historicalA = `input-historical-a-${suffix}`, historicalB = `input-historical-b-${suffix}`;
     const auditMaterial = `input-audit-${suffix}`;
     const grantId = `input-review-grant-${suffix}`;
@@ -94,6 +95,8 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
         VALUES($1,$2,'Synthetic update','update','Browser supplied name','sse','private','{}')`, [projectId, owner]);
       await connection.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,update_details)
         VALUES($1,$2,'Synthetic review','review','{}')`, [reviewProjectId, owner]);
+      await connection.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,update_details)
+        VALUES($1,$2,'Foreign review','review','{}')`, [foreignProjectId, foreignOwner]);
 
       for (const material of [...grants, { materialId: auditMaterial, materialVersion: 1, uploadId: `upload-${auditMaterial}`, snapshotId: `snapshot-${auditMaterial}`,
         contentHash: sha(`synthetic bytes ${auditMaterial}`), evidenceA: `evidence-a-${auditMaterial}`, evidenceB: `evidence-b-${auditMaterial}` }]) {
@@ -133,13 +136,19 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       assert.equal(listed.json().status, 'needs_review');
       assert.equal(listed.json().items[0].evidence_record_id, sourceA.evidenceA);
       assert.deepEqual(listed.json().items[0].locator, { page: 1, bbox: [0, 0, 1, 1] });
+      const reviewerUrl = `/api/v1/reviewer/projects/${projectId}/materials/${historicalA}/versions/1/issuer-identity/observations`;
       activeOwner = foreignOwner;
       assert.equal((await send('GET', observationsUrl)).statusCode, 404, 'another account cannot inspect evidence');
+      assert.equal((await send('GET', reviewerUrl)).statusCode, 404, 'unrelated account cannot use reviewer read');
       activeOwner = reviewerId;
       const reviewUrl = `${observationsUrl}/${observationA.id}/review`;
-      const reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified',verified_entity_id:verifiedA,
+      const observedHashes = {expected_content_sha256:listed.json().items[0].content_sha256,
+        expected_snapshot_sha256:listed.json().items[0].snapshot_sha256};
+      let reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified',verified_entity_id:verifiedA,
+        ...observedHashes,
         entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic identity review'};
       assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'no reviewer grant');
+      assert.equal((await send('GET',reviewerUrl)).statusCode,404,'no reviewer grant cannot read');
       activeOwner = owner;
       const unreviewedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
       assert.deepEqual(unreviewedInput.manifest.issuer_identity, {
@@ -149,11 +158,33 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       assert.equal(unreviewedInput.manifest.issuer_name, null, 'unreviewed browser label is not frozen as an issuer identity');
       const firstHash = unreviewedInput.input_hash as string;
 
-      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [grantId, reviewerId, grantorId]);
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants
+        (id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [grantId, reviewerId, grantorId, owner, projectId]);
       const reviewer = await authorizeIssuerIdentityReviewer(scopedPool, reviewerId);
       assert.ok(reviewer);
       activeOwner=reviewerId;
+      const reviewerRead=await send('GET',reviewerUrl);
+      assert.equal(reviewerRead.statusCode,200,reviewerRead.body);
+      assert.equal(reviewerRead.json().items[0].quote,'合成发行人甲');
+      assert.deepEqual(reviewerRead.json().items[0].locator,{page:1,bbox:[0,0,1,1]});
+      assert.equal(reviewerRead.json().items[0].coverage,'complete');
+      assert.deepEqual(reviewerRead.json().items[0].parse_warnings,[]);
+      assert.equal((await send('GET',reviewerUrl.replace(projectId,reviewProjectId))).statusCode,404,'reviewer scope excludes another project');
+      assert.equal((await send('GET',reviewerUrl.replace(projectId,foreignProjectId))).statusCode,404,'reviewer scope excludes another owner');
+      assert.equal((await send('POST',reviewUrl.replace(projectId,reviewProjectId),reviewBody)).statusCode,404,
+        'scoped grant cannot review another project');
+      const readAudit=await connection.query(`SELECT payload FROM bb_outbox WHERE event_type='issuer.identity_source.reviewer_read'
+        AND owner_user_id=$1 AND aggregate_id=$2`,[owner,projectId]);
+      assert.equal(readAudit.rows.length,1);
+      assert.equal(readAudit.rows[0].payload.reviewer_user_id,reviewerId);
+      reviewBody={...reviewBody,expected_content_sha256:reviewerRead.json().items[0].content_sha256,
+        expected_snapshot_sha256:reviewerRead.json().items[0].snapshot_sha256};
+      const stale=await send('POST',reviewUrl,{...reviewBody,expected_snapshot_sha256:'a'.repeat(64)});
+      assert.equal(stale.statusCode,409,stale.body);
+      assert.equal(stale.json().code,'ISSUER_IDENTITY_SNAPSHOT_CONFLICT');
+      assert.equal((await send('POST',reviewUrl,{...reviewBody,expected_content_sha256:'b'.repeat(64)})).statusCode,409,
+        'review cannot attest a different observation content hash');
       for (const invalid of [
         { decision: 'verified', reason_code: 'synthetic_identity_verified' },
         { ...reviewBody, verified_entity_id: 'issuer-name:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
@@ -169,7 +200,8 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       const replay=await send('POST',reviewUrl,reviewBody);
       assert.equal(replay.statusCode,201,replay.body);assert.equal(replay.json().replayed,true);
       assert.equal(replay.json().review_id,reviewed.json().review_id);
-      assert.equal((await send('POST',reviewUrl,{decision:'rejected',reason_code:'synthetic_identity_verified'})).statusCode,409);
+      assert.equal((await send('POST',reviewUrl,{decision:'rejected',reason_code:'synthetic_identity_verified',
+        expected_content_sha256:reviewBody.expected_content_sha256,expected_snapshot_sha256:reviewBody.expected_snapshot_sha256})).statusCode,409);
       activeOwner=owner;
       assert.equal((await send('GET',observationsUrl)).json().status,'verified');
       const observationB = await addSource(historicalB, sourceB.evidenceA, '合成发行人乙', 'entity-synthetic-b');
@@ -241,6 +273,7 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       await connection.query("UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1", [grantId, grantorId]);
       activeOwner=reviewerId;
       assert.equal((await send('POST',reviewUrl,reviewBody)).statusCode,404,'revoked grant cannot replay or review');
+      assert.equal((await send('GET',reviewerUrl)).statusCode,404,'revoked grant cannot read');
       activeOwner=owner;
       assert.equal((await send('GET',observationsUrl)).json().status,'needs_review','revoked review cannot count as verified');
       const staleReview = await send('POST', '/api/v1/projects/' + projectId + '/preflight', {

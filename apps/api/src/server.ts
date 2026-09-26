@@ -221,6 +221,28 @@ export function createServer(settings: Settings = {}) {
     try{return await listIssuerIdentitySourceRecords(db(),issuerScope(request,user));}
     catch(error){if(error instanceof Error&&error.message==='ISSUER_IDENTITY_MATERIAL_NOT_FOUND')throw missing();throw error;}
   });
+  const reviewerObservations=`/api/v1/reviewer${issuerObservations.slice('/api/v1'.length)}`;
+  app.get(reviewerObservations,{schema:{response:{200:schemas.IssuerIdentityObservationListResponse}}},async request=>{
+    const reviewerUserId=await owner(request), projectId=param(request,'project_id');
+    return transaction(db(),async client=>{
+      const allowed=await client.query(`SELECT p.owner_user_id,g.id AS grant_id FROM bb_projects p
+        JOIN bb_issuer_identity_reviewer_grants g ON g.scope_owner_user_id=p.owner_user_id AND g.scope_project_id=p.id
+        WHERE p.id=$1 AND p.deleted_at IS NULL AND g.user_id=$2 AND g.role='issuer_identity_reviewer'
+          AND g.revoked_at IS NULL FOR SHARE OF p,g`,[projectId,reviewerUserId]);
+      if(allowed.rows.length!==1)throw missing();
+      const scope=issuerScope(request,String(allowed.rows[0].owner_user_id));
+      let listed;
+      try{listed=await listIssuerIdentitySourceRecords(client,scope);}
+      catch(error){if(error instanceof Error&&error.message==='ISSUER_IDENTITY_MATERIAL_NOT_FOUND')throw missing();throw error;}
+      await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+        VALUES($1,$2,'project',$3,'issuer.identity_source.reviewer_read',$4::jsonb)`,
+      [uid(),scope.ownerUserId,scope.projectId,JSON.stringify({reviewer_user_id:reviewerUserId,
+        reviewer_grant_id:allowed.rows[0].grant_id,material_id:scope.materialId,material_version:scope.materialVersion,
+        observations:listed.items.map(item=>({source_record_id:item.source_record_id,snapshot_sha256:item.snapshot_sha256,
+          content_sha256:item.content_sha256}))})]);
+      return listed;
+    });
+  });
   app.post(`${issuerObservations}/:source_record_id/review`,{schema:{body:schemas.IssuerIdentityReviewRequest,response:{201:schemas.IssuerIdentityReviewResponse}}},async(request,reply)=>{
     const reviewerUserId=await owner(request);
     const reviewer=await authorizeIssuerIdentityReviewer(db(),reviewerUserId);
@@ -229,15 +251,17 @@ export function createServer(settings: Settings = {}) {
     const owned=await db().query('SELECT owner_user_id FROM bb_projects WHERE id=$1 AND deleted_at IS NULL',[projectId]);
     if(owned.rows.length!==1)throw missing();
     const scope=issuerScope(request,String(owned.rows[0].owner_user_id));
-    const input=body<{decision:'verified'|'rejected'|'conflict';reason_code:string;verified_entity_id?:string;entity_basis_kind?:'uscc'|'registry_record'|'manual_attestation';entity_basis_ref?:string}>(request);
+    const input=body<{decision:'verified'|'rejected'|'conflict';reason_code:string;expected_content_sha256:string;expected_snapshot_sha256:string;verified_entity_id?:string;entity_basis_kind?:'uscc'|'registry_record'|'manual_attestation';entity_basis_ref?:string}>(request);
     try{
       const result=await reviewIssuerIdentitySourceRecord({pool:db()},{...scope,sourceRecordRowId:param(request,'source_record_id'),reviewer,decision:input.decision,reasonCode:input.reason_code,
+        expectedContentSha256:input.expected_content_sha256,expectedSnapshotSha256:input.expected_snapshot_sha256,
         verifiedEntityId:input.verified_entity_id,entityBasisKind:input.entity_basis_kind,entityBasisRef:input.entity_basis_ref});
       reply.code(201);
       return {review_id:result.reviewId,source_record_id:result.sourceRecordId,decision:result.decision,created_at:result.createdAt,replayed:result.replayed};
     }catch(error){
       if(error instanceof Error&&['ISSUER_IDENTITY_SOURCE_RECORD_NOT_FOUND','ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED'].includes(error.message))throw missing();
       if(error instanceof Error&&error.message==='ISSUER_IDENTITY_REVIEW_ALREADY_DECIDED')throw conflict('INPUT_REVISION_CONFLICT','Observation already has a different review');
+      if(error instanceof Error&&error.message==='ISSUER_IDENTITY_SNAPSHOT_STALE')throw conflict('ISSUER_IDENTITY_SNAPSHOT_CONFLICT','Issuer identity observation or parse snapshot changed');
       if(error instanceof Error&&error.message==='ISSUER_IDENTITY_VERIFICATION_INVALID')throw new Problem(400,'ISSUER_IDENTITY_VERIFICATION_INVALID','Issuer identity verification basis is invalid');
       throw error;
     }
