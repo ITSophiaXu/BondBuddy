@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
-import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
-import { createServer } from './server.js';
+import { createProductionServer, createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const databaseUrl = await isolatedTestDatabase('RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL');
@@ -31,14 +30,12 @@ test('owner applicability API derives a needs_review ref from locked evidence an
     const materialHash = sha(`material-${suffix}`);
     const auditHash = sha(`audit-${suffix}`);
     let activeOwner = owner;
-    const app = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: activeOwner, csrfVerified: true }),
-      reviewedContextLoader: (db, args) => loadReviewedRuleApplicabilityContext(db, {
-        ownerUserId: args.ownerUserId, projectId: args.projectId, contextId: args.contextId, version: args.version,
-        contentHash: args.contentHash, expectedSourceInputRevision: args.expectedSourceInputRevision,
-        expectedSourceInputHash: args.expectedSourceInputHash, expectedIssuerBinding: args.expectedIssuerBinding,
-        currentDraftRevision: args.currentDraftRevision, mode: args.mode, currentMaterialVersions: args.currentMaterialVersions,
-      }) });
+    const app = createProductionServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: activeOwner, csrfVerified: true }) });
+    const appWithoutProductionLoader = createServer({ pool, allowedOrigin: origin,
+      principal: async () => ({ userId: activeOwner, csrfVerified: true }) });
     const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url,
+      headers: { origin }, payload: payload as any });
+    const sendWithoutProductionLoader = (method: string, url: string, payload?: unknown) => appWithoutProductionLoader.inject({ method: method as any, url,
       headers: { origin }, payload: payload as any });
     const base = `/api/v1/projects/${projectId}`;
     const lockInput = async () => {
@@ -152,6 +149,18 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       assert.ok(pinnedInput.rows[0]!.manifest.rule_pack_block_reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
       assert.ok(pinnedInput.rows[0]!.manifest.rule_pack_block_reasons.some((reason: string) => reason.startsWith('rule_applicability_field_needs_review:')));
 
+      // The production factory reaches the real needs_review branch, while bare createServer()
+      // preserves the explicit test semantic of an unavailable loader.
+      const missingLoaderPin = await sendWithoutProductionLoader('POST', `${base}/input-revisions`, {
+        draft_revision: 1,
+        material_versions: [{ material_id: materialId, material_version: 1 }, { material_id: auditMaterialId, material_version: 1 }],
+        requirement_message_ids: [], rule_applicability_context_ref: createdDto.context_ref,
+      });
+      assert.equal(missingLoaderPin.statusCode, 201, missingLoaderPin.body);
+      const missingLoaderManifest = await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+        [projectId, missingLoaderPin.json().input_revision]);
+      assert.ok(missingLoaderManifest.rows[0]!.manifest.rule_pack_block_reasons.includes('rule_applicability_loader_unavailable'));
+
       await assert.rejects(pool.query("UPDATE bb_rule_applicability_context_drafts SET status='needs_review' WHERE id=$1",
         [createdDto.context_ref.context_id]), /immutable/i);
       await pool.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
@@ -173,5 +182,5 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       assert.equal(staleIdentity.statusCode, 409, 'a newer unreviewed identity source invalidates new context selection');
       await pool.query('UPDATE bb_projects SET deleted_at=now() WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
       assert.equal((await send('GET', getUrl)).statusCode, 404, 'deleted project scopes are hidden');
-    } finally { await app.close(); await pool.end(); }
+    } finally { await app.close(); await appWithoutProductionLoader.close(); await pool.end(); }
   });

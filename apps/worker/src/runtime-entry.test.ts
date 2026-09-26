@@ -16,6 +16,7 @@ import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
 import { DEFAULT_DOCUMENT_PARSER_VERSION } from '@bondbuddy/api/material-jobs';
 import { adminJobTimeline, grantOperator } from '@bondbuddy/api/log-ops';
+import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -34,6 +35,8 @@ const until = async <T>(read: () => Promise<T | undefined | null | false>, ms = 
 test('production options install the controlled fact producer into the materials stage', () => {
   const options = workerRuntimeOptionsFromEnv({} as Pool, {} as ReturnType<typeof azureBlobs>, { BB_WORKER_JOB_KINDS: 'run' });
   assert.equal(typeof options.factCandidateProducer, 'function');
+  assert.equal(options.reviewedContextLoader, loadReviewedRuleApplicabilityContext,
+    'the environment factory installs the production loader directly');
   const runtime = new WorkerRuntime(options);
   const installed = (runtime as unknown as { o: { runStages: NonNullable<typeof options.runStages> } }).o.runStages;
   const original = options.runStages!.find(stage => stage.name === 'materials_ready');

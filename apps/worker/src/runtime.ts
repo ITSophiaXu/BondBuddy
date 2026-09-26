@@ -22,6 +22,7 @@ import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { sweepParseStaging } from './parse-staging.js';
 import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
 import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
+import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -42,7 +43,7 @@ export type WorkerRuntimeOptions = {
   runStages?: RunStage[];
   /** Trusted #15 producer binding. With runStages, only the environment factory's materials stage may be replaced. */
   factCandidateProducer?: ParsedFactProducer;
-  /** #15/#19 reviewed context loader; absent until owner producer and review policy are installed. */
+  /** #15/#19 reviewed context loader; production env options install the existing fail-closed implementation. */
   reviewedContextLoader?: ReviewedContextLoader;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
@@ -257,6 +258,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages,
+    reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),

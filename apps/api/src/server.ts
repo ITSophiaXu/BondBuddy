@@ -32,7 +32,7 @@ import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingI
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
-import { createRuleApplicabilityContextDraft, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
+import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -938,8 +938,13 @@ export function createServer(settings: Settings = {}) {
   return app;
 }
 
+/** Production entry point installs the existing fail-closed loader; tests may still use createServer() without one. */
+export function createProductionServer(settings: Omit<Settings, 'reviewedContextLoader'> = {}) {
+  return createServer({ ...settings, reviewedContextLoader: loadReviewedRuleApplicabilityContext });
+}
+
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  const app=createServer(),port=Number(process.env.PORT??'3000');
+  const app=createProductionServer(),port=Number(process.env.PORT??'3000');
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT');
   // Spool files left by a killed process are never resumed; clear them before accepting uploads.
   await clearSpoolDirectory();

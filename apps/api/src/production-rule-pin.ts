@@ -21,7 +21,7 @@ export type ReviewedContextArgs = {
 export type ReviewedContextResult =
   | { request: ProductionRulePackRequest; contextPin: Record<string, unknown> }
   | { status: 'needs_review'; reasons: string[] };
-/** #15/#19 owns implementation and review semantics. No loader is installed in production yet. */
+/** #15/#19 owns implementation and review semantics; production injects the fail-closed loader. */
 export type ReviewedContextLoader = (db: Db, args: ReviewedContextArgs) => Promise<ReviewedContextResult>;
 export type RulePackBinding =
   | { status: 'blocked'; reasons: string[] }
