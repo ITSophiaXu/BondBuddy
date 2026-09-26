@@ -28,6 +28,24 @@ BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
 BB_TEST_AZURITE_CONNECTION_STRING=UseDevelopmentStorage=true npm test -w @bondbuddy/worker
 ```
 
+The #76 authorized PostgreSQL regression is separately opt-in. It reads only
+the four `historical` DOCX paths and one manifest-registered financial file per
+case, checks byte counts and SHA-256, then uses the Python parser, durable parse
+job, profile repository, and API-owned difficulty repository against a cloned
+database. Set `BB_RUN_AUTHORIZED_SAMPLE_PG_E2E=1`, `BB_TEST_DATABASE_URL` (or
+`AUTHORIZED_SAMPLE_PG_TEST_DATABASE_URL`), and optionally `BB_PYTHON` when the
+repository `.venv` is not available. The registered historical documents are
+DOCX, so this regression records the platform-paid native parse event; it does
+not exercise scan OCR or establish OCR accuracy or professional acceptance.
+
+```sh
+BB_RUN_AUTHORIZED_SAMPLE_PG_E2E=1 \
+BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
+BB_PYTHON=/path/to/python \
+npm run build && \
+node --test apps/worker/dist/authorized-sample-pg-e2e.test.js
+```
+
 #31 的内部历史稿修改计划、锁定材料/事实读取入口、#34 消费约定及未完成验收项见 [HISTORICAL-UPDATE-HANDOFF.md](HISTORICAL-UPDATE-HANDOFF.md)。本切片不开放生产任务或生成 Word 成功成果。
 
 `historical-native-recognition.ts` is a conservative #76 native-text
