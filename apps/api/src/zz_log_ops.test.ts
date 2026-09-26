@@ -113,6 +113,50 @@ test('#79 scrubber removes secrets, captcha codes and cookies', () => {
   assert.ok(out.includes('PLAINTEXT_MARKER_79'), 'ordinary prompt text survives');
 });
 
+test('#79 normalized loose keys never leave synthetic values in diagnostics', () => {
+  for (const key of ['C_o_o_k_i_e', 'C-o-o-k-i-e', 'C o o k i e', String.raw`C \u006F o k i e`]) {
+    for (const prefix of ['', '业务前文 ', '{} ', '{] ']) {
+      for (const delimiter of ['=', ':', String.raw`\u003A`]) {
+        const input = `${prefix}${key}${delimiter}SYN_LOOSE_SECRET`;
+        assert.throws(() => scrubSecrets(input), error => error instanceof Error && error.message === 'Diagnostic body rejected');
+      }
+    }
+  }
+  for (const key of ['Cookie', 'session_cookie', 'x_api_key', 'one_time_password', 'otp']) {
+    assert.equal(scrubSecrets(`${key}=SYN_PLAIN_SECRET`), `${key}=[REDACTED]`);
+  }
+});
+
+function* syntheticFieldMatrix() {
+  let seed = 0x237a1303;
+  const next = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed; };
+  const keys = ['Cookie', 'CoOkIe', 'C_o_o_k_i_e', 'C-o-o-k-i-e', 'C o o k i e',
+    'setCookie', 'otp', 'secret', 'x_api_key', 'one_time_password', 'Authorization'];
+  const delimiters = [':', '=', String.raw`\u003A`, String.raw`\u003D`];
+  const contexts = [(value: string) => value, (value: string) => `前文 ${value} 后文`,
+    (value: string) => `{} ${value}`, (value: string) => `{] ${value}`,
+    (value: string) => JSON.stringify({ note: value })];
+  for (let index = 0; index < 1400; index++) {
+    const key = keys[next() % keys.length];
+    const delimiter = delimiters[next() % delimiters.length];
+    const context = contexts[next() % contexts.length];
+    const layers = next() % 5;
+    const marker = `SYN_MATRIX_${index}_MARKER`;
+    const spelling = next() % 3 === 0 ? key.replace(/o/i, String.raw`\u006F`) : key;
+    const quote = index % 2 === 0 ? '"' : '';
+    let body = context(`${quote}${spelling}${quote}${delimiter}${quote}${marker}${quote}`);
+    for (let layer = 0; layer < layers; layer++) body = JSON.stringify({ note: body });
+    yield { index, body, marker, key, delimiter, layers, context: contexts.indexOf(context), quoted: !!quote };
+  }
+}
+
+test('#79 fixed-seed decoded field matrix does not retain synthetic values', () => {
+  for (const { index, body, marker } of syntheticFieldMatrix()) {
+    try { assert.ok(!scrubSecrets(body).includes(marker), `matrix ${index} retained a value`); }
+    catch (error) { assert.equal((error as Error).message, 'Diagnostic body rejected'); }
+  }
+});
+
 test('#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text', () => {
   const cases = [
     '{"Cookie":"SYN_COOKIE_A","nested":[{"otp":"654321","Authorization":"Bearer SYN_AUTH_A","token":"SYN_TOKEN_A","password":"SYN_PASSWORD_A","apiKey":"SYN_APIKEY_A","access_token":"SYN_ACCESS_A"}],"ordinary":"SYN_BUSINESS_A","token_budget":"SYN_BUDGET_A"}',
@@ -267,6 +311,55 @@ test('#79 structured secrets are absent from the private diagnostic Blob readbac
   } finally { await f.app.close(); await pool.end(); }
 });
 
+test('#79 fixed-seed field matrix stays safe through real Blob and reference writes', { skip }, async t => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project } = await f.runFor(f.ownerA, 'Synthetic field matrix');
+    const generated = [...syntheticFieldMatrix()];
+    const covered = new Set<string>();
+    const selected: typeof generated = [];
+    for (const item of generated) {
+      const dimensions = [`key:${item.key}`, `delimiter:${item.delimiter}`, `layer:${item.layers}`,
+        `context:${item.context}`, `quote:${item.quoted}`];
+      if (dimensions.some(dimension => !covered.has(dimension))) {
+        selected.push(item);
+        dimensions.forEach(dimension => covered.add(dimension));
+      }
+    }
+    for (let index = 0; selected.length < 140 && index < generated.length; index += 9)
+      if (!selected.includes(generated[index])) selected.push(generated[index]);
+    assert.equal(selected.length, 140);
+    for (const index of [5, 657, 693, 729, 837, 1089, 1125])
+      assert.ok(selected.some(item => item.index === index), `previous Blob failure ${index} stays sampled`);
+    let puts = 0, rejected = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    const countRefs = async () => Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2',
+      [f.ownerA, project])).rows[0].n);
+    for (const { index, body, marker } of selected) {
+      const beforePuts = puts, beforeRefs = await countRefs();
+      try {
+        const id = await savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+          kind: 'structured_input', version: index + 1, body });
+        const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
+        const stored = (await blobs.get(row.object_key)).toString('utf8');
+        assert.ok(!stored.includes(marker), `matrix ${index} retained a value in Blob`);
+        assert.equal(row.content_sha256, digest(stored));
+        assert.equal(row.redaction_version, 'scrub_v1');
+        assert.equal(puts, beforePuts + 1);
+        assert.equal(await countRefs(), beforeRefs + 1);
+      } catch (error) {
+        assert.equal((error as Error).message, 'Diagnostic body rejected');
+        assert.equal(puts, beforePuts, `matrix ${index} put a Blob before rejection`);
+        assert.equal(await countRefs(), beforeRefs, `matrix ${index} left a reference`);
+        rejected++;
+      }
+    }
+    t.diagnostic(`140 real field-matrix probes: ${puts} safe Blob writes, ${rejected} zero-write rejections`);
+  } finally { await f.app.close(); await pool.end(); }
+});
+
 test('#79 escaped quotes and business placeholders survive private Blob readback', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
@@ -314,6 +407,7 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       [nearLimit, 'A'.repeat(100), 'SYN_NEAR_LIMIT_OTP'],
       [nearLimitUnicode, '债'.repeat(100), 'SYN_NONE'],
       ['普通未闭合 { 和 [\r\n业务正文', '业务正文', 'SYN_NONE'],
+      [`otp${' '.repeat(32_000)}X`, `otp${' '.repeat(32_000)}X`, 'SYN_NONE'],
       ['普通孤立 ]、[、{ 和 }\r\n业务正文', '业务正文', 'SYN_NONE'],
       ['业务正文 ]\r\n{} "\\uD83D\\uDE00债券名称":"SYN_UNICODE_BUSINESS"', 'SYN_UNICODE_BUSINESS', 'SYN_NONE'],
       [JSON.stringify({ note: 'SYN_ORDINARY quoted "business": text\r\n' }), 'SYN_ORDINARY quoted', 'SYN_NONE'],
@@ -327,7 +421,10 @@ test('#79 full-size synthetic model diagnostics survive private Blob readback', 
       ['普通未闭合 { 和 [\r\n{"Cookie":"SYN_MIXED_BLOB","note":"SYN_MIXED_ORDINARY"}', 'SYN_MIXED_ORDINARY', 'SYN_MIXED_BLOB'],
     ] as const).entries()) {
       assert.ok(Buffer.byteLength(body) <= 10 * 1024 * 1024);
-      const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'model_request', version: index + 1, body });
+      const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project,
+        kind: 'model_request', version: index + 1, body }).catch(error => {
+        throw new Error(`synthetic positive diagnostic ${index} rejected`, { cause: error });
+      });
       const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0];
       const stored = (await blobs.get(row.object_key)).toString('utf8');
       assert.ok(stored.includes(ordinary));
@@ -364,6 +461,9 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
       '{] } "Cookie":"SYN_LEAK_MARKER"', '{note: text, ] } "setCookie":"SYN_LEAK_MARKER"',
       '{"note":"ordinary"} "otp":"SYN_LEAK_MARKER"', '{] } "\\u0043ookie":"SYN_LEAK_MARKER"',
       '{} setCookie:SYN_LEAK_MARKER', '[] otp:SYN_LEAK_MARKER', '{} secret:SYN_LEAK_MARKER',
+      'C_o_o_k_i_e=SYN_A14_MIN_MARKER', 'C-o-o-k-i-e=SYN_A14_HYPHEN_MARKER',
+      'C o o k i e:SYN_A14_SPACED_MARKER', String.raw`C \u006F o k i e\u003ASYN_A14_ENCODED_MARKER`,
+      '{"note":? , "C o o k i e":"SYN_A14_MALFORMED_MARKER"}',
       '{note: text, } setCookie:SYN_LEAK_MARKER',
       'A'.repeat(10 * 1024 * 1024 + 1)]) {
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project, kind: 'structured_input', version: 1, body }),
@@ -469,6 +569,13 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
         error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
       layeredField = JSON.stringify(layeredField).slice(1, -1);
     }
+    const priorBlobLeaks = new Set([5, 657, 693, 729, 837, 1089, 1125]);
+    for (const { index, body } of syntheticFieldMatrix()) {
+      if (!priorBlobLeaks.has(index)) continue;
+      await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+        kind: 'structured_input', version: 1, body }),
+      error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    }
     assert.equal(puts, 0, 'scrub rejects before Blob put');
     const after = Number((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2', [f.ownerA, project])).rows[0].n);
     assert.equal(after, before, 'no partial snapshot reference');
@@ -504,6 +611,42 @@ test('#79 wide JSON arrays stay bounded in 128/256 MiB child heaps', async t => 
     assert.equal(metrics.accepted, true);
     assert.ok(metrics.elapsedMs < 2000, 'wide input parses without object-tree allocation');
     t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+  }
+});
+
+test('#79 prose rules scale linearly on long ordinary whitespace in bounded child heaps', async t => {
+  const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
+  for (const heapMiB of [128, 256]) {
+    const times: number[] = [];
+    for (const spaces of [2_000, 4_000, 8_000, 16_000, 32_000]) {
+      const source = `import { performance } from 'node:perf_hooks';
+        const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+        const body = 'otp' + ' '.repeat(${spaces}) + 'X';
+        const started = performance.now();
+        const accepted = scrubSecrets(body) === body;
+        process.stdout.write(JSON.stringify({ accepted, elapsedMs: performance.now() - started,
+          peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
+        if (!accepted) process.exitCode = 1;`;
+      const result = await new Promise<{ code: number | null; stdout: string; timedOut: boolean }>((resolve, reject) => {
+        const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
+          { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
+        let stdout = '', timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 8_000);
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.resume();
+        child.on('error', reject);
+        child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, timedOut }); });
+      });
+      assert.equal(result.timedOut, false, `${heapMiB} MiB heap / ${spaces} spaces timed out`);
+      assert.equal(result.code, 0);
+      const metrics = JSON.parse(result.stdout);
+      assert.equal(metrics.accepted, true);
+      assert.ok(metrics.elapsedMs < 500, 'ordinary whitespace should not trigger backtracking growth');
+      times.push(metrics.elapsedMs);
+      t.diagnostic(`${heapMiB} MiB heap / ${spaces} spaces: ${metrics.elapsedMs.toFixed(1)} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+    }
+    assert.ok(times[4] < Math.max(25, times[1] * 8), '32k input scales near linearly from 4k');
   }
 });
 

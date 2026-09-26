@@ -29,16 +29,24 @@ class DiagnosticScrubError extends Error {
 }
 class ScanLimitError extends DiagnosticScrubError {}
 const scrubRules: Array<[RegExp, string]> = [
-  [/\b(set-cookie|cookie)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
-  [/\b(authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]*/gi, '$1$2[REDACTED]'],
+  [/\b(set-cookie|cookie)([ \t]*[:=][ \t]*)[^\r\n]*/gi, '$1$2[REDACTED]'],
+  [/\b(authorization|proxy-authorization)([ \t]*[:=][ \t]*)[^\r\n]*/gi, '$1$2[REDACTED]'],
   [/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[REDACTED_JWT]'],
   [/\b(sk|rk|pk)-[A-Za-z0-9_-]{16,}/g, '[REDACTED_KEY]'],
-  [/\b(set[_-]?cookie|session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
-  [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)(\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
-  [/\b(otp(?:[_-]?code)?|captcha|verification[_ -]?code)(\s*["']?\s*[:=]\s*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
-  [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)(\s*(?:[:：=]|是|为)?\s*)[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
+  [/\b(set[_-]?cookie|session[_-]?cookie|x[_-]?api[_-]?key|one[_-]?time[_-]?password|(?:access|refresh|session|auth|bearer|id)[_-]?token)((?:[ \t]*["'][ \t]*|[ \t]*)[:=][ \t]*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
+  [/\b(api[_-]?key|access[_-]?key|secret|client[_-]?secret|token|password|passwd|pwd)((?:[ \t]*["'][ \t]*|[ \t]*)[:=][ \t]*["']?)[^\s"',;]+/gi, '$1$2[REDACTED]'],
+  [/\b(otp(?:[_-]?code)?|captcha|verification[_ -]?code)((?:[ \t]*["'][ \t]*|[ \t]*)[:=][ \t]*["']?)[^\s"',;}\]]+/gi, '$1$2[REDACTED]'],
+  [/(验证码|校验码|动态码|短信码|otp|captcha|verification code)((?:[ \t]*[:：=是为][ \t]*|[ \t]*))[A-Za-z0-9]{4,8}\b/gi, '$1$2[REDACTED]']
 ];
+function applyProseRules(text: string, budget: ScanBudget): string {
+  let value = text;
+  for (const [pattern, replacement] of scrubRules) {
+    spend(budget, value.length);
+    value = value.replace(pattern, replacement);
+  }
+  return value;
+}
 type Edits = { starts: number[]; ends: number[]; values: string[]; resultLength: number };
 const newEdits = (length: number): Edits => ({ starts: [], ends: [], values: [], resultLength: length });
 const addEdit = (edits: Edits, start: number, end: number, value: string) => {
@@ -172,46 +180,59 @@ function quotedFieldAt(text: string, start: number, layer: number, budget: ScanB
     throw new DiagnosticScrubError(); }
 }
 
-/** Read a loose field name using the same JSON Unicode decoding as quoted
- * keys. Escaped spellings outside valid JSON are rejected when sensitive. */
+/** Consume a loose key run once. Keep only the last 64 normalized characters
+ * and word starts, so a sensitive suffix after ordinary prose is still seen
+ * without rescanning an arbitrarily long run for each word. */
 function bareFieldAt(text: string, start: number, budget: ScanBudget): { key: string; end: number; encoded: boolean } | null {
   if (!/[\p{L}_]/u.test(text[start] ?? '') && !(text[start] === '\\' && text[start + 1] === 'u')) return null;
-  let end = start, encoded = false;
+  let end = start, encoded = false, invalid = false, afterSpace = false;
+  let normalized = '';
+  let starts = [0];
   while (end < text.length) {
-    if (/[\p{L}\p{N}_-]/u.test(text[end])) { end++; continue; }
-    if (text[end] === '\\' && text[end + 1] === 'u') {
-      if (!/^[0-9a-fA-F]{4}$/.test(text.slice(end + 2, end + 6))) {
-        // An invalid escape in a would-be field is ambiguous; the same bytes
-        // in an ordinary Windows path are harmless prose.
-        let probe = end + 2;
-        while (probe < text.length && probe - end < 128 && text[probe] !== '\\' &&
-               !space(text[probe]) && !/[;,}\]]/.test(text[probe])) {
-          spend(budget, 1);
-          if (text[probe] === ':' || text[probe] === '=') throw new DiagnosticScrubError();
-          probe++;
-        }
-        break;
-      }
-      const code = parseInt(text.slice(end + 2, end + 6), 16);
-      if (code === 0x3a || code === 0x3d || code === 0x22 || code <= 0x20) break;
+    const at = end;
+    let char = text[end];
+    if (char === '\\') {
+      const unit = syntaxAt(text, end, budget);
+      if (unit === null) { invalid = true; end++; continue; }
+      char = unit.char;
+      end = unit.end;
       encoded = true;
-      end += 6;
+      const code = char.charCodeAt(0);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = syntaxAt(text, end, budget);
+        const low = next?.char.charCodeAt(0);
+        if (low !== undefined && low >= 0xdc00 && low <= 0xdfff) {
+          char = String.fromCodePoint(0x10000 + (code - 0xd800) * 0x400 + low - 0xdc00);
+          end = next!.end;
+        } else invalid = true;
+      } else if (code >= 0xdc00 && code <= 0xdfff) invalid = true;
+    } else { spend(budget, 1); end++; }
+    if (char === ':' || char === '=') { end = at; break; }
+    if (char === ' ' || char === '\t' || char === '_' || char === '-') {
+      if (char === ' ' || char === '\t') afterSpace = true;
       continue;
     }
-    break;
-  }
-  if (end === start) return null;
-  spend(budget, end - start);
-  const raw = text.slice(start, end);
-  let key = raw;
-  if (encoded) {
-    try { key = JSON.parse(`"${raw}"`) as string; } catch { throw new DiagnosticScrubError(); }
-    if (hasUnpairedSurrogate(key)) {
-      if (separatorAt(text, end, budget)) throw new DiagnosticScrubError();
-      return { key: '', end, encoded: true };
+    if (!/[\p{L}\p{N}]/u.test(char)) {
+      if (invalid) continue;
+      if (char.length === 2 && end > at && normalized.length === 0)
+        return { key: '', end, encoded };
+      end = at; break;
+    }
+    if (afterSpace) { starts.push(normalized.length); afterSpace = false; }
+    normalized += char;
+    if (normalized.length > 64) {
+      normalized = normalized.slice(-64);
+      starts = starts.map(index => index - 1).filter(index => index >= 0);
     }
   }
-  return { key, end, encoded };
+  if (end === start) return null;
+  if (!separatorAt(text, end, budget)) return { key: '', end, encoded };
+  if (invalid) throw new DiagnosticScrubError();
+  for (const index of starts) {
+    const key = normalized.slice(index);
+    if (isSensitiveField(key)) return { key, end, encoded };
+  }
+  return { key: '', end, encoded };
 }
 
 /** Find a candidate's boundary once. An unclosed prose bracket is ordinary text
@@ -358,6 +379,39 @@ function quotedValueAt(text: string, start: number, budget: ScanBudget): { end: 
   if (end >= text.length) return null;
   try { return { end: end + 1, value: JSON.parse(text.slice(start, end + 1)) as string }; }
   catch { return null; }
+}
+
+/** Bound a plain field's value to one token, except header-like values whose
+ * existing prose contract removes the rest of the line. */
+function plainFieldValue(text: string, separator: number, key: string, budget: ScanBudget): { end: number; value: string } {
+  let at = separator;
+  while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
+  let unit = syntaxAt(text, at, budget);
+  if (unit?.char === '"') {
+    at = unit.end;
+    while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
+    unit = syntaxAt(text, at, budget);
+  }
+  if (unit?.char !== ':' && unit?.char !== '=') throw new DiagnosticScrubError();
+  at = unit.end;
+  while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
+  if (!text[at] || text[at] === '\r' || text[at] === '\n') throw new DiagnosticScrubError();
+  const begin = at;
+  if (/^(?:cookie|setcookie|sessioncookie|authorization|proxyauthorization)$/i.test(key)) {
+    while (at < text.length && text[at] !== '\r' && text[at] !== '\n') { at++; spend(budget, 1); }
+  } else if (text[at] === '"' || text[at] === "'") {
+    const quote = text[at++];
+    for (; at < text.length; at++) {
+      spend(budget, 1);
+      if (text[at] === '\\') { at++; continue; }
+      if (text[at] === quote) { at++; break; }
+    }
+    if (text[at - 1] !== quote) throw new DiagnosticScrubError();
+  } else {
+    while (at < text.length && !space(text[at]) && !/[;,}\]]/.test(text[at])) { at++; spend(budget, 1); }
+  }
+  if (at === begin) throw new DiagnosticScrubError();
+  return { end: at, value: text.slice(begin, at) };
 }
 
 function applyEdits(text: string, edits: Edits): string {
@@ -508,6 +562,10 @@ function scrubText(text: string, layer: number, budget: ScanBudget): string {
       const quotedKey = quotedFieldAt(text, start, layer, budget);
       if (quotedKey !== null && isSensitiveField(quotedKey)) throw new DiagnosticScrubError();
       const quotedValue = quotedValueAt(text, start, budget);
+      if (quotedValue !== null && quotedKey !== null) {
+        start = quotedValue.end;
+        continue;
+      }
       if (quotedValue !== null && quotedKey === null) {
         if (layer >= MAX_JSON_STRING_LAYERS) {
           if (hasEmbeddedSensitiveField(quotedValue.value, layer + 1, budget)) throw new DiagnosticScrubError();
@@ -530,6 +588,12 @@ function scrubText(text: string, layer: number, budget: ScanBudget): string {
             while (before >= 0 && space(text[before])) before--;
             if (layer > 0 || bare.encoded || text[end] === '\\' || syntaxAt(text, end, budget)?.char === ':' &&
                 (openPlain || text[start - 1] === '"' || /[{}\[\],]/.test(text[before] ?? ''))) throw new DiagnosticScrubError();
+            const field = plainFieldValue(text, end, bare.key, budget);
+            const raw = text.slice(start, field.end);
+            const cleaned = applyProseRules(raw, budget);
+            if (cleaned === raw || cleaned.includes(field.value)) throw new DiagnosticScrubError();
+            start = field.end;
+            continue;
           }
         }
         start = bare.end;
@@ -562,13 +626,12 @@ function scrubText(text: string, layer: number, budget: ScanBudget): string {
           addEdit(edits, start, end, encoded ? JSON.stringify(cleaned).slice(1, -1) : cleaned);
         }
       } catch (error) { if (error instanceof ScanLimitError) throw error;
-        if (suspicious || mustReject || raw.includes('\\u')) throw new DiagnosticScrubError(); }
+        if (suspicious || mustReject || raw.includes('\\u') || hasEmbeddedSensitiveField(raw, layer, budget))
+          throw new DiagnosticScrubError(); }
     }
     start = end;
   }
-  let value = applyEdits(text, edits);
-  for (const [pattern, replacement] of scrubRules) value = value.replace(pattern, replacement);
-  return value;
+  return applyProseRules(applyEdits(text, edits), budget);
 }
 
 /** Bounded scrub: rejects malformed/oversized JSON before any diagnostic Blob write. */
