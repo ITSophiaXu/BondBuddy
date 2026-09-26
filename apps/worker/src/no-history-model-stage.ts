@@ -5,9 +5,11 @@
  * delivery remain a separate required pipeline stage.
  */
 import { hasLib01AAutoMatchBasis, type AnnualBusinessProfile, type ReferenceTarget } from '@bondbuddy/domain/reference-match';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { LibrarySelectionSnapshot, NoHistoryLibrarySelectionInput } from './reference-library-selection.js';
 import { codexModelStage, type RunStage, type StageContext, type StageOutcome } from './run-pipeline.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
+import { loadUserReferenceOutline, type UserReferenceLoad } from './user-reference-outline.js';
 
 export const NO_HISTORY_DRAFT_SCHEMA_VERSION = 'no-history-manuscript-draft-v1';
 
@@ -27,6 +29,8 @@ export const noHistoryManuscriptDraftSchema: Record<string, unknown> = {
     open_questions: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 2000 } },
   },
 };
+
+const validateNoHistoryDraftSchema = new Ajv2020({ allErrors: true, strict: false }).compile(noHistoryManuscriptDraftSchema);
 
 export interface NoHistoryRunScope {
   readonly ownerUserId: string;
@@ -116,6 +120,8 @@ export interface NoHistoryStageAdapters {
   /** Must use the internal #77 selector and persist the run-scoped selected version lock. */
   readonly selectReference: (input: NoHistoryLibrarySelectionInput) => Promise<LibrarySelectionSnapshot>;
   readonly loadReferenceOutline: ReferenceOutlineLoader;
+  /** Defaults to the persisted owner/run scoped pin loader; tests may supply a deterministic boundary. */
+  readonly loadUserReferenceOutline?: (scope: NoHistoryRunScope, ctx: StageContext) => Promise<UserReferenceLoad>;
   readonly codexConfig: CodexAdapterConfig | (() => CodexAdapterConfig);
   readonly templateVersion: string;
 }
@@ -157,18 +163,12 @@ function validTargetFacts(snapshot: TargetFactsSnapshot, scope: NoHistoryRunScop
 }
 
 export function validateNoHistoryDraft(value: unknown, allowedFactIds: ReadonlySet<string>): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const draft = value as Record<string, unknown>;
-  if (draft.schema_version !== NO_HISTORY_DRAFT_SCHEMA_VERSION || !Array.isArray(draft.sections) || draft.sections.length === 0
-    || !Array.isArray(draft.fact_claims) || draft.fact_claims.length === 0 || !Array.isArray(draft.open_questions)) return false;
-  const factIds = new Set(draft.fact_claims.flatMap(claim => claim && typeof claim === 'object' && Array.isArray((claim as Record<string, unknown>).target_fact_ids)
-    ? ((claim as Record<string, unknown>).target_fact_ids as unknown[]).filter((id): id is string => typeof id === 'string') : []));
-  return draft.sections.every(section => !!section && typeof section === 'object' && typeof (section as Record<string, unknown>).heading === 'string'
-      && typeof (section as Record<string, unknown>).body === 'string')
-    && draft.fact_claims.every(claim => !!claim && typeof claim === 'object' && typeof (claim as Record<string, unknown>).claim === 'string'
-      && Array.isArray((claim as Record<string, unknown>).target_fact_ids) && ((claim as Record<string, unknown>).target_fact_ids as unknown[]).length > 0
-      && ((claim as Record<string, unknown>).target_fact_ids as unknown[]).every(id => typeof id === 'string' && allowedFactIds.has(id)))
-    && draft.open_questions.every(question => typeof question === 'string') && factIds.size > 0;
+  if (!validateNoHistoryDraftSchema(value)) return false;
+  const draft = value as {
+    fact_claims: readonly { target_fact_ids: readonly string[] }[];
+  };
+  const factIds = draft.fact_claims.flatMap(claim => claim.target_fact_ids);
+  return factIds.length > 0 && factIds.every(factId => allowedFactIds.has(factId));
 }
 
 export function buildNoHistoryGenerationPrompt(input: {
@@ -205,7 +205,7 @@ export function buildNoHistoryGenerationPrompt(input: {
 
 /** Creates a fail-closed #33 model stage on the existing durable #16 Codex adapter. */
 export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters): RunStage {
-  const preparePrompt = async (ctx: StageContext): Promise<{ prompt: string; factIds: ReadonlySet<string> }> => {
+  const preparePrompt = async (ctx: StageContext): Promise<{ prompt: string; factIds: ReadonlySet<string>; userReferenceUsed: boolean }> => {
     const scope = scopeOf(ctx);
     const profileRecord = await adapters.loadReviewedIssuerProfile(scope);
     if (!profileRecord || !isReviewedProfile(profileRecord, scope)) throw new Error('NO_HISTORY_PROFILE_NEEDS_REVIEW');
@@ -215,6 +215,12 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     // a durable lock, and missing issuer evidence must never consume one.
     const facts = await adapters.loadTargetFacts(scope);
     if (!facts || !validTargetFacts(facts, scope)) throw new Error('NO_HISTORY_TARGET_FACTS_NEEDS_REVIEW');
+    const userReference = await (adapters.loadUserReferenceOutline?.(scope, ctx) ?? loadUserReferenceOutline(ctx.pool, scope));
+    if (userReference.status === 'needs_review') throw new Error(`NO_HISTORY_USER_REFERENCE_NEEDS_REVIEW:${userReference.reason}`);
+    if (userReference.status === 'accepted') {
+      return { prompt: buildNoHistoryGenerationPrompt({ scope, profile: profileRecord.profile, facts: facts.facts,
+        rule, chapters: userReference.outline.chapters }), factIds: new Set(facts.facts.map(fact => fact.factId)), userReferenceUsed: true };
+    }
     const selection = await adapters.selectReference({ ownerUserId: scope.ownerUserId, projectId: scope.projectId, runId: scope.runId,
       traceId: scope.runId, targetProfile: profileRecord.profile, target: rule.target, ruleVersion: rule.ruleVersion });
     const selected = selection.status === 'exact' && selection.selected
@@ -238,7 +244,7 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
       throw new Error('NO_HISTORY_REFERENCE_STRUCTURE_NEEDS_REVIEW');
     }
     return { prompt: buildNoHistoryGenerationPrompt({ scope, profile: profileRecord.profile, facts: facts.facts, rule, chapters: outline.chapters }),
-      factIds: new Set(facts.facts.map(fact => fact.factId)) };
+      factIds: new Set(facts.facts.map(fact => fact.factId)), userReferenceUsed: false };
   };
 
   return {
@@ -254,11 +260,23 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
         const model = codexModelStage({ name: 'model_generation', logicalCallId: 'no-history-manuscript-generation', config: adapters.codexConfig,
           schema: noHistoryManuscriptDraftSchema, validate: value => validateNoHistoryDraft(value, prepared.factIds), resultSchemaVersion: NO_HISTORY_DRAFT_SCHEMA_VERSION,
           templateVersion: adapters.templateVersion, buildPrompt: async () => prepared.prompt });
-        return await model.run(ctx);
+        return await model.run({ ...ctx, validateBeforeModelCall: async () => {
+          const current = await ctx.validateBeforeModelCall?.();
+          if (current) return current;
+          if (prepared.userReferenceUsed) {
+            const reference = await (adapters.loadUserReferenceOutline?.(scopeOf(ctx), ctx)
+              ?? loadUserReferenceOutline(ctx.pool, scopeOf(ctx)));
+            if (reference.status !== 'accepted')
+              return { kind: 'pause' as const, stage: 'capability_not_ready' as const, reason: 'user_reference_review_stale' };
+          }
+          return null;
+        } });
       } catch (error) {
         if (!(error instanceof Error)) throw error;
         if (error.message === 'NO_HISTORY_PROFILE_NEEDS_REVIEW') return pause('issuer_annual_business_profile_missing_or_unreviewed');
         if (error.message === 'NO_HISTORY_RULE_CAPABILITY_NOT_READY') return pause('target_rule_capability_not_ready');
+        if (error.message.startsWith('NO_HISTORY_USER_REFERENCE_NEEDS_REVIEW'))
+          return pause(`user_reference_${error.message.split(':')[1] ?? 'needs_review'}`);
         if (error.message.startsWith('NO_HISTORY_REFERENCE_NEEDS_REVIEW')) {
           const status = error.message.split(':')[1] ?? 'unknown';
           return pause(`reference_selection_${status}`);

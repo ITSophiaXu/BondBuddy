@@ -10,11 +10,12 @@ import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 import pdfplumber
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
@@ -26,11 +27,34 @@ from bondbuddy_document_parser.parser import (
     MEDIA_TEXT,
     MEDIA_XLSX,
     parse_request,
+    stream_parse_request,
 )
+from bondbuddy_document_parser import parser as parser_module
 
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class EventSink:
+    """Consumes protocol lines as they are written, retaining only small test observations."""
+
+    def __init__(self) -> None:
+        self.pending = ""
+        self.events: list[dict] = []
+        self.records: list[dict] = []
+
+    def write(self, value: str) -> None:
+        self.pending += value
+        while "\n" in self.pending:
+            line, self.pending = self.pending.split("\n", 1)
+            if not line:
+                continue
+            event = json.loads(line)
+            self.events.append({"type": event["type"], **({key: event[key] for key in ("record_count", "has_uncertainty", "response")} if event["type"] == "end" else {}),
+                                **({"response": event["response"]} if event["type"] == "failure" else {})})
+            if event["type"] == "record":
+                self.records.append(event["record"])
 
 
 class DocumentParserTests(unittest.TestCase):
@@ -42,7 +66,10 @@ class DocumentParserTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def request(self, path: Path, media_type: str, **options):
-        return parse_request({
+        return parse_request(self.request_payload(path, media_type, **options))
+
+    def request_payload(self, path: Path, media_type: str, **options):
+        return {
             "schema_version": "document-parse-request-v1",
             "request_id": "parse-synthetic",
             "material": {
@@ -53,7 +80,7 @@ class DocumentParserTests(unittest.TestCase):
                 "authorized_local_path": str(path.resolve()),
             },
             "options": options,
-        })
+        }
 
     def test_docx_effective_revisions_tables_and_no_fake_page(self):
         path = self.root / "synthetic.docx"
@@ -95,6 +122,54 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(Document(path).tables[0].cell(1, 1).text, amount["literal_quote"])
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
+
+    def test_docx_table_cells_are_not_lost_to_reused_object_ids(self):
+        path = self.root / "many-cells.docx"
+        document = Document()
+        table = document.add_table(rows=32, cols=4)
+        for row in range(32):
+            for col in range(4):
+                table.cell(row, col).text = f"cell-{row:02d}-{col}"
+        table.cell(0, 0).merge(table.cell(0, 1)).text = "cell-00-0"
+        document.save(path)
+
+        expected = {f"cell-{row:02d}-{col}" for row in range(32) for col in range(4)} - {"cell-00-1"}
+        first = self.request(path, MEDIA_DOCX)
+        second = self.request(path, MEDIA_DOCX)
+        for parsed in (first, second):
+            quotes = [record["literal_quote"] for record in parsed["records"]]
+            self.assertEqual(len(quotes), 127)
+            self.assertEqual(set(quotes), expected)
+            self.assertEqual(len({record["locator"]["stable_ref"] for record in parsed["records"]}), 127)
+        self.assertEqual(first["records"], second["records"])
+
+    def test_docx_table_cells_keep_element_identity_and_deduplicate_real_merges(self):
+        path = self.root / "cell-identity.docx"
+        document = Document()
+        table = document.add_table(rows=32, cols=4)
+        table.cell(0, 0).merge(table.cell(0, 1)).text = "merged-cell"
+        expected = ["merged-cell"]
+        for column in range(2, 4):
+            value = f"cell-1-{column + 1}"
+            table.cell(0, column).text = value
+            expected.append(value)
+        for row in range(1, 32):
+            for column in range(4):
+                value = f"cell-{row + 1}-{column + 1}"
+                table.cell(row, column).text = value
+                expected.append(value)
+        document.save(path)
+
+        first = self.request(path, MEDIA_DOCX)
+        second = self.request(path, MEDIA_DOCX)
+        quotes = [record["literal_quote"] for record in first["records"]]
+        self.assertEqual(first["status"], "parsed")
+        self.assertEqual(quotes, expected)
+        self.assertEqual([record["literal_quote"] for record in second["records"]], expected)
+        self.assertEqual(first["records"], second["records"])
+        self.assertEqual(quotes.count("merged-cell"), 1)
+        merged = first["records"][0]
+        self.assertEqual(merged["locator"]["path"][0], {"table": 1, "row": 1, "column": 1})
 
     def test_docx_move_revisions_use_current_amount_and_preserve_order(self):
         path = self.root / "moved-amount.docx"
@@ -228,6 +303,60 @@ class DocumentParserTests(unittest.TestCase):
             recovered = page.crop((bbox["x0"], bbox["top"], bbox["x1"], bbox["bottom"])).extract_text()
         self.assertEqual(recovered, record["literal_quote"])
 
+    def test_streamed_pdf_keeps_text_anchors_word_boxes_and_uncovered_pages(self):
+        path = self.root / "streamed.pdf"
+        pdf = canvas.Canvas(str(path), pagesize=(300, 300))
+        pdf.drawString(50, 250, "Synthetic proceeds 123.45")
+        pdf.showPage()
+        pdf.drawString(50, 250, "Synthetic review anchor")
+        pdf.showPage()
+        pdf.showPage()
+        pdf.save()
+
+        sink = EventSink()
+        stream_parse_request(self.request_payload(path, MEDIA_PDF), sink)
+        self.assertEqual([event["type"] for event in sink.events], ["start", "record", "record", "end"])
+        self.assertEqual(sink.events[-1]["record_count"], 2)
+        self.assertEqual(sink.events[-1]["has_uncertainty"], False)
+        self.assertEqual([record["locator"]["stable_ref"] for record in sink.records], ["pdf:p0001:l0001", "pdf:p0002:l0001"])
+        self.assertEqual(sink.records[0]["material_id"], "material-synthetic")
+        self.assertEqual(sink.records[0]["content_hash"], digest(path))
+        self.assertTrue(sink.records[0]["formatting"]["word_boxes"])
+        self.assertEqual(sink.records[0]["formatting"]["word_boxes"][0]["text"], "Synthetic")
+        end = sink.events[-1]
+        self.assertEqual(end["type"], "end")
+        response = next(event["response"] for event in sink.events if event["type"] == "end")
+        self.assertEqual(response["status"], "needs_confirmation")
+        self.assertEqual(response["document"]["page_count"], 3)
+        self.assertEqual(response["document"]["pages_without_native_text"], [3])
+
+    def test_streamed_text_parser_crosses_read_chunks_without_losing_line_anchors(self):
+        path = self.root / "streamed.txt"
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            for index in range(20_000):
+                if index and index % 100 == 0:
+                    stream.write("\n")
+                stream.write(f"Synthetic line {index:05d} with native amount 123.45\n")
+
+        sink = EventSink()
+        stream_parse_request(self.request_payload(path, MEDIA_TEXT), sink)
+        self.assertEqual([event["type"] for event in sink.events[:2]], ["start", "record"])
+        self.assertEqual(sink.events[-1]["type"], "end")
+        self.assertEqual(sink.events[-1]["record_count"], 20_000)
+        self.assertEqual(sink.records[0]["locator"], {"line": 1, "stable_ref": "text:l000001"})
+        self.assertEqual(sink.records[-1]["locator"], {"line": 20_199, "stable_ref": "text:l020199"})
+        self.assertEqual(sink.records[-1]["record_id"], "evidence-020000")
+        self.assertEqual(sink.records[0]["literal_quote"], "Synthetic line 00000 with native amount 123.45")
+
+    def test_streamed_text_overlong_line_has_terminal_limit_without_success_summary(self):
+        path = self.root / "overlong.txt"
+        path.write_text("first safe line\n" + "x" * (16 * 1024 + 1) + "\n", encoding="utf-8")
+        sink = EventSink()
+        stream_parse_request(self.request_payload(path, MEDIA_TEXT), sink)
+        self.assertEqual([event["type"] for event in sink.events], ["start", "record", "failure"])
+        self.assertNotIn("end", [event["type"] for event in sink.events])
+        self.assertEqual(sink.events[-1]["response"]["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+
     def test_pdf_with_unreadable_page_requires_confirmation(self):
         path = self.root / "text-and-blank.pdf"
         pdf = canvas.Canvas(str(path), pagesize=(300, 300))
@@ -307,6 +436,32 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(next(record for record in result["records"] if record["literal_quote"] == "附注")["locator"]["merged_range"], "A4:B4")
         self.assertEqual(result["status"], "needs_confirmation")
 
+    def test_xlsx_skips_whitespace_only_strings_and_preserves_record_order(self):
+        path = self.root / "whitespace-cells.xlsx"
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["start", "   ", "\t", "\u3000", 42, "=A1", "end"])
+        book.save(path)
+
+        result = self.request(path, MEDIA_XLSX)
+
+        self.assertEqual(
+            [record["literal_quote"] for record in result["records"]],
+            ["start", "42", "=A1", "end"],
+        )
+        self.assertEqual(
+            [record["record_id"] for record in result["records"]],
+            [f"evidence-{index:06d}" for index in range(1, 5)],
+        )
+        self.assertEqual(
+            [record["locator"]["cell"] for record in result["records"]],
+            ["A1", "E1", "F1", "G1"],
+        )
+        formula = result["records"][2]
+        self.assertEqual(formula["literal_quote"], "=A1")
+        self.assertIn("formula_result_not_cached", formula["uncertainty"])
+        self.assertEqual(result["document"]["cached_formula_results"], 0)
+
     def test_xlsx_preserves_cached_formula_result_as_unverified_evidence(self):
         source = self.root / "formula-source.xlsx"
         path = self.root / "formula-with-cache.xlsx"
@@ -342,6 +497,60 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["document"]["cached_formula_results"], 1)
         self.assertTrue(any(warning["code"] == "XLSX_FORMULA_CACHE_UNVERIFIED" for warning in result["warnings"]))
         self.assertEqual(result["status"], "needs_confirmation")
+
+    def test_xlsx_external_workbook_cache_is_unverified_without_loading_target(self):
+        source = self.root / "external-formula-source.xlsx"
+        path = self.root / "external-formula.xlsx"
+        book = Workbook()
+        book.active["A1"] = "=[1]Source!A1"
+        book.save(source)
+
+        sheet_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        package_rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+        type_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as target:
+            for info in original.infolist():
+                payload = original.read(info.filename)
+                if info.filename == "xl/worksheets/sheet1.xml":
+                    root = ET.fromstring(payload)
+                    cell = root.find(f".//{{{sheet_ns}}}c[@r='A1']")
+                    self.assertIsNotNone(cell)
+                    value = cell.find(f"{{{sheet_ns}}}v")
+                    if value is None:
+                        value = ET.SubElement(cell, f"{{{sheet_ns}}}v")
+                    value.text = "42"
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif info.filename == "xl/workbook.xml":
+                    root = ET.fromstring(payload)
+                    references = ET.SubElement(root, f"{{{sheet_ns}}}externalReferences")
+                    ET.SubElement(references, f"{{{sheet_ns}}}externalReference", {f"{{{rel_ns}}}id": "rIdExternal"})
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif info.filename == "xl/_rels/workbook.xml.rels":
+                    root = ET.fromstring(payload)
+                    ET.SubElement(root, f"{{{package_rel_ns}}}Relationship", {
+                        "Id": "rIdExternal", "Type": f"{rel_ns}/externalLink", "Target": "externalLinks/externalLink1.xml",
+                    })
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif info.filename == "[Content_Types].xml":
+                    root = ET.fromstring(payload)
+                    ET.SubElement(root, f"{{{type_ns}}}Override", {
+                        "PartName": "/xl/externalLinks/externalLink1.xml",
+                        "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml",
+                    })
+                    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                target.writestr(info, payload)
+            target.writestr("xl/externalLinks/externalLink1.xml", f'<externalLink xmlns="{sheet_ns}" xmlns:r="{rel_ns}"><externalBook r:id="rId1"/></externalLink>')
+            target.writestr("xl/externalLinks/_rels/externalLink1.xml.rels", f'<Relationships xmlns="{package_rel_ns}"><Relationship Id="rId1" Type="{rel_ns}/externalLinkPath" Target="file:///nonexistent/synthetic-source.xlsx" TargetMode="External"/></Relationships>')
+
+        with patch.object(parser_module, "load_workbook", wraps=load_workbook) as loader:
+            result = self.request(path, MEDIA_XLSX)
+        self.assertEqual([call.kwargs["keep_links"] for call in loader.call_args_list], [False, False])
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertEqual(result["document"]["cached_formula_results"], 1)
+        formula = next(record for record in result["records"] if record["literal_quote"] == "=[1]Source!A1")
+        self.assertEqual(formula["formatting"]["cached_formula_result"], "42")
+        self.assertIn("formula_cached_result_unverified", formula["uncertainty"])
 
     def test_csv_and_text_have_native_positions(self):
         csv_path = self.root / "synthetic.csv"

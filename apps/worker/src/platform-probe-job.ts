@@ -4,11 +4,10 @@
 // runtime and cost-ledger rows are the normal #79 rows. The trial kill switch, deny override,
 // daily token quota and evidence gate are enforced by recordPotentialCall before the intent.
 // Env credential mode only: an auth.json configuration is refused.
-import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { PlatformProbeTemplateId } from '@bondbuddy/contracts';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
-import { saveSnapshotRef } from '@bondbuddy/api/observability';
+import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { claim, finishPlatformProbe, pauseRun, renew, type Lease } from '@bondbuddy/api/queue';
 import { CodexAdapterError, loadCodexAdapterConfig, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
@@ -47,13 +46,10 @@ async function ensurePromptSnapshot(pool: Pool, blobs: PrivateBlobs, lease: Leas
   const run = (await pool.query('SELECT project_id,input_revision,input_hash FROM bb_runs WHERE owner_user_id=$1 AND id=$2', [lease.owner, lease.runId])).rows[0];
   const existing = await pool.query("SELECT id FROM bb_snapshot_refs WHERE owner_user_id=$1 AND run_id=$2 AND snapshot_kind='model_request' ORDER BY created_at,id LIMIT 1", [lease.owner, lease.runId]);
   if (existing.rows[0]) return { projectId: run.project_id as string, promptRef: existing.rows[0].id as string };
-  const bytes = Buffer.from(template.prompt, 'utf8');
-  const objectKey = `users/${lease.owner}/projects/${run.project_id}/snapshots/probe-${lease.runId}`;
-  await blobs.put(objectKey, bytes, 'text/plain');
   const version = Number((await pool.query("SELECT COALESCE(max(version),0)+1 AS v FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'", [lease.owner, run.project_id])).rows[0].v);
-  const promptRef = await saveSnapshotRef(pool, { owner: lease.owner, projectId: run.project_id, runId: lease.runId, kind: 'model_request', version, objectKey,
-    sha256: createHash('sha256').update(bytes).digest('hex'), redactionVersion: 'synthetic_probe_v1', inputRevision: run.input_revision, inputHash: String(run.input_hash).trim(),
-    templateVersion: template.version, blobs });
+  const promptRef = await savePromptSnapshot(pool, blobs, { owner: lease.owner, projectId: run.project_id, runId: lease.runId, kind: 'model_request', version,
+    body: template.prompt, redactionVersion: 'synthetic_probe_v1', inputRevision: run.input_revision, inputHash: String(run.input_hash).trim(),
+    templateVersion: template.version });
   return { projectId: run.project_id as string, promptRef };
 }
 

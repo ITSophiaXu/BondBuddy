@@ -95,6 +95,8 @@ export interface ReviewedRuleApplicabilityContextArgs {
   readonly expectedSourceInputHash: string;
   /** Current project draft revision at the point of production pinning/recovery. */
   readonly currentDraftRevision: number;
+  /** Server-selected mode: only a run with a stored production pin may replay. */
+  readonly mode?: 'selection' | 'replay';
   /** Full material set resolved by the server for the current input request, not browser-provided hashes. */
   readonly currentMaterialVersions: readonly { readonly materialId: string; readonly materialVersion: number; readonly sha256: string }[];
   readonly expectedIssuerBinding: {
@@ -379,7 +381,7 @@ export async function createRuleApplicabilityContextDraft(
     }
 
     const identity = request.issuerIdentityBinding;
-    const identityResult = await client.query(`SELECT r.id, r.identity_version, r.content_sha256, r.entity_id,
+    const identityResult = await client.query(`SELECT r.id, r.identity_version, r.content_sha256, rv.verified_entity_id,
         rv.decision, g.revoked_at, g.id AS grant_id,
         (SELECT max(r2.identity_version) FROM bb_issuer_identity_source_records r2
           WHERE r2.owner_user_id=r.owner_user_id AND r2.project_id=r.project_id
@@ -390,7 +392,7 @@ export async function createRuleApplicabilityContextDraft(
         AND rv.identity_version=r.identity_version AND rv.content_sha256=r.content_sha256 AND rv.entity_id=r.entity_id
       JOIN bb_issuer_identity_reviewer_grants g ON g.user_id=rv.reviewer_user_id AND g.id=rv.reviewer_grant_id
       WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.material_id=$3 AND r.material_version=$4
-        AND r.id=$5 AND r.identity_version=$6 AND r.content_sha256=$7 AND r.entity_id=$8
+        AND r.id=$5 AND r.identity_version=$6 AND r.content_sha256=$7 AND rv.verified_entity_id=$8
       FOR SHARE OF r,rv,g`, [request.ownerUserId, request.projectId, identity.materialId, identity.materialVersion,
       identity.recordId, identity.version, identity.contentHash, identity.entityId]);
     if (!identityResult.rows.length || identityResult.rows[0]!.decision !== 'verified' || identityResult.rows[0]!.revoked_at !== null ||
@@ -532,8 +534,8 @@ export async function loadReviewedRuleApplicabilityContext(
     }
     const currentDraft = await db.query(`SELECT draft_revision FROM bb_projects
       WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL`, [expected.ownerUserId, expected.projectId]);
-    if (!currentDraft.rows.length || Number(currentDraft.rows[0]!.draft_revision) !== expected.currentDraftRevision ||
-        Number(input.rows[0]?.draft_revision) !== expected.currentDraftRevision) {
+    if (!currentDraft.rows.length || Number(input.rows[0]?.draft_revision) !== expected.currentDraftRevision ||
+        (expected.mode !== 'replay' && Number(currentDraft.rows[0]!.draft_revision) !== expected.currentDraftRevision)) {
       reasons.push('rule_applicability_current_draft_stale');
     }
     const requestMaterials = expected.currentMaterialVersions.map((item) => ({ ...item, sha256: item.sha256.toLowerCase() }))
@@ -570,7 +572,7 @@ export async function loadReviewedRuleApplicabilityContext(
     }
     const manifestIdentity = isRecord(sourceManifest) ? sourceManifest.issuer_identity : null;
     if (!isRecord(manifestIdentity) || canonical(manifestIdentity) !== canonical(identity)) reasons.push('rule_applicability_manifest_identity_mismatch');
-    const currentIdentity = await db.query(`SELECT r.id,r.identity_version,r.content_sha256,r.entity_id,r.issuer_display_name,
+    const currentIdentity = await db.query(`SELECT r.id,r.identity_version,r.content_sha256,rv.verified_entity_id,r.issuer_display_name,
         r.material_id,r.material_version,r.snapshot_id,r.source_record_id,r.source_record_sha256,r.source_content_sha256,
         rv.reviewer_user_id,rv.created_at,rv.decision,g.revoked_at,
         (SELECT max(r2.identity_version) FROM bb_issuer_identity_source_records r2
@@ -582,7 +584,7 @@ export async function loadReviewedRuleApplicabilityContext(
         AND rv.identity_version=r.identity_version AND rv.content_sha256=r.content_sha256 AND rv.entity_id=r.entity_id
       JOIN bb_issuer_identity_reviewer_grants g ON g.user_id=rv.reviewer_user_id AND g.id=rv.reviewer_grant_id
       WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.material_id=$3 AND r.material_version=$4
-        AND r.id=$5 AND r.identity_version=$6 AND r.content_sha256=$7 AND r.entity_id=$8`,
+        AND r.id=$5 AND r.identity_version=$6 AND r.content_sha256=$7 AND rv.verified_entity_id=$8`,
     [expected.ownerUserId, expected.projectId, identity.material_id, identity.material_version,
       identity.record_id, identity.version, identity.content_hash, identity.entity_id]);
     const currentRecord = currentIdentity.rows[0] as JsonRecord | undefined;

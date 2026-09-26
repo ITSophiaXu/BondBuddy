@@ -1,0 +1,32 @@
+{
+  "synthetic": true,
+  "target_context": {
+    "target_market": "sse",
+    "target_offering": "private",
+    "target_product": "synthetic_bond",
+    "target_document_stage": "registration",
+    "content_hash": "c9f8d9ad6c98733ea2cd5dc7ff0a3adc4cd29b958c6758d93db584a337177c09",
+    "status": "accepted"
+  },
+  "snapshot": {
+    "response_status": "needs_confirmation",
+    "response_schema_version": "document-parse-response-v1",
+    "record_count": 1,
+    "evidence_count": 1,
+    "uncertain_count": 0,
+    "response_meta": {
+      "document": { "page_count": null },
+      "material": { "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+      "warnings": [
+        { "code": "DOCX_DRAWINGS", "message": "Synthetic drawing warning" },
+        { "code": "DOCX_AUXILIARY_PARTS", "message": "Synthetic auxiliary warning" }
+      ]
+    }
+  },
+  "review": {
+    "confirmed_warning_codes": ["DOCX_AUXILIARY_PARTS", "DOCX_DRAWINGS"],
+    "parse_response_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "outline": [{ "order": 1, "heading": "发行概况" }],
+    "signed_outline_sha256": "4e377e04e85d52b752d8f807c479278c7361436621cbca63f85a4b5c0f77505b"
+  }
+}

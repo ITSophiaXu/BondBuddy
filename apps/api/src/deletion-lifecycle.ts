@@ -1,3 +1,4 @@
+import { purgeAccountRecovery } from './recovery-lifecycle.js';
 import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import { DATA_POLICY_VERSION, DELETION_PURGED_CONTENT, DELETION_RETAINED_METADATA, type DataPolicy } from '@bondbuddy/contracts';
@@ -166,7 +167,8 @@ export async function runUserDeletionLifecycle(pool: Pool, blobs: PrivateBlobs, 
   const storageResult = await runStorageLifecycle(pool, blobs, storage);
   const derived = await runDeletedContentPurge(pool, blobs, { deletedContentPurgeDays: storage.materialRetentionDays, now: storage.now, ownerScope: storage.ownerScope, batchSize: storage.batchSize });
   const logs = await purgeLogContent(pool, blobs, { contentRetentionDays: logContentRetentionDays, deletedProjectPurgeDays: storage.materialRetentionDays, now: storage.now, ownerScope: storage.ownerScope ? [storage.ownerScope] : undefined });
-  return { storage: storageResult, derived, logs };
+  const recovery = await purgeAccountRecovery(pool,storage.ownerScope);
+  return { storage: storageResult, derived, logs, recovery };
 }
 
 async function main() {

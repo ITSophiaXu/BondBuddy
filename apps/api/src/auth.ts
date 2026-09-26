@@ -6,7 +6,7 @@ import { AGREEMENT_SUMMARY_PATH, AGREEMENT_TITLE, CLOSURE_RETAINED_RECORDS, RUN_
 import { date, digest, missing, Problem, transaction, uid, unavailable } from './data.js';
 
 export type AuthConfig = { pool: Pool; allowedOrigin?: string; termsVersion?: string; supportContact?: string };
-const passwordOptions = { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 };
+export const passwordOptions = { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 };
 const dummyHash = argon2.hash(randomBytes(32), passwordOptions);
 const loginError = () => new Problem(401,'UNAUTHENTICATED','Invalid username or password');
 // Re-authentication inside a live session must not look like session expiry to the browser.
@@ -18,14 +18,14 @@ function username(raw: string) {
   if(!/^[a-z][a-z0-9_]{2,31}$/.test(value)) throw new Problem(422,'VALIDATION_FAILED','Username must be 3–32 ASCII letters, digits or underscores and start with a letter');
   return value;
 }
-function passwordValid(value: string) {
+export function passwordValid(value: string) {
   return typeof value==='string' && value.length>=12 && value.length<=128 && Buffer.byteLength(value,'utf8')<=512 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 const limitKey=(value:string)=>createHash('sha256').update(value).digest('hex');
 const randomToken = () => randomBytes(32).toString('base64url');
 const accessMinutes = 15, refreshDays = 30;
 const cookie = (name: string, value: string, age: number, httpOnly = true) => `${name}=${value}; Path=/; Secure; SameSite=Strict; ${httpOnly ? 'HttpOnly; ' : ''}Max-Age=${age}`;
-const clearCookies = () => [cookie('bb_session','',0),cookie('bb_refresh','',0),cookie('bb_csrf','',0,false)];
+export const clearCookies = () => [cookie('bb_session','',0),cookie('bb_refresh','',0),cookie('bb_csrf','',0,false)];
 function cookies(request: FastifyRequest): Record<string,string> {
   const result: Record<string,string> = {};
   for (const pair of (request.headers.cookie ?? '').split(';')) {
@@ -37,10 +37,10 @@ function same(a: string, b: string) {
   const x=Buffer.from(a), y=Buffer.from(b);
   return x.length===y.length && timingSafeEqual(x,y);
 }
-function origin(request: FastifyRequest, allowed?: string) {
+export function origin(request: FastifyRequest, allowed?: string) {
   if(!allowed || request.headers.origin!==allowed) throw new Problem(403,'CSRF_DENIED','Origin check failed');
 }
-function json(request: FastifyRequest) {
+export function json(request: FastifyRequest) {
   if(!request.headers['content-type']?.toLowerCase().startsWith('application/json')) throw new Problem(403,'CSRF_DENIED','JSON request required');
 }
 function csrf(request: FastifyRequest, value: string) {
@@ -49,7 +49,10 @@ function csrf(request: FastifyRequest, value: string) {
   if(typeof submitted!=='string' || !c || !same(c,submitted) || !same(digest(submitted),value.trim())) throw new Problem(403,'CSRF_DENIED','CSRF check failed');
 }
 // Shared by login and in-session re-authentication so both count toward the same account and account/source limits.
-async function checkPassword(client: PoolClient, name: string, password: string, source: string) {
+export async function checkPassword(client: PoolClient, name: string, password: string, source: string) {
+  // Serialize credential verification + session creation with recovery and closure.
+  await client.query("SELECT id FROM bb_users WHERE username=$1 AND status='active' FOR UPDATE",[name]);
+  const q=await client.query("SELECT u.id,c.password_hash FROM bb_users u JOIN bb_password_credentials c ON c.user_id=u.id WHERE u.username=$1 AND u.status='active'",[name]);
   const accountKey=limitKey(`account:${name}`), pairKey=limitKey(`pair:${name}:${source}`);
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`login:${name}`]);
   const keys=[['account',accountKey,10],['account_source',pairKey,5]] as const;
@@ -58,7 +61,6 @@ async function checkPassword(client: PoolClient, name: string, password: string,
     if(limit.rows[0] && Date.now()-new Date(limit.rows[0].window_started_at).getTime()<15*60_000 && limit.rows[0].failures>=maximum)
       throw new Problem(429,'RATE_LIMITED','Please wait before trying again');
   }
-  const q=await client.query("SELECT u.id,c.password_hash FROM bb_users u JOIN bb_password_credentials c ON c.user_id=u.id WHERE u.username=$1 AND u.status='active'",[name]);
   const valid=await argon2.verify(q.rows[0]?.password_hash ?? await dummyHash,password);
   if(!valid || !q.rows[0]) {
     for(const [scope,key] of keys)await client.query(`INSERT INTO bb_password_login_limits(scope,key_hash,failures) VALUES($1,$2,1) ON CONFLICT(scope,key_hash) DO UPDATE SET failures=CASE WHEN bb_password_login_limits.window_started_at < now()-interval '15 minutes' THEN 1 ELSE bb_password_login_limits.failures+1 END,window_started_at=CASE WHEN bb_password_login_limits.window_started_at < now()-interval '15 minutes' THEN now() ELSE bb_password_login_limits.window_started_at END`,[scope,key]);
@@ -94,7 +96,7 @@ export async function principal(request: FastifyRequest, config: AuthConfig) {
   }
   return {userId:row.user_id as string,csrfVerified,sessionId:row.id as string};
 }
-async function session(request: FastifyRequest, config: AuthConfig, mutation = false) {
+export async function session(request: FastifyRequest, config: AuthConfig, mutation = false) {
   const p=await principal(request,config);if(!p)throw new Problem(401,'UNAUTHENTICATED','Session required');
   if(mutation && (!p.csrfVerified || !config.allowedOrigin || request.headers.origin!==config.allowedOrigin)) throw new Problem(403,'CSRF_DENIED','CSRF or Origin check failed');
   return p;

@@ -37,9 +37,9 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
   await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('合成验收 · 已重命名项目');
   await page.getByRole('link', { name: '返回我的项目' }).click();
   await expect(page.getByRole('heading', { name: '合成验收 · 已重命名项目', exact: true })).toBeVisible();
-  await page.getByLabel('搜索已加载的项目名称').fill('不存在');
+  await page.getByLabel('搜索项目名称或发行人').fill('不存在');
   await expect(page.getByRole('heading', { name: '没有找到匹配的项目' })).toBeVisible();
-  await page.getByLabel('搜索已加载的项目名称').fill('');
+  await page.getByLabel('搜索项目名称或发行人').fill('');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.screenshot({ path: join(tmpdir(), 'bondbuddy-m1-05-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -118,7 +118,7 @@ test('all cursor pages are reachable and project names render as text', async ({
   await page.getByRole('button', { name: '加载更多项目' }).click();
   await expect(page.locator('.project-row')).toHaveCount(51);
   await expect(page.getByRole('button', { name: '加载更多项目' })).toBeHidden();
-  await page.getByLabel('搜索已加载的项目名称').fill('<img');
+  await page.getByLabel('搜索项目名称或发行人').fill('<img');
   await expect(page.getByRole('heading', { name: literal, exact: true })).toBeVisible();
   await expect(page.locator('#project-list img')).toHaveCount(0);
   await page.locator('.skip-link').focus();

@@ -1,3 +1,4 @@
+import { RECOVERY_ROLE } from './account-recovery.js';
 import { TRIAL_ALERT_KINDS } from './trial-guard.js';
 import { OPS_SCHEDULER_ALERT_KINDS } from './ops-scheduler.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
@@ -5,7 +6,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 // #79 operator surface. Only these DTOs leave the admin routes; none carries prompt plaintext
 // except AdminPromptView, which needs the separate prompt_viewer grant and is always audited.
 // log_operator performs writes (gate resume, usage corrections); log_reader is read-only.
-export const OPERATOR_ROLES = ['log_reader', 'log_operator', 'prompt_viewer'] as const;
+export const OPERATOR_ROLES = ['log_reader', 'log_operator', 'prompt_viewer', RECOVERY_ROLE] as const;
 export const OPS_ALERT_KINDS = ['log_sink_unavailable', 'log_backlog_stale', 'evidence_persist_failed', 'evidence_gate_paused', 'usage_conflict', 'retention_purge_failed', ...TRIAL_ALERT_KINDS, ...OPS_SCHEDULER_ALERT_KINDS] as const;
 export const EVIDENCE_GATE_STATES = ['open', 'paused'] as const;
 export const LOG_CONTENT_STATES = ['available', 'purged'] as const;
@@ -40,7 +41,7 @@ const Consumption = obj({ attempts: count, measured_attempts: count, unresolved_
 export const adminSchemas = {
   AdminLogEventsResponse: obj({ items: Type.Array(AdminLogEvent, { maxItems: ADMIN_LOG_PAGE_LIMIT }), truncated: Type.Boolean() }),
   AdminJobTimelineResponse: obj({
-    job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), trace_id: nullable(id), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
+    job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), operation_id: Type.Optional(nullable(id)), request_id: Type.Optional(nullable(id)), execution_request_id: Type.Optional(nullable(id)), execution_request_key_hash: Type.Optional(nullable(hash)), trace_id: nullable(id), input_revision: Type.Optional(nullable(Type.Integer({ minimum: 1 }))), input_hash: Type.Optional(nullable(hash)), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
     prompts: Type.Array(PromptRef),
     stages: Type.Array(Stage),
     attempts: Type.Array(Attempt),
@@ -53,7 +54,7 @@ export const adminSchemas = {
   AdminMetricsResponse: obj({
     window: obj({ from: nullable(utc), to: nullable(utc) }),
     operations: obj({ submitted: count, rejected: count }),
-    jobs: obj({ total: count, succeeded: count, failed: count, cancelled: count, other: count, success_rate: nullable(Type.Number({ minimum: 0, maximum: 1 })), failure_rate: nullable(Type.Number({ minimum: 0, maximum: 1 })), duration_ms_avg: nullable(Type.Number({ minimum: 0 })), duration_ms_p95: nullable(Type.Number({ minimum: 0 })) }),
+    jobs: obj({ total: count, succeeded: count, failed: count, cancelled: count, rejected: Type.Optional(count), other: count, success_rate: nullable(Type.Number({ minimum: 0, maximum: 1 })), failure_rate: nullable(Type.Number({ minimum: 0, maximum: 1 })), duration_ms_avg: nullable(Type.Number({ minimum: 0 })), duration_ms_p95: nullable(Type.Number({ minimum: 0 })) }),
     attempts: obj({ total: count, completed: count, failed: count, pending_reconcile: count, confirmed_not_sent: count, conflict: count, duration_ms_avg: nullable(Type.Number({ minimum: 0 })) }),
     consumption: obj({ all_attempts: Consumption, completed_attempts: Consumption, retry_attempts: Consumption }),
     by_model: Type.Array(obj({ model_id: nullable(Type.String({ maxLength: 128 })), attempts: count, completed: count, failed: count, ...TokenBreakdown.properties })),

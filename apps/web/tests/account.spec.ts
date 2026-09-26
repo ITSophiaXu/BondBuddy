@@ -61,6 +61,7 @@ async function installApi(context: BrowserContext, state: Fixture) {
       state.sessions = state.sessions.filter(item => item.current);
       return json(route, 200, { revoked_sessions: revoked });
     }
+    if (path === '/account/recovery') return json(route, 200, {enabled:false,support_operator:false,current:null,pending:null});
     if (path === '/account/password') {
       const change = body as { current_password: string; new_password: string };
       if (state.rateLimitNext) { state.rateLimitNext = false; return json(route, 429, { code: 'RATE_LIMITED' }); }
@@ -112,7 +113,7 @@ test('settings show server account facts as text and revoke only other sessions'
   await expect(info).toContainText('+86138****5678');
   await expect(info).toContainText('已接受版本 terms-2026-09');
   await expect(info).toContainText('当前版本 terms-2026-10');
-  await expect(info).toContainText('暂不提供自助找回，也不提供客服重置密码');
+  await expect(info).toContainText('人工找回需核验事先绑定的联系方式');
   await expect(info.getByText(state.supportContact, { exact: true })).toBeVisible();
   await expect(info.locator('img')).toHaveCount(0);
 

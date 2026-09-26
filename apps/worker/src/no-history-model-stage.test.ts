@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { Pool } from 'pg';
 import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
+import { scrubSecrets } from '@bondbuddy/api/log-ops';
+import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
+import { azureBlobs, digest, uid } from '@bondbuddy/api/data';
 import type { LibrarySelectionSnapshot } from './reference-library-selection.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
 import { buildNoHistoryGenerationPrompt, noHistoryModelGenerationStage, validateNoHistoryDraft, type NoHistoryStageAdapters, type TrustedRuleSelection } from './no-history-model-stage.js';
@@ -19,6 +23,30 @@ const reviewedProfile = { ...scope, review: { status: 'reviewed' as const, revie
 const rule: TrustedRuleSelection = { ...scope, status: 'eligible_for_evaluation', target, ruleVersion: target.ruleVersion, contentHash: 'b'.repeat(64),
   releaseId: 'production-rule-release', releaseChannel: 'production', rules: [{ ruleId: 'rule-a', title: '披露要求', requirement: '按经核实的目标发行人资料披露。' }] };
 
+test('263273-byte no-history builder output remains a complete diagnostic', async () => {
+  const make = (length: number) => buildNoHistoryGenerationPrompt({ scope, profile,
+    facts: [{ factId: 'target-fact-synthetic', statement: 'A'.repeat(length), evidenceRefs: ['target-audit-p1'], status: 'verified' }],
+    rule, chapters: [{ order: 1, heading: '合成章节' }] });
+  const length = 263_273 - Buffer.byteLength(make(0));
+  const prompt = make(length);
+  assert.equal(Buffer.byteLength(prompt), 263_273);
+  assert.equal(scrubSecrets(prompt), prompt);
+  if (process.env.BB_TEST_DATABASE_URL && process.env.BB_TEST_AZURITE_CONNECTION_STRING) {
+    const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+    try {
+      const owner = `synthetic-${uid()}`, project = `nohistory-${uid()}`;
+      await pool.query('INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,$3,$4)', [project, owner, 'Synthetic no-history diagnostic', 'generation']);
+      const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING);
+      const id = await savePromptSnapshot(pool, blobs, { owner, projectId: project, kind: 'model_request', version: 1, body: prompt });
+      const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
+      const stored = (await blobs.get(row.object_key)).toString('utf8');
+      assert.equal(stored, prompt);
+      assert.equal(row.content_sha256, digest(stored));
+      assert.equal(row.redaction_version, 'scrub_v1');
+    } finally { await pool.end(); }
+  }
+});
+
 function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { config: 0, rules: 0, select: 0, facts: 0 }): NoHistoryStageAdapters {
   return {
     loadReviewedIssuerProfile: async () => reviewedProfile,
@@ -27,6 +55,7 @@ function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { 
     selectReference: async () => { counters.select++; return { schema_version: 'reference-selection-v1', query_schema_version: 'reference-library-query-v1.1', status: 'needs_review', selection_hash: 'c'.repeat(64), target: {} as never,
       index_release: null, candidate_decisions: [], selected: null, reasons: ['synthetic_review_gate'] } as unknown as LibrarySelectionSnapshot; },
     loadReferenceOutline: async () => null,
+    loadUserReferenceOutline: async () => ({ status: 'none' }),
     codexConfig: () => { counters.config++; return {} as CodexAdapterConfig; },
     templateVersion: 'no-history-template-v1',
     ...overrides,
@@ -71,6 +100,31 @@ test('non-exact or unlocked v1.1 reference selection pauses after target facts b
   const outcome = await stage.run(context());
   assert.deepEqual(outcome, { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:reference_selection_needs_review' });
   assert.deepEqual(counts, { config: 0, rules: 1, select: 1, facts: 1 });
+});
+
+test('an unreviewed user reference pauses before library selection and model setup', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({
+    loadUserReferenceOutline: async () => ({ status: 'needs_review', reason: 'pin_needs_review' }),
+  }, counts));
+  assert.deepEqual(await stage.run(context()), { kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:user_reference_pin_needs_review' });
+  assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 });
+});
+
+test('an accepted structural user reference bypasses library selection but keeps the pre-model gate', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({ loadUserReferenceOutline: async () => ({
+    status: 'accepted', outline: { schema_version: 'user-reference-outline-v1', owner_user_id: scope.ownerUserId,
+      project_id: scope.projectId, run_id: scope.runId, input_revision: scope.inputRevision, input_hash: scope.inputHash,
+      material_id: 'synthetic-reference', material_version: 1, material_sha256: 'd'.repeat(64),
+      parse_snapshot_id: 'synthetic-snapshot', review_id: 'synthetic-review', fact_isolation_check_version: 'synthetic-v1',
+      chapters: [{ order: 1, heading: '发行概况' }],
+    },
+  }) }, counts));
+  const ctx = context();
+  ctx.validateBeforeModelCall = async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'synthetic_gate' });
+  assert.deepEqual(await stage.run(ctx), { kind: 'pause', stage: 'capability_not_ready', reason: 'synthetic_gate' });
+  assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 });
 });
 
 test('a v1-labelled or mismatched lock cannot authorize a v1.1 no-history model call', async () => {
@@ -122,10 +176,30 @@ test('generation prompt contains target issuer evidence and drops any non-allowl
   assert.doesNotMatch(prompt, /reference issuer profile/i);
 });
 
-test('versioned draft validation rejects fact IDs outside the owner-scoped target snapshot', () => {
-  const draft = { schema_version: 'no-history-manuscript-draft-v1', sections: [{ heading: '经营情况', body: '事实见 source.' }],
-    fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['library-fact-unknown'] }], open_questions: [] };
-  assert.equal(validateNoHistoryDraft(draft, new Set(['target-fact-1'])), false);
-  assert.equal(validateNoHistoryDraft({ ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['target-fact-1'] }] }, new Set(['target-fact-1'])), true);
-  assert.equal(validateNoHistoryDraft({ ...draft, sections: [], fact_claims: [] }, new Set(['target-fact-1'])), false);
+test('versioned draft validation enforces the complete schema and target fact allowlist', () => {
+  const allowedFactIds = new Set(['target-fact-1', 'target-fact-2']);
+  const draft = { schema_version: 'no-history-manuscript-draft-v1', sections: [{ heading: '经营情况', body: '事实见来源。' }],
+    fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['target-fact-1'] }], open_questions: [] };
+  assert.equal(validateNoHistoryDraft(draft, allowedFactIds), true);
+
+  const invalidCases: Array<[string, unknown]> = [
+    ['unknown fact ID', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['library-fact-unknown'] }] }],
+    ['root additional property', { ...draft, reference_issuer: 'not permitted' }],
+    ['section additional property', { ...draft, sections: [{ ...draft.sections[0], source: 'not permitted' }] }],
+    ['claim additional property', { ...draft, fact_claims: [{ ...draft.fact_claims[0], confidence: 'high' }] }],
+    ['empty sections', { ...draft, sections: [] }],
+    ['empty fact claims', { ...draft, fact_claims: [] }],
+    ['empty fact reference list', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: [] }] }],
+    ['duplicate fact IDs', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['target-fact-1', 'target-fact-1'] }] }],
+    ['empty heading', { ...draft, sections: [{ heading: '', body: '正文。' }] }],
+    ['heading over maximum', { ...draft, sections: [{ heading: '标'.repeat(201), body: '正文。' }] }],
+    ['body over maximum', { ...draft, sections: [{ heading: '经营情况', body: '文'.repeat(30_001) }] }],
+    ['claim over maximum', { ...draft, fact_claims: [{ claim: '文'.repeat(4_001), target_fact_ids: ['target-fact-1'] }] }],
+    ['fact ID over maximum', { ...draft, fact_claims: [{ claim: '营业收入为 100。', target_fact_ids: ['x'.repeat(129)] }] }],
+    ['open question over maximum', { ...draft, open_questions: ['问'.repeat(2_001)] }],
+    ['wrong schema version', { ...draft, schema_version: 'no-history-manuscript-draft-v2' }],
+  ];
+  for (const [description, candidate] of invalidCases) {
+    assert.equal(validateNoHistoryDraft(candidate, allowedFactIds), false, description);
+  }
 });

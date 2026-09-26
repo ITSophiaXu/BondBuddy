@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { VERIFIED_ISSUER_ENTITY_PATTERN, ISSUER_ENTITY_BASIS_KINDS } from '@bondbuddy/contracts';
 
 export interface IssuerIdentitySourcePool {
   connect(): Promise<IssuerIdentitySourceClient>;
@@ -25,9 +26,11 @@ export interface IssuerIdentitySourceScope {
 
 export interface AppendIssuerIdentitySourceRecordInput extends IssuerIdentitySourceScope {
   readonly requestId: string;
+  /** Stable server-generated observation key for replay across parse leases. */
+  readonly observationId?: string;
   readonly sourceRecordId: string;
   readonly issuerDisplayName: string;
-  /** Internal identity registry key; caller-provided observations remain pending review. */
+  /** Observation candidate key (stored in the legacy entity_id column), never a verified fact key. */
   readonly entityId: string;
 }
 
@@ -41,6 +44,7 @@ export interface StoredIssuerIdentitySourceRecord extends IssuerIdentitySourceSc
   readonly sourceLocator: Record<string, unknown>;
   readonly sourceQuote: string;
   readonly issuerDisplayName: string;
+  /** Immutable observation candidate key; the verified fact key comes from the review row. */
   readonly entityId: string;
   readonly identityVersion: number;
   readonly requestId: string;
@@ -62,6 +66,12 @@ export interface ReviewIssuerIdentitySourceRecordInput {
   readonly reviewer: TrustedIssuerIdentityReviewer;
   readonly decision: 'verified' | 'rejected' | 'conflict';
   readonly reasonCode: string;
+  /** Exact hashes returned by the reviewer read. */
+  readonly expectedContentSha256?: string;
+  readonly expectedSnapshotSha256?: string;
+  readonly verifiedEntityId?: string;
+  readonly entityBasisKind?: 'uscc' | 'registry_record' | 'manual_attestation';
+  readonly entityBasisRef?: string;
 }
 
 const trustedReviewerBrand: unique symbol = Symbol('TrustedIssuerIdentityReviewer');
@@ -70,6 +80,8 @@ const trustedReviewerContexts = new WeakSet<object>();
 export interface TrustedIssuerIdentityReviewer {
   readonly userId: string;
   readonly grantId: string;
+  readonly ownerUserId: string;
+  readonly projectId: string;
   readonly [trustedReviewerBrand]: true;
 }
 
@@ -89,9 +101,98 @@ export interface VerifiedIssuerIdentitySourceRecord {
   readonly reviewedAt: string;
 }
 
+export async function listIssuerIdentitySourceRecords(
+  pool: Pick<IssuerIdentitySourcePool, 'query'>, scope: IssuerIdentitySourceScope,
+) {
+  validateScope(scope);
+  const material = await pool.query(`SELECT 1 FROM bb_material_versions m JOIN bb_projects p
+    ON p.owner_user_id=m.owner_user_id AND p.id=m.project_id AND p.deleted_at IS NULL
+    WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.version=$4 AND m.deleted_at IS NULL`,
+  [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion]);
+  if (material.rows.length !== 1) throw fail('ISSUER_IDENTITY_MATERIAL_NOT_FOUND');
+  const result = await pool.query(`SELECT ${recordColumns}, rv.created_at AS reviewed_at,
+    s.response_sha256 AS snapshot_sha256, s.response_meta AS snapshot_meta,
+    rv.verified_entity_id, rv.entity_basis_kind, rv.entity_basis_ref,
+    g.id AS active_grant_id FROM bb_issuer_identity_source_records r
+    JOIN bb_parse_snapshots s ON s.owner_user_id=r.owner_user_id AND s.project_id=r.project_id
+      AND s.material_id=r.material_id AND s.material_version=r.material_version AND s.id=r.snapshot_id
+    LEFT JOIN bb_issuer_identity_source_reviews rv ON rv.owner_user_id=r.owner_user_id AND rv.project_id=r.project_id
+      AND rv.material_id=r.material_id AND rv.material_version=r.material_version AND rv.source_record_id=r.id
+    LEFT JOIN bb_issuer_identity_reviewer_grants g ON g.id=rv.reviewer_grant_id
+      AND g.user_id=rv.reviewer_user_id AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
+    WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.material_id=$3 AND r.material_version=$4
+    ORDER BY r.identity_version`, [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion]);
+  const items = result.rows.map(row => {
+    const stored = mapRow(row, false);
+    const meta = parseJson(row.snapshot_meta);
+    if (!isObject(meta) || !Array.isArray(meta.warnings) || !shaPattern.test(String(row.snapshot_sha256).trim()) ||
+        !meta.warnings.every(warning => isObject(warning) && typeof warning.code === 'string' && typeof warning.message === 'string')) {
+      throw fail('INVALID_ISSUER_IDENTITY_SNAPSHOT_ROW');
+    }
+    const warnings = meta.warnings as {code:string;message:string}[];
+    const reviewedEntity = validStoredReviewBasis(row) ? String(row.verified_entity_id) : null;
+    const status = row.active_grant_id ? stored.reviewDecision === 'verified' && !reviewedEntity
+      ? 'needs_review' : stored.reviewDecision ?? 'needs_review' : 'needs_review';
+    return { source_record_id: stored.id, identity_version: stored.identityVersion, snapshot_id: stored.snapshotId,
+      evidence_record_id: stored.sourceRecordId, source_record_sha256: stored.sourceRecordSha256,
+      source_content_sha256: stored.sourceContentSha256, content_sha256: stored.contentSha256,
+      snapshot_sha256: String(row.snapshot_sha256).trim(), parse_warnings: warnings,
+      coverage: warnings.length ? 'incomplete' as const : 'complete' as const,
+      locator_type: stored.sourceLocatorType, locator: stored.sourceLocator, quote: stored.sourceQuote,
+      issuer_display_name: stored.issuerDisplayName, candidate_key: stored.entityId,
+      verified_entity_id: status === 'verified' ? reviewedEntity : null,
+      entity_basis_kind: status === 'verified' ? String(row.entity_basis_kind) : null,
+      entity_basis_ref: status === 'verified' ? String(row.entity_basis_ref) : null, status,
+      reviewed_at: row.active_grant_id && row.reviewed_at ? new Date(String(row.reviewed_at)).toISOString() : null };
+  });
+  const verifiedEntities = new Set(items.filter(item => item.status === 'verified').map(item => item.verified_entity_id));
+  for (const item of items) {
+    if (item.status === 'verified' && item.candidate_key.startsWith('issuer-name:') &&
+        await projectCandidateKeyConflicts(pool, scope, item.candidate_key)) item.status = 'conflict';
+  }
+  const status = items.some(item => item.status === 'conflict') || verifiedEntities.size > 1 ? 'conflict'
+    : items.some(item => item.status === 'needs_review') || items.length === 0 ? 'needs_review'
+    : verifiedEntities.size === 1 ? 'verified' : 'rejected';
+  return { project_id: scope.projectId, material_id: scope.materialId, material_version: scope.materialVersion, status, items };
+}
+
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const shaPattern = /^[a-f0-9]{64}$/;
 const reasonPattern = /^[a-z][a-z0-9_]{0,63}$/;
+const verifiedEntityPattern = new RegExp(VERIFIED_ISSUER_ENTITY_PATTERN);
+
+function validVerifiedEntity(value: unknown): value is string {
+  return typeof value === 'string' && verifiedEntityPattern.test(value);
+}
+
+function validReviewBasis(input: ReviewIssuerIdentitySourceRecordInput): boolean {
+  if (input.decision !== 'verified') return input.verifiedEntityId === undefined && input.entityBasisKind === undefined && input.entityBasisRef === undefined;
+  return validVerifiedEntity(input.verifiedEntityId) &&
+    ISSUER_ENTITY_BASIS_KINDS.includes(input.entityBasisKind as typeof ISSUER_ENTITY_BASIS_KINDS[number]) &&
+    typeof input.entityBasisRef === 'string' && input.entityBasisRef.trim().length > 0 && input.entityBasisRef.length <= 512 &&
+    (input.entityBasisKind !== 'uscc' || input.verifiedEntityId === `uscc:${input.entityBasisRef}`);
+}
+
+function validStoredReviewBasis(row: Record<string, unknown>): boolean {
+  return validVerifiedEntity(row.verified_entity_id) &&
+    ISSUER_ENTITY_BASIS_KINDS.includes(row.entity_basis_kind as typeof ISSUER_ENTITY_BASIS_KINDS[number]) &&
+    typeof row.entity_basis_ref === 'string' && row.entity_basis_ref.trim().length > 0 && row.entity_basis_ref.length <= 512 &&
+    (row.entity_basis_kind !== 'uscc' || row.verified_entity_id === `uscc:${row.entity_basis_ref}`);
+}
+
+async function projectCandidateKeyConflicts(
+  pool: Pick<IssuerIdentitySourcePool, 'query'>, scope: IssuerIdentitySourceScope, candidateKey: string,
+): Promise<boolean> {
+  const result = await pool.query(`SELECT count(DISTINCT rv.verified_entity_id)::int AS distinct_entities
+    FROM bb_issuer_identity_source_records r
+    JOIN bb_issuer_identity_source_reviews rv ON rv.owner_user_id=r.owner_user_id AND rv.project_id=r.project_id
+      AND rv.material_id=r.material_id AND rv.material_version=r.material_version AND rv.source_record_id=r.id
+    JOIN bb_issuer_identity_reviewer_grants g ON g.id=rv.reviewer_grant_id AND g.user_id=rv.reviewer_user_id
+      AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
+    WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.entity_id=$3 AND rv.decision='verified'`,
+  [scope.ownerUserId, scope.projectId, candidateKey]);
+  return Number(result.rows[0]?.distinct_entities ?? 0) > 1;
+}
 
 function fail(code: string): Error {
   const error = new Error(code);
@@ -161,11 +262,12 @@ export async function appendIssuerIdentitySourceRecord(
 ): Promise<StoredIssuerIdentitySourceRecord> {
   validateScope(input);
   const displayName = input.issuerDisplayName.trim();
-  if (!idPattern.test(input.requestId) || !idPattern.test(input.sourceRecordId) ||
+  if (!idPattern.test(input.requestId) || (input.observationId !== undefined && !idPattern.test(input.observationId)) || !idPattern.test(input.sourceRecordId) ||
       !idPattern.test(input.entityId) || !displayName || displayName.length > 512) throw fail('INVALID_ISSUER_IDENTITY_INPUT');
   const requestHash = sha256(canonical({ ownerUserId: input.ownerUserId, projectId: input.projectId,
     materialId: input.materialId, materialVersion: input.materialVersion, requestId: input.requestId,
-    sourceRecordId: input.sourceRecordId, issuerDisplayName: displayName, entityId: input.entityId }));
+    sourceRecordId: input.sourceRecordId, issuerDisplayName: displayName, entityId: input.entityId,
+    ...(input.observationId ? { observationId: input.observationId } : {}) }));
   const db = await dependencies.pool.connect();
   const newId = dependencies.newId ?? randomUUID;
   try {
@@ -231,7 +333,7 @@ export async function appendIssuerIdentitySourceRecord(
          source_record_id, source_record_sha256, source_content_sha256, source_locator_type, source_locator,
          source_quote, issuer_display_name, entity_id, identity_version, request_id, request_hash,
          content_sha256, state, NULL::text AS review_decision, created_at`,
-      [newId(), input.ownerUserId, input.projectId, input.materialId, input.materialVersion, String(anchor.snapshot_id),
+      [input.observationId ?? newId(), input.ownerUserId, input.projectId, input.materialId, input.materialVersion, String(anchor.snapshot_id),
         String(anchor.record_id), String(anchor.record_sha256).trim(), String(anchor.content_sha256).trim(),
         String(anchor.locator_type), JSON.stringify(locator), String(anchor.literal_quote), displayName, input.entityId,
         identityVersion, input.requestId, requestHash, contentHash]);
@@ -262,14 +364,18 @@ export async function reviewIssuerIdentitySourceRecord(
       !['verified', 'rejected', 'conflict'].includes(input.decision) || !reasonPattern.test(input.reasonCode)) {
     throw fail('INVALID_ISSUER_IDENTITY_REVIEW');
   }
+  if (input.reviewer.ownerUserId !== input.ownerUserId || input.reviewer.projectId !== input.projectId)
+    throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
+  if (!validReviewBasis(input)) throw fail('ISSUER_IDENTITY_VERIFICATION_INVALID');
   const db = await dependencies.pool.connect();
   const newId = dependencies.newId ?? randomUUID;
   try {
     await db.query('BEGIN');
     const grant = await db.query(
       `SELECT id FROM bb_issuer_identity_reviewer_grants
-        WHERE id=$1 AND user_id=$2 AND role='issuer_identity_reviewer' AND revoked_at IS NULL FOR SHARE`,
-      [input.reviewer.grantId, input.reviewer.userId]);
+        WHERE id=$1 AND user_id=$2 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
+          AND scope_owner_user_id=$3 AND scope_project_id=$4 FOR SHARE`,
+      [input.reviewer.grantId, input.reviewer.userId,input.ownerUserId,input.projectId]);
     if (grant.rows.length !== 1) throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
     const sourceResult = await db.query(
       `SELECT *, NULL::text AS review_decision FROM bb_issuer_identity_source_records
@@ -278,14 +384,27 @@ export async function reviewIssuerIdentitySourceRecord(
     if (sourceResult.rows.length !== 1) throw fail('ISSUER_IDENTITY_SOURCE_RECORD_NOT_FOUND');
     const source = sourceResult.rows[0]!;
     mapRow(source, false);
+    if (input.expectedContentSha256 !== undefined || input.expectedSnapshotSha256 !== undefined) {
+      if (!shaPattern.test(input.expectedContentSha256 ?? '') || !shaPattern.test(input.expectedSnapshotSha256 ?? '') ||
+          String(source.content_sha256).trim() !== input.expectedContentSha256) throw fail('ISSUER_IDENTITY_SNAPSHOT_STALE');
+      const snapshot = await db.query(`SELECT response_sha256 FROM bb_parse_snapshots
+        WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND id=$5 FOR SHARE`,
+      [input.ownerUserId,input.projectId,input.materialId,input.materialVersion,source.snapshot_id]);
+      if (snapshot.rows.length !== 1 || String(snapshot.rows[0]!.response_sha256).trim() !== input.expectedSnapshotSha256)
+        throw fail('ISSUER_IDENTITY_SNAPSHOT_STALE');
+    }
     const prior = await db.query(
-      `SELECT id, decision, reason_code, reviewer_user_id, reviewer_grant_id, created_at FROM bb_issuer_identity_source_reviews
+      `SELECT id, decision, reason_code, reviewer_user_id, reviewer_grant_id, verified_entity_id,
+        entity_basis_kind, entity_basis_ref, created_at FROM bb_issuer_identity_source_reviews
         WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND source_record_id=$5`,
       [input.ownerUserId, input.projectId, input.materialId, input.materialVersion, input.sourceRecordRowId]);
     if (prior.rows.length) {
       const row = prior.rows[0]!;
       if (String(row.decision) !== input.decision || String(row.reason_code) !== input.reasonCode ||
-          String(row.reviewer_user_id) !== input.reviewer.userId || String(row.reviewer_grant_id) !== input.reviewer.grantId) {
+          String(row.reviewer_user_id) !== input.reviewer.userId || String(row.reviewer_grant_id) !== input.reviewer.grantId ||
+          (row.verified_entity_id ?? null) !== (input.verifiedEntityId ?? null) ||
+          (row.entity_basis_kind ?? null) !== (input.entityBasisKind ?? null) ||
+          (row.entity_basis_ref ?? null) !== (input.entityBasisRef ?? null)) {
         throw fail('ISSUER_IDENTITY_REVIEW_ALREADY_DECIDED');
       }
       await db.query('COMMIT');
@@ -296,11 +415,13 @@ export async function reviewIssuerIdentitySourceRecord(
     const inserted = await db.query(
       `INSERT INTO bb_issuer_identity_source_reviews
        (id, owner_user_id, project_id, material_id, material_version, source_record_id, identity_version,
-        content_sha256, entity_id, reviewer_user_id, reviewer_grant_id, decision, reason_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING created_at`,
+        content_sha256, entity_id, reviewer_user_id, reviewer_grant_id, decision, reason_code,
+        verified_entity_id, entity_basis_kind, entity_basis_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING created_at`,
       [reviewId, input.ownerUserId, input.projectId, input.materialId, input.materialVersion, input.sourceRecordRowId,
         Number(source.identity_version), String(source.content_sha256).trim(), String(source.entity_id), input.reviewer.userId,
-        input.reviewer.grantId, input.decision, input.reasonCode]);
+        input.reviewer.grantId, input.decision, input.reasonCode,
+        input.verifiedEntityId ?? null, input.entityBasisKind ?? null, input.entityBasisRef ?? null]);
     await db.query(
       `INSERT INTO bb_outbox (id, owner_user_id, aggregate_type, aggregate_id, event_type, payload)
        VALUES ($1,$2,'project',$3,'issuer.identity_source.reviewed',$4::jsonb)`,
@@ -320,13 +441,23 @@ export async function reviewIssuerIdentitySourceRecord(
 export async function authorizeIssuerIdentityReviewer(
   pool: IssuerIdentitySourcePool,
   authenticatedUserId: string,
+  scope?: Pick<IssuerIdentitySourceScope, 'ownerUserId' | 'projectId'>,
 ): Promise<TrustedIssuerIdentityReviewer | null> {
-  if (!idPattern.test(authenticatedUserId)) throw fail('INVALID_ISSUER_IDENTITY_REVIEWER');
-  const result = await pool.query(
-    `SELECT id FROM bb_issuer_identity_reviewer_grants
-      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL`, [authenticatedUserId]);
+  if (!idPattern.test(authenticatedUserId) || (scope && (!idPattern.test(scope.ownerUserId) || !idPattern.test(scope.projectId))))
+    throw fail('INVALID_ISSUER_IDENTITY_REVIEWER');
+  const result = scope ? await pool.query(
+    `SELECT id, scope_owner_user_id, scope_project_id FROM bb_issuer_identity_reviewer_grants
+      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
+        AND scope_owner_user_id=$2 AND scope_project_id=$3`, [authenticatedUserId,scope.ownerUserId,scope.projectId]) : await pool.query(
+    `SELECT id, scope_owner_user_id, scope_project_id FROM bb_issuer_identity_reviewer_grants
+      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
+        AND scope_owner_user_id IS NOT NULL AND scope_project_id IS NOT NULL`, [authenticatedUserId]);
   if (result.rows.length !== 1 || !idPattern.test(String(result.rows[0]?.id))) return null;
-  const context = Object.freeze({ userId: authenticatedUserId, grantId: String(result.rows[0]!.id), [trustedReviewerBrand]: true as const });
+  const boundOwner = scope?.ownerUserId ?? String(result.rows[0]!.scope_owner_user_id ?? '');
+  const boundProject = scope?.projectId ?? String(result.rows[0]!.scope_project_id ?? '');
+  if (!idPattern.test(boundOwner) || !idPattern.test(boundProject)) return null;
+  const context = Object.freeze({ userId: authenticatedUserId, grantId: String(result.rows[0]!.id),
+    ownerUserId: boundOwner, projectId: boundProject, [trustedReviewerBrand]: true as const });
   trustedReviewerContexts.add(context);
   return context;
 }
@@ -336,12 +467,13 @@ export async function authorizeIssuerIdentityReviewer(
  * material version has an active-grant review and there is exactly one verified entity ID.
  */
 export async function loadVerifiedIssuerIdentitySourceRecord(
-  pool: IssuerIdentitySourcePool,
+  pool: Pick<IssuerIdentitySourcePool, 'query'>,
   scope: IssuerIdentitySourceScope,
 ): Promise<VerifiedIssuerIdentitySourceRecord | null> {
   validateScope(scope);
   const result = await pool.query(
     `SELECT r.*, rv.decision AS review_decision, rv.decision, rv.reason_code AS review_reason_code, rv.id AS review_id,
+            rv.verified_entity_id, rv.entity_basis_kind, rv.entity_basis_ref,
             rv.reviewer_user_id, rv.created_at AS reviewed_at, g.id AS active_grant_id
        FROM bb_issuer_identity_source_records r
        LEFT JOIN bb_issuer_identity_source_reviews rv ON rv.owner_user_id=r.owner_user_id AND rv.project_id=r.project_id
@@ -354,13 +486,16 @@ export async function loadVerifiedIssuerIdentitySourceRecord(
   if (result.rows.length === 0 || result.rows.some(row => !row.active_grant_id || !['verified', 'rejected'].includes(String(row.decision)))) return null;
   const verified = result.rows.filter(row => row.decision === 'verified');
   for (const row of result.rows) mapRow(row, false);
-  if (verified.length === 0 || verified.some(row => !shaPattern.test(String(row.content_sha256).trim()))) return null;
-  const entities = new Set(verified.map(row => String(row.entity_id)));
+  if (verified.length === 0 || verified.some(row => !shaPattern.test(String(row.content_sha256).trim()) || !validStoredReviewBasis(row))) return null;
+  const entities = new Set(verified.map(row => String(row.verified_entity_id)));
   if (entities.size !== 1) return null;
   const row = verified[0]!;
+  for (const candidateKey of new Set(verified.map(item => String(item.entity_id)).filter(key => key.startsWith('issuer-name:')))) {
+    if (await projectCandidateKeyConflicts(pool, scope, candidateKey)) return null;
+  }
   return {
     recordId: String(row.id), version: Number(row.identity_version), contentHash: String(row.content_sha256).trim(),
-    entityId: String(row.entity_id), issuerDisplayName: String(row.issuer_display_name),
+    entityId: String(row.verified_entity_id), issuerDisplayName: String(row.issuer_display_name),
     materialId: String(row.material_id), materialVersion: Number(row.material_version),
     sourceSnapshotId: String(row.snapshot_id), sourceRecordId: String(row.source_record_id),
     sourceRecordSha256: String(row.source_record_sha256).trim(), sourceContentSha256: String(row.source_content_sha256).trim(),

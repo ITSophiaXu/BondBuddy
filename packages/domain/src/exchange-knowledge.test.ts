@@ -12,6 +12,7 @@ const base=new URL('../../../knowledge/exchange-bonds/',import.meta.url);
 const json=(path:string)=>JSON.parse(readFileSync(new URL(path,base),'utf8'));
 const manifest=json('manifest.json') as {scopes:{scope:string}[]};
 const sources=json('sources.json') as {source_occurrences:number;sources:{source_id:string;sha256:string;bytes:number;original_path:string;aliases:unknown[];parse_status:string;market:string;document_kind:string}[]};
+const official=json('verification/2026-09-26/catalog.json') as {documents:{document_id:string;original_path:string;sha256:string;bytes:number;notice_path:string;notice_sha256:string;attachment_url:string;notice_url:string;published_on:string;effective_from:string|null}[]};
 const bundles=manifest.scopes.map(({scope})=>({
   scope, pack:json(`drafts/${scope}/rule-pack.json`) as RulePack,
   template:json(`drafts/${scope}/chapter-template.json`) as ChapterTemplate,
@@ -69,6 +70,22 @@ test('originals, deduplication and exact paragraph/page quotes are reproducible'
     assert.equal(createHash('sha256').update(bytes).digest('hex'),source.sha256);
   }
   for(const {pack} of bundles)for(const source of pack.sources){
+    if(source.source_id.startsWith('ov-')){
+      assert.equal(pack.pack_id,'sse-private');
+      const document=official.documents.find(d=>source.source_id===`ov-${d.document_id}-${source.clause_locator.toLowerCase()}`);
+      assert.ok(document,source.source_id);
+      const notice=source.clause_locator==='NOTICE';
+      const bytes=readFileSync(new URL(notice?document.notice_path:document.original_path,base));
+      assert.equal(createHash('sha256').update(bytes).digest('hex'),source.document_hash);
+      assert.equal(source.document_hash,notice?document.notice_sha256:document.sha256);
+      assert.equal(source.official_url,notice?document.notice_url:document.attachment_url);
+      assert.equal(source.published_on,document.published_on);
+      assert.equal(source.effective_from,document.effective_from);
+      const records=json(`records/OV-${document.document_id}.json`).records;
+      assert.equal(records.find((r:{locator:string})=>r.locator===source.clause_locator)?.text,source.exact_quote);
+      assert.equal(source.kind,'unverified_lead');assert.equal(source.verified_by,null);
+      continue;
+    }
     const id=source.source_id.split('-')[0]!;
     const original=map.get(id);assert.ok(original);
     assert.equal(original.sha256,source.document_hash);

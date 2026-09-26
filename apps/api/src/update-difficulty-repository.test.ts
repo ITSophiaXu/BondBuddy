@@ -79,12 +79,16 @@ test('API transaction-client entry point replays idempotently without owning tra
 });
 
 test('preflight failures distinguish pending inputs from stale locks and persisted data corruption', () => {
+  assert.deepEqual(classifyUpdateDifficultyFailure(new Error('FINANCIAL_MATERIALS_REQUIRED')),
+    { category: 'pending_input', code: 'FINANCIAL_MATERIALS_REQUIRED' });
   assert.deepEqual(classifyUpdateDifficultyFailure(new Error('HISTORICAL_PROFILE_NOT_FOUND')),
     { category: 'pending_input', code: 'HISTORICAL_PROFILE_NOT_FOUND' });
   assert.deepEqual(classifyUpdateDifficultyFailure(new Error('TARGET_INPUT_REVISION_STALE')),
     { category: 'stale_input', code: 'TARGET_INPUT_REVISION_STALE' });
   assert.deepEqual(classifyUpdateDifficultyFailure(new Error('TARGET_INPUT_MANIFEST_INVALID')),
     { category: 'data_integrity', code: 'TARGET_INPUT_MANIFEST_INVALID' });
+  assert.deepEqual(classifyUpdateDifficultyFailure(new Error('INVALID_HISTORICAL_PROFILE_ROW')),
+    { category: 'data_integrity', code: 'INVALID_HISTORICAL_PROFILE_ROW' });
 });
 
 test('locked update loader verifies production-rule-pin v1 manifest digests and preserves legacy locks', async () => {
@@ -259,6 +263,10 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
     const inputHash4 = await addInputLock(seed, 3, 3, finance2, 2026, 'production_rule_pin_v1');
     const snapshot4 = await runEnsure(seed, 3, inputHash4);
     assert.equal(snapshot4.inputHash, inputHash4, 'valid v1 manifests load when their canonical hash matches the input lock');
+
+    await assert.rejects(ensureCurrentUpdateDifficultySnapshotWithClient(makeClient(seed), {
+      ownerUserId: `foreign-owner-${suffix}`, projectId: project, inputRevision: 3, inputHash: inputHash4,
+    }), /PROJECT_NOT_FOUND/, 'a different owner cannot read or create a snapshot for this project');
   } finally {
     seed.release();
     await pool.end();

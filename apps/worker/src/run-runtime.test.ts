@@ -39,10 +39,10 @@ const PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD
 
 function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
   const m = request.material;
-  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: 'bondbuddy-document-parser-1.0.3', status: 'parsed',
+  return { schema_version: 'document-parse-response-v1', request_id: request.request_id, parser_version: documentParserVersion(), status: 'parsed',
     material: { material_id: m.material_id, material_version: m.material_version, media_type: m.media_type, sha256: m.sha256 },
     records: [{ record_id: 'line-1', material_id: m.material_id, material_version: m.material_version, content_hash: m.sha256, locator_type: 'text_line', locator: { line: 1, stable_ref: 'text:l000001' },
-      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: 'bondbuddy-document-parser-1.0.3', confidence: 1, uncertainty: [], formatting: {} }],
+      literal_quote: 'Synthetic audit text', context: 'synthetic', extraction_method: 'native_text', extractor_version: documentParserVersion(), confidence: 1, uncertainty: [], formatting: {} }],
     warnings: [], document: { page_count: null, encoding: 'utf-8' }, error: null } as DocumentParseResponse;
 }
 
@@ -103,10 +103,14 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     [alice, projectId, materialId, snapshotId, evidenceId, contentHash, JSON.stringify({ paragraph: 1 }), parserVersion, hashText(evidenceId)]);
     const observation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
       requestId: randomUUID(), sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: 'synthetic-runtime-issuer' });
-    const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer);
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test',$4,$5) ON CONFLICT DO NOTHING`,
+    [randomUUID(), reviewer, grantor, alice, projectId]);
+    const trustedReviewer = await authorizeIssuerIdentityReviewer(pool, reviewer, { ownerUserId: alice, projectId });
     assert.ok(trustedReviewer);
     await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId, materialId, materialVersion: 1,
-      sourceRecordRowId: observation.id, reviewer: trustedReviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+      sourceRecordRowId: observation.id, reviewer: trustedReviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+      entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic runtime identity', reasonCode: 'synthetic_identity_verified' });
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,job_type,subtype,state,project_id,material_id,material_version,material_sha256,
       parser_version,trace_id,max_attempts,result) VALUES($1,$2,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8::jsonb)`,
     [randomUUID(), alice, projectId, materialId, contentHash, parserVersion, randomUUID(), JSON.stringify({ outcome: 'parsed' })]);
@@ -145,7 +149,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
   try {
     assert.equal(await active(), 0, 'requires a dedicated database');
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [operator, `u${operator.replace(/-/g, '_').toLowerCase()}`.slice(0, 32)]);
-    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [reviewer, `r${randomUUID().replaceAll('-', '').slice(0, 30)}`, grantor, `g${randomUUID().replaceAll('-', '').slice(0, 30)}`]);
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4),($5,$6)', [reviewer, `r${randomUUID().replaceAll('-', '').slice(0, 30)}`, grantor, `g${randomUUID().replaceAll('-', '').slice(0, 30)}`, alice, `o${randomUUID().replaceAll('-', '').slice(0, 30)}`]);
     await pool.query("INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_runtime_test')",
       [randomUUID(), reviewer, grantor]);
     await grantOperator(pool, { userId: operator, role: 'log_reader', grantedBy: 'synthetic-test', reasonCode: 'runtime_test' });
@@ -284,7 +288,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(await runPipelineOnce({ pool, blobs, stages: defaultRunStages() }), 'paused');
     row = await runRow(notReadyRun);
     const pauseReason = (await pool.query("SELECT payload->>'reason' AS reason FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [notReadyRun])).rows[0].reason;
-    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_pack_pin_missing'); assert.equal(row.artifact_id, null);
+    assert.equal(row.state, 'paused'); assert.equal(row.job_stage, 'capability_not_ready'); assert.equal(pauseReason, 'rule_applicability_reference_missing'); assert.equal(row.artifact_id, null);
     assert.equal((await send('POST', `/api/v1/runs/${notReadyRun}/cancel`, { reason: 'cleanup' })).statusCode, 200);
 
     // 8. Pinned materials still parsing -> awaiting_materials; the runtime sweep re-queues after parse succeeds.

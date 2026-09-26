@@ -83,13 +83,14 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       const identitySource = await appendIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId, materialVersion: 1, requestId: `identity-request-${suffix}`,
         sourceRecordId: evidenceId, issuerDisplayName: '合成发行人', entityId: `entity-${suffix}` });
-      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [reviewerGrantId, reviewerId, grantorId]);
+      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [reviewerGrantId, reviewerId, grantorId, owner, projectId]);
       const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
       assert.ok(reviewer);
       const reviewedIdentity = await reviewIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {
         ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: identitySource.id,
-        reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+        reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+        entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic issuer evidence', reasonCode: 'synthetic_identity_verified' });
       assert.equal(reviewedIdentity.decision, 'verified');
 
       const inputResponse = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
@@ -105,7 +106,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
         ownerUserId: owner, projectId, sourceInputRevision: input.input_revision, sourceInputHash: input.input_hash,
         selectedMaterial: { materialId, materialVersion: 1, sha256: materialHash, parseSnapshotId: snapshotId },
         issuerIdentityBinding: { recordId: identitySource.id, version: identitySource.identityVersion,
-          contentHash: identitySource.contentSha256, entityId: `entity-${suffix}`, materialId, materialVersion: 1 },
+          contentHash: identitySource.contentSha256, entityId: 'entity:11111111-1111-4111-8111-111111111111', materialId, materialVersion: 1 },
         asOf: '2025-09-26', documentPurpose: 'registration', requestId: `draft-request-${suffix}`,
         fieldCandidates: [
           { fieldKey: 'market', value: 'sse', sourceKind: 'parse_evidence', sourceStatus: 'recognized',
@@ -132,6 +133,15 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       if (loaded.status !== 'needs_review') assert.fail('draft unexpectedly became production-ready');
       assert.ok(loaded.reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
       assert.equal('request' in loaded, false, 'draft must never return a production rule request');
+
+      await pool.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
+      const staleSelection = await loadInTransaction(pool, { ...exact, mode: 'selection' });
+      assert.ok(staleSelection.reasons.includes('rule_applicability_current_draft_stale'),
+        'a new selection must reject an old project draft');
+      const historicalReplay = await loadInTransaction(pool, { ...exact, mode: 'replay' });
+      assert.ok(!historicalReplay.reasons.includes('rule_applicability_current_draft_stale'),
+        'editing the project draft must not invalidate an immutable source pin');
+      await pool.query('UPDATE bb_projects SET draft_revision=1 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
 
       const replay = await createRuleApplicabilityContextDraft(pool, request);
       assert.equal(replay.contextId, created.contextId);
@@ -239,13 +249,16 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       assert.ok(superseded.reasons.includes('rule_applicability_issuer_identity_stale'));
       assert.equal(superseded.contextPin?.id, created.contextId, 'superseded context remains inspectable by its immutable pin');
 
-      await pool.query('UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now() WHERE id=$1', [reviewerGrantId]);
+      await pool.query("UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1", [reviewerGrantId, grantorId]);
       await pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=1',
         [owner, projectId, materialId]);
       const stale = await loadInTransaction(pool, exact);
       if (stale.status !== 'needs_review') assert.fail('revoked sources unexpectedly became production-ready');
       assert.ok(stale.reasons.includes('rule_applicability_issuer_identity_stale'));
       assert.ok(stale.reasons.includes(`rule_applicability_material_stale:${materialId}:1`));
+      const replacedReplay = await loadInTransaction(pool, { ...exact, mode: 'replay' });
+      assert.ok(replacedReplay.reasons.includes(`rule_applicability_material_stale:${materialId}:1`),
+        'replay must still reject a replaced or deleted pinned material');
       await pool.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, projectId]);
       const draftDrift = await loadInTransaction(pool, { ...exact, currentDraftRevision: 2 });
       assert.deepEqual(draftDrift, { status: 'needs_review', reasons: ['rule_applicability_context_pin_mismatch'] },

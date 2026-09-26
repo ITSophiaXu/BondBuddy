@@ -77,7 +77,7 @@ CMD ["node","apps/api/dist/server.js"]
 FROM node-runtime AS worker
 ARG BB_RELEASE_SHA=unknown
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates util-linux \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=codex --chown=root:root /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
@@ -85,6 +85,8 @@ COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 # Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.
 RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
+# #17 disk-backed parse staging (BB_PARSE_STAGING_DIR); also inherited by a fresh named volume.
+RUN mkdir -p /var/lib/bondbuddy/parse-staging && chown node:node /var/lib/bondbuddy/parse-staging && chmod 0700 /var/lib/bondbuddy/parse-staging
 USER node
 # #17 long-lived WorkerRuntime: leased parse/run slots, sweep, heartbeat (readiness) and, only with
 # BB_PLATFORM_PROBE_ENABLED=1, the operator probe loop. PID 1 is node, so SIGTERM drains and releases leases.
