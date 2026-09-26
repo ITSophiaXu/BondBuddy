@@ -92,7 +92,8 @@
     "storage:lifecycle": "node dist/storage-lifecycle.js",
     "log:ops": "node dist/log-ops.js",
     "trial:health": "node dist/trial-guard.js health",
-    "deletion:lifecycle": "node dist/deletion-lifecycle.js"
+    "deletion:lifecycle": "node dist/deletion-lifecycle.js",
+    "rule-applicability:grants": "node dist/rule-applicability-reviewer-grants.js"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",
