@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool, type PoolClient } from 'pg';
+import { Ajv } from 'ajv';
+import { schemas } from '@bondbuddy/contracts';
 import { createProductionServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer,
@@ -164,7 +166,12 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
           FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id JOIN bb_run_events e ON e.run_id=r.id AND e.state='paused'
           WHERE r.id=$1 ORDER BY e.seq DESC LIMIT 1`, [runId])).rows[0];
         assert.deepEqual(state && [state.state, state.stage, state.error_code, state.reason],
-          ['paused', 'capability_not_ready', null, 'rule_applicability_field_needs_review:market']);
+          ['paused', 'capability_not_ready', null, 'rule_applicability_field_needs_review']);
+        const events = await app.inject({ method: 'GET', url: `/api/v1/runs/${runId}/events`, headers: { origin } });
+        assert.equal(events.statusCode, 200, events.body);
+        assert.ok(new Ajv().validate(schemas.RunEventsResponse, events.json()), events.body);
+        assert.equal((events.json() as { items: Array<{ state: string; payload: { reason?: string } }> }).items
+          .find(event => event.state === 'paused')?.payload.reason, 'rule_applicability_field_needs_review');
       }
       const exact = { ownerUserId: owner, projectId, contextId: created.contextId, version: created.version,
         contentHash: created.contentHash, expectedSourceInputRevision: input.input_revision,

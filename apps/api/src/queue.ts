@@ -441,7 +441,7 @@ export async function upgradeStageCheckpoint(pool:Pool,lease:Lease,stage:string,
  * parsing). It keeps its checkpoint and is never reported as success; resume re-queues it.
  */
 export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAGES[number],reason:string) {
-  if(!RUN_PAUSE_STAGES.includes(stage)||!/^[a-z][A-Za-z0-9_:-]{0,127}$/.test(reason))throw new Problem(422,'VALIDATION_FAILED','Invalid pause');
+  if(!RUN_PAUSE_STAGES.includes(stage)||!/^[a-z][a-z0-9_]{0,63}$/.test(reason))throw new Problem(422,'VALIDATION_FAILED','Invalid pause');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
     await client.query("UPDATE bb_jobs SET state='paused',stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId,stage]);
