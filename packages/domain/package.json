@@ -12,7 +12,8 @@
     "./historical-native-extractor-version": { "types": "./dist/historical-native-extractor-version.d.ts", "default": "./dist/historical-native-extractor-version.js" },
     "./reference-match": { "types": "./dist/reference-match.d.ts", "default": "./dist/reference-match.js" },
     "./reference-source-selection": { "types": "./dist/reference-source-selection.d.ts", "default": "./dist/reference-source-selection.js" },
-    "./historical-profile-correction": { "types": "./dist/historical-profile-correction.d.ts", "default": "./dist/historical-profile-correction.js" }
+    "./historical-profile-correction": { "types": "./dist/historical-profile-correction.d.ts", "default": "./dist/historical-profile-correction.js" },
+    "./sse-private-applicability": { "types": "./dist/sse-private-applicability-taxonomy.d.ts", "default": "./dist/sse-private-applicability-taxonomy.js" }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
