@@ -1,0 +1,77 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "project-list-query-global",
+      "schema": "ProjectListQuery",
+      "valid": true,
+      "value": {
+        "q": "合成发行人 %_",
+        "kind": "update",
+        "status": "awaiting_input",
+        "archive": "all",
+        "limit": "25"
+      }
+    },
+    {
+      "name": "project-list-query-invalid-state",
+      "schema": "ProjectListQuery",
+      "valid": false,
+      "value": {
+        "status": "complete"
+      }
+    },
+    {
+      "name": "project-archive-request",
+      "schema": "ProjectArchiveRequest",
+      "valid": true,
+      "value": {
+        "archived": true
+      }
+    },
+    {
+      "name": "project-archive-string-not-boolean",
+      "schema": "ProjectArchiveRequest",
+      "valid": false,
+      "value": {
+        "archived": "true"
+      }
+    },
+    {
+      "name": "project-list-new-failure-old-success",
+      "schema": "ProjectListResponse",
+      "valid": true,
+      "value": {
+        "items": [
+          {
+            "project_id": "synthetic-project",
+            "name": "合成项目",
+            "draft_revision": 2,
+            "updated_at": "2026-09-26T01:00:00.000Z",
+            "kind": "update",
+            "issuer_name": "合成发行人",
+            "market": "sse",
+            "offering": "private",
+            "status": "failed",
+            "archived_at": null,
+            "latest_run": {
+              "run_id": "synthetic-run-2",
+              "state": "failed",
+              "updated_at": "2026-09-26T01:00:00.000Z"
+            },
+            "latest_artifact": {
+              "artifact_id": "synthetic-artifact-1",
+              "run_id": "synthetic-run-1",
+              "version": 1,
+              "created_at": "2026-09-25T01:00:00.000Z"
+            }
+          }
+        ],
+        "page": {
+          "has_more": false,
+          "next_cursor": null
+        }
+      }
+    }
+  ]
+}

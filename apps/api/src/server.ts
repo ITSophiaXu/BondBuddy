@@ -1,3 +1,4 @@
+import { listProjects, archiveProject } from './project-list.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
@@ -121,12 +122,10 @@ export function createServer(settings: Settings = {}) {
   app.get('/openapi.json', async () => openApiDocument());
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   installFactReviewRoutes(app,{db,owner});
-  app.get('/api/v1/projects', async request => {
-    const user = await owner(request); const cursor = (request.query as {cursor?:string}).cursor;
-    const rows = await db().query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND deleted_at IS NULL AND ($2::text IS NULL OR id>$2) ORDER BY id LIMIT 51',[user,cursor ?? null]);
-    const items = rows.rows.slice(0,50).map(p => ({project_id:p.id,name:p.name,draft_revision:p.draft_revision,updated_at:date(p.updated_at)}));
-    return { items, page:{has_more:rows.rows.length>50,next_cursor:rows.rows.length>50 ? items.at(-1)?.project_id : null} };
-  });
+  app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
+    listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
+  app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
+    archiveProject(db(),await owner(request),param(request,'project_id'),body<{archived:boolean}>(request).archived));
   app.post('/api/v1/projects',{schema:{body:schemas.ProjectCreateRequest}},async (request,reply) => {
     const user=await owner(request), b=body<{name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);

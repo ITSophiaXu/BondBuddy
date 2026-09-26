@@ -2,7 +2,7 @@
 
 沿用 `product-prototype/public/` 的绿色、纸色与侧栏布局，使用 Vite、原生 ES modules 和 TypeScript，逐页接入 M1 `/api/v1`。#11 在已有页面、API client 和保存流程中扩展完整业务表单；对应契约集中在 `packages/contracts`，数据库新增 `0013_m1_update_project_details.sql`。
 
-已实现：已有用户名密码账号登录/退出、Cookie 会话刷新、本人真实项目分页列表、已加载项目的名称搜索和最近修改排序、新建更新项目、完整草稿自动保存，以及 409 冲突和网络失败的明确反馈。项目页从公共契约读取固定材料分区；每个文件单独创建上传会话、传输原始字节、等待服务端核验并完成登记。浏览器 XHR 上传事件提供真实字节进度，100% 后保持“正在保存和核验”，直到 API 返回 `MaterialResponse`。每个文件可独立重试或取消；结果不确定时先刷新服务器记录，避免盲目重传。没有写入 localStorage/sessionStorage 的项目、密码、令牌、文件字节或演示成果；其他标签页登录/退出会清除当前页面的个人数据。
+已实现：已有用户名密码账号登录/退出、Cookie 会话刷新、本人真实项目分页列表、全量名称/发行人搜索、类型/任务状态筛选、最近活动排序及归档/恢复、新建更新项目、完整草稿自动保存，以及 409 冲突和网络失败的明确反馈。项目页从公共契约读取固定材料分区；每个文件单独创建上传会话、传输原始字节、等待服务端核验并完成登记。浏览器 XHR 上传事件提供真实字节进度，100% 后保持“正在保存和核验”，直到 API 返回 `MaterialResponse`。每个文件可独立重试或取消；结果不确定时先刷新服务器记录，避免盲目重传。没有写入 localStorage/sessionStorage 的项目、密码、令牌、文件字节或演示成果；其他标签页登录/退出会清除当前页面的个人数据。
 
 ## #11 更新表单
 
@@ -66,15 +66,29 @@ BB_E2E_REAL_API=1 BB_E2E_LIVE=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
 
 `BB_E2E_TERMS_VERSION` 必须匹配端口 3000 专用 API 的 `BB_TERMS_VERSION`。Vite 代理 `/api/v1` 到该 API；project-events 测试使用真实 PostgreSQL、真实登录/上传接口和 Azurite Blob，关闭整个浏览器上下文后重新登录，并检查删除后不会恢复为已保存材料。既有 `BB_E2E_LIVE=1 BB_E2E_BASE_URL=...` 项目与账号测试独立覆盖 Cookie/API 流程。浏览器的本地 TLS 验证不代表生产 TLS 已验收。截图和失败上下文写入系统临时目录，不进入仓库。
 
-## 尚待交付的 #10 范围
+## #10 项目管理与相邻功能边界
 
-- 列表接口当前只返回名称、ID、草稿修订号和更新时间。本切片不把它们伪装成任务状态；搜索/排序仅作用于已加载项目，页面明确显示范围，提供继续加载。
-- 全局名称/发行人搜索、类型/状态筛选、最近成果和归档/恢复，需要 Felix 扩展正式查询与变更契约。不能用本地缓存模拟云端归档。
+- `GET /projects` 在本人未删除项目中执行全量名称/发行人字面包含搜索，按类型、实际任务状态和归档状态筛选；`q/kind/status/archive/limit/cursor` 统一定义在 `ProjectListQuery`。默认只显示未归档项目，每页 50、最多 100 条；按最近草稿/当前任务活动及 ID 倒序，用保留数据库微秒精度的不透明游标继续加载。修改筛选会清空游标，刷新保留 URL 中的筛选；中文输入法组合期间不提交半截搜索。
+- 无 run 的项目显示草稿；有非终态 run 时优先显示它，否则显示最新 run 状态。最近成功成果独立查询，后续失败不会隐藏旧成功 Word。点击下载再经既有 owner/grant/hash 检查，不发起模型或新任务；列表元数据不冒充文件当前可下载性。
+- `POST /projects/{id}/archive` 设置归档状态；重复提交相同状态无新事件。归档/恢复与对应 outbox 同事务提交，不更改草稿修订、输入快照、运行任务、材料、成果或下载授权。新增迁移 `0043_m1_project_archive.sql`；公开 DTO 的新增展示字段为兼容性可选字段，当前服务端始终返回。
 - 完整表单由 #11 接入持久化；原稿识别只读展示见上文 #12，源目标难度计算与执行门禁仍待完整联调。上传页面使用 `/projects/{id}/events` 的项目游标发现当前材料，再通过 owner-scoped material read 读取明细。服务端只在材料字节校验并持久化后写入终态 `material.upload_progress`；分页最多 100 条，已删除材料不出现在恢复结果中，缺失 Blob 的材料读取返回 404。若恢复失败，页面清除恢复列表而不保留过期的“已保存”状态。默认 browser fixture 拦截 API，是合成 UI 验证；`project-events.integration.spec.ts` 在本地 PostgreSQL/Azurite API 下关闭浏览器上下文并重新登录，验证真实 API/Blob 恢复与删除隐藏。
 - 服务端上传会话、原始字节 PUT 和完成登记已有 API 路由。上传去重与格式边界证据见 `UPLOAD-ACCEPTANCE.md`，原生 DOCX 上传后识别/去重/恢复证据见 `MATERIAL-PROCESSING-ACCEPTANCE.md`。真实缺页/缺附注判断、扫描件 OCR 自动接入、大文件压测及授权材料准确率仍未完整验收；不宣称杀毒或扫描认证，也不启动全文更新。
 - 识别结果已接入只读展示；源信息校正、多轮对话和真实执行尚未开放，页面没有可执行的占位按钮。用户端不出现募集书库、相似稿推荐、充值或演示账务。
 - 登录页提供登录与注册，不提供未经验证的找回流程。会话彻底失效后清除页面内个人数据，只有已保存内容能够恢复。
-- #10/#8/#12 保持开放。合成上传 UI 测试不等于真实账号、Blob、保留期限、事件恢复、备份或完整 M1 上线验收。
+- #10 的项目管理可按下述独立验收；#12/#14/#18/#34 的解析质量、多轮对话、真实生成和 Office 兼容性仍属于各自验收，不由项目列表代替。#7/#8 已关闭。
+
+### #10 验证（2026-09-26）
+
+`apps/api/src/project-list.test.ts` 在独立 PostgreSQL 16/Azurite 上覆盖 62 项分页及微秒相同的游标、跨页发行人/字面特殊字符搜索、类型/任务状态、归档账号隔离/幂等/事务回滚、运行中归档不取消，以及新版失败后旧成功 DOCX 的真实下载。合成数据仅在测试库内生成。
+
+`tests/project-management-live.spec.ts` 通过真实 API 创建 52 个合成项目，搜索第一页以外的发行人、筛选/刷新、上传 PDF、归档，再关闭整个浏览器上下文后重登/恢复项目与已保存字段/材料。复用 `live.spec.ts` 验证改名保存、409 保留本地输入、账号隔离与窄屏；`project-events.integration.spec.ts` 验证持久材料重登恢复及删除隐藏。1440×960 和 390×844 已检查，无横向溢出。Browser 插件未提供，使用仓库 Playwright；未部署到生产，不代表全文生成或 Windows Office 验收。
+
+运行方式与上面的 live 环境相同，聚焦命令：
+
+```sh
+BB_TEST_DATABASE_URL=... BB_TEST_AZURITE_CONNECTION_STRING=... node --test apps/api/dist/project-list.test.js
+BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TERMS_VERSION=synthetic-web-test-v1 npm test -w @bondbuddy/web
+```
 
 ## #9 账号设置页
 
