@@ -95,6 +95,8 @@ export interface ReviewedRuleApplicabilityContextArgs {
   readonly expectedSourceInputHash: string;
   /** Current project draft revision at the point of production pinning/recovery. */
   readonly currentDraftRevision: number;
+  /** Server-selected mode: only a run with a stored production pin may replay. */
+  readonly mode?: 'selection' | 'replay';
   /** Full material set resolved by the server for the current input request, not browser-provided hashes. */
   readonly currentMaterialVersions: readonly { readonly materialId: string; readonly materialVersion: number; readonly sha256: string }[];
   readonly expectedIssuerBinding: {
@@ -532,8 +534,8 @@ export async function loadReviewedRuleApplicabilityContext(
     }
     const currentDraft = await db.query(`SELECT draft_revision FROM bb_projects
       WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL`, [expected.ownerUserId, expected.projectId]);
-    if (!currentDraft.rows.length || Number(currentDraft.rows[0]!.draft_revision) !== expected.currentDraftRevision ||
-        Number(input.rows[0]?.draft_revision) !== expected.currentDraftRevision) {
+    if (!currentDraft.rows.length || Number(input.rows[0]?.draft_revision) !== expected.currentDraftRevision ||
+        (expected.mode !== 'replay' && Number(currentDraft.rows[0]!.draft_revision) !== expected.currentDraftRevision)) {
       reasons.push('rule_applicability_current_draft_stale');
     }
     const requestMaterials = expected.currentMaterialVersions.map((item) => ({ ...item, sha256: item.sha256.toLowerCase() }))
