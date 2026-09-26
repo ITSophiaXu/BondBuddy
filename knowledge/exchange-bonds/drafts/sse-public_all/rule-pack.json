@@ -1,8 +1,8 @@
 {
   "schema_version": "rule-pack-v1",
   "pack_id": "sse-public_all",
-  "version": "2026.09.25-draft.1",
-  "supersedes_version": null,
+  "version": "2026.09.26-draft.2",
+  "supersedes_version": "2026.09.25-draft.1",
   "status": "draft",
   "scope": {
     "market": "sse",
@@ -20,7 +20,7 @@
   },
   "validity": {
     "published_on": null,
-    "effective_from": "2026-09-25",
+    "effective_from": "2026-09-26",
     "effective_to": null,
     "transition_terms": [
       "此日期只是知识整理基准日，非法规生效日。全部source有效时点待官方复核；不得用于生产能力开放。"
@@ -1230,7 +1230,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1311,7 +1311,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1390,7 +1390,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1471,7 +1471,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1551,7 +1551,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1630,7 +1630,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1708,7 +1708,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1786,7 +1786,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1864,7 +1864,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1944,7 +1944,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2023,7 +2023,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2100,7 +2100,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2179,7 +2179,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2260,7 +2260,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2339,7 +2339,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2417,7 +2417,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2498,7 +2498,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2579,7 +2579,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2656,7 +2656,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2734,7 +2734,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2812,7 +2812,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2891,7 +2891,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2968,7 +2968,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3046,7 +3046,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "深交所投资者权益保护参考文本未在本批材料内，具体保护条款仍为未覆盖。"
@@ -3125,7 +3125,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3207,7 +3207,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3285,7 +3285,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "所有专项品种完整规则与样本验收属于增量包，基础包当前未覆盖。"
@@ -3365,7 +3365,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "WPS/Word渲染、修订还原、真实生成质量均需产品交付验收，非本次知识整理所证明。"
@@ -3422,7 +3422,7 @@
         "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#schema — six exact-scope drafts validate",
         "result": "passed",
         "reviewed_by": "engineering-fixture-author",
-        "reviewed_at": "2026-09-25T08:57:39Z"
+        "reviewed_at": "2026-09-26T13:45:00Z"
       },
       {
         "case_id": "sse-public_all-unverified",
@@ -3430,7 +3430,7 @@
         "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#unverified — enabling an unverified rule is rejected",
         "result": "passed",
         "reviewed_by": "engineering-fixture-author",
-        "reviewed_at": "2026-09-25T08:57:39Z"
+        "reviewed_at": "2026-09-26T13:45:00Z"
       },
       {
         "case_id": "sse-public_all-publication",
@@ -3438,7 +3438,7 @@
         "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#publication — incomplete coverage cannot be published",
         "result": "passed",
         "reviewed_by": "engineering-fixture-author",
-        "reviewed_at": "2026-09-25T08:57:39Z"
+        "reviewed_at": "2026-09-26T13:45:00Z"
       }
     ]
   },

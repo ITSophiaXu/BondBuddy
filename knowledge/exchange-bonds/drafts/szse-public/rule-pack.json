@@ -1,8 +1,8 @@
 {
   "schema_version": "rule-pack-v1",
   "pack_id": "szse-public",
-  "version": "2026.09.25-draft.1",
-  "supersedes_version": null,
+  "version": "2026.09.26-draft.2",
+  "supersedes_version": "2026.09.25-draft.1",
   "status": "draft",
   "scope": {
     "market": "szse",
@@ -20,7 +20,7 @@
   },
   "validity": {
     "published_on": null,
-    "effective_from": "2026-09-25",
+    "effective_from": "2026-09-26",
     "effective_to": null,
     "transition_terms": [
       "此日期只是知识整理基准日，非法规生效日。全部source有效时点待官方复核；不得用于生产能力开放。"
@@ -1100,6 +1100,758 @@
       "verified_at": null
     },
     {
+      "source_id": "ex039-p00016",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00016",
+      "exact_quote": "第六条 同时符合下列情形的发行人，本所可以对其公司债券申请项目适用优化审核安排：",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00017",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00017",
+      "exact_quote": "（一）生产经营符合国家宏观调控政策和产业政策，市场认可度高，行业地位显著，公司治理完善，信息披露规范；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00018",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00018",
+      "exact_quote": "（二）经营财务状况稳健且相关财务指标符合附件一所列要求；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00019",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00019",
+      "exact_quote": "（三）最近三年财务报告未被注册会计师出具否定意见或者无法表示意见，或者最近三年财务报告曾被注册会计师出具保留意见但保留意见所涉及事项的重大影响已经消除；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00020",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00020",
+      "exact_quote": "（四）最近三十六个月内公司及其所属企业集团、实际控制人不存在债券或者其他债务违约或者延迟支付本息的事实；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00021",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00021",
+      "exact_quote": "（五）未受到债券融资限制，且最近三十六个月内公司未因债券业务违规被实施行政处罚或者纪律处分；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00022",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00022",
+      "exact_quote": "（六）本所根据投资者保护需要规定的其他要求。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00024",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00024",
+      "exact_quote": "第七条 不符合本指引第六条第一款第二项规定，但符合下列情形之一的发行人，本所可以对其公司债券申请项目适用优化审核安排：",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00025",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00025",
+      "exact_quote": "（一）最近两年信息披露工作评价结果为A，且资产总额不低于200亿元、净资产收益率不低于2%的上市公司；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00026",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00026",
+      "exact_quote": "（二）在全球市场、国家重点支持行业领域内具有领先地位的企业；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00027",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00027",
+      "exact_quote": "（三）本所根据国家政策导向和市场发展需要认可的其他发行人。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00028",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00028",
+      "exact_quote": "前款第一项所称资产总额、净资产收益率，应当按照企业最近一年经审计的财务数据进行计算，或者按照最近三年经审计的财务数据分别进行计算后取平均值，两者按照孰优原则选择。净资产收益率按照《公开发行证券的公司信息披露编报规则第9号——净资产收益率和每股收益的计算及披露》规定的公式进行计算。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00029",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00029",
+      "exact_quote": "第八条 发行人符合本指引第六条、第七条规定条件的，可以按照附件二参考格式以书面形式向本所说明其符合优化审核认定标准。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00030",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00030",
+      "exact_quote": "本所经确认，向发行人出具适用优化审核安排确认函。确认函出具后三十六个月内，发行人向本所申请发行公司债券的，可以适用本指引规定的优化审核安排。优化审核安排到期后，仍符合认定标准的企业，经本所认可并重新出具确认函后，可以继续适用相关安排。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00054",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00054",
+      "exact_quote": "第十五条 本指引自发布之日起施行。本所于2023年10月20日发布的《深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2023年修订）》（深证上〔2023〕986号）同时废止。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00068",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00068",
+      "exact_quote": "批发和零售业，居民服务、修理和其他服务业，租赁和商务服务业，住宿和餐饮业，农林牧渔业，教育，卫生和社会工作，文化、体育和娱乐业",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00069",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00069",
+      "exact_quote": "＞800",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00070",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00070",
+      "exact_quote": "＜75",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00071",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00071",
+      "exact_quote": "＞2.5",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00072",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00072",
+      "exact_quote": "电力、热力、燃气及水生产和供应业，交通运输、仓储和邮政业，信息传输、软件和信息技术服务业",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00073",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00073",
+      "exact_quote": "＞1000",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00074",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00074",
+      "exact_quote": "＜85",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00075",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00075",
+      "exact_quote": "＞2.5",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00076",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00076",
+      "exact_quote": "建筑业，水利、环境和公共设施管理业，综合",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00077",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00077",
+      "exact_quote": "＞1200",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00078",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00078",
+      "exact_quote": "＜85",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00079",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00079",
+      "exact_quote": "＞2.5",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00080",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00080",
+      "exact_quote": "制造业，采矿业，科学研究和技术服务业",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00081",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00081",
+      "exact_quote": "＞1000",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00082",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00082",
+      "exact_quote": "＜80",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00083",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00083",
+      "exact_quote": "＞2.5",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00086",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00086",
+      "exact_quote": "2.资产总额、资产负债率、总资产报酬率应当按企业最近一年经审计的财务数据进行计算，或者按最近三年经审计的财务数据分别进行计算后取平均值，两者按孰优原则选择。其中，总资产报酬率（%）=EBIT（息税前盈余）/总资产平均余额×100%；EBIT=利润总额+费用化利息支出。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00087",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00087",
+      "exact_quote": "3.发行人符合下列条件之一的，经本所审慎确认后，资产负债率或者总资产报酬率其一符合上表中分行业经营财务指标要求即可，但总资产报酬率应当不低于1.5%：",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00088",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00088",
+      "exact_quote": "（1）资产规模不少于2,500亿元；",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00089",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00089",
+      "exact_quote": "（2）由中国证监会派出机构或者省级政府主管部门推荐并经本所认可，且资产总额满足分行业经营财务指标要求的企业。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00033",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00033",
+      "exact_quote": "第九条 知名成熟发行人可以按照下列方式编制、提交申请文件：",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00034",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00034",
+      "exact_quote": "（一）一般公司债券、企业债券以及专项品种公司债券可以合并编制申请文件并统一申报。申报的公司债券发行规模等应当符合法定发行条件，申报阶段无需明确募集资金具体使用安排。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00035",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00035",
+      "exact_quote": "（二）债券品种、债券期限、募集资金具体使用计划、债项评级（如有）、受托管理人等信息可以在各期债券发行前补充披露；企业债券募集资金用于补充流动资金等非项目建设用途的比例不超过50%。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00036",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00036",
+      "exact_quote": "（三）发行人可以适用本所简明信息披露安排，按照本所简明信息披露相关规定，通过列表、索引等形式简化发行申请文件和信息披露，在保证信息披露质量的前提下，提高信息披露的针对性和有效性。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00037",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00037",
+      "exact_quote": "（四）不存在影响公司经营或者偿债能力的重大不利变化，且不存在影响发行条件的重大事项的，发行人可以申请适当延长年度、半年度财务报表有效期。年度财务报表有效期最多延长至当年8月末，半年度财务报表有效期最多延长至次年4月末。已披露季度财务报告的，应当同步披露季度主要财务数据。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00038",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00038",
+      "exact_quote": "（五）董事、监事（如有）、高级管理人员在对发行申请文件真实性、准确性和完整性的确认意见中，承诺发行申请文件不存在虚假记载、误导性陈述或者重大遗漏，且将持续履行相关职责，确保每期债券发行文件真实、准确、完整的，后续每期债券发行前可以无需另行签署确认意见。发行阶段董事、监事（如有）、高级管理人员较前次签署确认意见时发生变化的，新任人员应当签署书面确认意见。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00039",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00039",
+      "exact_quote": "（六）审计机构已对发行人前期募集说明书中引用的审计报告内容出具过声明页，确认募集说明书与审计报告不存在矛盾，并经主承销商核查本期债券发行文件引用的审计报告内容与前期一致的，每期债券发行前审计机构无需再次签署相关声明。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00040",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00040",
+      "exact_quote": "第十条 知名成熟发行人可以设立主承销商团，但应当在每期债券发行前确定该期债券的主承销商。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00042",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00042",
+      "exact_quote": "第十二条 知名成熟发行人可以在中国证监会出具的注册批复或者本所出具的挂牌条件确认文件到期前六个月内再次申请发行公司债券；不存在重大变化的，知名成熟发行人可以在符合《公司债券发行与交易管理办法》等规定的前提下，简化编制公司债券发行申请文件。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex026-p00150",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第1号——申请文件及其编制要求（2023年修订）",
+      "source_version": "provided-2023",
+      "official_url": null,
+      "document_hash": "7c7f890afb19cead9b54e344cccfd021ab041aaff1708cd0e2945d66cdd86240",
+      "clause_locator": "P00150",
+      "exact_quote": "发行人应当简要披露其基本情况，所属行业参照《中国上市公司协会上市公司行业统计分类指引》予以明确。",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex016-p00607",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指南第1号——募集说明书（参考文本）（2024年修订）",
+      "source_version": "reference-2024",
+      "official_url": null,
+      "document_hash": "87dd71922ab8beab39d1d4f80d4b68479f119245f47ac47d5664472ba83254bc",
+      "clause_locator": "P00607",
+      "exact_quote": "所属行业：（参照《中国上市公司协会上市公司行业统计分类指引》划分）",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "ex039-p00085",
+      "kind": "unverified_lead",
+      "authority": "深圳证券交易所",
+      "document_title": "深圳证券交易所公司债券发行上市审核业务指引第3号——优化审核安排（2026年修订）",
+      "source_version": "provided-2026",
+      "official_url": "https://docs.static.szse.cn/www/lawrules/rule/bond/W020260904500754978071.docx",
+      "document_hash": "80355dc508cc772d1adf19d2bdd928b96499f281216a4db37ebfdc3ab2939534",
+      "clause_locator": "P00085",
+      "exact_quote": "1.发行人应当参照《中国上市公司协会上市公司行业统计分类指引》确认所属行业。",
+      "published_on": "2026-09-04",
+      "effective_from": "2026-09-04",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
       "source_id": "ex038-p00448",
       "kind": "unverified_lead",
       "authority": "用户提供的专家指南作者（未登记签认人）",
@@ -1389,7 +2141,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1468,7 +2220,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1546,7 +2298,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1626,7 +2378,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1705,7 +2457,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1782,7 +2534,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1859,7 +2611,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -1936,7 +2688,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2015,7 +2767,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2096,7 +2848,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2173,7 +2925,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2251,7 +3003,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2332,7 +3084,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2410,7 +3162,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2488,7 +3240,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2569,7 +3321,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2649,7 +3401,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2726,7 +3478,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2803,7 +3555,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2882,7 +3634,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -2963,7 +3715,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3042,7 +3794,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3118,7 +3870,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "深交所投资者权益保护参考文本未在本批材料内，具体保护条款仍为未覆盖。"
@@ -3196,7 +3948,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3275,7 +4027,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "普通公司债基础包；特殊主体、专项品种及过渡项目另行判断。"
@@ -3353,7 +4105,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "所有专项品种完整规则与样本验收属于增量包，基础包当前未覆盖。"
@@ -3399,6 +4151,289 @@
       "owner_role": "industry_reviewer"
     },
     {
+      "rule_id": "szse-public-szse-mature-qualification-2026",
+      "version": "1",
+      "title": "深交所2026优化审核资格与版本",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex039-p00016",
+        "ex039-p00017",
+        "ex039-p00018",
+        "ex039-p00019",
+        "ex039-p00020",
+        "ex039-p00021",
+        "ex039-p00022",
+        "ex039-p00024",
+        "ex039-p00025",
+        "ex039-p00026",
+        "ex039-p00027",
+        "ex039-p00028",
+        "ex039-p00029",
+        "ex039-p00030",
+        "ex039-p00054",
+        "ex039-p00068",
+        "ex039-p00069",
+        "ex039-p00070",
+        "ex039-p00071",
+        "ex039-p00072",
+        "ex039-p00073",
+        "ex039-p00074",
+        "ex039-p00075",
+        "ex039-p00076",
+        "ex039-p00077",
+        "ex039-p00078",
+        "ex039-p00079",
+        "ex039-p00080",
+        "ex039-p00081",
+        "ex039-p00082",
+        "ex039-p00083",
+        "ex039-p00086",
+        "ex039-p00087",
+        "ex039-p00088",
+        "ex039-p00089"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "regulatory_as_of",
+        "recognition_letter",
+        "audited_metrics",
+        "audit_opinions",
+        "default_history",
+        "sanctions",
+        "industry_classification"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.26-draft.2"
+      },
+      "exceptions": [
+        "优化审核是有条件的程序安排，不等于发行条件已满足；待审核确认函/口径/时点时不得启用豁免。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "2026年9月4日起的研究视图采用2026优化审核指引，2023版保留追溯。第六条各条件须同时核验，第七条仅针对第六条第一款第二项财务指标设置替代路径，不能免除其他条件。指标使用最近一年经审计数据或最近三年分别计算后的平均值，按原文孰优原则及具体指标公式处理；附件中的＞、＜不能改成≥、≤。取得交易所确认函才可适用，确认函出具后三十六个月与存量确认函过渡问题分别核验；不得把修订说明直接用于自动延长旧函。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-public-szse-mature-qualification-2026-pos",
+          "summary": "各条件、真实确认函和本期适用期间均有证据，再审核相应优化措施。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:szse-mature-qualification-2026-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-public-szse-mature-qualification-2026-neg",
+          "summary": "指标正好2.5%却将附件＞2.5%误判为达标，或无确认函直接适用。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:szse-mature-qualification-2026-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-public-szse-mature-qualification-2026-bound",
+          "summary": "旧函在2026修订前签发，过渡依据不足时不能自动按36个月延长。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:szse-mature-qualification-2026-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-public-szse-mature-measures-2026",
+      "version": "1",
+      "title": "深交所优化审核披露与签章边界",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex039-p00033",
+        "ex039-p00034",
+        "ex039-p00035",
+        "ex039-p00036",
+        "ex039-p00037",
+        "ex039-p00038",
+        "ex039-p00039",
+        "ex039-p00040",
+        "ex039-p00042"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "document_stage",
+        "recognition_letter",
+        "funds_use",
+        "financial_cutoff",
+        "extension_decision",
+        "signatory_changes",
+        "prior_auditor_statement",
+        "underwriter_check"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.26-draft.2"
+      },
+      "exceptions": [
+        "企业债券非项目用途50%条款仅在对应企业债适用范围判断；不推广给所有普通公司债，不自动生成签字或认定延期已批准。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "只有已确认适用优化审核的项目才审查第九条措施：申请时允许延后补充的信息在每期发行前仍需披露；简明披露不等于删除重大信息。报表延期需要申请且满足无重大不利变化等条件，年报最多当年8月末、半年报最多次年4月末；已经披露季度报告的同步披露主要季度数据。董监高变更时新任人员仍须签署；审计机构免于重复声明须已有声明且主承销商核对本期引用内容一致。主承销商团不能替代本期主承销商的确定。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-public-szse-mature-measures-2026-pos",
+          "summary": "已获确认的适用项目在发行前补齐本期用途及机构，并核验有效的延期依据。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:szse-mature-measures-2026-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-public-szse-mature-measures-2026-neg",
+          "summary": "申报阶段可延后披露被误当成发行稿可继续空缺，或审计报告变化仍沿用旧声明。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:szse-mature-measures-2026-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-public-szse-mature-measures-2026-bound",
+          "summary": "仅有申请延期文字而无处理结论，保留待核，不自动修改有效期。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:szse-mature-measures-2026-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "szse-public-szse-industry-basis",
+      "version": "1",
+      "title": "深交所行业归属与审核重点分别记录",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "ex026-p00150",
+        "ex016-p00607",
+        "ex039-p00085"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-company"
+        ],
+        "investor_scopes": [
+          "professional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "industry_standard",
+        "industry_standard_version",
+        "industry_code",
+        "industry_evidence",
+        "review_focus_tags"
+      ],
+      "checker": {
+        "checker_id": "exchange-manual-evidence-review",
+        "checker_version": "unimplemented.1",
+        "parameter_version": "2026.09.26-draft.2"
+      },
+      "exceptions": [
+        "本批明确标准名称及所涉条文，不提供完整行业码表版本，也不替代#19有权审核及selector映射。"
+      ],
+      "evidence_requirements": [
+        "同主体/期间/口径的原件版本、定位及逐字证据",
+        "当期规则效力和适用性核验",
+        "冲突和不确定事实的处理记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "申请文件第1号指引、募集说明书参考文本及2026优化审核附件均要求参照《中国上市公司协会上市公司行业统计分类指引》。记录标准名称、确切版本、原始代码和支持本期归属的证据；尚未取得完整码表和映射审核时不猜代码。基础行业、城建/地产/集团等并存审核重点、#77合并主营业务前三项分类分别保存；不得把一种场景的行业表推广为全市场无条件默认。",
+        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "szse-public-szse-industry-basis-pos",
+          "summary": "同主体、同口径证据完整且披露与来源一致。",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic-authoring:szse-industry-basis-pos"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "szse-public-szse-industry-basis-neg",
+          "summary": "已有相反的原始证据，但披露仍沿用历史内容。",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic-authoring:szse-industry-basis-neg"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "szse-public-szse-industry-basis-bound",
+          "summary": "来源缺失、冲突或适用性不明，只能列待补证/待判断。",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic-authoring:szse-industry-basis-bound"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
       "rule_id": "szse-public-document-delivery",
       "version": "1",
       "title": "全文更新、定位和Word交付",
@@ -3432,7 +4467,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.25-draft.1"
+        "parameter_version": "2026.09.26-draft.2"
       },
       "exceptions": [
         "WPS/Word渲染、修订还原、真实生成质量均需产品交付验收，非本次知识整理所证明。"
@@ -3489,7 +4524,7 @@
         "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#schema — six exact-scope drafts validate",
         "result": "passed",
         "reviewed_by": "engineering-fixture-author",
-        "reviewed_at": "2026-09-25T08:57:39Z"
+        "reviewed_at": "2026-09-26T13:45:00Z"
       },
       {
         "case_id": "szse-public-unverified",
@@ -3497,7 +4532,7 @@
         "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#unverified — enabling an unverified rule is rejected",
         "result": "passed",
         "reviewed_by": "engineering-fixture-author",
-        "reviewed_at": "2026-09-25T08:57:39Z"
+        "reviewed_at": "2026-09-26T13:45:00Z"
       },
       {
         "case_id": "szse-public-publication",
@@ -3505,7 +4540,7 @@
         "evidence_ref": "packages/domain/src/exchange-knowledge.test.ts#publication — incomplete coverage cannot be published",
         "result": "passed",
         "reviewed_by": "engineering-fixture-author",
-        "reviewed_at": "2026-09-25T08:57:39Z"
+        "reviewed_at": "2026-09-26T13:45:00Z"
       }
     ]
   },

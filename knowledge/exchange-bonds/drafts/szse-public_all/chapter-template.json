@@ -1,7 +1,7 @@
 {
   "schema_version": "chapter-template-v1",
   "template_id": "szse-public_all-chapters",
-  "version": "2026.09.25-draft.1",
+  "version": "2026.09.26-draft.2",
   "rule_pack_id": "szse-public_all",
   "market": "szse",
   "offering": "public_all",

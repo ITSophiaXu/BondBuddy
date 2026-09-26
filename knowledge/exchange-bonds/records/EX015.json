@@ -2,7 +2,7 @@
   "source_id": "EX015",
   "original_sha256": "c4a19e6be63b27c3eb0962561bbca44a3a8761549328614375b6c315b2423620",
   "parse_status": "extracted_ooxml",
-  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments separate. Not layout/OCR verification.",
+  "extraction": "DOCX document.xml w:p indices (including empty/table paragraphs); PDF physical pages. Comments, footnotes and endnotes separate. Not layout/OCR verification.",
   "records": [
     {
       "locator": "P00005",
@@ -112,17 +112,26 @@
     {
       "locator": "P00056",
       "text": "第一部分  特殊发行条款",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-1"
+      ]
     },
     {
       "locator": "P00058",
       "text": "□1.1票面利率调整选择权",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-2"
+      ]
     },
     {
       "locator": "P00059",
       "text": "1.1.1发行人有权在本期债券存续期的○第______年末或○【其他时间】______○上调○下调○调整本期债券后续计息期间的票面利率。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-3"
+      ]
     },
     {
       "locator": "P00060",
@@ -147,7 +156,10 @@
     {
       "locator": "P00064",
       "text": "○【其他】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-4"
+      ]
     },
     {
       "locator": "P00065",
@@ -157,7 +169,10 @@
     {
       "locator": "P00066",
       "text": "○【如第1.1.1条选择上调】调整后的票面利率等于基准利率○加______个基点，其中1个基点为0.01%○上浮______%○上浮一定幅度，具体幅度以发行人发布的票面利率调整实施公告为准。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-5"
+      ]
     },
     {
       "locator": "P00067",
@@ -197,7 +212,10 @@
     {
       "locator": "P00074",
       "text": "1.2.1债券持有人有权在本期债券存续期的○第______年末或○【其他时间】______将其持有的全部或部分本期债券回售给发行人。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-6"
+      ]
     },
     {
       "locator": "P00075",
@@ -262,12 +280,18 @@
     {
       "locator": "P00087",
       "text": "1.2.4为确保回售顺利实施和保障投资者合法权益，发行人可以在本次回售实施过程中决定延长已披露的回售登记期，或者新增回售登记期。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-7"
+      ]
     },
     {
       "locator": "P00088",
       "text": "发行人承诺将于原有回售登记期终止日前___3___个交易日，或者新增回售登记期起始日前___3___个交易日及时披露延长或者新增回售登记期的公告，并于变更后的回售登记期结束日前至少另行发布一次回售实施提示性公告。新增的回售登记期间至少为1个交易日。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-8"
+      ]
     },
     {
       "locator": "P00089",
@@ -282,7 +306,10 @@
     {
       "locator": "P00091",
       "text": "1.3.1发行人有权在本期债券存续期间的○第______年末或○【其他时间】______赎回本期债券全部未偿份额。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-9"
+      ]
     },
     {
       "locator": "P00092",
@@ -322,7 +349,10 @@
     {
       "locator": "P00099",
       "text": "1.4.1发行人将在本期债券存续期间的______年______月______日、______年______月______日、______年______月______日，按照_______%、______%、______%的比例对本期债券的全部本金进行分期偿还。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-10"
+      ]
     },
     {
       "locator": "P00100",
@@ -457,17 +487,27 @@
     {
       "locator": "P00126",
       "text": "○（1）发行人○母公司○合并财务报表范围内重要子公司○【其他主体】______一年内累计债务逾期超过发行人○母公司财务报表○合并财务报表○【其他主体财务报表】上年末净资产的___20___%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-11",
+        "FOOTNOTE-12"
+      ]
     },
     {
       "locator": "P00127",
       "text": "○（2）本期债券二级市场价格○连续___5___个交易日低于___面值的85%___或者低于估值超过___20___%○一个季度内累计___10___个交易日低于___面值的85%___或者低于估值超过___20___%○【其他】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-13"
+      ]
     },
     {
       "locator": "P00128",
       "text": "○（3）本期债券二级市场价格○连续___3___个交易日○一个季度内发生___5次以上___较大价格波动○【其他】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-14"
+      ]
     },
     {
       "locator": "P00129",
@@ -497,7 +537,10 @@
     {
       "locator": "P00134",
       "text": "（4）发行人承诺，以现金形式支付本次债券购回价款。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-15"
+      ]
     },
     {
       "locator": "P00135",
@@ -532,7 +575,10 @@
     {
       "locator": "P00141",
       "text": "□1.7投资者债券转股权",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-16"
+      ]
     },
     {
       "locator": "P00142",
@@ -627,7 +673,10 @@
     {
       "locator": "P00161",
       "text": "第二部分  增信机制",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-17"
+      ]
     },
     {
       "locator": "P00162",
@@ -722,7 +771,10 @@
     {
       "locator": "P00180",
       "text": "（3）如保证人的资信状况发生重大不利变化导致其预计无法承担保证责任的，发行人承诺将及时采取必要措施以尽力维持本期债券增信措施的有效性。相关措施包括但不限于在___10___个交易日内○沟通、协调保证人尽快恢复其资信水平；○与本期债券持有人协商追加其他保证、抵质押担保等增信措施，并在___30___个交易日内落实相关安排。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-18"
+      ]
     },
     {
       "locator": "P00181",
@@ -752,7 +804,10 @@
     {
       "locator": "P00186",
       "text": "2.2.1本期债券由______将其享有处分权的______为本期债券的偿付提供抵押担保。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-19"
+      ]
     },
     {
       "locator": "P00187",
@@ -797,7 +852,10 @@
     {
       "locator": "P00195",
       "text": "□（2）按照抵押合同相关约定，发行人在债券发行后___3___个月内○配合受托管理人○沟通协调抵押人，配合受托管理人办理相关抵押登记手续。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-20"
+      ]
     },
     {
       "locator": "P00196",
@@ -812,7 +870,10 @@
     {
       "locator": "P00198",
       "text": "○【如抵押人为第三人】本期债券存续期间，发行人承诺督促抵押人不实施可能导致抵押财产灭失或价值减损的行为或转让抵押财产。如发现抵押人（拟）实施前述行为的，发行人承诺将及时制止，并于___2___个交易日将相关事项告知本期债券受托管理人并履行信息披露义务, 并积极协助、配合债券受托管理人与抵押人进行沟通协商。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-21"
+      ]
     },
     {
       "locator": "P00199",
@@ -852,12 +913,18 @@
     {
       "locator": "P00206",
       "text": "（1）债券存续期间，如抵押人未经债券持有人同意，转让抵押财产或实施可能导致抵押财产灭失或价值减损的行为的，持有人有权请求抵押人停止其行为。如因此导致抵押财产价值灭失或减少的，债券持有人有权请求抵押人恢复抵押财产的价值，或者提供与灭失减少的价值相应的担保。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-22"
+      ]
     },
     {
       "locator": "P00207",
       "text": "（2）担保的抵押财产登记于受托管理人名下。当发生需要承担担保责任的情形时，受托管理人可以代表债券持有人以自己的名义处置抵押财产，行使抵押权，所获利益归属于全体债券持有人。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-23"
+      ]
     },
     {
       "locator": "P00208",
@@ -867,7 +934,10 @@
     {
       "locator": "P00209",
       "text": "□非因发行人行为导致抵押财产灭失或价值减少且无法覆盖○担保合同约定的全部担保金额○担保合同约定担保金额的___80___%○债券全部未偿本金及利息○债券未偿本金及利息的___80___%的，且发行人承诺恢复抵押财产价值或提供其他有效增信措施但未履行承诺的，持有人有权要求发行人□和抵押人，就本期债券○全额提前清偿○担保物毁损灭失部分的价值提前清偿○【其他比例或金额】______提前清偿，且该项提前清偿○由发行人独立承担清偿责任○由发行人与抵押人承担连带责任○【其他责任承担方式】______，□同时可处置担保物并将价款用于提前清偿本期债券。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-24"
+      ]
     },
     {
       "locator": "P00210",
@@ -882,12 +952,18 @@
     {
       "locator": "P00212",
       "text": "□2.3质押担保",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-25"
+      ]
     },
     {
       "locator": "P00213",
       "text": "2.3.1本期债券由______将依法可以转让且其享有处分权的______为本期债券的偿付提供质押担保。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-26"
+      ]
     },
     {
       "locator": "P00214",
@@ -932,12 +1008,18 @@
     {
       "locator": "P00222",
       "text": "□（2）按照担保合同相关约定，在___3___个月内○向受托管理人交付担保财产，配合受托管理人办理质押登记手续○沟通协调出质人向受托管理人交付担保财产，配合受托管理人办理质押登记手续。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-27"
+      ]
     },
     {
       "locator": "P00223",
       "text": "（3）○发行人承诺本期债券存续期间，非经本期债券持有人同意，不转让质押财产。○发行人承诺本期债券存续期间监督出质人行为，如发现出质人未经本期债券持有人同意转让质押财产的，发行人将及时制止，于___2___个交易日将相关事项告知本期债券受托管理人及履行信息披露义务，并积极协助、配合债券受托管理人与出质人进行沟通协商。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-28"
+      ]
     },
     {
       "locator": "P00224",
@@ -972,12 +1054,18 @@
     {
       "locator": "P00230",
       "text": "（1）债券存续期间，未经债券持有人同意，出质人转让质押财产的，持有人有权请求出质人停止其行为。如因此导致质押财产价值灭失或减少的，债券持有人有权请求出质人恢复质押财产的价值，或者提供与灭失减少的价值相应的担保。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-29"
+      ]
     },
     {
       "locator": "P00231",
       "text": "（2）为本期债券提供担保的质押财产由受托管理人代为妥善保管、办理质押（如有）。当发生需要承担担保责任的相关情形时，受托管理人可以代表债券持有人以自己的名义行使质押权，处置质押财产，所获利益归属于本期债券全体持有人。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-30"
+      ]
     },
     {
       "locator": "P00232",
@@ -987,7 +1075,10 @@
     {
       "locator": "P00233",
       "text": "□（3）债券存续期间，因不可归责于本期债券持有人及受托管理人的原因导致质押财产毁损或质押财产剩余价值不足○质押合同约定的全部担保金额○质押合同约定担保金额的___80___%○债券全部未偿本金及利息○债券未偿本金及利息的___80___%或○【可交换债券的其他约定比例】______，且出质人、发行人未能按约定有效恢复质押财产价值或提供其他有效增信措施的，本期债券持有人有权按照质押合同的约定处置担保物，并将价款用于提前兑付本期债券。同时，持有人还有权要求发行人□和出质人，就本期债券○全额提前清偿○担保物毁损灭失部分的价值提前清偿○【其他比例或金额】______提前清偿，且该项提前清偿○由发行人独立承担清偿责任○由发行人与出质人承担连带责任○【其他责任承担方式】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-31"
+      ]
     },
     {
       "locator": "P00234",
@@ -1042,7 +1133,10 @@
     {
       "locator": "P00244",
       "text": "○发行人未能按照有关规定或约定提前划付或归集偿债资金的；",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-32"
+      ]
     },
     {
       "locator": "P00245",
@@ -1092,7 +1186,10 @@
     {
       "locator": "P00254",
       "text": "（3）如债务加入方的资信状况发生重大不利变化导致其预计无法承担约定的债务加入责任的，发行人承诺将及时采取必要措施以尽力维持本期债券增信措施的有效性。相关措施包括但不限于在___10___个交易日内○沟通、协调债务加入方尽快恢复其资信水平；○与本期债券持有人协商追加其他保证、抵质押担保、债务加入等增信措施，并在_30___个交易日内落实相关安排。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-33"
+      ]
     },
     {
       "locator": "P00255",
@@ -1122,7 +1219,10 @@
     {
       "locator": "P00260",
       "text": "2.5.1本期债券设置有第三方收购条款。本期债券由______（以下简称收购人）在约定的情形发生时，收购持有人持有的剩余未偿还债券。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-34"
+      ]
     },
     {
       "locator": "P00261",
@@ -1152,27 +1252,43 @@
     {
       "locator": "P00266",
       "text": "○发行人○母公司财务报表○合并财务报表资产负债率超过___80___%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-35"
+      ]
     },
     {
       "locator": "P00267",
       "text": "○发行人○母公司○合并财务报表范围内重要子公司○其他主体______一年内累计债务逾期超过发行人○母公司财务报表○合并财务报表○【其他主体财务报表】上年末净资产的___20___%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-36",
+        "FOOTNOTE-37"
+      ]
     },
     {
       "locator": "P00268",
       "text": "○本期债券二级市场价格○连续___5___个交易日低于___面值的85___%或者低于估值超过___20___%○一个季度内累计__10____个交易日低于___面值的85___%或者低于估值超过___20___%○【其他】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-38"
+      ]
     },
     {
       "locator": "P00269",
       "text": "○本期债券二级市场价格○连续___3___个交易日○一个季度内发生___5次以上___较大价格波动○【其他】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-39"
+      ]
     },
     {
       "locator": "P00270",
       "text": "○发行人未能按照有关规定或约定提前划付或归集偿债资金的。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-40"
+      ]
     },
     {
       "locator": "P00271",
@@ -1212,7 +1328,10 @@
     {
       "locator": "P00278",
       "text": "（3）收购对价为债券本金与上一付息日至收购日期间应付利息之和。若收购日晚于○债券付息日○债券到期日○提前兑付日○其他约定的收购日期的，则收购方还应支付收购违约金，其计算标准为：全部未兑付本金×○债券付息日○债券到期日○提前兑付日○其他约定的收购日期至收购日实际天数×○0.1%○【其他比例】______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-41"
+      ]
     },
     {
       "locator": "P00279",
@@ -1232,7 +1351,10 @@
     {
       "locator": "P00282",
       "text": "（3）如收购方的资信状况发生重大不利变化导致其预计无法承担约定的收购责任的，发行人承诺将及时采取必要措施以尽力维持本期债券增信措施的有效性。相关措施包括但不限于在___10___个交易日内○沟通、协调收购方尽快恢复其资信水平；○与本期债券持有人协商追加其他保证、抵质押担保、债务加入等增信措施，并在___30___个交易日内落实相关安排。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-42"
+      ]
     },
     {
       "locator": "P00283",
@@ -1292,12 +1414,18 @@
     {
       "locator": "P00295",
       "text": "第三部分  投资者保护条款",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-43"
+      ]
     },
     {
       "locator": "P00296",
       "text": "□3.1发行人偿债保障措施承诺",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-44"
+      ]
     },
     {
       "locator": "P00297",
@@ -1312,12 +1440,18 @@
     {
       "locator": "P00299",
       "text": "○a.按照○发行人母公司财务报表○发行人合并财务报表，在本期债券存续期间○每季度末○每半年度末的未受限的货币资金不低于______亿元或货币资金有息负债比例（货币资金/有息负债）不低于______%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-45"
+      ]
     },
     {
       "locator": "P00300",
       "text": "○b.在本期债券每次付息、兑付日（含分期偿还、赎回）前___20___个交易日货币资金不低于每次应偿付金额的______%或______；在本期债券每次回售资金发放日前___5___个交易日货币资金不低于每次应偿付金额的______%或______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-46"
+      ]
     },
     {
       "locator": "P00301",
@@ -1367,7 +1501,10 @@
     {
       "locator": "P00310",
       "text": "3.1.3发行人于○每季度○每半年度○本息偿付日前定期跟踪、监测偿债资金来源稳定性情况。如出现偿债资金来源低于承诺要求的，发行人将及时采取资产变现、催收账款和提升经营业绩等措施，并确保下一个监测期间偿债资金来源相关指标满足承诺相关要求。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-47"
+      ]
     },
     {
       "locator": "P00311",
@@ -1392,12 +1529,18 @@
     {
       "locator": "P00315",
       "text": "3.2.1发行人承诺，在本期债券存续期内，○发行人母公司财务报表○发行人的合并财务报表计算的：",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-48"
+      ]
     },
     {
       "locator": "P00316",
       "text": "○（1）○资产负债率○扣除预收款项的资产负债率不超过______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-49"
+      ]
     },
     {
       "locator": "P00317",
@@ -1417,7 +1560,10 @@
     {
       "locator": "P00320",
       "text": "○（5）有息负债与净资产的比例不超过______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-50"
+      ]
     },
     {
       "locator": "P00321",
@@ -1427,7 +1573,10 @@
     {
       "locator": "P00322",
       "text": "○（7）有息负债现金覆盖率不低于______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-51"
+      ]
     },
     {
       "locator": "P00323",
@@ -1457,17 +1606,27 @@
     {
       "locator": "P00328",
       "text": "3.3.1发行人承诺，在本期债券存续期间，发行人□发行人重要子公司拟实施下列行为的，应当先召开持有人会议并经持有人会议同意：",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-52"
+      ]
     },
     {
       "locator": "P00329",
       "text": "○（1）○无偿转让○以【低价标准】______转让○转让资产，资产价值超过○发行人母公司财务报表○发行人合并范围财务报表上年末净资产的______%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-53",
+        "FOOTNOTE-54"
+      ]
     },
     {
       "locator": "P00330",
       "text": "○（2）转让、委托管理重要子公司或变更、解除委托管理协议等，导致重要子公司不再纳入发行人合并财务报表。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-55"
+      ]
     },
     {
       "locator": "P00331",
@@ -1477,12 +1636,18 @@
     {
       "locator": "P00332",
       "text": "○（4）新增明显无合理对价的重大债务承担行为。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-56"
+      ]
     },
     {
       "locator": "P00333",
       "text": "○（5）发生重大交易事项______。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-57"
+      ]
     },
     {
       "locator": "P00334",
@@ -1497,7 +1662,10 @@
     {
       "locator": "P00336",
       "text": "○（8）承诺对______【资产名称】不作出售、转让、抵押、质押或留置等其他用途。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-58"
+      ]
     },
     {
       "locator": "P00337",
@@ -1582,7 +1750,11 @@
     {
       "locator": "P00353",
       "text": "3.5.1发行人承诺，报告期内○发行人○合并财务报表范围内全部子公司○发行人特定重要子公司○发行人全部重要子公司不能按期偿付本条第（1）项金钱给付义务，金额达到第（2）项给付标准的，发行人及其子公司将及时采取措施消除金钱给付逾期状态：",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-59",
+        "FOOTNOTE-60"
+      ]
     },
     {
       "locator": "P00354",
@@ -1637,7 +1809,10 @@
     {
       "locator": "P00364",
       "text": "金额达到○___5000___万元，○或○且占○发行人母公司财务报表○发行人合并财务报表○特定重要子公司财务报表最近一期末经审计净资产___10%___以上。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-61"
+      ]
     },
     {
       "locator": "P00365",
@@ -1662,7 +1837,12 @@
     {
       "locator": "P00369",
       "text": "3.6.1如发行人违反本章相关承诺要求且未能在○第3.1.3条第2款○第3.2.2条○第3.3.3条○第3.4.2○第3.5.2条约定期限恢复相关承诺要求或采取相关措施的，经持有本期债券___30%___以上的持有人要求，发行人将于收到要求后的次日立即采取如下救济措施，争取通过债券持有人会议等形式与债券持有人就违反承诺事项达成和解：",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-62",
+        "FOOTNOTE-63",
+        "FOOTNOTE-64"
+      ]
     },
     {
       "locator": "P00370",
@@ -1682,7 +1862,10 @@
     {
       "locator": "P00373",
       "text": "□d.在___30___自然日内向本期债券持有人支付补偿金，补偿金自违反承诺行为发生之日起计算至___与本期债券持有人达成和解___为止，计算方式为本期债券未偿还金额的______%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-65"
+      ]
     },
     {
       "locator": "P00374",
@@ -1752,7 +1935,10 @@
     {
       "locator": "P00387",
       "text": "（2）受托管理人于收到书面通知的次日发布相关公告，向全体持有人征询调研意向。如其他持有人有意参加调研的，需在5个交易日内反馈，参与调研的持有人原则上不超过___5___名。如拟参与本次调研持有人人数较多的，持有人应推举1-5名持有人代表参加。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-66"
+      ]
     },
     {
       "locator": "P00388",
@@ -1802,7 +1988,10 @@
     {
       "locator": "P00398",
       "text": "第四部分  违约事项及纠纷解决机制",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-67"
+      ]
     },
     {
       "locator": "P00399",
@@ -1827,7 +2016,10 @@
     {
       "locator": "P00403",
       "text": "□发行人承诺以其应付的本期债券本息为基准，根据宽限期内实际得以宽限的时间，按照______标准向本期债券持有人进行补偿。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-68"
+      ]
     },
     {
       "locator": "P00404",
@@ -1882,12 +2074,18 @@
     {
       "locator": "P00414",
       "text": "○（4）支付违约金。本期债券构成第4.1.1条○第1项○第2项○第3项○第4项○第5项违约情形的，发行人应自违约次日至______止向本期债券持有人支付违约金，违约金具体计算方式为_______%。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-69"
+      ]
     },
     {
       "locator": "P00415",
       "text": "○（5）提前清偿。发行人出现○未按期偿付本期债券利息、回售、赎回、分期偿还款项○募集说明书约定的如下情形的，债券持有人有权召开持有人会议要求发行人全额提前清偿，但募集说明书另有约定或持有人会议另有决议的除外：",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-70"
+      ]
     },
     {
       "locator": "P00416",
@@ -1972,7 +2170,10 @@
     {
       "locator": "P00433",
       "text": "第五部分  持有人会议规则",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-71"
+      ]
     },
     {
       "locator": "P00434",
@@ -1987,12 +2188,18 @@
     {
       "locator": "P00436",
       "text": "持有人会议规则的制定可参考《上海证券交易所公司债券存续期业务指南第1号——公司债券持有人会议规则（参考文本）》。",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-72"
+      ]
     },
     {
       "locator": "P00438",
       "text": "第六部分  受托管理人",
-      "role": "body"
+      "role": "body",
+      "note_references": [
+        "FOOTNOTE-73"
+      ]
     },
     {
       "locator": "P00439",
@@ -2008,6 +2215,590 @@
       "locator": "P00441",
       "text": "【披露说明】发行人应当制定符合《公司债券发行与交易管理办法》及其他法律法规要求的《债券受托管理协议》，并披露受托管理协议中的各方主要权利义务条款。",
       "role": "body"
+    },
+    {
+      "locator": "FOOTNOTE-1",
+      "text": "应将约定的本章内容，填写在募集说明书“发行条款”部分。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00056"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-2",
+      "text": "指同类型的票面利率之间的调整，而不包括固定与浮动利率之间的调整。发行人如需要在固定与浮动利率之间调整的，根据持有人会议规则的约定进行。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00058"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-3",
+      "text": "此处时间的约定应注意与计息周期相匹配，且原则上仅限固定利率债券选择适用。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00059"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-4",
+      "text": "如先上调后下调等其他形式的约定，下同。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00064"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-5",
+      "text": "此处基准利率的选择应与基本发行条款中约定的基准利率适用相同的种类及其期限标准，可供选择的基准利率包括国债收益率、SHIBOR报价利率、LPR等，下同。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00066"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-6",
+      "text": "可约定与计息周期相匹配的其他时间，或者作为触发募集说明书相关约定的救济措施，如可交换债券发行人可约定当标的股票价格持续低于一定比例时，投资者享有回售选择权。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00074"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-7",
+      "text": "仅限本次回售实施期间。如拟在本次回售实施期之外新增回售登记的，需由发行人和债券持有人根据募集说明书或持有人会议规则的相关约定予以实施。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00087"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-8",
+      "text": "紧急情况下，可以短于该约定，视个案具体情况决定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00088"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-9",
+      "text": "此处时间的约定应注意与计息周期相匹配。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00091"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-10",
+      "text": "分期次数可视情况调整，不限于参考文本约定的期数。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00099"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-11",
+      "text": "重要子公司指最近一期经审计的总资产、净资产或营业收入占发行人合并报表相应科目30%以上的子公司。发行人可以自行在募集说明书中定义重要子公司，但应保持该定义的统一性。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00126"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-12",
+      "text": "应明确其他主体名称及财务报表类型。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00126"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-13",
+      "text": "应约定具体的估值标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00127"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-14",
+      "text": "应约定价格波动的具体认定标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00128"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-15",
+      "text": "如发行人拟以公司股票、股权，或自身已发行的债券、资产支持证券作价支付的，发行人承诺将在平等、自愿基础上与债券持有人积极充分沟通协商，合理制定购回方案并确定作价。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00134"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-16",
+      "text": "股权包括有限责任公司的股权，也包括股份有限公司的股票。此处所称债券转股权指的是债券持有人将其持有的债券转为发行人或其他相关方股权的行为，相关约定不适用于可交换债及可转换债。可交换债、可转换债的换股、转股安排根据证监会及交易场所相关规则进行。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00141"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-17",
+      "text": "应将约定的本章内容，填写在募集说明书“增信情况”部分。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00161"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-18",
+      "text": "如同时约定此两项义务的，应明确约定此两项义务的适用顺序。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00180"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-19",
+      "text": "包括但不限于建筑物和其他土地附着物、建设用地使用权、海域使用权、生产设备、原材料、半成品、产品。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00186"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-20",
+      "text": "如在本期债券发行完成前办理完成相关抵押登记手续的，则无需约定此项义务。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00195"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-21",
+      "text": "受托管理人应确保，抵押合同中有与此处相衔接的约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00198"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-22",
+      "text": "受托管理人应确保，抵押合同中有与此处相衔接的约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00206"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-23",
+      "text": "受托管理人应确保受托管理协议和抵押合同中有与此处相衔接的处置担保物等安排。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00207"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-24",
+      "text": "受托管理人应确保受托管理协议和抵押合同中有与此处相衔接的触发提前清偿等安排。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00209"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-25",
+      "text": "可交换债券质押财产有相关要求的，应该统筹考虑。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00212"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-26",
+      "text": "包括但不限于动产、汇票、本票、支票、债券、存款单、股权、知识产权中的财产权、应收账款等财产。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00213"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-27",
+      "text": "如在本期债券发行完毕前办理完成相关质押财产交付、登记手续的，则无需约定此项义务。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00222"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-28",
+      "text": "受托管理人应确保，质押合同中有与此处相衔接的约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00223"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-29",
+      "text": "受托管理人应确保，质押合同中有与此处相衔接的约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00230"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-30",
+      "text": "受托管理人应确保受托管理协议和质押合同中有与此处相衔接的处置担保物等安排。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00231"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-31",
+      "text": "受托管理人应确保受托管理协议和质押合同中有与此处相衔接的提前清偿等安排。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00233"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-32",
+      "text": "如涉及约定的，发行人应明确相关约定的具体事项。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00244"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-33",
+      "text": "如同时约定此两项义务的，则应明确约定此两项义务的适用顺序。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00254"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-34",
+      "text": "如同时约定了发行人购回和第三方收购的，发行人应明确该两项机制的适用顺序及收购比例。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00260"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-35",
+      "text": "除资产负债率外，发行人还可约定其他与债务结构相关的财务指标。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00266"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-36",
+      "text": "重要子公司指最近一期经审计的总资产、净资产或营业收入占发行人合并报表相应科目30%以上的子公司，下同。发行人可以自行在募集说明书中定义重要子公司，但应保持该定义的统一性。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00267"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-37",
+      "text": "应明确其他主体名称及财务报表类型。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00267"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-38",
+      "text": "发行人应约定具体的估值标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00268"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-39",
+      "text": "发行人应约定价格波动的具体认定标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00269"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-40",
+      "text": "如涉及约定的，发行人应明确相关约定的具体事项。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00270"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-41",
+      "text": "受托管理人应确保，收购协议或收购函中有与此处相衔接的约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00278"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-42",
+      "text": "如同时约定此两项义务的，应明确约定此两项义务的适用顺序。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00282"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-43",
+      "text": "应将约定的本章内容，填写在募集说明书“投资者保护机制”部分。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00295"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-44",
+      "text": "无论发行人约定何种偿债保障措施，均建议将偿债保障措施作为投资者保护条款的承诺部分，并参照本条承诺内容，明确偿债保障措施的具体内容、保障措施来源、发行人对偿债保障措施的管理方式及信息披露内容、受托管理人对偿债保障措施的监督措施、违反偿债保障措施的违约责任等，不建议仅约定宽泛的偿债保障措施。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00296"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-45",
+      "text": "有息负债为交易性金融负债、短期借款、一年内到期非流动负债、长期借款及应付债券之和。具体由发行人在募集说明书中约定具体内容和计算方法，但募集说明书中对有息负债的定义应当保持统一。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00299"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-46",
+      "text": "应偿付金额根据回售登记数据计算。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00300"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-47",
+      "text": "约定了第3.1.1条b项的，应当作此约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00310"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-48",
+      "text": "也可对母公司及合并财务报表约定不同的财务承诺事项，如分别约定的，应明确不同承诺事项的适用主体。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00315"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-49",
+      "text": "应明确扣除预收款项的资产负债率的具体计算方法。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00316"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-50",
+      "text": "有息负债为交易性金融负债、短期借款、一年内到期非流动负债、长期借款及应付债券之和。具体由发行人在募集说明书中约定具体内容和计算方法，但募集说明书中对有息负债的定义应当保持统一。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00320"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-51",
+      "text": "公式为货币资金/有息负债，其中货币资金为现金及交易性金融资产之和。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00322"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-52",
+      "text": "可对母公司及合并财务报表约定不同的行为承诺事项，如分别约定的，应明确不同限制事项的适用主体。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00328"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-53",
+      "text": "可约定具体低价标准，如未约定则视为转让价格低于资产价格的30%以上，且资产价格以资产的账面价值、评估价值和公开市场价格中的高者计算。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00329"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-54",
+      "text": "应在此约定资产价值的计算标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00329"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-55",
+      "text": "重要子公司指最近一期经审计的总资产、净资产或营业收入占发行人合并报表相应科目30%以上的子公司。发行人可以自行在募集说明书中定义重要子公司，但应保持该定义的统一性。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00330"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-56",
+      "text": "应在此处约定重大债务的标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00332"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-57",
+      "text": "应自行约定重大交易行为的标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00333"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-58",
+      "text": "应当详细列出资产明细，包括但不限于资产名称、类别、账面价值等，并可以列出如果上述资产变现交易的平台、受托交易机构等要素。此处资产包括法律上的各项权利。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00336"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-59",
+      "text": "约定发行人特定重要子公司的，应当明确重要子公司的名称，下同。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00353"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-60",
+      "text": "发行人可针对不同主体约定不同金钱给付类型和金额标准。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00353"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-61",
+      "text": "约定特定重要子公司的，应明确是特定重要子公司的报表范围为单体或合并报表。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00364"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-62",
+      "text": "约定此条时，应明确发行人违反的具体承诺内容。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00369"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-63",
+      "text": "持有人向发行人提出要求时应一并告知受托管理人，受托管理人应监督发行人救济措施的采取情况。具体事宜应在受托管理协议中进行约定。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00369"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-64",
+      "text": "可就不同的投资者权益保护约定选择适用不同的救济措施。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00369"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-65",
+      "text": "补偿金的计算截止时间可自行约定，但该截止时间不应晚于债券违约时。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00373"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-66",
+      "text": "受托管理人应协助持有人推举持有人代表。如对推选代表有争议的，应通过持有人会议机制处理。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00387"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-67",
+      "text": "应将约定的本章内容，填写在募集说明书第“违约事项及纠纷解决机制”部分。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00398"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-68",
+      "text": "如约定前款宽限期时，可进一步约定本款补偿条款，该项补偿原则上应当为金钱补偿。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00403"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-69",
+      "text": "应根据不同的违约事由，约定不同的违约金比例及其具体计算方式。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00414"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-70",
+      "text": "持有人会议决议应明确提前清偿后债券的具体到期日期。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00415"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-71",
+      "text": "应将约定的本章内容，填写在募集说明书“持有人会议规则”部分。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00433"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-72",
+      "text": "对于募集说明书中约定的需要持有人会议决议的事项，应注意与持有人会议规则的衔接。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00436"
+      ]
+    },
+    {
+      "locator": "FOOTNOTE-73",
+      "text": "应将约定的本章内容，填写在募集说明书“受托管理人”部分。",
+      "role": "footnote",
+      "referenced_by": [
+        "P00438"
+      ]
     }
   ]
 }

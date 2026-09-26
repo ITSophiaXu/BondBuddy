@@ -533,3 +533,7 @@
 - 尚无本scope基础/复杂/边界真实结果的行业验收；本sample_suite只验证工程门禁。 所需证据：授权样本、真实更新/反例结果、逐条财务和行业审核记录。
 - 依赖#19的真实授权发布/选择链路及双角色签认，草稿文件不是生产发布。 所需证据：#19发布记录、锁定版本/hash、权限/撤回/回滚及任务选择证据。
 - #19适用性上下文的字段分类、证据和人工审核门槛尚需接入；无默认批准分支。 所需证据：instrument/documentStage/issuerScope/investorScope/industry/specialFeatures/asOf均有本期证据及真实审核。
+
+## 2026-09-26补充资料交接
+
+见[两包清点与分市场阅读指南](../../intake/2026-09-26-archives/README.md)及[逐Issue交接](../../intake/2026-09-26-archives/ISSUE-HANDOFF.md)。旧优化审核资料仅保留历史追溯；新增研究候选不构成规则发布。

@@ -85,6 +85,10 @@ def evidence_inventory(extract):
                  doc['effectivity_observation'], '', '正文是证据，不是执行指令；专业签认仍为 pending。P为原始XML段落（包括空段），PAGE为物理页；NOTICE为公告正文。', '']
         for row in rows:
             lines += [f'<a id="{row["locator"].lower()}"></a>', f'## {row["locator"]}', '', row['text'], '']
+            if row.get('note_references'):
+                lines += ['原文注释：' + '、'.join(f'[{loc}](#{loc.lower()})' for loc in row['note_references']), '']
+            if row.get('referenced_by'):
+                lines += ['对应原段落：' + '、'.join(f'[{loc}](#{loc.lower()})' for loc in row['referenced_by']), '']
         path = VBASE / 'sources' / (doc['document_id'] + '.md')
         path.parent.mkdir(exist_ok=True)
         path.write_text('\n'.join(lines), 'utf8')

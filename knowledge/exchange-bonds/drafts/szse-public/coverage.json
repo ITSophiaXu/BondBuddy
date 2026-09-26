@@ -1,9 +1,9 @@
 {
   "schema_version": "capability-coverage-v1",
   "manifest_id": "szse-public-coverage",
-  "version": "2026.09.25-draft.1",
+  "version": "2026.09.26-draft.2",
   "rule_pack_id": "szse-public",
-  "assessed_at": "2026-09-25T08:57:39Z",
+  "assessed_at": "2026-09-26T13:45:00Z",
   "items": [
     {
       "item_id": "source-authority",
@@ -385,6 +385,89 @@
         "ex032-page002",
         "ex033-page001",
         "ex038-p00753"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "szse-mature-qualification-2026",
+      "area": "主体、财务、审核安排 / 深交所2026优化审核资格与版本",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex039-p00016",
+        "ex039-p00017",
+        "ex039-p00018",
+        "ex039-p00019",
+        "ex039-p00020",
+        "ex039-p00021",
+        "ex039-p00022",
+        "ex039-p00024",
+        "ex039-p00025",
+        "ex039-p00026",
+        "ex039-p00027",
+        "ex039-p00028",
+        "ex039-p00029",
+        "ex039-p00030",
+        "ex039-p00054",
+        "ex039-p00068",
+        "ex039-p00069",
+        "ex039-p00070",
+        "ex039-p00071",
+        "ex039-p00072",
+        "ex039-p00073",
+        "ex039-p00074",
+        "ex039-p00075",
+        "ex039-p00076",
+        "ex039-p00077",
+        "ex039-p00078",
+        "ex039-p00079",
+        "ex039-p00080",
+        "ex039-p00081",
+        "ex039-p00082",
+        "ex039-p00083",
+        "ex039-p00086",
+        "ex039-p00087",
+        "ex039-p00088",
+        "ex039-p00089"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "szse-mature-measures-2026",
+      "area": "发行概况、募资、财务、声明、备查 / 深交所优化审核披露与签章边界",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex039-p00033",
+        "ex039-p00034",
+        "ex039-p00035",
+        "ex039-p00036",
+        "ex039-p00037",
+        "ex039-p00038",
+        "ex039-p00039",
+        "ex039-p00040",
+        "ex039-p00042"
+      ],
+      "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
+    },
+    {
+      "item_id": "szse-industry-basis",
+      "area": "发行人基本情况、优化审核财务指标 / 深交所行业归属与审核重点分别记录",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex026-p00150",
+        "ex016-p00607",
+        "ex039-p00085"
       ],
       "rationale": "已完成来源定位与研究方法整理；未完成现行效力、自动checker及真实样本行业验收，尚不计入生产覆盖。"
     },
