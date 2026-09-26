@@ -236,7 +236,7 @@ export async function parseAuthorizedMaterialToStream(
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_OUTPUT_LIMIT')throw bridgeError('MATERIAL_PARSE_OUTPUT_LIMIT');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_MEMORY_LIMIT')throw bridgeError('MATERIAL_PARSE_MEMORY_LIMIT');
     if(error instanceof Error && error.message==='DOCUMENT_PARSER_TEXT_LIMIT')throw bridgeError('MATERIAL_PARSE_SIZE_LIMIT');
-    if(error instanceof Error && error.message==='DOCUMENT_PARSER_TIMEOUT')throw bridgeError('MATERIAL_PARSE_FAILED');
+    if(error instanceof Error && error.message==='DOCUMENT_PARSER_TIMEOUT')throw bridgeError('MATERIAL_PARSE_TIMEOUT');
     throw bridgeError('MATERIAL_PARSE_FAILED');
   }
 }
@@ -299,6 +299,7 @@ export async function parseAuthorizedMaterial(
       // The same document always produces the same output: over budget is terminal, not a retry.
       if (error instanceof Error && error.message === 'DOCUMENT_PARSER_OUTPUT_LIMIT') throw bridgeError('MATERIAL_PARSE_OUTPUT_LIMIT');
       if (error instanceof Error && error.message === 'DOCUMENT_PARSER_MEMORY_LIMIT') throw bridgeError('MATERIAL_PARSE_MEMORY_LIMIT');
+      if (error instanceof Error && error.message === 'DOCUMENT_PARSER_TIMEOUT') throw bridgeError('MATERIAL_PARSE_TIMEOUT');
       throw bridgeError('MATERIAL_PARSE_FAILED');
     }
     if (containsPrivateReference(response, [row.object_key, authorizedPath, directory])) {
