@@ -19,7 +19,7 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   await page.getByLabel('旧版单一报告截止日').fill('2026-06-30');
   await page.getByRole('button', { name: '＋ 添加目标报告期间' }).click();
   await page.getByLabel('起始日').fill('2025-01-01');
-  await page.getByLabel('截止日').fill('2025-12-31');
+  await page.getByLabel('截止日', { exact: true }).fill('2025-12-31');
   await page.getByLabel('期间类型').selectOption('annual');
   await page.getByLabel('报表口径').selectOption('consolidated');
   await page.getByLabel('填写状态').selectOption('user_asserted');
