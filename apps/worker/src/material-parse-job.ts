@@ -25,6 +25,7 @@ export interface IssuerIdentityObservationContext {
 }
 export interface IssuerIdentityObservationCandidate {
   sourceRecordId: string; issuerDisplayName: string; entityId: string;
+  observationId?: string; requestId?: string;
 }
 
 export interface MaterialParseJobDependencies {
@@ -185,7 +186,8 @@ export async function runMaterialParseOnce(dependencies: MaterialParseJobDepende
         for (const candidate of candidates) {
           if (!allowed.has(candidate.sourceRecordId)) throw new Error('INVALID_ISSUER_IDENTITY_SOURCE_ANCHOR');
           await appendIssuerIdentitySourceRecord({ pool }, { ...context,
-            requestId: `issuer-${createHash('sha256').update(`${lease.jobId}:${snapshot.snapshotId}:${candidate.sourceRecordId}`).digest('hex')}`, sourceRecordId: candidate.sourceRecordId,
+            requestId: candidate.requestId ?? `issuer-${createHash('sha256').update(`${lease.jobId}:${snapshot.snapshotId}:${candidate.sourceRecordId}`).digest('hex')}`,
+            observationId: candidate.observationId, sourceRecordId: candidate.sourceRecordId,
             issuerDisplayName: candidate.issuerDisplayName, entityId: candidate.entityId });
         }
       }
@@ -281,9 +283,10 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   if (!Number.isInteger(batch) || batch < 1 || batch > 100) throw new Error('Invalid BB_PARSE_JOB_BATCH');
   const pool = new PgPool({ connectionString: process.env.DATABASE_URL });
   const blobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING);
+  const { createIssuerIdentityProducer } = await import('./issuer-identity-producer.js');
   try {
     for (let i = 0; i < batch; i++) {
-      const outcome = await runMaterialParseOnce({ pool, material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), readToFile: (key, path, max) => blobs.readToFile!(key, path, max) } } });
+      const outcome = await runMaterialParseOnce({ pool, issuerIdentityProducer: createIssuerIdentityProducer(pool), material: { pool, blobs: { getPrivate: key => blobs.getIfExists(key), readToFile: (key, path, max) => blobs.readToFile!(key, path, max) } } });
       process.stdout.write(`${JSON.stringify({ outcome })}\n`);
       if (outcome === 'idle') break;
     }

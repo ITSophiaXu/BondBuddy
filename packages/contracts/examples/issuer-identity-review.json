@@ -31,7 +31,7 @@
             },
             "quote": "合成发行人甲",
             "issuer_display_name": "合成发行人甲",
-            "entity_id": "synthetic-issuer",
+            "entity_id": "issuer-name:v1:4b3d190d3e742448afb2773f3b37db77",
             "status": "needs_review",
             "reviewed_at": null
           }

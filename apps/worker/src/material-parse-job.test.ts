@@ -11,6 +11,8 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import { classifyMaterialParseError, runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { OcrProcessingError } from './ocr.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
+import { authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 
 const testDatabaseUrl = await isolatedTestDatabase();
 
@@ -194,6 +196,45 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     const records=await pool.query('SELECT id,state FROM bb_issuer_identity_source_records WHERE material_id=$1',[producerMaterialId]);
     assert.equal(records.rows.length,1,'duplicate producer output replays one immutable observation');
     assert.equal(records.rows[0].state,'needs_review');
+
+    // Production selection and persistence through the real parse path; all names and bytes are synthetic.
+    const identityProject = await send('POST', '/api/v1/projects', { name: 'Synthetic identity integration', kind: 'update', issuer_name: null, market: null, offering: null });
+    assert.equal(identityProject.statusCode, 201, identityProject.body);
+    const identityProjectId = identityProject.json().project_id as string;
+    const identityMaterialId = (await complete(identityProjectId,
+      await startUpload(identityProjectId, docx, DOCX, 'historical', 'identity.docx'), docx)).json().material_id as string;
+    parser = async request => {
+      const result = syntheticParse(request);
+      return { ...result, records: result.records.map((record, index) => index === 0
+        ? { ...record, literal_quote: '发行人名称：合成核验有限公司。' } : record) };
+    };
+    assert.equal(await runMaterialParseOnce(deps({ issuerIdentityProducer: createIssuerIdentityProducer(pool) })), 'succeeded');
+    const identityUrl = `/api/v1/projects/${identityProjectId}/materials/${identityMaterialId}/versions/1/issuer-identity/observations`;
+    const pending = await send('GET', identityUrl);
+    assert.equal(pending.statusCode, 200, pending.body);
+    assert.equal(pending.json().items.length, 1);
+    assert.equal(pending.json().items[0].status, 'needs_review');
+    const observationId = pending.json().items[0].source_record_id as string;
+    assert.ok(observationId.startsWith('issuer-observation:v1:'));
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+    const reviewerId = `identity-reviewer-${suffix}`, grantorId = `identity-grantor-${suffix}`;
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)',
+      [reviewerId, `reviewer${suffix}`, grantorId, `grantor${suffix}`]);
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,authorization_basis)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test','synthetic integration')`, [randomUUID(), reviewerId, grantorId]);
+    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
+    assert.ok(reviewer);
+    await reviewIssuerIdentitySourceRecord({ pool }, { ownerUserId: alice, projectId: identityProjectId,
+      materialId: identityMaterialId, materialVersion: 1, sourceRecordRowId: observationId,
+      reviewer, decision: 'verified', reasonCode: 'synthetic_identity_verified' });
+    const locked = await send('POST', `/api/v1/projects/${identityProjectId}/input-revisions`,
+      { draft_revision: 1, material_versions: [{ material_id: identityMaterialId, material_version: 1 }], requirement_message_ids: [] });
+    assert.equal(locked.statusCode, 201, locked.body);
+    const manifest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+      [alice, identityProjectId, locked.json().input_revision])).rows[0].manifest;
+    assert.equal(manifest.issuer_identity.status, 'verified');
+    assert.equal(manifest.issuer_identity.record_id, observationId);
+    assert.equal((await send('GET', identityUrl)).json().status, 'verified');
 
     // 3. Bounded retry then terminal failure with a structured error code.
     const text = Buffer.from('Synthetic audit text\n', 'utf8');

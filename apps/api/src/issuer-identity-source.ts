@@ -25,6 +25,8 @@ export interface IssuerIdentitySourceScope {
 
 export interface AppendIssuerIdentitySourceRecordInput extends IssuerIdentitySourceScope {
   readonly requestId: string;
+  /** Stable server-generated observation key for replay across parse leases. */
+  readonly observationId?: string;
   readonly sourceRecordId: string;
   readonly issuerDisplayName: string;
   /** Internal identity registry key; caller-provided observations remain pending review. */
@@ -195,11 +197,12 @@ export async function appendIssuerIdentitySourceRecord(
 ): Promise<StoredIssuerIdentitySourceRecord> {
   validateScope(input);
   const displayName = input.issuerDisplayName.trim();
-  if (!idPattern.test(input.requestId) || !idPattern.test(input.sourceRecordId) ||
+  if (!idPattern.test(input.requestId) || (input.observationId !== undefined && !idPattern.test(input.observationId)) || !idPattern.test(input.sourceRecordId) ||
       !idPattern.test(input.entityId) || !displayName || displayName.length > 512) throw fail('INVALID_ISSUER_IDENTITY_INPUT');
   const requestHash = sha256(canonical({ ownerUserId: input.ownerUserId, projectId: input.projectId,
     materialId: input.materialId, materialVersion: input.materialVersion, requestId: input.requestId,
-    sourceRecordId: input.sourceRecordId, issuerDisplayName: displayName, entityId: input.entityId }));
+    sourceRecordId: input.sourceRecordId, issuerDisplayName: displayName, entityId: input.entityId,
+    ...(input.observationId ? { observationId: input.observationId } : {}) }));
   const db = await dependencies.pool.connect();
   const newId = dependencies.newId ?? randomUUID;
   try {
@@ -265,7 +268,7 @@ export async function appendIssuerIdentitySourceRecord(
          source_record_id, source_record_sha256, source_content_sha256, source_locator_type, source_locator,
          source_quote, issuer_display_name, entity_id, identity_version, request_id, request_hash,
          content_sha256, state, NULL::text AS review_decision, created_at`,
-      [newId(), input.ownerUserId, input.projectId, input.materialId, input.materialVersion, String(anchor.snapshot_id),
+      [input.observationId ?? newId(), input.ownerUserId, input.projectId, input.materialId, input.materialVersion, String(anchor.snapshot_id),
         String(anchor.record_id), String(anchor.record_sha256).trim(), String(anchor.content_sha256).trim(),
         String(anchor.locator_type), JSON.stringify(locator), String(anchor.literal_quote), displayName, input.entityId,
         identityVersion, input.requestId, requestHash, contentHash]);
