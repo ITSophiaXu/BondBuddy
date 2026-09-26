@@ -24,6 +24,7 @@ const digest = (value: string) => createHash('sha256').update(value, 'utf8').dig
 const SUPPORTED_SAMPLE_PARSER_VERSIONS = new Set([
   'bondbuddy-document-parser-1.0.3',
   'bondbuddy-document-parser-1.0.5',
+  'bondbuddy-document-parser-1.0.6',
 ]);
 
 function evidence(recordId: string, sheet: string, cell: string, literalQuote: string, sheetState = 'visible'): DocumentParseRecord {
@@ -104,14 +105,13 @@ test('maps only the exact consolidated 2023 operating revenue row and keeps pare
   assert.ok(result.facts[0]!.evidence_refs.every((id) => !id.startsWith('parent-')));
 });
 
-test('accepts the explicitly supported parser 1.0.5 and rejects unknown parser versions', async () => {
-  const parser105Records = sampleRecords().map((record) => ({
-    ...record,
-    extractor_version: 'bondbuddy-document-parser-1.0.5',
-  }));
-  const parser105Result = await extractor.extract(request(parser105Records, 'bondbuddy-document-parser-1.0.5'));
-  assert.equal(parser105Result.facts.length, 1);
-  assert.equal(parser105Result.facts[0]?.identity.metric, 'operating_revenue');
+test('accepts the explicitly supported parser 1.0.5/1.0.6 and rejects unknown parser versions', async () => {
+  for (const parserVersion of ['bondbuddy-document-parser-1.0.5', 'bondbuddy-document-parser-1.0.6']) {
+    const versionedRecords = sampleRecords().map((record) => ({ ...record, extractor_version: parserVersion }));
+    const result = await extractor.extract(request(versionedRecords, parserVersion));
+    assert.equal(result.facts.length, 1, `${parserVersion} should reach the native mapper`);
+    assert.equal(result.facts[0]?.identity.metric, 'operating_revenue');
+  }
 
   const unknownResult = await extractor.extract(request(sampleRecords(), 'bondbuddy-document-parser-9.9.9'));
   assert.equal(unknownResult.facts.length, 0);
@@ -233,31 +233,34 @@ test('real authorized zq XLSX parses through Python and maps A5/C5 with manifest
   assert.equal(refs.get(fact.evidence_refs[5]!)?.literal_quote, '其中：营业收入');
   assert.equal(refs.get(fact.evidence_refs[6]!)?.literal_quote, '3894631419.08');
 
-  const parser105Root = process.env.BB_PARSER_105_SOURCE_ROOT?.trim();
-  if (parser105Root) {
-    const parser105Result = spawnSync(sampleParserPython, ['-m', 'bondbuddy_document_parser'], {
-      cwd: parser105Root,
-      env: { ...process.env, PYTHONPATH: join(parser105Root, 'python') },
+  // Supply the #196 checkout/worktree after its final parser and Node schema land. Without this
+  // override the opt-in exercises the parser available in this checkout (currently interim 1.0.4);
+  // it does not claim that current develop has the complete 1.0.6 Python→Node bridge.
+  const parser106Root = process.env.BB_PARSER_106_SOURCE_ROOT?.trim();
+  if (parser106Root) {
+    const parser106Result = spawnSync(sampleParserPython, ['-m', 'bondbuddy_document_parser'], {
+      cwd: parser106Root,
+      env: { ...process.env, PYTHONPATH: join(parser106Root, 'python') },
       input: JSON.stringify(parseRequest),
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
     });
-    assert.ifError(parser105Result.error);
-    assert.equal(parser105Result.status, 0, `Python 1.0.5 parser failed: ${parser105Result.stderr}`);
-    const parsed105 = JSON.parse(parser105Result.stdout) as DocumentParseResponse;
-    assert.equal(parsed105.parser_version, 'bondbuddy-document-parser-1.0.5');
-    assert.equal(parsed105.status, parsed.status);
-    assert.deepEqual(parsed105.warnings, parsed.warnings);
-    assert.deepEqual(parsed105.document, parsed.document);
-    assert.deepEqual(parsed105.records.map(({ extractor_version: _version, ...record }) => record),
+    assert.ifError(parser106Result.error);
+    assert.equal(parser106Result.status, 0, `Python 1.0.6 parser failed: ${parser106Result.stderr}`);
+    const parsed106 = JSON.parse(parser106Result.stdout) as DocumentParseResponse;
+    assert.equal(parsed106.parser_version, 'bondbuddy-document-parser-1.0.6');
+    assert.equal(parsed106.status, parsed.status);
+    assert.deepEqual(parsed106.warnings, parsed.warnings);
+    assert.deepEqual(parsed106.document, parsed.document);
+    assert.deepEqual(parsed106.records.map(({ extractor_version: _version, ...record }) => record),
       parsed.records.map(({ extractor_version: _version, ...record }) => record));
 
-    const mapped105 = await createNativeFinancialFactExtractor(async () => ({ status: parsed105.status, warnings: parsed105.warnings }))
-      .extract(request(parsed105.records, parsed105.parser_version));
-    assert.equal(mapped105.facts.length, 1);
-    assert.equal(mapped105.facts[0]?.identity.metric, 'operating_revenue');
-    const refs105 = new Map(parsed105.records.map((record) => [record.record_id, record]));
-    assert.deepEqual(mapped105.facts[0]!.evidence_refs.map((id) => refs105.get(id)?.locator.cell),
+    const mapped106 = await createNativeFinancialFactExtractor(async () => ({ status: parsed106.status, warnings: parsed106.warnings }))
+      .extract(request(parsed106.records, parsed106.parser_version));
+    assert.equal(mapped106.facts.length, 1);
+    assert.equal(mapped106.facts[0]?.identity.metric, 'operating_revenue');
+    const refs106 = new Map(parsed106.records.map((record) => [record.record_id, record]));
+    assert.deepEqual(mapped106.facts[0]!.evidence_refs.map((id) => refs106.get(id)?.locator.cell),
       ['A1', 'B2', 'C2', 'E2', 'C3', 'A5', 'C5']);
   }
 });

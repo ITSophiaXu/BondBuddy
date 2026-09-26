@@ -24,9 +24,16 @@ const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const manifestPath = join(sourceRoot, 'tests/samples/2026-09-25/manifest.json');
 const authorizedParser = process.env.BB_PYTHON?.trim() || 'python3';
 const runAuthorized = process.env.BB_RUN_AUTHORIZED_SAMPLE_TESTS === '1';
+const parser106Root = process.env.BB_PARSER_106_SOURCE_ROOT?.trim();
+if (runAuthorized && !parser106Root) {
+  throw new Error('BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 requires BB_PARSER_106_SOURCE_ROOT pointing to the #196 parser 1.0.6 source tree');
+}
 const testDatabaseUrl = runAuthorized
   ? await isolatedTestDatabase('NATIVE_FINANCIAL_FACT_PRODUCER_TEST_DATABASE_URL')
   : undefined;
+if (runAuthorized && !testDatabaseUrl) {
+  throw new Error('BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 requires NATIVE_FINANCIAL_FACT_PRODUCER_TEST_DATABASE_URL or BB_TEST_DATABASE_URL pointing to a fresh migrated PostgreSQL 16 template');
+}
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 
 type AuthorizedFile = {
@@ -45,14 +52,11 @@ type PythonXlsxParseResponse = DocumentParseResponse & {
 const SUPPORTED_PARSER_VERSIONS = new Set([
   'bondbuddy-document-parser-1.0.3',
   'bondbuddy-document-parser-1.0.5',
+  'bondbuddy-document-parser-1.0.6',
 ]);
 
 test('authorized zq XLSX flows through the native producer into pending PG candidates with owner isolation', {
-  skip: !runAuthorized
-    ? 'set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 to run the authorized PG16 producer integration'
-    : !testDatabaseUrl
-      ? 'set NATIVE_FINANCIAL_FACT_PRODUCER_TEST_DATABASE_URL or BB_TEST_DATABASE_URL to a fresh migrated PostgreSQL 16 database'
-      : false,
+  skip: !runAuthorized ? 'set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 to run the authorized PG16 producer integration' : false,
 }, async () => {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as AuthorizedManifest;
   const sampleCase = manifest.cases.find((item) => item.case_id === 'zq-202312');
@@ -81,17 +85,19 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     options: {},
   };
   const python = spawnSync(authorizedParser, ['-m', 'bondbuddy_document_parser'], {
-    cwd: sourceRoot,
-    env: { ...process.env, PYTHONPATH: join(sourceRoot, 'python') },
+    cwd: parser106Root!,
+    env: { ...process.env, PYTHONPATH: join(parser106Root!, 'python') },
     input: JSON.stringify(parseRequest),
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
   assert.ifError(python.error);
-  assert.equal(python.status, 0, `actual Python parser failed: ${python.stderr}`);
+  assert.equal(python.status, 0, `Python 1.0.6 parser failed: ${python.stderr}`);
   const parsed = JSON.parse(python.stdout) as PythonXlsxParseResponse;
   assert.ok(SUPPORTED_PARSER_VERSIONS.has(parsed.parser_version),
     `authorized mapper supports only verified parser versions, received ${parsed.parser_version}`);
+  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.6',
+    'PG opt-in must execute the explicit #196 parser 1.0.6 source tree');
   assert.equal(parsed.status, 'parsed');
   assert.deepEqual(parsed.warnings, []);
   assert.equal(parsed.document.worksheet_count, 8);
@@ -133,9 +139,9 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
     [file.file_id, owner, projectId, uploadId, file.original_filename, file.media_type, file.bytes, contentHash,
       `synthetic-test/material/${file.file_id}`]);
 
-    // Python 1.0.3 and 1.0.5 emit cached_formula_results; the current TypeScript snapshot contract has not
-    // adopted that metadata field yet. Assert its safe zero value above, project only that zero-only
-    // count out, then still pass all real parser records through the repository's strict validation.
+    // Until the #196 Node response schema lands, assert cached_formula_results is zero above and
+    // project only that field out for this PG producer test. This does not verify the complete
+    // Python→Node response bridge; #196 must absorb the schema change before full bridge acceptance.
     const { cached_formula_results: _zeroCachedResults, ...contractDocument } = parsed.document;
     const responseForCurrentSnapshotContract: DocumentParseResponse = { ...parsed, document: contractDocument };
     const savedSnapshot = await persistParseSnapshot({ pool, newId: () => snapshotId }, {
