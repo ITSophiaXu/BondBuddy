@@ -62,6 +62,8 @@
 
 ## Codex 接到 Issue 后
 
+#20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.26-draft.3`：五组受限结构化检查已有实现，其他26条未实现；全部仍为research_only。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。
+
 1. 拉取最新 `develop`，为该 Issue 建独立分支与工作区；阅读本文件、完整 Issue（含前置任务和验收标准）及其关联规格。部分 Issue 链接仍指向旧默认分支，应以当前 `develop` 中的对应文件为准。
 2. 开始修改前明确交付物、涉及模块、公共契约、前置任务和验收证据。GitHub assignee 对 Issue 交付负责；涉及其他人的模块时，请该模块负责人 review。同一 Issue 的多个 Codex 会话由 assignee 协调，避免各自实现不同契约。
 3. 架构文档中的目录是迁移目标，不代表骨架已完成。#6 建立首批公共契约和项目骨架之前，可并行做独立 UI、解析、规则及供应商调研；跨模块代码先与受影响负责人对齐 schema。不得自行再造 API、复制公共枚举，或把模拟接入说成完成。前置任务未满足时，不能声称该 Issue 已验收。

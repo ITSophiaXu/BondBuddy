@@ -1,8 +1,8 @@
 {
   "schema_version": "rule-pack-v1",
   "pack_id": "sse-private",
-  "version": "2026.09.26-draft.2",
-  "supersedes_version": "2026.09.25-draft.1",
+  "version": "2026.09.26-draft.3",
+  "supersedes_version": "2026.09.26-draft.2",
   "status": "draft",
   "scope": {
     "market": "sse",
@@ -3121,7 +3121,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "逐字段证据优先级为内部方法；官方来源没有规定一个适用于全部事实的文件排名。"
@@ -3207,7 +3207,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "8.1.4是财务材料两年及一期要求，不自动缩短业务、评级、重组等独立回溯期间；年末、成立不足两年及豁免按证据判断。"
@@ -3287,7 +3287,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "用户陈述、OCR置信度与待确认标记是产品事实状态；不能因有用户输入就声明审计或公开核验通过。"
@@ -3371,7 +3371,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "实体、合并/母公司、币种、单位、期间逐项绑定；地方国有企业不能据名称自动认定城建类。"
@@ -3419,7 +3419,7 @@
     },
     {
       "rule_id": "sse-private-private-investors",
-      "version": "2",
+      "version": "3",
       "title": "私募发行对象与人数限制",
       "enabled": false,
       "enforcement": "research_only",
@@ -3451,9 +3451,9 @@
         "distribution_arrangement"
       ],
       "checker": {
-        "checker_id": "exchange-manual-evidence-review",
-        "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "1",
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "200人分别检查发行及同次债券转让后持有人；机构适当性分类、穿透或例外仍需投资者适当性完整规则。"
@@ -3470,7 +3470,7 @@
       },
       "boundaries": [
         "按所供《管理办法》第34/38条，非公开发行面向专业投资者，不得广告、公开劝诱或变相公开，每次发行对象不超过200人；转让后持有同次债券的投资者合计不超过200人。核对适当性安排和本期发行文件，不以模板声明替代发行对象事实。",
-        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。",
+        "已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。",
         "官方取证与待验收边界：200人分别检查发行及同次债券转让后持有人；机构适当性分类、穿透或例外仍需投资者适当性完整规则。"
       ],
       "positive_examples": [
@@ -3501,7 +3501,7 @@
     },
     {
       "rule_id": "sse-private-financial-validity-sse",
-      "version": "2",
+      "version": "3",
       "title": "上交所财务有效期",
       "enabled": false,
       "enforcement": "research_only",
@@ -3533,9 +3533,9 @@
         "extension_approval"
       ],
       "checker": {
-        "checker_id": "exchange-manual-evidence-review",
-        "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "1",
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "有效期截止日后新申报应更新材料；在审封卷延期不是自动宽限，须申请和交易所同意。缺申报日/批准证据不能判通过。"
@@ -3552,7 +3552,7 @@
       },
       "boundaries": [
         "上交所8.2.1以最近一期截止日起6个月为财务有效期；到期后新申报须使用最新一期。到期日起20日内可封卷的在审项目可申请至多1个月延期，封卷时提交，交易所未同意须补报并同步更新。未知申报阶段/日期或延期批准时列待确认；不能以缺口策略伪装已满足申报要求。",
-        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。",
+        "已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。",
         "官方取证与待验收边界：有效期截止日后新申报应更新材料；在审封卷延期不是自动宽限，须申请和交易所同意。缺申报日/批准证据不能判通过。"
       ],
       "positive_examples": [
@@ -3618,7 +3618,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "挂牌条件确认不能写成证监会公募注册。发行批文、规模、期限、机构变化均需本期依据；不推定全部条款不变。"
@@ -3702,7 +3702,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。"
@@ -3750,7 +3750,7 @@
     },
     {
       "rule_id": "sse-private-private-use-change",
-      "version": "2",
+      "version": "3",
       "title": "私募资金用途与约定变更程序",
       "enabled": false,
       "enforcement": "research_only",
@@ -3788,9 +3788,9 @@
         "trust_agreement"
       ],
       "checker": {
-        "checker_id": "exchange-manual-evidence-review",
-        "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "1",
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "3.2中公募跨用途类别的会议要求不直接变成所有私募要求；私募仍受8.4.1的未约定/重大影响和3.1限定偿债限制。"
@@ -3807,7 +3807,7 @@
       },
       "boundaries": [
         "私募用途按约定及上交所8.4.1执行，披露内部决策权限、程序、风控并与会议规则/受托协议一致。无事先约定或调整可能重大影响持有人权益须履行相应会议程序。2026募集资金指南3.1限定偿债不得转为非限定偿债；3.2公募跨用途类别的额外会议情形不直接推广到所有私募。",
-        "本条仅为待核验研究候选；checker为人工证据审阅占位，未实现自动判定。",
+        "已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。",
         "官方取证与待验收边界：3.2中公募跨用途类别的会议要求不直接变成所有私募要求；私募仍受8.4.1的未约定/重大影响和3.1限定偿债限制。"
       ],
       "positive_examples": [
@@ -3876,7 +3876,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "发行后模拟公式是待验收内部方法。前次资金用途整改记录、台账和专户凭证缺失，不伪造已整改/合规意见。"
@@ -3964,7 +3964,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "重大重组按引用的现行重组规则判断，单一50%启发式不作为已确认事实；公司法任职/监事安排仍须当期核验。"
@@ -4047,7 +4047,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "一般10%以上主要板块是披露要求；后台前三合并主营业务收入匹配不替代全文披露。并列、分类变动和非可比期间须保留。"
@@ -4127,7 +4127,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "非标事项说明应来自有权机构/会计师。中期未经审计不可写成审计通过；缺意见页仍可生成标记缺口的工作稿。"
@@ -4213,7 +4213,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。"
@@ -4296,7 +4296,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "3.7.2第二段为面向普通投资者公募附加表，不作为私募强制清单。私募仍披露适用指标，定义取本期条款/专业口径。"
@@ -4375,7 +4375,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "10%以上/30%以上保留原文字义；低于阈值不豁免重大事项，零/负基数不机械使用百分比。"
@@ -4455,7 +4455,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "计算差额不证明业务原因；原专家稿的推测仅作为待确认问题。"
@@ -4537,7 +4537,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "全口径债务与报表差异要解释；授信总/已用/剩余额度按实际证据时点，不从余额差自动推断银行承诺。"
@@ -4619,7 +4619,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "关联方、或有事项和受限资产需材料及签署日后续事项核验；未检索到不能写为不存在。"
@@ -4701,7 +4701,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "无评级不是自动缺合规条件；有评级/增信以本期报告及合同为准，不添加担保人承诺。"
@@ -4789,7 +4789,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "参考文本可以参照，不等于每个示例条款均为强制或已约定。增信、会议、违约和受托协议逐项一致；证券业协会配套规则仍待核验。"
@@ -4872,7 +4872,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "财务和已发生事项更新后回写；金额正确仍不能证明风险措辞充分，不自动删除历史有效风险。"
@@ -4963,7 +4963,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "城建/房地产/集团等触发后需专门审核。2025重点关注规则仍不能替代2026优化审核包或把审慎论证一律变为禁发。"
@@ -5041,7 +5041,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "专项品种2026原件已有，但本切片不完成其官方效力及专业验收；不得按普通私募包自动放行专项债。"
@@ -5126,7 +5126,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "16节是专家工作骨架，不是唯一法定目录/字体标准。税务依据、签章要求、真实Word修订/批注及WPS均另验。"
@@ -5204,7 +5204,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "没有财务指标限制不等于没有准入/负面清单/偿债风险要求；证券业协会负面清单现行全文尚未核验。"
@@ -5251,7 +5251,7 @@
     },
     {
       "rule_id": "sse-private-idle-proceeds-2026",
-      "version": "2",
+      "version": "3",
       "title": "闲置募集资金临时补流边界",
       "enabled": false,
       "enforcement": "research_only",
@@ -5282,9 +5282,9 @@
         "payment_schedule"
       ],
       "checker": {
-        "checker_id": "exchange-manual-evidence-review",
-        "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "1",
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。"
@@ -5300,7 +5300,7 @@
       },
       "boundaries": [
         "按2026指南2.1—2.3核对是否允许约定临时补流，以及使用期限、回收机制和决策程序。未明确约定不得临时补流；回收不晚于12个月与原用途付款节点的孰早日。区分补流的最终用途与临时挪用闲置募集资金。",
-        "规则研究候选，尚无自动判定器或真实结果验收。",
+        "已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。",
         "官方取证与待验收边界：受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。"
       ],
       "positive_examples": [
@@ -5331,7 +5331,7 @@
     },
     {
       "rule_id": "sse-private-continuing-disclosure",
-      "version": "2",
+      "version": "3",
       "title": "私募定期披露安排",
       "enabled": false,
       "enforcement": "research_only",
@@ -5359,9 +5359,9 @@
         "interim_disclosure_schedule"
       ],
       "checker": {
-        "checker_id": "exchange-manual-evidence-review",
-        "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "1",
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。"
@@ -5377,7 +5377,7 @@
       },
       "boundaries": [
         "按8.4.3在募集书约定年后4个月内披露上年度经审计财务报告，上半年结束后2个月内披露中期报告；同步核对持续信息披露规则和本期安排。",
-        "规则研究候选，尚无自动判定器或真实结果验收。",
+        "已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。",
         "官方取证与待验收边界：此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。"
       ],
       "positive_examples": [
@@ -5446,7 +5446,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。"
@@ -5523,7 +5523,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "2026-09-04起旧2023版废止；本包不实现知名成熟资格认定、简明披露或豁免，需独立审核新版本。"
@@ -5603,7 +5603,7 @@
       "checker": {
         "checker_id": "exchange-manual-evidence-review",
         "checker_version": "unimplemented.1",
-        "parameter_version": "2026.09.26-draft.2"
+        "parameter_version": "2026.09.26-draft.3"
       },
       "exceptions": [
         "2025指南包括鼓励措施和示范案例，不把示范案例写为发行人已履行事项；全量履职核验另作存续期覆盖。"
