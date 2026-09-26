@@ -12,6 +12,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import quote
 
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -141,16 +142,20 @@ def _effective_runs(paragraph: Paragraph) -> Iterator[Any]:
     yield from visit(paragraph._p)
 
 
-def _paragraph_formatting(paragraph: Paragraph, document: Any) -> dict[str, Any]:
-    defaults = document.styles.element.find(qn("w:docDefaults"))
-    default_rpr = defaults.find(".//" + qn("w:rPr")) if defaults is not None else None
+def _paragraph_formatting(
+    paragraph: Paragraph,
+    paragraph_style: Any,
+    style_layers: Any,
+    default_rpr: Any,
+) -> dict[str, Any]:
     summaries: list[dict[str, Any]] = []
     previous_key: str | None = None
     for run in _effective_runs(paragraph):
         text = _final_text(run._r)
         if not text.strip():
             continue
-        layers = [run._r.find(qn("w:rPr")), *_style_chain(run.style), *_style_chain(paragraph.style), default_rpr]
+        layers = [run._r.find(qn("w:rPr")), *style_layers(run._r.style, WD_STYLE_TYPE.CHARACTER),
+                  *style_layers(paragraph._p.style, WD_STYLE_TYPE.PARAGRAPH), default_rpr]
         values: dict[str, str] = {}
         for prop, tag, attr in (
             ("latin_font", "w:rFonts", "w:ascii"),
@@ -178,7 +183,7 @@ def _paragraph_formatting(paragraph: Paragraph, document: Any) -> dict[str, Any]
         if node is not None:
             layout[tag.split(":", 1)[1]] = {key.split("}")[-1]: value for key, value in node.attrib.items()}
     return {
-        "style": paragraph.style.name if paragraph.style else "",
+        "style": paragraph_style.name if paragraph_style else "",
         "runs": summaries,
         "paragraph_overrides": layout,
     }
@@ -256,6 +261,21 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
         raise ParseFailure("MATERIAL_UNREADABLE", "DOCX is damaged or unreadable") from exc
     root = document.element
     unsupported_revision_count = _unsupported_docx_revision_count(root)
+    styles = document.styles
+    defaults = styles.element.find(qn("w:docDefaults"))
+    default_rpr = defaults.find(".//" + qn("w:rPr")) if defaults is not None else None
+    style_cache: dict[tuple[int, str | None], tuple[Any, list[Any]]] = {}
+
+    def cached_style(style_id: str | None, style_type: WD_STYLE_TYPE) -> tuple[Any, list[Any]]:
+        key = (int(style_type), style_id)
+        if key not in style_cache:
+            style = styles.get_by_id(style_id, style_type)
+            style_cache[key] = (style, list(_style_chain(style)))
+        return style_cache[key]
+
+    def style_layers(style_id: str | None, style_type: WD_STYLE_TYPE) -> list[Any]:
+        return cached_style(style_id, style_type)[1]
+
     records: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
     heading = ""
@@ -263,7 +283,8 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
         value = _final_text(paragraph._p)
         if not value.strip():
             continue
-        if paragraph.style and ("Heading" in paragraph.style.name or "标题" in paragraph.style.name):
+        paragraph_style = cached_style(paragraph._p.style, WD_STYLE_TYPE.PARAGRAPH)[0]
+        if paragraph_style and ("Heading" in paragraph_style.name or "标题" in paragraph_style.name):
             heading = value
         locator["stable_ref"] = _docx_locator_text(locator)
         uncertainty = ["docx_revision_effective_text_unresolved"] if unsupported_revision_count else None
@@ -273,7 +294,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
             locator,
             value,
             context=heading,
-            formatting=_paragraph_formatting(paragraph, document),
+            formatting=_paragraph_formatting(paragraph, paragraph_style, style_layers, default_rpr),
             uncertainty=uncertainty,
         ))
 
