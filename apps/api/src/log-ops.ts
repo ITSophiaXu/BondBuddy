@@ -381,8 +381,8 @@ function quotedValueAt(text: string, start: number, budget: ScanBudget): { end: 
   catch { return null; }
 }
 
-/** A quoted value ends at its matching quote. An unquoted prose value has no
- * reliable internal delimiter, so the entire line is its conservative span. */
+/** A quoted value ends at its matching quote. Only a single unquoted scalar
+ * ending at CR/LF or EOF has a provable boundary; mixed prose is rejected. */
 function plainFieldValue(text: string, separator: number, budget: ScanBudget): { begin: number; end: number } {
   let at = separator;
   while (text[at] === ' ' || text[at] === '\t') { at++; spend(budget, 1); }
@@ -409,11 +409,17 @@ function plainFieldValue(text: string, separator: number, budget: ScanBudget): {
       if (text[at] === quote) { at++; closed = true; break; }
     }
     if (!closed) throw new DiagnosticScrubError();
-    // A character glued to the closing quote makes the value boundary
-    // ambiguous. Complete JSON candidates are handled by parseCandidate.
-    if (at < text.length && !space(text[at])) throw new DiagnosticScrubError();
+    // Comma and semicolon separate ordinary prose from a complete quoted
+    // value. A glued bare character is ambiguous. JSON is parsed separately.
+    if (at < text.length && !space(text[at]) && !',;，；'.includes(text[at])) throw new DiagnosticScrubError();
   } else {
-    while (at < text.length && text[at] !== '\r' && text[at] !== '\n') { at++; spend(budget, 1); }
+    while (at < text.length && text[at] !== '\r' && text[at] !== '\n') {
+      spend(budget, 1);
+      // A second word or punctuation may be ordinary business content, or
+      // may belong to the secret. Neither interpretation is safe to store.
+      if (!/[A-Za-z0-9_~+\/=-]/.test(text[at])) throw new DiagnosticScrubError();
+      at++;
+    }
   }
   if (at === begin) throw new DiagnosticScrubError();
   return { begin, end: at };

@@ -11,7 +11,7 @@ import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest, transaction, uid } from './data.js';
 import { emitInternal, internalEvent, observeUsage } from './observability.js';
-import { action, recordPotentialCall, type Lease } from './queue.js';
+import { action, finish, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
 
@@ -20,7 +20,7 @@ const connection = process.env.BB_TEST_DATABASE_URL;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
-const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913. Cookie: bb_session=abc123secret. api_key=sk-synthetictestkey000000000000. Authorization: Bearer syntheticbearertoken';
+const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913.\nCookie: "bb_session=abc123secret"\napi_key="sk-synthetictestkey000000000000"\nAuthorization: "Bearer syntheticbearertoken"';
 
 async function user(pool: Pool, prefix: string) {
   const id = `${prefix}-${uid().slice(0, 8)}`;
@@ -128,25 +128,39 @@ test('#79 normalized loose keys never leave synthetic values in diagnostics', ()
   }
 });
 
-test('#79 recognized prose fields consume their complete bounded value span', () => {
+test('#79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject', () => {
   const accepted = [
     'secret="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
     'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
-    'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY',
-    'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+    'secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"; 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT" 普通业务事实',
+    '前文 secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT",\r\n普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT";\r\n普通业务事实',
+    'secret="SYN_LEFT,SYN_RIGHT"\r\n普通业务事实',
     'secret="SYN_LEFT\\\"SYN_RIGHT" tail SYN_ORDINARY',
+    'secret="SYN_LEFT\\\\SYN_RIGHT"; 普通业务事实',
     'secret="SYN_LEFT\\,SYN_RIGHT" tail SYN_ORDINARY',
     'secret="SYN_LEFT\nSYN_RIGHT" tail SYN_ORDINARY',
     '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}',
-    '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}'
+    '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}',
+    '{"Co\\u006Fkie":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}'
   ];
   for (const body of accepted) {
     const cleaned = scrubSecrets(body);
     assert.ok(!cleaned.includes('SYN_LEFT') && !cleaned.includes('SYN_RIGHT'));
-    assert.ok(cleaned.includes('SYN_ORDINARY'));
+    if (body.includes('普通业务事实')) assert.ok(cleaned.endsWith(body.slice(body.indexOf('普通业务事实'))));
+    else assert.ok(cleaned.includes('SYN_ORDINARY'));
+    if (body.includes('secret="SYN_LEFT,SYN_RIGHT"'))
+      assert.equal(cleaned, body.replace('secret="SYN_LEFT,SYN_RIGHT"', 'secret=[REDACTED]'));
   }
-  for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT'])
+  for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
+    'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY', 'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+    'secret=SYN_SECRET 普通业务事实', 'secret=SYN_SECRET, 普通业务事实', 'secret=SYN_SECRET; 普通业务事实',
+    'secret=SYN_SECRET:普通业务事实'])
     assert.throws(() => scrubSecrets(body), /Diagnostic body rejected/);
+  assert.equal(scrubSecrets('secret=SYN_SINGLE\r\n普通业务事实'), 'secret=[REDACTED]\r\n普通业务事实');
 });
 
 test('#79 entire prose values and nested fields are safe in real Blob readback', { skip }, async () => {
@@ -158,19 +172,31 @@ test('#79 entire prose values and nested fields are safe in real Blob readback',
     const fragments = [
       'secret="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
       'password="SYN_LEFT SYN_RIGHT" tail SYN_ORDINARY',
-      'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY',
-      'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+      'secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"; 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT" 普通业务事实',
+      '前文 secret="SYN_LEFT,SYN_RIGHT", 普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT",\r\n普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT";\r\n普通业务事实',
+      'secret="SYN_LEFT,SYN_RIGHT"\r\n普通业务事实',
       'secret="SYN_LEFT\\\"SYN_RIGHT" tail SYN_ORDINARY',
+      'secret="SYN_LEFT\\\\SYN_RIGHT"; 普通业务事实',
       'secret="SYN_LEFT\\,SYN_RIGHT" tail SYN_ORDINARY',
       'secret="SYN_LEFT\nSYN_RIGHT" tail SYN_ORDINARY',
       'C_o_o_k_i_e="SYN_LEFT,SYN_RIGHT" tail SYN_ORDINARY',
-      '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}'
+      '{"secret":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}',
+      '{"Co\\u006Fkie":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}'
     ];
     const bodies = [...fragments];
     let nested = '{"password":"SYN_LEFT SYN_RIGHT","note":"SYN_ORDINARY"}';
     for (let layer = 1; layer <= 4; layer++) {
       nested = JSON.stringify({ note: nested });
       bodies.push(nested);
+    }
+    let encodedNested = '{"Co\\u006Fkie":"SYN_LEFT,SYN_RIGHT","note":"SYN_ORDINARY"}';
+    for (let layer = 1; layer <= 4; layer++) {
+      encodedNested = JSON.stringify({ note: encodedNested });
+      bodies.push(encodedNested);
     }
     let puts = 0;
     const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
@@ -183,13 +209,20 @@ test('#79 entire prose values and nested fields are safe in real Blob readback',
       const row = (await pool.query('SELECT object_key,content_sha256,redaction_version FROM bb_snapshot_refs WHERE id=$1', [id])).rows[0];
       const stored = (await blobs.get(row.object_key)).toString('utf8');
       assert.ok(!stored.includes('SYN_LEFT') && !stored.includes('SYN_RIGHT'), `case ${index} retained a value`);
-      assert.ok(stored.includes('SYN_ORDINARY'));
+      if (body.includes('普通业务事实')) assert.ok(stored.includes('普通业务事实'));
+      else assert.ok(stored.includes('SYN_ORDINARY'));
+      if (body.includes('secret="SYN_LEFT,SYN_RIGHT"'))
+        assert.equal(stored, body.replace('secret="SYN_LEFT,SYN_RIGHT"', 'secret=[REDACTED]'));
       assert.equal(row.content_sha256, digest(stored));
       assert.equal(row.redaction_version, 'scrub_v1');
       assert.equal(puts, beforePuts + 1);
       assert.equal(await countRefs(), beforeRefs + 1);
     }
-    for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT']) {
+    for (const body of ['secret="SYN_LEFT,SYN_RIGHT', 'password="SYN_LEFT\\', 'secret=', 'secret="SYN_LEFT"SYN_RIGHT',
+      'secret=SYN_LEFT,SYN_RIGHT\r\ntail SYN_ORDINARY', 'password=SYN_LEFT SYN_RIGHT\r\ntail SYN_ORDINARY',
+      'secret=SYN_SECRET 普通业务事实', 'secret=SYN_SECRET, 普通业务事实', 'secret=SYN_SECRET; 普通业务事实',
+      'secret=SYN_SECRET:普通业务事实',
+      '前文 secret=SYN_SECRET 普通业务事实']) {
       const beforeRefs = await countRefs(), beforePuts = puts;
       await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
         kind: 'structured_input', version: 99, body }),
@@ -211,6 +244,27 @@ test('#79 entire prose values and nested fields are safe in real Blob readback',
         assert.equal(await countRefs(), beforeRefs);
       }
     }
+  } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 ambiguous diagnostic rejection leaves structured run error evidence writable', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  try {
+    const blobs = azureBlobs(blobConnection!);
+    const { project, runId, lease } = await f.runFor(f.ownerA, 'Synthetic rejected diagnostic run');
+    let puts = 0;
+    const counted = { ...blobs, put: async (...args: Parameters<typeof blobs.put>) => { puts++; await blobs.put(...args); } };
+    await assert.rejects(savePromptSnapshot(pool, counted, { owner: f.ownerA, projectId: project,
+      runId, kind: 'model_request', version: 1, body: 'secret=SYN_SECRET 普通业务事实' }),
+    error => error instanceof Error && error.message === 'Diagnostic body rejected' && !error.stack?.includes('SYN_'));
+    assert.equal(puts, 0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_snapshot_refs WHERE run_id=$1', [runId])).rows[0].n, 0);
+    await finish(pool, lease, 'failed', { errorCode: 'DATA_UNAVAILABLE', failedStage: 'model_generation' });
+    const error = (await pool.query('SELECT code,category,stage,trace_id FROM bb_observability_errors WHERE job_id=$1', [lease.jobId])).rows[0];
+    assert.deepEqual(error, { code: 'DATA_UNAVAILABLE', category: 'internal', stage: 'model_generation', trace_id: runId });
+    assert.deepEqual((await pool.query('SELECT state,error_code FROM bb_jobs WHERE id=$1', [lease.jobId])).rows[0],
+      { state: 'failed', error_code: 'DATA_UNAVAILABLE' });
   } finally { await f.app.close(); await pool.end(); }
 });
 
