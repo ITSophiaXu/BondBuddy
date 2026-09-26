@@ -1,17 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
-import { azureBlobs, uid } from './data.js';
-import { observeUsage } from './observability.js';
+import { azureBlobs, digest, transaction, uid } from './data.js';
+import { emitInternal, internalEvent, observeUsage } from './observability.js';
 import { action, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
-import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
+import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
 
 // Synthetic data only. No real provider, credential or customer material is used.
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -56,6 +58,21 @@ async function fixture(pool: Pool) {
   return { ownerA, ownerB, reader, viewer, nobody, operatorUser, app, as, runFor };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+async function rawGetSocket(address: string, path: string) {
+  const target = new URL(address);
+  const socket = connect({ host: '127.0.0.1', port: Number(target.port) });
+  socket.on('error', () => undefined);
+  await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('error', reject); });
+  socket.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
+  return socket;
+}
+
 class MemorySink implements LogSink {
   name: string; seen = new Map<string, LogRecord>(); calls = 0; down = false;
   constructor(name: string) { this.name = name; }
@@ -65,6 +82,29 @@ async function drain(pool: Pool, sink: LogSink, options = {}) {
   let total = 0;
   for (let i = 0; i < 50; i++) { const r = await forwardLogs(pool, sink, { batchSize: 500, ...options }); total += r.delivered; if (!r.claimed) break; }
   return total;
+}
+
+async function forwardInProcess(file: string, sinkName: string, crash: boolean) {
+  const source = `import { Pool } from 'pg';
+    const { forwardLogs, ndjsonFileSink } = await import(process.env.BB_TEST_LOG_MODULE);
+    const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+    try {
+      const result = await forwardLogs(pool, ndjsonFileSink(process.env.BB_TEST_LOG_FILE, process.env.BB_TEST_LOG_SINK), {
+        batchSize: 500, afterSinkAccept: ${crash ? 'async () => process.exit(17)' : 'undefined'}
+      });
+      process.stdout.write(JSON.stringify(result));
+    } finally { await pool.end(); }`;
+  return await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
+      env: { ...process.env, BB_TEST_LOG_MODULE: new URL('./log-ops.js', import.meta.url).href, BB_TEST_LOG_FILE: file, BB_TEST_LOG_SINK: sinkName }
+    });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', code => resolve({ code, stdout, stderr }));
+  });
 }
 
 test('#79 scrubber removes secrets, captcha codes and cookies', () => {
@@ -81,6 +121,93 @@ test('#79 NDJSON sink cannot be split by log injection', async () => {
     const lines = (await readFile(file, 'utf8')).split('\n').filter(Boolean);
     assert.equal(lines.length, 1);
     assert.equal(JSON.parse(lines[0]).kind, 'error.recorded');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 file sink repeat and concurrent processes retain one durable line per key', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-concurrent-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const records = Array.from({ length: 35 }, (_, i) => ({ delivery_key: i.toString(16).padStart(64, '0'), outbox_id: `synthetic-${i}`, event: { kind: 'synthetic.event', seq: i } }));
+    const sink = ndjsonFileSink(file);
+    await Promise.all(Array.from({ length: 4 }, () => sink.deliver(records)));
+    await sink.deliver(records);
+    const lines = (await readFile(file, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines.length, records.length);
+    assert.equal(new Set(lines.map(line => line.delivery_key)).size, records.length);
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    assert.equal((await stat(`${file}.lock`)).mode & 0o777, 0o600);
+    await assert.rejects(sink.deliver([{ ...records[0], event: { kind: 'changed' } }]));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 file sink fails closed on torn/corrupt lines and unsafe permissions', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-corrupt-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'f'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file);
+    for (const body of ['{"delivery_key":"partial"', '{"delivery_key":"invalid"}\n', '\n']) {
+      await writeFile(file, body, { mode: 0o600 });
+      await assert.rejects(sink.deliver([record]));
+      assert.equal(await readFile(file, 'utf8'), body);
+    }
+    await writeFile(file, '', { mode: 0o600 });
+    await chmod(file, 0o644);
+    await assert.rejects(sink.deliver([record]));
+    assert.equal(await readFile(file, 'utf8'), '');
+    await chmod(file, 0o600);
+    await chmod(`${file}.lock`, 0o644);
+    await assert.rejects(sink.deliver([record]));
+    assert.equal(await readFile(file, 'utf8'), '');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 replay of a complete pre-existing line still acknowledges only after file sync', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-complete-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'e'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const line = JSON.stringify({ delivery_key: record.delivery_key, ...record.event }) + '\n';
+    await writeFile(file, line, { mode: 0o600 }); // models a complete append before the prior writer's fsync
+    await ndjsonFileSink(file).deliver([record]);
+    assert.equal(await readFile(file, 'utf8'), line);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 size cap fails closed for new keys but permits replay of a full segment', async () => {
+  assert.equal(ndjsonSizeCapFromEnv({}), 64 * 1024 * 1024);
+  assert.throws(() => ndjsonSizeCapFromEnv({ BB_LOG_SINK_MAX_BYTES: '0' }));
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-cap-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const first = { delivery_key: 'a'.repeat(64), outbox_id: 'synthetic-a', event: { kind: 'synthetic.event', padding: 'x'.repeat(200) } };
+    const next = { delivery_key: 'b'.repeat(64), outbox_id: 'synthetic-b', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file, 'ndjson_file', 350);
+    await sink.deliver([first]);
+    const original = await readFile(file, 'utf8');
+    assert.ok(Buffer.byteLength(original) < 350);
+    await sink.deliver([first]);
+    assert.equal(await readFile(file, 'utf8'), original);
+    await assert.rejects(sink.deliver([next]));
+    assert.equal(await readFile(file, 'utf8'), original);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 replay also detects a key in a legacy rotated segment', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-archive-'));
+  try {
+    const file = join(dir, 'sink.ndjson');
+    const record = { delivery_key: 'c'.repeat(64), outbox_id: 'synthetic', event: { kind: 'synthetic.event' } };
+    const sink = ndjsonFileSink(file);
+    await sink.deliver([record]);
+    const original = await readFile(file, 'utf8');
+    await rename(file, `${file}.1`); // models a pre-fix scheduler rotation before PG acknowledgement
+    await sink.deliver([record]);
+    assert.equal(await readFile(`${file}.1`, 'utf8'), original);
+    assert.equal(await readFile(file, 'utf8'), '');
+    await writeFile(`${file}.1`, '{"delivery_key":"partial"', { mode: 0o600 });
+    await assert.rejects(sink.deliver([record]), 'an incomplete archive is not silently ignored');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -257,6 +384,170 @@ test('#79 forwarding drills: sink outage, process crash and replay never lose or
   } finally { await f.app.close(); await pool.end(); }
 });
 
+test('#79 production file sink survives two independent processes with crash before PG ack', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const dir = await mkdtemp(join(tmpdir(), 'bb79-replay-'));
+  const f = await fixture(pool);
+  try {
+    await drain(pool, new MemorySink('synthetic_prior_outbox'));
+    const { lease } = await f.runFor(f.ownerA, 'Synthetic file crash drill');
+    for (let i = 0; i < 35; i++) await recordPotentialCall(pool, lease, `synthetic-call-${i}`, 1, { modelId: 'synthetic-model' });
+    const expected = (await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n;
+    assert.ok(expected >= 35);
+    const file = join(dir, 'sink.ndjson');
+    const sinkName = `file_${uid().replace(/-/g, '').slice(0, 24)}`;
+    const first = await forwardInProcess(file, sinkName, true);
+    assert.equal(first.code, 17, first.stderr);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE sink=$1', [sinkName])).rows[0].n, 0);
+    await pool.query("UPDATE bb_outbox SET lease_until=now()-interval '1 second' WHERE aggregate_type='observability' AND delivered_at IS NULL AND lease_token IS NOT NULL");
+    const second = await forwardInProcess(file, sinkName, false);
+    assert.equal(second.code, 0, second.stderr);
+    assert.equal(JSON.parse(second.stdout).delivered, expected);
+    const lines = (await readFile(file, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines.length, expected, 'replay added no physical lines');
+    assert.equal(new Set(lines.map(line => line.delivery_key)).size, expected);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE sink=$1', [sinkName])).rows[0].n, expected);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='observability' AND delivered_at IS NULL")).rows[0].n, 0);
+  } finally { await f.app.close(); await pool.end(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('#79 a missing source event blocks the whole claimed batch before sink or PG ACK', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const missingId = uid();
+  const valid = internalEvent({ kind: 'error.recorded', owner: 'synthetic-missing', traceId: `synthetic-missing-${uid()}`, stage: 'synthetic_stage' });
+  const sink = new MemorySink(`missing_${uid().slice(0, 8)}`);
+  let validOutboxId: string | undefined;
+  try {
+    await transaction(pool, client => emitInternal(client, valid));
+    validOutboxId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [valid.event_id])).rows[0].id;
+    await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+      VALUES($1,'synthetic-missing','observability',$2,'error.recorded','{}',now()-interval '1 day')`, [missingId, uid()]);
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '2 days' WHERE id=$1", [validOutboxId]);
+    const result = await forwardLogs(pool, sink, { batchSize: 2, retrySeconds: 0 });
+    assert.deepEqual(result, { claimed: 2, delivered: 0, failed: 2 });
+    assert.equal(sink.calls, 0);
+    const rows = (await pool.query('SELECT id,delivered_at,last_delivery_error,lease_token FROM bb_outbox WHERE id=ANY($1) ORDER BY id', [[validOutboxId, missingId]])).rows;
+    assert.equal(rows.length, 2);
+    for (const row of rows) {
+      assert.equal(row.delivered_at, null);
+      assert.equal(row.last_delivery_error, 'evidence_missing');
+      assert.equal(row.lease_token, null);
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=ANY($1)', [[validOutboxId, missingId]])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+    assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='evidence_persist_failed' AND detail->>'reason_code'='log_event_missing'")).rowCount);
+  } finally {
+    await pool.query('DELETE FROM bb_outbox WHERE id=ANY($1)', [[validOutboxId, missingId].filter(Boolean)]);
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
+test('#79 malformed outbox envelope or source event blocks the entire PG batch', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const owner = `synthetic-contract-${uid().slice(0, 8)}`;
+  const cases: Array<{ name: string; payload?: (id: string) => unknown; source?: (event: ReturnType<typeof internalEvent>) => unknown; mixed: boolean }> = [
+    { name: 'unknown payload schema version', payload: id => ({ event_id: id, schema_version: 2 }), mixed: false },
+    { name: 'mixed valid and wrong-version payload', payload: id => ({ event_id: id, schema_version: 2 }), mixed: true },
+    { name: 'missing payload field', payload: id => ({ event_id: id }), mixed: false },
+    { name: 'extra payload field', payload: id => ({ event_id: id, schema_version: 1, untrusted: true }), mixed: false },
+    { name: 'wrong payload value', payload: id => ({ event_id: `${id}-wrong`, schema_version: 1 }), mixed: false },
+    { name: 'invalid source schema version', source: event => ({ ...event, schema_version: 2 }), mixed: false },
+    { name: 'extra source field', source: event => ({ ...event, untrusted: true }), mixed: false },
+    { name: 'missing source field', source: event => { const { occurred_at: _removed, ...rest } = event; return rest; }, mixed: false }
+  ];
+  try {
+    for (const variant of cases) {
+      const sink = new MemorySink(`contract_${uid().slice(0, 8)}`);
+      const bad = internalEvent({ kind: 'error.recorded', owner, traceId: uid(), stage: 'synthetic_stage' });
+      const good = variant.mixed ? internalEvent({ kind: 'error.recorded', owner, traceId: uid(), stage: 'synthetic_stage' }) : null;
+      const outboxIds = [uid(), ...(good ? [uid()] : [])];
+      await pool.query(`INSERT INTO bb_observability_events(id,owner_user_id,trace_id,kind,event)
+        VALUES($1,$2,$3,$4,$5)`, [bad.event_id, owner, bad.trace_id, bad.kind, variant.source?.(bad) ?? bad]);
+      if (good) await pool.query(`INSERT INTO bb_observability_events(id,owner_user_id,trace_id,kind,event)
+        VALUES($1,$2,$3,$4,$5)`, [good.event_id, owner, good.trace_id, good.kind, good]);
+      await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+        VALUES($1,$2,'observability',$3,$4,$5,now()-interval '3 days')`,
+        [outboxIds[0], owner, bad.event_id, bad.kind, variant.payload?.(bad.event_id) ?? { event_id: bad.event_id, schema_version: 1 }]);
+      if (good) await pool.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload,created_at)
+        VALUES($1,$2,'observability',$3,$4,$5,now()-interval '2 days')`,
+        [outboxIds[1], owner, good.event_id, good.kind, { event_id: good.event_id, schema_version: 1 }]);
+      try {
+        assert.deepEqual(await forwardLogs(pool, sink, { batchSize: outboxIds.length, retrySeconds: 0 }),
+          { claimed: outboxIds.length, delivered: 0, failed: outboxIds.length }, variant.name);
+        assert.equal(sink.calls, 0, variant.name);
+        const rows = (await pool.query('SELECT delivered_at,last_delivery_error,lease_token FROM bb_outbox WHERE id=ANY($1)', [outboxIds])).rows;
+        assert.equal(rows.length, outboxIds.length, variant.name);
+        for (const row of rows) {
+          assert.equal(row.delivered_at, null, variant.name);
+          assert.equal(row.last_delivery_error, 'evidence_missing', variant.name);
+          assert.equal(row.lease_token, null, variant.name);
+        }
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=ANY($1)', [outboxIds])).rows[0].n, 0, variant.name);
+        assert.equal((await gateState(pool)).state, 'paused', variant.name);
+        assert.ok((await pool.query("SELECT 1 FROM bb_ops_alerts WHERE kind='evidence_persist_failed' AND detail->>'reason_code'='log_event_missing'")).rowCount, variant.name);
+      } finally {
+        await pool.query('DELETE FROM bb_outbox WHERE id=ANY($1)', [outboxIds]);
+        if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+        resetProcessGateForTests();
+      }
+    }
+  } finally { await pool.end(); }
+});
+
+test('#79 a conflicting existing receipt cannot ACK a different outbox event', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const sink = new MemorySink(`conflict_${uid().slice(0, 8)}`);
+  try {
+    const original = internalEvent({ kind: 'error.recorded', owner: 'synthetic-conflict', traceId: `synthetic-original-${uid()}`, stage: 'synthetic_stage' });
+    const other = internalEvent({ kind: 'error.recorded', owner: 'synthetic-conflict', traceId: `synthetic-other-${uid()}`, stage: 'synthetic_stage' });
+    await transaction(pool, async client => { await emitInternal(client, original); await emitInternal(client, other); });
+    const originalId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [original.event_id])).rows[0].id;
+    const otherId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [other.event_id])).rows[0].id;
+    const key = digest(`${sink.name}:${originalId}`);
+    await pool.query('INSERT INTO bb_log_deliveries(outbox_id,sink,delivery_key,attempts) VALUES($1,$2,$3,1)', [otherId, sink.name, key]);
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '2 days' WHERE id=$1", [originalId]);
+    await assert.rejects(forwardLogs(pool, sink, { batchSize: 1 }), /Inconsistent log delivery receipt/);
+    assert.equal(sink.calls, 1, 'sink acceptance precedes PG receipt validation');
+    assert.equal((await pool.query('SELECT delivered_at FROM bb_outbox WHERE id=$1', [originalId])).rows[0].delivered_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=$1', [originalId])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+  } finally {
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
+test('#79 PG event lookup outage cannot call the sink or acknowledge the outbox', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const sink = new MemorySink(`lookup_${uid().slice(0, 8)}`);
+  const event = internalEvent({ kind: 'error.recorded', owner: 'synthetic-lookup', traceId: `synthetic-lookup-${uid()}`, stage: 'synthetic_stage' });
+  let outboxId: string | undefined;
+  try {
+    await transaction(pool, client => emitInternal(client, event));
+    outboxId = (await pool.query('SELECT id FROM bb_outbox WHERE aggregate_id=$1', [event.event_id])).rows[0].id;
+    await pool.query("UPDATE bb_outbox SET created_at=now()-interval '3 days' WHERE id=$1", [outboxId]);
+    const failedLookup = new Proxy(pool, { get(target, key) {
+      if (key === 'query') return (sql: string, ...args: unknown[]) => sql.startsWith('SELECT id,owner_user_id,kind,event FROM bb_observability_events')
+        ? Promise.reject(Object.assign(new Error('synthetic PG lookup outage'), { code: '08006' })) : (target.query as (...values: unknown[]) => unknown)(sql, ...args);
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } }) as Pool;
+    await assert.rejects(forwardLogs(failedLookup, sink, { batchSize: 1 }), (error: any) => error.code === '08006');
+    assert.equal(sink.calls, 0);
+    assert.equal((await pool.query('SELECT delivered_at FROM bb_outbox WHERE id=$1', [outboxId])).rows[0].delivered_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_deliveries WHERE outbox_id=$1', [outboxId])).rows[0].n, 0);
+    assert.equal((await gateState(pool)).state, 'paused');
+  } finally {
+    if (outboxId) await pool.query('DELETE FROM bb_outbox WHERE id=$1', [outboxId]);
+    if ((await gateState(pool)).state === 'paused') await pool.query("INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type) VALUES($1,'open','synthetic_test_reset','system')", [uid()]);
+    resetProcessGateForTests();
+    await pool.end();
+  }
+});
+
 test('#79 evidence gate: DB transaction failure pauses new external calls and raises an alert', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const f = await fixture(pool);
@@ -274,8 +565,8 @@ test('#79 evidence gate: DB transaction failure pauses new external calls and ra
     await assert.rejects(recordPotentialCall(faulty, lease, 'gate-call', 1), (e: any) => e.code === '08006');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 0, 'rolled back, nothing half-written');
     assert.equal((await gateState(pool)).state, 'paused');
-    const alert = (await pool.query("SELECT a.* FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
-    assert.equal(alert.detail.reason_code, 'call_intent_not_persisted');
+    const pause = (await pool.query("SELECT g.reason_code FROM bb_ops_alerts a JOIN bb_evidence_gate_events g ON g.alert_id=a.id WHERE a.kind='evidence_persist_failed' ORDER BY g.seq DESC LIMIT 1")).rows[0];
+    assert.equal(pause.reason_code, 'call_intent_not_persisted');
     // Every process now refuses new calls, even with a healthy connection.
     await assert.rejects(recordPotentialCall(pool, lease, 'gate-call', 1), (e: any) => e.status === 503 && e.code === 'DATA_UNAVAILABLE');
     const gate = await f.as(f.reader)('GET', '/api/v1/admin/evidence-gate');
@@ -356,4 +647,407 @@ test('#79 retention purge and user-deletion reclamation keep accounting metadata
     assert.ok((await pool.query("SELECT 1 FROM bb_observability_events WHERE kind='log.content_purged' AND owner_user_id=$1", [f.ownerB])).rowCount);
     await assert.rejects(pool.query('DELETE FROM bb_log_content_tombstones WHERE content_id=$1', [runless]), (e: any) => e.code === '23514');
   } finally { await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt response and purge serialize through delivery, with audit and owner boundary', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let releaseSend!: () => void;
+  const sendGate = new Promise<void>(resolve => { releaseSend = resolve; });
+  let enteredSend!: () => void;
+  const inSend = new Promise<void>(resolve => { enteredSend = resolve; });
+  let url = '';
+  try {
+    f.app.addHook('onSend', async (request, reply, payload) => {
+      if (request.url === url && reply.statusCode === 200) { enteredSend(); await sendGate; }
+      return payload;
+    });
+    const project = (await f.as(f.ownerB)('POST', '/api/v1/projects', { name: 'Synthetic purge race', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerB, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic prompt RACE_MARKER_79' });
+    url = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    assert.equal((await f.as(f.ownerA)('GET', url)).statusCode, 404, 'ordinary user cannot view another account');
+    const response = f.as(f.viewer)('GET', url);
+    await inSend; // Blob bytes have been read, but HTTP has not sent them.
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerB]);
+    let finished = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerB] }).then(result => { finished = true; return result; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge must wait for the unsent response');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [snapshot])).rows[0].n, 0);
+    releaseSend();
+    const sent = await response;
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.ok(sent.json().body.includes('RACE_MARKER_79'));
+    assert.deepEqual([ (await purge).purged, finished ], [1, true]);
+    assert.equal((await f.as(f.viewer)('GET', url)).statusCode, 404, 'after completed purge no body is returned');
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 2, 'successful and denied reads are audited');
+  } finally { releaseSend(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 in-flight Blob purge blocks prompt read and failed delete remains replayable', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let allowDelete!: () => void;
+  const deleteGate = new Promise<void>(resolve => { allowDelete = resolve; });
+  let enteredDelete!: () => void;
+  const inDelete = new Promise<void>(resolve => { enteredDelete = resolve; });
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic expiry race', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic prompt PURGE_FIRST_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const later = () => new Date(Date.now() + 31 * 86_400_000);
+    const failingBlobs = { ...blobs, delete: async (_key: string) => { throw new Error('synthetic Blob outage'); } };
+    const failed = await purgeLogContent(pool, failingBlobs, { contentRetentionDays: 30, now: later, ownerScope: [f.ownerA] });
+    assert.deepEqual([failed.purged, failed.failed], [0, 1]);
+    assert.equal(await blobs.exists(key), true);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_log_content_tombstones WHERE content_id=$1', [snapshot])).rows[0].n, 0);
+    const pausedBlobs = { ...blobs, delete: async (objectKey: string) => { enteredDelete(); await deleteGate; await blobs.delete(objectKey); } };
+    const purge = purgeLogContent(pool, pausedBlobs, { contentRetentionDays: 30, now: later, ownerScope: [f.ownerA] });
+    await inDelete;
+    let delivered = false;
+    const response = f.as(f.viewer)('GET', `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`).then(result => { delivered = true; return result; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(delivered, false, 'read waits while purge holds the object lock');
+    allowDelete();
+    assert.equal((await purge).purged, 1);
+    assert.equal((await response).statusCode, 404);
+    assert.equal(await blobs.exists(key), false);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 1);
+  } finally { allowDelete(); await f.app.close(); await pool.end(); }
+});
+
+for (const late of ['resolve', 'reject'] as const) test(`#79 TCP abort releases prompt lock during pending Blob read (${late} late)`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>();
+  const held = deferred<Buffer | null>();
+  let app: ReturnType<typeof createServer> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic TCP abort', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic TCP_ABORT_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    const blobs = { ...realBlobs, getIfExistsBounded: async () => { entered.resolve(); return held.promise; } };
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    const socket = await rawGetSocket(address, path);
+    await entered.promise; // The audit committed, and the Blob read is still pending.
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND target_ref=$2 AND purpose='prompt_view'", [f.viewer, snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let purged = false;
+    const purge = purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { purged = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(purged, false, 'live read still owns the lock');
+    const closed = new Promise<void>(resolve => socket.once('close', () => resolve()));
+    socket.destroy();
+    await closed;
+    const result = await Promise.race([purge, new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('purge waited for a disconnected Blob read')), 1500))]);
+    assert.equal(result.purged, 1, 'purge completes before the held Blob promise settles');
+    assert.equal(await realBlobs.exists(key), false);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1, 'pool remains usable after the abort');
+    assert.equal(pool.idleCount, pool.totalCount, 'all PG connections returned while Blob remains pending');
+    if (late === 'resolve') held.resolve(original);
+    else held.reject(new Error('synthetic late Blob failure'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const after = await fetch(`${address}${path}`);
+    assert.equal(after.status, 404);
+    assert.ok(!(await after.text()).includes('TCP_ABORT_MARKER_79'));
+  } finally { held.resolve(null); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 real TCP slow response and onSend failure release the prompt lock', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined;
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  try {
+    const project = (await f.as(f.ownerB)('POST', '/api/v1/projects', { name: 'Synthetic slow TCP', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const slow = await savePromptSnapshot(pool, blobs, { owner: f.ownerB, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic SLOW_TCP_MARKER_79' });
+    const errorProject = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic onSend error', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const failedSnapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: errorProject, kind: 'user_prompt', version: 1, body: 'synthetic ONSEND_MARKER_79' });
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(slow)) { sendEntered.resolve(); await sendGate.promise; }
+      if (reply.statusCode === 200 && request.url.includes(failedSnapshot)) throw new Error('synthetic onSend failure');
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const slowPath = `/api/v1/admin/prompts/${slow}?reason_code=support_case`;
+    const response = fetch(`${address}${slowPath}`);
+    await sendEntered.promise;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerB]);
+    let finished = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerB] }).then(value => { finished = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge cannot finish before the slow TCP response');
+    sendGate.resolve();
+    const sent = await response;
+    assert.equal(sent.status, 200);
+    assert.ok((await sent.text()).includes('SLOW_TCP_MARKER_79'));
+    assert.equal((await purge).purged, 1);
+    assert.equal((await fetch(`${address}${slowPath}`)).status, 404);
+
+    // A separate active snapshot exercises Fastify's failed onSend path over TCP.
+    const failedUrl = `${address}/api/v1/admin/prompts/${failedSnapshot}?reason_code=support_case`;
+    const failed = await fetch(failedUrl);
+    assert.equal(failed.status, 500);
+    assert.ok(!(await failed.text()).includes('ONSEND_MARKER_79'));
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] })).purged, 1);
+    assert.equal(pool.idleCount, pool.totalCount, 'onSend error returned every PG connection');
+  } finally { sendGate.resolve(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const firstOutcome of ['success', 'failure'] as const) test(`#79 disconnected lock waiter frees a two-connection PG pool (${firstOutcome} first read)`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const firstRead = deferred<Buffer | null>(), readEntered = deferred<void>(), secondEntered = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined;
+  let first: ReturnType<typeof connect> | undefined, second: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic two-socket lock', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic TWO_SOCKET_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    let reads = 0, requests = 0;
+    const blobs = { ...realBlobs, getIfExistsBounded: async (objectKey: string, limit: number) => {
+      if (objectKey === key && ++reads === 1) { readEntered.resolve(); return firstRead.promise; }
+      return realBlobs.getIfExistsBounded(objectKey, limit);
+    } };
+    app = createServer({ pool, blobs, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    app.addHook('onRequest', async request => { if (request.url === path && ++requests === 2) secondEntered.resolve(); });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    first = await rawGetSocket(address, path);
+    let firstResponse = '';
+    first.on('data', chunk => { firstResponse += chunk.toString(); });
+    await readEntered.promise; // First socket owns the advisory lock and holds Blob I/O.
+    second = await rawGetSocket(address, path);
+    await secondEntered.promise;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const secondClosed = new Promise<void>(resolve => second!.once('close', () => resolve()));
+    second.destroy();
+    await secondClosed;
+    const probe = await Promise.race([pool.query('SELECT 1'), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('disconnected lock waiter exhausted the PG pool')), 1500))]);
+    assert.equal(probe.rowCount, 1);
+    assert.equal(pool.waitingCount, 0);
+    assert.equal(pool.totalCount - pool.idleCount, 1, 'only the first live reader retains a connection');
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let finished = false;
+    const purge = purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { finished = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(finished, false, 'purge waits for the live first response');
+    const firstClosed = new Promise<void>(resolve => first!.once('close', () => resolve()));
+    if (firstOutcome === 'success') firstRead.resolve(original);
+    else firstRead.reject(new Error('synthetic first Blob failure'));
+    await firstClosed;
+    assert.equal(firstResponse.includes('TWO_SOCKET_MARKER_79'), firstOutcome === 'success');
+    assert.equal((await purge).purged, 1);
+    const after = await fetch(`${address}${path}`);
+    assert.equal(after.status, 404);
+    assert.ok(!(await after.text()).includes('TWO_SOCKET_MARKER_79'));
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally {
+    firstRead.resolve(null);
+    first?.destroy(); second?.destroy();
+    await app?.close(); await f.app.close(); await pool.end();
+  }
+});
+
+test('#79 prompt deadline ends a live TCP Blob read and permits purge', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const realBlobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>(), held = deferred<Buffer | null>();
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline Blob', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, realBlobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_BLOB_MARKER_79' });
+    const key = (await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1', [snapshot])).rows[0].object_key;
+    const original = await realBlobs.getIfExistsBounded(key, 10 * 1024 * 1024);
+    const blobs = { ...realBlobs, getIfExistsBounded: async () => { entered.resolve(); return held.promise; } };
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    let received = '';
+    socket.on('data', chunk => { received += chunk.toString(); });
+    await entered.promise;
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const result = await Promise.race([purgeLogContent(pool, realBlobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('deadline failed to release pending Blob lock')), 1500))]);
+    assert.equal(result.purged, 1);
+    assert.ok(!received.includes('DEADLINE_BLOB_MARKER_79'));
+    assert.equal(pool.idleCount, pool.totalCount);
+    held.resolve(original); // A late Blob result must not send plaintext.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+  } finally { held.resolve(null); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt deadline stops a connected lock waiter without retaining its PG connection', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  const holder = await pool.connect();
+  let holderReleased = false;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline waiter', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_WAIT_MARKER_79' });
+    await holder.query("SELECT pg_advisory_lock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(pool.totalCount - pool.idleCount, 1, 'only the external holder uses a connection');
+    assert.equal(pool.waitingCount, 0);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    assert.equal((await pool.query('SHOW statement_timeout')).rows[0].statement_timeout, '0', 'deadline setting must not leak into unrelated pool work');
+    await holder.query("SELECT pg_advisory_unlock(hashtext('prompt_snapshot'),hashtext($1::text))", [snapshot]);
+    holder.release();
+    holderReleased = true;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    assert.equal((await purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] })).purged, 1);
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { socket?.destroy(); if (!holderReleased) { await holder.query('SELECT pg_advisory_unlock_all()').catch(() => undefined); holder.release(); } await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const readMode of ['unread', 'trickle'] as const) test(`#79 prompt deadline closes a ${readMode} live TCP response and releases purge`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  let drip: NodeJS.Timeout | undefined;
+  let drippedBytes = 0;
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline unread', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'UNREAD_MARKER_79' + 'x'.repeat(9 * 1024 * 1024) });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 1000, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(snapshot)) { sendEntered.resolve(); await sendGate.promise; }
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    socket = await rawGetSocket(address, path);
+    socket.pause();
+    if (readMode === 'trickle') drip = setInterval(() => { if (socket?.read(1)) drippedBytes++; }, 10);
+    await sendEntered.promise;
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE target_ref=$1 AND purpose='prompt_view'", [snapshot])).rows[0].n, 1);
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    let completed = false;
+    const purge = purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }).then(value => { completed = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(completed, false, 'unread response retains the lock before the deadline');
+    sendGate.resolve();
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(completed, false, 'slow reader cannot complete the HTTP send immediately');
+    const result = await Promise.race([purge, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('unread response held prompt lock past deadline')), 3000))]);
+    assert.equal(result.purged, 1);
+    if (readMode === 'trickle') assert.ok(drippedBytes > 0, 'client actually read response bytes in small increments');
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    assert.equal(pool.idleCount, pool.totalCount);
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+  } finally { sendGate.resolve(); if (drip) clearInterval(drip); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+test('#79 prompt deadline allows a normal TCP response and ends a stuck onSend', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  const sendEntered = deferred<void>(), sendGate = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined, socket: ReturnType<typeof connect> | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic deadline onSend', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const normal = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: 'synthetic DEADLINE_NORMAL_MARKER_79' });
+    const stuck = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 2, body: 'synthetic DEADLINE_ONSEND_MARKER_79' });
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 350, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    app.addHook('onSend', async (request, reply, payload) => {
+      if (reply.statusCode === 200 && request.url.includes(stuck)) { sendEntered.resolve(); await sendGate.promise; }
+      return payload;
+    });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const normalPath = `/api/v1/admin/prompts/${normal}?reason_code=support_case`;
+    const normalResponse = await fetch(`${address}${normalPath}`);
+    assert.equal(normalResponse.status, 200);
+    assert.ok((await normalResponse.text()).includes('DEADLINE_NORMAL_MARKER_79'));
+    for (let i = 0; i < 20 && pool.idleCount !== pool.totalCount; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(pool.idleCount, pool.totalCount);
+    const stuckPath = `/api/v1/admin/prompts/${stuck}?reason_code=support_case`;
+    socket = await rawGetSocket(address, stuckPath);
+    let received = '';
+    socket.on('data', chunk => { received += chunk.toString(); });
+    await sendEntered.promise;
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const purged = await Promise.race([purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('onSend held lock past deadline')), 2000))]);
+    assert.equal(purged.purged, 2);
+    sendGate.resolve();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.ok(!received.includes('DEADLINE_ONSEND_MARKER_79'));
+    assert.equal((await fetch(`${address}${stuckPath}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { sendGate.resolve(); socket?.destroy(); await app?.close(); await f.app.close(); await pool.end(); }
+});
+
+for (const stalledStage of ['snapshot', 'audit'] as const) test(`#79 PG statement deadline cancels a 3-second ${stalledStage} query holding the prompt lock`, { skip }, async () => {
+  const pool = new Pool({ connectionString: connection, max: 2 });
+  const observer = new Pool({ connectionString: connection, max: 1 });
+  const f = await fixture(pool);
+  const blobs = azureBlobs(blobConnection!);
+  const entered = deferred<void>();
+  let app: ReturnType<typeof createServer> | undefined, backendPid: number | undefined;
+  try {
+    const project = (await f.as(f.ownerA)('POST', '/api/v1/projects', { name: 'Synthetic PG deadline', kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
+    const snapshot = await savePromptSnapshot(pool, blobs, { owner: f.ownerA, projectId: project, kind: 'user_prompt', version: 1, body: `synthetic PG_DEADLINE_${stalledStage}_79` });
+    const connectOriginal = pool.connect.bind(pool);
+    let injected = false;
+    pool.connect = ((callback?: any) => {
+      if (callback) return connectOriginal(callback);
+      return (async () => {
+      const client = await connectOriginal();
+      const queryOriginal = client.query.bind(client);
+      client.query = (async (...args: any[]) => {
+        const sql = args[0];
+        const matches = typeof sql === 'string' && (stalledStage === 'snapshot' ? sql.includes('SELECT s.*,t.id tombstone') : sql.includes('INSERT INTO bb_log_access_audit'));
+        if (!injected && matches) {
+          injected = true;
+          backendPid = (await queryOriginal('SELECT pg_backend_pid()')).rows[0].pg_backend_pid;
+          entered.resolve();
+          await queryOriginal('SELECT pg_sleep(3)');
+        }
+        return queryOriginal(...args as [string]);
+      }) as typeof client.query;
+      return client;
+      })();
+    }) as typeof pool.connect;
+    app = createServer({ pool, blobs, promptViewDeadlineMs: 180, principal: async () => ({ userId: f.viewer, csrfVerified: true }), allowedOrigin: ORIGIN });
+    const address = await app.listen({ host: '127.0.0.1', port: 0 });
+    const path = `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`;
+    const reading = fetch(`${address}${path}`).catch(() => undefined);
+    await Promise.race([entered.promise, reading.then(response => { throw new Error(`prompt request finished before PG stall: ${response?.status ?? 'disconnected'}`); }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('prompt request never reached injected PG query')), 1500))]);
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_stat_activity WHERE pid=$1 AND state='active' AND query LIKE '%pg_sleep%'", [backendPid])).rows[0].n, 1, '3-second PostgreSQL query actually entered the server');
+    const started = performance.now();
+    await pool.query("UPDATE bb_users SET status='closed',closed_at=now() WHERE id=$1", [f.ownerA]);
+    const result = await Promise.race([purgeLogContent(pool, blobs, { contentRetentionDays: 30, ownerScope: [f.ownerA] }), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('PG stall outlived the prompt deadline')), 1000))]);
+    assert.equal(result.purged, 1);
+    assert.ok(performance.now() - started < 1000, 'purge finishes before the injected 3-second query');
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND granted", [backendPid])).rows[0].n, 0);
+    assert.equal((await observer.query("SELECT count(*)::int n FROM pg_stat_activity WHERE pid=$1 AND state='active' AND query LIKE '%pg_sleep%'", [backendPid])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT 1')).rowCount, 1);
+    const response = await reading;
+    if (response) assert.ok(!(await response.text()).includes(`PG_DEADLINE_${stalledStage}_79`));
+    assert.equal((await fetch(`${address}${path}`)).status, 404);
+    assert.equal(pool.idleCount, pool.totalCount);
+  } finally { await app?.close(); await f.app.close(); await pool.end(); await observer.end(); }
 });

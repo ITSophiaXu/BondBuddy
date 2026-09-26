@@ -25,6 +25,17 @@ test('the MTN draft and its chapter/coverage companions are internally consisten
   ]);
 });
 
+test('the M-12 holder meeting chapter retains its source, form, and semantic fields',()=>{
+  const chapter=nafmiiMtnChapterTemplate.chapters.find(item=>item.chapter_id==='m-12');
+  assert.ok(chapter,'M-12 holder meeting chapter must remain in the template');
+  assert.deepEqual(chapter.form_refs,['M-12']);
+  assert.deepEqual(chapter.source_ref_ids,['nafmii-public-forms-2020']);
+  assert.ok(nafmiiMtnDraftRulePack.sources.some(item=>item.source_id==='nafmii-public-forms-2020'));
+  assert.deepEqual(chapter.required_fields,[
+    'meeting_scope','convening','procedures','participation','voting','other_obligations',
+  ]);
+});
+
 test('official binary sources retain reproducible SHA-256 fingerprints',()=>{
   const expected={
     'nafmii-mtn-guide-2021':'a908a42699ab94c9c396fdbcad6fcacb9a0a12b505a3933b36b3f01d3c612b9e',
