@@ -96,15 +96,22 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
     { material_id: input.source.materialId, material_version: 1, role: 'historical', sha256: 'a'.repeat(64) },
     { material_id: input.financialMaterialVersions[0]!.materialId, material_version: 1, role: 'financial', sha256: 'b'.repeat(64) },
   ];
+  const confirmedAt = '2026-09-27T06:00:00.000Z';
+  const confirmation = { status: 'confirmed', market: 'sse', offering: 'private', document_purpose: null, as_of: null,
+    target_reporting_periods: [], confirmed_by: input.ownerUserId, confirmed_at: confirmedAt };
   const manifestFor = (schema?: string) => ({ kind: 'update', draft_revision: input.targetRevision, market: 'sse', offering: 'private',
-    materials, update_details: { target_reporting_periods: [] }, ...(schema === undefined ? {} : { manifest_schema: schema }) });
-  const run = async (manifest: Record<string, unknown>, storedHash: string) => {
+    materials, update_details: { target_reporting_periods: [] }, target_confirmation: confirmation,
+    ...(schema === undefined ? {} : { manifest_schema: schema }) });
+  const run = async (manifest: Record<string, unknown>, storedHash: string, persisted: Record<string, unknown> | null = confirmation) => {
     let materialQueryCount = 0;
     const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
     const client: UpdateDifficultyClient = {
       async query(sql) {
-        if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7 }] };
+        if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7, market: 'sse', offering: 'private' }] };
         if (sql.includes('FROM bb_input_revisions')) return { rows: [{ input_hash: storedHash, draft_revision: input.targetRevision, manifest, material_versions: refs }] };
+        if (sql.includes('FROM bb_input_revision_target_confirmations')) return { rows: persisted ? [{ market: persisted.market, offering: persisted.offering,
+          document_purpose: persisted.document_purpose, as_of: null, target_reporting_periods: persisted.target_reporting_periods,
+          confirmed_by: persisted.confirmed_by, confirmed_at: new Date(String(persisted.confirmed_at)) }] : [] };
         if (sql.includes('FROM bb_material_versions')) {
           materialQueryCount++;
           return { rows: materials.map(item => ({ id: item.material_id, version: item.material_version, role: item.role, sha256: item.sha256 })) };
@@ -123,18 +130,36 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
   const validV1Hash = createHash('sha256').update(canonical(validV1), 'utf8').digest('hex');
   const valid = await run(validV1, validV1Hash);
   assert.equal(valid.loaded.inputHash, validV1Hash);
+  assert.equal(valid.loaded.targetConfirmation?.status, 'confirmed');
+  assert.deepEqual(valid.loaded.targetReportingPeriods, [], 'confirmation is user intent, not a synthesized financial evidence period');
   assert.equal(valid.materialQueryCount, 1);
+
+  const firstPeriod = { start: '2024-01-01', end: '2024-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] };
+  const secondPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'needs_confirmation', evidence_refs: [] };
+  const orderedManifest = { ...manifestFor(), update_details: { target_reporting_periods: [firstPeriod, secondPeriod] },
+    target_confirmation: { ...confirmation, target_reporting_periods: [secondPeriod, firstPeriod] } };
+  const orderedLock = { ...orderedManifest, manifest_schema: 'production_rule_pin_v1' };
+  const sortedComparison = await run(orderedLock, createHash('sha256').update(canonical(orderedLock), 'utf8').digest('hex'),
+    { ...confirmation, target_reporting_periods: [secondPeriod, firstPeriod] });
+  assert.equal(sortedComparison.loaded.targetReportingPeriods.length, 2, 'period order is normalized as a set, not treated as drift');
 
   const legacy = await run(manifestFor(), 'f'.repeat(64));
   assert.equal(legacy.loaded.inputHash, 'f'.repeat(64));
   assert.equal(legacy.materialQueryCount, 1);
+
+  const unconfirmed = { ...manifestFor(), target_confirmation: { status: 'unconfirmed', market: null, offering: null,
+    document_purpose: null, as_of: null, target_reporting_periods: [], confirmed_by: null, confirmed_at: null } };
+  await assert.rejects(run(unconfirmed, 'e'.repeat(64)), /TARGET_CONFIRMATION_REQUIRED/);
+  await assert.rejects(run(manifestFor(), 'e'.repeat(64), null), /TARGET_CONFIRMATION_INVALID/, 'a confirmed manifest without its exact DB row fails closed');
+  const alteredRow = { ...confirmation, market: 'szse' };
+  await assert.rejects(run(manifestFor(), 'e'.repeat(64), alteredRow), /TARGET_CONFIRMATION_INVALID/, 'a row for a different target cannot confirm this lock');
 
   const tamperedV1 = { ...validV1, market: 'szse' };
   let tamperedMaterialQueryCount = 0;
   const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
   const tamperedClient: UpdateDifficultyClient = {
     async query(sql) {
-      if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7 }] };
+      if (sql.includes('FROM bb_projects')) return { rows: [{ draft_revision: input.targetRevision, latest_input_revision: 7, market: 'sse', offering: 'private' }] };
       if (sql.includes('FROM bb_input_revisions')) return { rows: [{ input_hash: validV1Hash, draft_revision: input.targetRevision,
         manifest: tamperedV1, material_versions: refs }] };
       if (sql.includes('FROM bb_material_versions')) tamperedMaterialQueryCount++;
@@ -175,21 +200,30 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
     [id, owner, project, uploadId, role, `${id}.bin`, mediaType, digest, `users/${owner}/projects/${project}/${key}`]);
   };
   const addInputLock = async (client: import('pg').PoolClient, revision: number, draftRevision: number, financeId: string, year: number,
-    manifestSchema?: string) => {
+    manifestSchema?: string, confirmed = true) => {
     const targetPeriod = { start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual', scope: 'consolidated',
       status: 'user_asserted', evidence_refs: [] };
+    const targetConfirmation = confirmed ? { status: 'confirmed', market: 'sse', offering: 'private', document_purpose: null, as_of: null,
+      target_reporting_periods: [targetPeriod], confirmed_by: owner, confirmed_at: '2026-09-27T06:00:00.000Z' } : {
+      status: 'unconfirmed', market: null, offering: null, document_purpose: null, as_of: null,
+      target_reporting_periods: [], confirmed_by: null, confirmed_at: null };
     const materials = [
       { material_id: historical, material_version: 1, role: 'historical', sha256: digest },
       { material_id: financeId, material_version: 1, role: 'financial', sha256: digest },
     ];
     const manifest = { kind: 'update', draft_revision: draftRevision, market: 'sse', offering: 'private', materials,
-      update_details: { target_reporting_periods: [targetPeriod] }, ...(manifestSchema === undefined ? {} : { manifest_schema: manifestSchema }) };
+      update_details: { target_reporting_periods: [targetPeriod] }, target_confirmation: targetConfirmation,
+      ...(manifestSchema === undefined ? {} : { manifest_schema: manifestSchema }) };
     const inputHash = manifestSchema === 'production_rule_pin_v1' ? createHash('sha256').update(canonical(manifest), 'utf8').digest('hex')
       : createHash('sha256').update(`${suffix}:${revision}:${year}:${financeId}`).digest('hex');
     await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'[]'::jsonb)`,
     [project, revision, owner, draftRevision, inputHash, JSON.stringify(manifest),
       JSON.stringify(materials.map(({ material_id, material_version }) => ({ material_id, material_version })))]);
+    if (confirmed) await client.query(`INSERT INTO bb_input_revision_target_confirmations(owner_user_id,project_id,input_revision,market,offering,document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`,
+    [owner, project, revision, targetConfirmation.market, targetConfirmation.offering, targetConfirmation.document_purpose,
+      targetConfirmation.as_of, JSON.stringify(targetConfirmation.target_reporting_periods), targetConfirmation.confirmed_by, targetConfirmation.confirmed_at]);
     await client.query(`UPDATE bb_projects SET draft_revision=$3,latest_input_revision=$4 WHERE owner_user_id=$1 AND id=$2`,
       [owner, project, draftRevision, revision]);
     return inputHash;
@@ -239,6 +273,8 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
     } finally { firstClient.release(); secondClient.release(); }
     assert.equal(snapshot1!.estimate.status, 'needs_confirmation');
     assert.equal(snapshot1!.estimate.estimatedN, null, 'user_asserted target periods and absent evidence cannot produce ready/N');
+    assert.equal(snapshot1!.comparisonInput.targetConfirmation?.status, 'confirmed');
+    assert.equal(snapshot1!.comparisonInput.targetReportingPeriods[0]?.status, 'user_asserted', 'confirmation never upgrades target intent into recognized finance evidence');
     assert.equal((await getCurrentUpdateDifficultySnapshotWithClient(makeClient(seed), { ownerUserId: owner, projectId: project, snapshotId: snapshot1!.id }))?.id, snapshot1!.id);
 
     await uploadAndMaterial(seed, finance2, 'financial', 'application/pdf', 'finance2');
@@ -264,8 +300,12 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
     const snapshot4 = await runEnsure(seed, 3, inputHash4);
     assert.equal(snapshot4.inputHash, inputHash4, 'valid v1 manifests load when their canonical hash matches the input lock');
 
+    const unconfirmedHash = await addInputLock(seed, 4, 4, finance2, 2026, undefined, false);
+    await assert.rejects(runEnsure(seed, 4, unconfirmedHash), /TARGET_CONFIRMATION_REQUIRED/,
+      'the PG16 loader does not treat absent 0053 confirmation rows as confirmed intent');
+
     await assert.rejects(ensureCurrentUpdateDifficultySnapshotWithClient(makeClient(seed), {
-      ownerUserId: `foreign-owner-${suffix}`, projectId: project, inputRevision: 3, inputHash: inputHash4,
+      ownerUserId: `foreign-owner-${suffix}`, projectId: project, inputRevision: 4, inputHash: unconfirmedHash,
     }), /PROJECT_NOT_FOUND/, 'a different owner cannot read or create a snapshot for this project');
   } finally {
     seed.release();
