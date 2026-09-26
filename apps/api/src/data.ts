@@ -10,6 +10,18 @@ import { inspectMaterialUpload, inspectMaterialUploadFile } from './upload-safet
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 export const canonical = (value: unknown): string => JSON.stringify(value);
+// Longer than any contract-valid key, so the encoded namespace cannot alias a legacy raw key.
+const encodedExecutionKeyPrefix=`${'~'.repeat(129)}v2:`;
+export const executionKeyStorage=(value:string):string=>
+  value.includes('\0')||Buffer.from(value,'utf8').toString('utf8')!==value
+    ? encodedExecutionKeyPrefix+Buffer.from(value,'utf16le').toString('hex')
+    : value;
+export const executionKeyFromStorage=(value:string):string=>{
+  if(!value.startsWith(encodedExecutionKeyPrefix))return value;
+  const hex=value.slice(encodedExecutionKeyPrefix.length);
+  return hex.length>0&&hex.length%4===0&&/^[a-f0-9]+$/.test(hex)
+    ? Buffer.from(hex,'hex').toString('utf16le') : value;
+};
 export class Problem extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
 }
@@ -26,7 +38,7 @@ export const date = (value: Date | string) => new Date(value).toISOString();
 export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
 export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error });
 export const inputDto = (i: any) => ({ project_id: i.project_id, input_revision: i.revision, input_hash: i.input_hash.trim(), material_versions: i.material_versions, rule_pack_version: i.rule_pack_version, template_version: i.template_version, reference_release: i.reference_release, created_at: date(i.created_at) });
-export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: r.execution_request_id, project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: 'platform_trial', reservation_id: null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
+export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: 'platform_trial', reservation_id: null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
 export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
   const result = await pool.query(`SELECT p.*,i.input_hash FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
   if (!result.rows[0]) throw missing();

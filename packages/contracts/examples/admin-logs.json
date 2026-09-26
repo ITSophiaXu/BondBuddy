@@ -11,7 +11,13 @@
           "user_id": "user_syn_1",
           "project_id": "proj_syn_1",
           "run_id": "run_syn_1",
+          "operation_id": null,
+          "request_id": null,
+          "execution_request_id": null,
+          "execution_request_key_hash": null,
           "trace_id": "run_syn_1",
+          "input_revision": null,
+          "input_hash": null,
           "job_type": "update",
           "subtype": "revision",
           "state": "succeeded",
@@ -134,6 +140,27 @@
             "cached_input_tokens": 80,
             "reasoning_tokens": 20
           }
+        }
+      }
+    },
+    {
+      "name": "admin-runless-preflight-rejected",
+      "schema": "AdminJobTimelineResponse",
+      "valid": true,
+      "value": {
+        "job": {"job_id":"job_preflight_syn","user_id":"user_syn_1","project_id":"proj_syn_1","run_id":null,"operation_id":"op_preflight_syn","request_id":"req_preflight_syn","execution_request_id":null,"execution_request_key_hash":null,"trace_id":"trace_preflight_syn","input_revision":1,"input_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","job_type":"preflight","subtype":"preflight_rejected","state":"rejected","stage":"submission_rejected","attempts":0,"error_code":"INPUT_REVISION_CONFLICT","created_at":"2026-09-25T08:00:00Z","updated_at":"2026-09-25T08:00:00Z","duration_ms":0},
+        "prompts": [],
+        "stages": [
+          {"seq":1,"type":"operation.rejected","state":"rejected","stage":null,"reason":"input_revision_conflict","occurred_at":"2026-09-25T08:00:00Z"},
+          {"seq":2,"type":"job.state_changed","state":"rejected","stage":"submission_rejected","reason":"input_revision_conflict","occurred_at":"2026-09-25T08:00:00Z"}
+        ],
+        "attempts": [],
+        "errors": [],
+        "artifact": null,
+        "outcome": {"state":"rejected","error_code":"INPUT_REVISION_CONFLICT","artifact_available":false},
+        "consumption": {
+          "all_attempts": {"attempts":0,"measured_attempts":0,"unresolved_attempts":0,"input_tokens":null,"output_tokens":null,"cached_input_tokens":null,"reasoning_tokens":null},
+          "completed_attempts": {"attempts":0,"measured_attempts":0,"unresolved_attempts":0,"input_tokens":null,"output_tokens":null,"cached_input_tokens":null,"reasoning_tokens":null}
         }
       }
     },

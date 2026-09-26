@@ -5,7 +5,7 @@ import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { azureBlobs, canonical, checkedPair, conflict, date, digest, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
+import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,7 +13,7 @@ import type { Readable } from 'node:stream';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
-import { recordOperation, rejectOperation } from './observability.js';
+import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation, rejectOperation, validExecutionKey } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
@@ -40,6 +40,17 @@ const MAX_BYTES = M1_UPLOAD_LIMITS.fileBytes;
 const DEFAULT_PROJECT_EVENT_PAGE_SIZE = 50;
 const MAX_PROJECT_EVENT_PAGE_SIZE = 100;
 const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
+
+function stableJson(value:unknown):string {
+  if(Array.isArray(value))return `[${value.map(stableJson).join(',')}]`;
+  if(value!==null&&typeof value==='object'){
+    const fields=value as Record<string,unknown>;
+    return `{${Object.keys(fields).sort().map(key=>`${JSON.stringify(key)}:${stableJson(fields[key])}`).join(',')}}`;
+  }
+  const encoded=JSON.stringify(value);
+  if(encoded===undefined)throw new Error('Non-JSON request value');
+  return encoded;
+}
 
 async function appendProjectMaterialEvent(client: PoolClient, ownerId: string, projectId: string, materialId: string, byteSize: number) {
   const allocated = await client.query('UPDATE bb_projects SET event_cursor=event_cursor+1 WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING event_cursor', [ownerId, projectId]);
@@ -74,9 +85,17 @@ export function createServer(settings: Settings = {}) {
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   // Upload bytes stay a stream here; the route authorises first, then spools to disk while hashing.
   app.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler(async (error, request, reply) => {
     if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
-    if (error instanceof Error && 'validation' in error && error.validation) return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Request validation failed', retryable: false, field_errors: [], correlation_id: request.id });
+    if (error instanceof Error && 'validation' in error && error.validation) {
+      let disposition:{status:number;code:string}={status:422,code:'VALIDATION_FAILED'};
+      if ('validationContext' in error && error.validationContext==='body' && request.method==='POST' &&
+          (request.routeOptions.url==='/api/v1/runs/execute'||request.routeOptions.url==='/api/v1/projects/:project_id/preflight')) {
+        try { disposition=await auditSchemaRejection(request); }
+        catch { return reply.code(503).send({code:'DATA_UNAVAILABLE',message:'Rejection evidence unavailable',retryable:true,field_errors:[],correlation_id:request.id}); }
+      }
+      return reply.code(disposition.status).send({ code: disposition.code, message: disposition.status===422?'Request validation failed':'Request key is bound to another input', retryable: false, field_errors: [], correlation_id: request.id });
+    }
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
@@ -94,6 +113,46 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
+  async function auditSchemaRejection(request:FastifyRequest):Promise<{status:number;code:string}> {
+    let user:string;
+    try { user=await owner(request); } catch(error) { if(error instanceof Problem && [401,403].includes(error.status))return {status:422,code:'VALIDATION_FAILED'}; throw error; }
+    const kind=request.routeOptions.url==='/api/v1/runs/execute'?'execute' as const:'preflight' as const;
+    const submitted=request.body&&typeof request.body==='object'&&!Array.isArray(request.body)?request.body as Record<string,unknown>:{};
+    const safeId=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
+    const projectId=kind==='preflight'?param(request,'project_id'):submitted.project_id;
+    const inputRevision=isPgInputRevision(submitted.input_revision)?submitted.input_revision:undefined;
+    const inputHash=typeof submitted.input_hash==='string'&&/^[a-f0-9]{64}$/.test(submitted.input_hash)?submitted.input_hash:undefined;
+    const requestId=request.id,traceId=uid();
+    return transaction(db(),async client=>{
+      const owned=safeId(projectId)&&await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,projectId]);
+      if(!owned||!owned.rowCount){
+        await recordOperation(client,{owner:user,projectId:null,requestId,traceId,kind,status:'rejected',errorCode:'VALIDATION_FAILED'});
+        return {status:422,code:'VALIDATION_FAILED'};
+      }
+      if(kind==='preflight'){
+        await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'preflight',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',httpStatus:422,schemaRejected:true});
+        return {status:422,code:'VALIDATION_FAILED'};
+      }
+      // A bounded canonical fingerprint permits business-key replay without storing the body.
+      const json=JSON.stringify(request.body);
+      if(!json||Buffer.byteLength(json,'utf8')>16384){
+        await recordOperation(client,{owner:user,projectId,requestId,traceId,kind,status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash});
+        return {status:422,code:'VALIDATION_FAILED'};
+      }
+      const requestHash=digest(stableJson(request.body));
+      const executionRequestId=validExecutionKey(submitted.execution_request_id)?submitted.execution_request_id:undefined;
+      if(executionRequestId){
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(executionRequestId)}`]);
+        const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,executionKeyStorage(executionRequestId)]);
+        if(priorRun.rows[0]){
+          await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId,traceId,kind,status:'rejected',errorCode:'IDEMPOTENCY_CONFLICT'});
+          return {status:409,code:'IDEMPOTENCY_CONFLICT'};
+        }
+      }
+      const logged=await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'submission',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',executionRequestId,requestHash,httpStatus:422,schemaRejected:true});
+      return {status:logged.httpStatus!,code:logged.errorCode!};
+    });
+  }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
     let bytes:Buffer|null;
@@ -428,24 +487,58 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request);
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);
     const traceId=uid();
+    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
+    const storedExecutionKey=executionKeyStorage(b.execution_request_id);
+    const wideRevision=!isPgInputRevision(b.input_revision);
+    const logical=(errorCode:string,httpStatus:number,stage:string)=>({owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
+    const priorRejection=async(client:PoolClient,prior:any)=>{
+      if(wideRevision){
+        const same=prior.request_hash.trim()===requestHash;
+        await recordOperation(client,{owner:user,projectId:prior.project_id,jobId:prior.id,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:same?prior.error_code:'IDEMPOTENCY_CONFLICT'});
+        return {errorCode:same?prior.error_code as string:'IDEMPOTENCY_CONFLICT',httpStatus:same?prior.rejection_http_status as number:409};
+      }
+      const logged=await recordLogicalJob(client,logical(prior.error_code,prior.rejection_http_status,prior.stage));
+      return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
+    };
     if(!settings.enableRunStaging && !queueEnabled){
-      const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
-      await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY',inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
-      throw unavailable();
+      const response=await transaction(db(),async client=>{
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
+        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
+        if(old.rows[0]){
+          const same=old.rows[0].request_hash.trim()===requestHash;
+          await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
+          return same?{run:runDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
+        }
+        const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
+        if(prior.rows[0])return priorRejection(client,prior.rows[0]);
+        const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+        if(!owned.rowCount){await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});return {errorCode:'CAPABILITY_NOT_READY',httpStatus:501};}
+        if(wideRevision){const logged=await recordLogicalJob(client,logical('VALIDATION_FAILED',422,'revision_out_of_range'));return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};}
+        const logged=await recordLogicalJob(client,logical('CAPABILITY_NOT_READY',501,'capability_not_ready'));
+        return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
+      });
+      if('run' in response)return reply.code(202).send(response.run);
+      throw new Problem(response.httpStatus,response.errorCode,'Execution request was rejected');
     }
     let result;
     try {result=await transaction(db(),async client=>{
-      const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${b.execution_request_id}`]);
-      const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,b.execution_request_id]);
-      if(old.rows[0]){if(old.rows[0].request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Request key is bound to another input');await recordOperation(client,{owner:user,projectId:b.project_id,runId:old.rows[0].id,requestId:request.id,traceId:old.rows[0].id,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});return runDto(old.rows[0]);}
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
+      const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
+      if(old.rows[0]){
+        const same=old.rows[0].request_hash.trim()===requestHash;
+        await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
+        return same?runDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
+      }
+      const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
+      if(prior.rows[0])return {rejection:await priorRejection(client,prior.rows[0])};
       await project(client,user,b.project_id);
+      if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
-      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,b.execution_request_id,b.task_kind,requestHash,queueEnabled?'queued':'paused']);
+      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused']);
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
         await enqueue(client,q.rows[0],runRuntime?RUN_PIPELINE_SUBTYPE:'default');
@@ -457,12 +550,31 @@ export function createServer(settings: Settings = {}) {
       return runDto({...q.rows[0],event_cursor:1});
     });} catch(error) {
       if(error instanceof Problem){
-        const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2',[user,b.project_id]);
-        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?b.project_id:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code,inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined});
-        await reportTrialRejection(db(),error,user);
+        const disposition=await transaction(db(),async client=>{
+          // The validation transaction released its lock on rollback. Recheck under
+          // the same business-key lock before recording a terminal rejection.
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
+          const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
+          if(priorRun.rows[0]){
+            const same=priorRun.rows[0].request_hash.trim()===requestHash;
+            await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
+            return same?{run:runDto(priorRun.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
+          }
+          const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+          if(owned.rowCount){
+            const logged=await recordLogicalJob(client,logical(error.code,error.status,wideRevision?'revision_out_of_range':'submission_rejected'));
+            return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!,replay:logged.replay};
+          }
+          await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
+          return {errorCode:error.code,httpStatus:error.status,replay:false};
+        });
+        if('run' in disposition)return reply.code(202).send(disposition.run);
+        if(!disposition.replay)await reportTrialRejection(db(),error,user);
+        throw new Problem(disposition.httpStatus,disposition.errorCode,!disposition.replay&&disposition.errorCode===error.code?error.message:'Execution request was rejected');
       }
       throw error;
     }
+    if('rejection' in result)throw new Problem(result.rejection.httpStatus,result.rejection.errorCode,'Execution request was rejected');
     return reply.code(202).send(result);
   });
   app.get('/api/v1/runs/:run_id',async request=>runDto(await run(db(),await owner(request),param(request,'run_id'))));
@@ -588,6 +700,7 @@ export function createServer(settings: Settings = {}) {
     try {
       return await transaction(db(),async client=>{
         await project(client,user,id);
+        if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
         const input=(await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,id,b.input_revision])).rows[0];
         if(!input)throw missing();
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
@@ -639,13 +752,15 @@ export function createServer(settings: Settings = {}) {
         }
         // Execution stays 501 until #16/#79/Word delivery are live, so preflight cannot report an executable input.
         if(!settings.enableRunStaging&&!queueEnabled)missingInputs.push('execution_capability_not_ready');
-        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
-        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status:missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const};
+        const status=missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const;
+        await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status});
+        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const};
       });
     } catch(error) {
       if(error instanceof Problem){
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
-        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'preflight',status:'rejected',errorCode:error.code});
+        if(owned.rowCount)await transaction(db(),client=>recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'rejected',errorCode:error.code,inputRevision:isPgInputRevision(b.input_revision)?b.input_revision:undefined,inputHash:isPgInputRevision(b.input_revision)?b.input_hash:undefined,stage:isPgInputRevision(b.input_revision)?'submission_rejected':'revision_out_of_range',httpStatus:isPgInputRevision(b.input_revision)?undefined:422,revisionRejected:!isPgInputRevision(b.input_revision)}));
+        else await rejectOperation(db(),{owner:user,projectId:null,requestId:request.id,traceId,kind:'preflight',status:'rejected',errorCode:error.code});
       }
       throw error;
     }
