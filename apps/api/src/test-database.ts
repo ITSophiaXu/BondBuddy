@@ -3,8 +3,8 @@ import { after } from 'node:test';
 import { Client } from 'pg';
 
 // Test-only helper. `node --test` runs every test file in its own process in parallel, so suites that share
-// one database race on global rows (outbox counts, queued jobs, bb_outbox triggers). Each calling file instead
-// gets a private copy of the configured, already-migrated database, cloned with CREATE DATABASE ... TEMPLATE and
+// one database race on global rows (outbox counts, queued jobs, bb_outbox triggers). Each calling file, or each
+// distinct isolation key within a file, gets a private copy of the configured, already-migrated database, cloned with CREATE DATABASE ... TEMPLATE and
 // dropped when the file finishes. The configured database is only a template: tests never connect to it,
 // because PostgreSQL refuses to clone a template that has open sessions. The role needs CREATEDB.
 
@@ -48,13 +48,14 @@ async function cloneDatabase(templateUrl: string): Promise<string> {
 }
 
 /**
- * Resolves the database for one test file: the suite-specific variable if set, otherwise BB_TEST_DATABASE_URL.
+ * Resolves a database for one test file or isolation key: the suite-specific variable if set, otherwise BB_TEST_DATABASE_URL.
  * Returns undefined (so the suite skips) when neither is set; otherwise a private clone of that database.
  */
-export async function isolatedTestDatabase(specificVariable?: string): Promise<string | undefined> {
+export async function isolatedTestDatabase(specificVariable?: string, isolationKey = ''): Promise<string | undefined> {
   const template = (specificVariable ? process.env[specificVariable] : undefined) || process.env.BB_TEST_DATABASE_URL;
   if (!template) return undefined;
-  let clone = cloned.get(template);
-  if (!clone) { clone = cloneDatabase(template); cloned.set(template, clone); }
+  const key = `${template}\0${isolationKey}`;
+  let clone = cloned.get(key);
+  if (!clone) { clone = cloneDatabase(template); cloned.set(key, clone); }
   return clone;
 }

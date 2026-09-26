@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
+import { isolatedTestDatabase } from './test-database.js';
 
 const origin='http://bondbuddy.test';
 const connection=process.env.BB_TEST_DATABASE_URL;
+const isolatedConnection=await isolatedTestDatabase();
 
 test('account routes require a session and appear as implemented in OpenAPI',async()=>{
   const app=createServer({allowedOrigin:origin});try{
@@ -17,7 +19,7 @@ test('account routes require a session and appear as implemented in OpenAPI',asy
 });
 
 test('password change, session revocation and closure keep accounts isolated', {skip:!connection},async()=>{
-  const pool=new Pool({connectionString:connection});
+  const pool=new Pool({connectionString:isolatedConnection});
   const app=createServer({pool,allowedOrigin:origin,auth:{termsVersion:'synthetic-v1',supportContact:'synthetic-support'}});
   const jar=(response:any)=>Object.fromEntries((response.headers['set-cookie'] as string[]).map((v:string)=>v.split(';')[0].split('=')));
   const cookie=(c:Record<string,string>)=>Object.entries(c).map(([k,v])=>`${k}=${v}`).join('; ');
@@ -25,7 +27,6 @@ test('password change, session revocation and closure keep accounts isolated', {
   const register=(username:string,password:string)=>send('POST','/api/v1/auth/register',{username,password,accepted_terms_version:'synthetic-v1'});
   const login=(username:string,password:string)=>send('POST','/api/v1/auth/login',{username,password});
   try{
-    await pool.query('TRUNCATE bb_account_closures,bb_password_login_limits,bb_auth_sessions,bb_agreement_acceptances,bb_registration_events,bb_auth_challenges,bb_password_credentials,bb_users,bb_artifact_download_grants,bb_outbox,bb_run_events,bb_artifact_versions,bb_runs,bb_storage_tombstones,bb_material_versions,bb_uploads,bb_input_revisions,bb_projects RESTART IDENTITY CASCADE');
     const alicePwd='synthetic password for Alice 123',aliceNew='synthetic new password Alice 456',bobPwd='synthetic password for Bob 123';
     const a1=await register('alice_acct',alicePwd);assert.equal(a1.statusCode,201,a1.body);const ca1=jar(a1),alice=a1.json().user_id;
     const a2=await login('alice_acct',alicePwd);assert.equal(a2.statusCode,200,a2.body);const ca2=jar(a2);
