@@ -20,7 +20,7 @@ def write_review_report(base, pack, documents, mappings, review_items, version, 
              '- 模拟、状态、差分和确定性复算是内部方法；引用正式原则不意味着交易所规定了本产品算法。', '',
              '## 验收分类', '',
              '25条受限检查＋6条人工处理=31条有处理。`handledRuleIds`列31条，`manualRuleIds`及`uncoveredRuleIds`仍列6条无自动专业判定的规则；既有25条也保留各自未覆盖内容，正式CoverageManifest继续31条uncovered。', '',
-             '工程验收使用合成反例，文件为 `sse-private-additional-checks.test.ts` / `sse-private-manual-checks.test.ts` 及既有三份检查测试。真人规则专业签认与四组真实Word结果另在[关闭清单](CLOSURE-CHECKLIST.md)G1–G5核对。', '',
+             '工程验收使用合成反例，文件为 `sse-private-additional-checks.test.ts` / `sse-private-manual-checks.test.ts` 及既有三份检查测试。固定版本的业务采用决定见[31条记录](BUSINESS-REVIEW-20260927.md)；#20按[关闭清单](CLOSURE-CHECKLIST.md)G1–G3交付。四组真实Word规则/章节结果归#332、客户端兼容归#146，均不阻断#20关闭。', '',
              '| 规则 | 文献结论类别 | 工程处理 |', '| --- | --- | --- |']
     rows = []
     for rule in pack['rules']:
@@ -49,7 +49,7 @@ def write_review_report(base, pack, documents, mappings, review_items, version, 
                       '> '+quote.replace('\n','\n> '), '']
         if not pairs:
             lines += ['', '本范围未登记可用于确认专项效力的官方证据对。用户原件仍可研究，不能写“当前专项规则已验收”；本条实施的是普通包能力隔离和人工交接。', '']
-        lines += ['**剩余验收**：上述未覆盖依据与专业判断须有实际审核结论；绑定来源hash/版本并走#19实际发布。真实材料及成果逐章验收、Word/WPS在产出后验证。文献/工程记录不能代签。', '']
+        lines += ['**后续归属**：本条业务采用范围见[固定记录](BUSINESS-REVIEW-20260927.md)；未覆盖事实/来源登记及正式发布走#19。真实成果规则/章节验收归#332、Word/WPS归#146，均不阻断#20。文献和业务分析不代签运行时批准。', '']
     (base/'drafts/sse-private/RULE-REVIEW-20260927.md').write_text('\n'.join(lines).rstrip()+'\n','utf8')
     evidence = {'version':version,'baseline_as_of':'2026-09-26','authored_at':authored_at,
                 'review_type':'documentary_analysis_not_professional_attestation',

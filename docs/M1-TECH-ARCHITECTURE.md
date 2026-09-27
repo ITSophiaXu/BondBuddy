@@ -2,6 +2,12 @@
 
 状态：供 M1 团队评审的技术方案。产品范围和验收以 `product-prototype/product-specs/`、GitHub M1 issue 为准；本文件固定实现方向和跨模块接口。若需改变选型或公共契约，先在同一个 PR 更新本文件及受影响的接口契约，再合并实现。
 
+## #18 浏览器保存输入与任务提交切片（2026-09-27）
+
+`apps/web/src/project-execution.ts` 在既有项目工作区接入已保存材料选择、目标意图确认、不可变 input revision、预检、显式 execute 和同页 run/事件恢复。目标沿用草稿的完整报告期及公共市场/发行方式，法规日不从财务截止日推断。所有 HTTP 复用 `api.ts` 与 `packages/contracts`；不新增契约、迁移、规则选择或终态。
+
+执行键由项目/输入版本/hash 确定，重试及刷新不创建重复 run；input_manifest_ref=输入 hash、workspace_id=项目 ID 仅作稳定请求关联，API/worker 始终重验数据库归属及不可变清单。无幂等键的输入保存响应丢失时先读回核对，不自动重发。预检 blocked 与实际暂停原因明确显示；显式提交仍受服务端门禁约束。恢复读取精确输入、分页 owner 项目列表及 run 事件；旧成功成果保留，离页销毁请求与轮询。此 UI 切片的 Chromium synthetic 回归不能替代 #35 真链路，也不实现 #18 消息/回复/流式持久化。复现命令与限制见 `apps/web/README.md`。
+
 ## #34 浏览器成果交付切片（2026-09-26）
 
 `apps/web/src/artifact-page.ts` 通过现有 `ArtifactResponse` → `RunResponse` → 本人项目读取路径展示成果摘要、待人工确认项与修订/清洁/有效基线下载，不新增契约、迁移或运行状态。项目列表沿用最新成功成果引用，后续 run 失败不覆盖该入口；同一成果 URL 可在刷新后恢复。成果页和列表快捷下载均重新获得短期授权，核对成果与成功 run 的关联，由公共 API client 验证同源精确成果路径、完整响应和 SHA-256，并处理会话、取消和失败；两处共用临时下载文件的释放逻辑。没有 `word_delivery` 的旧成果保持通用文件展示；不推断其修订或无历史稿身份。完整项目成果历史目录缺少公开列表接口，未在此实现。浏览器合成验收不替代 #35 真实交付与 #146 Office 实机矩阵，详见 `apps/web/README.md`。
@@ -434,7 +440,7 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 
 历史稿生成另外增加 `apps/worker/src/historical-rule-context.ts`，消费API实际写入的 `ProductionRulePackPin.packId/contentHash`，在生成和恢复前重复使用registry的精确release revalidator。仅向prompt投影本次适用的规则、边界、例外及相关原文证据；不选latest、不回退本地研究文件。`historical-sse-private-v2`变更prompt绑定，旧v1 checkpoint不能静默复用。正文180,000字节、完整prompt240,000字节，超限暂停而非截断。此消费者不批准规则、不替代#19整体review loader；研究checker不因此进入生产。没有公开DTO、迁移或run状态机变化。现有运行日志保存完整prompt，公开进度只留计数和引用。详细限制和依赖见[本轮工程记录](acceptance/issue-20-rule-integration-2026-09-27.md)。
 
-2026-09-27行业源资产独立放在[固定来源目录](../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)：离线Python提取19门类/10制造业辅助次类/91大类/456中类及原表锚点，附576项来源代码→大类候选映射。仅#19现有domain字典可以成为运行标准的唯一绑定；此切片不修改公共枚举、迁移、review ledger或loader。精确匹配selector没有祖先推断，门类/中类规则的覆盖映射须显式审核。2024相近金融标准与2023协会指引不自动等价。#20工程/来源/结果四项关口及独立兼容性跟踪见[关闭清单](../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)。
+2026-09-27行业源资产独立放在[固定来源目录](../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)：离线Python提取19门类/10制造业辅助次类/91大类/456中类及原表锚点，附576项来源代码→大类候选映射。仅#19现有domain字典可以成为运行标准的唯一绑定；此切片不修改公共枚举、迁移、review ledger或loader。精确匹配selector没有祖先推断，门类/中类规则的覆盖映射须显式审核。2024相近金融标准与2023协会指引不自动等价。#20业务审核/规则章节实现/版本接入三项关口，以及独立的#332成果验收和#146兼容性跟踪见[关闭清单](../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)。
 
 
 ### #20 complete documentary review and explicit handling (2026-09-27)
@@ -447,7 +453,7 @@ The internal [v4 input example](../packages/domain/examples/sse-private-check-in
 
 ### #20 内部首次测试与关闭边界（用户2026-09-27调整）
 
-Word/WPS桌面兼容验收不阻断#20关闭，由#146独立跟踪，发现实际缺陷后另开issue。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
+生成后的规则/章节结果验收移至#332，Word/WPS桌面兼容验收由#146独立跟踪，两者均不阻断#20关闭，发现实际缺陷后另开issue。[31条固定业务决定](../knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)完成本轮委托审核，保留25条有限检查、6条人工处理及未覆盖；运行资产和生产批准未改变。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
 
 首次内部工作稿测试需要固定指定账号、已授权样本、输入/规则来源版本和日志，并将局部缺材料/配套未核状态传到结果；不应等待全库正文核验、同一次成果的产出后验收或WPS矩阵。当前`rule-applicability-context`先检查整体批准，再检查已发布字典；`rule-pack-registry`生产入口要求真实生产release和完整已核coverage。#35最新暂停证明整体审核未通过，不证明缺少某一配套PDF本身直接使模型失败。
 

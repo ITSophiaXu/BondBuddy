@@ -47,7 +47,7 @@ test('owner deletes a saved material and then the project through the API', asyn
   const calls: string[] = []; await install(page, calls);
   page.on('dialog', dialog => dialog.accept());
   await page.goto(`/#/projects/${projectId}`);
-  await expect(page.getByText(material.filename)).toBeVisible();
+  await expect(page.locator('#material-partitions').getByText(material.filename, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '删除', exact: true }).click();
   await expect(page.getByText(material.filename)).toHaveCount(0);
   await page.getByRole('button', { name: '删除项目' }).click();

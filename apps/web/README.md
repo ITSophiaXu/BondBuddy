@@ -148,3 +148,15 @@ npm test -w @bondbuddy/web -- artifact-page.spec.ts
 上传的条件分区、排队、复用版本与原 session 恢复行为，以及本次取得的真实数据库/浏览器证据，见 [UPLOAD-ACCEPTANCE.md](./UPLOAD-ACCEPTANCE.md)。接口仍复用公共契约；页面不会把文件传完或保存完成当作源信息识别完成。
 
 2026-09-26的[预发真实浏览器验收记录](../../docs/acceptance/issue-11-12-preprod-2026-09-26.md)覆盖市场联动、DFI空额度保存、重登恢复和授权任丘DOCX上传解析。解析流程完成但画像仍needs_confirmation，不能据此关闭#12/#31。Windows下bundle-secrets检查通过当前Node启动本地Vite入口，保留原有全部canary断言，不依赖npx命令封装。
+
+## #18 保存输入与显式任务提交（2026-09-27）
+
+项目材料区下方可选择已保存的精确材料版本、核对当前市场/发行方式及完整报告期集合，再保存不可变输入。文书用途与法规适用日独立填写，可明确保留未知；不会以财务截止日代填法规日。目标确认只记录用户意图。草稿、材料和补充说明的保存不提交任务。
+
+预检显示 ready / needs_confirmation / blocked 的实际结果及本地化原因；局部待核不变为已验证事实。blocked 时可明确“提交任务并等待条件齐备”，由现有 API/worker 再验证并暂停；这不绕过执行门禁。任务状态及真实事件原因在同页读取，每五秒更新未终态任务；刷新/重登从 owner 项目列表（完整分页）定位任务，再读取 run 与事件游标，保留此前成功成果入口。未成功的 run 不显示成果已生成。
+
+客户端仅复用 InputRevisionCreateRequest/Response、PreflightRequest/Response、ExecuteRequest、RunResponse/EventsResponse。执行键是 project_id/input_revision/input_hash 的 SHA-256 派生稳定键；重复点击、响应丢失重试和重新打开同一输入均重放同一个请求。input_manifest_ref 使用 input_hash、workspace_id 使用 project_id 作为稳定客户端关联值；服务端仍以认证 owner 与数据库 input revision 为权威，不信任客户端清单路径。新内容需要新 input revision；旧 run/hash 不变。已锁定的授信补充沿用精确版本引用并明确标示用户提供，不能静默丢失或提升为已核事实；补充版本编辑仍由后续 #18 切片接入。
+
+输入版本 POST 尚无幂等契约，响应丢失后禁止盲目重发，先刷新并核对服务器版本。刷新读回的旧版本必须明确选用，不能自动把它当作当前草稿；输入、材料或目标控件变化使已有预检失效。离页/账号变化取消请求，迟到响应不回写。
+
+独立验证：`npm test -w @bondbuddy/web -- project-execution.spec.ts`。真实 Chromium 中的 HTTP 均为 synthetic，覆盖固定版本/目标、阻塞原因、响应丢失、重开重放、并发点击、409、迟到预检、账号切换、分页恢复及窄屏。未做真实 API/PG/Blob/供应商或 Word/WPS 验收。本机没有 Docker/PostgreSQL，#35 仍需部署后走真实浏览器链路。#18 持久消息、多轮回复、流式中断及消息 prompt/job 追溯仍是独立缺口；本切片不自动关闭 #18。
