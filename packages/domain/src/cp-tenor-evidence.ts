@@ -25,7 +25,7 @@ export type CpTenorEvidenceInput = {
   statedTenorMonths: CpTenorEvidenceValue<number>;
   interestStartDate: CpTenorEvidenceValue<string>;
   maturityDate: CpTenorEvidenceValue<string>;
-  dateAdjustment: 'none' | 'applied' | 'unknown';
+  dateAdjustment: CpTenorEvidenceValue<'none' | 'applied' | 'unknown'>;
 };
 
 export type CpTenorEvidenceDecision =
@@ -47,7 +47,7 @@ function isCalendarDate(value: string): boolean {
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  if (month < 1 || month > 12) return false;
+  if (year < 1 || month < 1 || month > 12) return false;
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
   return day >= 1 && day <= days;
@@ -87,18 +87,21 @@ export function checkCpTenorEvidence(input: CpTenorEvidenceInput): CpTenorEviden
     hasEvidence(input.statedTenorMonths),
     hasEvidence(input.interestStartDate),
     hasEvidence(input.maturityDate),
+    hasEvidence(input.dateAdjustment),
   ];
   const fieldsAreCertain = [
     input.instrument.uncertainty === 'clear',
     input.statedTenorMonths.uncertainty === 'clear',
     input.interestStartDate.uncertainty === 'clear',
     input.maturityDate.uncertainty === 'clear',
+    input.dateAdjustment.uncertainty === 'clear',
   ];
   const fieldsAreConsistent = [
     !hasConflict(input.instrument),
     !hasConflict(input.statedTenorMonths),
     !hasConflict(input.interestStartDate),
     !hasConflict(input.maturityDate),
+    !hasConflict(input.dateAdjustment),
   ];
 
   if (fieldsHaveEvidence.some(present => !present)) reasons.push('evidence_missing_or_unlocated');
@@ -111,7 +114,7 @@ export function checkCpTenorEvidence(input: CpTenorEvidenceInput): CpTenorEviden
   const tenorMonths = input.statedTenorMonths.value;
   if (!isCalendarDate(start) || !isCalendarDate(maturity)) reasons.push('invalid_or_missing_calendar_date');
   if (!Number.isInteger(tenorMonths) || tenorMonths <= 0) reasons.push('invalid_stated_tenor');
-  if (input.dateAdjustment !== 'none') reasons.push('date_adjustment_unresolved');
+  if (input.dateAdjustment.value !== 'none') reasons.push('date_adjustment_unresolved');
 
   if (reasons.length) return { decision: 'needs_review', reasons, evidence: input };
   if (dateOrder(start, maturity) >= 0) {
@@ -120,28 +123,33 @@ export function checkCpTenorEvidence(input: CpTenorEvidenceInput): CpTenorEviden
 
   const [, yearText, monthText, dayText] = DATE_PATTERN.exec(start)!;
   const year = Number(yearText);
-  const month = monthText!;
-  const day = dayText!;
-  if (month === '02' && day === '29') {
+  const startMonth = Number(monthText);
+  const startDay = Number(dayText);
+  if (year === 9999 && tenorMonths >= 12) {
+    return { decision: 'needs_review', reasons: ['calendar_year_out_of_supported_range'], evidence: input };
+  }
+  if (startMonth === 2 && startDay === 29) {
     return { decision: 'needs_review', reasons: ['leap_day_anniversary_unresolved'], evidence: input };
   }
 
-  const anniversary = `${String(year + 1).padStart(4, '0')}-${month}-${day}`;
-  const relation = dateOrder(maturity, anniversary);
-  if (relation === 0) {
-    return { decision: 'needs_review', reasons: ['one_year_anniversary_boundary_unresolved'], evidence: input };
+  const [, maturityYearText, maturityMonthText, maturityDayText] = DATE_PATTERN.exec(maturity)!;
+  const maturityYear = Number(maturityYearText);
+  const maturityMonth = Number(maturityMonthText);
+  const maturityDay = Number(maturityDayText);
+  const dateTenorMonths = (maturityYear - year) * 12 + maturityMonth - startMonth;
+  if (dateTenorMonths <= 0) {
+    return { decision: 'needs_review', reasons: ['non_increasing_or_same_dates'], evidence: input };
   }
-
-  const datesAreShorterThanYear = relation < 0;
-  if (tenorMonths === 12) {
-    return { decision: 'needs_review', reasons: ['stated_one_year_tenor_boundary_unresolved'], evidence: input };
+  if (startDay !== maturityDay) {
+    return { decision: 'needs_review', reasons: ['month_day_adjustment_or_date_mismatch_unresolved'], evidence: input };
   }
-  const statedTenorIsShorterThanYear = tenorMonths < 12;
-  if (datesAreShorterThanYear !== statedTenorIsShorterThanYear) {
+  if (tenorMonths !== dateTenorMonths) {
     return { decision: 'needs_review', reasons: ['stated_tenor_conflicts_with_explicit_dates'], evidence: input };
   }
-
-  return datesAreShorterThanYear
+  if (dateTenorMonths === 12) {
+    return { decision: 'needs_review', reasons: ['one_year_anniversary_boundary_unresolved'], evidence: input };
+  }
+  return dateTenorMonths < 12
     ? { decision: 'evidence_shape_pass', reasons: ['clear_cp_tenor_shorter_than_one_calendar_year'], evidence: input }
     : { decision: 'tenor_exceeds_one_year', reasons: ['clear_cp_tenor_longer_than_one_calendar_year'], evidence: input };
 }

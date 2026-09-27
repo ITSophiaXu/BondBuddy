@@ -136,7 +136,10 @@ tenor, interest start and maturity assertions with their source references,
 material versions, locators, quotes and uncertainty flags. A clear synthetic
 11-month example can pass this narrow check; a clearly later-than-anniversary
 date can be flagged as exceeding one calendar year. The code does not convert
-one year to 365 days. Same-date, exact-anniversary, leap-day, adjusted-date,
+one year to 365 days. Stated months must exactly match the month distance
+between dates on the same day of month; no end-of-month normalization is
+inferred. Date-adjustment status must itself have cited, certain evidence.
+Same-date, exact-anniversary, leap-day, adjusted-date, unsupported-year,
 missing/uncertain and conflicting-source cases return `needs_review`.
 
 This check is not legal interpretation, professional acceptance, rule-pack

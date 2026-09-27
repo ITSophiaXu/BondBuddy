@@ -19,7 +19,7 @@ function input(overrides: Partial<CpTenorEvidenceInput> = {}): CpTenorEvidenceIn
     statedTenorMonths: evidenced(11),
     interestStartDate: evidenced('2025-01-01'),
     maturityDate: evidenced('2025-12-01'),
-    dateAdjustment: 'none',
+    dateAdjustment: evidenced('none'),
     ...overrides,
   };
 }
@@ -39,6 +39,20 @@ test('a clearly longer-than-one-calendar-year CP tenor is flagged', () => {
     maturityDate: evidenced('2026-02-01'),
   }));
   assert.equal(result.decision, 'tenor_exceeds_one_year');
+});
+
+test('stated months must exactly agree with the month distance in explicit dates', () => {
+  for (const [statedTenorMonths, maturityDate] of [
+    [1, '2025-12-01'],
+    [13, '2026-03-01'],
+  ] as const) {
+    const result = checkCpTenorEvidence(input({
+      statedTenorMonths: evidenced(statedTenorMonths),
+      maturityDate: evidenced(maturityDate),
+    }));
+    assert.equal(result.decision, 'needs_review');
+    assert.ok(result.reasons.includes('stated_tenor_conflicts_with_explicit_dates'));
+  }
 });
 
 test('missing or malformed date values need review', () => {
@@ -72,7 +86,7 @@ test('a stated twelve-month tenor remains unresolved even when dates disagree', 
     maturityDate: evidenced('2026-01-02'),
   }));
   assert.equal(result.decision, 'needs_review');
-  assert.ok(result.reasons.includes('stated_one_year_tenor_boundary_unresolved'));
+  assert.ok(result.reasons.includes('month_day_adjustment_or_date_mismatch_unresolved'));
 });
 
 test('leap-day anniversary needs review without substituting a date convention', () => {
@@ -84,12 +98,64 @@ test('leap-day anniversary needs review without substituting a date convention',
   assert.ok(result.reasons.includes('leap_day_anniversary_unresolved'));
 });
 
-test('date adjustment uncertainty blocks a tenor conclusion', () => {
+test('date adjustment must be cited and clear before a tenor conclusion', () => {
+  const missing = checkCpTenorEvidence(input({
+    dateAdjustment: { value: 'none', citations: [], uncertainty: 'clear' },
+  }));
+  assert.equal(missing.decision, 'needs_review');
+  assert.ok(missing.reasons.includes('evidence_missing_or_unlocated'));
+
+  const uncertain = checkCpTenorEvidence(input({
+    dateAdjustment: evidenced('none', { uncertainty: 'uncertain' }),
+  }));
+  assert.equal(uncertain.decision, 'needs_review');
+  assert.ok(uncertain.reasons.includes('evidence_uncertain'));
+
+  const conflicting = checkCpTenorEvidence(input({
+    dateAdjustment: evidenced('none', {
+      conflictingAssertions: [{ value: 'applied', citations: [{ ...citation, locator: 'page 2, footnote 1' }] }],
+    }),
+  }));
+  assert.equal(conflicting.decision, 'needs_review');
+  assert.ok(conflicting.reasons.includes('conflicting_source_assertions'));
+
   for (const dateAdjustment of ['applied', 'unknown'] as const) {
-    const result = checkCpTenorEvidence(input({ dateAdjustment }));
+    const result = checkCpTenorEvidence(input({ dateAdjustment: evidenced(dateAdjustment) }));
     assert.equal(result.decision, 'needs_review');
     assert.ok(result.reasons.includes('date_adjustment_unresolved'));
   }
+});
+
+test('an absent month-end date convention remains unresolved instead of normalizing', () => {
+  const result = checkCpTenorEvidence(input({
+    statedTenorMonths: evidenced(1),
+    interestStartDate: evidenced('2025-01-31'),
+    maturityDate: evidenced('2025-02-28'),
+  }));
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(result.reasons.includes('month_day_adjustment_or_date_mismatch_unresolved'));
+});
+
+test('year zero is invalid and a four-digit anniversary overflow cannot pass', () => {
+  const yearZero = checkCpTenorEvidence(input({
+    interestStartDate: evidenced('0000-01-01'),
+    maturityDate: evidenced('0000-12-01'),
+  }));
+  assert.equal(yearZero.decision, 'needs_review');
+  assert.ok(yearZero.reasons.includes('invalid_or_missing_calendar_date'));
+
+  const maxYear = checkCpTenorEvidence(input({
+    interestStartDate: evidenced('9999-01-01'),
+    maturityDate: evidenced('9999-12-01'),
+  }));
+  assert.equal(maxYear.decision, 'evidence_shape_pass');
+  const beyondMax = checkCpTenorEvidence(input({
+    statedTenorMonths: evidenced(13),
+    interestStartDate: evidenced('9999-01-01'),
+    maturityDate: evidenced('9999-12-01'),
+  }));
+  assert.equal(beyondMax.decision, 'needs_review');
+  assert.ok(beyondMax.reasons.includes('calendar_year_out_of_supported_range'));
 });
 
 test('missing citation or uncertain evidence is retained and needs review', () => {
