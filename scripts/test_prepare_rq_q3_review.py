@@ -47,6 +47,39 @@ class ReviewGuards(unittest.TestCase):
             with self.assertRaises(ValueError):
                 review.validate_outputs(repo, [alias / 'values.json'])
 
+    def test_real_bare_repository_and_traversal_outputs_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            repo = base / 'source-repository'
+            bare = base / 'synthetic.git'
+            subprocess.run(['git', 'init', '--bare', str(bare)], check=True, capture_output=True)
+            for path in [bare / 'values.json', bare / 'objects' / 'nested' / 'values.md',
+                         base / 'private' / '..' / 'synthetic.git' / 'values.json', bare / 'HEAD']:
+                with self.subTest(path=path), self.assertRaises(ValueError):
+                    review.validate_outputs(repo, [path])
+            self.assertFalse((bare / 'values.json').exists())
+            self.assertFalse((bare / 'objects' / 'nested').exists())
+            # Merely having a HEAD file outside Git storage is not a repository.
+            private = base / 'private'
+            private.mkdir()
+            (private / 'HEAD').write_text('synthetic document heading', encoding='utf-8')
+            output = private / 'values.json'
+            self.assertEqual(review.validate_outputs(repo, [output]), [output.resolve()])
+
+    def test_symlink_alias_into_bare_repository_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            bare = base / 'synthetic.git'
+            subprocess.run(['git', 'init', '--bare', str(bare)], check=True, capture_output=True)
+            alias = base / 'alias'
+            try:
+                alias.symlink_to(bare, target_is_directory=True)
+            except OSError:
+                self.skipTest('Creating symlinks is not permitted on this host')
+            with self.assertRaises(ValueError):
+                review.validate_outputs(base / 'source-repository', [alias / 'values.json'])
+            self.assertFalse((bare / 'values.json').exists())
+
     def test_source_verification_remains_enabled_under_python_optimization(self):
         code = '''import runpy,sys,hashlib
 verify=runpy.run_path(sys.argv[1])['verify_source']

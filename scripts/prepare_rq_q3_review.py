@@ -15,6 +15,14 @@ def verify_source(original, item):
     if len(original) != item['bytes'] or hashlib.sha256(original).hexdigest() != item['sha256']:
         raise ValueError('AUTHORIZED_SOURCE_HASH_OR_SIZE_MISMATCH')
 
+def is_git_storage_directory(path):
+    # Bare/separate Git directories have no enclosing .git marker. Recognize
+    # storage conservatively without executing Git, reading config or hooks.
+    # commondir also covers linked-worktree administrative directories.
+    return (path / 'HEAD').is_file() and (
+        (path / 'objects').is_dir() or (path / 'commondir').is_file()
+    )
+
 def validate_outputs(root, paths):
     resolved = [path.expanduser().resolve() for path in paths]
     if len(set(resolved)) != len(resolved):
@@ -24,11 +32,11 @@ def validate_outputs(root, paths):
         # Check both lexical and resolved ancestors so symlink aliases cannot bypass this boundary.
         lexical = original.expanduser().absolute()
         if path.is_relative_to(root.resolve()) or any(
-            (ancestor / '.git').exists()
+            (ancestor / '.git').exists() or is_git_storage_directory(ancestor)
             for candidate in (lexical, path)
             for ancestor in (candidate, *candidate.parents)
         ):
-            raise ValueError('Customer-value outputs must be outside every Git repository/worktree')
+            raise ValueError('Customer-value outputs must be outside every Git repository/worktree, including bare Git storage')
     return resolved
 def extract(root):
     manifest=json.loads((root/'tests/samples/2026-09-25/manifest.json').read_text(encoding='utf-8'))

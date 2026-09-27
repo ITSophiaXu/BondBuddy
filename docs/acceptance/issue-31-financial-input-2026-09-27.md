@@ -47,13 +47,15 @@ node product-prototype/product-specs/build-spec.mjs
 
 实际Python用例要求`BONDBUDDY_TEST_PYTHON`指向已装`python/requirements.txt`依赖的解释器；Windows另设`PYTHONUTF8=1`和`PYTHONIOENCODING=utf-8`。初次Windows writer的cp1252输出失败在设置此环境后通过，没有因此更改生产writer。
 
-## 尚未解决的真实运行依赖
-
 ### 评审修复后的增量验证
 
 基于develop@a863951（含#319/#323）合流后：全仓构建通过，最终测试夹具调整后worker重新编译通过；domain201/201，历史生成/计划/规则/事实决策/Word及Q3 mapper共85项，83通过、2项原有条件跳过、0失败；Python输出路径与优化模式校验3/3。说明书重建19模块、188链接、133表格、4JSON示例、187验收标识，0错误。
 
 长待核原因与同锚点external提示完整分段，各条不超过512个UTF-16代码单元；实际Python生成的合成Word已打开ZIP逐条核对comments原文，包含长文本、来源限定及代理对，无截断。保持1000条总量上限，超限在模型阶段明确暂停，不交给Word报通用校验失败。核对表输出拒绝当前仓库、其他仓库/worktree及指向仓库的别名；原件size/SHA显式异常在Python -O下仍生效。#323新增8个公式缓存候选的已知状态形态均不能进入prompt或产出修改计划；该测试使用合成存储候选，不代替实际PG或用户签认。
+
+最终合流至develop@4fbeced（含#322/#324）：全仓build通过，domain254/254；上述worker85项仍为83通过、2原有条件跳过、0失败。补充裸Git仓库防护，按HEAD及objects/commondir识别无`.git`外壳的存储目录，禁止直接、嵌套、路径穿越和符号链接别名输出；实际临时`git init --bare`合成回归及原有校验共5/5通过，无客户数据读写。说明书19模块、190链接、133表格、4JSON、190验收标识，0错误。
+
+## 尚未解决的真实运行依赖
 
 1. **#15 / @loooo139**：#314的16条年度候选实际为external/needs_confirmation，含PARSE_SNAPSHOT_NEEDS_CONFIRMATION、SOURCE_CONFIDENCE_MISSING，仍不可用。#323已将新一期8项公式缓存入库，但仍有FORMULA_CACHE_VALUE_UNVERIFIED、FORMULA_SOURCE_CHAIN_UNVERIFIED等疑义，不能用于生成；[逐项核对交接](issue-15-rq202509-review-handoff-2026-09-27.md)只是待用户确认的证据表，不代写审核。DOCX_DRAWINGS/DOCX_AUXILIARY_PARTS还影响整个基线入口，需按原文位置/影响范围处理，不在本切片批量清空。
 2. **#19/#35 / @loooo139、@muhualing**：预发两次gate复验停在rule_applicability_overall_review_required、成果0；仍需可执行的固定账号/样本/输入/规则版本内部授权测试路径。#319分类子项桥不等于生产发布或受控入口完成。本切片不伪造审核、发布来源或开启research_only规则。

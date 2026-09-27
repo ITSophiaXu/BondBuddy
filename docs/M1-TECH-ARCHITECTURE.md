@@ -441,16 +441,22 @@ The internal [v4 input example](../packages/domain/examples/sse-private-check-in
 
 Word/WPS桌面兼容验收不阻断#20关闭，由#146独立跟踪，发现实际缺陷后另开issue。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
 
-### 2026-09-27 #31 事实来源与可用性分离
-
-`historical-fact-policy.ts`统一worker对锁定财务材料及唯一历史基线的准入与证据投影，`isUsableHistoricalFact`统一prompt筛选和domain计算的可用条件。在既有audited/external枚举内接收可靠external/extracted数据，不增加公开DTO、迁移或run状态。历史证据必须精确匹配有效基线记录、位置、原文、hash及解析版本；候选全集与决策版本仍冻结，不能隐藏竞争候选或读取新版本来解除旧任务疑义。
-
-实际采用external的修改按原文位置产生`UPDATE_NON_AUDIT_SOURCE_USED`及中文reviewNotes，保留修改与来源待核说明。source kind保留在候选及私有prompt，extracted不会变成审计机构确认；公式缓存、user_asserted、unknown、uncertain及未解冲突不因此变得可用。prompt模板升至historical-sse-private-v3，旧绑定不能静默回放。组件验证和真实样本状态分列在[接入记录](acceptance/issue-31-financial-input-2026-09-27.md)；[任丘九月核对交接](acceptance/issue-15-rq202509-review-handoff-2026-09-27.md)不含客户金额，脚本生成的本地明细不入Git。#15仍负责真实可用候选及审核路径，#19/#35仍负责内部授权运行接入；本切片不替代这些依赖。
-
 首次内部工作稿测试需要固定指定账号、已授权样本、输入/规则来源版本和日志，并将局部缺材料/配套未核状态传到结果；不应等待全库正文核验、同一次成果的产出后验收或WPS矩阵。当前`rule-applicability-context`先检查整体批准，再检查已发布字典；`rule-pack-registry`生产入口要求真实生产release和完整已核coverage。#35最新暂停证明整体审核未通过，不证明缺少某一配套PDF本身直接使模型失败。
 
 如果唯一运行入口将上述完整生产发布前提同时施加于首次内部生成，#19/#35负责人需在同一版本/权限契约下提供可执行的受控测试切片并回链PR，保留未核提示、审计和生产隔离；不得靠补假签认、批量改enabled或弱化正式用户权限解除暂停。具体公共契约/迁移/loader改动由受影响负责人协同实现，本次仅记录产品边界，未部署或新增测试入口。
 
 #319现已合入：0055允许既有feature_evidence列保存v1数组或v2对象；唯一domain字典v3记录A03九个父维度到十二个selector码，各子项保留独立证据。API审批和loader共用resolver，父项仍核完整材料覆盖，旧字典hash与请求重放保持不变；该桥未发布生产taxonomy，也不是#19/#35受控入口。
 
-#321评审修复保留既有512字符/1000条批注边界：长说明按同一原文锚点分段编号、完整进入Word comments与结果摘要，超总量在生成阶段明确暂停。8个#323公式缓存候选继续留在不可用清单。只读核对脚本禁止输出到任何Git仓库或worktree（包括路径别名），原件校验使用显式异常，Python优化模式不能禁用。
+### 2026-09-27 #31 事实来源与可用性分离
+
+`historical-fact-policy.ts`统一worker对锁定财务材料及唯一历史基线的准入与证据投影，`isUsableHistoricalFact`统一prompt筛选和domain计算的可用条件。在既有audited/external枚举内接收可靠external/extracted数据，不增加公开DTO、迁移或run状态。历史证据必须精确匹配有效基线记录、位置、原文、hash及解析版本；候选全集与决策版本仍冻结，不能隐藏竞争候选或读取新版本来解除旧任务疑义。
+
+实际采用external的修改按原文位置产生`UPDATE_NON_AUDIT_SOURCE_USED`及中文reviewNotes，保留修改与来源待核说明。source kind保留在候选及私有prompt，extracted不会变成审计机构确认；公式缓存、user_asserted、unknown、uncertain及未解冲突不因此变得可用。prompt模板升至historical-sse-private-v3，旧绑定不能静默回放。组件验证和真实样本状态分列在[接入记录](acceptance/issue-31-financial-input-2026-09-27.md)；[任丘九月核对交接](acceptance/issue-15-rq202509-review-handoff-2026-09-27.md)不含客户金额，脚本生成的本地明细不入Git。#15仍负责真实可用候选及审核路径，#19/#35仍负责内部授权运行接入；本切片不替代这些依赖。
+
+#321评审修复保留既有512字符/1000条批注边界：长说明按同一原文锚点分段编号、完整进入Word comments与结果摘要，超总量在生成阶段明确暂停。8个#323公式缓存候选继续留在不可用清单。只读核对脚本禁止输出到任何Git仓库或worktree（包括裸仓库、路径穿越及符号链接别名），原件校验使用显式异常，Python优化模式不能禁用。
+
+### 2026-09-27 #32 发行安排核对组件
+
+`@bondbuddy/domain/issuance-arrangement`新增内部严格提案schema及纯函数`reviewIssuanceArrangement`，消费已锁定用户输入及有精确原文跨度的语义提案，校验多档精确额/上限、共用条款适用范围、回拨与机构角色，输出问题和八类章节检查清单。公共Money/单位、市场/方式/文书用途与既有难度算法复用，不复制公开枚举；结果始终user_asserted、eligibleForManuscript=false。DFI覆盖工具不自动变成已发行档次，结构变化不增加财务期数。
+
+context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结果；输入克隆，定位验证不替代身份授权、语义确认或审计。没有公开DTO、迁移、worker阶段、前台字段或生产开关改动。自然语言提取与版本化消息、规则/目录、原文锚点和Word消费仍待#18/#19/#31/#34/#35接线，见[开发交接](ISSUANCE-ARRANGEMENT.md)。
