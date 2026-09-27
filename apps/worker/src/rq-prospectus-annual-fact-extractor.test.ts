@@ -88,6 +88,28 @@ test('maps only direct 2023/2024 consolidated and parent annual rows as external
     fact.evidence_refs.some((ref) => ref.startsWith('unit-')) && fact.evidence_refs.some((ref) => ref.startsWith('section-'))));
 });
 
+test('parser 1.0.7 auxiliary warnings preserve the body-only extractor result and candidate review requirements', async () => {
+  const records = syntheticRecords().map((item) => ({
+    ...item, extractor_version: 'bondbuddy-document-parser-1.0.7', confidence: null,
+  }));
+  const oldVersion = await extractor.extract(request(syntheticRecords()));
+  const extractor107 = createRqProspectusAnnualFactExtractor(async () => ({ status: 'needs_confirmation', warnings: [
+    { code: 'DOCX_DRAWINGS', message: 'Synthetic drawing warning.' },
+    { code: 'DOCX_AUXILIARY_PARTS', message: 'Synthetic auxiliary warning.' },
+  ] }));
+  const current = await extractor107.extract({ ...request(records), parser_version: 'bondbuddy-document-parser-1.0.7' });
+  assert.deepEqual(current.facts.map(({ identity, value, source_kind, confidence, uncertainty, evidence_refs }) =>
+    ({ identity, value, source_kind, confidence, uncertainty, evidence_refs })),
+  oldVersion.facts.map(({ identity, value, source_kind, confidence, uncertainty, evidence_refs }) =>
+    ({ identity, value, source_kind, confidence, uncertainty, evidence_refs })));
+  assert.deepEqual(current.needs_review, oldVersion.needs_review);
+  assert.ok(current.facts.every((fact) => fact.source_kind === 'external' && fact.confidence === 1));
+  assert.deepEqual(current.parse_snapshot, {
+    snapshot_id: 'rq-parse-snapshot', response_sha256: 'c'.repeat(64), parser_version: 'bondbuddy-document-parser-1.0.7',
+    material_id: 'rq-historical-material-001', material_version: 1, content_sha256: sampleHash,
+  });
+});
+
 test('uncertain direct cells remain needs-review and do not become facts', async () => {
   const records = syntheticRecords().map((item) => item.record_id === 'value-45-3-3' ? { ...item, uncertainty: ['docx_revision_effective_text_unresolved'] } : item);
   const result = await extractor.extract(request(records));
@@ -161,7 +183,7 @@ test('authorized rq-202509 historical prospectus tables map through the real par
   };
   const parsed = await runDocumentParser(parseRequest, { pythonExecutable: parserPython, repoRoot: repositoryRoot, timeoutMs: 300_000,
     maxOutputBytes: 128 * 1024 * 1024 });
-  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.6');
+  assert.equal(parsed.parser_version, 'bondbuddy-document-parser-1.0.7');
   assert.ok(parsed.status === 'parsed' || parsed.status === 'needs_confirmation');
   assert.ok(parsed.warnings.every((warning) => ['DOCX_DRAWINGS', 'DOCX_AUXILIARY_PARTS'].includes(warning.code)));
   const semanticRequest = request(parsed.records, parseRequest.material.material_id);

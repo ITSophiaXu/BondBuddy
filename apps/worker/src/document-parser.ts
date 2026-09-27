@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import { open, rm } from 'node:fs/promises';
@@ -6,6 +7,7 @@ import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDia
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
+export const DOCX_AUXILIARY_TARGETS_PARSER_VERSION = 'bondbuddy-document-parser-1.0.7' as const;
 export const DOCUMENT_PARSER_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 export const DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 export const DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES = 16 * 1024 * 1024;
@@ -50,6 +52,34 @@ export type DocumentParseRecord = {
   formatting: Record<string, unknown>;
 };
 
+export type DocxAuxiliaryTarget = {
+  target_id: string;
+  kind: 'header'|'footer'|'footnote'|'endnote'|'drawing'|'auxiliary_part';
+  part_name: string;
+  locator: Record<string, unknown>;
+  scope: {
+    kind: 'section_reference'|'note_reference'|'drawing_relationship'|'unknown';
+    status: 'resolved'|'partially_resolved'|'unknown'|'unreferenced';
+    relationship_part_sha256: string|null;
+    relationships: Array<{relationship_id:string|null;relationship_id_sha256:string|null;
+      relationship_type:'header'|'footer'|'footnotes'|'endnotes'|'image'|'other';
+      mode:'internal'|'external'|'unknown';target_part:string|null;status:'resolved'|'external'|'missing'|'unsafe'|'unsupported'}>;
+    section_references: Array<{section_index:number;reference_type:'default'|'first'|'even'|'unknown';
+      relationship_id:string|null;relationship_id_sha256:string|null;section_stable_ref:string|null}>;
+    unknown_sections: number[];
+    body_references: Array<{note_id:string|null;note_id_sha256:string|null;stable_ref:string|null}>;
+    reason: string|null;
+    truncated: boolean;
+  };
+  part_sha256: string|null;
+  target_sha256: string|null;
+  locator_resolved: boolean;
+  parseable: boolean;
+  parse_status: 'parsed'|'empty'|'not_extracted'|'read_failed'|'parse_failed'|'unsafe_xml'|'size_limited'|'unrecognized_part'|
+    'external_relationship'|'missing_relationship'|'unsafe_relationship'|'missing_reference_target';
+  text_summary: {sha256:string;character_count:number;has_text:boolean}|null;
+};
+
 export type DocumentParseResponse = {
   schema_version: typeof DOCUMENT_PARSE_RESPONSE_VERSION;
   request_id: string|null;
@@ -63,7 +93,7 @@ export type DocumentParseResponse = {
   }|null;
   records: DocumentParseRecord[];
   warnings: Array<{code:string;message:string}>;
-  document: Record<string, unknown> & {page_count:number|null};
+  document: Record<string, unknown> & {page_count:number|null;auxiliary_targets?:DocxAuxiliaryTarget[]};
   error: {code:string;message:string}|null;
 };
 
@@ -155,6 +185,166 @@ function validLocator(type:string,locator:Record<string,unknown>,pageCount:numbe
   return false;
 }
 
+function validDocxAuxiliaryScope(value:unknown):value is DocxAuxiliaryTarget['scope'] {
+  if(!isObject(value) || !hasExactKeys(value,['kind','status','relationship_part_sha256','relationships','section_references',
+    'unknown_sections','body_references','reason','truncated']) ||
+    !['section_reference','note_reference','drawing_relationship','unknown'].includes(String(value.kind)) ||
+    !['resolved','partially_resolved','unknown','unreferenced'].includes(String(value.status)) ||
+    !(value.relationship_part_sha256===null || (typeof value.relationship_part_sha256==='string' && /^[a-f0-9]{64}$/.test(value.relationship_part_sha256))) ||
+    !Array.isArray(value.relationships) || value.relationships.length>128 ||
+    !Array.isArray(value.section_references) || value.section_references.length>128 ||
+    !Array.isArray(value.unknown_sections) || value.unknown_sections.length>128 || !value.unknown_sections.every(positiveInteger) ||
+    new Set(value.unknown_sections).size!==value.unknown_sections.length ||
+    !Array.isArray(value.body_references) || value.body_references.length>128 ||
+    !(value.reason===null || nonEmptyString(value.reason,128)) || typeof value.truncated!=='boolean') return false;
+  const relationIds=new Set<string>();
+  for(const relation of value.relationships) {
+    if(!isObject(relation) || !hasExactKeys(relation,['relationship_id','relationship_id_sha256','relationship_type','mode','target_part','status']) ||
+      !(relation.relationship_id===null || (typeof relation.relationship_id==='string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(relation.relationship_id))) ||
+      !(relation.relationship_id_sha256===null || (typeof relation.relationship_id_sha256==='string' && /^[a-f0-9]{64}$/.test(relation.relationship_id_sha256))) ||
+      (relation.relationship_id!==null && relation.relationship_id_sha256!==createHash('sha256').update(String(relation.relationship_id)).digest('hex')) ||
+      !['header','footer','footnotes','endnotes','image','other'].includes(String(relation.relationship_type)) ||
+      !['internal','external','unknown'].includes(String(relation.mode)) ||
+      !(relation.target_part===null || (typeof relation.target_part==='string' &&
+        /^word\/(?:header\d+|footer\d+|footnotes|endnotes|auxiliary-[a-f0-9]{64})\.xml$/.test(relation.target_part))) ||
+      !['resolved','external','missing','unsafe','unsupported'].includes(String(relation.status)) ||
+      (relation.status==='resolved' && (relation.mode!=='internal' || relation.target_part===null)) ||
+      (relation.status==='external' && (relation.mode!=='external' || relation.target_part!==null)) ||
+      (relation.status==='unsupported' && relation.target_part!==null) ||
+      (relation.status!=='resolved' && relation.status!=='unsupported' && relation.target_part!==null)) return false;
+    const key=relation.relationship_id??`hash:${relation.relationship_id_sha256??''}`;
+    if(relationIds.has(key)) return false;
+    relationIds.add(key);
+  }
+  const sectionKeys=new Set<string>();
+  for(const reference of value.section_references) {
+    if(!isObject(reference) || !hasExactKeys(reference,['section_index','reference_type','relationship_id','relationship_id_sha256','section_stable_ref']) ||
+      !positiveInteger(reference.section_index) || !['default','first','even','unknown'].includes(String(reference.reference_type)) ||
+      !(reference.relationship_id===null || (typeof reference.relationship_id==='string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(reference.relationship_id))) ||
+      !(reference.relationship_id_sha256===null || (typeof reference.relationship_id_sha256==='string' && /^[a-f0-9]{64}$/.test(reference.relationship_id_sha256))) ||
+      (reference.relationship_id!==null && reference.relationship_id_sha256!==createHash('sha256').update(String(reference.relationship_id)).digest('hex')) ||
+      !(reference.section_stable_ref===null || (typeof reference.section_stable_ref==='string' && /^docx:[A-Za-z0-9:]+$/.test(reference.section_stable_ref)))) return false;
+    const key=`${reference.section_index}:${reference.reference_type}:${reference.relationship_id??reference.relationship_id_sha256??''}`;
+    if(sectionKeys.has(key)) return false;
+    sectionKeys.add(key);
+  }
+  for(const reference of value.body_references) {
+    if(!isObject(reference) || !hasExactKeys(reference,['note_id','note_id_sha256','stable_ref']) ||
+      !(reference.note_id===null || (typeof reference.note_id==='string' && /^-?[0-9]{1,10}$/.test(reference.note_id))) ||
+      !(reference.note_id_sha256===null || (typeof reference.note_id_sha256==='string' && /^[a-f0-9]{64}$/.test(reference.note_id_sha256))) ||
+      (reference.note_id!==null && reference.note_id_sha256!==createHash('sha256').update(String(reference.note_id)).digest('hex')) ||
+      !(reference.stable_ref===null || (typeof reference.stable_ref==='string' && /^docx:[A-Za-z0-9:]+$/.test(reference.stable_ref)))) return false;
+  }
+  if(value.kind==='section_reference' && value.status==='resolved' &&
+      (!value.relationships.some(relation=>isObject(relation) && relation.status==='resolved') ||
+       value.section_references.length===0 || value.unknown_sections.length>0)) return false;
+  if(value.kind==='section_reference' && value.status==='partially_resolved' &&
+      (!value.relationships.some(relation=>isObject(relation) && relation.status==='resolved') ||
+       value.section_references.length===0 || value.unknown_sections.length===0)) return false;
+  if(value.truncated && (value.status!=='unknown' || !nonEmptyString(value.reason,128))) return false;
+  if(value.kind==='drawing_relationship' && (value.status!=='unknown' ||
+    !['drawing_relationship_targets_not_extracted','scope_detail_limit_exceeded'].includes(String(value.reason)))) return false;
+  if(value.status==='unreferenced' && value.kind!=='note_reference') return false;
+  return true;
+}
+
+function validDocxAuxiliaryTargets(value:unknown):value is DocxAuxiliaryTarget[] {
+  if(!Array.isArray(value) || value.length>10_000)return false;
+  const ids=new Set<string>();
+  for(const target of value) {
+    if(!isObject(target) || !hasExactKeys(target,['target_id','kind','part_name','locator','scope','part_sha256','target_sha256',
+      'locator_resolved','parseable','parse_status','text_summary']) ||
+      typeof target.target_id!=='string' || !/^aux-[a-f0-9]{64}$/.test(target.target_id) || ids.has(target.target_id) ||
+      !['header','footer','footnote','endnote','drawing','auxiliary_part'].includes(String(target.kind)) ||
+      typeof target.part_name!=='string' || !/^word\/(?:header\d+|footer\d+|footnotes|endnotes|document|auxiliary-[a-f0-9]{64})\.xml$/.test(target.part_name) ||
+      !isObject(target.locator) || typeof target.locator.part_name!=='string' || target.locator.part_name!==target.part_name ||
+      !(target.part_sha256===null || (typeof target.part_sha256==='string' && /^[a-f0-9]{64}$/.test(target.part_sha256))) ||
+      !(target.target_sha256===null || (typeof target.target_sha256==='string' && /^[a-f0-9]{64}$/.test(target.target_sha256))) ||
+      typeof target.locator_resolved!=='boolean' || typeof target.parseable!=='boolean' ||
+      !['parsed','empty','not_extracted','read_failed','parse_failed','unsafe_xml','size_limited','unrecognized_part',
+        'external_relationship','missing_relationship','unsafe_relationship','missing_reference_target'].includes(String(target.parse_status)) ||
+      !validDocxAuxiliaryScope(target.scope)) return false;
+    ids.add(target.target_id);
+    const locator=target.locator;
+    if(target.kind==='drawing') {
+      if(target.part_name!=='word/document.xml' || !hasExactKeys(locator,['part_name','drawing_index','parent_stable_ref','drawing_ids']) ||
+        !positiveInteger(locator.drawing_index) || !(locator.parent_stable_ref===null || nonEmptyString(locator.parent_stable_ref,512)) ||
+        !Array.isArray(locator.drawing_ids) || !locator.drawing_ids.every(item=>nonEmptyString(item,128)) ||
+        target.parse_status!=='not_extracted' || target.parseable || !target.locator_resolved || target.text_summary!==null ||
+        target.scope.kind!=='drawing_relationship' || target.scope.status!=='unknown') return false;
+    } else if(target.kind==='header' || target.kind==='footer') {
+      if(!/^word\/(?:header\d+|footer\d+)\.xml$/.test(target.part_name) ||
+        (target.kind==='header' && !target.part_name.includes('/header')) ||
+        (target.kind==='footer' && !target.part_name.includes('/footer')) ||
+        !hasExactKeys(locator,['part_name','paragraph_index']) ||
+        !(locator.paragraph_index===null || positiveInteger(locator.paragraph_index))) return false;
+    } else if(target.kind==='footnote' || target.kind==='endnote') {
+      if(target.part_name!==(target.kind==='footnote'?'word/footnotes.xml':'word/endnotes.xml') ||
+        !hasExactKeys(locator,['part_name','note_id','paragraph_index']) || !nonEmptyString(locator.note_id,128) ||
+        !(locator.paragraph_index===null || positiveInteger(locator.paragraph_index))) return false;
+    } else if(target.kind==='auxiliary_part') {
+      const unknownPart=/^word\/auxiliary-[a-f0-9]{64}\.xml$/.test(target.part_name);
+      if(unknownPart) {
+        if(!hasExactKeys(locator,['part_name','member_name_sha256']) || locator.member_name_sha256!==target.part_name.slice('word/auxiliary-'.length,-'.xml'.length)) return false;
+      } else if(!hasExactKeys(locator,['part_name'])) return false;
+    } else return false;
+
+    const summary=target.text_summary;
+    if(summary!==null && (!isObject(summary) || !hasExactKeys(summary,['sha256','character_count','has_text']) ||
+      typeof summary.sha256!=='string' || !/^[a-f0-9]{64}$/.test(summary.sha256) ||
+      !Number.isSafeInteger(summary.character_count) || Number(summary.character_count)<0 ||
+      typeof summary.has_text!=='boolean')) return false;
+    if(target.parseable!==(target.parse_status==='parsed'||target.parse_status==='empty') ||
+      target.locator_resolved!==!['read_failed','parse_failed','unsafe_xml','size_limited','unrecognized_part','external_relationship',
+        'missing_relationship','unsafe_relationship','missing_reference_target'].includes(String(target.parse_status)) ||
+      (target.parseable && (!summary || target.part_sha256===null || target.target_sha256===null)) ||
+      (target.parse_status==='not_extracted' && (target.kind!=='drawing' || target.part_sha256===null || target.target_sha256===null)) ||
+      (target.parse_status==='read_failed' && (target.part_sha256!==null || target.target_sha256!==null || summary!==null)) ||
+      (['parse_failed','unsafe_xml'].includes(String(target.parse_status)) &&
+        (target.part_sha256===null || target.target_sha256===null || summary!==null)) ||
+      (target.parse_status==='size_limited' && (target.part_sha256!==null || target.target_sha256!==null || summary!==null)) ||
+      (target.parse_status==='unrecognized_part' && (target.kind!=='auxiliary_part' || target.part_sha256===null || target.target_sha256===null || summary!==null)) ||
+      (['external_relationship','missing_relationship','unsafe_relationship'].includes(String(target.parse_status)) &&
+        (target.kind!=='auxiliary_part' || target.part_sha256!==null || target.target_sha256!==null || summary!==null || target.locator_resolved)) ||
+      (target.parse_status==='missing_reference_target' &&
+        (!['footnote','endnote','auxiliary_part'].includes(String(target.kind)) || target.part_sha256!==null || target.target_sha256!==null || summary!==null || target.locator_resolved))) return false;
+    if(target.kind==='header' || target.kind==='footer') {
+      if(target.scope.kind!=='section_reference' || target.scope.relationships.some(relation=>
+        relation.relationship_type!==target.kind || relation.status==='resolved' && relation.target_part!==target.part_name)) return false;
+      const matchingRelations=target.scope.relationships.filter(relation=>relation.relationship_type===target.kind &&
+        relation.status==='resolved' && relation.target_part===target.part_name);
+      if(target.scope.section_references.some(reference=>!matchingRelations.some(relation=>
+        relation.relationship_id!==null && reference.relationship_id===relation.relationship_id)) ||
+        (target.scope.status==='resolved' && (!matchingRelations.length || !target.scope.section_references.length ||
+          target.scope.unknown_sections.length>0)) ||
+        (target.scope.status==='partially_resolved' && (!matchingRelations.length || !target.scope.section_references.length ||
+          !target.scope.unknown_sections.length)) ||
+        (['external_relationship','missing_relationship','unsafe_relationship'].includes(String(target.parse_status)) &&
+          (target.scope.status!=='unknown' || !target.scope.relationships.some(relation=>
+            relation.status===({external_relationship:'external',missing_relationship:'missing',unsafe_relationship:'unsafe'} as const)[target.parse_status as 'external_relationship'|'missing_relationship'|'unsafe_relationship'])))) return false;
+    }
+    if(target.kind==='footnote' || target.kind==='endnote') {
+      if(target.scope.kind!=='note_reference' || target.scope.body_references.some(reference=>
+        reference.note_id!==null && reference.note_id!==(target.locator as Record<string,unknown>).note_id)) return false;
+      const expectedType=target.kind==='footnote'?'footnotes':'endnotes';
+      if(target.scope.relationships.some(relation=>relation.relationship_type!==expectedType ||
+        relation.status==='resolved' && relation.target_part!==target.part_name) ||
+        (target.scope.status==='resolved' && (!target.scope.relationships.some(relation=>relation.status==='resolved' &&
+          relation.target_part===target.part_name) || !target.scope.body_references.length)) ||
+        (target.scope.status==='unreferenced' && (target.scope.body_references.length!==0 ||
+          !target.scope.relationships.some(relation=>relation.status==='resolved' && relation.target_part===target.part_name)))) return false;
+    }
+    if(['external_relationship','missing_relationship','unsafe_relationship'].includes(String(target.parse_status))) {
+      const requiredStatus=({external_relationship:'external',missing_relationship:'missing',unsafe_relationship:'unsafe'} as const)[
+        target.parse_status as 'external_relationship'|'missing_relationship'|'unsafe_relationship'];
+      if(target.kind!=='auxiliary_part' || target.scope.status!=='unknown' ||
+        !target.scope.relationships.some(relation=>relation.status===requiredStatus)) return false;
+    }
+    if(target.parse_status==='missing_reference_target' && target.scope.status!=='unknown') return false;
+  }
+  return true;
+}
+
 function safeJson(value:unknown,authorizedPath:string):boolean {
   if(value===null || typeof value==='boolean' || typeof value==='number') return typeof value!=='number' || Number.isFinite(value);
   if(typeof value==='string') return !value.includes(authorizedPath);
@@ -234,7 +424,8 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
   if(!hasExactKeys(value.document,value.status==='failed'?['page_count']:request.material.media_type==='application/pdf'
     ? ['page_count','pages_without_native_text','pages_with_images']
     : request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ? (value.status==='failed'?['page_count']:['page_count','revision_summary'])
+      ? (value.status==='failed'?['page_count']:value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION
+        ? ['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary'])
       : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ? ['page_count','worksheet_count','missing_formula_results','cached_formula_results']
         : request.material.media_type==='text/csv'
@@ -253,7 +444,10 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
       if(!Array.isArray(pages) || !pages.every(page=>positiveInteger(page) && page<=pageCount)) throw parserError('INVALID_PARSE_RESPONSE');
     }
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    if(!isObject(value.document.revision_summary) || !hasExactKeys(value.document.revision_summary,['insertions','deletions']) ||
+    const hasAuxiliaryTargets=value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION;
+    if(!hasExactKeys(value.document,hasAuxiliaryTargets?['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary']) ||
+      (hasAuxiliaryTargets && !validDocxAuxiliaryTargets(value.document.auxiliary_targets)) ||
+      !isObject(value.document.revision_summary) || !hasExactKeys(value.document.revision_summary,['insertions','deletions']) ||
       !Number.isSafeInteger(value.document.revision_summary.insertions) || Number(value.document.revision_summary.insertions)<0 ||
       !Number.isSafeInteger(value.document.revision_summary.deletions) || Number(value.document.revision_summary.deletions)<0) throw parserError('INVALID_PARSE_RESPONSE');
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
@@ -266,6 +460,14 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
   for(const warning of value.warnings) {
     if(!isObject(warning) || !hasExactKeys(warning,['code','message']) || typeof warning.code!=='string' || !/^[A-Z][A-Z0-9_]{0,127}$/.test(warning.code) ||
       !nonEmptyString(warning.message,4096)) throw parserError('INVALID_PARSE_RESPONSE');
+  }
+  if(value.status!=='failed' && request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
+    value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION) {
+    const targets=value.document.auxiliary_targets as DocxAuxiliaryTarget[];
+    const hasAuxiliary=targets.some(target=>target.kind!=='drawing');
+    const hasDrawings=targets.some(target=>target.kind==='drawing');
+    if(hasAuxiliary!==value.warnings.some(warning=>warning.code==='DOCX_AUXILIARY_PARTS') ||
+      hasDrawings!==value.warnings.some(warning=>warning.code==='DOCX_DRAWINGS')) throw parserError('INVALID_PARSE_RESPONSE');
   }
   const recordIds=new Set<string>();
   const pageCount=value.document.page_count as number|null;

@@ -116,6 +116,66 @@ test('worker validates type-specific PDF and DOCX anchors without fabricating DO
   await assert.rejects(runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(badDocx)}),/INVALID_PARSE_RESPONSE/);
 });
 
+test('worker strictly retains parser 1.0.7 auxiliary targets without treating them as facts or clearing warnings',async()=>{
+  const docxRequest:DocumentParseRequest={...request,material:{...request.material,
+    media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}};
+  const hash=(char:string)=>char.repeat(64);
+  const idHash=(id:string)=>createHash('sha256').update(id).digest('hex');
+  const baseScope=(kind:'section_reference'|'note_reference'|'drawing_relationship'|'unknown',status:'resolved'|'partially_resolved'|'unknown'|'unreferenced',reason:string|null,
+    relationships:unknown[]=[],section_references:unknown[]=[],unknown_sections:number[]=[],body_references:unknown[]=[])=>({kind,status,
+      relationship_part_sha256:hash('a'),relationships,section_references,unknown_sections,body_references,reason,truncated:false});
+  const targets=[
+    {target_id:`aux-${hash('a')}`,kind:'header',part_name:'word/header1.xml',
+      locator:{part_name:'word/header1.xml',paragraph_index:1},part_sha256:hash('b'),target_sha256:hash('c'),
+      locator_resolved:true,parseable:true,parse_status:'parsed',text_summary:{sha256:hash('d'),character_count:32,has_text:true},
+      scope:baseScope('section_reference','resolved',null,[{relationship_id:'rIdHeader',relationship_id_sha256:idHash('rIdHeader'),
+        relationship_type:'header',mode:'internal',target_part:'word/header1.xml',status:'resolved'}],
+        [{section_index:1,reference_type:'default',relationship_id:'rIdHeader',relationship_id_sha256:idHash('rIdHeader'),section_stable_ref:'docx:p0001'}])},
+    {target_id:`aux-${hash('e')}`,kind:'footnote',part_name:'word/footnotes.xml',
+      locator:{part_name:'word/footnotes.xml',note_id:'9',paragraph_index:null},part_sha256:hash('f'),target_sha256:hash('1'),
+      locator_resolved:true,parseable:true,parse_status:'empty',text_summary:{sha256:hash('2'),character_count:0,has_text:false},
+      scope:baseScope('note_reference','resolved',null,[{relationship_id:'rIdFootnotes',relationship_id_sha256:idHash('rIdFootnotes'),
+        relationship_type:'footnotes',mode:'internal',target_part:'word/footnotes.xml',status:'resolved'}],[],[],
+        [{note_id:'9',note_id_sha256:idHash('9'),stable_ref:'docx:p0001'}])},
+    {target_id:`aux-${hash('3')}`,kind:'drawing',part_name:'word/document.xml',
+      locator:{part_name:'word/document.xml',drawing_index:1,parent_stable_ref:'docx:p0001',drawing_ids:['77']},
+      part_sha256:hash('4'),target_sha256:hash('5'),locator_resolved:true,parseable:false,parse_status:'not_extracted',text_summary:null,
+      scope:baseScope('drawing_relationship','unknown','drawing_relationship_targets_not_extracted')},
+    {target_id:`aux-${hash('6')}`,kind:'auxiliary_part',part_name:`word/auxiliary-${hash('7')}.xml`,
+      locator:{part_name:`word/auxiliary-${hash('7')}.xml`,member_name_sha256:hash('7')},
+      part_sha256:hash('8'),target_sha256:hash('8'),locator_resolved:false,parseable:false,parse_status:'unrecognized_part',text_summary:null,
+      scope:baseScope('unknown','unknown','auxiliary_part_scope_unknown')},
+    {target_id:`aux-${hash('9')}`,kind:'auxiliary_part',part_name:'word/footer2.xml',
+      locator:{part_name:'word/footer2.xml'},part_sha256:null,target_sha256:null,
+      locator_resolved:false,parseable:false,parse_status:'size_limited',text_summary:null,
+      scope:baseScope('section_reference','unknown','no_matching_internal_relationship')},
+  ];
+  const response107={...response,parser_version:'bondbuddy-document-parser-1.0.7',
+    material:{...response.material,media_type:docxRequest.material.media_type},status:'needs_confirmation',
+    warnings:[{code:'DOCX_DRAWINGS',message:'Synthetic drawing warning'},
+      {code:'DOCX_AUXILIARY_PARTS',message:'Synthetic auxiliary warning'}],
+    document:{page_count:null,revision_summary:{insertions:0,deletions:0},auxiliary_targets:targets},
+    records:[{...response.records[0],locator_type:'docx_block',locator:{path:[{paragraph:1}],stable_ref:'docx:p0001'}}]};
+  const result=await runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(response107)});
+  assert.deepEqual(result.document.auxiliary_targets,targets);
+  assert.deepEqual(result.warnings.map(warning=>warning.code),['DOCX_DRAWINGS','DOCX_AUXILIARY_PARTS']);
+  assert.equal(result.status,'needs_confirmation');
+  assert.equal(result.records[0]?.confidence,null);
+  assert.deepEqual(result.records[0]?.uncertainty,[]);
+
+  const invalid=[
+    {...response107,document:{...response107.document,auxiliary_targets:[...targets,{...targets[0]}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[0],part_name:'word/../../secret.xml'}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[0],text_summary:{...targets[0].text_summary,sha256:'bad'}}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[2],parseable:true}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[3],locator:{...targets[3].locator,member_name_sha256:hash('a')}}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[0],scope:{...targets[0].scope,relationships:[]}}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[2],scope:{...targets[2].scope,status:'resolved'}}]}},
+    {...response107,warnings:[{code:'DOCX_DRAWINGS',message:'Synthetic drawing warning'}]},
+  ];
+  for(const candidate of invalid) await assert.rejects(runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(candidate)}),/INVALID_PARSE_RESPONSE/);
+});
+
 test('XLSX response accepts the exact cached-formula count and keeps cached values unverified',async()=>{
   const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}};
   const cell={...response.records[0],locator_type:'xlsx_cell',locator:{sheet:'Synthetic',cell:'C3',merged_range:null,stable_ref:'xlsx:Synthetic:cell:C3'},
@@ -170,7 +230,7 @@ test('authorized rq-202509-02 XLSX passes the bounded strict Python to Node brid
     assert.ok(outputBytes<32*1024*1024);
     return child.stdout;
   }});
-  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.6');
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.7');
   assert.equal(parsed.status,'needs_confirmation');
   assert.equal(parsed.records.length,22014);
   assert.equal(parsed.document.cached_formula_results,3821);
@@ -194,7 +254,7 @@ test('authorized zq-202312-02 XLSX crosses the real Python to Node parser bounda
   const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,material_id:'zq-202312-02',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     sha256,authorized_local_path:path}};
   const parsed=await runDocumentParser(xlsxRequest,{pythonExecutable:localPython,repoRoot:repositoryRoot});
-  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.6');
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.7');
   assert.equal(parsed.status,'parsed');
   assert.equal(parsed.records.length,1392);
   assert.equal(parsed.warnings.length,0);
@@ -227,6 +287,36 @@ test('worker accepts the actual Python subprocess response shape when the reposi
   assert.equal(result.status,'parsed');
   assert.equal(result.records[0]?.literal_quote,'synthetic parser contract evidence');
   assert.equal(result.document.page_count,null);
+});
+
+test('worker strictly accepts parser 1.0.7 OPC scopes from an actual synthetic DOCX',{
+  skip:existsSync(localPython)?false:'repository .venv is not installed',
+},async t=>{
+  const root=await mkdtemp(join(tmpdir(),'bb-document-parser-docx-scope-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const path=join(root,'synthetic.docx');
+  const create=spawnSync(localPython,['-c',[
+    'from docx import Document',
+    'doc = Document()',
+    'doc.add_paragraph("Synthetic section body")',
+    'doc.sections[0].header.paragraphs[0].text = "Synthetic private header text"',
+    'doc.save(__import__("sys").argv[1])',
+  ].join(';'),path],{cwd:repositoryRoot,encoding:'utf8'});
+  assert.equal(create.status,0,create.stderr);
+  const bytes=await readFile(path);
+  const actualRequest:DocumentParseRequest={...request,material:{...request.material,
+    media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    sha256:createHash('sha256').update(bytes).digest('hex'),authorized_local_path:path}};
+  const result=await runDocumentParser(actualRequest,{pythonExecutable:localPython,repoRoot:repositoryRoot});
+  assert.equal(result.parser_version,'bondbuddy-document-parser-1.0.7');
+  assert.equal(result.status,'needs_confirmation');
+  const header=result.document.auxiliary_targets?.find(target=>target.kind==='header');
+  assert.ok(header);
+  assert.equal(header.scope.kind,'section_reference');
+  assert.equal(header.scope.status,'resolved');
+  assert.equal(header.scope.section_references[0]?.reference_type,'default');
+  assert.ok(!JSON.stringify(result).includes('Synthetic private header text'));
+  assert.ok(result.records.every(record=>record.confidence===null));
 });
 
 test('#17 a parser child killed by the kernel (SIGKILL, e.g. container OOM) reports DOCUMENT_PARSER_MEMORY_LIMIT', async (t) => {

@@ -27,6 +27,7 @@ DATE_QUESTIONS_PATH = REPO_ROOT / "tests/samples/2026-09-25/rq-202506/DATE-QUEST
 SUPPORTED_PARSER_VERSIONS = {
     "bondbuddy-document-parser-1.0.4.1",
     "bondbuddy-document-parser-1.0.6",
+    "bondbuddy-document-parser-1.0.7",
 }
 
 
