@@ -441,6 +441,12 @@ The internal [v4 input example](../packages/domain/examples/sse-private-check-in
 
 Word/WPS桌面兼容验收不阻断#20关闭，由#146独立跟踪，发现实际缺陷后另开issue。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
 
+### 2026-09-27 #32 发行安排核对组件
+
+`@bondbuddy/domain/issuance-arrangement`新增内部严格提案schema及纯函数`reviewIssuanceArrangement`，消费已锁定用户输入及有精确原文跨度的语义提案，校验多档精确额/上限、共用条款适用范围、回拨与机构角色，输出问题和八类章节检查清单。公共Money/单位、市场/方式/文书用途与既有难度算法复用，不复制公开枚举；结果始终user_asserted、eligibleForManuscript=false。DFI覆盖工具不自动变成已发行档次，结构变化不增加财务期数。
+
+context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结果；输入克隆，定位验证不替代身份授权、语义确认或审计。没有公开DTO、迁移、worker阶段、前台字段或生产开关改动。自然语言提取与版本化消息、规则/目录、原文锚点和Word消费仍待#18/#19/#31/#34/#35接线，见[开发交接](ISSUANCE-ARRANGEMENT.md)。
+
 首次内部工作稿测试需要固定指定账号、已授权样本、输入/规则来源版本和日志，并将局部缺材料/配套未核状态传到结果；不应等待全库正文核验、同一次成果的产出后验收或WPS矩阵。当前`rule-applicability-context`先检查整体批准，再检查已发布字典；`rule-pack-registry`生产入口要求真实生产release和完整已核coverage。#35最新暂停证明整体审核未通过，不证明缺少某一配套PDF本身直接使模型失败。
 
 如果唯一运行入口将上述完整生产发布前提同时施加于首次内部生成，#19/#35负责人需在同一版本/权限契约下提供可执行的受控测试切片并回链PR，保留未核提示、审计和生产隔离；不得靠补假签认、批量改enabled或弱化正式用户权限解除暂停。具体公共契约/迁移/loader改动由受影响负责人协同实现，本次仅记录产品边界，未部署或新增测试入口。
