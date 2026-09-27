@@ -85,6 +85,14 @@ deploy/              # Compose、Nginx、部署与回滚
 | 成果 | `artifact_id`、`run_id`、文件版本/hash、质量检查结果、授权下载引用；仅成果验证可获取后标记 `succeeded`。 |
 | 规则/参考库 | `rule_pack_version`、`reference_version`、`index_release` 在 run 开始时锁定。只有审核发布且授权有效的参考稿可被选用，内部候选不下发普通用户。 |
 
+### 受控非生产测试通道（#17 #35）
+
+`0056_m1_non_production_test_grants.sql` 在 #319 的 0055 之后追加精确 user/project/input revision/hash、样本 manifest SHA-256、候选 taxonomy 与 rule-pack hash、期限和授权理由。授权记录不可改；撤销只能一次性填写 `revoked_at/by/reason`。运维通过 `deploy/m1/scripts/non-production-test-grant.sh` 在 ops 服务中执行 `create`、`revoke`、`list`，创建和撤销各自与 outbox 事件同事务提交。无公开授权路由。部署必须显式设置 `BB_DEPLOYMENT_TIER=preprod` 和 `BB_NON_PRODUCTION_TEST_CHANNEL=enabled`；其他组合拒绝测试提交，生产层开启测试开关时部署脚本直接拒绝。
+
+`ExecuteRequest.test_grant_id` 可选；省略时沿用生产通道。提交时验证授权账号、项目、输入版本/hash、期限和撤销状态；请求指纹同时锁定 channel/grant，同一 `execution_request_id` 的相同请求重放，切换通道或授权则 409。`RunResponse` 增加 `channel`、`test_grant_id` 和 `uncovered_items[]`（`rule_id`、`reason_code`、`evidence_ref`）。job、操作记录和模型尝试保留 channel。worker 领取、阶段门禁、模型调用前和终态前重新核验授权；失效时暂停，不转入生产规则选择。#19 候选能力接缝需返回匹配的三个 hash 及逐项未覆盖清单；未安装时明确暂停为 `test_rule_capability_not_ready`，绝不使用生产 registry/loader 代替。
+
+测试 Word 在交付检查前写入首页和页眉标记“内部测试工作稿·未经专业审核·不得对外使用”；未覆盖项在有 Word 定位时保留对应“待人工确认”批注，其他定位保留独立待确认段落与批注。通过检查的测试成果标记 `test_only`，只向当前有效授权账号提供限时下载。成果详情与下载、测试 run 详情与事件、运维视图中的测试成果或 prompt 元数据在当前部署不满足 `preprod` 且开关启用时统一返回 404；生产成果读取不受此门禁影响。测试 run 终态为 `test_completed`，不能进入 `settlement_pending` 或 `succeeded`，`billing_mode=non_billable_test`，不计费。生产 run 不可进入 `test_completed`。`quality_status` 仍记录真实交付检查结果。此通道不是规则发布或专业验收；在 #19 候选能力接入前，只能验证授权与暂停路径。
+
 第一批 OpenAPI 至少覆盖注册/会话、项目草稿、上传完成、预检、执行/取消/恢复、任务事件、成果下载和右侧对话。请求与响应按 `16-数据模型接口与状态机.md` 细化；分页、错误码、时间格式、空值含义在 schema 中写明。新接口不直接暴露现有原型的文件路径、运行目录或内部参考稿 ID。
 
 ### #6 首批契约与可运行骨架（2026-09-24）

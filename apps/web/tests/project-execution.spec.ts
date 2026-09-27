@@ -78,7 +78,8 @@ async function setup(page: Page, state = fixture()) {
       if (!run) {
         run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
           input_revision: body.input_revision, input_hash: body.input_hash, state: 'paused', stage: 'capability_not_ready', event_cursor: 2,
-          billing_mode: 'platform_trial', reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
+          channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: 'platform_trial',
+          reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
         state.runs.set(body.execution_request_id, run);
       }
       if (state.holdExecute) await new Promise<void>(resolve => { state.releaseExecute = resolve; });

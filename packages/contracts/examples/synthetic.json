@@ -254,19 +254,25 @@
       "name": "run-before-tab-close",
       "schema": "RunResponse",
       "valid": true,
-      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "queued", "stage": null, "event_cursor": 1, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:03:00Z" }
+      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "channel": "production", "test_grant_id": null, "uncovered_items": [], "state": "queued", "stage": null, "event_cursor": 1, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:03:00Z" }
     },
     {
       "name": "run-after-relogin",
       "schema": "RunResponse",
       "valid": true,
-      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "running", "stage": "model", "event_cursor": 3, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:04:00Z" }
+      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "channel": "production", "test_grant_id": null, "uncovered_items": [], "state": "running", "stage": "model", "event_cursor": 3, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:04:00Z" }
     },
     {
       "name": "invalid-succeeded-without-artifact",
       "schema": "RunResponse",
       "valid": false,
-      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "succeeded", "stage": "delivery", "event_cursor": 4, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:10:00Z" }
+      "value": { "run_id": "run-synthetic-1", "execution_request_id": "action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "channel": "production", "test_grant_id": null, "uncovered_items": [], "state": "succeeded", "stage": "delivery", "event_cursor": 4, "billing_mode": "platform_trial", "reservation_id": null, "artifact_id": null, "prompt_snapshot_ref": "prompt-synthetic-1", "updated_at": "2026-09-24T03:10:00Z" }
+    },
+    {
+      "name": "test-run-completed",
+      "schema": "RunResponse",
+      "valid": true,
+      "value": { "run_id": "run-test-synthetic-1", "execution_request_id": "test-action-synthetic-1", "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "channel": "non_production_test", "test_grant_id": "test-grant-synthetic-1", "uncovered_items": [{ "rule_id": "synthetic-rule-1", "reason_code": "needs_review", "evidence_ref": null }], "state": "test_completed", "stage": "test_completed", "event_cursor": 9, "billing_mode": "non_billable_test", "reservation_id": null, "artifact_id": "artifact-test-synthetic-1", "prompt_snapshot_ref": null, "updated_at": "2026-09-24T03:10:00Z" }
     },
     {
       "name": "run-recovery-events",

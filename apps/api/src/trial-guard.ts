@@ -288,7 +288,7 @@ export async function trialUsage(pool: Pool, config: TrialConfig, actorId: strin
     const row = (day: string, u: string) => { const key = `${day}|${u}`; let r = rows.get(key); if (!r) rows.set(key, r = emptyRow(day, u)); return r; };
     const dayText = (column: string) => `to_char((${column} AT TIME ZONE $1)::date,'YYYY-MM-DD')`;
     for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,count(*)::int n FROM bb_runs WHERE ${range('created_at')} GROUP BY 1,2`, args)).rows) row(r.d, r.u).runs_created = r.n;
-    for (const r of (await client.query(`SELECT ${dayText('updated_at')} d,owner_user_id u,count(*)::int n,COALESCE(sum(EXTRACT(EPOCH FROM updated_at-created_at)*1000),0)::bigint ms FROM bb_runs WHERE state IN ('succeeded','failed','cancelled') AND ${range('updated_at')} GROUP BY 1,2`, args)).rows) { const x = row(r.d, r.u); x.runs_finished = r.n; x.run_duration_ms = Number(r.ms); }
+    for (const r of (await client.query(`SELECT ${dayText('updated_at')} d,owner_user_id u,count(*)::int n,COALESCE(sum(EXTRACT(EPOCH FROM updated_at-created_at)*1000),0)::bigint ms FROM bb_runs WHERE state IN ('succeeded','test_completed','failed','cancelled') AND ${range('updated_at')} GROUP BY 1,2`, args)).rows) { const x = row(r.d, r.u); x.runs_finished = r.n; x.run_duration_ms = Number(r.ms); }
     for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,count(*)::int n,
         count(*) FILTER (WHERE usage_status='measured')::int measured,
         count(*) FILTER (WHERE usage_status<>'measured' AND call_status<>'confirmed_not_sent')::int unresolved,

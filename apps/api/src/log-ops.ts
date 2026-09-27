@@ -7,6 +7,7 @@ import { Value } from '@sinclair/typebox/value';
 import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
+import { assertTestChannelReadable, testChannelEnabled } from './non-production-test.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
 import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
 
@@ -877,13 +878,13 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
         CASE WHEN u.status='closed' OR p.deleted_at<$4 THEN 'user_deleted' ELSE 'retention_expired' END reason
       FROM bb_snapshot_refs s JOIN bb_users u ON u.id=s.owner_user_id LEFT JOIN bb_runs r ON r.id=s.run_id
       JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id
-      WHERE (u.status='closed' OR p.deleted_at<$4 OR (s.created_at<$1 AND (r.id IS NULL OR r.state IN ('succeeded','failed','cancelled','rejected'))))
+      WHERE (u.status='closed' OR p.deleted_at<$4 OR (s.created_at<$1 AND (r.id IS NULL OR r.state IN ('succeeded','test_completed','failed','cancelled','rejected'))))
       UNION ALL
       SELECT 'provider_result',p.id,p.owner_user_id,p.project_id,p.result_ref,p.created_at,
         CASE WHEN u.status='closed' OR pj.deleted_at<$4 THEN 'user_deleted' ELSE 'retention_expired' END
       FROM bb_provider_result_refs p JOIN bb_users u ON u.id=p.owner_user_id JOIN bb_runs r ON r.id=p.run_id
       JOIN bb_projects pj ON pj.owner_user_id=p.owner_user_id AND pj.id=p.project_id
-      WHERE (u.status='closed' OR pj.deleted_at<$4 OR (p.created_at<$1 AND r.state IN ('succeeded','failed','cancelled','rejected')))
+      WHERE (u.status='closed' OR pj.deleted_at<$4 OR (p.created_at<$1 AND r.state IN ('succeeded','test_completed','failed','cancelled','rejected')))
     ) c WHERE ($3::text[] IS NULL OR c.owner_user_id=ANY($3)) AND NOT EXISTS (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind=c.kind AND t.content_id=c.id)
     ORDER BY created_at,id LIMIT $2`, [cutoff, batch, policy.ownerScope ?? null, deletedCutoff])).rows;
   let purged = 0, failed = 0;
@@ -980,15 +981,16 @@ const filterArgs = (f: AdminFilter) => [f.user_id ?? null, f.project_id ?? null,
 export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilter) {
   return transaction(pool, async client => {
     await audit(client, { actorId, role: 'log_reader', owner: filter.user_id, purpose: 'admin_events', filter });
-    const q = await client.query(`SELECT e.id,e.owner_user_id,e.project_id,e.job_id,e.run_id,e.trace_id,e.kind,e.created_at,e.event FROM bb_observability_events e
+    const q = await client.query(`SELECT e.id,e.owner_user_id,e.project_id,e.job_id,e.run_id,e.channel,e.trace_id,e.kind,e.created_at,e.event FROM bb_observability_events e
       WHERE ($1::text IS NULL OR e.owner_user_id=$1) AND ($2::text IS NULL OR e.project_id=$2) AND ($3::text IS NULL OR e.job_id=$3) AND ($4::text IS NULL OR e.trace_id=$4)
         AND ($5::timestamptz IS NULL OR e.created_at>=$5) AND ($6::timestamptz IS NULL OR e.created_at<=$6)
         AND ($7::text IS NULL OR EXISTS (SELECT 1 FROM bb_model_call_attempts a WHERE a.job_id=e.job_id AND a.model_id=$7
              AND (e.event->>'logical_call_id' IS NULL OR (a.logical_call_id=e.event->>'logical_call_id' AND a.attempt_no=(e.event->>'attempt_no')::int))))
         AND ($8::text IS NULL OR e.event->>'status'=$8) AND ($9::text IS NULL OR e.event->'error'->>'code'=$9)
-      ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1]);
+        AND ($11::boolean OR e.channel IS DISTINCT FROM 'non_production_test')
+      ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1, testChannelEnabled()]);
     const rows = q.rows.slice(0, filter.limit);
-    return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
+    return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
   });
 }
 
@@ -1002,20 +1004,21 @@ export function consumption(rows: UsageRow[]) {
   };
   return { attempts: rows.length, measured_attempts: measured.length, unresolved_attempts: rows.length - measured.length, input_tokens: sum('input_tokens'), output_tokens: sum('output_tokens'), cached_input_tokens: sum('cached_input_tokens'), reasoning_tokens: sum('reasoning_tokens') };
 }
-const terminal = ['succeeded', 'failed', 'cancelled', 'rejected'];
+const terminal = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'];
 
 export async function adminJobTimeline(pool: Pool, actorId: string, jobId: string) {
   if (!validId(jobId)) throw missing();
   return transaction(pool, async client => {
-    const job = (await client.query('SELECT j.*,COALESCE(j.project_id,r.project_id) effective_project_id,r.state run_state,r.artifact_id,r.artifact_version FROM bb_jobs j LEFT JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1', [jobId])).rows[0];
+    const job = (await client.query('SELECT j.*,COALESCE(j.project_id,r.project_id) effective_project_id,r.state run_state,r.channel run_channel,r.artifact_id,r.artifact_version FROM bb_jobs j LEFT JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1', [jobId])).rows[0];
     await audit(client, { actorId, role: 'log_reader', owner: job?.owner_user_id, purpose: 'admin_job_timeline', filter: { jobId }, target: jobId });
     if (!job) throw missing();
+    assertTestChannelReadable(job.run_channel ?? job.channel);
     const prompts = (await client.query(`SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
       WHERE s.owner_user_id=$1 AND ((s.run_id IS NOT NULL AND s.run_id=$2) OR s.id IN (SELECT prompt_snapshot_id FROM bb_model_call_attempts WHERE job_id=$3)) ORDER BY s.created_at,s.id`, [job.owner_user_id, job.run_id, job.id])).rows;
     const stages = job.run_id
       ? (await client.query('SELECT seq,type,state,stage,payload,occurred_at FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq', [job.owner_user_id, job.run_id])).rows.map(r => ({ seq: r.seq, type: r.type, state: r.state, stage: r.stage, reason: r.payload?.reason ?? null, occurred_at: iso(r.occurred_at)! }))
       : (await client.query("SELECT kind,event,created_at FROM bb_observability_events WHERE owner_user_id=$1 AND job_id=$2 AND kind IN ('operation.submitted','operation.rejected','job.state_changed') ORDER BY created_at,CASE WHEN kind LIKE 'operation.%' THEN 0 ELSE 1 END,id", [job.owner_user_id, job.id])).rows.map((r, i) => ({ seq: i + 1, type: r.kind, state: r.event.status ?? 'unknown', stage: r.event.stage ?? null, reason: r.event.error?.code?.toLowerCase() ?? null, occurred_at: iso(r.created_at)! }));
-    const attemptRows = (await client.query(`SELECT a.id,a.logical_call_id,a.attempt_no,a.status,a.model_id,a.provider_request_id,a.prompt_snapshot_id,a.created_at,
+    const attemptRows = (await client.query(`SELECT a.id,a.logical_call_id,a.attempt_no,a.channel,a.status,a.model_id,a.provider_request_id,a.prompt_snapshot_id,a.created_at,
         u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens,u.correction_id,rt.duration_ms,
         COALESCE(rt.error_code,(SELECT o.error_code FROM bb_provider_call_observations o WHERE o.attempt_id=a.id ORDER BY o.observed_at DESC,o.id DESC LIMIT 1)) error_code
       FROM bb_model_call_attempts a JOIN bb_call_usage_effective u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id
@@ -1026,13 +1029,13 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
     const state = job.run_state ?? job.state;
     const created = new Date(job.created_at), updated = new Date(job.updated_at);
     return {
-      job: { job_id: job.id, user_id: job.owner_user_id, project_id: job.effective_project_id ?? null, run_id: job.run_id ?? null, operation_id: job.operation_id ?? null, request_id: job.request_id ?? null, execution_request_id: job.execution_request_id ?? null, execution_request_key_hash: job.execution_request_key_hash?.trim() ?? null, trace_id: job.trace_id ?? job.run_id ?? null, input_revision: job.input_revision ?? null, input_hash: job.input_hash?.trim() ?? null, job_type: job.job_type, subtype: job.subtype, state: job.state, stage: job.stage ?? null, attempts: job.attempts, error_code: job.error_code ?? null, created_at: created.toISOString(), updated_at: updated.toISOString(), duration_ms: terminal.includes(job.state) ? Math.max(0, updated.getTime() - created.getTime()) : null },
+      job: { job_id: job.id, user_id: job.owner_user_id, project_id: job.effective_project_id ?? null, run_id: job.run_id ?? null, channel: job.channel ?? 'production', operation_id: job.operation_id ?? null, request_id: job.request_id ?? null, execution_request_id: job.execution_request_id ?? null, execution_request_key_hash: job.execution_request_key_hash?.trim() ?? null, trace_id: job.trace_id ?? job.run_id ?? null, input_revision: job.input_revision ?? null, input_hash: job.input_hash?.trim() ?? null, job_type: job.job_type, subtype: job.subtype, state: job.state, stage: job.stage ?? null, attempts: job.attempts, error_code: job.error_code ?? null, created_at: created.toISOString(), updated_at: updated.toISOString(), duration_ms: terminal.includes(job.state) ? Math.max(0, updated.getTime() - created.getTime()) : null },
       prompts: prompts.map(s => ({ snapshot_id: s.id, kind: s.snapshot_kind, version: s.version, content_sha256: s.content_sha256.trim(), redaction_version: s.redaction_version, input_revision: s.input_revision, template_version: s.template_version, rule_pack_version: s.rule_pack_version, model_parameters_version: s.model_parameters_version, content_state: s.tombstone ? 'purged' : 'available', created_at: iso(s.created_at)! })),
       stages,
-      attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)! })),
+      attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, channel: a.channel ?? 'production', status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)! })),
       errors: errors.map(e => ({ error_id: e.id, code: e.code, category: e.category, stage: e.stage, attempt_id: e.attempt_id, retry_count: e.retry_count, fingerprint: e.fingerprint?.trim() ?? null, recovery_status: e.recovery_status, created_at: iso(e.created_at)! })),
       artifact: artifact ? { artifact_id: artifact.id, version: artifact.version, sha256: artifact.sha256.trim(), quality_status: artifact.quality_status, delivery_status: artifact.delivery_status, created_at: iso(artifact.created_at)! } : null,
-      outcome: { state, error_code: job.error_code ?? errors.at(-1)?.code ?? null, artifact_available: !!artifact && artifact.quality_status === 'passed' && artifact.delivery_status === 'available' },
+      outcome: { state, error_code: job.error_code ?? errors.at(-1)?.code ?? null, artifact_available: !!artifact && artifact.quality_status === 'passed' && ['available','test_only'].includes(artifact.delivery_status) },
       consumption: { all_attempts: consumption(usageRows), completed_attempts: consumption(usageRows.filter(r => r.call_status === 'completed')) }
     };
   });
@@ -1051,8 +1054,8 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
         AND ($9::text IS NULL OR j.error_code=$9 OR EXISTS (SELECT 1 FROM bb_observability_errors e WHERE e.job_id=j.id AND e.code=$9)))`;
     const jobs = (await client.query(`${scope} SELECT count(*)::int total, count(*) FILTER (WHERE state='succeeded')::int succeeded, count(*) FILTER (WHERE state='failed')::int failed,
         count(*) FILTER (WHERE state='cancelled')::int cancelled, count(*) FILTER (WHERE state='rejected')::int rejected,
-        avg(EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','failed','cancelled')) avg_ms,
-        percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','failed','cancelled')) p95_ms FROM scoped`, args)).rows[0];
+        avg(EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','test_completed','failed','cancelled')) avg_ms,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','test_completed','failed','cancelled')) p95_ms FROM scoped`, args)).rows[0];
     const attempts = (await client.query(`${scope} SELECT a.id,a.model_id,a.status call_status,a.attempt_no,u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens,rt.duration_ms
         FROM scoped j JOIN bb_model_call_attempts a ON a.job_id=j.id JOIN bb_call_usage_effective u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id
         WHERE ($7::text IS NULL OR a.model_id=$7)`, args)).rows.map(a => ({ ...a, input_tokens: int(a.input_tokens), output_tokens: int(a.output_tokens), cached_input_tokens: int(a.cached_input_tokens), reasoning_tokens: int(a.reasoning_tokens) }));
@@ -1176,7 +1179,17 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
     await query('BEGIN');
     let snapshot: any, auditId: string;
     try {
-      snapshot = (await query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      snapshot = (await query(`SELECT s.*,t.id tombstone,EXISTS (
+        SELECT 1 FROM bb_model_call_attempts a
+        JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=s.owner_user_id
+        JOIN bb_runs r ON r.id=COALESCE(s.run_id,j.run_id) AND r.owner_user_id=s.owner_user_id
+        WHERE a.prompt_snapshot_id=s.id AND r.channel='non_production_test'
+      ) OR EXISTS (
+        SELECT 1 FROM bb_runs r WHERE r.id=s.run_id AND r.owner_user_id=s.owner_user_id AND r.channel='non_production_test'
+      ) AS linked_test_run FROM bb_snapshot_refs s
+      LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
+      JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id
+      WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL`, [snapshotId])).rows[0];
       await setPromptStatementTimeout(client, deadlineAt, signal);
       auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
       await query('COMMIT');
@@ -1187,6 +1200,7 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
       throw error;
     }
     if (!snapshot || snapshot.tombstone) throw missing();
+    if (snapshot.linked_test_run) assertTestChannelReadable('non_production_test');
     if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
     // A Blob request may never settle after a TCP disconnect. Promise.race observes its
     // eventual result/rejection, while the abort path releases the session lock now.
