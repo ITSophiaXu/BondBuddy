@@ -7,13 +7,70 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
-import { runPipelineOnce, type RunStage } from './run-pipeline.js';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { inputLockStage, runPipelineOnce, type RunStage } from './run-pipeline.js';
 import { runGrantCommand } from './non-production-test-grants.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const databaseUrl=await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL');
 const origin='http://bondbuddy.test';
+
+test('test input gate pauses a missing applicability ref before capability loading', {skip:!databaseUrl},async()=>{
+  const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+  process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+  const pool=new Pool({connectionString:databaseUrl});
+  const owner=`test-ref-owner-${randomUUID()}`;
+  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
+  try{
+    const project=(await send('POST','/api/v1/projects',{name:'Synthetic missing ref',kind:'review',issuer_name:null,market:null,offering:null})).json().project_id;
+    const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,
+      {draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
+    const grantId=randomUUID();
+    await pool.query(`INSERT INTO bb_non_production_test_grants
+      (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+      VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
+    [grantId,owner,project,input.input_hash,'a'.repeat(64),'b'.repeat(64),'c'.repeat(64)]);
+    const run=(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,
+      input_revision:1,input_hash:input.input_hash,task_kind:'review',input_manifest_ref:'synthetic',storage_origin:'cloud',
+      workspace_id:'synthetic',test_grant_id:grantId})).json();
+    let called=false;
+    assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages:[inputLockStage],
+      testRuleCapabilityLoader:async()=>{called=true;return {status:'not_ready',reason:'unexpected'};}}),'paused');
+    assert.equal(called,false);
+    const event=(await pool.query(`SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1`,[run.run_id])).rows[0];
+    assert.equal(event.payload.reason,'test_reviewed_applicability_pin_missing');
+    const locked=(await pool.query('SELECT manifest,input_hash FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=1',
+      [owner,project])).rows[0];
+    const tampered={...locked.manifest,test_rule_applicability_ref:{context_id:'forged',version:1,content_hash:'a'.repeat(64),
+      source_input_revision:1,source_input_hash:'b'.repeat(64)}};
+    const gate=await inputLockStage.run({pool:{query:async()=>({rows:[{...locked,manifest:tampered}]})} as any,
+      run:{owner_user_id:owner,project_id:project,input_revision:1,input_hash:input.input_hash,task_kind:'review',
+        channel:'non_production_test',test_grant_id:grantId},testRuleCapabilityLoader:async()=>{
+        called=true;return {status:'not_ready',reason:'unexpected'};
+      }} as any);
+    assert.deepEqual(gate,{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+    assert.equal(called,false);
+    const blocked={...locked.manifest,test_rule_applicability_ref:null,
+      test_rule_applicability_block_reason:'rule_applicability_overall_review_withdrawn'};
+    const blockedHash=inputManifestHash(blocked);
+    const blockedGate=await inputLockStage.run({pool:{query:async()=>({rows:[{...locked,manifest:blocked,input_hash:blockedHash}]})} as any,
+      run:{owner_user_id:owner,project_id:project,input_revision:1,input_hash:blockedHash,task_kind:'review',
+        channel:'non_production_test',test_grant_id:grantId},testRuleCapabilityLoader:async()=>{
+        called=true;return {status:'not_ready',reason:'unexpected'};
+      }} as any);
+    assert.deepEqual(blockedGate,{kind:'pause',stage:'capability_not_ready',reason:'rule_applicability_overall_review_withdrawn'});
+    assert.equal(called,false);
+    // The immutable DB row rejects mutation; the gate also rejects a mismatched manifest hash if storage is compromised.
+    await assert.rejects(pool.query('UPDATE bb_input_revisions SET manifest=$2 WHERE project_id=$1 AND revision=1',
+      [project,tampered]));
+  }finally{
+    await app.close();await pool.end();
+    if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
+    if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
+  }
+});
 
 test('a revoked grant pauses an executing test run at its next gate', {skip:!databaseUrl},async()=>{
   const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;

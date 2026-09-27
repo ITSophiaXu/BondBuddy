@@ -12,7 +12,8 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
-import { revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
@@ -90,6 +91,14 @@ type InputRevisionRow = { input_hash: string; draft_revision: number; material_v
 
 async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRevisionRow,
   loader: TestRuleCapabilityLoader = unavailableTestRuleCapability): Promise<InputBindingGate | null> {
+  if (!input.manifest || inputManifestHash(input.manifest) !== String(input.input_hash).trim() ||
+      String(input.input_hash).trim() !== run.input_hash.trim())
+    return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+  if (!readTestApplicabilityRef(input.manifest)) {
+    const storedReason=input.manifest.test_rule_applicability_block_reason;
+    return {kind:'pause',stage:'capability_not_ready',reason:
+      typeof storedReason==='string' ? safePauseReason(storedReason) : 'test_reviewed_applicability_pin_missing'};
+  }
   let grant: any;
   try { grant=await assertTestGrant(pool,{grantId:run.test_grant_id!,userId:run.owner_user_id,projectId:run.project_id,inputRevision:run.input_revision,inputHash:run.input_hash}); }
   catch(error){ return {kind:'pause',stage:'capability_not_ready',reason:error instanceof Problem?error.code.toLowerCase():'test_grant_invalid'}; }

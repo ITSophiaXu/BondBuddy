@@ -152,6 +152,18 @@
       "value": { "draft_revision": 7, "material_versions": [{ "material_id": "material-synthetic", "material_version": 1 }], "requirement_message_ids": [], "rule_applicability_context_ref": { "context_id": "synthetic-context-only", "version": 1, "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_input_revision": 6, "source_input_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" } }
     },
     {
+      "name": "synthetic-test-application-context-assertion",
+      "schema": "InputRevisionCreateRequest",
+      "valid": true,
+      "value": { "draft_revision": 7, "material_versions": [{ "material_id": "material-synthetic", "material_version": 1 }], "requirement_message_ids": [], "test_rule_applicability_context_ref": { "context_id": "synthetic-reviewed-context", "version": 1, "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_input_revision": 6, "source_input_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" } }
+    },
+    {
+      "name": "client-cannot-write-test-pin",
+      "schema": "InputRevisionCreateRequest",
+      "valid": false,
+      "value": { "draft_revision": 7, "material_versions": [], "requirement_message_ids": [], "test_rule_applicability_ref": { "context_id": "synthetic-reviewed-context", "version": 1, "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_input_revision": 6, "source_input_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" } }
+    },
+    {
       "name": "synthetic-reviewed-rule-pin-input-response",
       "schema": "InputRevisionResponse",
       "valid": true,

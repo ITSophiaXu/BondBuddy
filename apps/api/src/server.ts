@@ -38,6 +38,7 @@ import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotW
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
 import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
+import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -324,8 +325,10 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[]}>(request);
+    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[]}>(request);
     if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
+    if(b.test_rule_applicability_context_ref && !testChannelEnabled())
+      throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
       if(p.draft_revision!==b.draft_revision) throw conflict('INPUT_REVISION_CONFLICT','Draft revision changed');
@@ -401,6 +404,12 @@ export function createServer(settings: Settings = {}) {
         }:null,
         rule_pack_version:ruleBinding.status==='selected'?ruleBinding.pin.version:null,
         template_version:ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null});
+      if(b.test_rule_applicability_context_ref){
+        const testPin=await lockTestRuleApplicabilityRef(client,p,{draftRevision:p.draft_revision,materials:resolved},
+          issuerIdentity?.status==='verified'?issuerIdentity:undefined,b.test_rule_applicability_context_ref);
+        Object.assign(manifest,{test_rule_applicability_ref:testPin.ref,
+          test_rule_applicability_block_reason:testPin.reason});
+      }
       if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       const hash=inputManifestHash(manifest);

@@ -9,6 +9,8 @@ import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, revi
 import { createProductionServer, createServer } from './server.js';
 import { loadTargetConfirmation } from './target-confirmation.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { inputManifestHash } from './production-rule-pin.js';
+import { readTestApplicabilityRef } from './test-rule-applicability-pin.js';
 import { SSE_PRIVATE_APPLICABILITY_DICTIONARY, SSE_PRIVATE_APPLICABILITY_FEATURE_MAPPING,
   SSE_PRIVATE_APPLICABILITY_FEATURE_EVIDENCE_VERSION, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain';
 
@@ -430,6 +432,67 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         'a reviewer-provided synthetic version is not a server-published taxonomy and cannot reach selection');
       assert.ok(!approvedPin.rule_pack_block_reasons.includes('production_rule_pack_registry_empty'),
         'the loader stops before production selection while the real taxonomy mapping remains unpublished');
+      const previousTier=process.env.BB_DEPLOYMENT_TIER,previousChannel=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+      process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+      const reviewRef=confirmedDraft.json().context_ref;
+      const testLock=async (ref: unknown, materials=[{material_id:materialId,material_version:1},
+        {material_id:auditMaterialId,material_version:1}]) => {
+        const response=await send('POST',`${base}/input-revisions`,{draft_revision:1,material_versions:materials,
+          requirement_message_ids:[],test_rule_applicability_context_ref:ref});
+        assert.equal(response.statusCode,201,response.body);
+        const row=(await pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+          [owner,projectId,response.json().input_revision])).rows[0]!;
+        assert.equal(row.input_hash.trim(),inputManifestHash(row.manifest));
+        return {response:response.json(),manifest:row.manifest as Record<string,unknown>};
+      };
+      try {
+        const locked=await testLock(reviewRef);
+        assert.deepEqual(readTestApplicabilityRef(locked.manifest),reviewRef,
+          'the exact shape read by the test capability is locked and hashed');
+        assert.equal(locked.manifest.test_rule_applicability_block_reason,null);
+        const testGrantId=randomUUID();
+        await pool.query(`INSERT INTO bb_non_production_test_grants
+          (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,'synthetic-operator','synthetic regression',now()+interval '1 hour')`,
+        [testGrantId,owner,projectId,locked.response.input_revision,locked.response.input_hash,
+          sha('sample manifest'),sha('candidate taxonomy'),sha('candidate pack')]);
+        const staged=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableRunStaging:true});
+        try {
+          const execute={execution_request_id:randomUUID(),project_id:projectId,input_revision:locked.response.input_revision,
+            input_hash:locked.response.input_hash,task_kind:'update',input_manifest_ref:'synthetic-reviewed-input',
+            storage_origin:'cloud',workspace_id:'synthetic-workspace',test_grant_id:testGrantId};
+          const first=await staged.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},payload:execute});
+          const replay=await staged.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},payload:execute});
+          assert.equal(first.statusCode,202,first.body);assert.equal(replay.statusCode,202,replay.body);
+          assert.equal(first.json().run_id,replay.json().run_id);
+          assert.equal(first.json().input_hash,replay.json().input_hash);
+        } finally { await staged.close(); }
+        const negatives:[unknown,string][]=[
+          [{...reviewRef,context_id:`foreign-context-${suffix}`},'rule_applicability_context_pin_mismatch'],
+          [{...reviewRef,content_hash:sha('incorrect context')},'rule_applicability_context_pin_mismatch'],
+          [{...reviewRef,source_input_hash:sha('incorrect source')},'rule_applicability_source_input_mismatch'],
+          [{...reviewRef,source_input_revision:reviewRef.source_input_revision+100},'rule_applicability_source_input_mismatch'],
+        ];
+        for(const [ref,reason] of negatives){const bad=await testLock(ref);assert.equal(readTestApplicabilityRef(bad.manifest),null);
+          assert.equal(bad.manifest.test_rule_applicability_block_reason,reason);}
+        const incomplete=await testLock(reviewRef,[{material_id:materialId,material_version:1}]);
+        assert.equal(readTestApplicabilityRef(incomplete.manifest),null);
+        assert.equal(incomplete.manifest.test_rule_applicability_block_reason,'rule_applicability_source_material_mismatch');
+        const bypass=await send('POST',`${base}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[],
+          test_rule_applicability_ref:reviewRef});
+        assert.equal(bypass.statusCode,422,'client cannot write the manifest field');
+        process.env.BB_DEPLOYMENT_TIER='production';
+        const disabled=await send('POST',`${base}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[],
+          test_rule_applicability_context_ref:reviewRef});
+        assert.equal(disabled.statusCode,403);assert.equal(disabled.json().code,'TEST_CHANNEL_DISABLED');
+        process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='disabled';
+        const switchOff=await send('POST',`${base}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[],
+          test_rule_applicability_context_ref:reviewRef});
+        assert.equal(switchOff.statusCode,403);assert.equal(switchOff.json().code,'TEST_CHANNEL_DISABLED');
+      } finally {
+        if(previousTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTier;
+        if(previousChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousChannel;
+      }
       activeOwner = ruleReviewerId;
       const withdrawApproved = await send('POST', confirmedReviewUrl, { request_id: `overall-withdraw-approved-${suffix}`,
         action: 'withdraw', reason: 'Synthetic regression withdrawal' });
@@ -450,6 +513,20 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       const withdrawnPin = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
         [owner, projectId, withdrawnInput.json().input_revision])).rows[0]!.manifest;
       assert.ok(withdrawnPin.rule_pack_block_reasons.includes('rule_applicability_overall_review_withdrawn'));
+      process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+      try {
+        const withdrawnTest=await send('POST',`${base}/input-revisions`,{draft_revision:1,
+          material_versions:[{material_id:materialId,material_version:1},{material_id:auditMaterialId,material_version:1}],
+          requirement_message_ids:[],test_rule_applicability_context_ref:reviewRef});
+        assert.equal(withdrawnTest.statusCode,201,withdrawnTest.body);
+        const withdrawnManifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+          [owner,projectId,withdrawnTest.json().input_revision])).rows[0]!.manifest;
+        assert.equal(readTestApplicabilityRef(withdrawnManifest),null);
+        assert.equal(withdrawnManifest.test_rule_applicability_block_reason,'rule_applicability_overall_review_withdrawn');
+      } finally {
+        if(previousTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTier;
+        if(previousChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousChannel;
+      }
 
       // V2 uses the same exact domain resolver at API approval and approved-load time.
       // Parent scope retains complete locked-material coverage; child evidence can be independent subsets.

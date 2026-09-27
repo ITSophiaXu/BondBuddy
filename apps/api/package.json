@@ -76,6 +76,10 @@
       "types": "./dist/production-rule-pin.d.ts",
       "default": "./dist/production-rule-pin.js"
     },
+    "./test-rule-applicability-pin": {
+      "types": "./dist/test-rule-applicability-pin.d.ts",
+      "default": "./dist/test-rule-applicability-pin.js"
+    },
     "./target-confirmation": {
       "types": "./dist/target-confirmation.d.ts",
       "default": "./dist/target-confirmation.js"
