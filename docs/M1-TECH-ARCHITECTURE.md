@@ -305,7 +305,7 @@ The production worker options install the controlled native extractor at `materi
 
 `scripts/build_exchange_knowledge.py` now composes the SSE-private-only overlay in `scripts/build_sse_private_knowledge.py` and `scripts/sse_private_knowledge_content.py`. The immutable official attachment/notice catalog is `knowledge/exchange-bonds/verification/2026-09-26/catalog.json`; rebuilding verifies both hashes and the notice-to-attachment link, then produces existing #19 RulePack/ChapterTemplate/CoverageManifest shapes and an authoring evidence map. Ten official artifacts reuse four exact intake files and add six independent originals. `OV-*` records use the existing prototype source-record shape; `NOTICE` locates the archived announcement body. Other five exchange scopes retain their prior bundles. SSE-private research retrieval excludes the superseded EX009 optimization text and uses the directly obtained disclosure attachment instead of EX003's different bytes.
 
-This is 31 disabled research candidates, not a production checker or release. Official type/date observations remain separate from real source-verifier identity, professional result acceptance and #19 publication. No public contract, migration, grant or worker install is changed. `drafts/sse-private/ACCEPTANCE.md` defines evidence requirements for existing applicability-context fields and four authorized samples; the producer's `needs_review` state is not changed. #19 applicability/release/pin integration, #35 real generation logs/artifacts and #146 WPS/Word evidence remain required.
+This is 31 disabled research candidates, not a production checker or release. Official type/date observations remain separate from real source-verifier identity, professional result acceptance and #19 publication. No public contract, migration, grant or worker install is changed. `drafts/sse-private/ACCEPTANCE.md` defines evidence requirements for existing applicability-context fields and four authorized samples; the producer's `needs_review` state is not changed. #19 applicability/release/pin integration and #35 real generation logs/artifacts remain relevant to #20. Per the user's later 2026-09-27 decision, #146 WPS/Word desktop compatibility is tracked separately and does not block closing #20.
 
 ### #20–#25 exchange archive intake and research refresh (2026-09-26)
 
@@ -426,7 +426,7 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 
 历史稿生成另外增加 `apps/worker/src/historical-rule-context.ts`，消费API实际写入的 `ProductionRulePackPin.packId/contentHash`，在生成和恢复前重复使用registry的精确release revalidator。仅向prompt投影本次适用的规则、边界、例外及相关原文证据；不选latest、不回退本地研究文件。`historical-sse-private-v2`变更prompt绑定，旧v1 checkpoint不能静默复用。正文180,000字节、完整prompt240,000字节，超限暂停而非截断。此消费者不批准规则、不替代#19整体review loader；研究checker不因此进入生产。没有公开DTO、迁移或run状态机变化。现有运行日志保存完整prompt，公开进度只留计数和引用。详细限制和依赖见[本轮工程记录](acceptance/issue-20-rule-integration-2026-09-27.md)。
 
-2026-09-27行业源资产独立放在[固定来源目录](../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)：离线Python提取19门类/10制造业辅助次类/91大类/456中类及原表锚点，附576项来源代码→大类候选映射。仅#19现有domain字典可以成为运行标准的唯一绑定；此切片不修改公共枚举、迁移、review ledger或loader。精确匹配selector没有祖先推断，门类/中类规则的覆盖映射须显式审核。2024相近金融标准与2023协会指引不自动等价。#20工程/来源/结果五项关口及依赖见[关闭清单](../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)。
+2026-09-27行业源资产独立放在[固定来源目录](../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)：离线Python提取19门类/10制造业辅助次类/91大类/456中类及原表锚点，附576项来源代码→大类候选映射。仅#19现有domain字典可以成为运行标准的唯一绑定；此切片不修改公共枚举、迁移、review ledger或loader。精确匹配selector没有祖先推断，门类/中类规则的覆盖映射须显式审核。2024相近金融标准与2023协会指引不自动等价。#20工程/来源/结果四项关口及独立兼容性跟踪见[关闭清单](../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)。
 
 
 ### #20 complete documentary review and explicit handling (2026-09-27)
@@ -436,3 +436,11 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 The internal [v4 input example](../packages/domain/examples/sse-private-check-input-v4.json) is synthetic. #15 owns complete, reviewed material/fact/period/occurrence enumeration and version/owner provenance; pass applies only to a local subcheck. Arithmetic uses exact rationals and explicit final rounding; simulated fees require a reviewed treatment rather than automatic accounting-policy selection. Manual governance, contingent matters, focus, specialty, negative-list and optimized-review handling cannot become issuer eligibility approval.
 
 #311 already supplies aggregate review/withdrawal and loader code; its unpublished taxonomy gate remains. #315 proposes candidate industry binding. [A03 mapping details](../knowledge/exchange-bonds/drafts/sse-private/A03-FEATURE-MAPPING-20260927.md) expose the nine-dimension single-code vs twelve-selector/multiple-code and underscore/hyphen contract gaps for #19 to resolve, without copying public enums into #20. #312/#314 added 16 authorized historical-table candidates and PG regression, with actual external/needs_confirmation status; they are not audited verified facts. True release, target-server run and post-artifact Word/WPS acceptance remain separate gates.
+
+### #20 内部首次测试与关闭边界（用户2026-09-27调整）
+
+Word/WPS桌面兼容验收不阻断#20关闭，由#146独立跟踪，发现实际缺陷后另开issue。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
+
+首次内部工作稿测试需要固定指定账号、已授权样本、输入/规则来源版本和日志，并将局部缺材料/配套未核状态传到结果；不应等待全库正文核验、同一次成果的产出后验收或WPS矩阵。当前`rule-applicability-context`先检查整体批准，再检查已发布字典；`rule-pack-registry`生产入口要求真实生产release和完整已核coverage。#35最新暂停证明整体审核未通过，不证明缺少某一配套PDF本身直接使模型失败。
+
+如果唯一运行入口将上述完整生产发布前提同时施加于首次内部生成，#19/#35负责人需在同一版本/权限契约下提供可执行的受控测试切片并回链PR，保留未核提示、审计和生产隔离；不得靠补假签认、批量改enabled或弱化正式用户权限解除暂停。具体公共契约/迁移/loader改动由受影响负责人协同实现，本次仅记录产品边界，未部署或新增测试入口。
