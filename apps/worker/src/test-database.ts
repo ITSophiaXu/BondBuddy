@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto';
-import { after } from 'node:test';
 import { Client } from 'pg';
 
 // Test-only helper. `node --test` runs every test file in its own process in parallel, so suites that share
@@ -9,6 +8,26 @@ import { Client } from 'pg';
 // because PostgreSQL refuses to clone a template that has open sessions. The role needs CREATEDB.
 
 const cloned = new Map<string, Promise<string>>();
+const created: Array<{ template: URL; name: string }> = [];
+
+// A file's after hooks close its pools and background work. Drop clones only once
+// those hooks and their connections have finished, while still failing the file if cleanup fails.
+process.once('beforeExit', () => {
+  void (async () => {
+    const failures: unknown[] = [];
+    for (const { template, name } of created) {
+      try {
+        await withMaintenance(template, (client) => client.query(`DROP DATABASE IF EXISTS ${quoteIdent(name)} WITH (FORCE)`));
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length) throw new AggregateError(failures, `Failed to drop ${failures.length} test database clone(s)`);
+  })().catch((error: unknown) => {
+    process.stderr.write(`Test database cleanup failed: ${String(error)}\n`);
+    process.exitCode = 1;
+  });
+});
 
 function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
@@ -39,9 +58,7 @@ async function cloneDatabase(templateUrl: string): Promise<string> {
       }
     }
   });
-  after(async () => {
-    await withMaintenance(template, (client) => client.query(`DROP DATABASE IF EXISTS ${quoteIdent(cloneName)} WITH (FORCE)`));
-  });
+  created.push({ template, name: cloneName });
   const url = new URL(template);
   url.pathname = `/${encodeURIComponent(cloneName)}`;
   return url.toString();
