@@ -4,16 +4,17 @@ References use archived official attachment paragraph indices / physical PDF pag
 The common authoring source and the other five scope drafts stay unchanged.
 """
 
-VERSION = '2026.09.27-draft.5'
-PREVIOUS_VERSION = '2026.09.26-draft.4'
+VERSION = '2026.09.27-draft.6'
+PREVIOUS_VERSION = '2026.09.27-draft.5'
 EVIDENCE_VERSION = '2026.09.26-evidence.1'
-AUTHORED_AT = '2026-09-27T03:39:12Z'
+AUTHORED_AT = '2026-09-27T05:25:09Z'
 
-# Eleven bounded structured-evidence checks; all other candidates still need implementations.
+# Six manual handlers remain explicitly outside automated-check coverage.
+from sse_private_handling import ADDITIONAL_CHECKS, MANUAL_HANDLERS
 EXECUTABLE_CHECKS = {'private-investors', 'financial-validity-sse', 'private-use-change',
                      'idle-proceeds-2026', 'continuing-disclosure', 'period-window',
                      'audit-opinion', 'financial-statements', 'mdna-thresholds',
-                     'funds-use-evidence', 'disclosure-officer-2026'}
+                     'funds-use-evidence', 'disclosure-officer-2026'} | set(ADDITIONAL_CHECKS)
 
 # key -> chapters, official reference pairs, limitation specific to this rule.
 A = 'sse-application-2023'

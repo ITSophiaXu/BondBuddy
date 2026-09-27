@@ -84,14 +84,15 @@ test('#20 financial checker citations preserve the actual private exception and 
 
 test('#20 review checklist covers every candidate while executable metadata identifies only the bounded subset', () => {
   const checklist = readFileSync(new URL('drafts/sse-private/RULE-REVIEW-CHECKLIST.md', base), 'utf8');
-  assert.match(checklist, /31条全部待业务审核/);
-  assert.equal((checklist.match(/审核决定、理由、证据记录：待填写。/g) ?? []).length, 31);
-  assert.equal(SSE_PRIVATE_CHECKED_RULES.length, 11);
+  assert.match(checklist, /31条已完成有边界的文献核对/);
+  assert.equal((checklist.match(/文献核对已填：/g) ?? []).length, 31);
+  assert.equal(SSE_PRIVATE_CHECKED_RULES.length, 25);
   for (const rule of pack.rules) {
     assert.ok(checklist.includes(`规则：\`${rule.rule_id}\``));
     const implemented = (SSE_PRIVATE_CHECKED_RULES as readonly string[]).includes(rule.rule_id);
     const mapping = map.rules.find((row: any) => row.rule_id === rule.rule_id);
-    assert.equal(mapping.engineering_check, implemented ? `bounded-research-check-v${SSE_PRIVATE_CHECKER_VERSION}` : 'unimplemented');
-    assert.equal(rule.checker.checker_version, implemented ? SSE_PRIVATE_CHECKER_VERSION : 'unimplemented.1');
+    assert.equal(mapping.engineering_check, implemented ? `bounded-research-check-v${SSE_PRIVATE_CHECKER_VERSION}` : 'manual-evidence-handler-v4');
+    assert.equal(mapping.documentary_review.status,'completed_with_explicit_limits');
+    assert.equal(rule.checker.checker_version, SSE_PRIVATE_CHECKER_VERSION);
   }
 });
