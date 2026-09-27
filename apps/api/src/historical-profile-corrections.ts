@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Ajv } from 'ajv';
 import { schemas, type Recognition, type RecognitionPatchRequest } from '@bondbuddy/contracts';
 import { applyHistoricalProfileCorrection, validateHistoricalRecognitionProfile } from '@bondbuddy/domain/historical-profile-correction';
+import { parseHistoricalNativeExtractorVersion } from '@bondbuddy/domain/historical-native-extractor-version';
 import type { Pool, PoolClient } from 'pg';
 import { readOcr, readOcrPage } from './ocr.js';
 import { Problem, project, uid, type PrivateBlobs } from './data.js';
@@ -55,12 +56,6 @@ function canonical(value: unknown): string {
     return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
-}
-
-function parseNativeIdentity(value: unknown): { algorithmVersion: string; parserVersion: string } | null {
-  if (typeof value !== 'string') return null;
-  const match = /^(historical-native-recognition-v[12])\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(value);
-  return match && match[2] !== 'unknown-parser' ? { algorithmVersion: match[1]!, parserVersion: match[2]! } : null;
 }
 
 function parseOcrIdentity(value: unknown): { snapshotId: string; resultSha256: string } | null {
@@ -205,9 +200,9 @@ export async function correctHistoricalProfile(
     if (!blobs) fail('HISTORICAL_OCR_PROFILE_READER_REQUIRED');
     await verifyOcrEvidence(client, blobs, context, ocrIdentity, refs);
   } else {
-    const identity = parseNativeIdentity(versions[0]!);
+    const identity = parseHistoricalNativeExtractorVersion(versions[0]!);
     if (!identity || versions.some(value => {
-      const parsed = parseNativeIdentity(value);
+      const parsed = parseHistoricalNativeExtractorVersion(value);
       return parsed?.algorithmVersion !== identity.algorithmVersion || parsed.parserVersion !== identity.parserVersion;
     })) fail('HISTORICAL_PROFILE_PARSER_VERSION_UNRELIABLE');
     await verifyNativeEvidence(client, context, identity.parserVersion, refs);
