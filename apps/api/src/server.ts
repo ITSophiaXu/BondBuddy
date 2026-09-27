@@ -50,6 +50,7 @@ const now = () => new Date().toISOString();
 const MAX_BYTES = M1_UPLOAD_LIMITS.fileBytes;
 const DEFAULT_PROJECT_EVENT_PAGE_SIZE = 50;
 const MAX_PROJECT_EVENT_PAGE_SIZE = 100;
+const REVIEWER_PARSE_EVIDENCE_PAGE_SIZE = 50;
 const [DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, XLSX_MEDIA_TYPE, CSV_MEDIA_TYPE, TEXT_MEDIA_TYPE, PNG_MEDIA_TYPE, JPEG_MEDIA_TYPE] = M1_UPLOAD_MIME_TYPES;
 
 function stableJson(value:unknown):string {
@@ -283,6 +284,78 @@ export function createServer(settings: Settings = {}) {
       return listed;
     });
   });
+  app.get('/api/v1/reviewer/projects/:project_id/materials/:material_id/versions/:v/parse-evidence',
+    {schema:{response:{200:schemas.ReviewerParseEvidenceResponse}}},async(request,reply)=>{
+      reply.header('cache-control','private, no-store');
+      const reviewerUserId=await owner(request),projectId=param(request,'project_id'),materialId=param(request,'material_id');
+      const rawVersion=param(request,'v');
+      if(!/^[1-9][0-9]{0,9}$/.test(rawVersion)||Number(rawVersion)>2147483647)
+        throw new Problem(422,'VALIDATION_FAILED','Invalid material version');
+      const materialVersion=Number(rawVersion);
+      const query=(request.query as {q?:string;cursor?:string}|undefined)??{};
+      if((query.q!==undefined&&typeof query.q!=='string')||(query.cursor!==undefined&&typeof query.cursor!=='string'))
+        throw new Problem(422,'VALIDATION_FAILED','Invalid evidence query');
+      const q=query.q?.trim()??'';
+      if(q.length>200||q.includes('\0'))throw new Problem(422,'VALIDATION_FAILED','Invalid evidence query');
+      const queryHash=digest(q.toLocaleLowerCase('en-US'));
+      type EvidenceCursor={v:1;snapshot_id:string;material_version:number;after:number;query_hash:string};
+      let pageAfter=-1,cursorSnapshot:string|null=null;
+      if(query.cursor!==undefined){
+        if(query.cursor.length>2048)throw new Problem(422,'VALIDATION_FAILED','Invalid evidence cursor');
+        try{
+          const parsed=JSON.parse(Buffer.from(query.cursor,'base64url').toString('utf8')) as Partial<EvidenceCursor>;
+          if(parsed.v!==1||typeof parsed.snapshot_id!=='string'||!Number.isSafeInteger(parsed.material_version)||
+              !Number.isSafeInteger(parsed.after)||Number(parsed.after)<0||typeof parsed.query_hash!=='string'||
+              !/^[a-f0-9]{64}$/.test(parsed.query_hash))throw new Error('shape');
+          if(parsed.material_version!==materialVersion||parsed.query_hash!==queryHash)
+            throw new Problem(409,'INPUT_REVISION_CONFLICT','Evidence cursor does not match this query or material version');
+          cursorSnapshot=parsed.snapshot_id;pageAfter=Number(parsed.after);
+        }catch(error){if(error instanceof Problem)throw error;throw new Problem(422,'VALIDATION_FAILED','Invalid evidence cursor');}
+      }
+      return transaction(db(),async client=>{
+        const allowed=await client.query(`SELECT p.owner_user_id,g.id AS grant_id,m.sha256 AS material_sha256
+          FROM bb_projects p
+          JOIN bb_rule_applicability_reviewer_grants g ON g.scope_owner_user_id=p.owner_user_id AND g.scope_project_id=p.id
+          JOIN bb_users u ON u.id=g.user_id AND u.status='active'
+          JOIN bb_material_versions m ON m.owner_user_id=p.owner_user_id AND m.project_id=p.id
+            AND m.id=$3 AND m.version=$4 AND m.deleted_at IS NULL
+          WHERE p.id=$1 AND p.deleted_at IS NULL AND g.user_id=$2 AND g.role='rule_applicability_reviewer'
+            AND g.revoked_at IS NULL FOR SHARE OF p,g,u,m`,[projectId,reviewerUserId,materialId,materialVersion]);
+        if(allowed.rows.length!==1)throw missing();
+        const scopeOwner=String(allowed.rows[0].owner_user_id),materialSha=String(allowed.rows[0].material_sha256).trim();
+        const selected=await client.query(`SELECT id,content_sha256,parser_version,response_sha256,response_status,response_meta
+          FROM bb_parse_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+            AND response_status IN ('parsed','needs_confirmation') AND content_sha256=$5
+          ORDER BY created_at DESC,id DESC LIMIT 1`,[scopeOwner,projectId,materialId,materialVersion,materialSha]);
+        const snapshot=selected.rows[0];
+        if(!snapshot)throw missing();
+        const snapshotId=String(snapshot.id);
+        if(cursorSnapshot!==null&&cursorSnapshot!==snapshotId)
+          throw new Problem(409,'INPUT_REVISION_CONFLICT','Evidence cursor refers to a stale parse snapshot');
+        const records=await client.query(`SELECT record_id,record_sha256,content_sha256,locator_type,locator,literal_quote,uncertainty,ordinal
+          FROM bb_parse_evidence WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+            AND snapshot_id=$5 AND ordinal>$6 AND ($7='' OR literal_quote ILIKE $7 ESCAPE '\\')
+          ORDER BY ordinal LIMIT $8`,[scopeOwner,projectId,materialId,materialVersion,snapshotId,pageAfter,
+          q?`%${q.replace(/[\\%_]/g,'\\$&')}%`:'',REVIEWER_PARSE_EVIDENCE_PAGE_SIZE+1]);
+        const hasMore=records.rows.length>REVIEWER_PARSE_EVIDENCE_PAGE_SIZE;
+        const page=records.rows.slice(0,REVIEWER_PARSE_EVIDENCE_PAGE_SIZE);
+        const next=hasMore?Buffer.from(JSON.stringify({v:1,snapshot_id:snapshotId,material_version:materialVersion,
+          after:Number(page.at(-1)!.ordinal),query_hash:queryHash} satisfies EvidenceCursor)).toString('base64url'):null;
+        const warnings=Array.isArray(snapshot.response_meta?.warnings)?snapshot.response_meta.warnings:[];
+        const warningCodes=warnings.map((warning:any)=>typeof warning?.code==='string'?warning.code:'UNKNOWN_WARNING');
+        await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+          VALUES($1,$2,'project',$3,'rule_applicability.reviewer_parse_evidence_read',$4::jsonb)`,
+        [uid(),scopeOwner,projectId,JSON.stringify({reviewer_user_id:reviewerUserId,reviewer_grant_id:allowed.rows[0].grant_id,
+          material_id:materialId,material_version:materialVersion,snapshot_id:snapshotId,parser_version:snapshot.parser_version,
+          response_sha256:String(snapshot.response_sha256).trim(),query_sha256:queryHash,
+          record_refs:page.map(row=>({record_id:row.record_id,record_sha256:String(row.record_sha256).trim()})),page_size:page.length})]);
+        return {project_id:projectId,material_id:materialId,material_version:materialVersion,material_sha256:materialSha,
+          snapshot_id:snapshotId,parser_version:snapshot.parser_version,response_sha256:String(snapshot.response_sha256).trim(),
+          response_status:snapshot.response_status,warning_codes:warningCodes,items:page.map(row=>({record_id:row.record_id,
+            record_sha256:String(row.record_sha256).trim(),content_sha256:String(row.content_sha256).trim(),locator_type:row.locator_type,
+            locator:row.locator,literal_quote:row.literal_quote,uncertainty:row.uncertainty})),next_cursor:next};
+      });
+    });
   app.post(`${issuerObservations}/:source_record_id/review`,{schema:{body:schemas.IssuerIdentityReviewRequest,response:{201:schemas.IssuerIdentityReviewResponse}}},async(request,reply)=>{
     const reviewerUserId=await owner(request);
     const projectId=param(request,'project_id');
