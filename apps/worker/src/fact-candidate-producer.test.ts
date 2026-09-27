@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { verifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import { listFactCandidates } from './fact-repository.js';
+import { createFactEvidenceContextSet } from './fact-evidence-context-repository.js';
 import { persistParseSnapshot } from './parse-evidence-repository.js';
 import { produceParsedFactCandidates, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION, type SemanticFactExtractionResult } from './fact-candidate-producer.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -14,7 +15,9 @@ const sha = (value: string) => createHash('sha256').update(value, 'utf8').digest
 
 test('semantic producer binds reviewed issuer and exact parse evidence, replays idempotently, and retains conflicts',
   { skip: !testDatabaseUrl && 'set FACT_CANDIDATE_PRODUCER_TEST_DATABASE_URL for migrated PostgreSQL 16' }, async () => {
-    const pool = new Pool({ connectionString: testDatabaseUrl });
+    // Match runtime's BB_WORKER_CONCURRENCY=4 => pool.max=8, so nested checkouts
+    // cannot accidentally pass only because the default node-postgres pool is larger.
+    const pool = new Pool({ connectionString: testDatabaseUrl, max: 8 });
     const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
     const owner = `fact-ingest-owner-${suffix}`, reviewerId = `fact-ingest-reviewer-${suffix}`;
     const grantorId = `fact-ingest-grantor-${suffix}`, projectId = `fact-ingest-project-${suffix}`;
@@ -161,6 +164,33 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       assert.notDeepEqual(first.inserted[0]!.candidate.value, first.inserted[1]!.candidate.value);
       assert.equal(first.needsReview[0]!.reason_code, 'UNSUPPORTED_ADJACENT_LABEL');
 
+      const evidenceContext = await createFactEvidenceContextSet({ pool }, {
+        ownerUserId: owner, projectId, candidateId: first.inserted[0]!.candidate.candidateId,
+      });
+      assert.equal(evidenceContext.replayed, true, 'producer creates the immutable context set with its extraction ledger');
+      assert.equal(evidenceContext.completenessStatus, 'complete');
+      assert.equal(evidenceContext.reviewable, true, 'complete evidence inventory is not a fact approval');
+      assert.equal(evidenceContext.manifest.material_version, 1);
+      assert.equal(evidenceContext.manifest.material_sha256, financeHash);
+      assert.equal(evidenceContext.manifest.snapshot_id, financeSnapshotId);
+      assert.equal(evidenceContext.manifest.parser_version, parserVersion);
+      assert.equal(evidenceContext.manifest.parse_response_sha256, financeEvidence.responseHash);
+      assert.deepEqual(evidenceContext.manifest.selected_body.map(item => item.record_id), [financeRecordId]);
+      const candidatesAfterContextCreation = await listFactCandidates({ pool }, ownerScope);
+      const unchangedCandidate = candidatesAfterContextCreation.find(item => item.candidate.candidateId === first.inserted[0]!.candidate.candidateId)!;
+      assert.equal(unchangedCandidate.provenance.status, 'extracted');
+      assert.equal(unchangedCandidate.candidate.confidence, first.inserted[0]!.candidate.confidence);
+      assert.deepEqual(unchangedCandidate.provenance.uncertainty, first.inserted[0]!.provenance.uncertainty);
+      const evidenceContextReplay = await createFactEvidenceContextSet({ pool }, {
+        ownerUserId: owner, projectId, candidateId: first.inserted[0]!.candidate.candidateId,
+      });
+      assert.equal(evidenceContextReplay.id, evidenceContext.id);
+      assert.equal(evidenceContextReplay.evidenceSetSha256, evidenceContext.evidenceSetSha256);
+      assert.equal(evidenceContextReplay.replayed, true);
+      await assert.rejects(createFactEvidenceContextSet({ pool }, {
+        ownerUserId: reviewerId, projectId, candidateId: first.inserted[0]!.candidate.candidateId,
+      }), /FACT_EVIDENCE_CONTEXT_SOURCE_NOT_FOUND/);
+
       const replay = await produceParsedFactCandidates({ pool, extractor }, context);
       assert.equal(replay.inserted.length, 0);
       assert.equal(replay.replayed.length, 2);
@@ -207,6 +237,43 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
         .every(item => item.candidate.identity.entityId === identityRecord.entityId));
       assert.ok(preservedOriginalCandidates.filter(item => revisedCandidateIds.has(item.candidate.candidateId))
         .every(item => item.candidate.identity.entityId === correctedIdentityRecord.entityId));
+
+      // Model four concurrent producers retaining their checked-out connection after
+      // ledger commit, while four context operations run against the remaining slots.
+      // The context parser read must reuse each context transaction connection. One
+      // request deliberately fails after acquiring its connection; all other contexts
+      // still complete, and the pool remains usable for a subsequent read.
+      const producerConnections = await Promise.all(Array.from({ length: 4 }, () => pool.connect()));
+      const candidateIds = preservedOriginalCandidates.slice(0, 3).map(item => item.candidate.candidateId);
+      const concurrentContexts = Promise.allSettled([
+        ...candidateIds.map(candidateId => createFactEvidenceContextSet({ pool }, { ownerUserId: owner, projectId, candidateId })),
+        createFactEvidenceContextSet({ pool }, { ownerUserId: owner, projectId, candidateId: `missing-${suffix}` }),
+      ]);
+      let finishedBeforeProducerRelease = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const boundedResult = await Promise.race([
+        concurrentContexts.then(results => ({ completed: true as const, results })),
+        new Promise<{ completed: false }>(resolve => { timeout = setTimeout(() => resolve({ completed: false }), 1500); }),
+      ]);
+      if (timeout) clearTimeout(timeout);
+      if (!boundedResult.completed) {
+        producerConnections.forEach(connection => connection.release());
+        await concurrentContexts;
+      } else {
+        finishedBeforeProducerRelease = true;
+        producerConnections.forEach(connection => connection.release());
+      }
+      assert.equal(finishedBeforeProducerRelease, true,
+        'context reads must finish with the bounded pool while producer connections remain checked out');
+      assert.equal(boundedResult.completed, true);
+      if (!boundedResult.completed) throw new Error('bounded context concurrency did not complete');
+      assert.deepEqual(boundedResult.results.map(result => result.status), ['fulfilled', 'fulfilled', 'fulfilled', 'rejected']);
+      const failedContext = boundedResult.results[3];
+      assert.equal(failedContext?.status, 'rejected');
+      if (failedContext?.status === 'rejected') assert.match(String(failedContext.reason), /FACT_EVIDENCE_CONTEXT_SOURCE_NOT_FOUND/);
+      assert.equal((await pool.query('SELECT 1 AS recovered')).rows[0]?.recovered, 1,
+        'a failed context request must release its connection for recovery');
+
       const extractionRun = await pool.query(`SELECT needs_review FROM bb_fact_extraction_runs
         WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=1 AND material_id=$3 AND snapshot_id=$4
           AND extractor_id='synthetic-financial-fields' AND extractor_version='1.0.0'`,
@@ -216,6 +283,8 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       const outbox = await pool.query(`SELECT event_type,payload FROM bb_outbox
         WHERE owner_user_id=$1 AND aggregate_id=$2 AND event_type='fact.extraction.completed'`, [owner, projectId]);
       assert.equal(outbox.rowCount, 4);
+      await assert.rejects(pool.query(`UPDATE bb_fact_evidence_context_sets SET reviewable=false WHERE id=$1`, [evidenceContext.id]),
+        /fact evidence context sets are immutable/);
       await assert.rejects(pool.query(`UPDATE bb_fact_extraction_runs SET result_sha256=$1 WHERE owner_user_id=$2 AND project_id=$3`,
         [sha('rewrite'), owner, projectId]), /fact extraction runs are immutable/);
 

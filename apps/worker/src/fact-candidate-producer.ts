@@ -13,6 +13,7 @@ import {
 import { RQ_Q3_FORMULA_CANDIDATE_EXTRACTOR_ID, RQ_Q3_FORMULA_CANDIDATE_EXTRACTOR_VERSION,
   RQ_Q3_FORMULA_SOURCE_SHA256 } from './rq-q3-formula-candidate-constants.js';
 import { getParseSnapshot, type StoredParseSnapshot } from './parse-evidence-repository.js';
+import { createFactEvidenceContextSet } from './fact-evidence-context-repository.js';
 import { insertFactCandidate, listFactCandidates, type FactEvidenceAnchor, type FactRepositoryDependencies,
   type FactRepositoryContext, type StoredFactCandidate } from './fact-repository.js';
 
@@ -219,6 +220,17 @@ function toEvidence(snapshot: StoredParseSnapshot, recordId: string): FactEviden
   };
 }
 
+async function ensureFactEvidenceContexts(pool: Pool, ownerUserId: string, projectId: string,
+  candidates: readonly StoredFactCandidate[]): Promise<void> {
+  const seen = new Set<string>();
+  for (const item of candidates) {
+    const id = item.candidate.candidateId;
+    if (seen.has(id) || (item.candidate.source.kind !== 'audited' && item.candidate.source.kind !== 'external')) continue;
+    seen.add(id);
+    await createFactEvidenceContextSet({ pool }, { ownerUserId, projectId, candidateId: id });
+  }
+}
+
 /**
  * Converts a versioned semantic result into append-only candidates only after rechecking the exact
  * immutable input, issuer identity review, material version, parser snapshot and every evidence ref.
@@ -319,8 +331,10 @@ export async function produceParsedFactCandidates(
     const byId = new Map(all.map(item => [item.candidate.candidateId, item]));
     const candidates = ids.map(id => byId.get(id as string));
     if (candidates.some(item => item === undefined)) throw fail('FACT_EXTRACTION_CANDIDATE_MISSING');
+    const replayedCandidates = candidates as StoredFactCandidate[];
+    await ensureFactEvidenceContexts(dependencies.pool as Pool, context.ownerUserId, context.projectId, replayedCandidates);
     return { extractionRunId: String(row.id), snapshotId: snapshot.snapshotId, responseSha256: snapshot.responseSha256,
-      inserted: [], replayed: candidates as StoredFactCandidate[], needsReview: parseJson(row.needs_review) as SemanticFactExtractionResult['needs_review'] };
+      inserted: [], replayed: replayedCandidates, needsReview: parseJson(row.needs_review) as SemanticFactExtractionResult['needs_review'] };
   };
   if (previous.rows.length > 1) throw fail('FACT_EXTRACTION_LEDGER_AMBIGUOUS');
   if (previous.rows.length === 1) return replayPersisted(previous.rows[0]!);
@@ -337,8 +351,14 @@ export async function produceParsedFactCandidates(
   const client = await (dependencies.pool as Pool).connect();
   const transactionDependencies: FactRepositoryDependencies = { ...dependencies, pool: client };
   const inserted: StoredFactCandidate[] = [], replayed: StoredFactCandidate[] = [];
+  let transactionOpen = false;
+  let clientReleased = false;
+  const releaseClient = () => {
+    if (!clientReleased) { client.release(); clientReleased = true; }
+  };
   try {
     await client.query('BEGIN');
+    transactionOpen = true;
     const lockKey = `fact-extraction:${context.ownerUserId}:${context.projectId}:${context.inputRevision}:${context.materialId}:${context.materialVersion}:${snapshot.snapshotId}:${extractor.id}:${extractor.version}`;
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
     // Hold the immutable input/material/parse source plus reviewer grant rows while candidates,
@@ -392,8 +412,14 @@ export async function produceParsedFactCandidates(
       const candidates = ids.map(id => byId.get(id as string));
       if (candidates.some(item => item === undefined)) throw fail('FACT_EXTRACTION_CANDIDATE_MISSING');
       await client.query('COMMIT');
+      transactionOpen = false;
+      // Context creation has its own transaction and parse read. Return this slot
+      // before starting it so concurrent producers cannot nest pool reservations.
+      releaseClient();
+      const replayedCandidates = candidates as StoredFactCandidate[];
+      await ensureFactEvidenceContexts(dependencies.pool as Pool, context.ownerUserId, context.projectId, replayedCandidates);
       return { extractionRunId: String(row.id), snapshotId: snapshot.snapshotId, responseSha256: snapshot.responseSha256,
-        inserted: [], replayed: candidates as StoredFactCandidate[], needsReview: parseJson(row.needs_review) as SemanticFactExtractionResult['needs_review'] };
+        inserted: [], replayed: replayedCandidates, needsReview: parseJson(row.needs_review) as SemanticFactExtractionResult['needs_review'] };
     }
 
     const existing = await listFactCandidates(transactionDependencies, { ownerUserId: context.ownerUserId, projectId: context.projectId });
@@ -447,12 +473,17 @@ export async function produceParsedFactCandidates(
       parse_snapshot_id: snapshot.snapshotId, extractor_id: result.extractor.id, extractor_version: result.extractor.version,
       candidate_ids: persistedIds, needs_review_count: result.needs_review.length })]);
     await client.query('COMMIT');
+    transactionOpen = false;
+    // The immutable ledger/outbox is durable now. Release the producer's connection
+    // before context persistence starts its own transaction.
+    releaseClient();
+    await ensureFactEvidenceContexts(dependencies.pool as Pool, context.ownerUserId, context.projectId, [...inserted, ...replayed]);
     return { extractionRunId, snapshotId: snapshot.snapshotId, responseSha256: snapshot.responseSha256,
       inserted, replayed, needsReview: result.needs_review };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
-    client.release();
+    releaseClient();
   }
 }
