@@ -103,6 +103,7 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
         request.market !== target.market || request.offering !== target.offering ||
         request.documentStage !== target.document_purpose || request.asOf !== target.as_of ||
         request.instrument !== 'ordinary-company-bond' || request.issuerScope !== 'domestic-company' ||
+        request.investorScope !== 'professional' ||
         !request.industry || !Array.isArray(request.specialFeatures))
       return notReady('test_reviewed_applicability_scope_mismatch');
 
