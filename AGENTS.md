@@ -64,6 +64,8 @@
 
 A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/exchange-bonds/drafts/sse-private/APPLICABILITY-DECISIONS-20260926.md)，#19可按其继续分类字典、逐字段/整体审核和批准后加载路径开发，无需重复等待这六项方法确认。具体项目事实、31条法规来源、生产发布及真实成果验收仍须分别完成，不把代录的产品决定冒充系统审核操作。
 
+#20于2026-09-27补齐[协会行业标准原件、576代码与候选映射](knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)，含官方检索、2024相近标准边界及逐表格定位。#19在既有唯一字典中接入，不能把此离线资产当成已批准行业或直接启用生产。#20是否完成按[关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)逐关核对，已有样本/方法确认不重复索取，首次受控运行与生成后的专业验收分开。
+
 ## Codex 接到 Issue 后
 
 #20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.5`：十一组受限结构化检查已有实现（新增用途分项金额/证据、披露负责人/联络人与承诺），其他20条未实现；全部仍为research_only。完整[31条审核清单](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-CHECKLIST.md)列明具体决定、反例与下一份交付。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。

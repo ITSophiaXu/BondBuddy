@@ -1,0 +1,40 @@
+[
+  {
+    "file": "originals/capco-search-1.json.gz",
+    "url": "https://www.capco.org.cn/jnetcms/frame/searchKeyword",
+    "method": "POST",
+    "query": "上市公司行业统计分类指引",
+    "params": {
+      "docKeywords": "5LiK5biC5YWs5Y-46KGM5Lia57uf6K6h5YiG57G75oyH5byV",
+      "pageNo": "MQ==",
+      "sortStyle": "Mg==",
+      "pageSize": "MTAw"
+    },
+    "fetched_at": "2026-09-27T04:05:59.986840+00:00",
+    "status": 200,
+    "bytes": 40908,
+    "sha256": "598ca125d055b3e3859a47430ca8899aa9f58ac0062cb92dba8eb4885d0d4073",
+    "content_encoding": "gzip",
+    "response_bytes": 274839,
+    "response_sha256": "e6fd64ab1211fea4d381b48841996ae7fa215e2c67e890cfc6d5fe0c0a083886"
+  },
+  {
+    "file": "originals/capco-search-2.json.gz",
+    "url": "https://www.capco.org.cn/jnetcms/frame/searchKeyword",
+    "method": "POST",
+    "query": "行业分类",
+    "params": {
+      "docKeywords": "6KGM5Lia5YiG57G7",
+      "pageNo": "MQ==",
+      "sortStyle": "Mg==",
+      "pageSize": "MTAw"
+    },
+    "fetched_at": "2026-09-27T04:06:23.148736+00:00",
+    "status": 200,
+    "bytes": 1019308,
+    "sha256": "2b1a1ae6d926defdf7ff075810095123bd351bdc5ab2396454f6b89fe9009fbb",
+    "content_encoding": "gzip",
+    "response_bytes": 23923488,
+    "response_sha256": "e02c884e9094b0311ecb9745ac1f315fd3831cf52455287a3533e9ba8a85029a"
+  }
+]

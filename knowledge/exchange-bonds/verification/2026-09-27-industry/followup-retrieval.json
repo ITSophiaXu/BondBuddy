@@ -1,0 +1,24 @@
+[
+  {
+    "file": "originals/capco-csrc-standard-2024.html",
+    "url": "https://www.capco.org.cn/zxzx/jgxx/202411/20241126/j_2024112609135400017325837544486306.html",
+    "fetched_at": "2026-09-27T04:07:31.481051+00:00",
+    "status": 200,
+    "bytes": 34367,
+    "sha256": "5217b51a82a86f1df51280375f23997abefbeb786749f68ae3c297756b2993ff"
+  },
+  {
+    "file": "originals/capco-classification-result-2025h2.html",
+    "url": "https://www.capco.org.cn/xhgg/hyfl/hyfljg/202604/20260403/j_2026040315001700017751997384265508.html",
+    "fetched_at": "2026-09-27T04:07:31.780761+00:00",
+    "status": 200,
+    "bytes": 22871,
+    "sha256": "a716542851474f69e9b4f00b755d99a356b97f135e8094cb18f458eb0ce4f050"
+  },
+  {
+    "url": "https://www.csrc.gov.cn/csrc/c101954/c7520291/content.shtml",
+    "attempted_on": "2026-09-27",
+    "status": 403,
+    "result": "HTTP Error 403: Forbidden; primary notice and annex not retrieved"
+  }
+]
