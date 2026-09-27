@@ -97,18 +97,30 @@ function isCalendarDate(value: string): boolean {
   return day >= 1 && day <= days;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function hasTrustworthyCitation(citation: unknown): citation is ScpMc4EvidenceCitation {
   if (citation === null || typeof citation !== 'object') return false;
   const candidate = citation as Partial<ScpMc4EvidenceCitation>;
-  return candidate.sourceKind !== 'user_assertion' && typeof candidate.sourceRefId === 'string' && candidate.sourceRefId.trim().length > 0 &&
+  return (candidate.sourceKind === 'official_publication' || candidate.sourceKind === 'public_market_record') &&
+    typeof candidate.sourceRefId === 'string' && candidate.sourceRefId.trim().length > 0 &&
     typeof candidate.sourceVersion === 'string' && candidate.sourceVersion.trim().length > 0 &&
     typeof candidate.locator === 'string' && candidate.locator.trim().length > 0 &&
     typeof candidate.quote === 'string' && candidate.quote.trim().length > 0;
 }
 
-function assertionStatus<T>(assertion: ScpMc4Assertion<T>): 'valid' | 'uncertain' | 'conflict' {
-  if (assertion.status !== 'cited' || !assertion.citations.length || !assertion.citations.every(hasTrustworthyCitation)) return 'uncertain';
-  if ((assertion.conflicts ?? []).some(item => item.value !== assertion.value || !item.citations.length || !item.citations.every(hasTrustworthyCitation))) return 'conflict';
+function assertionStatus(assertion: unknown): 'valid' | 'uncertain' | 'conflict' {
+  if (!isRecord(assertion) || assertion.status !== 'cited') return 'uncertain';
+  if (!Array.isArray(assertion.citations) || assertion.citations.length === 0 || !assertion.citations.every(hasTrustworthyCitation)) return 'uncertain';
+  if ('conflicts' in assertion && !Array.isArray(assertion.conflicts)) return 'uncertain';
+  const conflicts = Array.isArray(assertion.conflicts) ? assertion.conflicts : [];
+  for (const conflict of conflicts) {
+    if (!isRecord(conflict) || !('value' in conflict) || !Array.isArray(conflict.citations) ||
+        conflict.citations.length === 0 || !conflict.citations.every(hasTrustworthyCitation)) return 'uncertain';
+    if (conflict.value !== assertion.value) return 'conflict';
+  }
   return 'valid';
 }
 
@@ -151,7 +163,7 @@ function hasExpectedAnnualPeriods(input: ScpMc4OmissionEvidenceInput, category: 
   const expected = input.candidateAnnualFiscalYears.value;
   if (expected[1] !== expected[0] + 1 || expected[2] !== expected[1] + 1) return false;
   const annualPeriods = input.publicItems
-    .filter(item => Array.isArray(item.categories) && item.categories.includes(category))
+    .filter(item => isRecord(item) && Array.isArray(item.categories) && item.categories.includes(category))
     .flatMap(item => Array.isArray(item.periods) ? item.periods.filter(period => isValidPeriod(period) && period.kind === 'annual') : []);
   return expected.every(year => annualPeriods.some(period => period.fiscalYear === year));
 }
@@ -159,7 +171,7 @@ function hasExpectedAnnualPeriods(input: ScpMc4OmissionEvidenceInput, category: 
 function hasRequiredInterim(input: ScpMc4OmissionEvidenceInput, category: ScpMc4InformationCategory): boolean {
   if (input.interimRequirement.status !== 'cited' || input.interimRequirement.value.decision !== 'required') return false;
   const expected = input.interimRequirement.value.period;
-  return input.publicItems.some(item => Array.isArray(item.categories) && item.categories.includes(category) &&
+  return input.publicItems.some(item => isRecord(item) && Array.isArray(item.categories) && item.categories.includes(category) &&
     Array.isArray(item.periods) && item.periods.some(period => isValidPeriod(period) && period.kind === 'interim' && periodKey(period) === periodKey(expected)));
 }
 
@@ -169,8 +181,12 @@ function hasRequiredInterim(input: ScpMc4OmissionEvidenceInput, category: ScpMc4
  */
 export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput): ScpMc4OmissionEvidenceResult {
   const reasons: string[] = [];
+  if (!isRecord(input) || !Array.isArray(input.publicItems)) {
+    return { decision: 'needs_review', reasons: ['evidence_input_malformed'], evidence: input };
+  }
   const actionDateStatus = assertionStatus(input.actionDate);
-  const actionDate = input.actionDate.status === 'cited' && typeof input.actionDate.value === 'string' ? input.actionDate.value : '';
+  const actionDateAssertion = isRecord(input.actionDate) ? input.actionDate : undefined;
+  const actionDate = actionDateAssertion?.status === 'cited' && typeof actionDateAssertion.value === 'string' ? actionDateAssertion.value : '';
   if (actionDateStatus !== 'valid' || !isCalendarDate(actionDate)) reasons.push('action_date_missing_or_invalid');
 
   const firstStatus = assertionStatus(input.firstPublicRegistration);
@@ -197,9 +213,16 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
   if (!interimRequirementValid) reasons.push(interimRequirementStatus === 'valid' ? 'interim_applicability_value_invalid' : 'interim_applicability_not_source_confirmed');
 
   const itemIds = new Set<string>();
-  for (const item of input.publicItems) {
-    if (!item.documentRefId.trim() || !item.version.trim() || itemIds.has(`${item.documentRefId}:${item.version}`)) reasons.push('public_item_identity_missing_or_duplicated');
-    itemIds.add(`${item.documentRefId}:${item.version}`);
+  for (const rawItem of input.publicItems) {
+    if (!isRecord(rawItem)) {
+      reasons.push('public_item_malformed');
+      continue;
+    }
+    const item = rawItem as unknown as ScpMc4PublicItem;
+    const documentRefId = typeof item.documentRefId === 'string' ? item.documentRefId : '';
+    const version = typeof item.version === 'string' ? item.version : '';
+    if (!documentRefId.trim() || !version.trim() || itemIds.has(`${documentRefId}:${version}`)) reasons.push('public_item_identity_missing_or_duplicated');
+    itemIds.add(`${documentRefId}:${version}`);
     if (!Array.isArray(item.citations) || !item.citations.length || !item.citations.every(hasTrustworthyCitation)) reasons.push('public_item_source_or_locator_missing');
     if (!Array.isArray(item.categories) || !item.categories.length || item.categories.some(category => !REQUIRED_CATEGORIES.includes(category))) reasons.push('public_item_category_mapping_missing_or_invalid');
     if (!ENTITY_SCOPES.includes(item.entityScope)) reasons.push('public_item_entity_scope_missing_or_invalid');
@@ -225,7 +248,7 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
   }
 
   for (const category of REQUIRED_CATEGORIES) {
-    if (!input.publicItems.some(item => Array.isArray(item.categories) && item.categories.includes(category))) reasons.push(`${category}_information_coverage_missing`);
+    if (!input.publicItems.some(item => isRecord(item) && Array.isArray(item.categories) && item.categories.includes(category))) reasons.push(`${category}_information_coverage_missing`);
     if (annualYearsValid && !hasExpectedAnnualPeriods(input, category)) reasons.push(`${category}_candidate_annual_coverage_incomplete`);
     if (interimRequirementValid && input.interimRequirement.status === 'cited' &&
         input.interimRequirement.value.decision === 'required' && !hasRequiredInterim(input, category)) {

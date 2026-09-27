@@ -252,6 +252,70 @@ test('user assertions alone cannot establish dates, registration, availability o
   assert.ok(result.reasons.includes('public_item_historic_availability_not_source_confirmed'));
 });
 
+test('only official publications and public market records can support omission evidence', () => {
+  const rejectedKinds = ['untrusted_source', undefined, null] as const;
+  const locations = [
+    (base: ScpMc4OmissionEvidenceInput, badCitation: typeof citation) => ({ ...base, actionDate: cited('2025-09-01', { citations: [badCitation] }) }),
+    (base: ScpMc4OmissionEvidenceInput, badCitation: typeof citation) => ({
+      ...base,
+      publicItems: base.publicItems.map((entry, index) => index === 0 ? { ...entry, citations: [badCitation] } : entry),
+    }),
+    (base: ScpMc4OmissionEvidenceInput, badCitation: typeof citation) => ({
+      ...base,
+      publicItems: base.publicItems.map((entry, index) => index === 0
+        ? { ...entry, availableOnActionDate: cited(true, { citations: [badCitation] }) }
+        : entry),
+    }),
+    (base: ScpMc4OmissionEvidenceInput, badCitation: typeof citation) => ({
+      ...base,
+      publicItems: base.publicItems.map((entry, index) => index === 0
+        ? { ...entry, publicationEvents: [{ kind: 'corrected' as const, effectiveOn: '2025-09-10', version: 'v2', citations: [badCitation] }] }
+        : entry),
+    }),
+  ];
+  for (const location of locations) {
+    for (const sourceKind of [...rejectedKinds, 'user_assertion'] as const) {
+      const evidence = location(input(), { ...citation, sourceKind } as unknown as typeof citation);
+      const result = checkScpMc4OmissionEvidence(evidence);
+      assert.equal(result.decision, 'needs_review');
+      assert.equal(result.evidence, evidence);
+    }
+  }
+});
+
+test('malformed assertion, citation and conflict shapes fail closed without throwing or dropping evidence', () => {
+  const base = input();
+  const malformedAssertions: unknown[] = [
+    {},
+    null,
+    { status: 'cited', value: '2025-09-01', citations: null },
+    { status: 'cited', value: '2025-09-01' },
+    { status: 'cited', value: '2025-09-01', citations: [citation], conflicts: {} },
+    { status: 'cited', value: '2025-09-01', citations: [citation], conflicts: [null] },
+    { status: 'cited', value: '2025-09-01', citations: [citation], conflicts: [{ value: '2025-09-01', citations: null }] },
+  ];
+  const malformedEvidence = [
+    ...malformedAssertions.map(actionDate => ({ ...base, actionDate })),
+    ...malformedAssertions.map(firstPublicRegistration => ({ ...base, firstPublicRegistration })),
+    ...malformedAssertions.map(effectivePublicInformation => ({ ...base, effectivePublicInformation })),
+    ...malformedAssertions.map(issuerTier => ({ ...base, issuerTier })),
+    ...malformedAssertions.map(candidateAnnualFiscalYears => ({ ...base, candidateAnnualFiscalYears })),
+    ...malformedAssertions.map(interimRequirement => ({ ...base, interimRequirement })),
+    ...malformedAssertions.map(fundsManagementControls => ({ ...base, fundsManagementControls })),
+    ...malformedAssertions.map(shortTermLiquidityPlan => ({ ...base, shortTermLiquidityPlan })),
+    ...malformedAssertions.map(availableOnActionDate => ({
+      ...base,
+      publicItems: base.publicItems.map((entry, index) => index === 0 ? { ...entry, availableOnActionDate } : entry),
+    })),
+  ];
+
+  for (const evidence of malformedEvidence) {
+    const result = checkScpMc4OmissionEvidence(evidence as unknown as ScpMc4OmissionEvidenceInput);
+    assert.equal(result.decision, 'needs_review');
+    assert.equal(result.evidence, evidence);
+  }
+});
+
 test('missing retained controls or liquidity plan prevents an omission candidate', () => {
   const controlsMissing = checkScpMc4OmissionEvidence(input({ fundsManagementControls: cited('missing') }));
   assert.equal(controlsMissing.decision, 'needs_review');
