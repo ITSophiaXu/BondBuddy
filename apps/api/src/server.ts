@@ -39,6 +39,7 @@ import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityConte
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
 import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
 import { runEventPayloadDto } from './run-event-dto.js';
+import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -127,6 +128,33 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
+  app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
+    schema:{body:schemas.TargetPeriodEvidenceDecisionRequest,response:{200:schemas.TargetPeriodEvidenceDecisionResponse}}},async request=>{
+    const user=await owner(request),projectId=param(request,'project_id');
+    try{return await appendTargetPeriodEvidenceDecision(db(),{userId:user},projectId,body(request),undefined,blob());}
+    catch(error){
+      const code=error instanceof Error?error.message:'TARGET_PERIOD_DECISION_FAILED';
+      if(code==='TARGET_PERIOD_REVIEWER_FORBIDDEN')throw new Problem(403,'DATA_NOT_ENTITLED','Financial period reviewer authority is required');
+      if(code==='TARGET_PERIOD_DECISION_NOT_FOUND')throw missing();
+      if(code.includes('REPLAY_CONFLICT'))throw conflict('IDEMPOTENCY_CONFLICT','The request key is bound to another decision');
+      if(code.includes('STALE')||code.includes('TARGET_MISMATCH'))throw conflict('INPUT_REVISION_CONFLICT','The locked financial period evidence changed');
+      if(code.includes('INVALID')||code.includes('INCOMPLETE')||code.includes('AMBIGUOUS')||code.includes('NOT_LOCKED'))throw new Problem(422,'VALIDATION_FAILED','Financial period evidence is invalid or incomplete');
+      throw new Problem(503,'DATA_UNAVAILABLE','Financial period evidence decision could not be persisted');
+    }
+  });
+  app.post('/api/v1/projects/:project_id/target-period-evidence-decisions/withdraw',{
+    schema:{body:schemas.TargetPeriodEvidenceDecisionWithdrawalRequest,response:{200:schemas.TargetPeriodEvidenceDecisionWithdrawalResponse}}},async request=>{
+    const user=await owner(request),projectId=param(request,'project_id');
+    try{return await withdrawTargetPeriodEvidenceDecision(db(),{userId:user},projectId,body(request));}
+    catch(error){
+      const code=error instanceof Error?error.message:'TARGET_PERIOD_DECISION_FAILED';
+      if(code==='TARGET_PERIOD_REVIEWER_FORBIDDEN')throw new Problem(403,'DATA_NOT_ENTITLED','Financial period reviewer authority is required');
+      if(code==='TARGET_PERIOD_DECISION_NOT_FOUND')throw missing();
+      if(code.includes('REPLAY_CONFLICT'))throw conflict('IDEMPOTENCY_CONFLICT','The request key is bound to another withdrawal');
+      if(code.includes('INVALID'))throw new Problem(422,'VALIDATION_FAILED','Financial period decision withdrawal is invalid');
+      throw new Problem(503,'DATA_UNAVAILABLE','Financial period decision withdrawal could not be persisted');
+    }
+  });
   function visibleRunDto(row: any) { assertTestChannelReadable(row.channel); return runDto(row); }
   async function auditSchemaRejection(request:FastifyRequest):Promise<{status:number;code:string}> {
     let user:string;
@@ -1030,7 +1058,7 @@ export function createServer(settings: Settings = {}) {
           try {
             updateDifficulty=await ensureCurrentUpdateDifficultySnapshotWithClient(client,{
               ownerUserId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash,
-            });
+            },{blobs:blob()});
             if(updateDifficulty.estimate.status==='needs_confirmation')
               uncertainty.push('update_difficulty_needs_confirmation');
           } catch(error) {

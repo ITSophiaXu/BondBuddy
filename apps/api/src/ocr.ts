@@ -1,5 +1,5 @@
 import { Value } from '@sinclair/typebox/value';
-import { OcrEngineResponseSchema, OcrCorrectionRequestSchema, type OcrEngineResponse, type OcrReview, type OcrCorrectionRequest, type OcrCorrection } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, OcrEngineResponseSchema, OcrCorrectionRequestSchema, type OcrEngineResponse, type OcrReview, type OcrCorrectionRequest, type OcrCorrection } from '@bondbuddy/contracts';
 import type { Pool, PoolClient } from 'pg';
 import { canonical, digest, material, project, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 
@@ -131,6 +131,31 @@ export async function readOcrFactSource(pool: Pool|PoolClient, blobs: PrivateBlo
     materialVersion:row.material_version,materialSha256:stored.response.material.sha256,materialRole:source.role,
     snapshotCreatedAt:new Date(row.created_at).toISOString(),processorVersion:stored.response.processor_version,
     record,page,correction};
+}
+
+/** Resolve a period-review anchor from the current immutable OCR response and
+ * its page image. OCR uncertainty is deliberately not promoted here: the
+ * reviewer must inspect this exact page before recording a confirmed outcome. */
+export async function readOcrPeriodEvidence(pool: Pool|PoolClient, blobs: PrivateBlobs, input: {
+  owner:string; projectId:string; materialId:string; version:number; snapshotId:string;
+  resultSha256:string; recordId:string; page:number; pageImageSha256:string;
+}) {
+  if(!/^[a-f0-9]{64}$/.test(input.resultSha256)||!/^[a-f0-9]{64}$/.test(input.pageImageSha256))throw changed();
+  const {row,stored,source}=await load(pool,blobs,input.owner,input.projectId,input.materialId,input.snapshotId);
+  const financialRoles=new Set<string>(M1_MATERIAL_PARTITIONS.find(partition=>partition.label==='财务与审计')?.roles.map(role=>role.code)??[]);
+  if(row.material_version!==input.version||row.result_hash.trim()!==input.resultSha256||!financialRoles.has(String(source.role)))throw changed();
+  const latest=await pool.query(`SELECT id FROM bb_ocr_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3
+    AND material_version=$4 ORDER BY created_at DESC,id DESC LIMIT 1`,[input.owner,input.projectId,input.materialId,input.version]);
+  if(latest.rows[0]?.id!==row.id)throw changed();
+  const record=stored.response.records.find(item=>item.record_id===input.recordId);
+  const page=stored.response.pages.find(item=>item.page===input.page);
+  const object=stored.page_objects[String(input.page)];
+  if(!record||record.page!==input.page||!page||page.image_sha256!==input.pageImageSha256||!object||object.sha256!==input.pageImageSha256)throw changed();
+  const bytes=await blobs.getIfExistsBounded(object.key,32*1024*1024);
+  if(!bytes||digest(bytes)!==input.pageImageSha256)throw new Problem(503,'DATA_UNAVAILABLE','OCR page integrity failed');
+  return {snapshotId:row.id,resultSha256:row.result_hash.trim(),processorVersion:stored.response.processor_version,
+    recordSha256:digest(canonical(record)),page:record.page,pageImageSha256:page.image_sha256,
+    materialSha256:stored.response.material.sha256,role:String(source.role),uncertainty:[...record.uncertainty]};
 }
 
 export async function readOcr(pool: Pool, blobs: PrivateBlobs, owner:string, projectId:string, materialId:string):Promise<OcrReview> {

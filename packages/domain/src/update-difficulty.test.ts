@@ -70,6 +70,15 @@ test('same periods across market/offering migration count N=0 while flagging str
   assert.equal(result.structureAdaptationRequired, true);
 });
 
+test('an unresolved or conflicting target-period review never counts N as zero', () => {
+  const base=input();
+  const asserted={start:'2025-01-01',end:'2025-12-31',period_kind:'annual' as const,scope:'consolidated' as const,
+    status:'user_asserted' as const,evidence_refs:[] as []};
+  const pending=estimateUpdateDifficulty(input({target:{...base.target,reportingPeriods:[...base.target.reportingPeriods.slice(0,3),asserted]}}));
+  assert.equal(pending.status,'needs_confirmation');
+  assert.equal(pending.estimatedN,null);
+});
+
 test('same cutoff across three statements, parent/consolidated scopes, and duplicate materials counts once', () => {
   const duplicated = [period('2024-12-31'), period('2024-12-31', 'parent'), period('2024-12-31')];
   const result = estimateUpdateDifficulty(input({
