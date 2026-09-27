@@ -1,0 +1,76 @@
+{
+  "source_id": "NA020",
+  "original_sha256": "ac1eef3f7658320941850fd39436213b1ff52a17f807d68e7d6bc1e49d6a9a39",
+  "extraction_status": "ocr_unverified",
+  "extraction_tool": "tesseract.js 7.0.0",
+  "render_scale": 1.5,
+  "language": "chi_sim+eng",
+  "records": [
+    {
+      "locator": "PAGE001",
+      "role": "ocr_unverified",
+      "text": "2026/9126 21:1 注册 改行 业务 系列 问答 一 : 莫 集 资金 用 途 专题 入\n注册 发 行业 务 系列 问答 一 : 慕 集资 金 用 途 专题 篇\nNAFMI| 资 讯\nhpsJimp webin qq comls?_biz=MzlwNTMONTMMg==&mid=22475470228idx=18sn=4adb4c23d4995c50eb2002f63fba420c&poc token=HHDEI2 1111\n",
+      "confidence": 68
+    },
+    {
+      "locator": "PAGE002",
+      "role": "ocr_unverified",
+      "text": "2026/9/26 21:11 注册 发 行业 务 系列 问答 一 : 莫 集 资金 用 途 专 题 篇\n\n曙 -局\n\n哆 中 国 银行 间 市 场 交易 商 协会\n\nan 间 汪 尖 Feo Vein\n\n隐\n4 L\n[- 一 基 -\n\nhipsJimp webxin qq comls?_biz=MzlwNTMONTMxMg==&mid=22475470228idx=18sn=4adb4c23d4995c50eb2002163fba420c&poc ioken=HHDEI2 2111\n",
+      "confidence": 61
+    },
+    {
+      "locator": "PAGE003",
+      "role": "ocr_unverified",
+      "text": "纸\n为 深入 贯彻 资本 市 场 服 务实 体 经\n济 高 质量 发 展 总 体 要 求 , 持续 提升 债务\n融资 工具 注册 发 行 效 率 和 透明 度 , 规范\n和 便利 市 场 操作 , 立足 注册 发 行 项 目 实\n践 ,聚焦 市 场 普 遍 关 注 ,高 频 咨询 的 热\n点 问题 , 特 推出 注册 发 行业 务 系列 问\n答 。 本 期 为 系列 首 期 ,聚焦 募集 资金 用\n途 合 规 管理 重点 领域 。\n罗\n四 二\n披露 的 具体 要 求 是 什么 ?\n| 注册 阶段 实施 差异 化 披露 安排 。 成 熟\n层 企业 无 需 披露 募集 资金 用 途 ;基础 层 企 |\n| 业 莫 集资 金 用 途 原则 上 按 大 类 匡 算 , 需 在\n| 募集 说 明 书 中 披露 偿还 银行 贷款 、 补充 流\n| 动 资金 、 项 目 建设 等 类 别 以 及 金额 等 信\nsan 是 2 此 和 加 起 期 可 帮 郑 在 法 贡 寺 时 按照 ae。\n",
+      "confidence": 81
+    },
+    {
+      "locator": "PAGE004",
+      "role": "ocr_unverified",
+      "text": "表格 体系 的 要 求 ,披露 注册 金额 的 缺 D 匡 |\n| 算 依据 。\n发 行 阶段 披露 募集 资金 用 途 相 关 情\n况 。 企 业 应 自行 补充 披露 募集 资金 使 用 合\n规 性 使 用 安排 等 内 容 以 及 相应 配套 文件\n(如 有 ) 。 例 如 , 偿还 金融 机 构 有 息 负债 的 ，\n可 披露 有 息 负债 的 借款 主体 、 借款 金额 、\n借款 日 期 等 信息 ;用 于 项 目 建设 的 , 应 根\n| 据 表格 体系 要 求 披露 项 目 基 本 内 容 , 涉及\n| 项 目 批复 文件 的 , 项 目 批复 文件 应 作为 备\n| 查 文件 。\nNoweeeeesesenend\n加 几 wa\n用 途 ?\n| 募集 资金 用 途 应 严格 遵循 实 需 为 本 的\n| 原则 ,结合 企业 生产 经 营 .. 财 务 状况 及 发 展\n| 规划, 合理 审慎 确定 幕 集资 金 规模 和 用\n， 途 并 应 符合 国家 法 律 法 规 及 政策 要 求 。\n| 。 遵守 实 需 原则 。 募 集资 金 应 用 于 与 企\n",
+      "confidence": 86
+    },
+    {
+      "locator": "PAGE005",
+      "role": "ocr_unverified",
+      "text": "”| 业 征 广 弛 虽 大 居家 嵩 、 划 月 贯 立 显 芳 月 京 |\n| 的 领域 ,不 得 用 于 虚假 贸易 业务 , 并 结合\n| 实际 需求 合理 医 算 。\n| 结合 生产 经 营 及 财务 情况 合理 测算 。\n企业 应 审慎 评估 企业 经 营 及 财务 情况 ,次\n产 负债 率 高 、 盈 利 能 力 弱 的 , 募集 资金 应\n主要 用 于 优化 债务 结构 、 降 低 融 资 成 本 。\n[3 人 全\n金 监管 账户 或 专项 账户 ?\n依 规 设立 账户 。 特 定 主体 和 专项 产品\n需 依据 对 应 产品 业务 指引 、 表 格 体系 和 有 |\n关 通 知 等 要 求 , 依 规 开设 幕 集资 金 监管 账 |\n| 户 或 专项 账户 。 例 如 , 城市 基础 设施 建设 |\n| 企业 ,房地产 企业 应 设立 募集 资金 专项 账 |\n户 ;乡村 振兴 票据 等 需 设立 募集 资金 监管 |\n账户 。\n账户 管理 应 遵守 自律 规则 .募集 资金 |\n监管 账户 或 专项 账户 的 设立 \\ 接 收 、 存 放 、 |\n3 二 和 全 党 全 更, 应 天 格林 ( 扫 和 由 。 。\n",
+      "confidence": 77
+    },
+    {
+      "locator": "PAGE006",
+      "role": "ocr_unverified",
+      "text": "债券 市 场 非 金融 企业 债务 融资 工具 募集\n资金 用 途 管理 规程 } 等 自律 规则 。 例 如 , 房\n地 产 企业 注册 债务 融资 工具 的 , 需 在 注册\n。 阶段 提供 专项 账户 监管 协议 。\n[4 时 使 黄 全\n用 途 发 主 变化 的 如 何 处 理 ?\n| 注册 完成 后 发 行 前 , 企业 募集 资金 用 |\n途 发 生变 化 的 , 应 区 分 不 同情 形 处 理 。 |\n发 行 阶段 自行 披露 募集 资金 用 途 。 注\n册 时 无 需 匡 算 或 可 按 大 类 匡 算 募集 资金 用\n| 途 的 ,发行 时 具体 用 途 与 注册 匡 算 类 型 一\n| 致 , 发 行 阶段 企业 自行 披露 相关 用 途 即 可 。\n”通过 \"发行 条 款 变 更 \"流程 变更 用 途 。\n符合 以 下 情形 之 一 的 , 应 通过 “发 行 条 款\n变更 \"流程 变更 用 途 : (1) 注册 时 按 大 类 匡\n算 募 集资 金 用 途 的 , 或 注册 时 已 确定 具体\n募集 资金 用 途 , 但 发 行 时 用 途 与 注册 匡 算 |\n| 类 型 或 具体 用 途 不 一 致 ; (2) 注册 时 为 普 |\nass 通 国 论 。 发 行 除息 所 杰 再 罗 专 砚 误 品 的 oemn\n",
+      "confidence": 81
+    },
+    {
+      "locator": "PAGE007",
+      "role": "ocr_unverified",
+      "text": "| 主 承销 商 等 中 介 机 构 应 做 好 辅导 工作 , 对\n| 变更 后 募集 资金 用 途 的 合 规 性 进行 尽职\n| 调查 。\n和 aa\n丘 片 二 力\n匡 草 需 注意 什么 ?\n本 条 所 指 的 类 金融 企业 主要 包括 融\n资 租赁 公司 、 地 方 资产 管理 公司 ,或 者 持\n有 类 金融 金融 业务 公司 股权 的 控股 公\n司 。 类 人 金融 企业 募集 资金 严禁 用 于 金融 领\n域 , 同时 需 结合 募集 资金 所 涉及 的 领域 合\n理 匡 算 。\n融资 租赁 公司 募集 资金 可 用 于 非 多\n融 企业 融资 租赁 项 目 投放 或 偿还 相关 金\n融 机 构 借款 。 资 金 投放 还 需 逐 笔 穿 透 核查\n实际 领域 , 项 目 投向 应 符合 国家 相关 政策\n要 求 ,不 得 新 增 地 方 政府 隐 性 债务 .地方 |\n资产 管理 公司 募集 资金 可 以 用 于 收购 金\n融 机 构 的 非 金融 企业 不 良 资产 包 或 偿还\nran 相向 的 信 次 且 汪 八 宣 。 oemn\n",
+      "confidence": 81
+    },
+    {
+      "locator": "PAGE008",
+      "role": "ocr_unverified",
+      "text": "2026/9/26 21:11 注册 发 行业 务 系列 问答 一 : 募集 资金 用 途 专 题 篇\nIAAeravorapowo2s AAA -六\n透 核查 实际 领域 , 收购 不 良 资产 应 符合 国\n家 相关 政策 要 求 , 不 得 新 增 地 方 政 府 隐 性\n债务 。\nC\n| 注 : 本 文 来 自 NAF MI 资讯 ， 转 载 请 注 明 来 源 。\nhtpsymp weidn qq coms?_biz=MzlwNTMONTMMg==&rmid=22475470228idx=18sn=4adb4c23d4995c50eb2002163fba420c&poc oken=HHDEI2 an11\n",
+      "confidence": 82
+    },
+    {
+      "locator": "PAGE009",
+      "role": "ocr_unverified",
+      "text": "2026/9126 21:11 注册 发 行业 务 系列 问答 一 : 募集 资金 用 途 专 题 篇\nhipsJimp webxin qq comls?_biz=MzlwNTMONTMxMg==8mid-22475470228idx=18sn=4adb4c23d4995c50eb2002163fba420c&poc ioken=HHDEI2 ， 91\n",
+      "confidence": 72
+    },
+    {
+      "locator": "PAGE010",
+      "role": "ocr_unverified",
+      "text": "2026/9126 21:11 注册 发 行业 务 系列 问答 一 : 募集 资金 用 途 专 题 篇\nhipsJimp webxin qq comls?_biz=MzlwNTMONTMxMg==8mid-22475470228idx=18sn=4adb4c23d4995c50eb2002163fba420c&poc ioken=HHDEL 10111\n",
+      "confidence": 73
+    },
+    {
+      "locator": "PAGE011",
+      "role": "ocr_unverified",
+      "text": "2026/9126 21:11 注册 发 行业 务 系列 问答 一 : 募集 资金 用 途 专 题 篇\nhipsJimp webxin qq comls?_biz=MzlwNTMONTMxMg==8mid-22475470228idyx=18sn=4adb4c23d4995c50eb2002163fba420c&poc ioken=HHDEL ， 11/11\n",
+      "confidence": 73
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "source_id": "OF001",
+    "url": "https://www.nafmii.org.cn/zlgl/zlgz/hxgll/202312/t20231201_316423.html",
+    "path": "official/OF001.html",
+    "bytes": 123256,
+    "sha256": "5084136335d5861aa4ebbbb460662fb5ecf5824f5af7a920c43362655418e4a9",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  },
+  {
+    "source_id": "OF002",
+    "url": "https://www.nafmii.org.cn/zlgl/zlgz/hxgll/202312/P020231201504225239165.pdf",
+    "path": "official/OF002.pdf",
+    "bytes": 518865,
+    "sha256": "cca3cfaed55d9c3a81b3b2fa12480bd325b8bf920af1c437148b34e56a2780da",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  },
+  {
+    "source_id": "OF003",
+    "url": "https://www.nafmii.org.cn/ggtz/tz/202509/t20250915_323316.html",
+    "path": "official/OF003.html",
+    "bytes": 124162,
+    "sha256": "d900473b28ad3cc97c5aa3373fba8fe5db25d6606ffa9ceccea4f6861c5c25d0",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  },
+  {
+    "source_id": "OF004",
+    "url": "https://www.nafmii.org.cn/ggtz/tz/202603/t20260323_325023.html",
+    "path": "official/OF004.html",
+    "bytes": 124921,
+    "sha256": "f181fbce7e69ffa5724f74d58ea04816549d5b3b36e3aa00af99964d7368bd99",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  },
+  {
+    "source_id": "OF005",
+    "url": "https://www.nafmii.org.cn/zlgl/zlgz/zcfxl_1059/zcl/202310/P020231019522511188092.pdf",
+    "path": "official/OF005.pdf",
+    "bytes": 297866,
+    "sha256": "869d244620462616ec5e4a1fa9a9c2c929054e150ab990ad9a2449d1bfc1f959",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  },
+  {
+    "source_id": "OF006",
+    "url": "https://www.nafmii.org.cn/ggtz/gg/202103/P020220117435173619426.docx",
+    "path": "official/OF006.docx",
+    "bytes": 33118,
+    "sha256": "c945af5d28b06bab33b4100160945793bae013d745151fde438df19cdef4ea05",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  },
+  {
+    "source_id": "OF007",
+    "url": "https://www.nafmii.org.cn/ggtz/gg/202004/P020220117435116098799.doc",
+    "path": "official/OF007.doc",
+    "bytes": 1946624,
+    "sha256": "bc07230ee3368b5ee22ec421e6755c6170ed24fe906b9213b53545c4bf0a531c",
+    "captured_on": "2026-09-27",
+    "legal_review": null
+  }
+]

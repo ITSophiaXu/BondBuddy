@@ -1,0 +1,176 @@
+{
+  "schema_version": "chapter-template-v1",
+  "template_id": "nafmii-dfi-chapters",
+  "version": "2026.09.27-draft.1",
+  "rule_pack_id": "nafmii-dfi",
+  "market": "nafmii",
+  "offering": "dfi",
+  "document_stages": [
+    "registration",
+    "issuance"
+  ],
+  "chapters": [
+    {
+      "chapter_id": "dfi-arrangement",
+      "title": "统一注册与本期实际工具分开",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na015-page003-0a9c6f35"
+      ],
+      "required_fields": [
+        "issuer_tier",
+        "registration_arrangement",
+        "document_stage",
+        "covered_instruments",
+        "issuance_instrument"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-tier",
+      "title": "成熟层资格与第一/二类区分",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na015-page002-8af5115b"
+      ],
+      "required_fields": [
+        "tier_evidence",
+        "industry_evidence",
+        "audited_financials",
+        "issuance_history",
+        "credit_and_compliance_events"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-mature-2025",
+      "title": "成熟层2025优化与有效期",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na039-page001-a5503939"
+      ],
+      "required_fields": [
+        "issuer_tier",
+        "registration_mode",
+        "registration_notice",
+        "notice_effective_date",
+        "transition_evidence"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-basic-2026",
+      "title": "基础层PDFI及总额度",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na023-page001-a5503939"
+      ],
+      "required_fields": [
+        "issuer_tier",
+        "registration_mode",
+        "registered_amount",
+        "covered_instruments",
+        "resolution_amounts",
+        "remaining_registrations"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-basic-exceptions",
+      "title": "分产品注册触发及历史衔接",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na022-page001-a5503939"
+      ],
+      "required_fields": [
+        "default_events_36m",
+        "controller_events",
+        "shareholder_subsidiary_defaults",
+        "disciplinary_events",
+        "registration_history"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-transition",
+      "title": "PDFI在途/决议过渡与60工作日",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na023-page002-d609ac8a"
+      ],
+      "required_fields": [
+        "application_date",
+        "registration_progress",
+        "resolutions",
+        "system_effective_notice",
+        "review_clock"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-funds",
+      "title": "注册匡算与发行用途分层",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na022-page001-eb92221f"
+      ],
+      "required_fields": [
+        "document_stage",
+        "funds_use_categories",
+        "funds_use_items",
+        "policy_sensitive_use",
+        "change_procedure"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-refresh",
+      "title": "季度更新及发行披露时点",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na022-page001-a5503939"
+      ],
+      "required_fields": [
+        "first_interbank_issuance",
+        "latest_quarter",
+        "issuance_date",
+        "publication_date",
+        "business_calendar"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    },
+    {
+      "chapter_id": "dfi-syndicate",
+      "title": "主承销商团与变更",
+      "form_refs": [
+        "注册工作规程/优化通知（语义模块，非官方表号）"
+      ],
+      "source_ref_ids": [
+        "na022-page002-7fb8820f"
+      ],
+      "required_fields": [
+        "registration_syndicate",
+        "issuance_underwriters",
+        "appointment_evidence",
+        "current_syndicate_rule"
+      ],
+      "applicability": "注册安排覆盖层；发行时合成实际工具M/DM/MC章节，不以本层代替完整募集说明书。"
+    }
+  ]
+}

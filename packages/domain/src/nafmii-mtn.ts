@@ -1,4 +1,5 @@
 import type { ChapterTemplate, CoverageManifest, RulePack } from './index.js';
+import { nafmiiSourceEvidence } from './nafmii-source-evidence.js';
 
 const SOURCE_CHECKED_AT = '2026-09-24T08:00:00Z';
 const SOURCE_CHECKER = 'official-source-integrity';
@@ -6,8 +7,8 @@ const SOURCE_CHECKER = 'official-source-integrity';
 export const nafmiiMtnDraftRulePack = {
   schema_version: 'rule-pack-v1',
   pack_id: 'nafmii-mtn',
-  version: '2026.09-draft.1',
-  supersedes_version: null,
+  version: '2026.09.27-draft.2',
+  supersedes_version: '2026.09-draft.1',
   status: 'draft',
   scope: {
     market: 'nafmii',
@@ -73,22 +74,7 @@ export const nafmiiMtnDraftRulePack = {
       verified_by: SOURCE_CHECKER,
       verified_at: SOURCE_CHECKED_AT,
     },
-    {
-      source_id: 'nafmii-disclosure-rules-2021',
-      kind: 'formal_rule',
-      authority: '中国银行间市场交易商协会',
-      document_title: '银行间债券市场非金融企业债务融资工具信息披露规则（2021版）',
-      source_version: '2021',
-      official_url: 'https://www.nafmii.org.cn/ggtz/gg/202103/P020220117435173619426.docx',
-      document_hash: 'c945af5d28b06bab33b4100160945793bae013d745151fde438df19cdef4ea05',
-      clause_locator: '第十四条、第十八条、第二十一条、第二十三条、第二十六条、第二十九条',
-      exact_quote: '第十四条 企业发行债务融资工具，应当根据相关规定于发行前披露以下文件：（一）企业最近三年经审计的财务报告及最近一期会计报表；（二）募集说明书；（三）信用评级报告（如有）；（四）受托管理协议（如有）；（五）法律意见书；（六）交易商协会要求的其他文件。第二十一条 存续期内，企业发生可能影响债务融资工具偿债能力或投资者权益的重大事项时，应当及时披露，并说明事项的起因、目前的状态和可能产生的影响。第二十六条 企业变更债务融资工具募集资金用途的，应当按照规定和约定履行必要变更程序，并至少于募集资金使用前5个工作日披露拟变更后的募集资金用途。',
-      published_on: '2021-03-26',
-      effective_from: '2021-05-01',
-      effective_to: null,
-      verified_by: SOURCE_CHECKER,
-      verified_at: SOURCE_CHECKED_AT,
-    },
+    ...nafmiiSourceEvidence,
     {
       source_id: 'nafmii-basic-tier-notice-2026',
       kind: 'formal_rule',
@@ -96,7 +82,7 @@ export const nafmiiMtnDraftRulePack = {
       document_title: '关于优化债务融资工具基础层企业注册发行机制有关事项的通知（中市协发〔2026〕44号）',
       source_version: '2026-44',
       official_url: 'https://www.nafmii.org.cn/ggtz/tz/202603/t20260323_325023.html',
-      document_hash: null,
+      document_hash: 'f181fbce7e69ffa5724f74d58ea04816549d5b3b36e3aa00af99964d7368bd99',
       clause_locator: '第一项：优化基础层企业分类',
       exact_quote: '原第四类企业并入第三类企业实施注册发行管理，统称为基础层企业。',
       published_on: '2026-03-23',
@@ -123,8 +109,8 @@ export const nafmiiMtnDraftRulePack = {
       owner_role: 'industry_reviewer',
     },
     {
-      rule_id: 'mtn-registration-files', version: '1', title: '注册文件与有效期证据', enabled: true, enforcement: 'soft_check',
-      source_ref_ids: ['nafmii-registration-rules-2023','nafmii-basic-tier-notice-2026'],
+      rule_id: 'mtn-registration-files', version: '2', title: '注册文件与有效期证据', enabled: false, enforcement: 'research_only',
+      source_ref_ids: ['nafmii-registration-rules-2023','nafmii-registration-procedure-2023','nafmii-mature-tier-notice-2025','nafmii-basic-tier-notice-2026','nafmii-basic-tier-faq-2026'],
       applicability: { document_stages: ['registration','issuance'], issuer_scopes: ['domestic-nonfinancial-enterprise-public'], investor_scopes: ['interbank-institutional'], industries: [], special_features: [] },
       required_inputs: ['registration_mode','registration_notice','registration_expiry','document_stage','issuer_tier'],
       checker: { checker_id: 'mtn-registration-evidence-check', checker_version: '1', parameter_version: '2026-03-23' },
@@ -153,8 +139,8 @@ export const nafmiiMtnDraftRulePack = {
       owner_role: 'industry_reviewer',
     },
     {
-      rule_id: 'mtn-funds-use', version: '1', title: '募集资金用途与变更披露', enabled: true, enforcement: 'soft_check',
-      source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-public-forms-2020','nafmii-disclosure-rules-2021','nafmii-basic-tier-notice-2026'],
+      rule_id: 'mtn-funds-use', version: '2', title: '募集资金用途与变更披露', enabled: false, enforcement: 'research_only',
+      source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-public-forms-2020','nafmii-disclosure-rules-2023','nafmii-basic-tier-notice-2026'],
       applicability: { document_stages: ['registration','issuance'], issuer_scopes: ['domestic-nonfinancial-enterprise-public'], investor_scopes: ['interbank-institutional'], industries: [], special_features: [] },
       required_inputs: ['funds_use_stage','funds_use_items','issue_amount','policy_sensitive_use','change_procedure'],
       checker: { checker_id: 'mtn-funds-use-check', checker_version: '1', parameter_version: '2026-03-23' },
@@ -168,11 +154,11 @@ export const nafmiiMtnDraftRulePack = {
       owner_role: 'industry_reviewer',
     },
     {
-      rule_id: 'mtn-ongoing-disclosure', version: '1', title: '存续期定期与重大事项披露', enabled: true, enforcement: 'soft_check',
-      source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-disclosure-rules-2021'],
+      rule_id: 'mtn-ongoing-disclosure', version: '2', title: '存续期定期与重大事项披露', enabled: false, enforcement: 'research_only',
+      source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-disclosure-rules-2023'],
       applicability: { document_stages: ['issuance'], issuer_scopes: ['domestic-nonfinancial-enterprise-public'], investor_scopes: ['interbank-institutional'], industries: [], special_features: [] },
       required_inputs: ['disclosure_arrangements','information_officer','material_events','funds_use_changes','payment_schedule'],
-      checker: { checker_id: 'mtn-ongoing-disclosure-check', checker_version: '1', parameter_version: '2021' },
+      checker: { checker_id: 'mtn-ongoing-disclosure-check', checker_version: '1', parameter_version: '2023' },
       exceptions: ['破产程序、定向发行及特殊产品的另行规定从其规定。'],
       evidence_requirements: ['信息披露制度及负责人','定期报告安排','重大事项与用途变更安排','付息兑付安排'],
       outputs: { when_met: 'pass', when_not_met: 'needs_evidence', severity: 'warning' },
@@ -205,7 +191,7 @@ const chapter = (chapter_id:string,title:string,form_refs:string[],required_fiel
 export const nafmiiMtnChapterTemplate = {
   schema_version: 'chapter-template-v1',
   template_id: 'nafmii-mtn-m-form',
-  version: '2026.09-draft.1',
+  version: '2026.09.27-draft.2',
   rule_pack_id: 'nafmii-mtn',
   market: 'nafmii',
   offering: 'mtn',
@@ -235,12 +221,12 @@ export const nafmiiMtnChapterTemplate = {
 export const nafmiiMtnCoverageManifest = {
   schema_version: 'capability-coverage-v1',
   manifest_id: 'nafmii-mtn-coverage',
-  version: '2026.09-draft.1',
+  version: '2026.09.27-draft.2',
   rule_pack_id: 'nafmii-mtn',
   assessed_at: SOURCE_CHECKED_AT,
   items: [
     { item_id: 'standard-mtn-m-form', area: '标准公开发行MTN的M表章节骨架', disposition: 'covered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-public-forms-2020'], rationale: '已逐章映射M-0至M-17；仅代表工程草案覆盖。' },
-    { item_id: 'mtn-core-product', area: '标准MTN产品定义、注册、资金用途和披露', disposition: 'covered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-registration-rules-2023','nafmii-disclosure-rules-2021'], rationale: '已记录官方原件URL、哈希、效力日期和条款定位。' },
+    { item_id: 'mtn-core-product', area: '标准MTN产品定义、注册、资金用途和披露', disposition: 'covered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-registration-rules-2023','nafmii-disclosure-rules-2023'], rationale: '已补2023披露原文和修正条号；新来源仍待效力与业务审核，不因字段非空认为完整。' },
     { item_id: 'basic-tier-2026', area: '2026基础层分类和有额度统一注册', disposition: 'uncovered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-basic-tier-notice-2026','nafmii-registration-rules-2023'], rationale: '官方变化已入库，但与2023规程及具体过渡项目的适用关系尚未经行业审核，不能作确定结论。' },
     { item_id: 'ppn-cp-scp-dfi', area: 'PPN、CP、SCP、DFI产品规则', disposition: 'not_applicable', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-mtn-guide-2021'], rationale: '本包仅适用于offering=mtn；其他产品必须选择独立规则包。' },
     { item_id: 'special-products', area: '永续、绿色、科创、乡村振兴、项目收益等专项或主题MTN', disposition: 'uncovered', document_stages: ['registration','issuance'], source_ref_ids: [], rationale: '需要对应产品补充表、专项规则、有效期与独立样本，标准MTN包不得自动放开。' },
