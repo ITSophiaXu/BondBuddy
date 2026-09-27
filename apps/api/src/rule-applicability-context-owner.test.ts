@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { appendRuleApplicabilityFieldReview, getRuleApplicabilityFieldReview,
   getRuleApplicabilityFieldReviewTarget } from './rule-applicability-field-reviews.js';
-import { createRuleApplicabilityContextDraft } from '@bondbuddy/rule-applicability-context';
+import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { createProductionServer, createServer } from './server.js';
 import { loadTargetConfirmation } from './target-confirmation.js';
@@ -432,7 +432,7 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         'a reviewer-provided synthetic version is not a server-published taxonomy and cannot reach selection');
       assert.ok(!approvedPin.rule_pack_block_reasons.includes('production_rule_pack_registry_empty'),
         'the loader stops before production selection while the real taxonomy mapping remains unpublished');
-      const previousTier=process.env.BB_DEPLOYMENT_TIER,previousChannel=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+      const previousTestTier=process.env.BB_DEPLOYMENT_TIER,previousTestChannel=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
       process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
       const reviewRef=confirmedDraft.json().context_ref;
       const testLock=async (ref: unknown, materials=[{material_id:materialId,material_version:1},
@@ -490,8 +490,8 @@ test('owner applicability API derives a needs_review ref from locked evidence an
           test_rule_applicability_context_ref:reviewRef});
         assert.equal(switchOff.statusCode,403);assert.equal(switchOff.json().code,'TEST_CHANNEL_DISABLED');
       } finally {
-        if(previousTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTier;
-        if(previousChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousChannel;
+        if(previousTestTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTestTier;
+        if(previousTestChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousTestChannel;
       }
       activeOwner = ruleReviewerId;
       const withdrawApproved = await send('POST', confirmedReviewUrl, { request_id: `overall-withdraw-approved-${suffix}`,
@@ -524,8 +524,8 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         assert.equal(readTestApplicabilityRef(withdrawnManifest),null);
         assert.equal(withdrawnManifest.test_rule_applicability_block_reason,'rule_applicability_overall_review_withdrawn');
       } finally {
-        if(previousTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTier;
-        if(previousChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousChannel;
+        if(previousTestTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTestTier;
+        if(previousTestChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousTestChannel;
       }
 
       // V2 uses the same exact domain resolver at API approval and approved-load time.
@@ -583,6 +583,35 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         'v2 review loads only as an unpublished, blocked candidate');
       assert.ok(!v2PinnedManifest.rule_pack_block_reasons.includes('rule_applicability_overall_review_withdrawn'),
         'later v2 approval is selected; replaying the prior v1 request did not supersede it');
+      const reviewedArgs = {
+        ownerUserId: owner, projectId, contextId: confirmedDraft.json().context_ref.context_id,
+        version: confirmedDraft.json().context_ref.version,
+        contentHash: confirmedDraft.json().context_ref.content_hash,
+        expectedSourceInputRevision: confirmedDraft.json().context_ref.source_input_revision,
+        expectedSourceInputHash: confirmedDraft.json().context_ref.source_input_hash,
+        expectedIssuerBinding: v2PinnedManifest.issuer_identity,
+        currentDraftRevision: 1,
+        currentMaterialVersions: [
+          { materialId, materialVersion: 1, sha256: materialHash },
+          { materialId: auditMaterialId, materialVersion: 1, sha256: auditHash },
+        ],
+      };
+      const productionReview = await loadReviewedRuleApplicabilityContext(pool, { ...reviewedArgs, mode: 'selection' });
+      assert.deepEqual(productionReview.status, 'needs_review');
+      assert.deepEqual(productionReview.reasons, ['rule_applicability_taxonomy_not_published']);
+      const previousReviewTier = process.env.BB_DEPLOYMENT_TIER;
+      const previousReviewChannel = process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+      process.env.BB_DEPLOYMENT_TIER = 'preprod';
+      process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+      try {
+        const testReview = await loadReviewedRuleApplicabilityContext(pool, { ...reviewedArgs, mode: 'non_production_test' });
+        assert.equal(testReview.status, 'approved', JSON.stringify(testReview));
+      } finally {
+        if (previousReviewTier === undefined) delete process.env.BB_DEPLOYMENT_TIER;
+        else process.env.BB_DEPLOYMENT_TIER = previousReviewTier;
+        if (previousReviewChannel === undefined) delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+        else process.env.BB_NON_PRODUCTION_TEST_CHANNEL = previousReviewChannel;
+      }
       activeOwner = owner;
       const confirmedFields = await pool.query(`SELECT field_key,candidate_value,source_kind,source_status
         FROM bb_rule_applicability_context_candidates WHERE context_id=$1 AND field_key=ANY($2::text[])`,

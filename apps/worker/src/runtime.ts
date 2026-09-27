@@ -23,6 +23,7 @@ import { sweepParseStaging } from './parse-staging.js';
 import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
 import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
+import { createSsePrivateTestRuleCapabilityLoader } from './sse-private-test-rule-capability.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -45,6 +46,8 @@ export type WorkerRuntimeOptions = {
   factCandidateProducer?: ParsedFactProducer;
   /** #15/#19 reviewed context loader; production env options install the existing fail-closed implementation. */
   reviewedContextLoader?: ReviewedContextLoader;
+  /** #19 private candidate capability for the explicitly enabled preproduction test channel. */
+  testRuleCapabilityLoader?: import('./run-pipeline.js').TestRuleCapabilityLoader;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
   parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
@@ -79,8 +82,8 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'stagingRoot'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'stagingRoot'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'stagingRoot'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'stagingRoot'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
@@ -122,6 +125,7 @@ export class WorkerRuntime {
           const outcome = kind === 'run'
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
               reviewedContextLoader: this.o.reviewedContextLoader,
+              testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
               onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
               onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
@@ -255,11 +259,13 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   }
   const runStages = defaultRunStages({ model_generation: modelGenerationRouter(),
     word_delivery: historicalWordDeliveryStage() });
+  const testChannelEnabled = env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
   const materials = runStages.find(stage => stage.name === 'materials_ready')!;
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages,
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
+    ...(testChannelEnabled ? { testRuleCapabilityLoader: createSsePrivateTestRuleCapabilityLoader(pool) } : {}),
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),
