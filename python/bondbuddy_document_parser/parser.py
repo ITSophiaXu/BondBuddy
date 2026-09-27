@@ -5,12 +5,13 @@ import codecs
 import hashlib
 import io
 import json
+import posixpath
 import re
 import zipfile
 import zlib
 from pathlib import Path
 from typing import Any, Iterable, Iterator
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 from lxml import etree
 
 from docx import Document
@@ -35,6 +36,11 @@ MAX_TEXT_BYTES = 100 * 1024 * 1024
 MAX_TEXT_LINE_CHARS = 16 * 1024
 MAX_DOCX_AUXILIARY_PART_BYTES = 4 * 1024 * 1024
 MAX_DOCX_AUXILIARY_TARGETS = 10_000
+MAX_DOCX_AUXILIARY_RELATIONSHIPS = 10_000
+MAX_DOCX_AUXILIARY_SCOPE_REFERENCES = 128
+MAX_DOCX_AUXILIARY_SCOPE_BYTES = 4 * 1024 * 1024
+TRANSITIONAL_RELATIONSHIP_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+STRICT_RELATIONSHIP_NS = "http://purl.oclc.org/ooxml/officeDocument/relationships"
 
 MEDIA_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MEDIA_PDF = "application/pdf"
@@ -285,12 +291,382 @@ def _auxiliary_target(
         "kind": kind,
         "part_name": part_name,
         "locator": locator,
+        "scope": None,
         "part_sha256": part_sha256,
         "target_sha256": target_sha256,
-        "locator_resolved": parse_status not in {"read_failed", "parse_failed", "unsafe_xml", "size_limited", "unrecognized_part"},
+        "locator_resolved": parse_status not in {"read_failed", "parse_failed", "unsafe_xml", "size_limited", "unrecognized_part",
+                                                  "external_relationship", "missing_relationship", "unsafe_relationship",
+                                                  "missing_reference_target"},
         "parseable": parse_status in {"parsed", "empty"},
         "parse_status": parse_status,
         "text_summary": summary,
+    }
+
+
+def _safe_docx_part_name(member_name: str, known_part_pattern: re.Pattern[str]) -> str:
+    return member_name if known_part_pattern.fullmatch(member_name) else (
+        "word/auxiliary-" + hashlib.sha256(member_name.encode("utf-8")).hexdigest() + ".xml"
+    )
+
+
+def _normalize_opc_internal_target(source_part: str, target: str) -> str | None:
+    """Resolve an OPC relationship URI to a package member, never a filesystem path."""
+    try:
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or "\\" in parsed.path or "\x00" in target:
+            return None
+        decoded = unquote(parsed.path, errors="strict")
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if not decoded or "\\" in decoded or "\x00" in decoded:
+        return None
+    joined = decoded.lstrip("/") if decoded.startswith("/") else posixpath.join(posixpath.dirname(source_part), decoded)
+    normalized = posixpath.normpath(joined)
+    if normalized in {".", ".."} or normalized.startswith("../") or normalized.startswith("/"):
+        return None
+    return normalized
+
+
+def _docx_relationship_context(archive: zipfile.ZipFile, body_root: Any, body_locators: dict[Any, str]) -> dict[str, Any]:
+    """Read only document-level relationships and explicit section/note references."""
+    relationship_path = "word/_rels/document.xml.rels"
+    archive_names = set(archive.namelist())
+    relationship_sha256: str | None = None
+    relationship_state = "missing"
+    relationships: dict[str, dict[str, Any]] = {}
+    if relationship_path in archive_names:
+        try:
+            info = archive.getinfo(relationship_path)
+            if info.file_size <= MAX_DOCX_AUXILIARY_PART_BYTES:
+                with archive.open(info) as member:
+                    raw = member.read(MAX_DOCX_AUXILIARY_PART_BYTES + 1)
+                if len(raw) <= MAX_DOCX_AUXILIARY_PART_BYTES:
+                    relationship_sha256 = hashlib.sha256(raw).hexdigest()
+                    if not re.search(br"<!\s*(?:DOCTYPE|ENTITY)\b", raw, flags=re.IGNORECASE):
+                        try:
+                            rel_root = etree.fromstring(raw, parser=etree.XMLParser(
+                                resolve_entities=False, no_network=True, load_dtd=False, huge_tree=False,
+                            ))
+                            relationship_state = "unsafe"
+                            if rel_root.tag == "{http://schemas.openxmlformats.org/package/2006/relationships}Relationships":
+                                relationship_state = "valid"
+                            for relation in rel_root if relationship_state == "valid" else ():
+                                if len(relationships) >= MAX_DOCX_AUXILIARY_RELATIONSHIPS:
+                                    relationship_state = "oversized"
+                                    relationships.clear()
+                                    break
+                                if relation.tag != "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship":
+                                    relationship_state = "unsafe"
+                                    relationships.clear()
+                                    break
+                                relation_id = relation.get("Id")
+                                relation_type_uri = relation.get("Type") or ""
+                                relation_type_map = {
+                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header": "header",
+                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer": "footer",
+                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes": "footnotes",
+                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes": "endnotes",
+                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image": "image",
+                                    "http://purl.oclc.org/ooxml/officeDocument/relationships/header": "header",
+                                    "http://purl.oclc.org/ooxml/officeDocument/relationships/footer": "footer",
+                                    "http://purl.oclc.org/ooxml/officeDocument/relationships/footnotes": "footnotes",
+                                    "http://purl.oclc.org/ooxml/officeDocument/relationships/endnotes": "endnotes",
+                                    "http://purl.oclc.org/ooxml/officeDocument/relationships/image": "image",
+                                }
+                                relation_type = relation_type_map.get(relation_type_uri, "other")
+                                target = relation.get("Target")
+                                target_mode = relation.get("TargetMode")
+                                if (not relation_id or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", relation_id) or
+                                        relation_id in relationships or not target):
+                                    relationship_state = "unsafe"
+                                    relationships.clear()
+                                    break
+                                if target_mode == "External":
+                                    relationships[relation_id] = {
+                                        "relationship_id": relation_id, "relationship_type": relation_type,
+                                        "mode": "external", "target_member": None, "status": "external",
+                                    }
+                                    continue
+                                if target_mode not in {None, "Internal"}:
+                                    relationships[relation_id] = {
+                                        "relationship_id": relation_id, "relationship_type": relation_type,
+                                        "mode": "unknown", "target_member": None, "status": "unsafe",
+                                    }
+                                    continue
+                                target_member = _normalize_opc_internal_target("word/document.xml", target)
+                                if target_member is None:
+                                    relationships[relation_id] = {
+                                        "relationship_id": relation_id, "relationship_type": relation_type,
+                                        "mode": "unknown", "target_member": None, "status": "unsafe",
+                                    }
+                                    continue
+                                if relation_type in {"header", "footer"} and (
+                                        not target_member.startswith("word/") or not target_member.endswith(".xml")):
+                                    relationships[relation_id] = {
+                                        "relationship_id": relation_id, "relationship_type": relation_type,
+                                        "mode": "unknown", "target_member": None, "status": "unsafe",
+                                    }
+                                    continue
+                                expected_note_part = {"footnotes": "word/footnotes.xml", "endnotes": "word/endnotes.xml"}.get(relation_type)
+                                if expected_note_part is not None and target_member != expected_note_part:
+                                    relationships[relation_id] = {
+                                        "relationship_id": relation_id, "relationship_type": relation_type,
+                                        "mode": "unknown", "target_member": None, "status": "unsafe",
+                                    }
+                                    continue
+                                relationships[relation_id] = {
+                                    "relationship_id": relation_id, "relationship_type": relation_type,
+                                    "mode": "internal", "target_member": target_member,
+                                    "status": "resolved" if target_member in archive_names else "missing",
+                                }
+                        except (etree.XMLSyntaxError, ValueError):
+                            relationship_state = "unsafe"
+                    else:
+                        relationship_state = "unsafe"
+                else:
+                    relationship_state = "oversized"
+            else:
+                relationship_state = "oversized"
+        except (KeyError, OSError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error):
+            relationship_state = "unsafe"
+
+    body = next((child for child in body_root if child.tag == qn("w:body")), None)
+    sections: list[dict[str, Any]] = []
+    section_overflow = False
+    section_reference_overflow = False
+    section_reference_count = 0
+    if body is not None:
+        for child in body.iter(qn("w:p")):
+            ppr = child.find(qn("w:pPr"))
+            section_properties = ppr.find(qn("w:sectPr")) if ppr is not None else None
+            if section_properties is not None:
+                if len(sections) >= MAX_DOCX_AUXILIARY_RELATIONSHIPS:
+                    section_overflow = True
+                    break
+                section_index = len(sections) + 1
+                section_ref = body_locators.get(child)
+                refs = []
+                for element_name, relation_kind in (("w:headerReference", "header"), ("w:footerReference", "footer")):
+                    for reference in section_properties.findall(qn(element_name)):
+                        if section_reference_count >= MAX_DOCX_AUXILIARY_RELATIONSHIPS:
+                            section_reference_overflow = True
+                            break
+                        relation_id = reference.get(f"{{{TRANSITIONAL_RELATIONSHIP_NS}}}id") or reference.get(f"{{{STRICT_RELATIONSHIP_NS}}}id")
+                        refs.append({"section_index": section_index, "reference_type": reference.get(qn("w:type")) or "default",
+                                     "relationship_id": relation_id, "relationship_type": relation_kind,
+                                     "section_stable_ref": section_ref})
+                        section_reference_count += 1
+                    if section_reference_overflow:
+                        break
+                sections.append({"section_index": section_index, "references": refs})
+                if section_reference_overflow:
+                    break
+        final_section = body.find(qn("w:sectPr"))
+        if final_section is not None:
+            if len(sections) >= MAX_DOCX_AUXILIARY_RELATIONSHIPS:
+                section_overflow = True
+                final_section = None
+        if final_section is not None:
+            section_index = len(sections) + 1
+            refs = []
+            for element_name, relation_kind in (("w:headerReference", "header"), ("w:footerReference", "footer")):
+                for reference in final_section.findall(qn(element_name)):
+                    if section_reference_count >= MAX_DOCX_AUXILIARY_RELATIONSHIPS:
+                        section_reference_overflow = True
+                        break
+                    refs.append({"section_index": section_index, "reference_type": reference.get(qn("w:type")) or "default",
+                                 "relationship_id": reference.get(f"{{{TRANSITIONAL_RELATIONSHIP_NS}}}id") or reference.get(f"{{{STRICT_RELATIONSHIP_NS}}}id"),
+                                 "relationship_type": relation_kind, "section_stable_ref": None})
+                    section_reference_count += 1
+                if section_reference_overflow:
+                    break
+            sections.append({"section_index": section_index, "references": refs})
+    if not sections:
+        sections.append({"section_index": 1, "references": []})
+
+    note_references: dict[str, list[dict[str, Any]]] = {"footnote": [], "endnote": []}
+    note_reference_overflow = False
+    if body is not None:
+        for note_kind, reference_tag in (("footnote", "w:footnoteReference"), ("endnote", "w:endnoteReference")):
+            for reference in body.iter(qn(reference_tag)):
+                if len(note_references[note_kind]) >= MAX_DOCX_AUXILIARY_RELATIONSHIPS:
+                    note_reference_overflow = True
+                    break
+                paragraph = reference.getparent()
+                while paragraph is not None and paragraph.tag != qn("w:p"):
+                    paragraph = paragraph.getparent()
+                raw_note_id = reference.get(qn("w:id"))
+                safe_note_id = raw_note_id if isinstance(raw_note_id, str) and re.fullmatch(r"-?[0-9]{1,10}", raw_note_id) else None
+                note_references[note_kind].append({
+                    "note_id": safe_note_id,
+                    "note_id_sha256": hashlib.sha256(raw_note_id.encode("utf-8")).hexdigest()
+                    if isinstance(raw_note_id, str) else None,
+                    "stable_ref": body_locators.get(paragraph) if paragraph is not None else None,
+                })
+    section_references_by_relationship: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for section in sections:
+        for reference in section["references"]:
+            relation_id = reference["relationship_id"]
+            if isinstance(relation_id, str):
+                section_references_by_relationship.setdefault((reference["relationship_type"], relation_id), []).append(reference)
+    relationships_by_type: dict[str, list[dict[str, Any]]] = {}
+    for relation in relationships.values():
+        relationships_by_type.setdefault(relation["relationship_type"], []).append(relation)
+    note_references_by_id: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for note_kind, references in note_references.items():
+        for reference in references:
+            note_id = reference["note_id"]
+            if isinstance(note_id, str):
+                note_references_by_id.setdefault((note_kind, note_id), []).append(reference)
+    return {
+        "relationship_sha256": relationship_sha256,
+        "relationship_state": relationship_state,
+        "relationships": relationships,
+        "sections": sections,
+        "note_references": note_references,
+        "note_references_by_id": note_references_by_id,
+        "section_references_by_relationship": section_references_by_relationship,
+        "relationships_by_type": relationships_by_type,
+        "section_overflow": section_overflow,
+        "section_reference_overflow": section_reference_overflow,
+        "note_reference_overflow": note_reference_overflow,
+        "archive_names": archive_names,
+    }
+
+
+def _relationship_scope_entry(relation: dict[str, Any], target_part: str | None) -> dict[str, Any]:
+    relation_id = relation["relationship_id"]
+    safe_id = relation_id if isinstance(relation_id, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", relation_id) else None
+    return {
+        "relationship_id": safe_id,
+        "relationship_id_sha256": hashlib.sha256(relation_id.encode("utf-8")).hexdigest()
+        if isinstance(relation_id, str) else None,
+        "relationship_type": relation["relationship_type"],
+        "mode": relation["mode"],
+        "target_part": target_part,
+        "status": relation["status"],
+    }
+
+
+def _bounded_scope_list(items: list[Any]) -> tuple[list[Any], bool]:
+    limit = MAX_DOCX_AUXILIARY_SCOPE_REFERENCES
+    return items[:limit], len(items) > limit
+
+
+def _section_scope_reference(reference: dict[str, Any]) -> dict[str, Any]:
+    relationship_id = reference["relationship_id"]
+    safe_id = relationship_id if isinstance(relationship_id, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", relationship_id) else None
+    return {
+        "section_index": reference["section_index"], "reference_type": reference["reference_type"],
+        "relationship_id": safe_id,
+        "relationship_id_sha256": hashlib.sha256(relationship_id.encode("utf-8")).hexdigest()
+        if isinstance(relationship_id, str) else None,
+        "section_stable_ref": reference["section_stable_ref"],
+    }
+
+
+def _section_scope_for_part(part_name: str, target_kind: str, context: dict[str, Any]) -> dict[str, Any]:
+    relations = context.get("relationships_by_kind_alias", {}).get((target_kind, part_name), [])
+    relation_ids = {relation["relationship_id"] for relation in relations}
+    raw_section_references = [reference for relation_id in relation_ids
+                              for reference in context["section_references_by_relationship"].get((target_kind, relation_id), [])]
+    section_references = [_section_scope_reference(reference) for reference in raw_section_references]
+    covered_sections = {reference["section_index"] for reference in raw_section_references}
+    all_unknown_sections = []
+    for section in context["sections"]:
+        if section["section_index"] not in covered_sections:
+            all_unknown_sections.append(section["section_index"])
+            if len(all_unknown_sections) > MAX_DOCX_AUXILIARY_SCOPE_REFERENCES:
+                break
+    bounded_relationships, relationship_truncated = _bounded_scope_list(
+        [_relationship_scope_entry(relation, part_name) for relation in relations])
+    bounded_section_references, reference_truncated = _bounded_scope_list(section_references)
+    unknown_sections, unknown_truncated = _bounded_scope_list(all_unknown_sections)
+    unknown_truncated = unknown_truncated or len(all_unknown_sections) > MAX_DOCX_AUXILIARY_SCOPE_REFERENCES
+    overflow = (relationship_truncated or reference_truncated or unknown_truncated or
+                context["section_overflow"] or context["section_reference_overflow"])
+    if context["relationship_state"] != "valid" or not relations or not section_references or overflow:
+        status = "unknown"
+    elif unknown_sections:
+        status = "partially_resolved"
+    else:
+        status = "resolved"
+    reason = None
+    if context["relationship_state"] != "valid":
+        reason = "relationship_part_" + context["relationship_state"]
+    elif not relations:
+        reason = "no_matching_internal_relationship"
+    elif not section_references:
+        reason = "not_explicitly_referenced_by_section"
+    elif unknown_sections:
+        reason = "section_inheritance_or_missing_reference_unknown"
+    if overflow:
+        reason = "scope_detail_limit_exceeded"
+    return {
+        "kind": "section_reference", "status": status,
+        "relationship_part_sha256": context["relationship_sha256"],
+        "relationships": bounded_relationships,
+        "section_references": bounded_section_references, "unknown_sections": unknown_sections,
+        "body_references": [], "reason": reason, "truncated": overflow,
+    }
+
+
+def _note_scope(kind: str, note_id: str, context: dict[str, Any]) -> dict[str, Any]:
+    references = context["note_references_by_id"].get((kind, note_id), [])
+    expected_part = "word/footnotes.xml" if kind == "footnote" else "word/endnotes.xml"
+    relationship_type = "footnotes" if kind == "footnote" else "endnotes"
+    note_relationships = context["relationships_by_type"].get(relationship_type, [])
+    relationship_valid = (context["relationship_state"] == "valid" and len(note_relationships) == 1 and
+                          note_relationships[0]["status"] == "resolved" and
+                          note_relationships[0]["target_member"] == expected_part)
+    bounded_references, references_truncated = _bounded_scope_list(references)
+    bounded_relationships, relationships_truncated = _bounded_scope_list(
+        [_relationship_scope_entry(
+            relation, expected_part if relation["status"] == "resolved" and relation["target_member"] == expected_part else None,
+        ) for relation in note_relationships])
+    if context["note_reference_overflow"]:
+        status, reason = "unknown", "note_reference_limit_exceeded"
+    elif not relationship_valid:
+        status, reason = "unknown", "note_relationship_missing_or_mismatched"
+    elif references and all(reference["stable_ref"] is not None for reference in references):
+        status, reason = "resolved", None
+    elif not references:
+        status, reason = "unreferenced", "no_body_reference"
+    else:
+        status, reason = "unknown", "reference_anchor_unresolved"
+    return {
+        "kind": "note_reference", "status": status,
+        "relationship_part_sha256": context["relationship_sha256"],
+        "relationships": bounded_relationships,
+        "section_references": [], "unknown_sections": [],
+        "body_references": bounded_references,
+        "reason": "scope_detail_limit_exceeded" if references_truncated or relationships_truncated else reason,
+        "truncated": references_truncated or relationships_truncated or context["note_reference_overflow"],
+    }
+
+
+def _unresolved_relationship_scope(
+    kind: str, relation_id: str | None, relation_id_hash: str | None, status: str,
+    context: dict[str, Any], references: list[dict[str, Any]],
+) -> dict[str, Any]:
+    section_references, reference_truncated = _bounded_scope_list([_section_scope_reference(reference) for reference in references])
+    all_unknown_sections = [section["section_index"] for section in context["sections"]
+                            if not any(reference["relationship_type"] == kind and
+                                       reference["relationship_id"] == relation_id
+                                       for reference in section["references"])]
+    unknown_sections, unknown_truncated = _bounded_scope_list(all_unknown_sections)
+    mode = "external" if status == "external" else "unknown"
+    return {
+        "kind": "section_reference", "status": "unknown",
+        "relationship_part_sha256": context["relationship_sha256"],
+        "relationships": [{
+            "relationship_id": relation_id, "relationship_id_sha256": relation_id_hash,
+            "relationship_type": kind, "mode": mode,
+            "target_part": None, "status": status,
+        }],
+        "section_references": section_references, "unknown_sections": unknown_sections,
+        "body_references": [], "reason": "scope_detail_limit_exceeded" if reference_truncated or unknown_truncated else "relationship_" + status,
+        "truncated": reference_truncated or unknown_truncated or context["section_overflow"] or context["section_reference_overflow"],
     }
 
 
@@ -305,18 +681,30 @@ def _docx_auxiliary_targets(path: Path, body_root: Any, body_locators: dict[Any,
 
     known_part_pattern = re.compile(r"word/(?:header\d+|footer\d+|footnotes|endnotes)\.xml\Z")
     with zipfile.ZipFile(path) as archive:
+        relationship_context = _docx_relationship_context(archive, body_root, body_locators)
         # Keep the historical prefix-based warning scope. Nonstandard members are
         # represented by an opaque, content-addressed alias so archive paths never
         # leak into parser responses or become path-like locator input.
-        parts = sorted(name for name in archive.namelist()
-                       if name.startswith(("word/header", "word/footer", "word/footnotes", "word/endnotes"))
-                       and name.endswith(".xml"))
+        parts = {name for name in relationship_context["archive_names"]
+                 if name.startswith(("word/header", "word/footer", "word/footnotes", "word/endnotes"))
+                 and name.endswith(".xml")}
+        parts.update(relation["target_member"] for relation in relationship_context["relationships"].values()
+                     if relation["relationship_type"] in {"header", "footer"} and
+                     relation["status"] == "resolved" and relation["target_member"] is not None)
+        parts = sorted(parts)
+        aliases_by_member = {name: _safe_docx_part_name(name, known_part_pattern) for name in parts}
+        relationships_by_kind_alias: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for relation in relationship_context["relationships"].values():
+            target_member = relation["target_member"]
+            if target_member is not None and target_member in aliases_by_member:
+                relationships_by_kind_alias.setdefault((relation["relationship_type"], aliases_by_member[target_member]), []).append(relation)
+        relationship_context["relationships_by_kind_alias"] = relationships_by_kind_alias
         for member_name in parts:
             if len(targets) >= MAX_DOCX_AUXILIARY_TARGETS:
                 raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "DOCX has too many auxiliary content targets")
             part_target_start = len(targets)
             is_known_part = bool(known_part_pattern.fullmatch(member_name))
-            part_name = member_name if is_known_part else "word/auxiliary-" + hashlib.sha256(member_name.encode("utf-8")).hexdigest() + ".xml"
+            part_name = aliases_by_member[member_name]
             part_locator = {"part_name": part_name}
             if not is_known_part:
                 part_locator["member_name_sha256"] = hashlib.sha256(member_name.encode("utf-8")).hexdigest()
@@ -393,8 +781,17 @@ def _docx_auxiliary_targets(path: Path, body_root: Any, body_locators: dict[Any,
             if target_kind in {"footnote_paragraph", "endnote_paragraph"}:
                 note_tag = qn("w:footnote") if target_kind == "footnote_paragraph" else qn("w:endnote")
                 notes = [note for note in xml_root if note.tag == note_tag and note.get(qn("w:id")) not in {"-1", "-2"}]
-                for note_index, note in enumerate(notes, 1):
-                    note_id = note.get(qn("w:id")) or str(note_index)
+                note_ids = [note.get(qn("w:id")) for note in notes]
+                if (any(not isinstance(note_id, str) or not re.fullmatch(r"-?[0-9]{1,10}", note_id)
+                        for note_id in note_ids) or len(set(note_ids)) != len(note_ids)):
+                    append_target(_auxiliary_target(
+                        "auxiliary_part", part_name, {"part_name": part_name}, part_sha256=part_hash,
+                        target_sha256=part_hash, parse_status="unsafe_xml",
+                    ))
+                    continue
+                for note in notes:
+                    note_id = note.get(qn("w:id"))
+                    assert note_id is not None
                     note_paragraphs = list(note.iter(qn("w:p")))
                     if not note_paragraphs:
                         locator = {"part_name": part_name, "note_id": note_id, "paragraph_index": None}
@@ -434,6 +831,102 @@ def _docx_auxiliary_targets(path: Path, body_root: Any, body_locators: dict[Any,
                         part_sha256=part_hash, target_sha256=part_hash, parse_status="empty", text="",
                     ))
 
+        emitted_unknown_relationships: set[tuple[str, str | None, int | None]] = set()
+        for relation_id, relation in relationship_context["relationships"].items():
+            if relation["relationship_type"] not in {"header", "footer"} or relation["status"] == "resolved":
+                continue
+            kind = relation["relationship_type"]
+            matching_refs = [reference for section in relationship_context["sections"] for reference in section["references"]
+                             if reference["relationship_type"] == kind and reference["relationship_id"] == relation_id]
+            relation_seed = f"opc-relationship:{kind}:{relation_id}"
+            member_hash = hashlib.sha256(relation_seed.encode("utf-8")).hexdigest()
+            part_name = f"word/auxiliary-{member_hash}.xml"
+            parse_status = {"external": "external_relationship", "missing": "missing_relationship"}.get(
+                relation["status"], "unsafe_relationship")
+            target = _auxiliary_target(
+                "auxiliary_part", part_name,
+                {"part_name": part_name, "member_name_sha256": member_hash},
+                part_sha256=None, target_sha256=None, parse_status=parse_status,
+            )
+            target["scope"] = _unresolved_relationship_scope(
+                kind, relation_id, hashlib.sha256(relation_id.encode("utf-8")).hexdigest(),
+                relation["status"], relationship_context, matching_refs,
+            )
+            append_target(target)
+            emitted_unknown_relationships.add((kind, relation_id, None))
+
+        for section in relationship_context["sections"]:
+            for reference in section["references"]:
+                kind = reference["relationship_type"]
+                relation_id = reference["relationship_id"]
+                relation = relationship_context["relationships"].get(relation_id) if relation_id is not None else None
+                if relation is not None and relation["status"] in {"resolved", "external", "missing", "unsafe"}:
+                    continue
+                key = (kind, relation_id, reference["section_index"] if relation_id is None else None)
+                if key in emitted_unknown_relationships:
+                    continue
+                relation_status = "unsafe" if relationship_context["relationship_state"] != "valid" else "missing"
+                relation_seed = f"opc-section-reference:{kind}:{relation_id or ''}:{reference['section_index']}"
+                member_hash = hashlib.sha256(relation_seed.encode("utf-8")).hexdigest()
+                part_name = f"word/auxiliary-{member_hash}.xml"
+                target = _auxiliary_target(
+                    "auxiliary_part", part_name,
+                    {"part_name": part_name, "member_name_sha256": member_hash},
+                    part_sha256=None, target_sha256=None,
+                    parse_status="unsafe_relationship" if relation_status == "unsafe" else "missing_relationship",
+                )
+                target["scope"] = _unresolved_relationship_scope(
+                    kind, relation_id if isinstance(relation_id, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", relation_id) else None,
+                    hashlib.sha256(relation_id.encode("utf-8")).hexdigest() if isinstance(relation_id, str) else None,
+                    relation_status, relationship_context, [reference],
+                )
+                append_target(target)
+                emitted_unknown_relationships.add(key)
+
+        existing_note_keys = {(target["kind"], target["locator"].get("note_id")) for target in targets
+                              if target["kind"] in {"footnote", "endnote"}}
+        for note_kind, references in relationship_context["note_references"].items():
+            grouped_references: dict[str, list[dict[str, Any]]] = {}
+            for reference in references:
+                note_id = reference["note_id"]
+                if isinstance(note_id, str) and note_id:
+                    grouped_references.setdefault(note_id, []).append(reference)
+                else:
+                    relation_seed = f"missing-{note_kind}-reference:{reference['stable_ref'] or ''}"
+                    member_hash = hashlib.sha256(relation_seed.encode("utf-8")).hexdigest()
+                    part_name = f"word/auxiliary-{member_hash}.xml"
+                    target = _auxiliary_target(
+                        "auxiliary_part", part_name,
+                        {"part_name": part_name, "member_name_sha256": member_hash},
+                        part_sha256=None, target_sha256=None, parse_status="missing_reference_target",
+                    )
+                    target["scope"] = {
+                        "kind": "note_reference", "status": "unknown",
+                        "relationship_part_sha256": relationship_context["relationship_sha256"],
+                        "relationships": [], "section_references": [], "unknown_sections": [],
+                        "body_references": [reference], "reason": "note_reference_id_missing", "truncated": False,
+                    }
+                    append_target(target)
+            for note_id, note_refs in grouped_references.items():
+                target_kind = "footnote" if note_kind == "footnote" else "endnote"
+                if (target_kind, note_id) in existing_note_keys:
+                    continue
+                part_name = "word/footnotes.xml" if note_kind == "footnote" else "word/endnotes.xml"
+                target = _auxiliary_target(
+                    target_kind, part_name,
+                    {"part_name": part_name, "note_id": note_id, "paragraph_index": None},
+                    part_sha256=None, target_sha256=None, parse_status="missing_reference_target",
+                )
+                target["scope"] = {
+                    "kind": "note_reference", "status": "unknown",
+                    "relationship_part_sha256": relationship_context["relationship_sha256"],
+                    "relationships": [], "section_references": [], "unknown_sections": [],
+                    "body_references": note_refs[:MAX_DOCX_AUXILIARY_SCOPE_REFERENCES],
+                    "reason": "scope_detail_limit_exceeded" if len(note_refs) > MAX_DOCX_AUXILIARY_SCOPE_REFERENCES else "referenced_note_target_missing",
+                    "truncated": len(note_refs) > MAX_DOCX_AUXILIARY_SCOPE_REFERENCES,
+                }
+                append_target(target)
+
         drawing_index = 0
         try:
             document_xml = archive.read("word/document.xml")
@@ -462,6 +955,106 @@ def _docx_auxiliary_targets(path: Path, body_root: Any, body_locators: dict[Any,
                 "drawing", "word/document.xml", locator, part_sha256=document_hash,
                 target_sha256=drawing_hash, parse_status="not_extracted",
             ))
+
+        drawings = list(body_root.iter(qn("w:drawing")))
+        scope_cache: dict[tuple[str, str], dict[str, Any]] = {}
+        scope_bytes_used = 0
+        for target in targets:
+            if target.get("scope") is not None:
+                continue
+            if target["kind"] in {"header", "footer"}:
+                cache_key = (target["part_name"], target["kind"])
+                if cache_key not in scope_cache:
+                    scope_cache[cache_key] = _section_scope_for_part(target["part_name"], target["kind"], relationship_context)
+                target["scope"] = scope_cache[cache_key]
+            elif target["kind"] in {"footnote", "endnote"}:
+                cache_key = (target["part_name"], target["locator"]["note_id"])
+                if cache_key not in scope_cache:
+                    scope_cache[cache_key] = _note_scope(target["kind"], target["locator"]["note_id"], relationship_context)
+                target["scope"] = scope_cache[cache_key]
+            elif target["kind"] == "drawing":
+                drawing = drawings[target["locator"]["drawing_index"] - 1]
+                relationship_ids: list[str] = []
+                drawing_relationship_overflow = False
+                for element in drawing.iter():
+                    for attr_name, attr_value in element.attrib.items():
+                        if attr_name.startswith((f"{{{TRANSITIONAL_RELATIONSHIP_NS}}}", f"{{{STRICT_RELATIONSHIP_NS}}}")) and \
+                                attr_name.rsplit("}", 1)[-1] in {"embed", "link", "id"} and attr_value not in relationship_ids:
+                            if len(relationship_ids) >= MAX_DOCX_AUXILIARY_SCOPE_REFERENCES + 1:
+                                drawing_relationship_overflow = True
+                                break
+                            relationship_ids.append(attr_value)
+                    if drawing_relationship_overflow:
+                        break
+                drawing_relations = []
+                for relation_id in relationship_ids:
+                    relation = relationship_context["relationships"].get(relation_id)
+                    if relation is None:
+                        status = "unsafe" if relationship_context["relationship_state"] != "valid" else "missing"
+                        drawing_relations.append({
+                            "relationship_id": relation_id if re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", relation_id) else None,
+                            "relationship_id_sha256": hashlib.sha256(relation_id.encode("utf-8")).hexdigest(),
+                            "relationship_type": "image", "mode": "unknown", "target_part": None, "status": status,
+                        })
+                    else:
+                        drawing_relations.append(_relationship_scope_entry(
+                            {**relation, "status": "external" if relation["mode"] == "external" else "unsupported"}, None,
+                        ))
+                bounded_drawing_relations, drawing_relations_truncated = _bounded_scope_list(drawing_relations)
+                target["scope"] = {
+                    "kind": "drawing_relationship", "status": "unknown",
+                    "relationship_part_sha256": relationship_context["relationship_sha256"],
+                    "relationships": bounded_drawing_relations, "section_references": [], "unknown_sections": [],
+                    "body_references": [],
+                    "reason": "scope_detail_limit_exceeded" if drawing_relations_truncated else "drawing_relationship_targets_not_extracted",
+                    "truncated": drawing_relations_truncated or drawing_relationship_overflow,
+                }
+            elif target["part_name"] in {"word/footnotes.xml", "word/endnotes.xml"}:
+                note_kind = "footnote" if target["part_name"] == "word/footnotes.xml" else "endnote"
+                bounded_note_references, note_references_truncated = _bounded_scope_list(relationship_context["note_references"][note_kind])
+                target["scope"] = {
+                    "kind": "note_reference", "status": "unknown",
+                    "relationship_part_sha256": relationship_context["relationship_sha256"],
+                    "relationships": [], "section_references": [], "unknown_sections": [],
+                    "body_references": bounded_note_references,
+                    "reason": "scope_detail_limit_exceeded" if note_references_truncated else "note_part_unparseable",
+                    "truncated": note_references_truncated or relationship_context["note_reference_overflow"],
+                }
+            elif target["kind"] == "auxiliary_part":
+                relation_types = {relation["relationship_type"] for relation in relationship_context["relationships"].values()
+                                  if relation["target_member"] is not None and aliases_by_member.get(relation["target_member"]) == target["part_name"] and
+                                  relation["relationship_type"] in {"header", "footer"}}
+                if len(relation_types) == 1:
+                    relation_type = next(iter(relation_types))
+                    cache_key = (target["part_name"], relation_type)
+                    if cache_key not in scope_cache:
+                        scope_cache[cache_key] = _section_scope_for_part(target["part_name"], relation_type,
+                                                                        relationship_context)
+                    target["scope"] = scope_cache[cache_key]
+                else:
+                    target["scope"] = {
+                        "kind": "unknown", "status": "unknown",
+                        "relationship_part_sha256": relationship_context["relationship_sha256"],
+                        "relationships": [], "section_references": [], "unknown_sections": [],
+                        "body_references": [], "reason": "auxiliary_part_scope_unknown", "truncated": False,
+                    }
+            else:
+                target["scope"] = {
+                    "kind": "unknown", "status": "unknown",
+                    "relationship_part_sha256": relationship_context["relationship_sha256"],
+                    "relationships": [], "section_references": [], "unknown_sections": [],
+                    "body_references": [], "reason": "auxiliary_part_scope_unknown", "truncated": False,
+                }
+            scope_bytes = len(json.dumps(target["scope"], ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            if scope_bytes_used + scope_bytes > MAX_DOCX_AUXILIARY_SCOPE_BYTES:
+                target["scope"] = {
+                    "kind": target["scope"]["kind"], "status": "unknown",
+                    "relationship_part_sha256": relationship_context["relationship_sha256"],
+                    "relationships": [], "section_references": [], "unknown_sections": [],
+                    "body_references": [], "reason": "scope_total_detail_limit_exceeded", "truncated": True,
+                }
+                scope_bytes = len(json.dumps(target["scope"], separators=(",", ":")).encode("utf-8"))
+            scope_bytes_used += scope_bytes
     return targets
 
 
@@ -493,14 +1086,14 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     heading = ""
     body_locators: dict[Any, str] = {}
     for locator, paragraph in _walk_docx_blocks(document):
+        locator["stable_ref"] = _docx_locator_text(locator)
+        body_locators[paragraph._p] = locator["stable_ref"]
         value = _final_text(paragraph._p)
         if not value.strip():
             continue
         paragraph_style = cached_style(paragraph._p.style, WD_STYLE_TYPE.PARAGRAPH)[0]
         if paragraph_style and ("Heading" in paragraph_style.name or "标题" in paragraph_style.name):
             heading = value
-        locator["stable_ref"] = _docx_locator_text(locator)
-        body_locators[paragraph._p] = locator["stable_ref"]
         uncertainty = ["docx_revision_effective_text_unresolved"] if unsupported_revision_count else None
         records.append(_record(
             len(records) + 1,

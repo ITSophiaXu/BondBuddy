@@ -36,6 +36,17 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def rewrite_docx(source_path: Path, target_path: Path, replacements: dict[str, bytes | None], additions: dict[str, bytes] | None = None) -> None:
+    with zipfile.ZipFile(source_path) as source, zipfile.ZipFile(target_path, "w", zipfile.ZIP_DEFLATED) as target:
+        for entry in source.infolist():
+            replacement = replacements.get(entry.filename, source.read(entry))
+            if replacement is not None:
+                target.writestr(entry, replacement)
+        for name, value in (additions or {}).items():
+            if name not in {entry.filename for entry in source.infolist()}:
+                target.writestr(name, value)
+
+
 class EventSink:
     """Consumes protocol lines as they are written, retaining only small test observations."""
 
@@ -140,6 +151,9 @@ class DocumentParserTests(unittest.TestCase):
         doc_properties.set("id", "77")
         doc_properties.set("descr", "Synthetic drawing alt text")
         drawing.append(doc_properties)
+        blip = OxmlElement("a:blip")
+        blip.set(qn("r:embed"), "rIdMissingImage")
+        drawing.append(blip)
         body._p.append(drawing)
         document.save(path)
 
@@ -151,10 +165,35 @@ class DocumentParserTests(unittest.TestCase):
           <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
             <w:endnote w:id="12"><w:p><w:r><w:t>Synthetic endnote-only secret</w:t></w:r></w:p></w:endnote>
           </w:endnotes>'''
+        for prefix, uri in {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        }.items():
+            ET.register_namespace(prefix, uri)
         rewritten = self.root / "auxiliary-with-notes.docx"
         with zipfile.ZipFile(path) as source, zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as target:
             for entry in source.infolist():
-                target.writestr(entry, source.read(entry))
+                raw = source.read(entry)
+                if entry.filename == "word/document.xml":
+                    root = ET.fromstring(raw)
+                    paragraph = root.find(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p")
+                    assert paragraph is not None
+                    for reference_tag, note_id in (("footnoteReference", "9"), ("endnoteReference", "12")):
+                        run = ET.SubElement(paragraph, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r")
+                        ET.SubElement(run, f"{{http://schemas.openxmlformats.org/wordprocessingml/2006/main}}{reference_tag}",
+                                      {"{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id": note_id})
+                    raw = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                elif entry.filename == "word/_rels/document.xml.rels":
+                    root = ET.fromstring(raw)
+                    relation_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+                    for note_kind in ("footnotes", "endnotes"):
+                        ET.SubElement(root, f"{{{relation_ns}}}Relationship", {
+                            "Id": f"rId{note_kind}",
+                            "Type": f"http://schemas.openxmlformats.org/officeDocument/2006/relationships/{note_kind}",
+                            "Target": f"{note_kind}.xml",
+                        })
+                    raw = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                target.writestr(entry, raw)
             target.writestr("word/footnotes.xml", footnotes)
             target.writestr("word/endnotes.xml", endnotes)
 
@@ -175,13 +214,19 @@ class DocumentParserTests(unittest.TestCase):
         header = next(item for item in targets if item["kind"] == "header")
         self.assertEqual(header["part_name"], "word/header1.xml")
         self.assertTrue(header["parseable"] and header["text_summary"]["has_text"])
+        self.assertEqual(header["scope"]["status"], "resolved")
+        self.assertEqual(header["scope"]["section_references"][0]["reference_type"], "default")
+        self.assertEqual(header["scope"]["relationships"][0]["target_part"], header["part_name"])
         self.assertNotIn("Synthetic issuer and year header", json.dumps(result, ensure_ascii=False))
         empty_footnote = next(item for item in targets if item["kind"] == "footnote")
         self.assertEqual(empty_footnote["locator"]["note_id"], "9")
         self.assertEqual(empty_footnote["parse_status"], "empty")
         self.assertEqual(empty_footnote["text_summary"]["character_count"], 0)
+        self.assertEqual(empty_footnote["scope"]["status"], "resolved")
+        self.assertEqual(empty_footnote["scope"]["body_references"][0]["stable_ref"], result["records"][0]["locator"]["stable_ref"])
         endnote = next(item for item in targets if item["kind"] == "endnote")
         self.assertTrue(endnote["text_summary"]["has_text"])
+        self.assertEqual(endnote["scope"]["status"], "resolved")
         self.assertNotIn("Synthetic endnote-only secret", json.dumps(result, ensure_ascii=False))
         drawing_target = next(item for item in targets if item["kind"] == "drawing")
         self.assertEqual(drawing_target["locator"]["parent_stable_ref"], result["records"][0]["locator"]["stable_ref"])
@@ -190,6 +235,154 @@ class DocumentParserTests(unittest.TestCase):
         self.assertFalse(drawing_target["parseable"])
         self.assertEqual(drawing_target["parse_status"], "not_extracted")
         self.assertIsNone(drawing_target["text_summary"])
+        self.assertEqual(drawing_target["scope"]["status"], "unknown")
+        self.assertEqual(drawing_target["scope"]["relationships"][0]["status"], "missing")
+
+    def test_docx_section_headers_bind_only_to_explicit_sections_and_keep_inheritance_unknown(self):
+        path = self.root / "section-scoped-headers.docx"
+        document = Document()
+        document.add_paragraph("Synthetic section one body")
+        document.sections[0].header.paragraphs[0].text = "Synthetic first section header"
+        second = document.add_section(1)
+        second.header.is_linked_to_previous = False
+        second.header.paragraphs[0].text = "Synthetic second section header"
+        document.add_paragraph("Synthetic section two body")
+        document.add_section(1)  # linked-to-previous is intentionally implicit
+        document.add_paragraph("Synthetic section three body")
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        headers = [target for target in result["document"]["auxiliary_targets"] if target["kind"] == "header" and
+                   target["text_summary"] is not None and target["text_summary"]["has_text"]]
+        self.assertEqual(len(headers), 2)
+        first = next(target for target in headers if target["scope"]["section_references"][0]["section_index"] == 1)
+        second_header = next(target for target in headers if target["scope"]["section_references"][0]["section_index"] == 2)
+        self.assertEqual(first["scope"]["status"], "partially_resolved")
+        self.assertEqual(second_header["scope"]["status"], "partially_resolved")
+        self.assertEqual(first["scope"]["unknown_sections"], [2, 3])
+        self.assertEqual(second_header["scope"]["unknown_sections"], [1, 3])
+        self.assertNotEqual(first["scope"]["relationships"][0]["target_part"],
+                            second_header["scope"]["relationships"][0]["target_part"])
+
+    def test_docx_relationships_fail_closed_for_unreferenced_missing_and_hostile_targets(self):
+        source_path = self.root / "relationship-source.docx"
+        document = Document()
+        document.add_paragraph("Synthetic relationship body")
+        document.sections[0].header.paragraphs[0].text = "Synthetic hidden header"
+        document.save(source_path)
+        with zipfile.ZipFile(source_path) as archive:
+            document_xml = archive.read("word/document.xml")
+            rels_xml = archive.read("word/_rels/document.xml.rels")
+        for prefix, uri in {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        }.items():
+            ET.register_namespace(prefix, uri)
+        document_root = ET.fromstring(document_xml)
+        for reference in document_root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}headerReference"):
+            reference.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"] = "rIdMissingHeader"
+        missing_rels = self.root / "missing-header-relation.docx"
+        rewrite_docx(source_path, missing_rels, {
+            "word/document.xml": ET.tostring(document_root, encoding="utf-8", xml_declaration=True),
+        })
+        missing_result = self.request(missing_rels, MEDIA_DOCX)
+        missing_target = next(item for item in missing_result["document"]["auxiliary_targets"]
+                              if item["parse_status"] == "missing_relationship")
+        self.assertEqual(missing_target["scope"]["section_references"][0]["relationship_id"], "rIdMissingHeader")
+        self.assertNotIn("Synthetic hidden header", json.dumps(missing_result, ensure_ascii=False))
+
+        relation_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+        hostile_root = ET.Element(f"{{{relation_ns}}}Relationships")
+        ET.SubElement(hostile_root, f"{{{relation_ns}}}Relationship", {
+            "Id": "rIdHeader", "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+            "Target": "https://secret.invalid/customer-path/header.xml", "TargetMode": "External",
+        })
+        hostile_path = self.root / "hostile-relationship-root.docx"
+        rewrite_docx(source_path, hostile_path, {
+            "word/_rels/document.xml.rels": ET.tostring(hostile_root, encoding="utf-8", xml_declaration=True),
+        })
+        hostile_result = self.request(hostile_path, MEDIA_DOCX)
+        external_relationship = next(item for item in hostile_result["document"]["auxiliary_targets"]
+                                     if item["parse_status"] == "external_relationship")
+        self.assertEqual(external_relationship["scope"]["status"], "unknown")
+        self.assertEqual(external_relationship["scope"]["relationships"][0]["status"], "external")
+        self.assertNotIn("secret.invalid", json.dumps(hostile_result, ensure_ascii=False))
+        self.assertNotIn("customer-path", json.dumps(hostile_result, ensure_ascii=False))
+
+        forged_root = ET.Element("forgedRelationships")
+        ET.SubElement(forged_root, "Relationship", {
+            "Id": "rIdHeader", "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+            "Target": "https://secret.invalid/customer-path/header.xml", "TargetMode": "External",
+        })
+        forged_path = self.root / "forged-relationship-root.docx"
+        rewrite_docx(source_path, forged_path, {
+            "word/_rels/document.xml.rels": ET.tostring(forged_root, encoding="utf-8", xml_declaration=True),
+        })
+        forged_result = self.request(forged_path, MEDIA_DOCX)
+        self.assertEqual(forged_result["status"], "failed")
+        self.assertNotIn("secret.invalid", json.dumps(forged_result, ensure_ascii=False))
+
+        spoofed_root = ET.fromstring(rels_xml)
+        for relationship in spoofed_root:
+            if relationship.get("Type", "").endswith("/header"):
+                relationship.set("Type", "https://attacker.invalid/relationships/header")
+        spoofed_path = self.root / "spoofed-relationship-type.docx"
+        rewrite_docx(source_path, spoofed_path, {
+            "word/_rels/document.xml.rels": ET.tostring(spoofed_root, encoding="utf-8", xml_declaration=True),
+        })
+        spoofed_result = self.request(spoofed_path, MEDIA_DOCX)
+        spoofed_header = next(item for item in spoofed_result["document"]["auxiliary_targets"] if item["kind"] == "header")
+        self.assertEqual(spoofed_header["scope"]["status"], "unknown")
+        self.assertEqual(spoofed_header["scope"]["reason"], "no_matching_internal_relationship")
+
+        unreferenced_root = ET.fromstring(document_xml)
+        for section_properties in unreferenced_root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sectPr"):
+            for reference in list(section_properties):
+                if reference.tag == "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}headerReference":
+                    section_properties.remove(reference)
+        unreferenced_path = self.root / "unreferenced-header-part.docx"
+        rewrite_docx(source_path, unreferenced_path, {
+            "word/document.xml": ET.tostring(unreferenced_root, encoding="utf-8", xml_declaration=True),
+        })
+        unreferenced_result = self.request(unreferenced_path, MEDIA_DOCX)
+        unreferenced_header = next(item for item in unreferenced_result["document"]["auxiliary_targets"] if item["kind"] == "header")
+        self.assertEqual(unreferenced_header["scope"]["status"], "unknown")
+        self.assertEqual(unreferenced_header["scope"]["reason"], "not_explicitly_referenced_by_section")
+
+    def test_docx_missing_note_relationship_or_target_does_not_confirm_body_reference(self):
+        source_path = self.root / "missing-note-source.docx"
+        document = Document()
+        paragraph = document.add_paragraph("Synthetic body with note reference")
+        reference_run = OxmlElement("w:r")
+        note_reference = OxmlElement("w:footnoteReference")
+        note_reference.set(qn("w:id"), "17")
+        reference_run.append(note_reference)
+        paragraph._p.append(reference_run)
+        document.save(source_path)
+        with zipfile.ZipFile(source_path) as archive:
+            document_xml = ET.fromstring(archive.read("word/document.xml"))
+            rels_root = ET.fromstring(archive.read("word/_rels/document.xml.rels"))
+        for prefix, uri in {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        }.items():
+            ET.register_namespace(prefix, uri)
+        relation_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+        # Preserve the required OPC root but leave the body note reference without
+        # a matching footnotes relationship. This remains a readable package.
+        for relationship in list(rels_root):
+            if relationship.get("Type", "").endswith("/footnotes"):
+                rels_root.remove(relationship)
+        missing_path = self.root / "missing-note-part.docx"
+        rewrite_docx(source_path, missing_path, {
+            "word/document.xml": ET.tostring(document_xml, encoding="utf-8", xml_declaration=True),
+            "word/_rels/document.xml.rels": ET.tostring(rels_root, encoding="utf-8", xml_declaration=True),
+        })
+        result = self.request(missing_path, MEDIA_DOCX)
+        missing_note = next(item for item in result["document"]["auxiliary_targets"] if item["kind"] == "footnote")
+        self.assertEqual(missing_note["parse_status"], "missing_reference_target")
+        self.assertEqual(missing_note["scope"]["status"], "unknown")
+        self.assertEqual(missing_note["scope"]["body_references"][0]["note_id"], "17")
+        self.assertEqual(missing_note["scope"]["body_references"][0]["stable_ref"], result["records"][0]["locator"]["stable_ref"])
 
     def test_docx_auxiliary_malicious_or_malformed_xml_stays_unresolved_without_expansion(self):
         document_path = self.root / "auxiliary-xml.docx"
