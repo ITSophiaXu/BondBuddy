@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { verifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import { listFactCandidates } from './fact-repository.js';
+import { createFactEvidenceContextSet } from './fact-evidence-context-repository.js';
 import { persistParseSnapshot } from './parse-evidence-repository.js';
 import { produceParsedFactCandidates, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION, type SemanticFactExtractionResult } from './fact-candidate-producer.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -161,6 +162,33 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       assert.notDeepEqual(first.inserted[0]!.candidate.value, first.inserted[1]!.candidate.value);
       assert.equal(first.needsReview[0]!.reason_code, 'UNSUPPORTED_ADJACENT_LABEL');
 
+      const evidenceContext = await createFactEvidenceContextSet({ pool }, {
+        ownerUserId: owner, projectId, candidateId: first.inserted[0]!.candidate.candidateId,
+      });
+      assert.equal(evidenceContext.replayed, true, 'producer creates the immutable context set with its extraction ledger');
+      assert.equal(evidenceContext.completenessStatus, 'complete');
+      assert.equal(evidenceContext.reviewable, true, 'complete evidence inventory is not a fact approval');
+      assert.equal(evidenceContext.manifest.material_version, 1);
+      assert.equal(evidenceContext.manifest.material_sha256, financeHash);
+      assert.equal(evidenceContext.manifest.snapshot_id, financeSnapshotId);
+      assert.equal(evidenceContext.manifest.parser_version, parserVersion);
+      assert.equal(evidenceContext.manifest.parse_response_sha256, financeEvidence.responseHash);
+      assert.deepEqual(evidenceContext.manifest.selected_body.map(item => item.record_id), [financeRecordId]);
+      const candidatesAfterContextCreation = await listFactCandidates({ pool }, ownerScope);
+      const unchangedCandidate = candidatesAfterContextCreation.find(item => item.candidate.candidateId === first.inserted[0]!.candidate.candidateId)!;
+      assert.equal(unchangedCandidate.provenance.status, 'extracted');
+      assert.equal(unchangedCandidate.candidate.confidence, first.inserted[0]!.candidate.confidence);
+      assert.deepEqual(unchangedCandidate.provenance.uncertainty, first.inserted[0]!.provenance.uncertainty);
+      const evidenceContextReplay = await createFactEvidenceContextSet({ pool }, {
+        ownerUserId: owner, projectId, candidateId: first.inserted[0]!.candidate.candidateId,
+      });
+      assert.equal(evidenceContextReplay.id, evidenceContext.id);
+      assert.equal(evidenceContextReplay.evidenceSetSha256, evidenceContext.evidenceSetSha256);
+      assert.equal(evidenceContextReplay.replayed, true);
+      await assert.rejects(createFactEvidenceContextSet({ pool }, {
+        ownerUserId: reviewerId, projectId, candidateId: first.inserted[0]!.candidate.candidateId,
+      }), /FACT_EVIDENCE_CONTEXT_SOURCE_NOT_FOUND/);
+
       const replay = await produceParsedFactCandidates({ pool, extractor }, context);
       assert.equal(replay.inserted.length, 0);
       assert.equal(replay.replayed.length, 2);
@@ -216,6 +244,8 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       const outbox = await pool.query(`SELECT event_type,payload FROM bb_outbox
         WHERE owner_user_id=$1 AND aggregate_id=$2 AND event_type='fact.extraction.completed'`, [owner, projectId]);
       assert.equal(outbox.rowCount, 4);
+      await assert.rejects(pool.query(`UPDATE bb_fact_evidence_context_sets SET reviewable=false WHERE id=$1`, [evidenceContext.id]),
+        /fact evidence context sets are immutable/);
       await assert.rejects(pool.query(`UPDATE bb_fact_extraction_runs SET result_sha256=$1 WHERE owner_user_id=$2 AND project_id=$3`,
         [sha('rewrite'), owner, projectId]), /fact extraction runs are immutable/);
 
