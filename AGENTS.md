@@ -68,7 +68,7 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 2026-09-27补充的[配套法规及跨标准比对](knowledge/exchange-bonds/verification/2026-09-27-companion/README.md)包含上交所适当性30条、公司法政府转载266条和证监会2024行业标准；[适用例外/验收场景](knowledge/exchange-bonds/drafts/sse-private/COMPANION-APPLICABILITY-20260927.md)给出24项预期及现有checker边界。576码结构相同但12处文字不同，不自动替代协会2023来源。#315/#317已合并，配套资产仍不代表正式规则发布；缺失来源和工程接入以关闭清单为准。
 
-用户2026-09-27明确调整：Word/WPS桌面兼容性验收不阻断#20，交#146独立跟踪，实际问题另开缺陷。#20按[更新后的关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)G1–G4验收；第一次内部工作稿测试、规则/内容验收、客户端兼容性与对外发布分别推进。缺局部配套法规只限制对应结论，受控测试入口的工程缺口由#19/#35明确，不能继续用全库补证或生成后验收循环阻止首次运行。
+用户2026-09-27明确调整：Word/WPS桌面兼容性验收不阻断#20，交#146独立跟踪，实际问题另开缺陷。#20按[更新后的关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)G1–G3验收；真实生成稿的规则/章节结果验收已移至[#332](https://github.com/ITSophiaXu/BondBuddy/issues/332)，不再阻断#20关闭；第一次内部工作稿测试、规则/内容验收、客户端兼容性与对外发布分别推进。缺局部配套法规只限制对应结论，受控测试入口的工程缺口由#19/#35明确，不能继续用全库补证或生成后验收循环阻止首次运行。
 
 ### 交易商协会知识索引
 
@@ -76,7 +76,7 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 ## Codex 接到 Issue 后
 
-#20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.6` / checker v4：25组受限检查和6组明确人工审核处理；原剩余20条已补14组检查与6组人工处理，全部仍为research_only。[31条已填文献核对记录](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-20260927.md)列出原文、效力观察、适用/例外与验收；人工专业签认/真实结果仍另行完成。#19的[A03九维到十二码交接](knowledge/exchange-bonds/drafts/sse-private/A03-FEATURE-MAPPING-20260927.md)明确多码、否定证据及单值/编码差距，不在业务checker复制公共契约。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。
+#20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.6` / checker v4：25组受限检查和6组明确人工审核处理；原剩余20条已补14组检查与6组人工处理，全部仍为research_only。[31条已填文献核对记录](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-20260927.md)列出原文、效力观察、适用/例外与验收；用户委托的[固定版本逐条业务决定](knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)已完成31/31，采用25条有限检查及6条人工处理；运行时正式登记另行完成，真实结果归#332。#19的[A03九维到十二码交接](knowledge/exchange-bonds/drafts/sse-private/A03-FEATURE-MAPPING-20260927.md)明确多码、否定证据及单值/编码差距，不在业务checker复制公共契约。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。
 
 1. 拉取最新 `develop`，为该 Issue 建独立分支与工作区；阅读本文件、完整 Issue（含前置任务和验收标准）及其关联规格。部分 Issue 链接仍指向旧默认分支，应以当前 `develop` 中的对应文件为准。
 2. 开始修改前明确交付物、涉及模块、公共契约、前置任务和验收证据。GitHub assignee 对 Issue 交付负责；涉及其他人的模块时，请该模块负责人 review。同一 Issue 的多个 Codex 会话由 assignee 协调，避免各自实现不同契约。
