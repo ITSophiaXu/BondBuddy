@@ -8,7 +8,7 @@
 - `apps/worker/src/historical-update.ts` 的 `prepareHistoricalUpdate` 读取 #13/#15/#76 的持久化记录，再调用 domain。默认使用现有 owner-scoped repository；第三个参数仅为组件测试的 repository 替身。无新 SQL 迁移、公开 API、状态机或枚举。
 - 调用方必须来自可信 worker，并先校验 run 的 owner、project、发行人及不可变 input revision/hash。不得将浏览器或模型提供的身份、材料角色、事实、证据、确认状态直接传入。
 - 上游语义遍历提供 bindings（指标/公式）、occurrences（全文引用）、columns（新增列）及 coverage（逐块保留/修改/缺证据的原因）。本模块校验并执行该清单，**不自动发现全篇所有财务引用，也不证明所有标为 retain 的章节在业务上都无需修改**。发布前仍须做独立覆盖与专业校验。
-- 财务事实目前限本发行人审计/财务报表/最近一期报表/附注材料中已持久化的可靠抽取；`extracted` 不升级为 `verified`。用户说明、参考企业事实、存疑 OCR、未知值、冲突均不能自动入稿。
+- 财务事实限本发行人审计/财务报表/最近一期报表/附注，以及本次精确锁定的历史稿有效正文中已持久化的可靠抽取。允许既有 `audited` 或 `external` 来源；`extracted` 不升级为 `verified`，材料角色不等于审计证明。用户说明、参考企业事实、存疑 OCR/公式缓存、未知值、未解决冲突均不能自动入稿。具体门槛见[财务来源接入验收记录](../../docs/acceptance/issue-31-financial-input-2026-09-27.md)。
 
 ## 不可变输入
 
@@ -33,7 +33,7 @@
 1. 同市场、同发行方式下，对确定的原文片段替换财务数值或报告期；日期来自事实的报告期，不自动使用今天或全局替换年份。
 2. 同一 binding 的封面/正文/表格引用共用数值与证据；任一引用失效，该 binding 的所有修改停止，避免只改一半。不同 binding 可以保留可审阅的部分计划，但只要存在 finding 就不是完整计划。
 3. 简单矩形表追加新一期列，旧列与未受影响文字原样保留。所有行须有同一插入列锚点，期间、口径、币种、会计基础一致；新截止日须晚于原稿最新报告期。合并单元格/空单元格/多段落等物理网格信息不足时拒绝或留给 Word 端严格校验。
-4. 同期重述必须显式给出 `replaces` 的旧事实身份和新 dataVersion，保留新旧证据，且原稿显示值须与旧事实一致。本切片要求旧审计事实可获得；缺失时留下待确认，不能猜定旧口径。
+4. 同期重述必须显式给出 `replaces` 的旧事实身份和新 dataVersion，保留新旧证据，且原稿显示值须与旧事实一致。旧事实须符合相同的来源、证据及可用性门槛；不要求将历史稿来源改标为审计事实。缺失时留下待确认，不能猜定旧口径。
 5. 定点有理数计算与单位换算：fact、sum、difference、ratio、growth_percent；计算过程中不舍入，显示时按指定精度四舍五入（中点远离零），支持千分位。除数为零、负/零增长基数、混合主体/合并与母公司/币种/会计基础、不可比期间等停止。
 6. 不生成无依据变动原因；source_text 只接受证据原文直接包含的文本。保留旧风险、保留意见和历史事件，不将“缺资料”改成“没有”。本切片没有任意自由改写、章节删除/重组或通用新增段落。
 
@@ -44,6 +44,7 @@
 - `source`、`baselineHash`、`planningInputHash`、`planHash` 用于核对源文件、有效基线、输入与修改计划；`context.inputHash` 仍是 run 输入 hash，两者含义不同。
 - `replacements` 记录原文 record/locator、before/after、原因、公式、旧重述身份、来源状态、候选 ID 与证据锚点。
 - `columns` 记录原表/插入列和逐行原文锚点、新值、原因、公式、来源状态与证据。`requiresPhysicalGridValidation=true` 强制 Word 端检查真实 OOXML 网格及合并单元格，不可只凭文本解析判断版式。
+- 采用 `external` 来源的实际修改保留 `UPDATE_NON_AUDIT_SOURCE_USED`，按原文记录去重，列出相关 binding。此 finding 使计划保持 `needs_confirmation`，不撤销有证据的修改；模型阶段转为中文 `reviewNotes`，说明未作为审计来源核验，供 Word 与摘要展示。候选原始来源仍保存在冻结事实/prompt，不新增公开枚举或更改计划 schema。
 - start/end 为 **JavaScript UTF-16 偏移**，相对于 effective quote；Python 实现必须转换索引单位，不能直接当作 Unicode code point 下标使用。不允许切开代理对。
 - `textPreview` 是完整有序的有效正文预览，保存未修改块及格式提示。它不含新增列的版面，也不是清洁版 DOCX；新增列须读取 `columns`。原稿内 run 格式提示只是定位信息，不能覆盖新文字的样式决策。
 - Word 端须重读并 hash 校验原件/有效基线，逐处复核 before，落实真实 `w:ins/w:del` 和必要 comments，验证接受全部=清洁版、拒绝全部=有效基线，并通过 #146 WPS 专业验收及 #17 交付 gate。不得把预览全文重写成一个段落然后命名“修订版”。

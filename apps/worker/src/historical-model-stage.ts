@@ -24,7 +24,7 @@ export interface HistoricalModelStageOptions {
 }
 const MAX_PROMPT_BYTES = 240_000;
 const MAX_CHUNKS = 500;
-const TEMPLATE = 'historical-sse-private-v2';
+const TEMPLATE = 'historical-sse-private-v3';
 
 /** Keep complete simple tables together. Oversize tables remain visible and require manual structure handling. */
 export function historicalChunks(records: readonly DocumentParseRecord[]): DocumentParseRecord[][] {
@@ -63,6 +63,8 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
     rule_guidance: input.ruleGuidance,
     original_blocks: records.map(r => ({ record_id: r.record_id, quote: r.literal_quote, locator: r.locator, uncertainty: r.uncertainty })),
     candidate_facts: facts.map(f => ({ candidate_id: f.candidate.candidateId, identity: f.candidate.identity, value: f.candidate.value,
+      source_kind: f.candidate.source.kind, material_id: f.provenance.materialId,
+      material_role: input.locked.materials.find(m => m.materialId === f.provenance.materialId && m.materialVersion === f.provenance.materialVersion)?.role,
       status: f.provenance.status, evidence: f.provenance.evidence })),
     unavailable_candidate_count: input.facts.length - facts.length,
     fact_decisions: input.decisions.map(d => ({ identity: d.identity, version: d.decision?.version ?? 0,
@@ -74,6 +76,7 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
     '逐一检查 original_blocks，每个 record_id 必须且只能返回一次。仅返回符合给定 schema 的 JSON。',
     '保持原文、有效历史事实、历史事件日期、未受影响的旧年数据、审计意见及风险。禁止全文删除后重写。',
     '用户补充是写作意图和 user_asserted 信息，不是已核验财务事实。局部缺材料、发行条款不确定或无法证实变动原因时，使用 needs_evidence 并用中文写清缺什么及待人工确认，不编造。',
+    'source_kind=external 可为本发行人历史稿或未作为审计来源核验的财务材料，extracted 只表示有依据提取。不得把它称为已审计、会计师确认，也不能把旧期间审计意见移用于新一期；不明审计范围须标 needs_evidence。公式缓存或证据存疑值不会作为可用候选提供，不得从原文猜数绕过。',
     '每处改动只提出原文 UTF-16 start/end、原文 before、候选事实 ID、计算方式和展示格式。不输出 after，不创建事实、身份、证据、确认状态。数值由程序确定性计算。',
     'new_period 仅用于实际目标报告期的更新；旧事件日期不可随财务截止日机械替换。restatement 必须给出旧候选 replaces_candidate_id，其他修改填 null。',
     '同一数字在正文、三表、期间和指标中的引用保持一致；合并/母公司、币种、单位、数据版本、可比期间不可混用。没有适用的可靠候选则 needs_evidence。',
@@ -143,7 +146,12 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       if (!plan.replacements.length && !plan.columns.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' };
       const reviewNotes = inventory.coverage.filter(c => c.disposition === 'needs_evidence').map(c => ({ recordId: c.recordId, message: `待人工确认：${c.reason}` }));
       for (const finding of plan.findings) for (const recordId of finding.recordIds) {
-        if (!reviewNotes.some(n => n.recordId === recordId)) reviewNotes.push({ recordId, message: `待人工确认：${finding.code}` });
+        if (finding.code === 'UPDATE_NON_AUDIT_SOURCE_USED') {
+          const message = '本处采用上传的财务材料或本发行人历史稿中的提取值，未作为审计来源核验；请核对相关审计范围与说明，不得表述为审计机构已确认。';
+          const note = reviewNotes.find(n => n.recordId === recordId);
+          if (note) note.message += `；${message}`;
+          else reviewNotes.push({ recordId, message: `待人工确认：${message}` });
+        } else if (!reviewNotes.some(n => n.recordId === recordId)) reviewNotes.push({ recordId, message: `待人工确认：${finding.code}` });
       }
       const { planHash: _originalPlanHash, ...base } = plan;
       const content = { ...base, reviewNotes, generation: { version: HISTORICAL_GENERATION_VERSION,

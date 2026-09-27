@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-25T13:21:46.916Z",
+  "assembled_at": "2026-09-27T07:38:26.864Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -18,7 +18,7 @@
     {
       "file": "02-注册登录与账号.md",
       "title": "02 注册登录与账号",
-      "sha256": "5fccbf8885c0ed874674d43221ce8617d0220a869924e4bcab3d1e8a2dfe1df5"
+      "sha256": "53f0e7dc74c64d626703d40c83d44254aa3e6732c0a71db8ff309860a91bdd49"
     },
     {
       "file": "03-首页与项目管理.md",
@@ -33,7 +33,7 @@
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "38bbe0bdcdca0761780a690e8a8cd9b303a8ae7791e31a383828518a6c64b756"
+      "sha256": "f42c97aaf07bff2b23f0f3d4cfd9fdae0c0dd463fc843c880d8e46828aaa8bb9"
     },
     {
       "file": "06-复核募集书.md",
@@ -83,17 +83,17 @@
     {
       "file": "15-后台规则模板及数据接入.md",
       "title": "15 后台规则、模板及数据接入",
-      "sha256": "1d2761ff2cffc79f2120ee26e76604e707976acd6c0b29d8d5c011f7d77c722f"
+      "sha256": "2a0a62dc570d01a2e3bcb52c8f25a1b46a3352100e3baf3d667d570391579a9e"
     },
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "329f470231d1d59c26039b6f7e7aba241e2366c4b30f412ccd2a07aefb0d3d0f"
+      "sha256": "11d7498412caa480da0b1e7c7cd420859c15d3640ef0f7edf35214fd528895a5"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "ef74451f748ff61a3ec79b86c92db94aa429ef4de2faee28420d58dcd2697e1a"
+      "sha256": "9fe398ca6912ecad163f0746879977accb35a13cace06b9e5ce5234b6d10c27d"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -105,52 +105,52 @@
     {
       "relative_path": "product-prototype/product-specs/references/BondBuddy详细积分方案-v1.1-来源快照.md",
       "sha256": "76ff33f66847742d330189708ebca104d5e55e958f0546795a5ce33a56482066",
-      "observed_mtime": "2026-09-25T13:17:38.815Z"
+      "observed_mtime": "2026-09-27T07:20:22.369Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/积分参数-v1.1-来源快照.json",
       "sha256": "db50cd1335c5dd6112e661e514ae25c31b5af84a94edf6e22e4768308123b787",
-      "observed_mtime": "2026-09-25T13:17:38.817Z"
+      "observed_mtime": "2026-09-27T07:20:22.371Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/本地规格来源指纹-v1.1.json",
       "sha256": "51b69c0545b1b9ce4a2ea7687827a9ce20a36587998df65c5d0458977c4b3d01",
-      "observed_mtime": "2026-09-25T13:17:38.816Z"
+      "observed_mtime": "2026-09-27T07:20:22.370Z"
     },
     {
       "relative_path": "product-prototype/package.json",
       "sha256": "979fe857fe0cf376f5acf182b52747b21c6e1a7989e2dff310a9d4ea7340635c",
-      "observed_mtime": "2026-09-25T13:17:38.724Z"
+      "observed_mtime": "2026-09-27T07:20:22.262Z"
     },
     {
       "relative_path": "product-prototype/server.mjs",
       "sha256": "be63308d49de645458491314aa3b98f380041acb88edda668f48c79371a25a50",
-      "observed_mtime": "2026-09-25T13:17:38.869Z"
+      "observed_mtime": "2026-09-27T07:20:22.422Z"
     },
     {
       "relative_path": "product-prototype/docs/PROJECT-WORKSPACE.md",
       "sha256": "5a50f4c1bade760d6d44b5613695073c24bb724ace804b231e971bb67f391463",
-      "observed_mtime": "2026-09-25T13:17:38.651Z"
+      "observed_mtime": "2026-09-27T07:20:22.179Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-pricing.mjs",
       "sha256": "f52ed2bbde736786f9953e494bbf645de90d7c88b9c0805f45cfae767ac5bc9b",
-      "observed_mtime": "2026-09-25T13:17:38.710Z"
+      "observed_mtime": "2026-09-27T07:20:22.248Z"
     },
     {
       "relative_path": "product-prototype/public/markets.js",
       "sha256": "3e59b309472e0c6707b539988ff27b5468abd05b4ceb5787bc20a848f77479a9",
-      "observed_mtime": "2026-09-25T13:17:38.830Z"
+      "observed_mtime": "2026-09-27T07:20:22.384Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-wallet.mjs",
       "sha256": "4e6cd1564665476ae5a175a7cf10855abb7a8f561b9fc2613ff938d4b8561b21",
-      "observed_mtime": "2026-09-25T13:17:38.712Z"
+      "observed_mtime": "2026-09-27T07:20:22.249Z"
     },
     {
       "relative_path": "product-prototype/public/credit-account.js",
       "sha256": "b4ddbe0736d40e81a6b1b39c3035f4d5b2c0056bfb37cd770eb5cf93fa4b7d66",
-      "observed_mtime": "2026-09-25T13:17:38.823Z"
+      "observed_mtime": "2026-09-27T07:20:22.377Z"
     }
   ],
   "acceptance_ids": [
@@ -265,6 +265,7 @@
     "BILL-A08",
     "BILL-A09",
     "BILL-A10",
+    "RULE-A03",
     "DATA-A01",
     "DATA-A02",
     "DATA-A03",
@@ -278,6 +279,12 @@
     "LIB-A06",
     "LIB-A07",
     "RULE-A01",
+    "RULE-A02",
+    "RULE-A04",
+    "RULE-A05",
+    "RULE-A06",
+    "RULE-A07",
+    "RULE-A08",
     "LOG-A01",
     "LOG-A02",
     "LOG-A03",
@@ -337,9 +344,9 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 58475,
-    "local_links_checked": 130,
-    "tables_checked": 129,
+    "han_characters": 63409,
+    "local_links_checked": 188,
+    "tables_checked": 133,
     "json_examples_checked": 4,
     "errors": []
   },

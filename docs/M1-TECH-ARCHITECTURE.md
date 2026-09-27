@@ -441,6 +441,12 @@ The internal [v4 input example](../packages/domain/examples/sse-private-check-in
 
 Word/WPS桌面兼容验收不阻断#20关闭，由#146独立跟踪，发现实际缺陷后另开issue。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
 
+### 2026-09-27 #31 事实来源与可用性分离
+
+`historical-fact-policy.ts`统一worker对锁定财务材料及唯一历史基线的准入与证据投影，`isUsableHistoricalFact`统一prompt筛选和domain计算的可用条件。在既有audited/external枚举内接收可靠external/extracted数据，不增加公开DTO、迁移或run状态。历史证据必须精确匹配有效基线记录、位置、原文、hash及解析版本；候选全集与决策版本仍冻结，不能隐藏竞争候选或读取新版本来解除旧任务疑义。
+
+实际采用external的修改按原文位置产生`UPDATE_NON_AUDIT_SOURCE_USED`及中文reviewNotes，保留修改与来源待核说明。source kind保留在候选及私有prompt，extracted不会变成审计机构确认；公式缓存、user_asserted、unknown、uncertain及未解冲突不因此变得可用。prompt模板升至historical-sse-private-v3，旧绑定不能静默回放。组件验证和真实样本状态分列在[接入记录](acceptance/issue-31-financial-input-2026-09-27.md)；[任丘九月核对交接](acceptance/issue-15-rq202509-review-handoff-2026-09-27.md)不含客户金额，脚本生成的本地明细不入Git。#15仍负责真实可用候选及审核路径，#19/#35仍负责内部授权运行接入；本切片不替代这些依赖。
+
 首次内部工作稿测试需要固定指定账号、已授权样本、输入/规则来源版本和日志，并将局部缺材料/配套未核状态传到结果；不应等待全库正文核验、同一次成果的产出后验收或WPS矩阵。当前`rule-applicability-context`先检查整体批准，再检查已发布字典；`rule-pack-registry`生产入口要求真实生产release和完整已核coverage。#35最新暂停证明整体审核未通过，不证明缺少某一配套PDF本身直接使模型失败。
 
 如果唯一运行入口将上述完整生产发布前提同时施加于首次内部生成，#19/#35负责人需在同一版本/权限契约下提供可执行的受控测试切片并回链PR，保留未核提示、审计和生产隔离；不得靠补假签认、批量改enabled或弱化正式用户权限解除暂停。具体公共契约/迁移/loader改动由受影响负责人协同实现，本次仅记录产品边界，未部署或新增测试入口。

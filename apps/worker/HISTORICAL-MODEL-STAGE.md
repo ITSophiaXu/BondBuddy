@@ -25,15 +25,15 @@ Word 端在原文锚点上执行 replacements/columns；将 reviewNotes 和 find
 
 | 原因/交接 | 当前状态及负责人 |
 | --- | --- |
-| `rule_pack_pin_missing` / 正式规则不可用 | #19 / loooo139：registry及API pin持久化已实现；整体批准loader和真实正式发布仍缺。本轮读取实际camelCase pin并在生成/恢复前再验证，不伪造审核或绕过gate。 |
+| `rule_pack_pin_missing` / 规则适用性未批准 | #19 / loooo139：registry、API pin、整体审核/撤回与loader代码已有；已发布字典、真实项目整体审核及正式发布仍不能用合成测试代替。#35 当前观测为 `rule_applicability_overall_review_required`。首次内部授权测试的执行接缝需单独交付，不伪造审核或绕过生产gate。 |
 | `historical_fact_inventory_missing` | #15 / loooo139：需要从本次已锁定材料生成候选并落库；通用解析记录/上传样本不等于已有财务事实。 |
 | `historical_issuer_identity_not_bound` | #15 与 #17 输入冻结的交接：服务端须在计算 input hash 之前，把经来源核对的本发行人 FactIdentity.entityId 写入私有 manifest 的 `issuer_entity_id`。API现已通过已核对主体绑定生成该字段，须保持与财务候选identity一致。不接受浏览器填写，不取候选中的第一家公司，不把子公司当发行人。需与 Xuefeng/平台对齐后接入，缺失时阶段明确暂停。 |
 | `historical_profile_snapshot_missing` / `historical_structure_mapping_required` | #76 / loooo139：历史稿识别、有效基线/更正需提供对应版本；本切片不承诺跨市场/方式或扫描历史稿重建。 |
 | Word真实成果验收 | #34 / ChrisLiu95：writer已安装，仍须用实际模型计划完成修订版/清洁版交付检查和WPS实测。 |
 | 预发真实运行 | #35 / muhualing 协同：在 Linux 目标环境使用既有数据库/Blob/contained Codex adapter 配置，更新并重启 worker，记录 run ID、prompt/attempt/usage、修订稿及检查结果。仅合并代码不会部署。 |
-| 真实样本解析性能 | #13/#15 / 解析负责人协同：`rq-202509-01` 在本机直接调用现有 Python parser 超过 300 秒。需在 Linux 预发复测/定位；不能据此宣称实际样本已经进入模型阶段。 |
+| 真实样本有效基线/候选状态 | #13/#15 / loooo139：早期 Windows 300秒超时已有后续 Linux 约3–5秒解析证据，不继续列为通用性能阻塞。#314 实际16条年度候选仍是 `external/needs_confirmation`，且 `DOCX_DRAWINGS/DOCX_AUXILIARY_PARTS` 警告尚会影响基线入口；需按具体证据处理，不能批量清空。 |
 
-**API的issuer binding和规则pin接缝已有实现；整体批准loader、正式规则发布和真实财务/模型/Word验收仍不能由组件测试替代。** #77 不阻塞有历史稿。首个授权联调样本是 `rq-202509`：目标上交所普通私募；2023、2024年度及2025年1—9月。
+**API的issuer binding、规则pin与整体审核loader已有实现；实际审核/发布、内部授权测试入口及真实财务/模型/Word验收仍不能由组件测试替代。** #77 不阻塞有历史稿。首个授权联调样本是 `rq-202509`：目标上交所普通私募；2023、2024年度及2025年1—9月。Word/WPS桌面兼容性由#146独立跟踪，不作为#20关闭或生成同一份首次工作稿的前置。
 
 ## 验证方法
 
@@ -61,3 +61,13 @@ BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 BONDBUDDY_TEST_PYTHON=python3 node --test apps/
 正式规则缺失/撤回转 `capability_not_ready`，内容或pin不一致不能选最新版本重试。正文超过180,000字节或完整prompt超过240,000字节时明确暂停，不截断。模板升为 `historical-sse-private-v2`，旧v1绑定回放会在供应商调用前报告 `UPDATE_GENERATION_INPUT_CHANGED`；不要删旧checkpoint/attempt冒充重试，保留原任务记录并按既有流程处理新run。
 
 因表达式暂不能完成的法律条款改写/章节重组仍须标needs_evidence及待人工确认，不以retain隐去。新增研究输入与#15/#19交接见[工程记录](../../docs/acceptance/issue-20-rule-integration-2026-09-27.md)。
+
+## 2026-09-27 #31财务来源接入
+
+`historical-fact-policy.ts`统一worker的材料/证据映射；domain导出`isUsableHistoricalFact`供prompt候选筛选和确定性规划共用。锁定审计/财务/中期报表/附注及唯一历史基线的候选全部保留在冻结清单中，包括不确定候选；仅可用组进入模型。历史事实证据另逐项匹配有效基线的record、材料/version/hash、quote、locator及extractor version，不能读取已删除旧修订或另一个解析版本。
+
+`audited/external`与`extracted/verified`是两条独立维度：有完整证据、已知值、足够置信度且无uncertainty的`external/extracted`可以支持工作稿修改，既有状态和审计范围不变。公式缓存、未核OCR、用户口述、参考企业材料和假verified不可进入；同一身份有存疑竞争候选时不隐藏它来提供干净候选。冲突仍需精确版本决策，选中不提升候选状态。数据的合并/母公司、期间、单位/币种、会计基础和版本继续由原身份约束。
+
+prompt提供`source_kind/material_id/material_role`并禁止冒称审计机构确认；实际采用external的每个原文位置（包括插列）保留来源待核说明。模板升为`historical-sse-private-v3`，已有v1/v2模型绑定不可静默复用，发现绑定变化在新增供应商意图前报告`UPDATE_GENERATION_INPUT_CHANGED`；保留旧run/attempt/checkpoint并按新执行流程处理。
+
+本切片不会清除#314的16条年度uncertainty，不新增#316的8项当期公式候选，不部署、不调用真实供应商。详见[验收与剩余依赖](../../docs/acceptance/issue-31-financial-input-2026-09-27.md)；[8项业务核对交接](../../docs/acceptance/issue-15-rq202509-review-handoff-2026-09-27.md)用于后续逐项确认，不是已签认结果。

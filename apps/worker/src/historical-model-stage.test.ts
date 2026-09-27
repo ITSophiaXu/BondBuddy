@@ -94,6 +94,89 @@ test('has-history stage uses persisted inputs and exact facts to update dates, t
   assert.ok(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]);
 });
 
+test('external financial input survives model planning and retains one visible audit qualification per changed record', async () => {
+  const s = fixture();
+  s.facts[0] = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate,
+    source: { ...s.facts[0]!.candidate.source, kind: 'external' } } };
+  s.manifest.materials[1]!.role = 'interimFinancial';
+  const before = structuredClone(s.facts);
+  const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+  assert.equal(offerableFacts(input).length, 1);
+  assert.match(historicalPrompt(input, s.snapshot.response.records, 0, 1), /"source_kind":"external"/);
+  assert.match(historicalPrompt(input, s.snapshot.response.records, 0, 1), /"material_role":"interimFinancial"/);
+  const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+  assert.equal(result.kind, 'done');
+  if (result.kind !== 'done') return;
+  const plan = result.value as HistoricalGenerationPlan;
+  assert.equal(plan.replacements.length, 3);
+  assert.equal(plan.columns.length, 1);
+  assert.equal(plan.reviewNotes.length, 4);
+  assert.equal(new Set(plan.reviewNotes.map(n => n.recordId)).size, 4);
+  assert.ok(plan.reviewNotes.every(n => /未作为审计来源核验/.test(n.message) && n.message.length <= 512));
+  assert.ok(plan.replacements.every(c => c.sourceStatuses.every(status => status === 'extracted')));
+  assert.deepEqual(s.facts, before);
+});
+
+test('exact effective historical baseline facts are frozen as external without using deleted or changed source anchors', async () => {
+  for (const mutation of ['none', 'deleted_record', 'quote', 'parser', 'locator', 'hash'] as const) {
+    const s = fixture();
+    const old = s.source.facts[1]!;
+    const record = s.snapshot.response.records.find(r => r.record_id === 'p2')!;
+    const anchor = { ...s.facts[0]!.provenance.evidence[0]!, evidence_id: record.record_id,
+      material_id: record.material_id, material_version: record.material_version, content_hash: record.content_hash,
+      locator_type: record.locator_type, locator: record.locator, literal_quote: record.literal_quote,
+      extraction_version: record.extractor_version };
+    if (mutation === 'deleted_record') anchor.evidence_id = 'deleted-old-revision-record';
+    if (mutation === 'quote') anchor.literal_quote = 'changed quote';
+    if (mutation === 'parser') anchor.extraction_version = 'other-parser';
+    if (mutation === 'locator') anchor.locator = { path: [{ paragraph: 999 }] };
+    if (mutation === 'hash') anchor.content_hash = '9'.repeat(64);
+    const previous: StoredFactCandidate = { candidate: { ...old.candidate, source: { ...old.candidate.source, kind: 'external' } },
+      provenance: { ...s.facts[0]!.provenance, materialId: record.material_id, materialVersion: record.material_version,
+        evidence: [anchor], status: 'extracted' } };
+    s.facts.push(previous);
+    if (mutation === 'hash') {
+      await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /UPDATE_FACT_MATERIAL_MISMATCH/);
+      continue;
+    }
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.facts.length, 2, 'all supported-material candidates, including uncertainty, stay frozen');
+    assert.equal(offerableFacts(input).some(f => f.candidate.candidateId === previous.candidate.candidateId), mutation === 'none', mutation);
+  }
+});
+
+for (const mutation of ['formula_cache', 'evidence_uncertain', 'foreign_owner', 'reference_role', 'unlocked_hash', 'missing_evidence', 'false_verified', 'user_asserted'] as const) {
+  test(`external model inputs cannot bypass ${mutation}`, async () => {
+    const s = fixture();
+    s.facts[0] = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate,
+      source: { ...s.facts[0]!.candidate.source, kind: 'external' } } };
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    const fact = s.facts[0]!;
+    if (mutation === 'formula_cache') Object.assign(fact.provenance, { uncertainty: ['XLSX_FORMULA_CACHE_UNVERIFIED'] });
+    if (mutation === 'evidence_uncertain') Object.assign(fact.provenance.evidence[0]!, { uncertainty: ['OCR_UNCERTAIN'] });
+    if (mutation === 'foreign_owner') Object.assign(fact.candidate.identity, { accountId: 'another-owner' });
+    if (mutation === 'reference_role') input.locked.materials = input.locked.materials.map(m => m.role === 'audit' ? { ...m, role: 'reference' } : m);
+    if (mutation === 'unlocked_hash') Object.assign(fact.provenance.evidence[0]!, { content_hash: '9'.repeat(64) });
+    if (mutation === 'missing_evidence') Object.assign(fact.provenance, { evidence: [] });
+    if (mutation === 'false_verified') Object.assign(fact.provenance, { status: 'verified' });
+    if (mutation === 'user_asserted') {
+      Object.assign(fact.candidate.source, { kind: 'user_statement' });
+      Object.assign(fact.provenance, { status: 'user_asserted' });
+    }
+    assert.equal(offerableFacts(input).length, 0);
+  });
+}
+
+test('an external uncertain competitor cannot be hidden behind a clean fact', async () => {
+  const s = fixture();
+  const uncertain = structuredClone(s.facts[0]!);
+  Object.assign(uncertain.candidate, { candidateId: 'external-uncertain',
+    source: { ...uncertain.candidate.source, kind: 'external' }, uncertainty: 'EXTERNAL_LINK_UNVERIFIED' });
+  Object.assign(uncertain.provenance, { status: 'needs_confirmation', uncertainty: ['EXTERNAL_LINK_UNVERIFIED'] });
+  s.facts.push(uncertain);
+  assert.equal(offerableFacts(await loadHistoricalGenerationInput(s.ctx, s.readers)).length, 0);
+});
+
 test('local missing evidence leaves a visible review note and still produces evidence-backed changes', async () => {
   const s = fixture(); s.answer.blocks[2]!.disposition = 'needs_evidence'; s.answer.blocks[2]!.reason = '请补充诉讼最新进展与收入变动原因';
   const result = await historicalModelGenerationStage(s.options).run(s.ctx);
