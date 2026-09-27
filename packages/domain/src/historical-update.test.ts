@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { isUsableHistoricalFact, planHistoricalUpdate, updateContentHash, type HistoricalUpdateInput, type UpdateFact } from './historical-update.js';
 import * as arithmetic from './update-arithmetic.js';
+import { applyHistoricalProfileCorrection } from './historical-profile-correction.js';
 
 function fixture(): HistoricalUpdateInput {
   return JSON.parse(readFileSync(new URL('../../../tests/fixtures/historical-update/input.json', import.meta.url), 'utf8'));
@@ -25,6 +26,53 @@ function numericOutput(input: HistoricalUpdateInput): string {
   assert.equal(result.status, 'planned', JSON.stringify(result.findings));
   return result.replacements[0]!.after;
 }
+
+function correctedDraft(): HistoricalUpdateInput {
+  const input = fixture();
+  input.context.baselineUse = 'non_production_working_draft';
+  const prior = input.baseline.profile;
+  input.baseline.profile = applyHistoricalProfileCorrection(prior, {
+    profile_version: prior.profile_version, reason: 'Synthetic pending correction', evidence_refs: ['p1'], source_market: 'sse', source_offering: 'private',
+    reporting_periods: prior.reporting_periods.map(p => ({ start: p.start!, end: p.end!, period_kind: p.period_kind!, scope: p.scope!, evidence_refs: ['p1'] })),
+  }, { materialId: prior.material_id, materialVersion: prior.material_version, profileVersion: prior.profile_version + 1 });
+  return input;
+}
+
+test('evidence-bound API correction enables only pending test work and never upgrades original status', () => {
+  const input = correctedDraft(); const before = structuredClone(input.baseline.profile);
+  const result = planHistoricalUpdate(input);
+  assert.equal(result.replacements.length, 3); assert.equal(result.columns.length, 1);
+  assert.equal(result.status, 'needs_confirmation'); assert.equal(result.deliverable, false);
+  assert.deepEqual(result.sourceProfile, before); assert.equal(result.sourceProfile.source_market.status, 'user_asserted');
+  assert.ok(result.findings.some(f => f.code === 'UPDATE_PROFILE_USER_ASSERTED_PENDING' && f.message?.includes('扣费')));
+  delete input.context.baselineUse;
+  assert.equal(planHistoricalUpdate(input).replacements.length, 0);
+});
+
+for (const scenario of ['unknown_uncertainty', 'missing_anchor', 'uncertain_anchor', 'foreign_anchor', 'invalid_date', 'cross_market'] as const)
+test(`test correction still blocks ${scenario}`, () => {
+  const input = correctedDraft();
+  if (scenario === 'unknown_uncertainty') input.baseline.profile.source_market.uncertainty.push('BODY_CONFLICT');
+  if (scenario === 'missing_anchor') input.baseline.profile.source_market.provenance.evidence_refs = [];
+  if (scenario === 'uncertain_anchor') { input.baseline.parseStatus = 'needs_confirmation'; input.baseline.blocks[0]!.uncertainty = ['BODY_CONFLICT']; }
+  if (scenario === 'foreign_anchor') input.baseline.profile.source_market.provenance.evidence_refs = ['foreign'];
+  if (scenario === 'invalid_date') input.baseline.profile.reporting_periods[0]!.end = '2025-06-31';
+  if (scenario === 'cross_market') input.context.targetMarket = 'szse';
+  assert.equal(planHistoricalUpdate(input).replacements.length, 0);
+});
+
+test('test-only auxiliary checklist retains full targets and pending coverage without global blocking', () => {
+  const input = fixture(); input.context.baselineUse = 'non_production_working_draft';
+  input.baseline.parseStatus = 'needs_confirmation'; input.baseline.warnings = ['DOCX_AUXILIARY_PARTS'];
+  input.baseline.localizedWarnings = [{ code: 'DOCX_AUXILIARY_PARTS', recordIds: ['p1'], message: '页眉待核', targets: [{ part_name: 'word/header1.xml' }] }];
+  const result = planHistoricalUpdate(input);
+  assert.equal(result.replacements.length, 3); assert.equal(result.coverage.pending, 1);
+  assert.deepEqual(result.findings[0]!.auxiliaryTargets, input.baseline.localizedWarnings[0]!.targets);
+  input.baseline.warnings = ['DOCX_AUXILIARY_PARTS', 'UNKNOWN_WARNING'];
+  assert.equal(planHistoricalUpdate(input).replacements.length, 0);
+  input.baseline.warnings = ['DOCX_AUXILIARY_PARTS']; delete input.context.baselineUse;
+  assert.equal(planHistoricalUpdate(input).replacements.length, 0);
+});
 
 test('synthetic annual update preserves old years, risks, audit opinion, formatting and source immutability', () => {
   const input = fixture(); const before = structuredClone(input);
