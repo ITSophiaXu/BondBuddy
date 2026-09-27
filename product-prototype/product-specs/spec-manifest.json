@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-27T14:02:21.202Z",
+  "assembled_at": "2026-09-27T14:08:37.191Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -93,7 +93,7 @@
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "4863b08af0d3f92242a19980d269eb958856af1792b5b50b92757c2a0c02b452"
+      "sha256": "d97d5c1385fd11c1e8b88767a0c3d011ee3d9f1592c8471320e42bdb827cfbad"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -347,7 +347,7 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 65150,
+    "han_characters": 65267,
     "local_links_checked": 208,
     "tables_checked": 133,
     "json_examples_checked": 4,

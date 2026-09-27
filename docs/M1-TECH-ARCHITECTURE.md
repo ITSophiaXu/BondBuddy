@@ -478,3 +478,5 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 ### 2026-09-27 #20 内部测试规则模型消费者
 
 [部署与接入记录](acceptance/issue-20-test-rule-runtime-2026-09-27.md)定义 #325→#326→历史稿模型的接线：三份精确 JSON 打包并在构建时验 hash；非生产消费者重验输入、身份、有效 grant 和 #19 selector，保留研究规则/完整引用/覆盖项，不写 production release。测试 prompt 使用独立模板及绑定；按完整规则/事实后的剩余 UTF-8 字节分段。此实现不替代 #19 授权样本 membership/runtime 注入、#326 公共覆盖项修订及 #35 目标机真实运行。
+
+#331项目执行页兼容测试终态恢复：只有test_completed且non_production_test显示内部测试稿入口与未核用途提示，终态停止轮询；普通execute仍不携带测试授权。此处复用#326 DTO，不新增通道或权限；实际成果读取/下载仍由API门禁及成果页复核。#330 DB membership和#334固定业务记录已合入，不等于runtime注入或正式发布已完成。

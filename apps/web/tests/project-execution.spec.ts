@@ -78,6 +78,7 @@ async function setup(page: Page, state = fixture()) {
       if (!run) {
         run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
           input_revision: body.input_revision, input_hash: body.input_hash, state: 'paused', stage: 'capability_not_ready', event_cursor: 2,
+          channel: 'production', test_grant_id: null, uncovered_items: [],
           billing_mode: 'platform_trial', reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
         state.runs.set(body.execution_request_id, run);
       }
@@ -155,6 +156,33 @@ test('lost execute response and browser reload retain the same idempotency key',
   await expect.poll(() => state.executes.length).toBe(3);
   expect(state.executes[2]).toEqual(state.executes[0]); expect(state.runs.size).toBe(1);
 });
+
+for (const channel of ['non_production_test', 'production'] as const) {
+  test(`restored test completion stops polling and only links an authorized test channel (${channel})`, async ({ page }) => {
+    const state = await setup(page); await save(page); await check(page);
+    await page.locator('#execute-input').click();
+    await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+    const run = [...state.runs.values()][0]!;
+    Object.assign(run, { state: 'test_completed', stage: 'completed', channel,
+      test_grant_id: channel === 'non_production_test' ? 'synthetic-grant' : null,
+      artifact_id: 'synthetic-test-artifact' });
+    await page.reload();
+    await expect(page.locator('#execution-progress')).toContainText('内部测试工作稿');
+    const link = page.getByRole('link', { name: '查看测试工作稿', exact: true });
+    if (channel === 'non_production_test') {
+      await expect(link).toHaveAttribute('href', '#/artifacts/synthetic-test-artifact');
+      await expect(page.locator('#execution-progress')).toContainText('不可用于正式申报');
+    } else {
+      await expect(link).toHaveCount(0);
+    }
+    await expect(page.getByRole('link', { name: '查看成果与下载', exact: true })).toHaveCount(0);
+    await page.clock.install();
+    const eventReads = state.eventPages.length;
+    await page.clock.fastForward(15_000);
+    expect(state.eventPages.length).toBe(eventReads);
+    expect(state.executes).toHaveLength(1);
+  });
+}
 
 test('lost snapshot response requires server reconciliation before a new create', async ({ page }) => {
   const state = await setup(page); state.dropSave = true;
