@@ -353,17 +353,26 @@ test('live PostgreSQL 16 persists snapshot plus outbox, enforces immutability an
 
     const lockedTarget = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated',
       status: 'user_asserted', evidence_refs: [] };
+    const confirmedAt = '2026-09-27T00:00:00.000Z';
+    const targetConfirmation = (target: typeof lockedTarget) => ({ status: 'confirmed', market: 'sse', offering: 'private',
+      document_purpose: null, as_of: null, target_reporting_periods: [target], confirmed_by: liveOwner, confirmed_at: confirmedAt });
     const lockManifest = (financeId: string, target: typeof lockedTarget) => ({ draft_revision: 1, kind: 'update', market: 'sse', offering: 'private',
       materials: [
         { material_id: hist, material_version: 1, role: 'historical', sha256: hash },
         { material_id: financeId, material_version: 1, role: 'financial', sha256: hash },
-      ], update_details: { target_reporting_periods: [target] } });
+      ], target_confirmation: targetConfirmation(target), update_details: { target_reporting_periods: [target] } });
     const lockRefs = (financeId: string) => JSON.stringify([
       { material_id: hist, material_version: 1 }, { material_id: financeId, material_version: 1 },
     ]);
+    const persistTargetConfirmation = async (revision: number, target: typeof lockedTarget) => connection.query(`
+      INSERT INTO bb_input_revision_target_confirmations
+        (owner_user_id,project_id,input_revision,market,offering,document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
+      VALUES($1,$2,$3,'sse','private',NULL,NULL,$4::jsonb,$5,$6)`,
+    [liveOwner, liveProject, revision, JSON.stringify([target]), liveOwner, confirmedAt]);
     await connection.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
       [liveProject, liveOwner, 'b'.repeat(64), JSON.stringify(lockManifest(fin, lockedTarget)), lockRefs(fin)]);
+    await persistTargetConfirmation(1, lockedTarget);
     await connection.query(`UPDATE bb_projects SET latest_input_revision=1 WHERE owner_user_id=$1 AND id=$2`, [liveOwner, liveProject]);
     assert.equal(await getUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: saved.id }) !== null, true,
       'historical by-id reads retain an immutable prior snapshot');
@@ -387,6 +396,7 @@ test('live PostgreSQL 16 persists snapshot plus outbox, enforces immutability an
     await connection.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,2,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
       [liveProject, liveOwner, 'c'.repeat(64), JSON.stringify(lockManifest(replacementFinance, replacementTarget)), lockRefs(replacementFinance)]);
+    await persistTargetConfirmation(2, replacementTarget);
     await connection.query(`UPDATE bb_projects SET latest_input_revision=2 WHERE owner_user_id=$1 AND id=$2`, [liveOwner, liveProject]);
     assert.equal(await getUpdateDifficultySnapshot(scoped, { ownerUserId: liveOwner, projectId: liveProject, snapshotId: lockedSnapshot.id }) !== null, true,
       'the immutable row remains readable by id');

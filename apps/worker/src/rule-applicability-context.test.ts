@@ -149,7 +149,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
         const preflight = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`, headers: { origin },
           payload: { input_revision: pinned.input_revision, input_hash: pinned.input_hash } });
         assert.equal(preflight.statusCode, 200, preflight.body);
-        assert.ok((preflight.json() as { missing_inputs: string[] }).missing_inputs.includes('rule_pack:rule_applicability_field_needs_review:market'), preflight.body);
+        assert.ok((preflight.json() as { missing_inputs: string[] }).missing_inputs.includes('rule_pack:rule_applicability_overall_review_required'), preflight.body);
         const execution = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers: { origin }, payload: {
           execution_request_id: `rule-context-run-${suffix}`, project_id: projectId, input_revision: pinned.input_revision,
           input_hash: pinned.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
@@ -166,12 +166,12 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
           FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id JOIN bb_run_events e ON e.run_id=r.id AND e.state='paused'
           WHERE r.id=$1 ORDER BY e.seq DESC LIMIT 1`, [runId])).rows[0];
         assert.deepEqual(state && [state.state, state.stage, state.error_code, state.reason],
-          ['paused', 'capability_not_ready', null, 'rule_applicability_field_needs_review']);
+          ['paused', 'capability_not_ready', null, 'rule_applicability_overall_review_required']);
         const events = await app.inject({ method: 'GET', url: `/api/v1/runs/${runId}/events`, headers: { origin } });
         assert.equal(events.statusCode, 200, events.body);
         assert.ok(new Ajv().validate(schemas.RunEventsResponse, events.json()), events.body);
         assert.equal((events.json() as { items: Array<{ state: string; payload: { reason?: string } }> }).items
-          .find(event => event.state === 'paused')?.payload.reason, 'rule_applicability_field_needs_review');
+          .find(event => event.state === 'paused')?.payload.reason, 'rule_applicability_overall_review_required');
       }
       const exact = { ownerUserId: owner, projectId, contextId: created.contextId, version: created.version,
         contentHash: created.contentHash, expectedSourceInputRevision: input.input_revision,

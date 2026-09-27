@@ -39,6 +39,7 @@ import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityConte
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
 import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
+import { runEventPayloadDto } from './run-event-dto.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -823,7 +824,7 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
     const after=Number((request.query as {after?:string}).after??0);if(!Number.isSafeInteger(after)||after<0)throw new Problem(422,'VALIDATION_FAILED','Invalid cursor');
     const q=await db().query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT 100',[user,id,after]);
-    const items=q.rows.map(e=>({event_id:e.id,schema_version:1,trace_id:e.trace_id,run_id:e.run_id,seq:e.seq,occurred_at:date(e.occurred_at),stage:e.stage,type:e.type,state:e.state,payload:e.payload}));
+    const items=q.rows.map(e=>({event_id:e.id,schema_version:1,trace_id:e.trace_id,run_id:e.run_id,seq:e.seq,occurred_at:date(e.occurred_at),stage:e.stage,type:e.type,state:e.state,payload:runEventPayloadDto(e.payload)}));
     return {items,next_cursor:items.length?items.at(-1)!.seq:after};
   });
   for(const kind of ['cancel','resume'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
