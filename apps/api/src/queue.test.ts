@@ -6,6 +6,8 @@ import { createServer } from './server.js';
 import { checkpoint, claim, finish, jobSnapshot, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
 import { azureBlobs, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { Ajv } from 'ajv';
+import { schemas } from '@bondbuddy/contracts';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
 const isolatedConnection=await isolatedTestDatabase();
@@ -65,7 +67,19 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     const events=(await send('GET',`/api/v1/runs/${id}/events`)).json().items;
     assert.deepEqual(events.map((e:any)=>e.seq),events.map((_:any,i:number)=>i+1));
     assert.ok(events.every((e:any)=>e.trace_id===id));
+    assert.ok(events.every((e:any)=>!Object.hasOwn(e.payload,'channel')),'polling DTO excludes the worker-only channel discriminator');
+    assert.ok(events.every((e:any)=>new Ajv().validate(schemas.RunEvent,e)), 'polling events conform to the shared RunEvent DTO');
     assert.equal(events.at(-1).state,'cancelled');
+    const stream=await send('GET',`/api/v1/runs/${id}/stream`);
+    assert.equal(stream.statusCode,200,stream.body);
+    const streamData=stream.body.split('\n').filter((line:string)=>line.startsWith('data: '))
+      .map((line:string)=>JSON.parse(line.slice('data: '.length)));
+    const streamedEvents=streamData.filter((item:any)=>item.run_id===id&&Number.isSafeInteger(item.seq));
+    assert.deepEqual(streamedEvents.map((event:any)=>event.seq),events.map((event:any)=>event.seq),
+      'SSE streams all persisted event types in cursor order, including run.progress');
+    assert.ok(streamedEvents.every((event:any)=>!Object.hasOwn(event.payload,'channel')),'SSE DTO excludes the worker-only channel discriminator');
+    assert.ok(streamedEvents.every((event:any)=>new Ajv().validate(schemas.RunEvent,event)), 'SSE events conform to the shared RunEvent DTO');
+    assert.equal(streamData.find((item:any)=>item.run_id===id)?.channel,'production','snapshot retains the separate RunResponse channel field');
     const outbox=await pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_type='run' AND aggregate_id=$1",[id]);
     assert.equal(outbox.rows[0].n,events.length);
     await pool.query("CREATE FUNCTION bb_queue_fail_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='run.state_changed' THEN RAISE EXCEPTION 'synthetic rollback'; END IF; RETURN NEW; END $$");
