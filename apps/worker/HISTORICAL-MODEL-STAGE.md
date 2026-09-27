@@ -71,3 +71,5 @@ BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 BONDBUDDY_TEST_PYTHON=python3 node --test apps/
 prompt提供`source_kind/material_id/material_role`并禁止冒称审计机构确认；实际采用external的每个原文位置（包括插列）保留来源待核说明。模板升为`historical-sse-private-v3`，已有v1/v2模型绑定不可静默复用，发现绑定变化在新增供应商意图前报告`UPDATE_GENERATION_INPUT_CHANGED`；保留旧run/attempt/checkpoint并按新执行流程处理。
 
 本切片不会清除#314的16条年度uncertainty，不新增#316的8项当期公式候选，不部署、不调用真实供应商。详见[验收与剩余依赖](../../docs/acceptance/issue-31-financial-input-2026-09-27.md)；[8项业务核对交接](../../docs/acceptance/issue-15-rq202509-review-handoff-2026-09-27.md)用于后续逐项确认，不是已签认结果。
+
+2026-09-27评审修复：模型coverage允许1200字符的reason，Word单条批注保持512个UTF-16代码单元限制。`historical-review-notes.ts`将过长的完整说明按同一record分为有顺序编号的批注，不截断原因或external来源限定，不拆开代理对；总条数仍限1000，超限在模型计划阶段明确暂停为`historical_review_notes_exceed_limit`，不等Word阶段报笼统校验错误。#323已将8个公式缓存格落为external/needs_confirmation候选，本消费者仍排除其公式/来源链不确定性，保留冻结清单供审核。

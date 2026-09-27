@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-27T07:38:26.864Z",
+  "assembled_at": "2026-09-27T12:01:36.485Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -33,7 +33,7 @@
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "f42c97aaf07bff2b23f0f3d4cfd9fdae0c0dd463fc843c880d8e46828aaa8bb9"
+      "sha256": "a42fe29c4ed4f583d0771a7b4f7ee3a7201505c75437faa608fd092f5fa4045f"
     },
     {
       "file": "06-复核募集书.md",
@@ -344,7 +344,7 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 63409,
+    "han_characters": 63463,
     "local_links_checked": 188,
     "tables_checked": 133,
     "json_examples_checked": 4,

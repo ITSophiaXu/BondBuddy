@@ -8,6 +8,7 @@ import { HistoricalGenerationUnavailable, loadHistoricalGenerationInput, offerab
 import { HISTORICAL_GENERATION_VERSION, historicalGenerationSchema, mergeInventories, semanticInventory, type SemanticInventory } from './historical-generation-schema.js';
 import type { DocumentParseRecord } from './document-parser.js';
 import { HistoricalRulesUnavailable } from './historical-rule-context.js';
+import { splitHistoricalReviewNotes, HISTORICAL_REVIEW_NOTE_MAX_COUNT } from './historical-review-notes.js';
 
 export interface HistoricalGenerationPlan extends HistoricalUpdatePlan {
   /** #34 renders these as visible pending-confirmation comments/markers, never confirmed replacement text. */
@@ -153,8 +154,10 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
           else reviewNotes.push({ recordId, message: `待人工确认：${message}` });
         } else if (!reviewNotes.some(n => n.recordId === recordId)) reviewNotes.push({ recordId, message: `待人工确认：${finding.code}` });
       }
+      const boundedNotes = splitHistoricalReviewNotes(reviewNotes);
+      if (boundedNotes.length > HISTORICAL_REVIEW_NOTE_MAX_COUNT) throw new HistoricalGenerationUnavailable('historical_review_notes_exceed_limit');
       const { planHash: _originalPlanHash, ...base } = plan;
-      const content = { ...base, reviewNotes, generation: { version: HISTORICAL_GENERATION_VERSION,
+      const content = { ...base, reviewNotes: boundedNotes, generation: { version: HISTORICAL_GENERATION_VERSION,
         preparationHash: input.preparationHash, chunks: chunks.length, reviewedBlocks: inventory.coverage.length } };
       const result: HistoricalGenerationPlan = { ...content, planHash: updateContentHash(content) };
       return { kind: 'done', value: result, checkpoint: { plan_hash: result.planHash, preparation_hash: input.preparationHash,

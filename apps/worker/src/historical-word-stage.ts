@@ -86,8 +86,8 @@ export function historicalWordDeliveryStage(options: { writer?: typeof writeHist
     if (!plan || plan.schemaVersion !== 'historical-update-plan-v1' || plan.deliverable !== false ||
       plan.source?.format !== 'docx_effective' || !validHash(plan.planHash) || !validHash(plan.baselineHash) ||
       !validHash(plan.source.contentHash) || !plan.generation || !Array.isArray(plan.reviewNotes) ||
-      plan.reviewNotes.length > 1000 || plan.reviewNotes.some(note => !note || typeof note.recordId !== 'string' ||
-        !note.recordId || typeof note.message !== 'string' || !note.message.trim() || note.message.length > 512) ||
+      plan.reviewNotes.length > HISTORICAL_REVIEW_NOTE_MAX_COUNT || plan.reviewNotes.some(note => !note || typeof note.recordId !== 'string' ||
+        !note.recordId || typeof note.message !== 'string' || !note.message.trim() || note.message.length > HISTORICAL_REVIEW_NOTE_MAX_LENGTH) ||
       !Array.isArray(plan.replacements) || !Array.isArray(plan.columns) ||
       plan.replacements.length + plan.columns.length === 0 ||
       plan.context?.ownerUserId !== ctx.run.owner_user_id || plan.context?.projectId !== ctx.run.project_id ||
@@ -111,3 +111,4 @@ export function historicalWordDeliveryStage(options: { writer?: typeof writeHist
     }
   } };
 }
+import { HISTORICAL_REVIEW_NOTE_MAX_LENGTH, HISTORICAL_REVIEW_NOTE_MAX_COUNT } from './historical-review-notes.js';

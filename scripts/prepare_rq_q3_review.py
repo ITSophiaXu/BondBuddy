@@ -6,17 +6,37 @@ Output contains customer values: keep it outside Git and public issue comments.
 from pathlib import Path
 import hashlib, json, zipfile, xml.etree.ElementTree as ET
 from decimal import Decimal, ROUND_HALF_UP
-import re, argparse
+import re, argparse, io
 
 ROOT=Path(__file__).resolve().parents[1]
 NS={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main','r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+
+def verify_source(original, item):
+    if len(original) != item['bytes'] or hashlib.sha256(original).hexdigest() != item['sha256']:
+        raise ValueError('AUTHORIZED_SOURCE_HASH_OR_SIZE_MISMATCH')
+
+def validate_outputs(root, paths):
+    resolved = [path.expanduser().resolve() for path in paths]
+    if len(set(resolved)) != len(resolved):
+        raise ValueError('JSON and Markdown outputs must use different paths')
+    for original, path in zip(paths, resolved):
+        # A worktree has a .git file; an ordinary repository has a .git directory.
+        # Check both lexical and resolved ancestors so symlink aliases cannot bypass this boundary.
+        lexical = original.expanduser().absolute()
+        if path.is_relative_to(root.resolve()) or any(
+            (ancestor / '.git').exists()
+            for candidate in (lexical, path)
+            for ancestor in (candidate, *candidate.parents)
+        ):
+            raise ValueError('Customer-value outputs must be outside every Git repository/worktree')
+    return resolved
 def extract(root):
     manifest=json.loads((root/'tests/samples/2026-09-25/manifest.json').read_text(encoding='utf-8'))
     item=next(f for case in manifest['cases'] for f in case['files'] if f['file_id']=='rq-202509-02')
     source=root/'tests/samples/2026-09-25'/item['path']
     original=source.read_bytes()
-    assert len(original)==item['bytes'] and hashlib.sha256(original).hexdigest()==item['sha256']
-    with zipfile.ZipFile(source) as z:
+    verify_source(original, item)
+    with zipfile.ZipFile(io.BytesIO(original)) as z:
         shared=[]
         if 'xl/sharedStrings.xml' in z.namelist():
             shared=[''.join(e.itertext()) for e in ET.fromstring(z.read('xl/sharedStrings.xml')).findall('s:si',NS)]
@@ -46,7 +66,8 @@ def extract(root):
         rows=[]
         for n,(scope,metric,sheet,pos,label,period,header) in enumerate(definitions,1):
             c=cell(sheet,pos)
-            assert c['formula'] and c['saved_value'] is not None and c['type']=='n'
+            if not c['formula'] or c['saved_value'] is None or c['type'] != 'n':
+                raise ValueError('AUTHORIZED_FORMULA_CACHE_SHAPE_MISMATCH')
             value=Decimal(c['saved_value'])
             external='[' in c['formula']
             upstream=[]; recalc=None; delta=None
@@ -63,7 +84,8 @@ def extract(root):
               'upstream':upstream,'recalculated_from_saved_precedents':str(recalc) if recalc is not None else None,
               'difference_from_saved_precedents':str(delta) if delta is not None else None,
               'proposed_value':None,'review_status':'待人工确认','reviewer':None,'reviewed_at':None,'decision_basis':None})
-    assert source.read_bytes()==original
+    if source.read_bytes() != original:
+        raise ValueError('AUTHORIZED_SOURCE_CHANGED_DURING_READ')
     return {'schema_version':'rq-financial-review-v1','source':{'file_id':item['file_id'],'path':item['path'],'bytes':item['bytes'],'sha256':item['sha256']},
             'rows':rows,'scope_note':'只读提取8个核心单元格；保存值不是已核验值；未重算原工作簿或外部链接；未执行模型或写入项目事实。'}
 
@@ -107,12 +129,16 @@ def markdown(data):
 if __name__=='__main__':
     p=argparse.ArgumentParser(); p.add_argument('--output',type=Path,required=True)
     p.add_argument('--markdown',type=Path,help='Optional local review table; contains customer values')
-    args=p.parse_args(); data=extract(ROOT)
+    args=p.parse_args()
     outputs=[args.output, *([args.markdown] if args.markdown else [])]
-    if len({path.resolve() for path in outputs}) != len(outputs):
-        p.error('JSON and Markdown outputs must use different paths')
-    if any(path.resolve().is_relative_to((ROOT/'tests/samples').resolve()) for path in outputs):
-        p.error('Outputs must not overwrite files in the authorized sample directory')
+    try:
+        outputs=validate_outputs(ROOT, outputs)
+    except ValueError as error:
+        p.error(str(error))
+    args.output=outputs[0]
+    if args.markdown:
+        args.markdown=outputs[1]
+    data=extract(ROOT)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     if args.markdown:
