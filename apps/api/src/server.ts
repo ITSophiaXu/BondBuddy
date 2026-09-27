@@ -37,7 +37,7 @@ import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoi
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
-import { assertTestGrant } from './non-production-test.js';
+import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -126,6 +126,7 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
+  function visibleRunDto(row: any) { assertTestChannelReadable(row.channel); return runDto(row); }
   async function auditSchemaRejection(request:FastifyRequest):Promise<{status:number;code:string}> {
     let user:string;
     try { user=await owner(request); } catch(error) { if(error instanceof Problem && [401,403].includes(error.status))return {status:422,code:'VALIDATION_FAILED'}; throw error; }
@@ -737,7 +738,7 @@ export function createServer(settings: Settings = {}) {
         if(old.rows[0]){
           const same=old.rows[0].request_hash.trim()===requestHash;
           await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
-          return same?{run:runDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
+          return same?{run:visibleRunDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
         }
         const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
         if(prior.rows[0])return priorRejection(client,prior.rows[0]);
@@ -757,7 +758,7 @@ export function createServer(settings: Settings = {}) {
       if(old.rows[0]){
         const same=old.rows[0].request_hash.trim()===requestHash;
         await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
-        return same?runDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
+        return same?visibleRunDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
       }
       const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
       if(prior.rows[0])return {rejection:await priorRejection(client,prior.rows[0])};
@@ -789,7 +790,7 @@ export function createServer(settings: Settings = {}) {
           if(priorRun.rows[0]){
             const same=priorRun.rows[0].request_hash.trim()===requestHash;
             await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
-            return same?{run:runDto(priorRun.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
+            return same?{run:visibleRunDto(priorRun.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
           }
           const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
           if(owned.rowCount){
@@ -808,16 +809,16 @@ export function createServer(settings: Settings = {}) {
     if('rejection' in result)throw new Problem(result.rejection.httpStatus,result.rejection.errorCode,'Execution request was rejected');
     return reply.code(202).send(result);
   });
-  app.get('/api/v1/runs/:run_id',async request=>runDto(await run(db(),await owner(request),param(request,'run_id'))));
+  app.get('/api/v1/runs/:run_id',async request=>visibleRunDto(await run(db(),await owner(request),param(request,'run_id'))));
   app.get('/api/v1/runs/:run_id/events',async request=>{
-    const user=await owner(request),id=param(request,'run_id');await run(db(),user,id);
+    const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
     const after=Number((request.query as {after?:string}).after??0);if(!Number.isSafeInteger(after)||after<0)throw new Problem(422,'VALIDATION_FAILED','Invalid cursor');
     const q=await db().query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT 100',[user,id,after]);
     const items=q.rows.map(e=>({event_id:e.id,schema_version:1,trace_id:e.trace_id,run_id:e.run_id,seq:e.seq,occurred_at:date(e.occurred_at),stage:e.stage,type:e.type,state:e.state,payload:e.payload}));
     return {items,next_cursor:items.length?items.at(-1)!.seq:after};
   });
   for(const kind of ['cancel','resume'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
-    const user=await owner(request),id=param(request,'run_id');await run(db(),user,id);
+    const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
     if(!queueEnabled)throw unavailable();
     return queueAction(db(),user,id,kind);
   });
@@ -829,8 +830,8 @@ export function createServer(settings: Settings = {}) {
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
         ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
-         (r.channel='non_production_test' AND r.state='test_completed' AND a.delivery_status='test_only'
-          AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id]);
+         (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
+          AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id,testChannelEnabled()]);
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
     const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
     const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
@@ -853,8 +854,8 @@ export function createServer(settings: Settings = {}) {
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
       WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
         ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
-         (r.channel='non_production_test' AND r.state='test_completed' AND a.delivery_status='test_only'
-          AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id]);
+         (r.channel='non_production_test' AND $3::boolean AND r.state='test_completed' AND a.delivery_status='test_only'
+          AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id,testChannelEnabled()]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
     const bytes=await verifiedArtifactBytes(a);

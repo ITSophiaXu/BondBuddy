@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
+const repositoryRoot=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 export type UncoveredItem = {rule_id:string;reason_code:string;evidence_ref:string|null};
 
 /** The marker is applied before Word inspection, Blob promotion and final hash calculation. */
@@ -16,7 +18,7 @@ export async function markTestWord(bytes:Buffer, uncovered:UncoveredItem[]):Prom
     await writeFile(manifest,JSON.stringify(uncovered),{mode:0o600});
     await run(process.env.BB_PYTHON_BIN ?? 'python3',[
       '-m','bondbuddy_word_delivery.test_marking',source,manifest,target
-    ],{timeout:120_000,maxBuffer:64*1024,env:{...process.env,PYTHONPATH:join(process.cwd(),'python')}});
+    ],{cwd:repositoryRoot,timeout:120_000,maxBuffer:64*1024,env:{...process.env,PYTHONPATH:join(repositoryRoot,'python')}});
     return await readFile(target);
   } finally { await rm(directory,{recursive:true,force:true}); }
 }

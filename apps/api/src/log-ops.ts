@@ -7,6 +7,7 @@ import { Value } from '@sinclair/typebox/value';
 import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
+import { assertTestChannelReadable, testChannelEnabled } from './non-production-test.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
 import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
 
@@ -986,7 +987,8 @@ export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilt
         AND ($7::text IS NULL OR EXISTS (SELECT 1 FROM bb_model_call_attempts a WHERE a.job_id=e.job_id AND a.model_id=$7
              AND (e.event->>'logical_call_id' IS NULL OR (a.logical_call_id=e.event->>'logical_call_id' AND a.attempt_no=(e.event->>'attempt_no')::int))))
         AND ($8::text IS NULL OR e.event->>'status'=$8) AND ($9::text IS NULL OR e.event->'error'->>'code'=$9)
-      ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1]);
+        AND ($11::boolean OR e.channel IS DISTINCT FROM 'non_production_test')
+      ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1, testChannelEnabled()]);
     const rows = q.rows.slice(0, filter.limit);
     return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
   });
@@ -1007,9 +1009,10 @@ const terminal = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejecte
 export async function adminJobTimeline(pool: Pool, actorId: string, jobId: string) {
   if (!validId(jobId)) throw missing();
   return transaction(pool, async client => {
-    const job = (await client.query('SELECT j.*,COALESCE(j.project_id,r.project_id) effective_project_id,r.state run_state,r.artifact_id,r.artifact_version FROM bb_jobs j LEFT JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1', [jobId])).rows[0];
+    const job = (await client.query('SELECT j.*,COALESCE(j.project_id,r.project_id) effective_project_id,r.state run_state,r.channel run_channel,r.artifact_id,r.artifact_version FROM bb_jobs j LEFT JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1', [jobId])).rows[0];
     await audit(client, { actorId, role: 'log_reader', owner: job?.owner_user_id, purpose: 'admin_job_timeline', filter: { jobId }, target: jobId });
     if (!job) throw missing();
+    assertTestChannelReadable(job.run_channel ?? job.channel);
     const prompts = (await client.query(`SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
       WHERE s.owner_user_id=$1 AND ((s.run_id IS NOT NULL AND s.run_id=$2) OR s.id IN (SELECT prompt_snapshot_id FROM bb_model_call_attempts WHERE job_id=$3)) ORDER BY s.created_at,s.id`, [job.owner_user_id, job.run_id, job.id])).rows;
     const stages = job.run_id
@@ -1176,7 +1179,17 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
     await query('BEGIN');
     let snapshot: any, auditId: string;
     try {
-      snapshot = (await query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      snapshot = (await query(`SELECT s.*,t.id tombstone,EXISTS (
+        SELECT 1 FROM bb_model_call_attempts a
+        JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=s.owner_user_id
+        JOIN bb_runs r ON r.id=COALESCE(s.run_id,j.run_id) AND r.owner_user_id=s.owner_user_id
+        WHERE a.prompt_snapshot_id=s.id AND r.channel='non_production_test'
+      ) OR EXISTS (
+        SELECT 1 FROM bb_runs r WHERE r.id=s.run_id AND r.owner_user_id=s.owner_user_id AND r.channel='non_production_test'
+      ) AS linked_test_run FROM bb_snapshot_refs s
+      LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
+      JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id
+      WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL`, [snapshotId])).rows[0];
       await setPromptStatementTimeout(client, deadlineAt, signal);
       auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
       await query('COMMIT');
@@ -1187,6 +1200,7 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
       throw error;
     }
     if (!snapshot || snapshot.tombstone) throw missing();
+    if (snapshot.linked_test_run) assertTestChannelReadable('non_production_test');
     if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
     // A Blob request may never settle after a TCP disconnect. Promise.race observes its
     // eventual result/rejection, while the abort path releases the session lock now.

@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { createServer } from './server.js';
 import { claim } from './queue.js';
 import { assertTestGrant } from './non-production-test.js';
+import { digest, type PrivateBlobs } from './data.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const databaseUrl=await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL');
@@ -83,7 +84,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     await assert.rejects(pool.query("UPDATE bb_runs SET state='test_completed' WHERE id=$1",[production.json().run_id]),(error:any)=>error.code==='23514');
     const testRun=(await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID(),test_grant_id:otherGrantId})).json();
     await assert.rejects(pool.query("UPDATE bb_runs SET state='settlement_pending' WHERE id=$1",[testRun.run_id]),(error:any)=>error.code==='23514');
-    const artifactId=randomUUID();
+    const artifactId=randomUUID(),artifactBytes=Buffer.from('synthetic test-only artifact'),artifactHash=digest(artifactBytes);
     const client=await pool.connect();
     await client.query('BEGIN');
     try{
@@ -91,16 +92,49 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
       await client.query(`INSERT INTO bb_word_delivery_evidence
         (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
          quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
-        VALUES($1,$2,$3,$4,1,$5,123,'synthetic-validator','passed','available','readback_verified',$5,123,$6)`,
-        [evidenceId,user,testRun.run_id,artifactId,sha('e'),{sha256:sha('e'),byte_size:123,validator_version:'synthetic-validator',quality_status:'passed'}]);
+        VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7)`,
+        [evidenceId,user,testRun.run_id,artifactId,artifactHash,artifactBytes.length,{sha256:artifactHash,byte_size:artifactBytes.length,validator_version:'synthetic-validator',quality_status:'passed'}]);
       await client.query(`INSERT INTO bb_artifact_versions(id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
         VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','test_only',$6)`,
-        [artifactId,user,testRun.run_id,sha('e'),`synthetic-test/${artifactId}`,evidenceId]);
+        [artifactId,user,testRun.run_id,artifactHash,`synthetic-test/${artifactId}`,evidenceId]);
       await client.query("UPDATE bb_runs SET state='test_completed',artifact_id=$2,artifact_version=1 WHERE id=$1",[testRun.run_id,artifactId]);
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
     await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[testRun.run_id]),
       (error:any)=>error.code==='23514');
+    const readApp=createServer({pool,blobs:{getIfExistsBounded:async()=>artifactBytes} as unknown as PrivateBlobs,
+      allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true})});
+    const read=(url:string)=>readApp.inject({method:'GET',url,headers:{origin}});
+    try{
+      await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,`synthetic_${randomUUID().replaceAll('-','').slice(0,20)}`]);
+      await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'log_reader','synthetic-test','synthetic_test')",[randomUUID(),user]);
+      await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'prompt_viewer','synthetic-test','synthetic_test')",[randomUUID(),user]);
+      const jobId=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[testRun.run_id])).rows[0].id as string;
+      const snapshotId=randomUUID(),promptUrl=`/api/v1/admin/prompts/${snapshotId}?reason_code=synthetic_test`;
+      await pool.query(`INSERT INTO bb_snapshot_refs
+        (id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version)
+        VALUES($1,$2,$3,$4,'user_prompt',1,$5,$6,'scrub_v1')`,
+        [snapshotId,user,project,testRun.run_id,`users/${user}/projects/${project}/snapshots/${snapshotId}`,artifactHash]);
+      const detail=await read(`/api/v1/artifacts/${artifactId}`);
+      assert.equal(detail.statusCode,200,detail.body);
+      const downloadUrl=detail.json().download_url as string;
+      assert.equal((await read(downloadUrl)).statusCode,200);
+      assert.equal((await read(`/api/v1/admin/jobs/${jobId}/timeline`)).statusCode,200);
+      assert.equal((await read(promptUrl)).statusCode,200);
+      for(const [tier,channel] of [['production','enabled'],['production','disabled'],['preprod','disabled']] as const){
+        process.env.BB_DEPLOYMENT_TIER=tier;process.env.BB_NON_PRODUCTION_TEST_CHANNEL=channel;
+        assert.equal((await read(`/api/v1/artifacts/${artifactId}`)).statusCode,404);
+        assert.equal((await read(downloadUrl)).statusCode,404);
+        assert.equal((await read(`/api/v1/runs/${testRun.run_id}`)).statusCode,404);
+        assert.equal((await read(`/api/v1/runs/${testRun.run_id}/events`)).statusCode,404);
+        assert.equal((await read(`/api/v1/runs/${testRun.run_id}/stream`)).statusCode,404);
+        assert.equal((await read(`/api/v1/admin/jobs/${jobId}/timeline`)).statusCode,404);
+        assert.equal((await read(promptUrl)).statusCode,404);
+      }
+      process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+      assert.equal((await read(`/api/v1/artifacts/${artifactId}`)).statusCode,200);
+      assert.equal((await read(downloadUrl)).statusCode,200);
+    }finally{await readApp.close();}
     user=`test-other-${randomUUID()}`;
     assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}`)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/artifacts/${artifactId}/download?grant=synthetic`)).statusCode,404);

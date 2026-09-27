@@ -91,7 +91,7 @@ deploy/              # Compose、Nginx、部署与回滚
 
 `ExecuteRequest.test_grant_id` 可选；省略时沿用生产通道。提交时验证授权账号、项目、输入版本/hash、期限和撤销状态；请求指纹同时锁定 channel/grant，同一 `execution_request_id` 的相同请求重放，切换通道或授权则 409。`RunResponse` 增加 `channel`、`test_grant_id` 和 `uncovered_items[]`（`rule_id`、`reason_code`、`evidence_ref`）。job、操作记录和模型尝试保留 channel。worker 领取、阶段门禁、模型调用前和终态前重新核验授权；失效时暂停，不转入生产规则选择。#19 候选能力接缝需返回匹配的三个 hash 及逐项未覆盖清单；未安装时明确暂停为 `test_rule_capability_not_ready`，绝不使用生产 registry/loader 代替。
 
-测试 Word 在交付检查前写入首页和页眉标记“内部测试工作稿·未经专业审核·不得对外使用”；未覆盖项在有 Word 定位时保留对应“待人工确认”批注，其他定位保留独立待确认段落与批注。通过检查的测试成果标记 `test_only`，只向当前有效授权账号提供限时下载；测试 run 终态为 `test_completed`，不能进入 `settlement_pending` 或 `succeeded`，`billing_mode=non_billable_test`，不计费。生产 run 不可进入 `test_completed`。`quality_status` 仍记录真实交付检查结果。此通道不是规则发布或专业验收；在 #19 候选能力接入前，只能验证授权与暂停路径。
+测试 Word 在交付检查前写入首页和页眉标记“内部测试工作稿·未经专业审核·不得对外使用”；未覆盖项在有 Word 定位时保留对应“待人工确认”批注，其他定位保留独立待确认段落与批注。通过检查的测试成果标记 `test_only`，只向当前有效授权账号提供限时下载。成果详情与下载、测试 run 详情与事件、运维视图中的测试成果或 prompt 元数据在当前部署不满足 `preprod` 且开关启用时统一返回 404；生产成果读取不受此门禁影响。测试 run 终态为 `test_completed`，不能进入 `settlement_pending` 或 `succeeded`，`billing_mode=non_billable_test`，不计费。生产 run 不可进入 `test_completed`。`quality_status` 仍记录真实交付检查结果。此通道不是规则发布或专业验收；在 #19 候选能力接入前，只能验证授权与暂停路径。
 
 第一批 OpenAPI 至少覆盖注册/会话、项目草稿、上传完成、预检、执行/取消/恢复、任务事件、成果下载和右侧对话。请求与响应按 `16-数据模型接口与状态机.md` 细化；分页、错误码、时间格式、空值含义在 schema 中写明。新接口不直接暴露现有原型的文件路径、运行目录或内部参考稿 ID。
 
@@ -413,6 +413,8 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 `python/bondbuddy_ocr` 提供独立 `ocr-request-v1`/`ocr-response-v1`，保留 #13 原生契约。受信 worker 校验 owner、不可变材料和 hash，运行 Tesseract 并将派生页面/结果写私有 Blob；source_preflight 默认三页、最多五页，完整 OCR 必须绑定已有有效 run 和其材料快照，M1 均 platform-paid。原页坐标、识别/方向版本、语言包 hash、表格候选、数值原文及 uncertainty 一并保留。
 
 `0017_m1_ocr_review.sql` 保存追加式快照引用和用户校正；`apps/api/src/ocr.ts` 提供 owner 限定读取、原页及带 expected_revision 的校正，状态 outbox 不含正文。`apps/web/src/ocr-review.ts` 提供原页片段核对；所有 OCR 和用户校正仍不具备 manuscript eligibility，不能用用户说明替代审计事实。上传自动预检调度、#15/#76 适配、复杂跨页表格准确率和派生文件物理清理尚待对应流程。详细契约/运行/验收边界见 `python/OCR-HANDOFF.md`。
+
+2026-09-27 独立算法切片：`python/bondbuddy_ocr/v2.py` 接受内部 `ocr-invocation-v2` 信封及 `OcrBatchRequestV2`，逐个渲染/识别严格有序的稀疏物理页，并返回契约形状的批次 DTO 和暂态 checkpoint/image payload。它保留 v1 processor/CLI 分支，通过实际 Tesseract、语言文件、PDFium/Pillow 与参数清单核对身份并生成 v2 哈希；不写存储或 worker 检查点。#17 后续接线仍负责数据库归属、run/context 校验、租约/outbox/成本、不可变 Blob 写入/读回与 TS semantic validator。此切片不改变 API、迁移、部署镜像、OCR 自动任务入口或 run 终态；真实 OCR/专业验收仍未完成。
 
 ### #17 用户参考稿结构锁（2026-09-26）
 
