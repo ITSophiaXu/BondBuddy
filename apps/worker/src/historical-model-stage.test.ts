@@ -21,10 +21,12 @@ import type { StageContext } from './run-pipeline.js';
 import type { StoredFactDecision } from './fact-decision-repository.js';
 import { validateDocumentParseResponse } from './document-parser.js';
 import { syntheticHistoricalRules } from './test-fixtures/historical-rules.js';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { SSE_PRIVATE_CANDIDATE_ASSET_PIN as candidatePin } from './sse-private-candidate-assets.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 
 // Synthetic component evidence. No real model, billing, cloud storage or industry acceptance is claimed.
-function fixture() {
+function fixture(testChannel = false) {
   const rules = syntheticHistoricalRules();
   const source: HistoricalUpdateInput = JSON.parse(readFileSync(new URL('../../../tests/fixtures/historical-update/input.json', import.meta.url), 'utf8'));
   const baseline = source.baseline;
@@ -53,16 +55,31 @@ function fixture() {
   const manifest = { market: 'sse', offering: 'private', issuer_name: '合成发行人', issuer_entity_id: 'issuer-1',
     update_details: { ...emptyUpdateDetails(), has_historical: true, reporting_cutoff: '2024-12-31' }, materials,
     rule_pack_pin: rules.pin, rule_pack_context: rules.pin.applicabilityContext };
-  const row = { input_hash: source.context.inputHash, manifest, rule_pack_version: '1', material_versions: materials.map(m => ({ material_id: m.material_id, material_version: m.material_version })) };
+  if (testChannel) Object.assign(manifest, { rule_pack_pin: null, rule_pack_context: null,
+    target_confirmation: { status: 'confirmed', confirmed_by: 'owner-1', market: 'sse', offering: 'private',
+      document_purpose: 'issuance', as_of: '2026-09-27' } });
+  const row = { input_hash: testChannel ? inputManifestHash(manifest) : source.context.inputHash, manifest,
+    rule_pack_version: testChannel ? null : '1', draft_revision: 1, template_version: null,
+    material_versions: materials.map(m => ({ material_id: m.material_id, material_version: m.material_version })) };
+  const grant = { user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: row.input_hash,
+    sample_manifest_sha256: 'a'.repeat(64), taxonomy_hash: candidatePin.taxonomy.contentSha256,
+    rule_pack_hash: candidatePin.rulePack.contentSha256, expires_at: new Date(Date.now() + 3600000), revoked_at: null as Date | null };
   const pool = { async query(sql: string, values: unknown[]) {
+    if (sql.includes('FROM bb_non_production_test_grants')) { assert.equal(testChannel, true); return { rows: [grant] }; }
     if (sql.includes('FROM bb_input_revisions')) { assert.deepEqual(values, ['owner-1','project-1',1]); return { rows: [row] }; }
     if (sql.includes('FROM bb_jobs')) { assert.equal(values[1], 'owner-1'); return { rows: [{ checkpoint: { stages: { parse_evidence: { snapshot_id: snapshot.snapshotId } } } }] }; }
     if (sql.includes('FROM bb_material_versions')) { assert.deepEqual(values.slice(0,2), ['owner-1','project-1']); return { rows: materials.filter(m => m.material_id === values[2]).map(m => ({ owner_user_id: 'owner-1', project_id: 'project-1', id: m.material_id, version: m.material_version, sha256: m.sha256, role: m.role })) }; }
     throw new Error('Unexpected SQL in synthetic test');
   }, async connect() { throw new Error('Synthetic test uses repository adapters'); } };
   const ctx: StageContext = { pool: pool as unknown as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
-    run: { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: source.context.inputHash, task_kind: 'update' },
+    run: { id: 'run-1', owner_user_id: 'owner-1', project_id: 'project-1', input_revision: 1, input_hash: row.input_hash, task_kind: 'update',
+      ...(testChannel ? { channel: 'non_production_test' as const, test_grant_id: 'synthetic-grant' } : {}) },
     signal: new AbortController().signal, checkpoint: {}, values: new Map() };
+  if (testChannel) {
+    ctx.validateBeforeModelCall = async () => null;
+    ctx.testRuleCapabilityLoader = async () => ({ status: 'ready', sampleManifestSha256: grant.sample_manifest_sha256,
+      taxonomyHash: candidatePin.taxonomy.contentSha256, rulePackHash: candidatePin.rulePack.contentSha256, uncoveredItems: [] });
+  }
   const historicalReaders: HistoricalUpdateReaders = { snapshot: async () => snapshot, profiles: async () => [profile], facts: async (_scope, identity) => facts.filter(f => factIdentityKey(f.candidate.identity) === factIdentityKey(identity)), decision: async () => null };
   const prepare: typeof prepareHistoricalUpdate = (d, input, override) => prepareHistoricalUpdate(d, input, override ?? historicalReaders);
   const readers: GenerationInputReaders = { snapshot: async (_d, scope, id) => { assert.equal(scope.ownerUserId,'owner-1'); assert.equal(id,snapshot.snapshotId); return snapshot; },
@@ -77,8 +94,38 @@ function fixture() {
   const checkpoint: NonNullable<HistoricalModelStageOptions['checkpoint']> = async (c,name,data) => { c.checkpoint[name] = data; };
   const model: NonNullable<HistoricalModelStageOptions['model']> = o => ({ name: o.name, run: async () => { assert.equal(o.validate(answer), true); return { kind: 'done', value: structuredClone(answer) }; } });
   const options: HistoricalModelStageOptions = { load: c => loadHistoricalGenerationInput(c,readers), prepare, checkpoint, model };
-  return { source, snapshot, profile, facts, manifest, row, ctx, readers, answer, options };
+  return { source, snapshot, profile, facts, manifest, row, ctx, readers, answer, options, grant };
 }
+
+test('test-channel input reaches the historical planner with exact research guidance and no production release', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    const s = fixture(true); let calls = 0;
+    s.readers.rules = async () => { throw new Error('Must not call production registry for test input'); };
+    const model = s.options.model!;
+    s.options.model = options => {
+      assert.equal(options.templateVersion, 'historical-sse-private-test-v1'); calls++;
+      return model(options);
+    };
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.locked.context.ruleSnapshot.contentHash, candidatePin.rulePack.contentSha256);
+    const prompt = historicalPrompt(input, input.snapshot.response.records, 0, 1);
+    assert.match(prompt, /research_reference_only/); assert.match(prompt, /source_documents/);
+    assert.ok(Buffer.byteLength(prompt) <= 240_000);
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'done'); assert.ok(calls > 0);
+    if (result.kind === 'done') assert.equal((result.value as HistoricalGenerationPlan).replacements.length, 3);
+    const originalCalls = calls; s.grant.revoked_at = new Date();
+    assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),
+      { kind: 'pause', stage: 'capability_not_ready', reason: 'test_grant_revoked' });
+    assert.equal(calls, originalCalls);
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
 
 test('has-history stage uses persisted inputs and exact facts to update dates, text and table while preserving old risks', async () => {
   const s = fixture(); const before = structuredClone(s.snapshot.response);
@@ -379,6 +426,20 @@ test('chunk traversal never omits or duplicates blocks and merges shared financi
   assert.equal(mergeInventories([inventory,second]).bindings.length,1);
 });
 
+test('UTF-8 chunk budget preserves long Chinese blocks after complete rules and facts take most of the prompt', async () => {
+  const s = fixture(); const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+  const { loadHistoricalCandidateRuleGuidance } = await import('./historical-candidate-rule-context.js');
+  input.ruleGuidance = await loadHistoricalCandidateRuleGuidance({ market: 'sse', offering: 'private', documentStage: 'issuance', asOf: '2026-09-27' },
+    { taxonomyHash: candidatePin.taxonomy.contentSha256, rulePackHash: candidatePin.rulePack.contentSha256 });
+  const records = Array.from({length: 30}, (_, i) => ({ ...s.snapshot.response.records[0]!,
+    record_id: `long-${i}`, locator: {path: [{paragraph: i + 1}]}, literal_quote: '中文原文'.repeat(1000) }));
+  const budget = 240_000 - Buffer.byteLength(historicalPrompt(input, [], 499, 500)) - 16;
+  const chunks = historicalChunks(records, budget);
+  assert.deepEqual(chunks.flat(), records);
+  chunks.forEach((chunk, i) => assert.ok(Buffer.byteLength(historicalPrompt(input, chunk, i, chunks.length)) <= 240_000));
+  assert.throws(() => historicalChunks([records[0]!], 100), /historical_block_exceeds_context_limit/);
+});
+
 test('changed prompt input on replay fails before a second provider intent',async()=>{
   const s=fixture(); assert.equal((await historicalModelGenerationStage(s.options).run(s.ctx)).kind,'done');
   s.manifest.update_details.supplementary_notes='Changed despite same revision';
@@ -431,7 +492,7 @@ test('all chunks resume under stable logical calls and reconstruct the same plan
 test('authorized Renqiu September DOCX parses into complete bounded model chunks without editing the original', {
   skip: process.env.BB_RUN_AUTHORIZED_SAMPLE_TESTS !== '1' || !process.env.BONDBUDDY_TEST_PYTHON
     ? 'Set BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 and BONDBUDDY_TEST_PYTHON for the read-only authorized sample check' : false,
-}, () => {
+}, async t => {
   const root=fileURLToPath(new URL('../../../',import.meta.url));
   const child=spawnSync(process.env.BONDBUDDY_TEST_PYTHON!, ['tests/fixtures/historical-update/parse_authorized_sample.py'],
     {cwd:root,env:{...process.env,PYTHONPATH:fileURLToPath(new URL('../../../python',import.meta.url))},encoding:'utf8',maxBuffer:64*1024*1024,timeout:300000});
@@ -440,8 +501,14 @@ test('authorized Renqiu September DOCX parses into complete bounded model chunks
   const response=validateDocumentParseResponse(raw,{schema_version:'document-parse-request-v1',request_id:raw.request_id,
     material:{...raw.material,authorized_local_path:'/validated-local-sample'},options:{}});
   assert.notEqual(response.status,'failed');assert.ok(response.records.length>100);
-  const chunks=historicalChunks(response.records);
+  const { loadHistoricalCandidateRuleGuidance } = await import('./historical-candidate-rule-context.js');
+  const guidance = await loadHistoricalCandidateRuleGuidance({ market: 'sse', offering: 'private', documentStage: 'issuance', asOf: '2026-09-27' },
+    { taxonomyHash: candidatePin.taxonomy.contentSha256, rulePackHash: candidatePin.rulePack.contentSha256 });
+  // Byte-budget smoke only: no model call or approval of the sample facts/profile.
+  const referenceBytes = Buffer.byteLength(JSON.stringify(guidance));
+  const chunks=historicalChunks(response.records, 240_000 - referenceBytes - 20_000);
   assert.deepEqual(chunks.flat().map(r=>r.record_id),response.records.map(r=>r.record_id));
   assert.equal(new Set(chunks.flat().map(r=>r.record_id)).size,response.records.length);
   assert.ok(chunks.every(c=>c.length<=80));
+  t.diagnostic(`${response.records.length} original blocks / ${chunks.length} chunks; ${referenceBytes} reference bytes, 20KB reserved for other inputs; no provider call`);
 });

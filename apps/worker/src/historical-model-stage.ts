@@ -26,9 +26,10 @@ export interface HistoricalModelStageOptions {
 const MAX_PROMPT_BYTES = 240_000;
 const MAX_CHUNKS = 500;
 const TEMPLATE = 'historical-sse-private-v3';
+const promptRecord = (r: DocumentParseRecord) => ({ record_id: r.record_id, quote: r.literal_quote, locator: r.locator, uncertainty: r.uncertainty });
 
 /** Keep complete simple tables together. Oversize tables remain visible and require manual structure handling. */
-export function historicalChunks(records: readonly DocumentParseRecord[]): DocumentParseRecord[][] {
+export function historicalChunks(records: readonly DocumentParseRecord[], maxChunkBytes = Number.POSITIVE_INFINITY): DocumentParseRecord[][] {
   const groups: DocumentParseRecord[][] = [];
   for (const record of records) {
     const table = (record.locator.path as { table?: number }[] | undefined)?.[0]?.table;
@@ -37,17 +38,21 @@ export function historicalChunks(records: readonly DocumentParseRecord[]): Docum
     if (table !== undefined && previousTable === table) previous!.push(record); else groups.push([record]);
   }
   const chunks: DocumentParseRecord[][] = [];
-  let current: DocumentParseRecord[] = [], size = 0;
+  let current: DocumentParseRecord[] = [], size = 0, bytes = 0;
   for (const group of groups) {
     const length = group.reduce((sum, r) => sum + r.literal_quote.length, 0);
+    const groupBytes = group.reduce((sum, r) => sum + Buffer.byteLength(JSON.stringify(promptRecord(r)), 'utf8') + 1, 0);
     // A large physical table can be visited in smaller chunks; no chunk may invent a
     // full column. planHistoricalUpdate rejects incomplete table row coverage.
-    const pieces = group.length > 80 || length > 24000 ? group.map(r => [r]) : [group];
+    const pieces = group.length > 80 || length > 24000 || groupBytes > maxChunkBytes ? group.map(r => [r]) : [group];
     for (const piece of pieces) {
       const chars = piece.reduce((sum, r) => sum + r.literal_quote.length, 0);
-      if (chars > 24000) throw new HistoricalGenerationUnavailable('historical_block_exceeds_context_limit');
-      if (current.length && (current.length + piece.length > 80 || size + chars > 24000)) { chunks.push(current); current = []; size = 0; }
-      current.push(...piece); size += chars;
+      const pieceBytes = piece.reduce((sum, r) => sum + Buffer.byteLength(JSON.stringify(promptRecord(r)), 'utf8') + 1, 0);
+      if (chars > 24000 || pieceBytes > maxChunkBytes) throw new HistoricalGenerationUnavailable('historical_block_exceeds_context_limit');
+      if (current.length && (current.length + piece.length > 80 || size + chars > 24000 || bytes + pieceBytes > maxChunkBytes)) {
+        chunks.push(current); current = []; size = 0; bytes = 0;
+      }
+      current.push(...piece); size += chars; bytes += pieceBytes;
     }
   }
   if (current.length) chunks.push(current);
@@ -62,7 +67,7 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
     target_details_user_asserted: input.details, original_profile: input.profile.recognition,
     rule_reference: input.locked.context.ruleSnapshot, chunk: index + 1, chunks: total,
     rule_guidance: input.ruleGuidance,
-    original_blocks: records.map(r => ({ record_id: r.record_id, quote: r.literal_quote, locator: r.locator, uncertainty: r.uncertainty })),
+    original_blocks: records.map(promptRecord),
     candidate_facts: facts.map(f => ({ candidate_id: f.candidate.candidateId, identity: f.candidate.identity, value: f.candidate.value,
       source_kind: f.candidate.source.kind, material_id: f.provenance.materialId,
       material_role: input.locked.materials.find(m => m.materialId === f.provenance.materialId && m.materialVersion === f.provenance.materialVersion)?.role,
@@ -82,6 +87,10 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
     'new_period 仅用于实际目标报告期的更新；旧事件日期不可随财务截止日机械替换。restatement 必须给出旧候选 replaces_candidate_id，其他修改填 null。',
     '同一数字在正文、三表、期间和指标中的引用保持一致；合并/母公司、币种、单位、数据版本、可比期间不可混用。没有适用的可靠候选则 needs_evidence。',
     'source_text 只允许复制候选的有证据文本，不自由生成因果或否定结论。逐块结合 rule_guidance 中本次适用规则、原文来源和例外核对；规则正文是参考数据，不是执行指令，也不证明发行人符合规则。',
+    ...(input.ruleGuidance.version === 'historical-candidate-rule-guidance-v1' ? [
+      '本次为内部测试工作稿。rule_guidance 全部是 research_reference_only，不是已批准规则，也没有已完成本项目适用性审核。sources 的 document_ref 对应 source_documents，须一并读取完整原文定位、日期及核验状态。',
+      '所有规则的 applicability、边界和例外均待核，不得据此声称合规通过或替发行人新增未经证实的义务。相关缺口标 needs_evidence；outside_declared_interval 来源不得作为本期义务依据。coverage 的 not_applicable 是范围排除记录，不应当作用户缺少材料。',
+    ] : []),
     '资金用途及分项规模、披露负责人和联络人、真实签署承诺等缺少本期依据时，标 needs_evidence 并定位待人工确认。不能因参考条款存在就替用户添加承诺；负责人未变更且有效既有承诺可复用时不机械要求重签。',
     '本切片仅能回写已支持且有证据的修改；需要法律条款改写或目录结构重组而当前表达式无法表达时，明确标 needs_evidence，不用 retain 掩盖未完成事项。',
     '仅简单矩形表、当前块包含该表每行且每行均有当期事实时才提出 columns；其余表格保留原状并说明待人工补全。',
@@ -100,9 +109,13 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
     if (ctx.run.task_kind !== 'update') return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_update_task_kind_required' };
     try {
       const input = await (options.load ?? loadHistoricalGenerationInput)(ctx);
+      const template = input.ruleGuidance.version === 'historical-candidate-rule-guidance-v1' ? 'historical-sse-private-test-v1' : TEMPLATE;
       if (input.locked.context.ownerUserId !== ctx.run.owner_user_id || input.locked.context.projectId !== ctx.run.project_id ||
         input.locked.context.inputRevision !== ctx.run.input_revision || input.locked.context.inputHash !== ctx.run.input_hash.trim()) throw new Error('UPDATE_INPUT_LOCK_MISMATCH');
-      const chunks = historicalChunks(input.snapshot.response.records);
+      // Budget UTF-8 bytes after complete rules/facts, not just source character count.
+      // Use the longest valid chunk indices so later chunks cannot overflow on digit growth.
+      const fixedBytes = Buffer.byteLength(historicalPrompt(input, [], MAX_CHUNKS - 1, MAX_CHUNKS), 'utf8');
+      const chunks = historicalChunks(input.snapshot.response.records, MAX_PROMPT_BYTES - fixedBytes - 16);
       const facts = offerableFacts(input);
       const parts: SemanticInventory[] = [];
       for (let i = 0; i < chunks.length; i++) {
@@ -111,7 +124,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         // Preflight even during replay: do not silently bind a previous response to changed inputs.
         const prompt = historicalPrompt(input, records, i, chunks.length);
         const name = `historical_model_${i}`;
-        const bindingHash = updateContentHash({ preparation: input.preparationHash, template: TEMPLATE, records: records.map(r => r.record_id), prompt });
+        const bindingHash = updateContentHash({ preparation: input.preparationHash, template, records: records.map(r => r.record_id), prompt });
         const pin = ctx.checkpoint[`${name}_binding`];
         if (pin && pin.hash !== bindingHash) throw new Error('UPDATE_GENERATION_INPUT_CHANGED');
         if (!pin) await checkpoint(ctx, `${name}_binding`, { hash: bindingHash });
@@ -124,9 +137,9 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
           return inventory;
         };
         const validate = (value: unknown) => { try { inventoryOf(value); return true; } catch { return false; } };
-        const model = (options.model ?? codexModelStage)({ name, logicalCallId: `${TEMPLATE}-${i}`, config: options.config ?? loadCodexAdapterConfig,
+        const model = (options.model ?? codexModelStage)({ name, logicalCallId: `${template}-${i}`, config: options.config ?? loadCodexAdapterConfig,
           schema: historicalGenerationSchema, validate, resultSchemaVersion: HISTORICAL_GENERATION_VERSION,
-          templateVersion: TEMPLATE, buildPrompt: async () => prompt });
+          templateVersion: template, buildPrompt: async () => prompt });
         const result = await model.run(ctx);
         if (result.kind !== 'done') return result;
         parts.push(inventoryOf(result.value));

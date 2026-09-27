@@ -2251,6 +2251,8 @@ M1 保存 billable=false、cost_payer=platform、billing_mode=platform_trial 或
 
 > 2026-09-24：M1 用户名密码决定覆盖旧短信登录文字；短信路由不属于当前公开契约。旧手机账号不自动转成用户名账号。
 
+2026-09-27 内部测试运行的规则消费者复用 #326 公共通道与 #19 候选选择契约，不另建生产发布入口。`sample_manifest_sha256` 指既有授权批次清单的准确原始字节；#19 用最小 case/file/role/hash 清单核对锁定材料，grant 仍绑定 owner/project/revision/input_hash。测试规则引用保存精确来源与独立模板/prompt hash；覆盖项无规则映射时不伪造 rule_id，not_applicable 与 uncovered 分开。工程及部署状态见[接入记录](../../docs/acceptance/issue-20-test-rule-runtime-2026-09-27.md)。
+
 ---
 
 <a id="part-17"></a>
@@ -2427,6 +2429,8 @@ M1 平台承担成本是排期默认，需要在受控试用配置和对外说�
 2026-09-27 #20 v4：31条文献核对及原剩余20条处理验收见[完整记录](../../knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-20260927.md)。新增反例涵盖可比来源冲突、未核事实、主体/单位/期间混用、条款跨章变化、简化发行模拟及费用口径、10%主要板块、指标零负分母、无因果依据、债务/授信差异、可选评级/参考承诺、风险回写、修订批注和指南冒充履职；六类人工处理分别验证缺证/误用/范围。完整工程结果见[验收记录](../../docs/acceptance/issue-20-full-rule-review-2026-09-27.md)，合成反例不等于真实Word/WPS通过。
 
 2026-09-27 #20配套增量：按[24项预期](../../knowledge/exchange-bonds/drafts/sse-private/COMPANION-APPLICABILITY-20260927.md)另核专业个人/机构、法人三条件、严格超过5%、持有与买入、治理替代和公司法公募条款范围；这些是后续业务验收场景，不是已执行的自动测试。来源工程验证包括4份原件hash、30/266条连续定位、576码及12处文本差异、篡改/缺条拒绝、8份离线输出重建一致，见[本轮记录](../../docs/acceptance/issue-20-companion-sources-2026-09-27.md)。真实法规日与所锁规则有效期必须一致；预发任务暂停/幂等正常不代表已生成Word或通过行业验收。
+
+2026-09-27 首次内部测试补充：按[规则部署与模型接入记录](../../docs/acceptance/issue-20-test-rule-runtime-2026-09-27.md)验证指定账号/项目/输入的有效测试授权、规则及样本清单 hash、模型阶段恢复前重验、完整规则与引用在输入预算内、真实内部测试 Word 及日志。研究规则加载器与合成规划通过，不代表正式规则发布或预发已产出 Word；线上 run 和下载证据由 #35 记录。
 
 ---
 
