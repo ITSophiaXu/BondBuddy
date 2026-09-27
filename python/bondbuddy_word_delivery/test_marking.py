@@ -21,6 +21,32 @@ def paragraph(text: str):
     return node
 
 
+def item_note(item: dict) -> tuple[str, str]:
+    """Read the shared test-coverage DTO; never turn a coverage ID into a rule ID."""
+    if not isinstance(item, dict) or not isinstance(item.get("reason_code"), str):
+        raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+    sources = item.get("source_ref_ids")
+    if not isinstance(sources, list) or not all(isinstance(value, str) for value in sources):
+        raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+    if item.get("kind") == "coverage_gap":
+        if item.get("disposition") != "uncovered" or "rule_id" in item:
+            raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+        required = ("manifest_id", "manifest_version", "item_id", "candidate_asset_sha256", "area", "rationale")
+        if any(not isinstance(item.get(key), str) or not item[key] for key in required):
+            raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+        rules = item.get("rule_ids")
+        if not isinstance(rules, list) or not all(isinstance(value, str) for value in rules):
+            raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+        label = f"覆盖项 {item['item_id']}：{item['area']}"
+        detail = (f"{label}；{item['rationale']}；覆盖清单 {item['manifest_id']}@{item['manifest_version']}"
+                  f"；候选资产 SHA-256 {item['candidate_asset_sha256']}；关联规则 {', '.join(rules) or '无显式关联'}")
+    elif item.get("kind") == "rule_check" and isinstance(item.get("rule_id"), str) and item["rule_id"]:
+        label = detail = f"规则 {item['rule_id']}"
+    else:
+        raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+    return label, f"{detail}；来源 {', '.join(sources) or '未提供'}"
+
+
 def mark(source: str, manifest: str, target: str) -> None:
     uncovered = json.loads(Path(manifest).read_text(encoding="utf-8"))
     if not isinstance(uncovered, list) or len(uncovered) > 200:
@@ -35,8 +61,7 @@ def mark(source: str, manifest: str, target: str) -> None:
         notes = []
         by_record = {}
         for index, item in enumerate(uncovered):
-            if not isinstance(item, dict) or not isinstance(item.get("rule_id"), str) or not isinstance(item.get("reason_code"), str):
-                raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
+            label, detail = item_note(item)
             ref = item.get("evidence_ref")
             if ref is not None and not isinstance(ref, str):
                 raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
@@ -44,12 +69,12 @@ def mark(source: str, manifest: str, target: str) -> None:
             if ref and ref.startswith("docx:") and anchor is None:
                 raise ValueError("TEST_UNCOVERED_ANCHOR_MISSING")
             if anchor is None:
-                anchor = paragraph(f"待人工确认：{item['rule_id']}（{item['reason_code']}）")
+                anchor = paragraph(f"待人工确认：{label}（{item['reason_code']}）")
                 section = body.find(Q("sectPr"))
                 body.insert(body.index(section) if section is not None else len(body), anchor)
             key = f"test-uncovered-{index}"
             by_record[key] = anchor
-            notes.append({"recordId": key, "message": f"待人工确认：规则 {item['rule_id']}；原因 {item['reason_code']}；证据 {ref or '未提供'}"})
+            notes.append({"recordId": key, "message": f"待人工确认：{detail}；原因 {item['reason_code']}；证据 {ref or '未提供'}"})
         add_comments(parts, root, notes, by_record)
         body.insert(0, paragraph(MARK))
         rels_name = "word/_rels/document.xml.rels"

@@ -134,11 +134,16 @@ test('test-only Word passes delivery inspection and stays isolated from another 
     const unexpected:string[]=[];
     const result=await runPipelineOnce({pool,blobs,stages,onUnexpectedError:error=>unexpected.push(JSON.stringify(error)),testRuleCapabilityLoader:async()=>
       ({status:'ready',sampleManifestSha256:sample,taxonomyHash:taxonomy,rulePackHash:pack,
-        uncoveredItems:[{rule_id:'synthetic-rule',reason_code:'needs_review',evidence_ref:'docx:p0001'}]})});
+        uncoveredItems:[{kind:'rule_check',rule_id:'synthetic-rule',source_ref_ids:['synthetic-source'],reason_code:'needs_review',evidence_ref:'docx:p0001'},
+          {kind:'coverage_gap',manifest_id:'synthetic-coverage',manifest_version:'1',item_id:'unmapped-gap',
+            candidate_asset_sha256:'d'.repeat(64),disposition:'uncovered',area:'资金用途',rationale:'缺少依据',
+            rule_ids:[],source_ref_ids:['synthetic-source'],reason_code:'coverage_uncovered',evidence_ref:null}]})});
     assert.equal(result,'test_completed',unexpected.join('; '));
     const run=(await send('GET',`/api/v1/runs/${submitted.json().run_id}`)).json();
     assert.equal(run.state,'test_completed');assert.equal(run.channel,'non_production_test');
-    assert.equal(run.uncovered_items.length,1);assert.equal(run.billing_mode,'non_billable_test');
+    assert.equal(run.uncovered_items.length,2);assert.equal(run.billing_mode,'non_billable_test');
+    assert.equal(run.uncovered_items[1].kind,'coverage_gap');assert.equal(run.uncovered_items[1].item_id,'unmapped-gap');
+    assert.deepEqual(run.uncovered_items[1].rule_ids,[]);assert.equal('rule_id' in run.uncovered_items[1],false);
     const artifact=await send('GET',`/api/v1/artifacts/${run.artifact_id}`);
     assert.equal(artifact.statusCode,200,artifact.body);assert.equal(artifact.json().delivery_status,'test_only');
     const download=await send('GET',artifact.json().download_url);

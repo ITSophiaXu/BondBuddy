@@ -18,7 +18,8 @@ import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseL
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
-import { markTestWord, type UncoveredItem } from './test-word-marking.js';
+import { markTestWord } from './test-word-marking.js';
+import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
 
 export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
@@ -79,7 +80,7 @@ const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ 
 
 type InputBindingGate = Extract<StageOutcome, { kind: 'pause' | 'fail' }>;
 export type TestRuleCapability = { status: 'ready'; sampleManifestSha256: string; taxonomyHash: string; rulePackHash: string;
-  uncoveredItems: {rule_id:string;reason_code:string;evidence_ref:string|null}[] } | { status: 'not_ready'; reason: string };
+  uncoveredItems: TestUncoveredItem[] } | { status: 'not_ready'; reason: string };
 export type TestRuleCapabilityLoader = (run: RunRow, input: InputRevisionRow) => Promise<TestRuleCapability>;
 // #19 supplies the candidate selector. Until then a test run stays paused before any model call.
 export const unavailableTestRuleCapability: TestRuleCapabilityLoader = async () =>
@@ -97,10 +98,7 @@ async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRev
   if(capability.sampleManifestSha256!==grant.sample_manifest_sha256.trim() ||
      capability.taxonomyHash!==grant.taxonomy_hash.trim() || capability.rulePackHash!==grant.rule_pack_hash.trim())
     return {kind:'pause',stage:'capability_not_ready',reason:'test_grant_hash_mismatch'};
-  if(!Array.isArray(capability.uncoveredItems) || capability.uncoveredItems.length>200 ||
-    capability.uncoveredItems.some(item=>!item || typeof item.rule_id!=='string' || item.rule_id.length<1 || item.rule_id.length>128 ||
-      !/^[a-z][a-z0-9_]{0,63}$/.test(item.reason_code) ||
-      (item.evidence_ref!==null && (typeof item.evidence_ref!=='string' || item.evidence_ref.length<1 || item.evidence_ref.length>128))))
+  if(!isTestUncoveredItems(capability.uncoveredItems))
     return {kind:'pause',stage:'capability_not_ready',reason:'test_rule_capability_invalid'};
   await pool.query('UPDATE bb_runs SET uncovered_items=$2 WHERE id=$1 AND channel=\'non_production_test\'',
     [run.id,JSON.stringify(capability.uncoveredItems)]);
@@ -444,7 +442,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       }
       let cleanArtifactId: string | undefined;
       let baselineArtifactId: string | undefined;
-      const uncovered:UncoveredItem[]=run.channel==='non_production_test'
+      const uncovered:TestUncoveredItem[]=run.channel==='non_production_test'
         ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
         : [];
       const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);

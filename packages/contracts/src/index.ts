@@ -8,6 +8,8 @@ export * from './ocr-v2.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { RUN_CHANNELS, RUN_BILLING_MODES, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 export * from './run-channel.js';
+import { TestUncoveredItemsSchema } from './test-coverage.js';
+export * from './test-coverage.js';
 import { UpdateDetailsSchema, TargetReportingPeriodSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
@@ -196,7 +198,7 @@ export const schemas = {
   PreflightRequest: obj({ input_revision: revision, input_hash: hash }),
   PreflightResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation'), Type.Literal('blocked')]), missing_inputs: Type.Array(Type.String()), uncertainty: Type.Array(Type.String()), billing_mode: Type.Literal('platform_trial'), update_difficulty: Type.Optional(obj({ snapshot_id: id, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation')]), estimated_n: nullable(Type.Integer({ minimum: 0 })), structure_adaptation_required: nullable(Type.Boolean()), confirmation_reasons: Type.Array(Type.String()), source_profile_version: revision })) }),
   ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id, test_grant_id: Type.Optional(id) }),
-  RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, channel: enumOf(RUN_CHANNELS), test_grant_id: nullable(id), uncovered_items: Type.Array(obj({ rule_id: id, reason_code: safeCode, evidence_ref: nullable(id) })), state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: enumOf(RUN_BILLING_MODES), reservation_id: Type.Null(), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
+  RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, channel: enumOf(RUN_CHANNELS), test_grant_id: nullable(id), uncovered_items: TestUncoveredItemsSchema, state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: enumOf(RUN_BILLING_MODES), reservation_id: Type.Null(), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
   RunActionRequest: obj({ reason: Type.String({ minLength: 1 }) }),
   MaterialParseJobResponse: MaterialParseJobSchema,
   RunEvent: RunEventSchema,
