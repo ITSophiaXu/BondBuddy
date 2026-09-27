@@ -624,7 +624,9 @@ def _note_scope(kind: str, note_id: str, context: dict[str, Any]) -> dict[str, A
         [_relationship_scope_entry(
             relation, expected_part if relation["status"] == "resolved" and relation["target_member"] == expected_part else None,
         ) for relation in note_relationships])
-    if context["note_reference_overflow"]:
+    if references_truncated or relationships_truncated:
+        status, reason = "unknown", "scope_detail_limit_exceeded"
+    elif context["note_reference_overflow"]:
         status, reason = "unknown", "note_reference_limit_exceeded"
     elif not relationship_valid:
         status, reason = "unknown", "note_relationship_missing_or_mismatched"
@@ -640,7 +642,7 @@ def _note_scope(kind: str, note_id: str, context: dict[str, Any]) -> dict[str, A
         "relationships": bounded_relationships,
         "section_references": [], "unknown_sections": [],
         "body_references": bounded_references,
-        "reason": "scope_detail_limit_exceeded" if references_truncated or relationships_truncated else reason,
+        "reason": reason,
         "truncated": references_truncated or relationships_truncated or context["note_reference_overflow"],
     }
 

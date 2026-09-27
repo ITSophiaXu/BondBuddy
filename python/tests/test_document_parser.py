@@ -69,6 +69,21 @@ class EventSink:
 
 
 class DocumentParserTests(unittest.TestCase):
+    def test_docx_note_scope_truncation_cannot_remain_resolved(self):
+        references = [{"note_id": "1", "note_id_sha256": hashlib.sha256(b"1").hexdigest(),
+                       "stable_ref": "docx:p:1"}
+                      for _ in range(parser_module.MAX_DOCX_AUXILIARY_SCOPE_REFERENCES + 1)]
+        relation = {"relationship_id": "rIdNote", "relationship_type": "footnotes", "mode": "internal",
+                    "target_member": "word/footnotes.xml", "status": "resolved"}
+        context = {"note_references_by_id": {("footnote", "1"): references},
+                   "relationships_by_type": {"footnotes": [relation]}, "relationship_state": "valid",
+                   "relationship_sha256": "a" * 64, "note_reference_overflow": False}
+        scope = parser_module._note_scope("footnote", "1", context)
+        self.assertEqual(scope["status"], "unknown")
+        self.assertEqual(scope["reason"], "scope_detail_limit_exceeded")
+        self.assertTrue(scope["truncated"])
+        self.assertEqual(len(scope["body_references"]), parser_module.MAX_DOCX_AUXILIARY_SCOPE_REFERENCES)
+
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory(prefix="bondbuddy-parser-test-")
         self.root = Path(self.tmp.name)
