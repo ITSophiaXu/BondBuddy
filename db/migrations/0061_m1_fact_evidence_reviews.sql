@@ -109,20 +109,25 @@ BEGIN
     ctx.input_revision<>NEW.input_revision OR ctx.input_hash<>NEW.input_hash OR ctx.material_id<>NEW.material_id OR
     ctx.material_version<>NEW.material_version OR ctx.snapshot_id<>NEW.snapshot_id OR ctx.parser_version<>NEW.parser_version OR
     ctx.parse_response_sha256<>NEW.parse_response_sha256 OR NEW.candidate_identity_sha256<>candidate.fact_key_hash OR
-    NEW.source_kind<>candidate.source_kind OR ctx.manifest->>'candidate_identity_sha256'<>btrim(candidate.fact_key_hash::text) OR
-    ctx.manifest->>'source_kind'<>candidate.source_kind OR NEW.candidate_snapshot IS DISTINCT FROM bb_fact_evidence_candidate_snapshot(candidate) OR NOT EXISTS(SELECT 1 FROM bb_fact_evidence_reviewer_grants g
+    NEW.source_kind<>candidate.source_kind OR ctx.manifest->>'candidate_identity_sha256' IS DISTINCT FROM btrim(candidate.fact_key_hash::text) OR
+    ctx.manifest->>'source_kind' IS DISTINCT FROM candidate.source_kind OR NEW.candidate_snapshot IS DISTINCT FROM bb_fact_evidence_candidate_snapshot(candidate) OR NOT EXISTS(SELECT 1 FROM bb_fact_evidence_reviewer_grants g
       JOIN bb_users u ON u.id=g.user_id AND u.status='active' WHERE g.id=NEW.reviewer_grant_id AND g.user_id=NEW.reviewer_user_id
        AND g.role='fact_evidence_reviewer' AND g.scope_owner_user_id=NEW.owner_user_id AND g.scope_project_id=NEW.project_id AND g.revoked_at IS NULL)
   THEN RAISE EXCEPTION 'fact evidence review pins or active grant mismatch' USING ERRCODE='23514'; END IF;
   expected_count:=jsonb_array_length(ctx.manifest->'selected_body')+jsonb_array_length(ctx.manifest->'auxiliary_targets');
   actual_count:=jsonb_array_length(NEW.assessments);
-  IF expected_count<>actual_count OR EXISTS(SELECT value->>'target_id' FROM jsonb_array_elements(NEW.assessments) GROUP BY value->>'target_id' HAVING count(*)<>1) OR
-    EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.assessments) a WHERE a->>'assessment' NOT IN ('supports_candidate','contradicts_candidate','not_relevant','unresolved') OR length(btrim(a->>'reason'))=0) OR
+  IF jsonb_typeof(ctx.manifest->'selected_body') IS DISTINCT FROM 'array' OR
+    jsonb_typeof(ctx.manifest->'auxiliary_targets') IS DISTINCT FROM 'array' OR expected_count IS DISTINCT FROM actual_count OR
+    EXISTS(SELECT value->>'target_id' FROM jsonb_array_elements(NEW.assessments) GROUP BY value->>'target_id' HAVING count(*)<>1) OR
+    EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.assessments) AS item(value) WHERE jsonb_typeof(value) IS DISTINCT FROM 'object' OR
+      jsonb_typeof(value->'target_id') IS DISTINCT FROM 'string' OR length(btrim(value->>'target_id')) NOT BETWEEN 1 AND 128 OR
+      jsonb_typeof(value->'assessment') IS DISTINCT FROM 'string' OR value->>'assessment' NOT IN ('supports_candidate','contradicts_candidate','not_relevant','unresolved') OR
+      jsonb_typeof(value->'reason') IS DISTINCT FROM 'string' OR length(btrim(value->>'reason')) NOT BETWEEN 1 AND 2048) OR
     EXISTS(SELECT 1 FROM (SELECT value->>'record_id' target_id FROM jsonb_array_elements(ctx.manifest->'selected_body')
       UNION ALL SELECT value->>'target_id' FROM jsonb_array_elements(ctx.manifest->'auxiliary_targets')) expected
-      WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.assessments) a WHERE a->>'target_id'=expected.target_id)) OR
-    EXISTS(SELECT 1 FROM jsonb_array_elements(ctx.manifest->'selected_body') b JOIN jsonb_array_elements(NEW.assessments) a
-      ON a->>'target_id'=b->>'record_id' WHERE a->>'assessment'='not_relevant')
+      WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.assessments) AS item(value) WHERE value->>'target_id'=expected.target_id)) OR
+    EXISTS(SELECT 1 FROM jsonb_array_elements(ctx.manifest->'selected_body') AS body(value) JOIN jsonb_array_elements(NEW.assessments) AS item(value)
+      ON item.value->>'target_id'=body.value->>'record_id' WHERE item.value->>'assessment'='not_relevant')
   THEN RAISE EXCEPTION 'fact evidence review must assess every exact context member once' USING ERRCODE='23514'; END IF;
   unresolved:=NOT ctx.reviewable OR candidate.status IN ('conflicted','superseded') OR
     (candidate.source_kind='audited' AND jsonb_array_length(candidate.uncertainty)>0) OR

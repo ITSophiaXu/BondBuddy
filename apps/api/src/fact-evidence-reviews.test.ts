@@ -47,6 +47,16 @@ test('fact evidence reviewer ledger is exact, append-only, external-safe, and fa
       VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,'incomplete',false,$11::jsonb)`,[incompleteContext,owner,project,candidate,inputHash,material,snapshot,responseHash,contentHash,incompleteHash,JSON.stringify(incompleteManifest)]);
   }finally{client.release();}
   const grant=await changeFactEvidenceReviewerGrant(db,{action:'grant',reviewerUserId:reviewer,actorUserId:manager,reasonCode:'authorized_review',authorizationBasis:'Synthetic test-only authorization',ownerUserId:owner,projectId:project});
+  const pinned=(await db.query('SELECT bb_fact_evidence_candidate_snapshot(c) AS snapshot FROM bb_fact_candidates c WHERE c.id=$1',[candidate])).rows[0]!.snapshot;
+  await assert.rejects(db.query(`INSERT INTO bb_fact_evidence_reviews
+    (id,request_id,request_hash,owner_user_id,project_id,candidate_id,candidate_identity_sha256,candidate_snapshot,evidence_context_set_id,evidence_set_sha256,
+     input_revision,input_hash,material_id,material_version,material_sha256,snapshot_id,parser_version,parse_response_sha256,source_kind,assessments,outcome,
+     reviewer_user_id,reviewer_grant_id,authority,reason)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,1,$11,$12,1,$13,$14,'synthetic-parser-1',$15,'external',$16::jsonb,
+      'external_evidence_impact_reviewed',$17,$18,'fact_evidence_reviewer','synthetic direct SQL')`,
+    [`malformed-review-${suffix}`,`malformed-request-${suffix}`,sha(`malformed ${suffix}`),owner,project,candidate,factHash,JSON.stringify(pinned),context,evidenceHash,inputHash,material,contentHash,snapshot,responseHash,
+      JSON.stringify([{target_id:'body-anchor'}]),reviewer,grant]),/fact evidence review must assess every exact context member once/,
+      'direct SQL cannot omit the assessment or reason and still record an externally reviewed result');
   const request:FactEvidenceReviewRequest={request_id:`review-${suffix}`,candidate_id:candidate,evidence_context_set_id:context,evidence_set_sha256:evidenceHash,
     assessments:[{target_id:'body-anchor',assessment:'supports_candidate',reason:'Synthetic exact evidence inspected'}],reason:'Synthetic evidence and impact reviewed'};
   await assert.rejects(appendFactEvidenceReview(db,{userId:owner},project,{...request,request_id:`owner-${suffix}`}),/FACT_EVIDENCE_REVIEWER_FORBIDDEN/,'owner cannot self-review');
