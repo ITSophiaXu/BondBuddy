@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { isMarketOffering, RULE_APPLICABILITY_FEATURE_DIMENSIONS, type Market, type Offering } from '@bondbuddy/contracts';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// No #19 industry/feature codebook has Maxy-reviewed source, scope, and mapping yet.
+// Reviewer-supplied version strings are evidence metadata, never a server catalog entry.
+const PUBLISHED_RULE_APPLICABILITY_TAXONOMY_VERSIONS: readonly string[] = [];
 
 export type ApplicabilitySourceKind = 'parse_evidence' | 'user_asserted' | 'unknown';
 export type ApplicabilitySourceStatus = 'recognized' | 'user_asserted' | 'unknown' | 'conflicting';
@@ -107,10 +111,12 @@ export interface ReviewedRuleApplicabilityContextArgs {
   };
 }
 
-export type ReviewedRuleApplicabilityContextResult = {
-  readonly status: 'needs_review'; readonly reasons: string[];
-  readonly contextPin?: RuleApplicabilityContextPin | null;
-};
+export type ReviewedRuleApplicabilityContextResult =
+  | { readonly status: 'needs_review'; readonly reasons: string[]; readonly contextPin?: RuleApplicabilityContextPin | null }
+  | { readonly request: {
+      market: Market; offering: Offering; instrument: string; documentStage: 'registration' | 'issuance';
+      issuerScope: string; investorScope: string; industry: string; specialFeatures: readonly string[]; asOf: string;
+    }; readonly contextPin: RuleApplicabilityContextPin & Record<string, unknown> };
 
 type CreateDbLike = Pick<Pool, 'connect'>;
 type QueryLike = Pick<Pool | PoolClient, 'query'>;
@@ -629,12 +635,6 @@ export async function loadReviewedRuleApplicabilityContext(
       reasons.push('rule_applicability_issuer_identity_stale');
     }
     for (const candidate of contextPin.fieldCandidates) {
-      if (candidate.value === null || candidate.sourceStatus !== 'recognized' || candidate.sourceKind !== 'parse_evidence') {
-        reasons.push(`rule_applicability_field_needs_review:${candidate.fieldKey}`);
-      }
-      if (candidate.fieldKey === 'specialFeatures' && Array.isArray(candidate.value) && candidate.value.length === 0) {
-        reasons.push('rule_applicability_special_features_absence_unreviewed');
-      }
       for (const evidence of candidate.evidence ?? []) {
         const found = await db.query(`SELECT e.record_sha256,e.content_sha256,m.sha256 AS material_sha256,m.deleted_at
           FROM bb_parse_evidence e JOIN bb_material_versions m ON m.owner_user_id=e.owner_user_id AND m.project_id=e.project_id
@@ -657,7 +657,119 @@ export async function loadReviewedRuleApplicabilityContext(
         }
       }
     }
-    if (contextPin.asOf === null || contextPin.documentPurpose === null) reasons.push('rule_applicability_document_date_or_purpose_missing');
-    reasons.push('rule_applicability_taxonomy_and_review_threshold_not_defined');
-    return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
+    const overall = await db.query(`SELECT * FROM bb_rule_applicability_overall_reviews
+      WHERE owner_user_id=$1 AND project_id=$2 AND context_id=$3 AND context_version=$4
+        AND context_content_hash=$5 AND source_input_revision=$6 AND source_input_hash=$7
+      ORDER BY sequence_id DESC LIMIT 1`, [expected.ownerUserId, expected.projectId, expected.contextId, expected.version,
+      expected.contentHash, expected.expectedSourceInputRevision, expected.expectedSourceInputHash]);
+    const review = overall.rows[0] as JsonRecord | undefined;
+    if (!review || review.action !== 'approve') {
+      reasons.push(review?.action === 'withdraw' ? 'rule_applicability_overall_review_withdrawn' : 'rule_applicability_overall_review_required');
+      return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
+    }
+    const reviewGrant = await db.query(`SELECT 1 FROM bb_rule_applicability_reviewer_grants g
+      JOIN bb_users u ON u.id=g.user_id AND u.status='active'
+      JOIN bb_projects p ON p.owner_user_id=g.scope_owner_user_id AND p.id=g.scope_project_id AND p.deleted_at IS NULL
+      WHERE g.id=$1 AND g.user_id=$2 AND g.role='rule_applicability_reviewer' AND g.revoked_at IS NULL
+        AND g.scope_owner_user_id=$3 AND g.scope_project_id=$4 FOR SHARE OF g,p,u`,
+    [review.reviewer_grant_id, review.reviewer_user_id, expected.ownerUserId, expected.projectId]);
+    if (!reviewGrant.rows.length) reasons.push('rule_applicability_overall_review_grant_inactive');
+    const laterFieldAction = await db.query(`SELECT 1 FROM bb_rule_applicability_field_reviews
+      WHERE owner_user_id=$1 AND project_id=$2 AND context_id=$3 AND context_version=$4 AND reviewed_at>$5 LIMIT 1`,
+    [expected.ownerUserId, expected.projectId, expected.contextId, expected.version, review.reviewed_at]);
+    if (laterFieldAction.rows.length) reasons.push('rule_applicability_field_review_newer_than_aggregate');
+    const approved = parseJson(review.applicability_values);
+    const valueEvidence = parseJson(review.value_evidence);
+    const featureEvidence = parseJson(review.feature_evidence);
+    const taxonomyVersion = typeof review.taxonomy_version === 'string' ? review.taxonomy_version : '';
+    const isEvidenceRef = (value: unknown): value is RuleApplicabilityEvidenceRef => isRecord(value) &&
+      typeof value.materialId === 'string' && Number.isSafeInteger(value.materialVersion) && typeof value.materialSha256 === 'string' &&
+      typeof value.parseSnapshotId === 'string' && typeof value.recordId === 'string' && typeof value.recordSha256 === 'string';
+    if (!isRecord(approved) || !isRecord(valueEvidence) || !Array.isArray(featureEvidence) || !taxonomyVersion.startsWith('bondbuddy-applicability-')) {
+      reasons.push('rule_applicability_overall_review_snapshot_invalid');
+      return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
+    }
+    if (!PUBLISHED_RULE_APPLICABILITY_TAXONOMY_VERSIONS.includes(taxonomyVersion)) {
+      reasons.push('rule_applicability_taxonomy_not_published');
+    }
+    const market = approved.market;
+    const offering = approved.offering;
+    const instrument = approved.instrument;
+    const documentStage = approved.documentStage;
+    const issuerScope = approved.issuerScope;
+    const investorScope = approved.investorScope;
+    const industry = approved.industry;
+    const specialFeatures = approved.specialFeatures;
+    const asOf = approved.asOf;
+    if (typeof market !== 'string' || typeof offering !== 'string' || !isMarketOffering(market as Market, offering as Offering) ||
+        typeof instrument !== 'string' || instrument.trim() === '' || !['registration', 'issuance'].includes(String(documentStage)) ||
+        !['domestic-company', 'other'].includes(String(issuerScope)) || !['professional', 'other'].includes(String(investorScope)) ||
+        typeof industry !== 'string' || industry.trim() === '' || !Array.isArray(specialFeatures) ||
+        specialFeatures.some((feature) => typeof feature !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(feature)) ||
+        !validDate(asOf) || new Set(specialFeatures).size !== specialFeatures.length) {
+      reasons.push('rule_applicability_overall_review_values_invalid');
+      return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
+    }
+    if (!contextPin.asOf || contextPin.asOf !== asOf || !contextPin.documentPurpose || contextPin.documentPurpose !== documentStage)
+      reasons.push('rule_applicability_target_intent_mismatch');
+    const confirmation = await db.query(`SELECT market,offering,document_purpose,as_of,confirmed_by
+      FROM bb_input_revision_target_confirmations WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3`,
+    [expected.ownerUserId, expected.projectId, expected.expectedSourceInputRevision]);
+    const confirmed = confirmation.rows[0] as JsonRecord | undefined;
+    if (!confirmed || confirmed.confirmed_by !== expected.ownerUserId || confirmed.market !== market || confirmed.offering !== offering ||
+        confirmed.document_purpose !== documentStage || dateText(confirmed.as_of) !== asOf) reasons.push('rule_applicability_target_confirmation_stale');
+
+    const featureKeys = featureEvidence.map((item) => isRecord(item) ? item.dimension : null);
+    if (featureKeys.length !== RULE_APPLICABILITY_FEATURE_DIMENSIONS.length || new Set(featureKeys).size !== featureKeys.length ||
+        RULE_APPLICABILITY_FEATURE_DIMENSIONS.some((key) => !featureKeys.includes(key))) {
+      reasons.push('rule_applicability_special_features_evidence_incomplete');
+    }
+    const positiveFeatures: string[] = [];
+    const approvedEvidence: RuleApplicabilityEvidenceRef[] = [];
+    for (const key of ['instrument', 'issuerScope', 'investorScope', 'industry']) {
+      const fieldEvidence = valueEvidence[key];
+      if (!Array.isArray(fieldEvidence) || fieldEvidence.length === 0 || !fieldEvidence.every(isEvidenceRef)) {
+        reasons.push(`rule_applicability_approved_field_evidence_missing:${key}`);
+      } else approvedEvidence.push(...fieldEvidence);
+    }
+    for (const item of featureEvidence) {
+      if (!isRecord(item) || !['present', 'absent', 'not_applicable'].includes(String(item.outcome)) ||
+          typeof item.reason !== 'string' || item.reason.trim() === '' || !Array.isArray(item.evidenceRefs) ||
+          item.evidenceRefs.length === 0 || !item.evidenceRefs.every(isEvidenceRef)) {
+        reasons.push(`rule_applicability_feature_evidence_invalid:${String(isRecord(item) ? item.dimension : 'unknown')}`);
+        continue;
+      }
+      const featureMaterials = [...new Set(item.evidenceRefs.map((evidence) => `${evidence.materialId}\u0000${evidence.materialVersion}`))].sort();
+      const pinnedMaterials = contextPin.sourceMaterials.map((material) => `${material.materialId}\u0000${material.materialVersion}`).sort();
+      if (canonical(featureMaterials) !== canonical(pinnedMaterials)) reasons.push(`rule_applicability_feature_material_coverage_incomplete:${String(item.dimension)}`);
+      approvedEvidence.push(...item.evidenceRefs);
+      if (item.outcome === 'present') {
+        if (typeof item.featureCode !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(item.featureCode)) reasons.push('rule_applicability_feature_code_invalid');
+        else positiveFeatures.push(item.featureCode);
+      } else if (item.featureCode !== undefined) reasons.push('rule_applicability_negative_feature_code_invalid');
+    }
+    if (canonical([...positiveFeatures].sort()) !== canonical([...specialFeatures].sort())) reasons.push('rule_applicability_special_features_value_mismatch');
+    for (const evidence of approvedEvidence) {
+      const evidenceMaterialPinned = Array.isArray(refs) && refs.some((ref) => isRecord(ref) && ref.material_id === evidence.materialId &&
+        ref.material_version === evidence.materialVersion) && Array.isArray(sourceMaterials) && sourceMaterials.some((ref) => isRecord(ref) &&
+        ref.material_id === evidence.materialId && ref.material_version === evidence.materialVersion &&
+        String(ref.sha256 ?? '').trim().toLowerCase() === evidence.materialSha256);
+      const found = await db.query(`SELECT e.record_sha256,e.content_sha256,m.sha256 AS material_sha256,m.deleted_at
+        FROM bb_parse_evidence e JOIN bb_material_versions m ON m.owner_user_id=e.owner_user_id AND m.project_id=e.project_id
+          AND m.id=e.material_id AND m.version=e.material_version
+        JOIN bb_parse_snapshots s ON s.owner_user_id=e.owner_user_id AND s.project_id=e.project_id
+          AND s.material_id=e.material_id AND s.material_version=e.material_version AND s.id=e.snapshot_id
+          AND s.content_sha256=e.content_sha256 AND s.response_status IN ('parsed','needs_confirmation')
+        WHERE e.owner_user_id=$1 AND e.project_id=$2 AND e.material_id=$3 AND e.material_version=$4
+          AND e.snapshot_id=$5 AND e.record_id=$6`,
+      [expected.ownerUserId, expected.projectId, evidence.materialId, evidence.materialVersion, evidence.parseSnapshotId, evidence.recordId]);
+      if (!evidenceMaterialPinned || !found.rows.length || found.rows[0]!.deleted_at !== null ||
+          String(found.rows[0]!.record_sha256).trim() !== evidence.recordSha256 ||
+          String(found.rows[0]!.content_sha256).trim() !== evidence.materialSha256 ||
+          String(found.rows[0]!.material_sha256).trim() !== evidence.materialSha256) reasons.push('rule_applicability_overall_review_evidence_stale');
+    }
+    if (reasons.length) return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
+    return { contextPin: contextPin as RuleApplicabilityContextPin & Record<string, unknown>, request: { market: market as Market, offering: offering as Offering,
+      instrument: instrument as string, documentStage: documentStage as 'registration' | 'issuance', issuerScope: issuerScope as string,
+      investorScope: investorScope as string, industry: industry as string, specialFeatures: [...specialFeatures] as string[], asOf } };
 }

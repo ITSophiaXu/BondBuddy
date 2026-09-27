@@ -274,6 +274,7 @@ export const operations: readonly Operation[] = [
   op('get', '/projects/{project_id}/input-revisions/{input_revision}', 'Read immutable input snapshot (contract only)', 'InputRevisionResponse', 200, undefined, [404]),
   op('post', '/projects/{project_id}/input-revisions/{input_revision}/rule-applicability-context-drafts', 'Create an owner-scoped needs_review applicability draft from a locked input revision', 'RuleApplicabilityContextDraftResponse', 201, 'RuleApplicabilityContextDraftCreateRequest', [404, 409, 422]),
   op('get', '/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}', 'Read an exact owner-scoped applicability draft reference; never production eligible', 'RuleApplicabilityContextDraftResponse', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}/reviews', 'Append a project-scoped applicability review or withdrawal; never asserts rule-pack release', 'RuleApplicabilityOverallReviewResponse', 201, 'RuleApplicabilityOverallReviewCreateRequest', [403, 404, 409, 422]),
   op('post', '/projects/{project_id}/materials/uploads', 'Create scoped upload (contract only)', 'UploadSessionResponse', 201, 'UploadCreateRequest', [404, 415, 422]),
   op('post', '/projects/{project_id}/materials/uploads/{upload_id}/complete', 'Verify object bytes/hash and register material idempotently (contract only)', 'MaterialResponse', 200, 'UploadCompleteRequest', [404, 409, 415, 422, 503]),
   op('get', '/projects/{project_id}/materials/{material_id}', 'Read current owner material metadata after checking private object availability', 'MaterialResponse', 200, undefined, [404, 503]),
@@ -378,6 +379,8 @@ export function openApiDocument() {
     'implemented; requires-valid-session; owner-scoped; needs_review-only; production_eligible=false';
   (paths['/api/v1/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}'].get as Record<string, unknown>)['x-implementation-status'] =
     'implemented; requires-valid-session; owner-scoped; historical-read; needs_review-only; production_eligible=false';
+  (paths['/api/v1/projects/{project_id}/rule-applicability-context-drafts/{context_id}/versions/{version}/reviews'].post as Record<string, unknown>)['x-implementation-status'] =
+    'implemented; requires-valid-session; active-exact-reviewer-grant; append-only; transactional-outbox; production_eligible=false';
   (paths['/api/v1/projects/{project_id}/credit-facility-supplements'].post as Record<string, unknown>)['x-implementation-status'] =
     'implemented; requires-valid-session; owner-and-project-scoped; append-only; user_asserted-or-review-required; never-manuscript-ready';
   (paths['/api/v1/projects/{project_id}/credit-facility-supplements/{supplement_id}/versions/{version}'].get as Record<string, unknown>)['x-implementation-status'] =

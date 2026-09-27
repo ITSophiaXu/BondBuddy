@@ -36,6 +36,7 @@ import { confirmTargetIntent, loadTargetConfirmation, type TargetConfirmationReq
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
+import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -501,6 +502,40 @@ export function createServer(settings: Settings = {}) {
       if(!draft)throw missing();
       return {status:'needs_review' as const,production_eligible:false as const,context_ref:{context_id:draft.contextId,version:draft.version,
         content_hash:draft.contentHash,source_input_revision:draft.sourceInputRevision,source_input_hash:draft.sourceInputHash}};
+    });
+  app.post('/api/v1/projects/:project_id/rule-applicability-context-drafts/:context_id/versions/:version/reviews',
+    {schema:{body:schemas.RuleApplicabilityOverallReviewCreateRequest,response:{201:schemas.RuleApplicabilityOverallReviewResponse}}},async(request,reply)=>{
+      const reviewerUserId=await owner(request),projectId=param(request,'project_id'),contextId=param(request,'context_id'),versionText=param(request,'version');
+      reply.header('cache-control','private, no-store');
+      if(!/^[1-9][0-9]{0,9}$/.test(versionText)||Number(versionText)>2147483647)throw missing();
+      const version=Number(versionText),draft=(await db().query(`SELECT d.owner_user_id,d.project_id,d.id,d.version,d.content_hash,d.source_input_revision,d.source_input_hash
+        FROM bb_rule_applicability_context_drafts d JOIN bb_rule_applicability_reviewer_grants g
+          ON g.scope_owner_user_id=d.owner_user_id AND g.scope_project_id=d.project_id AND g.user_id=$4
+          AND g.role='rule_applicability_reviewer' AND g.revoked_at IS NULL
+        JOIN bb_projects p ON p.owner_user_id=g.scope_owner_user_id AND p.id=g.scope_project_id AND p.deleted_at IS NULL
+        JOIN bb_users u ON u.id=g.user_id AND u.status='active'
+        WHERE d.project_id=$1 AND d.id=$2 AND d.version=$3`,[projectId,contextId,version,reviewerUserId])).rows[0];
+      if(!draft)throw missing();
+      const b=body<{request_id:string;action:'approve'|'request_more_evidence'|'withdraw';reason:string;
+        approved_values?:AppendRuleApplicabilityOverallReviewInput['approvedValues'];
+        value_evidence?:AppendRuleApplicabilityOverallReviewInput['valueEvidence'];
+        feature_evidence?:AppendRuleApplicabilityOverallReviewInput['featureEvidence'];taxonomy_version?:string}>(request);
+      try{
+        const record=await appendRuleApplicabilityOverallReview(db(),{requestId:b.request_id,action:b.action,reason:b.reason,
+          approvedValues:b.approved_values,valueEvidence:b.value_evidence,featureEvidence:b.feature_evidence,taxonomyVersion:b.taxonomy_version,
+          principal:{userId:reviewerUserId},
+          scope:{ownerUserId:String(draft.owner_user_id),projectId},target:{contextId,contextVersion:version,
+            contextContentHash:String(draft.content_hash).trim(),sourceInputRevision:Number(draft.source_input_revision),
+            sourceInputHash:String(draft.source_input_hash).trim()}});
+        return reply.code(201).send({review_id:record.id,action:record.action,replayed:record.replayed,production_eligible:false});
+      }catch(error){
+        if(error instanceof Error){
+          if(error.message==='OVERALL_REVIEW_REVIEWER_NOT_AUTHORIZED')throw new Problem(403,'FORBIDDEN','Exact project reviewer grant required');
+          if(error.message==='OVERALL_REVIEW_IDEMPOTENCY_CONFLICT')throw conflict('IDEMPOTENCY_CONFLICT','Request ID is already bound to another review');
+          if(error.message.startsWith('OVERALL_REVIEW_'))throw new Problem(422,'VALIDATION_FAILED','Applicability review input or source evidence is invalid');
+        }
+        throw error;
+      }
     });
   app.post('/api/v1/projects/:project_id/materials/uploads',{schema:{body:schemas.UploadCreateRequest}},async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),b=body<{filename:string;media_type:string;byte_size:number;sha256:string;role:string}>(request);
