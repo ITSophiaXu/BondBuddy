@@ -275,7 +275,11 @@ export async function recordProviderCallObservation(
     const usageStatus:ProviderObservationResult['usage_status']=usageRow?.usage_status==='conflict'?'conflict':usageRow?.usage_status==='measured'?'measured':usageRow?.usage_status==='pending'?'pending':'unknown';
     const measuredWithoutConflict=usageStatus==='measured' && Number(usageRow.conflicting_measurements)===0;
     const complete=observation.outcome==='completed' && !!result && candidateCount===1 && measuredWithoutConflict;
-    const failed=observation.outcome==='failed' && measuredWithoutConflict;
+    // A provider's explicit invalid_request_error is a request rejection, with no
+    // generated result to reconcile. Keep usage unknown; all other unmeasured failures
+    // still require reconciliation because the request may have consumed tokens.
+    const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0;
+    const failed=observation.outcome==='failed' && (measuredWithoutConflict || rejected);
     const notSent=observation.outcome==='confirmed_not_sent';
     const nextAttemptStatus=complete?'completed':failed?'failed':notSent?'confirmed_not_sent':'pending_reconcile';
     const nextUsageStatus=measuredWithoutConflict?'measured':usageStatus==='unknown'?'unknown':'pending';

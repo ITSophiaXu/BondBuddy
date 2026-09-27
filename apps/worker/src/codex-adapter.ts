@@ -53,6 +53,53 @@ export const DEFAULT_DISABLED_FEATURES = ['shell_tool', 'unified_exec', 'shell_s
 const TEXT_ITEM_TYPES = new Set(['agent_message', 'reasoning', 'todo_list', 'error']);
 const REASK_MARKER = '[bb-reask]';
 
+// Add only redundant type constraints. Mixed primitive types are rejected locally rather
+// than silently narrowing a schema or relying on provider-specific union support.
+export function normalizeCodexOutputSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const copy = structuredClone(schema);
+  const inferredType = (value: unknown) => {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    if (typeof value === 'number') return Number.isFinite(value) ? (Number.isInteger(value) ? 'integer' : 'number') : 'invalid';
+    return ['string', 'boolean', 'object'].includes(typeof value) ? typeof value : 'invalid';
+  };
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) { for (const child of node) walk(child); return; }
+    if (!node || typeof node !== 'object') return;
+    const s = node as Record<string, unknown>;
+    if (!('type' in s) && !('anyOf' in s) && !('$ref' in s) && ('const' in s || 'enum' in s)) {
+      const values = 'const' in s ? [s.const] : s.enum;
+      if (!Array.isArray(values) || values.length === 0) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+      const types = new Set(values.map(inferredType));
+      if (types.has('invalid')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+      if (types.size === 1) s.type = [...types][0];
+      else if ([...types].every(t => t === 'integer' || t === 'number')) s.type = 'number';
+      else throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+    }
+    for (const key of ['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas']) {
+      const children = s[key];
+      if (children && typeof children === 'object' && !Array.isArray(children))
+        for (const child of Object.values(children)) walk(child);
+    }
+    for (const key of ['items', 'additionalProperties', 'additionalItems', 'contains', 'not', 'if', 'then', 'else', 'propertyNames']) walk(s[key]);
+    for (const key of ['anyOf', 'oneOf', 'allOf', 'prefixItems']) if (Array.isArray(s[key])) for (const child of s[key]) walk(child);
+  };
+  walk(copy);
+  return copy;
+}
+
+// Inspect provider metadata only; never retain its free-form message, which may echo input.
+function isProviderRequestRejection(eventError: unknown): boolean {
+  if (!eventError || typeof eventError !== 'object') return false;
+  const outer = eventError as Record<string, unknown>;
+  if (outer.type === 'invalid_request_error') return true;
+  if (typeof outer.message !== 'string') return false;
+  try {
+    const parsed = JSON.parse(outer.message) as { error?: { type?: unknown } };
+    return parsed?.error?.type === 'invalid_request_error';
+  } catch { return false; }
+}
+
 const safeId = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const safeVersion = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(v);
 const count = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
@@ -153,7 +200,7 @@ export function normalizeCodexUsage(raw: unknown): ProviderUsage {
 export type CodexProcessResult = {
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
-  tool_attempts: number; turn_failed: boolean; saw_error: boolean;
+  tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_request_rejected?: boolean;
   stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed';
 };
 
@@ -168,7 +215,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const args = buildCodexArgs(c, o);
   const startedAt = new Date();
   const t0 = process.hrtime.bigint();
-  const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, stop: null };
+  const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_request_rejected: false, stop: null };
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
@@ -194,8 +241,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       switch (ev.type) {
         case 'thread.started': if (safeId(ev.thread_id)) r.thread_id = ev.thread_id; break;
         case 'turn.completed': r.turn_completed = true; r.usage = normalizeCodexUsage(ev.usage); break;
-        case 'turn.failed': r.turn_failed = true; break;
-        case 'error': r.saw_error = true; break;
+        case 'turn.failed': r.turn_failed = true; if (isProviderRequestRejection(ev.error)) r.provider_request_rejected = true; break;
+        case 'error': r.saw_error = true; if (isProviderRequestRejection(ev.error ?? ev)) r.provider_request_rejected = true; break;
         case 'item.started': case 'item.updated': case 'item.completed': {
           const item = ev.item as Record<string, unknown> | undefined;
           const type = typeof item?.type === 'string' ? item.type : 'unknown';
@@ -243,6 +290,8 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   if (r.stop === 'timeout') return { outcome: 'pending_reconcile', error_code: 'MODEL_TIMEOUT', finish_reason: 'timeout', usage };
   if (r.stop === 'too_large') return { outcome: 'pending_reconcile', error_code: 'MODEL_OUTPUT_TOO_LARGE', finish_reason: null, usage };
   if (r.stop === 'broken') return { outcome: 'pending_reconcile', error_code: 'MODEL_STREAM_BROKEN', finish_reason: null, usage };
+  if (r.provider_request_rejected && r.turn_failed && !r.turn_completed && usage.status === 'unknown')
+    return { outcome: 'failed', error_code: 'MODEL_PROVIDER_REQUEST_REJECTED', finish_reason: 'turn_failed', usage };
   if (r.turn_failed || (r.saw_error && !r.turn_completed)) return { outcome: 'failed', error_code: 'MODEL_TURN_FAILED', finish_reason: 'turn_failed', usage };
   if (!r.turn_completed) return { outcome: 'pending_reconcile', error_code: r.exit_code === 0 ? 'MODEL_STREAM_BROKEN' : 'MODEL_PROCESS_EXIT_NONZERO', finish_reason: null, usage: unknown };
   if (r.exit_code !== 0) return { outcome: 'failed', error_code: 'MODEL_PROCESS_EXIT_NONZERO', finish_reason: null, usage };
@@ -336,7 +385,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if (!codexHome) await mkdir(attemptHome, { mode: 0o700 });
         if (c.credential.kind === 'auth_file') await symlink(c.credential.path, join(attemptHome, 'auth.json')).catch(e => { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; });
         let schemaFile: string | null = null;
-        if (input.output.kind === 'json') { schemaFile = join(attemptDir, 'output-schema.json'); await writeFile(schemaFile, JSON.stringify(input.output.schema), { mode: 0o600 }); }
+        if (input.output.kind === 'json') { schemaFile = join(attemptDir, 'output-schema.json'); await writeFile(schemaFile, JSON.stringify(normalizeCodexOutputSchema(input.output.schema)), { mode: 0o600 }); }
         if ((await readdir(cwd)).length) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
 
         await journal.recordIntent(intent); // durable before spawn
