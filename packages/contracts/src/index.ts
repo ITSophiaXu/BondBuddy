@@ -30,6 +30,7 @@ import { agreementSchemas, agreementOpenApiPaths } from './agreement.js'; export
 import { factSchemas } from './facts.js'; export * from './facts.js'; // #15 owner-scoped fact review API
 import { creditFacilitySupplementSchemas } from './credit-facility-supplements.js'; export * from './credit-facility-supplements.js'; // #15 structured user assertions
 import { issuerIdentityReviewSchemas } from './issuer-identity-review.js'; export * from './issuer-identity-review.js';
+import { issuerAnnualProfileReviewSchemas } from './issuer-annual-profile-review.js'; export * from './issuer-annual-profile-review.js';
 import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js'; export * from './rule-applicability-context.js';
 
 // Public values live here. Consumers import these constants and inferred types.
@@ -140,6 +141,7 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 export const schemas = {
   ...targetPeriodEvidenceSchemas,
   ...issuerIdentityReviewSchemas,
+  ...issuerAnnualProfileReviewSchemas,
   ...recoverySchemas,
   ...adminSchemas,
   ...runtimeSchemas, // #17 worker runtime
@@ -256,6 +258,8 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get', '/reviewer/projects/{project_id}/issuer-business-profiles', 'List target annual issuer profiles under an active profile-review grant and audit the read', 'IssuerAnnualProfileReviewListResponse', 200, undefined, [404]),
+  op('post', '/projects/{project_id}/issuer-business-profiles/{profile_id}/review', 'Approve, request evidence for, or withdraw an exact target annual profile under an active profile-review grant', 'IssuerAnnualProfileReviewResponse', 201, 'IssuerAnnualProfileReviewRequest', [400,403,404,409]),
   op('get', '/projects/{project_id}/materials/{material_id}/versions/{material_version}/issuer-identity/observations', 'Read owned issuer identity observations and evidence anchors', 'IssuerIdentityObservationListResponse', 200, undefined, [404]),
   op('get', '/reviewer/projects/{project_id}/materials/{material_id}/versions/{material_version}/issuer-identity/observations', 'Read project-scoped issuer observations under an active reviewer grant and audit the read', 'IssuerIdentityObservationListResponse', 200, undefined, [404]),
   op('post', '/projects/{project_id}/materials/{material_id}/versions/{material_version}/issuer-identity/observations/{source_record_id}/review', 'Review a source observation with an active reviewer grant', 'IssuerIdentityReviewResponse', 201, 'IssuerIdentityReviewRequest', [400, 403, 404, 409]),
