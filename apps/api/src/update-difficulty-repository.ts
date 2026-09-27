@@ -140,6 +140,7 @@ export function classifyUpdateDifficultyFailure(error: unknown): ClassifiedUpdat
     FINANCIAL_MATERIAL_NOT_IN_INPUT_REVISION: 'data_integrity',
     HISTORICAL_MATERIAL_SELECTION_MISMATCH: 'data_integrity',
     TARGET_REPORTING_PERIODS_LOCK_MISMATCH: 'data_integrity',
+    TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH: 'data_integrity',
     TARGET_CONFIRMATION_REQUIRED: 'pending_input',
     TARGET_CONFIRMATION_INVALID: 'data_integrity',
   };
@@ -399,7 +400,9 @@ async function reviewedTargetPeriods(client: UpdateDifficultyClient, input: {
       raw_value:typeof decision.reason==='string'?decision.reason:null,
       provenance:{material_id:String(first.material_id),material_version:Number(first.material_version),method:first.evidence_method as 'native_text'|'ocr',
         extractor_version:String(first.parser_version),evidence_refs:refs.map(ref=>String(ref.record_id))},
-      uncertainty:[...new Set(refs.flatMap(ref=>Array.isArray(ref.ocr_uncertainty)?ref.ocr_uncertainty.filter((item):item is string=>typeof item==='string'):[]))],status:'recognized'});
+      // A confirmed OCR identity can retain unrelated amount/formula warnings in
+      // the immutable decision refs without treating them as period uncertainty.
+      uncertainty:[],status:'recognized'});
   }
   const targetKeys=input.targetReportingPeriods.map(p=>canonical({start:p.start,end:p.end,period_kind:p.period_kind,scope:p.scope}));
   if(byKey.size!==input.targetReportingPeriods.length||targetKeys.some(key=>!byKey.has(key)))
@@ -572,7 +575,8 @@ async function fetchProfile(client: UpdateDifficultyClient, input: TrustedUpdate
 }
 
 async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: TrustedUpdateDifficultyInput,
-  recognition: Recognition, targetPeriods: readonly TargetReportingPeriod[]): Promise<boolean> {
+  recognition: Recognition, targetPeriods: readonly TargetReportingPeriod[],
+  reviewedTargets: readonly TargetReportingPeriod[] = []): Promise<boolean> {
   for (const material of input.financialMaterialVersions) {
     const row = await client.query(
       `SELECT m.role FROM bb_material_versions m
@@ -643,6 +647,11 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
   for (const period of evidenceTargetPeriods) {
     const key = `${period.provenance.material_id}\0${period.provenance.material_version}`;
     if (!financialKeys.has(key)) { allEvidenceBound = false; continue; }
+    if(period.provenance.method==='ocr'){
+      const trusted=reviewedTargets.some(candidate=>'provenance' in candidate&&canonical(candidate)===canonical(period));
+      if(!trusted)allEvidenceBound=false;
+      continue;
+    }
     for (const ref of period.provenance.evidence_refs) {
       const result = await client.query(
         `SELECT 1 FROM bb_parse_snapshots s JOIN bb_parse_evidence e ON e.owner_user_id=s.owner_user_id AND e.project_id=s.project_id
@@ -690,6 +699,20 @@ export async function createUpdateDifficultySnapshotWithClient(
   options: UpdateDifficultyClientOptions = {},
 ): Promise<StoredUpdateDifficultySnapshot> {
   safeContext(input);
+  let reviewedTargets: readonly TargetReportingPeriod[] = [];
+  if(input.inputRevision!==undefined){
+    const assembled=await loadLockedUpdateDifficultyInputWithClient(client,{ownerUserId:input.ownerUserId,projectId:input.projectId,
+      inputRevision:input.inputRevision,inputHash:input.inputHash!,requestId:`difficulty-review-${sha256({owner:input.ownerUserId,project:input.projectId,
+        revision:input.inputRevision,inputHash:input.inputHash}).slice(0,48)}`},{blobs:options.blobs});
+    const sortMaterials=(items:readonly {materialId:string;materialVersion:number}[])=>[...items]
+      .sort((a,b)=>a.materialId.localeCompare(b.materialId)||a.materialVersion-b.materialVersion);
+    if(assembled.targetRevision!==input.targetRevision||assembled.source.materialId!==input.source.materialId||
+       assembled.source.materialVersion!==input.source.materialVersion||assembled.source.profileVersion!==input.source.profileVersion||
+       canonical(sortMaterials(assembled.financialMaterialVersions))!==canonical(sortMaterials(input.financialMaterialVersions))||
+       canonical(assembled.targetReportingPeriods)!==canonical(input.targetReportingPeriods)||
+       canonical(assembled.targetConfirmation)!==canonical(input.targetConfirmation))throw fail('TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH');
+    reviewedTargets=assembled.targetReportingPeriods;
+  }
   const normalizedMaterials = [...input.financialMaterialVersions].map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
     .sort((a, b) => a.materialId.localeCompare(b.materialId) || a.materialVersion - b.materialVersion);
   const requestPayload = { ...input, financialMaterialVersions: normalizedMaterials };
@@ -718,7 +741,7 @@ export async function createUpdateDifficultySnapshotWithClient(
     if (Number(project.rows[0]!.draft_revision) !== input.targetRevision) throw fail('TARGET_REVISION_STALE');
     if (input.inputRevision !== undefined && Number(project.rows[0]!.latest_input_revision) !== input.inputRevision) throw fail('TARGET_INPUT_REVISION_STALE');
     const { recognition, state } = await fetchProfile(client, input);
-    const evidenceBound = await verifyEvidenceRefs(client, input, recognition, input.targetReportingPeriods);
+    const evidenceBound = await verifyEvidenceRefs(client, input, recognition, input.targetReportingPeriods,reviewedTargets);
     const sameTarget = await client.query(
       `SELECT id FROM bb_update_difficulty_snapshots WHERE owner_user_id=$1 AND project_id=$2
         AND source_material_id=$3 AND source_material_version=$4 AND source_profile_version=$5 AND target_revision=$6

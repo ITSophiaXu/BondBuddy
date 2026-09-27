@@ -4,6 +4,7 @@ import { M1_MATERIAL_PARTITIONS, validTargetPeriodEvidenceDecision,
   type TargetPeriodEvidenceDecisionRequest, type TargetPeriodEvidenceDecisionResponse } from '@bondbuddy/contracts';
 import { readOcrPeriodEvidence } from './ocr.js';
 import type { PrivateBlobs } from './data.js';
+import { inputManifestHash } from './production-rule-pin.js';
 
 type Row = Record<string, unknown>;
 type Queryable = {query(sql:string,values?:unknown[]):Promise<{rows:Row[]}>};
@@ -137,12 +138,25 @@ export async function appendTargetPeriodEvidenceDecision(db: Db, principal: Prin
        Number(lockedInput.draft_revision)!==Number((parsed(lockedInput.manifest) as any).draft_revision) ||
        String(lockedInput.input_hash).trim()!==input.input_hash)throw fail('TARGET_PERIOD_DECISION_STALE_INPUT');
     const manifest=parsed(lockedInput.manifest) as Record<string,unknown>;
+    if(manifest.manifest_schema==='production_rule_pin_v1'&&inputManifestHash(manifest)!==String(lockedInput.input_hash).trim())
+      throw fail('TARGET_PERIOD_DECISION_STALE_INPUT');
     const target=record(manifest.update_details)?manifest.update_details.target_reporting_periods:null;
     if(!Array.isArray(target)||target.length!==input.periods.length ||
        !same([...target].map(x=>periodKey(x as Record<string,unknown>)).sort(),input.periods.map(x=>periodKey(x as unknown as Record<string,unknown>)).sort()))
       throw fail('TARGET_PERIOD_DECISION_TARGET_MISMATCH');
     const inputMaterials=parsed(lockedInput.material_versions);
     if(!Array.isArray(inputMaterials))throw fail('TARGET_PERIOD_DECISION_LOCK_INVALID');
+    const manifestMaterials=Array.isArray(manifest.materials)?manifest.materials:[];
+    const toKey=(item:Record<string,unknown>)=>`${String(item.material_id)}\0${Number(item.material_version)}`;
+    const isValidMaterial=(item:unknown):item is Record<string,unknown>=>record(item)&&ID.test(String(item.material_id))&&
+      Number.isSafeInteger(item.material_version)&&Number(item.material_version)>0&&typeof item.role==='string'&&
+      /^[a-f0-9]{64}$/.test(String(item.sha256).trim().toLowerCase());
+    const lockKeys=inputMaterials.filter(record).map(toKey),manifestKeys=manifestMaterials.filter(record).map(toKey);
+    if(inputMaterials.some(item=>!record(item)||!ID.test(String(item.material_id))||!Number.isSafeInteger(item.material_version)||Number(item.material_version)<1)||
+       !Array.isArray(manifest.materials)||manifestMaterials.length!==manifest.materials.length||manifestMaterials.some(item=>!isValidMaterial(item))||
+       lockKeys.length!==inputMaterials.length||manifestKeys.length!==manifestMaterials.length||
+       new Set(lockKeys).size!==lockKeys.length||new Set(manifestKeys).size!==manifestKeys.length||
+       !same([...lockKeys].sort(),[...manifestKeys].sort()))throw fail('TARGET_PERIOD_DECISION_MATERIAL_MANIFEST_MISMATCH');
     const lockedMaterials=[] as {material_id:string;material_version:number;material_sha256:string}[];
     const historicalMaterials: {material_id:string;material_version:number}[]=[];
     for(const item of inputMaterials){
@@ -151,18 +165,13 @@ export async function appendTargetPeriodEvidenceDecision(db: Db, principal: Prin
         WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 FOR SHARE`,
         [ownerUserId,projectId,item.material_id,item.material_version])).rows[0];
       if(!material||material.deleted_at!==null)throw fail('TARGET_PERIOD_DECISION_STALE_MATERIAL_SET');
+      const pinned=manifestMaterials.find((it:any)=>it.material_id===item.material_id&&Number(it.material_version)===Number(item.material_version));
+      if(!pinned||String(material.role)!==String(pinned.role)||String(material.sha256).trim().toLowerCase()!==String(pinned.sha256).trim().toLowerCase())
+        throw fail('TARGET_PERIOD_DECISION_MATERIAL_MANIFEST_MISMATCH');
       lockedMaterials.push({material_id:item.material_id,material_version:Number(item.material_version),material_sha256:String(material.sha256).trim().toLowerCase()});
       if(material.role==='historical')historicalMaterials.push({material_id:item.material_id,material_version:Number(item.material_version)});
     }
     lockedMaterials.sort((a,b)=>a.material_id.localeCompare(b.material_id)||a.material_version-b.material_version);
-    const manifestMaterials=Array.isArray(manifest.materials)?manifest.materials:[];
-    const manifestMaterialKeys=manifestMaterials.map((it:any)=>`${it.material_id}\0${it.material_version}`).sort();
-    const lockMaterialKeys=inputMaterials.map((it:any)=>`${it.material_id}\0${it.material_version}`).sort();
-    if(!same(manifestMaterialKeys,lockMaterialKeys))throw fail('TARGET_PERIOD_DECISION_MATERIAL_MANIFEST_MISMATCH');
-    if(lockedMaterials.some(item=>{
-      const pinned=manifestMaterials.find((it:any)=>it.material_id===item.material_id&&Number(it.material_version)===item.material_version);
-      return !pinned||String(pinned.sha256).trim().toLowerCase()!==item.material_sha256;
-    }))throw fail('TARGET_PERIOD_DECISION_MATERIAL_MANIFEST_MISMATCH');
     if(historicalMaterials.length!==1)throw fail('TARGET_PERIOD_DECISION_HISTORICAL_SELECTION_INVALID');
     const historicalMaterial=(await client.query(`SELECT material_id,material_version,profile_version,recognition FROM bb_historical_profiles
       WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4

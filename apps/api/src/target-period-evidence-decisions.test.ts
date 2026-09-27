@@ -3,8 +3,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { test } from 'node:test';
 import { appendTargetPeriodEvidenceDecision, changeTargetPeriodReviewerGrant, ocrPeriodUncertaintyRequiresConfirmation, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
-import { validTargetPeriodEvidenceDecision, type TargetPeriodEvidenceDecisionRequest } from '@bondbuddy/contracts';
-import { ensureCurrentUpdateDifficultySnapshotWithClient, loadLockedUpdateDifficultyInputWithClient } from './update-difficulty-repository.js';
+import { validTargetPeriodEvidenceDecision, type OcrEngineResponse, type TargetPeriodEvidenceDecisionRequest } from '@bondbuddy/contracts';
+import { createUpdateDifficultySnapshotWithClient, ensureCurrentUpdateDifficultySnapshotWithClient, loadLockedUpdateDifficultyInputWithClient } from './update-difficulty-repository.js';
+import { type PrivateBlobs } from './data.js';
+import { readOcrPeriodEvidence, validateOcrResponse } from './ocr.js';
+import { PNG, pngSample } from './upload-safety.samples.js';
 
 const hash=(n:string)=>n.repeat(64);
 function canonical(value:unknown):string{
@@ -24,18 +27,21 @@ const request:TargetPeriodEvidenceDecisionRequest={request_id:'period-decision-r
   periods:[{start:target.start,end:target.end,period_kind:target.period_kind,scope:target.scope,outcome:'confirmed',evidence:parseRefs,
     reason:'Header, entity, scope and cutoff align in the annual statement.'}]};
 
-function fixture(){
+function fixture(options:{productionPin?:boolean;financialRole?:string;duplicateLock?:boolean}={}){
   let saved:Record<string,unknown>|null=null;let committed=false;
+  const manifest={draft_revision:4,kind:'update',materials,
+    update_details:{target_reporting_periods:[target]},...(options.productionPin?{manifest_schema:'production_rule_pin_v1'}:{})};
+  const materialVersions=materials.map(m=>({material_id:m.material_id,material_version:m.material_version}));
+  if(options.duplicateLock)materialVersions.push({...materialVersions[1]!});
   const client={async query(sql:string,values:unknown[]=[]){
     if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK') {if(sql==='COMMIT')committed=true;return {rows:[]};}
     if(sql.includes('FROM bb_target_period_reviewer_grants g')&&sql.includes('JOIN bb_users'))return {rows:[{id:'reviewer-grant',scope_owner_user_id:'owner'}]};
-    if(sql.includes('FROM bb_input_revisions i'))return {rows:[{input_hash:hash('d'),draft_revision:4,manifest:{draft_revision:4,kind:'update',materials,
-      update_details:{target_reporting_periods:[target]}},material_versions:materials.map(m=>({material_id:m.material_id,material_version:m.material_version})),
+    if(sql.includes('FROM bb_input_revisions i'))return {rows:[{input_hash:hash('d'),draft_revision:4,manifest,material_versions:materialVersions,
       latest_input_revision:2,current_draft_revision:4}]};
     if(sql.includes('FROM bb_material_versions m')&&sql.includes('JOIN bb_parse_snapshots s'))return {rows:[{role:'financial',deleted_at:null,
       response_sha256:hash('c'),parser_version:'document-parser-1',response_status:'parsed',record_sha256:values[9],
       literal_quote:'2025 annual consolidated statements',locator:{sheet:'Balance sheet',cell:'A1'},context:'Synthetic evidence context',uncertainty:[]}]};
-    if(sql.includes('FROM bb_material_versions')&&sql.includes('FOR SHARE'))return {rows:[{role:values[2]==='source-doc'?'historical':'financial',
+    if(sql.includes('FROM bb_material_versions')&&sql.includes('FOR SHARE'))return {rows:[{role:values[2]==='source-doc'?'historical':options.financialRole??'financial',
       sha256:values[2]==='source-doc'?hash('a'):hash('b'),deleted_at:null}]};
     if(sql.includes('FROM bb_historical_profiles')&&sql.includes('recognition'))return {rows:[{material_id:'source-doc',material_version:1,profile_version:3,recognition:{material_id:'source-doc',profile_version:3}}]};
     if(sql.includes('FROM bb_target_period_evidence_decisions')&&sql.startsWith('SELECT *'))return {rows:saved?[saved]:[]};
@@ -76,6 +82,15 @@ test('period confirmation requires four anchors from one exact parse response',a
   await assert.rejects(appendTargetPeriodEvidenceDecision(f.db,{userId:'reviewer'},'project',{
     ...request,periods:[{...request.periods[0]!,evidence:parseRefs.map((r,i)=>i===3?{...r,parse_snapshot_id:'other-parse'}:r)}],
   }),/TARGET_PERIOD_DECISION_EVIDENCE_INCOMPLETE/);
+});
+
+test('period decision rejects unhashed production pins, mismatched current roles and duplicate locked materials',async()=>{
+  await assert.rejects(appendTargetPeriodEvidenceDecision(fixture({productionPin:true}).db,{userId:'reviewer'},'project',request),
+    /TARGET_PERIOD_DECISION_STALE_INPUT/,'production_rule_pin_v1 must be rehashed server-side before review');
+  await assert.rejects(appendTargetPeriodEvidenceDecision(fixture({financialRole:'audit'}).db,{userId:'reviewer'},'project',request),
+    /TARGET_PERIOD_DECISION_MATERIAL_MANIFEST_MISMATCH/,'manifest role must equal the current immutable material role');
+  await assert.rejects(appendTargetPeriodEvidenceDecision(fixture({duplicateLock:true}).db,{userId:'reviewer'},'project',request),
+    /TARGET_PERIOD_DECISION_MATERIAL_MANIFEST_MISMATCH/,'the complete lock is a unique set, not a multiset');
 });
 
 test('OCR anchors preserve method/page identity and date or scope suspicion cannot be confirmed',()=>{
@@ -166,6 +181,13 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
       },release:()=>undefined};}};
       const grant=await changeTargetPeriodReviewerGrant(pg,{action:'grant',reviewerUserId:reviewer,actorUserId:actor,reasonCode:'synthetic_test',
         authorizationBasis:'Explicit synthetic PG16 integration authorization',ownerUserId:owner,projectId:project});
+      const rawInput=await loadLockedUpdateDifficultyInputWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash,requestId:`period-raw-${suffix}`});
+      const forgedInput={...rawInput,targetReportingPeriods:[{...rawInput.targetReportingPeriods[0]!,status:'recognized' as const,
+        raw_value:'Forged parse-shaped target period',
+        provenance:{material_id:finance,material_version:1,method:'native_text' as const,extractor_version:parserVersion,evidence_refs:evidenceIds},uncertainty:[]}]};
+      await assert.rejects(createUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},forgedInput),
+        /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/,'a direct caller cannot upgrade target intent using parse-shaped provenance without an active review decision');
       const review:TargetPeriodEvidenceDecisionRequest={request_id:requestId,input_revision:revision,input_hash:inputHash,source_profile_version:1,
         periods:[{start:target.start,end:target.end,period_kind:'annual',scope:'consolidated',outcome:'confirmed',reason:'All four synthetic anchors align.',evidence:periods}]};
       const appended=await appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,review,()=>`period-decision-row-${suffix}`);
@@ -199,14 +221,84 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
         {ownerUserId:owner,projectId:project,inputRevision:2,inputHash:inputHash2});
       assert.equal(snapshot2.estimate.estimatedN,0,'same cutoff with a market change persists N=0');
       assert.equal(snapshot2.estimate.structureAdaptationRequired,true);
+      const staleReviewedInput=await loadLockedUpdateDifficultyInputWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:2,inputHash:inputHash2,requestId:`period-capture-before-withdrawal-${suffix}`});
+      assert.equal(staleReviewedInput.targetReportingPeriods[0]?.status,'recognized');
       const withdrawn=await withdrawTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,{request_id:`withdraw-${suffix}`,decision_id:appended2.decision_id,reason:'Synthetic withdrawal negative case'});
       assert.equal(withdrawn.replayed,false);
       const afterWithdrawal=await loadLockedUpdateDifficultyInputWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:2,inputHash:inputHash2,requestId:`period-load-after-withdrawal-${suffix}`});
       assert.equal(afterWithdrawal.targetReportingPeriods[0]?.status,'user_asserted','withdrawal immediately removes the decision from trusted period assembly');
+      await assert.rejects(createUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},staleReviewedInput),
+        /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/,'a pre-withdrawal trusted input cannot be replayed to recreate N after withdrawal');
       await client.query('SAVEPOINT immutable_check');
       await assert.rejects(client.query('UPDATE bb_target_period_evidence_decisions SET periods=periods WHERE id=$1',[appended2.decision_id]),/append-only/);
       await client.query('ROLLBACK TO SAVEPOINT immutable_check');
+
+      // Exercise the real OCR repository path with a hash-checking private-object reader.
+      // The backing object map is synthetic; database snapshot metadata and all loader reads are PostgreSQL-backed.
+      const blobObjects=new Map<string,Buffer>();
+      const blobs={async getIfExistsBounded(key:string,maxBytes:number){const value=blobObjects.get(key);return value&&value.length<=maxBytes?value:null;}} as PrivateBlobs;
+      const saveOcr=async(rev:number,uncertainty:string[])=>{
+        const snapshotId=`ocr-${suffix}-${rev}`,requestIdOcr=`ocr-request-${suffix}-${rev}`,processorVersion='synthetic-ocr-period-v1';
+        const hashBytes=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
+        const imageHash=hashBytes(pngSample),imageKey=`synthetic/${suffix}/${rev}/page-1.png`,resultKey=`synthetic/${suffix}/${rev}/result.json`;
+        blobObjects.set(imageKey,pngSample);
+        const response:OcrEngineResponse={schema_version:'ocr-response-v1',request_id:requestIdOcr,processor_version:processorVersion,
+          engine_version:'synthetic-only',language:'eng',language_data_sha256:{eng:digest('synthetic language data')},purpose:'source_preflight',status:'needs_confirmation',
+          material:{material_id:finance,material_version:1,media_type:'application/pdf',sha256:fsha},page_count:1,coverage:'complete',
+          pages:[{page:1,width:pngSample.readUInt32BE(16),height:pngSample.readUInt32BE(20),rotation_clockwise:0,
+            coordinate_system:'rendered_pixels_top_left',image_sha256:imageHash,image_base64:pngSample.toString('base64'),warnings:['synthetic_only']}],
+          records:['header','entity','scope','date'].map((tag)=>({record_id:`${tag}-${rev}`,page:1,bbox:[0,0,pngSample.readUInt32BE(16),pngSample.readUInt32BE(20)] as [number,number,number,number],
+            text:`synthetic ${tag}`,confidence:0.8,numeric:{kind:'unparsed' as const,decimal:null,unit:null},cell:null,uncertainty:[...uncertainty],eligible_for_manuscript:false})),
+          warnings:['synthetic_only'],error:null,eligible_for_manuscript:false};
+        validateOcrResponse(response,{materialId:finance,version:1,sha256:fsha,mediaType:'application/pdf',requestId:requestIdOcr,purpose:'source_preflight'});
+        const stored={response:structuredClone(response),page_objects:{'1':{key:imageKey,sha256:imageHash}}};
+        stored.response.pages[0]!.image_base64='';
+        const bytes=Buffer.from(canonical(stored)),resultHash=hashBytes(bytes);blobObjects.set(resultKey,bytes);
+        await client.query(`INSERT INTO bb_ocr_snapshots(id,owner_user_id,project_id,material_id,material_version,request_id,request_hash,result_hash,result_key,purpose)
+          VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,'source_preflight')`,[snapshotId,owner,project,finance,requestIdOcr,digest(`request ${rev}`),resultHash,resultKey]);
+        return {snapshotId,resultHash,processorVersion,imageHash,records:response.records};
+      };
+      const addOcrRevision=async(rev:number,targetPeriod:typeof target)=>{
+        const confirmation={...targetConfirmation,market:'sse',target_reporting_periods:[targetPeriod]};
+        const ocrManifest={...manifest,draft_revision:rev,market:'sse',update_details:{target_reporting_periods:[targetPeriod]},target_confirmation:confirmation};
+        const ocrInputHash=sha(ocrManifest);
+        await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+          VALUES($1,$2,$3,$2,$4,$5::jsonb,$6::jsonb,'[]'::jsonb)`,[project,rev,owner,ocrInputHash,JSON.stringify(ocrManifest),JSON.stringify(lockedMaterials)]);
+        await client.query(`INSERT INTO bb_input_revision_target_confirmations(owner_user_id,project_id,input_revision,market,offering,target_reporting_periods,confirmed_by,confirmed_at)
+          VALUES($1,$2,$3,'sse','private',$4::jsonb,$5,$6)`,[owner,project,rev,JSON.stringify([targetPeriod]),owner,confirmation.confirmed_at]);
+        await client.query('UPDATE bb_projects SET draft_revision=$3,latest_input_revision=$3,market=\'sse\' WHERE owner_user_id=$1 AND id=$2',[owner,project,rev]);
+        return ocrInputHash;
+      };
+      const ocrTarget=await saveOcr(3,['amount/formula requires independent review']);
+      const ocrHash=await addOcrRevision(3,target);
+      const ocrRefs=ocrTarget.records.map((record,index)=>({evidence_method:'ocr' as const,material_id:finance,material_version:1,material_sha256:fsha,
+        parse_snapshot_id:ocrTarget.snapshotId,parser_version:ocrTarget.processorVersion,response_sha256:ocrTarget.resultHash,record_id:record.record_id,
+        record_sha256:digest(canonical(record)),anchor_kind:(['table_header','entity','scope','period_end'] as const)[index]!,page:1,page_image_sha256:ocrTarget.imageHash,
+        ocr_uncertainty:['amount/formula requires independent review']}));
+      for(const ref of ocrRefs) await readOcrPeriodEvidence(client,blobs,{owner,projectId:project,materialId:finance,version:1,snapshotId:ocrTarget.snapshotId,
+        resultSha256:ocrTarget.resultHash,recordId:ref.record_id,page:ref.page,pageImageSha256:ref.page_image_sha256});
+      const ocrDecision:TargetPeriodEvidenceDecisionRequest={...review,request_id:`${requestId}-ocr-amount`,input_revision:3,input_hash:ocrHash,
+        periods:[{...review.periods[0]!,evidence:ocrRefs,reason:'Identity anchors are visually aligned; amount and formula remain independently unreviewed.'}]};
+      await appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,ocrDecision,()=>`ocr-decision-${suffix}-3`,blobs);
+      const ocrSnapshot=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:3,inputHash:ocrHash},{blobs});
+      assert.equal(ocrSnapshot.estimate.estimatedN,1,'OCR amount/formula-only uncertainty is retained in audit evidence but does not block period identity N=1');
+
+      const uncertainTarget=await saveOcr(4,['reporting date is uncertain','consolidation scope unclear']);
+      const uncertainHash=await addOcrRevision(4,target);
+      const uncertainRefs=uncertainTarget.records.map((record,index)=>({evidence_method:'ocr' as const,material_id:finance,material_version:1,material_sha256:fsha,
+        parse_snapshot_id:uncertainTarget.snapshotId,parser_version:uncertainTarget.processorVersion,response_sha256:uncertainTarget.resultHash,record_id:record.record_id,
+        record_sha256:digest(canonical(record)),anchor_kind:(['table_header','entity','scope','period_end'] as const)[index]!,page:1,page_image_sha256:uncertainTarget.imageHash,
+        ocr_uncertainty:['reporting date is uncertain','consolidation scope unclear']}));
+      const uncertainDecision:TargetPeriodEvidenceDecisionRequest={...review,request_id:`${requestId}-ocr-uncertain`,input_revision:4,input_hash:uncertainHash,
+        periods:[{...review.periods[0]!,outcome:'needs_confirmation',evidence:uncertainRefs,reason:'Date and scope OCR ambiguity remain unresolved.'}]};
+      await appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,uncertainDecision,()=>`ocr-decision-${suffix}-4`,blobs);
+      const uncertainSnapshot=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:4,inputHash:uncertainHash},{blobs});
+      assert.equal(uncertainSnapshot.estimate.estimatedN,null,'date/scope uncertainty stays pending and cannot be confirmed');
+
       await assert.rejects(appendTargetPeriodEvidenceDecision(pg,{userId:owner},project,{...review2,request_id:`owner-denied-${suffix}`}),/TARGET_PERIOD_REVIEWER_FORBIDDEN/);
       await changeTargetPeriodReviewerGrant(pg,{action:'revoke',reviewerUserId:reviewer,actorUserId:actor,reasonCode:'synthetic_test',
         authorizationBasis:'Explicit synthetic PG16 integration authorization',ownerUserId:owner,projectId:project,reason:'synthetic revoke'});
