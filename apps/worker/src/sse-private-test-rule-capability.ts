@@ -6,6 +6,7 @@ import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicabil
 import { AUTHORIZED_SAMPLE_MANIFEST_SHA256 } from './authorized-sample-membership.generated.js';
 import { loadAuthorizedSampleMembershipFromLockedInput } from './authorized-sample-membership-loader.js';
 import { loadSsePrivateCandidateAssets, SSE_PRIVATE_CANDIDATE_RUNTIME_ROOT } from './sse-private-candidate-assets.js';
+import { toTestCoverageGap } from './test-coverage.js';
 import type { RunRow, TestRuleCapability, TestRuleCapabilityLoader } from './run-pipeline.js';
 
 type LockedInput = Parameters<TestRuleCapabilityLoader>[1];
@@ -32,11 +33,8 @@ function readTestApplicabilityRef(manifest: Record<string, unknown>) {
 }
 
 /**
- * Trusted worker-only candidate capability. It deliberately returns not_ready
- * under the current #326 DTO because that DTO requires rule_id for all gaps,
- * while this candidate has 31 coverage-item gaps with no rule mapping. Once the
- * shared DTO accepts coverage-item and rule-checker entries separately, this is
- * the single place that projects the pinned bundle into that contract.
+ * Trusted worker-only candidate capability. Coverage-item gaps retain their
+ * own manifest/item identity; they are not promoted into rule-checker IDs.
  */
 export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencies: CapabilityDependencies = {}): TestRuleCapabilityLoader {
   const candidateRoot = dependencies.candidateRoot ?? SSE_PRIVATE_CANDIDATE_RUNTIME_ROOT;
@@ -109,12 +107,14 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
       return notReady('test_reviewed_applicability_scope_mismatch');
 
     // 31 coverage gaps have no linked rule IDs; the sole not_applicable coverage
-    // item is a scope exclusion, not a gap. The provisional DTO cannot encode
-    // either distinction. Refuse readiness rather than invent IDs or drop rows.
+    // item is a scope exclusion, not a gap. Project only uncovered items through
+    // the #337 DTO, preserving their candidate identity and never inventing IDs.
     const gaps = bundle.coverage.items.filter(item => item.disposition === 'uncovered');
     const exclusions = bundle.coverage.items.filter(item => item.disposition === 'not_applicable');
     if (gaps.length !== 31 || exclusions.length !== 1 || gaps.some(item => item.ruleIds.length > 0))
       return notReady('sse_private_candidate_coverage_semantics_changed');
-    return notReady('test_coverage_item_contract_not_ready');
+    return { status: 'ready', sampleManifestSha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256,
+      taxonomyHash: bundle.taxonomy.contentSha256, rulePackHash: bundle.rulePack.contentSha256,
+      uncoveredItems: gaps.map(toTestCoverageGap) };
   };
 }

@@ -94,10 +94,18 @@ async function preprod(action: () => Promise<void>) {
   }
 }
 
-test('candidate capability validates the live grant, exact sample subset, assets and reviewed scope before reporting the DTO blocker', async () => preprod(async () => {
+test('candidate capability validates the live grant, exact sample subset, assets and reviewed scope then projects coverage-only gaps', async () => preprod(async () => {
   const f = fixture();
   const result = await f.loader(f.run, f.input);
-  assert.deepEqual(result, { status: 'not_ready', reason: 'test_coverage_item_contract_not_ready' });
+  assert.equal(result.status, 'ready');
+  if (result.status !== 'ready') return;
+  assert.equal(result.sampleManifestSha256, AUTHORIZED_SAMPLE_MANIFEST_SHA256);
+  assert.equal(result.taxonomyHash, pin.taxonomy.contentSha256);
+  assert.equal(result.rulePackHash, pin.rulePack.contentSha256);
+  assert.equal(result.uncoveredItems.length, 31);
+  assert.ok(result.uncoveredItems.every(item => item.kind === 'coverage_gap' && !('rule_id' in item)));
+  assert.ok(result.uncoveredItems.every(item => item.kind !== 'coverage_gap' || item.disposition === 'uncovered'));
+  assert.equal(new Set(result.uncoveredItems.map(item => item.kind === 'coverage_gap' ? item.item_id : item.rule_id)).size, 31);
   assert.equal(f.reviewCalls(), 1);
   assert.ok(f.queries.some(sql => sql.includes('FOR SHARE')));
   assert.equal(f.queries.filter(sql => sql.includes('FROM bb_non_production_test_grants')).length, 1);
