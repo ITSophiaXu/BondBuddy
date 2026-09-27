@@ -10,7 +10,7 @@ const purposes: Record<typeof DOCUMENT_PURPOSES[number], string> = { registratio
 const states: Record<RunState, string> = {
   preparing: '准备中', rejected: '未启动', queued: '排队中', running: '处理中', awaiting_input: '待补充信息',
   paused: '任务已暂停', validating: '检查成果中', delivering: '交付中', settlement_pending: '结算处理中',
-  succeeded: '已生成', failed: '任务失败', cancelled: '已取消'
+  succeeded: '已生成', test_completed: '内部测试工作稿', failed: '任务失败', cancelled: '已取消'
 };
 const stages: Record<string, string> = { input_lock: '核对输入与规则', materials_ready: '读取材料',
   model_generation: '生成全文内容', word_delivery: '生成并检查 Word', capability_not_ready: '等待处理条件',

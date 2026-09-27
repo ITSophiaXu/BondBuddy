@@ -1179,7 +1179,17 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
     await query('BEGIN');
     let snapshot: any, auditId: string;
     try {
-      snapshot = (await query("SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL", [snapshotId])).rows[0];
+      snapshot = (await query(`SELECT s.*,t.id tombstone,EXISTS (
+        SELECT 1 FROM bb_model_call_attempts a
+        JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=s.owner_user_id
+        JOIN bb_runs r ON r.id=COALESCE(s.run_id,j.run_id) AND r.owner_user_id=s.owner_user_id
+        WHERE a.prompt_snapshot_id=s.id AND r.channel='non_production_test'
+      ) OR EXISTS (
+        SELECT 1 FROM bb_runs r WHERE r.id=s.run_id AND r.owner_user_id=s.owner_user_id AND r.channel='non_production_test'
+      ) AS linked_test_run FROM bb_snapshot_refs s
+      LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
+      JOIN bb_users u ON u.id=s.owner_user_id JOIN bb_projects p ON p.id=s.project_id AND p.owner_user_id=s.owner_user_id
+      WHERE s.id=$1 AND u.status='active' AND p.deleted_at IS NULL`, [snapshotId])).rows[0];
       await setPromptStatementTimeout(client, deadlineAt, signal);
       auditId = await audit(client, { actorId, role: 'prompt_viewer', owner: snapshot?.owner_user_id, purpose: 'prompt_view', filter: { snapshotId }, target: snapshotId, reason: reasonCode });
       await query('COMMIT');
@@ -1190,6 +1200,7 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
       throw error;
     }
     if (!snapshot || snapshot.tombstone) throw missing();
+    if (snapshot.linked_test_run) assertTestChannelReadable('non_production_test');
     if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Prompt read aborted');
     // A Blob request may never settle after a TCP disconnect. Promise.race observes its
     // eventual result/rejection, while the abort path releases the session lock now.

@@ -108,12 +108,19 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     try{
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,`synthetic_${randomUUID().replaceAll('-','').slice(0,20)}`]);
       await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'log_reader','synthetic-test','synthetic_test')",[randomUUID(),user]);
+      await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'prompt_viewer','synthetic-test','synthetic_test')",[randomUUID(),user]);
       const jobId=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[testRun.run_id])).rows[0].id as string;
+      const snapshotId=randomUUID(),promptUrl=`/api/v1/admin/prompts/${snapshotId}?reason_code=synthetic_test`;
+      await pool.query(`INSERT INTO bb_snapshot_refs
+        (id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version)
+        VALUES($1,$2,$3,$4,'user_prompt',1,$5,$6,'scrub_v1')`,
+        [snapshotId,user,project,testRun.run_id,`users/${user}/projects/${project}/snapshots/${snapshotId}`,artifactHash]);
       const detail=await read(`/api/v1/artifacts/${artifactId}`);
       assert.equal(detail.statusCode,200,detail.body);
       const downloadUrl=detail.json().download_url as string;
       assert.equal((await read(downloadUrl)).statusCode,200);
       assert.equal((await read(`/api/v1/admin/jobs/${jobId}/timeline`)).statusCode,200);
+      assert.equal((await read(promptUrl)).statusCode,200);
       for(const [tier,channel] of [['production','enabled'],['production','disabled'],['preprod','disabled']] as const){
         process.env.BB_DEPLOYMENT_TIER=tier;process.env.BB_NON_PRODUCTION_TEST_CHANNEL=channel;
         assert.equal((await read(`/api/v1/artifacts/${artifactId}`)).statusCode,404);
@@ -122,6 +129,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
         assert.equal((await read(`/api/v1/runs/${testRun.run_id}/events`)).statusCode,404);
         assert.equal((await read(`/api/v1/runs/${testRun.run_id}/stream`)).statusCode,404);
         assert.equal((await read(`/api/v1/admin/jobs/${jobId}/timeline`)).statusCode,404);
+        assert.equal((await read(promptUrl)).statusCode,404);
       }
       process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
       assert.equal((await read(`/api/v1/artifacts/${artifactId}`)).statusCode,200);
