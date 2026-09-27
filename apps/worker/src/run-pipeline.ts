@@ -5,6 +5,7 @@
 // `succeeded` only via queue.finish after the Word artifact passed inspection and Blob readback.
 // A stage the pipeline needs but that is not implemented pauses the run (`capability_not_ready`).
 import type { Pool } from 'pg';
+import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
 import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
@@ -148,10 +149,15 @@ export const inputLockStage: RunStage = {
 };
 
 export type PinnedMaterialReadiness = { material_id: string; material_version: number; role: string; sha256: string;
-  outcome: string | null; parse_snapshot_id: string | null };
+  media_type: string; outcome: string | null; parse_snapshot_id: string | null };
 export type MaterialsReadiness = { status: 'ready' | 'pending' | 'failed'; code?: string; materials: PinnedMaterialReadiness[]; pending: string[] };
 export type ParsedFactProducer = (context: FactCandidateProductionContext) => Promise<FactCandidateProductionResult>;
 const financialRoles: ReadonlySet<string> = new Set(M1_MATERIAL_PARTITIONS.find(partition => partition.roles.some(role => role.code === 'audit'))?.roles.map(role => role.code) ?? []);
+const DOCX_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+function isRqAnnualProspectus(material: Pick<PinnedMaterialReadiness, 'role' | 'sha256' | 'media_type'>): boolean {
+  return material.role === 'historical' && material.sha256.trim().toLowerCase() === RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 &&
+    material.media_type === DOCX_MEDIA_TYPE;
+}
 type MaterialCheckpoint = Pick<PinnedMaterialReadiness, 'material_id' | 'material_version' | 'outcome'>;
 
 function checkpointMaterialsMatch(saved: Record<string, unknown>, materials: readonly PinnedMaterialReadiness[]): boolean {
@@ -184,7 +190,7 @@ export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_us
     const pin = manifest.materials[index];
     if (!pin || pin.material_id !== ref.material_id || pin.material_version !== ref.material_version)
       return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials, pending };
-    const material = (await pool.query(`SELECT role,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,
+    const material = (await pool.query(`SELECT role,media_type,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,
       [run.owner_user_id, run.project_id, ref.material_id, ref.material_version])).rows[0];
     if (!material || material.role !== pin.role || String(material.sha256).trim() !== pin.sha256)
       return { status: 'failed', code: 'INPUT_REVISION_CONFLICT', materials, pending };
@@ -197,9 +203,11 @@ export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_us
     if (job?.state === 'cancelled') return { status: 'failed', code: 'INPUT_REQUIRED', materials, pending };
     if (job?.state !== 'succeeded') { pending.push(key); continue; }
     const snapshotId = job.checkpoint?.stages?.parse_evidence?.snapshot_id;
-    if (financialRoles.has(pin.role) && (typeof snapshotId !== 'string' || !snapshotId))
+    const materialReadiness = { role: pin.role, sha256: pin.sha256, media_type: String(material.media_type) };
+    const factSource = financialRoles.has(pin.role) || isRqAnnualProspectus(materialReadiness);
+    if (factSource && (typeof snapshotId !== 'string' || !snapshotId))
       return { status: 'failed', code: 'DATA_UNAVAILABLE', materials, pending };
-    if (financialRoles.has(pin.role)) {
+    if (factSource) {
       const snapshot = (await pool.query(`SELECT content_sha256,parser_version,response_status FROM bb_parse_snapshots
         WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND material_id=$4 AND material_version=$5`,
       [snapshotId, run.owner_user_id, run.project_id, ref.material_id, ref.material_version])).rows[0];
@@ -207,6 +215,7 @@ export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_us
         return { status: 'failed', code: 'DATA_UNAVAILABLE', materials, pending };
     }
     materials.push({ material_id: ref.material_id, material_version: ref.material_version, role: pin.role, sha256: pin.sha256,
+      media_type: String(material.media_type),
       outcome: job.result?.outcome ?? null, parse_snapshot_id: typeof snapshotId === 'string' ? snapshotId : null });
   }
   return { status: pending.length ? 'pending' : 'ready', materials, pending };
@@ -223,7 +232,7 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
     const saved = checkpoint?.materials_ready;
     if (saved && !checkpointMaterialsMatch(saved, r.materials))
       return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_extraction_checkpoint_mismatch' };
-    const financial = r.materials.filter(material => financialRoles.has(material.role));
+    const financial = r.materials.filter(material => financialRoles.has(material.role) || isRqAnnualProspectus(material));
     if (financial.length && !producer) return { kind: 'pause', stage: 'capability_not_ready', reason: 'fact_candidate_producer_unavailable' };
     const extractions: { material_id: string; material_version: number; extraction_run_id: string; snapshot_id: string;
       response_sha256: string; candidate_count: number; needs_review_count: number }[] = [];

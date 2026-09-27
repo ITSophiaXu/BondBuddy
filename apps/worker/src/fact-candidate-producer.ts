@@ -3,6 +3,11 @@ import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-id
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
 import type { FactCandidate, FactIdentity } from '@bondbuddy/domain/facts';
 import type { Pool } from 'pg';
+import {
+  RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_ID,
+  RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_VERSION,
+  RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256,
+} from './rq-prospectus-annual-fact-constants.js';
 import { getParseSnapshot, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { insertFactCandidate, listFactCandidates, type FactEvidenceAnchor, type FactRepositoryDependencies,
   type FactRepositoryContext, type StoredFactCandidate } from './fact-repository.js';
@@ -71,6 +76,8 @@ export interface FactCandidateProductionContext extends FactRepositoryContext {
 export interface FactCandidateProducerDependencies extends FactRepositoryDependencies {
   /** Test seam for a separately configured internal extractor. No model call is made here. */
   readonly extractor: SemanticFactExtractor;
+  /** Explicit source-role exception for a controlled historical-prospectus-only mapper. */
+  readonly historicalProspectusExtractor?: SemanticFactExtractor;
   readonly loadSnapshot?: typeof getParseSnapshot;
   readonly loadIssuerIdentity?: typeof loadVerifiedIssuerIdentitySourceRecord;
 }
@@ -245,12 +252,21 @@ export async function produceParsedFactCandidates(
   if (!verifiedIdentity || !issuerIdentityBindingMatches(binding, verifiedIdentity)) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
 
   const materialResult = await dependencies.pool.query(
-    `SELECT role, sha256 FROM bb_material_versions
+    `SELECT role, media_type, sha256 FROM bb_material_versions
       WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,
     [context.ownerUserId, context.projectId, context.materialId, context.materialVersion]);
-  if (materialResult.rows.length !== 1 || !financialRoles.has(String(materialResult.rows[0]!.role))) {
+  if (materialResult.rows.length !== 1) {
     throw fail('FACT_EXTRACTION_MATERIAL_NOT_FINANCIAL');
   }
+  const materialRole = String(materialResult.rows[0]!.role);
+  const materialMediaType = String(materialResult.rows[0]!.media_type);
+  const isHistoricalProspectusSource = materialRole === 'historical' &&
+    String(materialResult.rows[0]!.sha256).trim().toLowerCase() === RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 &&
+    materialMediaType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
+    dependencies.historicalProspectusExtractor?.id === RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_ID &&
+    dependencies.historicalProspectusExtractor.version === RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_VERSION;
+  if (!financialRoles.has(materialRole) && !isHistoricalProspectusSource) throw fail('FACT_EXTRACTION_MATERIAL_NOT_FINANCIAL');
+  const extractor = isHistoricalProspectusSource ? dependencies.historicalProspectusExtractor! : dependencies.extractor;
   const materialHash = String(materialResult.rows[0]!.sha256).trim().toLowerCase();
   if (!sha256.test(materialHash)) throw fail('FACT_EXTRACTION_MATERIAL_INVALID');
 
@@ -271,10 +287,10 @@ export async function produceParsedFactCandidates(
     parse_snapshot_id: snapshot.snapshotId, parse_response_sha256: snapshot.responseSha256,
     parser_version: snapshot.parserVersion, records: snapshot.evidence,
   };
-  if (!identifier.test(dependencies.extractor.id) || !identifier.test(dependencies.extractor.version)) {
+  if (!identifier.test(extractor.id) || !identifier.test(extractor.version)) {
     throw fail('FACT_EXTRACTION_ADAPTER_INVALID');
   }
-  const extractors = [dependencies.extractor.id, dependencies.extractor.version];
+  const extractors = [extractor.id, extractor.version];
   const previous = await dependencies.pool.query(
     `SELECT id, input_hash, parse_response_sha256, extractor_id, extractor_version, result_sha256,
             candidate_ids, needs_review
@@ -285,7 +301,7 @@ export async function produceParsedFactCandidates(
       snapshot.snapshotId, ...extractors]);
   const replayPersisted = async (row: Record<string, unknown>): Promise<FactCandidateProductionResult> => {
     if (String(row.input_hash).trim() !== context.inputHash || String(row.parse_response_sha256).trim() !== snapshot.responseSha256 ||
-        row.extractor_id !== dependencies.extractor.id || row.extractor_version !== dependencies.extractor.version) {
+        row.extractor_id !== extractor.id || row.extractor_version !== extractor.version) {
       throw fail('FACT_EXTRACTION_IDEMPOTENCY_CONFLICT');
     }
     const ids = parseJson(row.candidate_ids);
@@ -300,31 +316,33 @@ export async function produceParsedFactCandidates(
   if (previous.rows.length > 1) throw fail('FACT_EXTRACTION_LEDGER_AMBIGUOUS');
   if (previous.rows.length === 1) return replayPersisted(previous.rows[0]!);
 
-  const result = validateExtractionResult(await dependencies.extractor.extract(request), context, snapshot);
-  if (result.extractor.id !== dependencies.extractor.id || result.extractor.version !== dependencies.extractor.version) {
+  const result = validateExtractionResult(await extractor.extract(request), context, snapshot);
+  if (result.extractor.id !== extractor.id || result.extractor.version !== extractor.version) {
     throw fail('FACT_EXTRACTION_VERSION_MISMATCH');
   }
   const resultSha256 = contentHash(result);
   const extractionRunId = `fact-extraction-${createHash('sha256').update(JSON.stringify([
     context.ownerUserId, context.projectId, context.inputRevision, context.materialId, context.materialVersion,
-    snapshot.snapshotId, dependencies.extractor.id, dependencies.extractor.version,
+    snapshot.snapshotId, extractor.id, extractor.version,
   ])).digest('hex')}`;
   const client = await (dependencies.pool as Pool).connect();
   const transactionDependencies: FactRepositoryDependencies = { ...dependencies, pool: client };
   const inserted: StoredFactCandidate[] = [], replayed: StoredFactCandidate[] = [];
   try {
     await client.query('BEGIN');
-    const lockKey = `fact-extraction:${context.ownerUserId}:${context.projectId}:${context.inputRevision}:${context.materialId}:${context.materialVersion}:${snapshot.snapshotId}:${dependencies.extractor.id}:${dependencies.extractor.version}`;
+    const lockKey = `fact-extraction:${context.ownerUserId}:${context.projectId}:${context.inputRevision}:${context.materialId}:${context.materialVersion}:${snapshot.snapshotId}:${extractor.id}:${extractor.version}`;
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
     // Hold the immutable input/material/parse source plus reviewer grant rows while candidates,
     // the extraction result ledger and its outbox event are written in this transaction.
     const lockedInput = await client.query(`SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4 FOR SHARE`,
       [context.ownerUserId, context.projectId, context.inputRevision, context.inputHash]);
     if (lockedInput.rowCount !== 1) throw fail('FACT_EXTRACTION_INPUT_REVISION_MISMATCH');
-    const lockedMaterial = await client.query(`SELECT role,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND sha256=$5 AND deleted_at IS NULL FOR SHARE`,
+    const lockedMaterial = await client.query(`SELECT role,media_type,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND sha256=$5 AND deleted_at IS NULL FOR SHARE`,
       [context.ownerUserId, context.projectId, context.materialId, context.materialVersion, materialHash]);
     if (lockedMaterial.rowCount !== 1) throw fail('FACT_EXTRACTION_MATERIAL_NOT_PINNED');
-    if (lockedMaterial.rows[0]!.role !== materialResult.rows[0]!.role || !financialRoles.has(String(lockedMaterial.rows[0]!.role))) {
+    const lockedRole = String(lockedMaterial.rows[0]!.role);
+    const lockedRoleAllowed = financialRoles.has(lockedRole) || (isHistoricalProspectusSource && lockedRole === 'historical');
+    if (lockedRole !== materialRole || String(lockedMaterial.rows[0]!.media_type) !== materialMediaType || !lockedRoleAllowed) {
       throw fail('FACT_EXTRACTION_MATERIAL_ROLE_CHANGED');
     }
     for (const fact of result.facts) {
@@ -353,7 +371,7 @@ export async function produceParsedFactCandidates(
       FROM bb_fact_extraction_runs WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND material_id=$4
         AND material_version=$5 AND snapshot_id=$6 AND extractor_id=$7 AND extractor_version=$8`,
     [context.ownerUserId, context.projectId, context.inputRevision, context.materialId, context.materialVersion,
-      snapshot.snapshotId, dependencies.extractor.id, dependencies.extractor.version]);
+      snapshot.snapshotId, extractor.id, extractor.version]);
     if (priorRun.rows.length > 0) {
       const row = priorRun.rows[0]!;
       if (String(row.input_hash).trim() !== context.inputHash || String(row.parse_response_sha256).trim() !== snapshot.responseSha256 ||
