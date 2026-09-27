@@ -537,6 +537,11 @@ export async function loadReviewedRuleApplicabilityContext(
   db: QueryLike,
   expected: ReviewedRuleApplicabilityContextArgs,
 ): Promise<ReviewedRuleApplicabilityContextResult> {
+  // A caller's mode flag alone cannot make an unpublished taxonomy eligible.
+  // The candidate review path exists only on the explicitly enabled preproduction tier.
+  if (expected.mode === 'non_production_test' &&
+      (process.env.BB_DEPLOYMENT_TIER !== 'preprod' || process.env.BB_NON_PRODUCTION_TEST_CHANNEL !== 'enabled'))
+    return { status: 'needs_review', reasons: ['rule_applicability_test_channel_disabled'] };
   const selected = await db.query(`SELECT * FROM bb_rule_applicability_context_drafts
     WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4`,
   [expected.ownerUserId, expected.projectId, expected.contextId, expected.version]);
@@ -702,6 +707,8 @@ export async function loadReviewedRuleApplicabilityContext(
       taxonomyVersion === 'bondbuddy-applicability-sse-private-v3';
     if (!testOnlyTaxonomy && !PUBLISHED_RULE_APPLICABILITY_TAXONOMY_VERSIONS.includes(taxonomyVersion))
       reasons.push('rule_applicability_taxonomy_not_published');
+    if (testOnlyTaxonomy && !v2FeatureEvidence)
+      reasons.push('rule_applicability_test_taxonomy_feature_evidence_v2_required');
     const market = approved.market;
     const offering = approved.offering;
     const instrument = approved.instrument;
