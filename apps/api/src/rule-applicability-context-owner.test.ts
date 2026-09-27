@@ -16,13 +16,13 @@ const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const migrated = async () => {
   if (!databaseUrl) return false;
   const pool = new Pool({ connectionString: databaseUrl });
-  try { return (await pool.query("SELECT to_regclass('public.bb_rule_applicability_context_drafts') AS name")).rows[0]?.name != null; }
+  try { return (await pool.query("SELECT to_regclass('public.bb_rule_applicability_overall_reviews') AS name")).rows[0]?.name != null; }
   finally { await pool.end(); }
 };
 const hasSchema = await migrated();
 
 test('owner applicability API derives a needs_review ref from locked evidence and remains fail-closed',
-  { skip: !hasSchema && 'set RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL to PostgreSQL 16 migrated through 0039' }, async () => {
+  { skip: !hasSchema && 'set RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL to PostgreSQL 16 migrated through 0054' }, async () => {
     const pool = new Pool({ connectionString: databaseUrl! });
     const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
     const owner = `context-api-owner-${suffix}`, foreign = `context-api-foreign-${suffix}`;
@@ -166,6 +166,43 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         VALUES($1,$2,'rule_applicability_reviewer',$3,'synthetic_test','Synthetic PG regression only',$4,$5)`,
       [ruleGrantId, ruleReviewerId, grantorId, owner, projectId]);
       const reviewScope = { ownerUserId: owner, projectId };
+      const overallReviewUrl = `${base}/rule-applicability-context-drafts/${createdDto.context_ref.context_id}/versions/1/reviews`;
+      activeOwner = owner;
+      const selfOverallReview = await send('POST', overallReviewUrl, { request_id: `overall-self-${suffix}`, action: 'withdraw', reason: 'self review' });
+      assert.equal(selfOverallReview.statusCode, 404, 'review route does not reveal whether another owner has a context');
+      activeOwner = ruleReviewerId;
+      const requestMore = await send('POST', overallReviewUrl, { request_id: `overall-more-${suffix}`, action: 'request_more_evidence', reason: 'Need complete evidence' });
+      assert.equal(requestMore.statusCode, 201, requestMore.body);
+      const withdrawal = await send('POST', overallReviewUrl, { request_id: `overall-withdraw-${suffix}`, action: 'withdraw', reason: 'Synthetic withdrawal test' });
+      assert.equal(withdrawal.statusCode, 201, withdrawal.body);
+      const replayWithdrawal = await send('POST', overallReviewUrl, { request_id: `overall-withdraw-${suffix}`, action: 'withdraw', reason: 'Synthetic withdrawal test' });
+      assert.equal(replayWithdrawal.json().review_id, withdrawal.json().review_id, 'withdrawal retries replay the same append-only row');
+      assert.equal(replayWithdrawal.json().replayed, true);
+      const denyOverallFunction = `deny_overall_review_outbox_${suffix}`, denyOverallTrigger = `deny_overall_review_event_${suffix}`;
+      await pool.query(`CREATE FUNCTION ${denyOverallFunction}() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.aggregate_type='rule_applicability_overall_review' THEN RAISE EXCEPTION 'synthetic overall outbox failure'; END IF; RETURN NEW; END $$`);
+      await pool.query(`CREATE TRIGGER ${denyOverallTrigger} BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION ${denyOverallFunction}()`);
+      try {
+        const failedOutbox = await send('POST', overallReviewUrl, { request_id: `overall-outbox-failure-${suffix}`,
+          action: 'request_more_evidence', reason: 'Atomic outbox test' });
+        assert.equal(failedOutbox.statusCode, 500);
+        assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_rule_applicability_overall_reviews WHERE request_id=$1',
+          [`overall-outbox-failure-${suffix}`])).rows[0]!.n, 0, 'overall decision rolls back if its outbox event fails');
+      } finally {
+        await pool.query(`DROP TRIGGER IF EXISTS ${denyOverallTrigger} ON bb_outbox`);
+        await pool.query(`DROP FUNCTION IF EXISTS ${denyOverallFunction}()`);
+      }
+      const incompleteNegativeEvidence = await send('POST', overallReviewUrl, { request_id: `overall-incomplete-${suffix}`, action: 'approve',
+        reason: 'Must enumerate every feature dimension', approved_values: { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond',
+          documentStage: 'registration', issuerScope: 'domestic-company', investorScope: 'professional', industry: 'industry-code-v1',
+          specialFeatures: [], asOf: '2026-09-27' }, value_evidence: { instrument: [{ materialId, materialVersion: 1, materialSha256: materialHash,
+          parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }],
+          issuerScope: [{ materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }],
+          investorScope: [{ materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }],
+          industry: [{ materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) }] },
+        feature_evidence: [], taxonomy_version: 'bondbuddy-applicability-test-v1' });
+      assert.equal(incompleteNegativeEvidence.statusCode, 422, 'an empty feature evidence vector cannot approve an empty specialFeatures value');
+      activeOwner = owner;
       const reviewTarget = { contextId: reviewContext.contextId, contextVersion: 1, candidateId, fieldKey: 'instrument' };
       const trustedTarget = await getRuleApplicabilityFieldReviewTarget(pool, { userId: ruleReviewerId }, reviewScope, reviewTarget);
       assert.ok(trustedTarget);
@@ -322,6 +359,75 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         { request_id: `confirmed-draft-${suffix}` });
       assert.equal(confirmedDraft.statusCode, 201, confirmedDraft.body);
       assert.equal(confirmedDraft.json().status, 'needs_review', 'confirmed target intent never approves a context');
+      const auditSnapshotId = `context-api-audit-snapshot-${suffix}`, auditEvidenceId = `context-api-audit-evidence-${suffix}`;
+      const auditMeta = { schema_version: 'document-parse-response-v1', request_id: `audit-parse-${suffix}`, status: 'parsed',
+        parser_version: `parser-${suffix}`, material: { material_id: auditMaterialId, material_version: 1, media_type: 'application/pdf', sha256: auditHash },
+        warnings: [], document: { page_count: 1 }, error: null };
+      await pool.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,
+        response_status,response_schema_version,response_sha256,record_count,response_meta)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'parsed','document-parse-response-v1',$8,1,$9::jsonb)`,
+      [auditSnapshotId, owner, projectId, auditMaterialId, auditHash, `parser-${suffix}`, sha(`audit-parse-request-${suffix}`),
+        sha(`audit-parse-response-${suffix}`), JSON.stringify(auditMeta)]);
+      await pool.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,
+        locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,1,$4,$5,$6,'pdf_bbox',$7::jsonb,'合成审计材料','synthetic negative evidence anchor','native_text',$8,0.99,'[]','{}',$9,0)`,
+      [owner, projectId, auditMaterialId, auditSnapshotId, auditEvidenceId, auditHash,
+        JSON.stringify({ page: 1, bbox: [0, 0, 1, 1] }), `parser-${suffix}`, sha(`audit-record-${suffix}`)]);
+      const renewedRuleGrantId = `context-api-rule-grant-renewed-${suffix}`;
+      await pool.query(`INSERT INTO bb_rule_applicability_reviewer_grants
+        (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'rule_applicability_reviewer',$3,'synthetic_test','Synthetic PG regression only',$4,$5)`,
+      [renewedRuleGrantId, ruleReviewerId, grantorId, owner, projectId]);
+      const evidenceRefs = [
+        { materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) },
+        { materialId: auditMaterialId, materialVersion: 1, materialSha256: auditHash, parseSnapshotId: auditSnapshotId, recordId: auditEvidenceId, recordSha256: sha(`audit-record-${suffix}`) },
+      ];
+      const completeFeatureEvidence = ['urban_construction','real_estate','group_operations','special_product_or_use','embedded_or_perpetual',
+        'optimized_review','restructuring','special_issuer','transition_arrangement'].map(dimension => ({ dimension, outcome: 'absent',
+          reason: 'Synthetic regression only; the complete locked material set is enumerated.', evidenceRefs }));
+      const confirmedReviewUrl = `${base}/rule-applicability-context-drafts/${confirmedDraft.json().context_ref.context_id}/versions/1/reviews`;
+      activeOwner = ruleReviewerId;
+      const approvedReview = await send('POST', confirmedReviewUrl, { request_id: `overall-approve-${suffix}`, action: 'approve',
+        reason: 'Synthetic regression only; no professional signoff is represented.', approved_values: { market: 'sse', offering: 'private',
+          instrument: 'ordinary-company-bond', documentStage: 'registration', issuerScope: 'domestic-company', investorScope: 'professional',
+          industry: 'industry-code-v1', specialFeatures: [], asOf: '2026-09-27' },
+        value_evidence: { instrument: [evidenceRefs[0]], issuerScope: [evidenceRefs[0]], investorScope: [evidenceRefs[0]], industry: [evidenceRefs[0]] },
+        feature_evidence: completeFeatureEvidence, taxonomy_version: 'bondbuddy-applicability-synthetic-test-v1' });
+      assert.equal(approvedReview.statusCode, 201, approvedReview.body);
+      assert.equal(approvedReview.json().action, 'approve');
+      assert.equal(approvedReview.json().production_eligible, false, 'context review never claims rule release or industry compliance');
+      activeOwner = owner;
+      const approvedInput = await send('POST', `${base}/input-revisions`, { draft_revision: 1,
+        material_versions: [{ material_id: materialId, material_version: 1 }, { material_id: auditMaterialId, material_version: 1 }],
+        requirement_message_ids: [], rule_applicability_context_ref: confirmedDraft.json().context_ref });
+      assert.equal(approvedInput.statusCode, 201, approvedInput.body);
+      const approvedPin = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+        [owner, projectId, approvedInput.json().input_revision])).rows[0]!.manifest;
+      assert.ok(approvedPin.rule_pack_block_reasons.includes('rule_applicability_taxonomy_not_published'),
+        'a reviewer-provided synthetic version is not a server-published taxonomy and cannot reach selection');
+      assert.ok(!approvedPin.rule_pack_block_reasons.includes('production_rule_pack_registry_empty'),
+        'the loader stops before production selection while the real taxonomy mapping remains unpublished');
+      activeOwner = ruleReviewerId;
+      const withdrawApproved = await send('POST', confirmedReviewUrl, { request_id: `overall-withdraw-approved-${suffix}`,
+        action: 'withdraw', reason: 'Synthetic regression withdrawal' });
+      assert.equal(withdrawApproved.statusCode, 201, withdrawApproved.body);
+      const replayOldApproval = await send('POST', confirmedReviewUrl, { request_id: `overall-approve-${suffix}`, action: 'approve',
+        reason: 'Synthetic regression only; no professional signoff is represented.', approved_values: { market: 'sse', offering: 'private',
+          instrument: 'ordinary-company-bond', documentStage: 'registration', issuerScope: 'domestic-company', investorScope: 'professional',
+          industry: 'industry-code-v1', specialFeatures: [], asOf: '2026-09-27' },
+        value_evidence: { instrument: [evidenceRefs[0]], issuerScope: [evidenceRefs[0]], investorScope: [evidenceRefs[0]], industry: [evidenceRefs[0]] },
+        feature_evidence: completeFeatureEvidence, taxonomy_version: 'bondbuddy-applicability-synthetic-test-v1' });
+      assert.equal(replayOldApproval.statusCode, 201, replayOldApproval.body);
+      assert.equal(replayOldApproval.json().replayed, true, 'replaying an old approval does not append or supersede withdrawal');
+      activeOwner = owner;
+      const withdrawnInput = await send('POST', `${base}/input-revisions`, { draft_revision: 1,
+        material_versions: [{ material_id: materialId, material_version: 1 }, { material_id: auditMaterialId, material_version: 1 }],
+        requirement_message_ids: [], rule_applicability_context_ref: confirmedDraft.json().context_ref });
+      assert.equal(withdrawnInput.statusCode, 201, withdrawnInput.body);
+      const withdrawnPin = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+        [owner, projectId, withdrawnInput.json().input_revision])).rows[0]!.manifest;
+      assert.ok(withdrawnPin.rule_pack_block_reasons.includes('rule_applicability_overall_review_withdrawn'));
+      activeOwner = owner;
       const confirmedFields = await pool.query(`SELECT field_key,candidate_value,source_kind,source_status
         FROM bb_rule_applicability_context_candidates WHERE context_id=$1 AND field_key=ANY($2::text[])`,
       [confirmedDraft.json().context_ref.context_id, ['asOf', 'documentPurpose']]);
@@ -342,8 +448,8 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       const pinnedInput = await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
         [projectId, pinned.json().input_revision]);
       assert.equal(pinnedInput.rows[0]!.manifest.rule_pack_selection, 'blocked');
-      assert.ok(pinnedInput.rows[0]!.manifest.rule_pack_block_reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
-      assert.ok(pinnedInput.rows[0]!.manifest.rule_pack_block_reasons.some((reason: string) => reason.startsWith('rule_applicability_field_needs_review:')));
+      assert.ok(pinnedInput.rows[0]!.manifest.rule_pack_block_reasons.includes('rule_applicability_overall_review_withdrawn'));
+      assert.ok(!pinnedInput.rows[0]!.manifest.rule_pack_block_reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
 
       // The production factory reaches the real needs_review branch, while bare createServer()
       // preserves the explicit test semantic of an unavailable loader.
