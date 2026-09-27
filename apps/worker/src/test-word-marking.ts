@@ -4,13 +4,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
 
 const run = promisify(execFile);
 const repositoryRoot=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
-export type UncoveredItem = {rule_id:string;reason_code:string;evidence_ref:string|null};
 
 /** The marker is applied before Word inspection, Blob promotion and final hash calculation. */
-export async function markTestWord(bytes:Buffer, uncovered:UncoveredItem[]):Promise<Buffer> {
+export async function markTestWord(bytes:Buffer, uncovered:TestUncoveredItem[]):Promise<Buffer> {
+  if (!isTestUncoveredItems(uncovered)) throw new Error('TEST_UNCOVERED_ITEMS_INVALID');
   const directory=await mkdtemp(join(process.env.BB_PARSE_STAGING_DIR ?? tmpdir(),'bb-test-word-'));
   try {
     const source=join(directory,'source.docx'),manifest=join(directory,'uncovered.json'),target=join(directory,'marked.docx');
