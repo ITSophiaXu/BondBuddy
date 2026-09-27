@@ -21,6 +21,7 @@ import type { StageContext } from './run-pipeline.js';
 import type { StoredFactDecision } from './fact-decision-repository.js';
 import { validateDocumentParseResponse } from './document-parser.js';
 import { syntheticHistoricalRules } from './test-fixtures/historical-rules.js';
+import { historicalWordDeliveryStage } from './historical-word-stage.js';
 
 // Synthetic component evidence. No real model, billing, cloud storage or industry acceptance is claimed.
 function fixture() {
@@ -92,6 +93,150 @@ test('has-history stage uses persisted inputs and exact facts to update dates, t
   const {planHash,...rest} = plan; assert.equal(planHash,updateContentHash(rest));
   assert.equal(s.ctx.checkpoint.historical_generation_progress!.reviewed_blocks,10);
   assert.ok(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]);
+});
+
+test('external financial input survives model planning and retains one visible audit qualification per changed record', async () => {
+  const s = fixture();
+  s.facts[0] = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate,
+    source: { ...s.facts[0]!.candidate.source, kind: 'external' } } };
+  s.manifest.materials[1]!.role = 'interimFinancial';
+  const before = structuredClone(s.facts);
+  const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+  assert.equal(offerableFacts(input).length, 1);
+  assert.match(historicalPrompt(input, s.snapshot.response.records, 0, 1), /"source_kind":"external"/);
+  assert.match(historicalPrompt(input, s.snapshot.response.records, 0, 1), /"material_role":"interimFinancial"/);
+  const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+  assert.equal(result.kind, 'done');
+  if (result.kind !== 'done') return;
+  const plan = result.value as HistoricalGenerationPlan;
+  assert.equal(plan.replacements.length, 3);
+  assert.equal(plan.columns.length, 1);
+  assert.equal(plan.reviewNotes.length, 4);
+  assert.equal(new Set(plan.reviewNotes.map(n => n.recordId)).size, 4);
+  assert.ok(plan.reviewNotes.every(n => /未作为审计来源核验/.test(n.message) && n.message.length <= 512));
+  assert.ok(plan.replacements.every(c => c.sourceStatuses.every(status => status === 'extracted')));
+  assert.deepEqual(s.facts, before);
+});
+
+test('exact effective historical baseline facts are frozen as external without using deleted or changed source anchors', async () => {
+  for (const mutation of ['none', 'deleted_record', 'quote', 'parser', 'locator', 'hash'] as const) {
+    const s = fixture();
+    const old = s.source.facts[1]!;
+    const record = s.snapshot.response.records.find(r => r.record_id === 'p2')!;
+    const anchor = { ...s.facts[0]!.provenance.evidence[0]!, evidence_id: record.record_id,
+      material_id: record.material_id, material_version: record.material_version, content_hash: record.content_hash,
+      locator_type: record.locator_type, locator: record.locator, literal_quote: record.literal_quote,
+      extraction_version: record.extractor_version };
+    if (mutation === 'deleted_record') anchor.evidence_id = 'deleted-old-revision-record';
+    if (mutation === 'quote') anchor.literal_quote = 'changed quote';
+    if (mutation === 'parser') anchor.extraction_version = 'other-parser';
+    if (mutation === 'locator') anchor.locator = { path: [{ paragraph: 999 }] };
+    if (mutation === 'hash') anchor.content_hash = '9'.repeat(64);
+    const previous: StoredFactCandidate = { candidate: { ...old.candidate, source: { ...old.candidate.source, kind: 'external' } },
+      provenance: { ...s.facts[0]!.provenance, materialId: record.material_id, materialVersion: record.material_version,
+        evidence: [anchor], status: 'extracted' } };
+    s.facts.push(previous);
+    if (mutation === 'hash') {
+      await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /UPDATE_FACT_MATERIAL_MISMATCH/);
+      continue;
+    }
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.facts.length, 2, 'all supported-material candidates, including uncertainty, stay frozen');
+    assert.equal(offerableFacts(input).some(f => f.candidate.candidateId === previous.candidate.candidateId), mutation === 'none', mutation);
+  }
+});
+
+test('a long missing-evidence reason and external-source warning survive the Word stage without truncation', async () => {
+  const s = fixture();
+  s.facts[0] = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate,
+    source: { ...s.facts[0]!.candidate.source, kind: 'external' } } };
+  s.manifest.materials[1]!.role = 'interimFinancial';
+  const block = s.answer.blocks[2]!;
+  const recordId = block.record_id;
+  const reason = '缺少材料😀'.repeat(200);
+  block.disposition = 'needs_evidence'; block.changes = []; block.reason = reason;
+  // Exercise a same-anchor finding collision without weakening the model's column-anchor rules.
+  const prepare = s.options.prepare!;
+  s.options.prepare = async (...args) => {
+    const plan = await prepare(...args);
+    return { ...plan, findings: [...plan.findings, { code: 'UPDATE_NON_AUDIT_SOURCE_USED', recordIds: [recordId], bindingIds: [] }] };
+  };
+  const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+  assert.equal(result.kind, 'done'); if (result.kind !== 'done') return;
+  const plan = result.value as HistoricalGenerationPlan;
+  const notes = plan.reviewNotes.filter(n => n.recordId === recordId);
+  assert.ok(notes.length > 1);
+  assert.ok(plan.reviewNotes.every(n => n.message.length <= 512 && Buffer.from(n.message, 'utf8').toString('utf8') === n.message));
+  const restored = notes.map(n => n.message.replace(/^待人工确认（\d+\/\d+）：/, '')).join('');
+  assert.ok(restored.includes(reason), 'the complete reason, including its tail and surrogate pairs, survives');
+  assert.match(restored, /未作为审计来源核验/);
+  s.ctx.values.set('model_generation', plan);
+  const delivery = await historicalWordDeliveryStage({ writer: async () => ({
+    revision: Buffer.from('synthetic-revision'), clean: Buffer.from('synthetic-clean'), baseline: Buffer.from('synthetic-baseline'),
+    summary: { pending: plan.reviewNotes.length } as never,
+  }) }).run(s.ctx);
+  assert.equal(delivery.kind, 'deliver', 'the production consumer accepts the bounded comments');
+});
+
+test('all eight persisted Q3 formula-cache candidate shapes stay out of prompts and Word plans', async () => {
+  const s = fixture(), original = structuredClone(s.facts[0]!);
+  s.facts.length = 0;
+  for (const scope of ['consolidated', 'parent_only'] as const) {
+    for (const metric of ['total_assets', 'operating_revenue', 'net_profit', 'net_cash_from_operating_activities']) {
+      const uncertain = ['FORMULA_CACHE_VALUE_UNVERIFIED', 'FORMULA_SOURCE_CHAIN_UNVERIFIED',
+        ...(metric === 'operating_revenue' ? ['REVENUE_EXTERNAL_WORKBOOK_NOT_AUTHORIZED'] : []),
+        ...(scope === 'parent_only' ? ['PERIOD_HEADER_FORMULA_CACHE_UNVERIFIED'] : [])];
+      const fact = structuredClone(original);
+      Object.assign(fact.candidate, { candidateId: `q3-cache-${scope}-${metric}`,
+        identity: { ...fact.candidate.identity, scope, metric },
+        source: { ...fact.candidate.source, kind: 'external' }, uncertainty: uncertain.join(';') });
+      Object.assign(fact.provenance, { status: 'needs_confirmation', uncertainty: uncertain });
+      Object.assign(fact.provenance.evidence[0]!, { uncertainty: ['formula_cached_result_unverified'] });
+      s.facts.push(fact);
+    }
+  }
+  const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+  assert.equal(input.facts.length, 8, 'the frozen inventory retains all unconfirmed candidates');
+  assert.equal(offerableFacts(input).length, 0);
+  const prompt = historicalPrompt(input, s.snapshot.response.records, 0, 1);
+  for (const fact of s.facts) assert.ok(!prompt.includes(fact.candidate.candidateId));
+  assert.throws(() => semanticInventory(s.answer, s.snapshot.response.records, offerableFacts(input), 0), /UPDATE_MODEL_UNKNOWN_FACT/);
+  s.answer.columns = [];
+  s.answer.blocks.forEach(block => { block.changes = []; block.disposition = 'needs_evidence'; block.reason = '公式缓存及来源链待确认'; });
+  assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),
+    { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' });
+});
+
+for (const mutation of ['formula_cache', 'evidence_uncertain', 'foreign_owner', 'reference_role', 'unlocked_hash', 'missing_evidence', 'false_verified', 'user_asserted'] as const) {
+  test(`external model inputs cannot bypass ${mutation}`, async () => {
+    const s = fixture();
+    s.facts[0] = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate,
+      source: { ...s.facts[0]!.candidate.source, kind: 'external' } } };
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    const fact = s.facts[0]!;
+    if (mutation === 'formula_cache') Object.assign(fact.provenance, { uncertainty: ['XLSX_FORMULA_CACHE_UNVERIFIED'] });
+    if (mutation === 'evidence_uncertain') Object.assign(fact.provenance.evidence[0]!, { uncertainty: ['OCR_UNCERTAIN'] });
+    if (mutation === 'foreign_owner') Object.assign(fact.candidate.identity, { accountId: 'another-owner' });
+    if (mutation === 'reference_role') input.locked.materials = input.locked.materials.map(m => m.role === 'audit' ? { ...m, role: 'reference' } : m);
+    if (mutation === 'unlocked_hash') Object.assign(fact.provenance.evidence[0]!, { content_hash: '9'.repeat(64) });
+    if (mutation === 'missing_evidence') Object.assign(fact.provenance, { evidence: [] });
+    if (mutation === 'false_verified') Object.assign(fact.provenance, { status: 'verified' });
+    if (mutation === 'user_asserted') {
+      Object.assign(fact.candidate.source, { kind: 'user_statement' });
+      Object.assign(fact.provenance, { status: 'user_asserted' });
+    }
+    assert.equal(offerableFacts(input).length, 0);
+  });
+}
+
+test('an external uncertain competitor cannot be hidden behind a clean fact', async () => {
+  const s = fixture();
+  const uncertain = structuredClone(s.facts[0]!);
+  Object.assign(uncertain.candidate, { candidateId: 'external-uncertain',
+    source: { ...uncertain.candidate.source, kind: 'external' }, uncertainty: 'EXTERNAL_LINK_UNVERIFIED' });
+  Object.assign(uncertain.provenance, { status: 'needs_confirmation', uncertainty: ['EXTERNAL_LINK_UNVERIFIED'] });
+  s.facts.push(uncertain);
+  assert.equal(offerableFacts(await loadHistoricalGenerationInput(s.ctx, s.readers)).length, 0);
 });
 
 test('local missing evidence leaves a visible review note and still produces evidence-backed changes', async () => {

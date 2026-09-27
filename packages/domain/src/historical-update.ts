@@ -167,17 +167,25 @@ function validateBinding(binding: UpdateBinding, context: UpdateContext): void {
   } else if (binding.replaces) throw new Error('UPDATE_UNEXPECTED_RESTATEMENT_MAPPING');
 }
 
+/** Source audit status and usability are independent. External project-document facts
+ * remain extracted, never auditor-verified. The worker additionally binds material roles. */
+export function isUsableHistoricalFact(fact: UpdateFact): boolean {
+  const { candidate } = fact;
+  return ['audited', 'external'].includes(candidate.source.kind) &&
+    ['extracted', 'verified'].includes(fact.status) && fact.status === factCandidateStatus(candidate) &&
+    candidate.value.kind === 'known' && fact.evidence.length > 0 &&
+    fact.evidence.every(anchor => anchor.uncertainty.length === 0 &&
+      hash(anchor.contentHash) && required(anchor.recordId) && required(anchor.materialId) &&
+      Number.isSafeInteger(anchor.materialVersion) && anchor.materialVersion >= 1 &&
+      required(anchor.extractionVersion) && anchor.literalQuote.trim().length > 0);
+}
+
 interface ResolvedValue { text?: string; number?: arithmetic.Rational; unit: string; period: FactPeriod; sources: readonly UpdateFact[]; previous?: ResolvedValue }
 function resolveFact(identity: FactIdentity, facts: readonly UpdateFact[]): UpdateFact[] {
   const matches = facts.filter(fact => factIdentityKey(fact.candidate.identity) === factIdentityKey(identity));
   if (!matches.length) throw new Error('UPDATE_FACT_MISSING');
   for (const fact of matches) {
-    const { candidate } = fact;
-    if (candidate.source.kind !== 'audited' || !['extracted', 'verified'].includes(fact.status) ||
-      fact.status !== factCandidateStatus(candidate) || candidate.value.kind !== 'known' ||
-      !fact.evidence.length || fact.evidence.some(anchor => anchor.uncertainty.length > 0 ||
-        !hash(anchor.contentHash) || !required(anchor.recordId) || !required(anchor.materialId) ||
-        !Number.isSafeInteger(anchor.materialVersion) || anchor.materialVersion < 1 || !required(anchor.extractionVersion) || !anchor.literalQuote.trim())) {
+    if (!isUsableHistoricalFact(fact)) {
       throw new Error('UPDATE_FACT_UNRESOLVED');
     }
   }
@@ -406,6 +414,22 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   for (const binding of bindings) if (!usedBindings.has(binding.bindingId)) flag('UPDATE_BINDING_HAS_NO_OCCURRENCE', [], [binding.bindingId]);
   const validReplacements = globalBlocked ? [] : replacements.filter(change => !failedBindings.has(change.bindingId));
   const validColumns = globalBlocked ? [] : plannedColumns.filter(column => column.cells.every(cell => !failedBindings.has(cell.bindingId)));
+  // Keep supported changes, but make the source/audit qualification visible at
+  // every affected original location, including inserted table columns.
+  const externalIds = new Set(facts.filter(f => f.candidate.source.kind === 'external').map(f => f.candidate.candidateId));
+  const externalRecords = new Map<string, Set<string>>();
+  for (const change of [
+    ...validReplacements.map(c => ({ recordId: c.recordId, bindingId: c.bindingId, candidateIds: c.candidateIds })),
+    ...validColumns.flatMap(c => c.cells.map(cell => ({ recordId: cell.anchorRecordId, bindingId: cell.bindingId, candidateIds: cell.candidateIds }))),
+  ]) if (change.candidateIds.some(id => externalIds.has(id))) {
+    const ids = externalRecords.get(change.recordId) ?? new Set<string>();
+    ids.add(change.bindingId);
+    externalRecords.set(change.recordId, ids);
+  }
+  for (const [recordId, ids] of externalRecords) {
+    flag('UPDATE_NON_AUDIT_SOURCE_USED', [recordId], [...ids]);
+    pendingRecords.add(recordId);
+  }
   const failedRecordIds = new Set(occurrences.filter(item => failedBindings.has(item.bindingId)).map(item => item.recordId)
     .concat(columns.filter(column => column.cells.some(cell => failedBindings.has(cell.bindingId))).flatMap(column => column.cells.map(cell => cell.afterRecordId)),
       [...localizedUncertainRecordIds]));

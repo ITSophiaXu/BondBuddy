@@ -1,9 +1,9 @@
 import { Ajv } from 'ajv';
-import { MATERIAL_PARSE_JOB_TYPE, UpdateDetailsSchema, type UpdateDetails, type Material } from '@bondbuddy/contracts';
+import { MATERIAL_PARSE_JOB_TYPE, UpdateDetailsSchema, type UpdateDetails } from '@bondbuddy/contracts';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { checkpointStage } from '@bondbuddy/api/queue';
-import { updateContentHash } from '@bondbuddy/domain/historical-update';
-import { factCandidateStatus, factIdentityKey, type FactIdentity } from '@bondbuddy/domain/facts';
+import { isUsableHistoricalFact, updateContentHash } from '@bondbuddy/domain/historical-update';
+import { factIdentityKey, type FactIdentity } from '@bondbuddy/domain/facts';
 import { getParseSnapshot, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { listHistoricalProfileHistory, type StoredHistoricalProfile } from './historical-profile-repository.js';
 import { listFactCandidates, type StoredFactCandidate } from './fact-repository.js';
@@ -12,9 +12,9 @@ import { getFactDecisionAtVersion, getLatestFactDecision, type StoredFactDecisio
 import type { StageContext } from './run-pipeline.js';
 import type { ProductionRulePackPin } from '@bondbuddy/rule-pack-registry';
 import { loadHistoricalRuleGuidance, type HistoricalRuleGuidance, type HistoricalRuleResolver } from './historical-rule-context.js';
+import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistoricalFactMaterial, projectHistoricalFact } from './historical-fact-policy.js';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
-const audited = new Set<Material['role']>(['audit', 'financial', 'interimFinancial', 'notes']);
 const detailsValidator = new Ajv({ strict: false }).compile(UpdateDetailsSchema);
 const hash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 export class HistoricalGenerationUnavailable extends Error {}
@@ -100,7 +100,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   const materialMap = new Map(materials.map(m => [`${m.materialId}:${m.materialVersion}`, m]));
   const candidates = (await (readers.facts ?? listFactCandidates)({ pool }, scope)).filter(f => {
     const m = materialMap.get(`${f.provenance.materialId}:${f.provenance.materialVersion}`);
-    return m && audited.has(m.role);
+    return m && isHistoricalFactMaterial(m, { materialId: baseline.materialId, materialVersion: baseline.materialVersion });
   });
   const ids = previous ? new Set(previous.fact_ids) : null;
   const facts = ids ? candidates.filter(f => ids.has(f.candidate.candidateId)) : candidates;
@@ -169,11 +169,16 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
 export function offerableFacts(input: HistoricalGenerationInput): StoredFactCandidate[] {
   const groups = new Map<string, StoredFactCandidate[]>();
   for (const f of input.facts) {
-    if (f.candidate.identity.entityId !== input.locked.context.issuerEntityId) continue;
+    if (f.candidate.identity.accountId !== input.locked.context.ownerUserId ||
+      f.candidate.identity.entityId !== input.locked.context.issuerEntityId) continue;
     const key = factIdentityKey(f.candidate.identity); const group = groups.get(key) ?? []; group.push(f); groups.set(key, group);
   }
-  return [...groups.values()].filter(group => group.every(f => f.candidate.source.kind === 'audited' &&
-    ['extracted', 'verified'].includes(f.provenance.status) && factCandidateStatus(f.candidate) === f.provenance.status && f.provenance.uncertainty.length === 0 &&
-    f.candidate.value.kind === 'known' && f.provenance.evidence.length > 0 && f.provenance.evidence.every(a => a.uncertainty.length === 0)))
+  return [...groups.values()].filter(group => group.every(f => {
+    const material = input.locked.materials.find(m => m.materialId === f.provenance.materialId && m.materialVersion === f.provenance.materialVersion);
+    return material && isHistoricalFactMaterial(material, input.locked.baseline) &&
+      historicalFactMatchesMaterial(f, material) && f.provenance.uncertainty.length === 0 &&
+      (material.role !== 'historical' || historicalFactMatchesBaseline(f, input.snapshot)) &&
+      isUsableHistoricalFact(projectHistoricalFact(f));
+  }))
     .flat();
 }

@@ -10,6 +10,7 @@ import { updateContentHash } from '@bondbuddy/domain/historical-update';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import type { StageContext } from './run-pipeline.js';
 import { workerRuntimeOptionsFromEnv } from './runtime.js';
+import { splitHistoricalReviewNotes } from './historical-review-notes.js';
 
 function productionWordStage() {
   const options = workerRuntimeOptionsFromEnv({} as Parameters<typeof workerRuntimeOptionsFromEnv>[0],
@@ -103,11 +104,13 @@ test('actual Python writer accepts a locked synthetic source through the worker 
     const first = rows[0]!, second = rows[1]!;
     const before = first.literal_quote;
     const start = before.indexOf('100');
+    const completeNote = `待人工确认：${'缺少材料😀'.repeat(200)}；未作为审计来源核验`;
+    const reviewNotes = splitHistoricalReviewNotes([{ recordId: second.record_id, message: completeNote }]);
     const content = { schemaVersion: 'historical-update-plan-v1', deliverable: false, baselineHash: 'b'.repeat(64),
       context: { ownerUserId: 'owner-1', projectId: 'project-1', inputRevision: 2, inputHash: 'a'.repeat(64) },
       source: { materialId: 'historical-1', materialVersion: 1, format: 'docx_effective', contentHash: sourceHash },
       generation: { version: 'historical-sse-private-v1' },
-      reviewNotes: [{ recordId: second.record_id, message: '待人工确认：缺少说明材料' }], findings: [],
+      reviewNotes, findings: [],
       textPreview: rows.map((row, index) => ({ recordId: row.record_id, before: row.literal_quote,
         after: index === 0 ? row.literal_quote.replace('100', '120') : row.literal_quote,
         locator: row.locator, formatting: row.formatting })),
@@ -129,10 +132,16 @@ test('actual Python writer accepts a locked synthetic source through the worker 
     const outcome = await productionWordStage().run(ctx);
     assert.equal(outcome.kind, 'deliver');
     if (outcome.kind === 'deliver') {
-      assert.equal(outcome.wordSummary?.pending, 1);
+      assert.equal(outcome.wordSummary?.pending, reviewNotes.length);
       assert.ok(outcome.bytes.subarray(0, 2).equals(Buffer.from('PK')));
       assert.ok(outcome.cleanBytes?.subarray(0, 2).equals(Buffer.from('PK')));
       assert.ok(outcome.baselineBytes?.subarray(0, 2).equals(Buffer.from('PK')));
+      const comments = spawnSync(process.env.BONDBUDDY_TEST_PYTHON!, ['-c',
+        "import io,json,sys,zipfile;from lxml import etree;z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read()));root=etree.fromstring(z.read('word/comments.xml'));print(json.dumps([''.join(c.itertext()) for c in root],ensure_ascii=False))"],
+      { input: outcome.bytes, env: { ...process.env, PYTHONIOENCODING: 'utf-8' }, encoding: 'utf8', timeout: 30_000 });
+      assert.equal(comments.status, 0, comments.stderr);
+      assert.deepEqual(JSON.parse(comments.stdout), reviewNotes.map(note => note.message));
+      assert.equal(reviewNotes.map(note => note.message.replace(/^待人工确认（\d+\/\d+）：/, '')).join(''), completeNote);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

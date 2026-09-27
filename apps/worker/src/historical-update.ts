@@ -8,6 +8,7 @@ import { listFactCandidates, type StoredFactCandidate } from './fact-repository.
 import { getLatestFactDecision, type StoredFactDecision } from './fact-decision-repository.js';
 import { validateDocumentParseResponse } from './document-parser.js';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
+import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistoricalFactMaterial, projectHistoricalFact } from './historical-fact-policy.js';
 
 export interface UpdateMaterialLock { materialId: string; materialVersion: number; contentHash: string; role: Material['role'] }
 /** Server-owned execution snapshot and semantic inventory. Never accept these fields directly from a browser/model. */
@@ -28,7 +29,6 @@ export interface HistoricalUpdateReaders {
   decision(scope: Pick<Scope, 'ownerUserId' | 'projectId'>, identity: FactIdentity): Promise<StoredFactDecision | null>;
 }
 const profileValidator = new Ajv({ strict: false, allErrors: true }).compile(schemas.RecognitionResponse);
-const auditedRoles = new Set<Material['role']>(['audit', 'financial', 'interimFinancial', 'notes']);
 const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 function fail(code: string): never { throw new Error(code); }
 function factIdentities(input: LockedHistoricalUpdate): FactIdentity[] {
@@ -145,8 +145,9 @@ export async function prepareHistoricalUpdate(
   for (const { candidate, provenance } of stored) {
     const source = materials.get(materialKey(provenance.materialId, provenance.materialVersion));
     if (candidate.identity.accountId !== context.ownerUserId || candidate.identity.entityId !== context.issuerEntityId ||
-      provenance.status !== factCandidateStatus(candidate) || !source || !auditedRoles.has(source.role) || !provenance.evidence.length ||
-      provenance.evidence.some(anchor => anchor.material_id !== source.materialId || anchor.material_version !== source.materialVersion || anchor.content_hash !== source.contentHash)) {
+      provenance.status !== factCandidateStatus(candidate) || !source || !isHistoricalFactMaterial(source, locked.baseline) ||
+      !historicalFactMatchesMaterial({ candidate, provenance }, source) ||
+      (source.role === 'historical' && !historicalFactMatchesBaseline({ candidate, provenance }, snapshot))) {
       fail('UPDATE_FACT_MATERIAL_MISMATCH');
     }
   }
@@ -173,11 +174,7 @@ export async function prepareHistoricalUpdate(
   }).map(({ candidate, provenance }) => {
     if (provenance.uncertainty.length) fail('UPDATE_FACT_MATERIAL_MISMATCH');
     const decisionVersion = decisionSnapshots.find(snapshot => factIdentityKey(snapshot.identity) === factIdentityKey(candidate.identity))?.decision?.version;
-    return { candidate, status: provenance.status, ...(decisionVersion === undefined ? {} : { decisionVersion }), evidence: provenance.evidence.map(anchor => ({
-      materialId: anchor.material_id, materialVersion: anchor.material_version, contentHash: anchor.content_hash,
-      recordId: anchor.evidence_id, locatorType: anchor.locator_type, locator: anchor.locator, literalQuote: anchor.literal_quote,
-      extractionVersion: anchor.extraction_version, uncertainty: anchor.uncertainty,
-    })) };
+    return projectHistoricalFact({ candidate, provenance }, decisionVersion);
   });
   const revisionSummary = response.document.revision_summary as { insertions?: unknown; deletions?: unknown } | undefined;
   if (response.material.media_type === docx && (!revisionSummary ||

@@ -85,6 +85,21 @@ test('composes immutable repositories, exact material/profile locks and audited 
   assert.deepEqual(s.locked, before);
 });
 
+test('locked interim financial external facts reach the deterministic planner and preserve source status', async () => {
+  const s = setup();
+  s.facts[0] = { ...s.facts[0]!, candidate: { ...s.facts[0]!.candidate,
+    source: { ...s.facts[0]!.candidate.source, kind: 'external' } } };
+  s.locked.materials = s.locked.materials.map(m => m.role === 'audit' ? { ...m, role: 'interimFinancial' } : m);
+  s.rows.find(r => r.id === 'audit-1')!.role = 'interimFinancial';
+  s.locked.factsHash = historicalUpdateFactsHash(s.facts, s.decisions);
+  const before = structuredClone(s.facts);
+  const plan = await prepareHistoricalUpdate(s.dependencies, s.locked, s.readers);
+  assert.equal(plan.replacements.length, 3);
+  assert.equal(plan.columns.length, 1);
+  assert.ok(plan.findings.some(f => f.code === 'UPDATE_NON_AUDIT_SOURCE_USED'));
+  assert.deepEqual(s.facts, before);
+});
+
 for (const changed of ['owner', 'project', 'material_hash', 'missing_material', 'reference_role', 'snapshot_owner', 'snapshot_id', 'response_hash', 'evidence', 'profile_version', 'profile_parser', 'candidate_missing', 'fact_hash', 'fact_material'] as const) {
   test(`worker refuses ${changed} instead of reading latest or falling back to reference drafts`, async () => {
     const s = setup();

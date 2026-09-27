@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { planHistoricalUpdate, updateContentHash, type HistoricalUpdateInput, type UpdateFact } from './historical-update.js';
+import { isUsableHistoricalFact, planHistoricalUpdate, updateContentHash, type HistoricalUpdateInput, type UpdateFact } from './historical-update.js';
 import * as arithmetic from './update-arithmetic.js';
 
 function fixture(): HistoricalUpdateInput {
@@ -45,6 +45,36 @@ test('synthetic annual update preserves old years, risks, audit opinion, formatt
   plan.textPreview[0]!.formatting.style = 'Modified';
   assert.deepEqual(input, before);
 });
+
+test('evidenced external values update amounts and columns without acquiring audited or verified status', () => {
+  const input = fixture();
+  input.facts = input.facts.map(f => ({ ...f, candidate: { ...f.candidate, source: { ...f.candidate.source, kind: 'external' } } }));
+  const before = structuredClone(input);
+  const plan = planHistoricalUpdate(input);
+  assert.equal(plan.replacements.length, 3);
+  assert.equal(plan.columns.length, 1);
+  assert.equal(plan.textPreview[1]!.after, '2024年度营业收入为120.00万元。');
+  assert.ok(plan.replacements.every(c => c.sourceStatuses.every(status => status === 'extracted')));
+  const findings = plan.findings.filter(f => f.code === 'UPDATE_NON_AUDIT_SOURCE_USED');
+  assert.equal(findings.length, 4, 'one source qualification per changed record, not per numeric occurrence');
+  assert.equal(plan.coverage.pending, 4);
+  assert.equal(plan.status, 'needs_confirmation');
+  assert.deepEqual(input, before);
+});
+
+for (const mutation of ['uncertain_value', 'uncertain_anchor', 'unknown', 'low_confidence', 'false_verified', 'missing_evidence'] as const) {
+  test(`external usability rejects ${mutation} without source/status promotion`, () => {
+    const fact = structuredClone(fixture().facts[0]!);
+    fact.candidate = { ...fact.candidate, source: { ...fact.candidate.source, kind: 'external' } };
+    if (mutation === 'uncertain_value') fact.candidate = { ...fact.candidate, uncertainty: 'XLSX_FORMULA_CACHE_UNVERIFIED' };
+    if (mutation === 'uncertain_anchor') fact.evidence = [{ ...fact.evidence[0]!, uncertainty: ['EXTERNAL_LINK_UNVERIFIED'] }];
+    if (mutation === 'unknown') fact.candidate = { ...fact.candidate, value: { kind: 'unknown' } };
+    if (mutation === 'low_confidence') fact.candidate = { ...fact.candidate, confidence: 0.2 };
+    if (mutation === 'false_verified') fact.status = 'verified';
+    if (mutation === 'missing_evidence') fact.evidence = [];
+    assert.equal(isUsableHistoricalFact(fact), false);
+  });
+}
 
 test('canonical plan/input hashes change with evidence, rules or prior revisions, but not object key order', () => {
   const input = fixture(); const original = planHistoricalUpdate(input);
