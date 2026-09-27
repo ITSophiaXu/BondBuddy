@@ -48,20 +48,24 @@ def numeric_value(raw):
     return {'kind': 'number', 'decimal': value, 'unit': unit}
 
 
-def _run(args, timeout=35):
+def _run(args, timeout=35, attempt_tracker=None):
+    if attempt_tracker is not None:
+        attempt_tracker['attempted'] = True
     try:
         return subprocess.run(args, capture_output=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         raise Failure('OCR_ENGINE_TIMEOUT')
     except OSError:
+        if attempt_tracker is not None:
+            attempt_tracker['attempted'] = False
         raise Failure('OCR_ENGINE_UNAVAILABLE')
 
 
-def _tsv(image, language, directory, index, psm='3'):
+def _tsv(image, language, directory, index, psm='3', attempt_tracker=None):
     path = Path(directory) / f'page-{index}.png'
     image.save(path)
     output = Path(directory) / f'page-{index}'
-    result = _run(['tesseract', str(path), str(output), '-l', language, '--psm', psm, '-c', 'tessedit_create_tsv=1'])
+    result = _run(['tesseract', str(path), str(output), '-l', language, '--psm', psm, '-c', 'tessedit_create_tsv=1'], attempt_tracker=attempt_tracker)
     if result.returncode:
         raise Failure('OCR_ENGINE_FAILED')
     tsv = output.with_suffix('.tsv')
@@ -83,10 +87,10 @@ def _tsv(image, language, directory, index, psm='3'):
     return words
 
 
-def _orientation(image, directory):
+def _orientation(image, directory, attempt_tracker=None):
     path = Path(directory) / 'orientation.png'
     image.save(path)
-    result = _run(['tesseract', str(path), 'stdout', '--psm', '0', '-l', 'osd'], 15)
+    result = _run(['tesseract', str(path), 'stdout', '--psm', '0', '-l', 'osd'], 15, attempt_tracker=attempt_tracker)
     text = result.stdout.decode('utf-8', errors='replace')
     angle = re.search(r'Rotate: (0|90|180|270)\b', text)
     confidence = re.search(r'Orientation confidence: ([0-9.]+)', text)
@@ -169,9 +173,9 @@ def _tables(image):
     return result
 
 
-def extract_page(image, language, directory, page_number):
-    image, rotation, warnings = _orientation(image, directory)
-    words = _tsv(image, language, directory, page_number)
+def extract_page(image, language, directory, page_number, attempt_tracker=None):
+    image, rotation, warnings = _orientation(image, directory, attempt_tracker)
+    words = _tsv(image, language, directory, page_number, attempt_tracker=attempt_tracker)
     tables = _tables(image)
     records, used = [], set()
     def record(text, bbox, confidence, cell=None, extra=None, unreadable=False):
@@ -205,7 +209,7 @@ def extract_page(image, language, directory, page_number):
             dash = has_ink and int(xs.max()-xs.min()+1)>max(10,4*int(ys.max()-ys.min()+1)) and float(ink.sum())/((xs.max()-xs.min()+1)*(ys.max()-ys.min()+1))>.75
             if has_ink:
                 crop=ImageOps.expand(crop,border=16,fill='white')
-                selected=_tsv(crop,language,directory,f'{page_number}-cell-{len(records)}','6')
+                selected=_tsv(crop,language,directory,f'{page_number}-cell-{len(records)}','6',attempt_tracker)
             else:selected=[]
             text = ' '.join(w['text'] for w in selected)
             extra=[]
