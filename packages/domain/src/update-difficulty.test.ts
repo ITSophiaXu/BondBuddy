@@ -47,6 +47,15 @@ test('old periods retained, only the 2025 cutoff counts as N=1', () => {
   assert.equal(result.latestConfirmedSourceCutoff, '2024-12-31');
 });
 
+test('confirmed OCR period identity allows N=1 when amount/formula review remains separately pending',()=>{
+  const base=input();
+  const reviewedOcrPeriod=period('2025-12-31','consolidated',{provenance:{material_id:'synthetic-financial',material_version:1,
+    method:'ocr',extractor_version:'synthetic-ocr-v2',evidence_refs:['synthetic-ocr-record']},uncertainty:[]});
+  const result=estimateUpdateDifficulty(input({target:{...base.target,reportingPeriods:[...base.target.reportingPeriods.slice(0,3),reviewedOcrPeriod]}}));
+  assert.equal(result.status,'ready');
+  assert.equal(result.estimatedN,1,'only period-identity uncertainty affects N; amount/formula OCR warnings remain in the immutable review evidence');
+});
+
 test('preserves latest confirmed interim cutoff and complete source period set', () => {
   const sourcePeriods = [period('2022-12-31'), period('2023-12-31'), period('2024-12-31'), period('2025-03-31', 'consolidated', {
     start: '2025-01-01', period_kind: 'interim', raw_value: '2025 Q1',
@@ -68,6 +77,15 @@ test('same periods across market/offering migration count N=0 while flagging str
   }));
   assert.equal(result.estimatedN, 0);
   assert.equal(result.structureAdaptationRequired, true);
+});
+
+test('an unresolved or conflicting target-period review never counts N as zero', () => {
+  const base=input();
+  const asserted={start:'2025-01-01',end:'2025-12-31',period_kind:'annual' as const,scope:'consolidated' as const,
+    status:'user_asserted' as const,evidence_refs:[] as []};
+  const pending=estimateUpdateDifficulty(input({target:{...base.target,reportingPeriods:[...base.target.reportingPeriods.slice(0,3),asserted]}}));
+  assert.equal(pending.status,'needs_confirmation');
+  assert.equal(pending.estimatedN,null);
 });
 
 test('same cutoff across three statements, parent/consolidated scopes, and duplicate materials counts once', () => {

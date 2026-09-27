@@ -1,0 +1,50 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "target-period-evidence-decision-request",
+      "schema": "TargetPeriodEvidenceDecisionRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-period-review-1",
+        "input_revision": 3,
+        "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_profile_version": 2,
+        "periods": [{
+          "start": "2025-01-01",
+          "end": "2025-12-31",
+          "period_kind": "annual",
+          "scope": "consolidated",
+          "outcome": "confirmed",
+          "evidence": [
+            {"evidence_method":"native_text","material_id":"synthetic-financial","material_version":1,"material_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","parse_snapshot_id":"synthetic-parse","parser_version":"parser-v1","response_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","record_id":"header-record","record_sha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","anchor_kind":"table_header"},
+            {"evidence_method":"native_text","material_id":"synthetic-financial","material_version":1,"material_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","parse_snapshot_id":"synthetic-parse","parser_version":"parser-v1","response_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","record_id":"entity-record","record_sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","anchor_kind":"entity"},
+            {"evidence_method":"native_text","material_id":"synthetic-financial","material_version":1,"material_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","parse_snapshot_id":"synthetic-parse","parser_version":"parser-v1","response_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","record_id":"scope-record","record_sha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","anchor_kind":"scope"},
+            {"evidence_method":"native_text","material_id":"synthetic-financial","material_version":1,"material_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","parse_snapshot_id":"synthetic-parse","parser_version":"parser-v1","response_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","record_id":"date-record","record_sha256":"1111111111111111111111111111111111111111111111111111111111111111","anchor_kind":"period_end"}
+          ],
+          "reason": "Synthetic example: all four period identity anchors align. Amount and formula review remains outside this decision."
+        }]
+      }
+    },
+    {
+      "name": "target-period-evidence-confirmation-needs-all-anchors",
+      "schema": "TargetPeriodEvidenceDecisionRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-period-review-2",
+        "input_revision": 3,
+        "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_profile_version": 2,
+        "periods": [{
+          "start": "2025-01-01",
+          "end": "2025-12-31",
+          "period_kind": "annual",
+          "scope": "consolidated",
+          "outcome": "confirmed",
+          "evidence": [],
+          "reason": "Missing evidence anchors."
+        }]
+      }
+    }
+  ]
+}

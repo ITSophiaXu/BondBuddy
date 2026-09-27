@@ -4,6 +4,8 @@ import { M1_MATERIAL_PARTITIONS, emptyUpdateDetails, isMarketOffering, MARKETS, 
 import { estimateUpdateDifficulty, type CutoffDecision, type TargetReportingPeriod, type UpdateDifficultyEstimate, type UserAssertedTargetPeriod } from '@bondbuddy/domain/update-difficulty';
 import { parseHistoricalNativeExtractorVersion } from '@bondbuddy/domain/historical-native-extractor-version';
 import { canonicalTargetPeriods, type TargetConfirmation } from './target-confirmation.js';
+import { readOcrPeriodEvidence } from './ocr.js';
+import type { PrivateBlobs } from './data.js';
 
 export interface UpdateDifficultyClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -20,6 +22,7 @@ export interface UpdateDifficultyDependencies {
 
 export interface UpdateDifficultyClientOptions {
   readonly newId?: () => string;
+  readonly blobs?: PrivateBlobs;
 }
 
 /** Internal trusted material and target facts. Never bind this to an HTTP DTO. */
@@ -102,6 +105,35 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 function sha256(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
+async function difficultyEvidenceIdentity(client: UpdateDifficultyClient, input: TrustedUpdateDifficultyInput): Promise<string | null> {
+  if(input.inputRevision===undefined)return null;
+  const rows=await client.query(`SELECT d.id,d.request_id,d.request_hash,d.source_profile_material_id,d.source_profile_material_version,
+      d.source_profile_version,d.source_profile_sha256,d.locked_materials,d.periods,d.reviewer_user_id,d.reviewer_grant_id,
+      d.authority,d.reviewed_at,g.revoked_at,g.revoked_by,g.revocation_reason,u.status AS reviewer_status,
+      w.id AS withdrawal_id,w.request_hash AS withdrawal_request_hash,w.reason AS withdrawal_reason,w.withdrawn_at
+    FROM bb_target_period_evidence_decisions d
+    LEFT JOIN bb_target_period_reviewer_grants g ON g.id=d.reviewer_grant_id
+    LEFT JOIN bb_users u ON u.id=d.reviewer_user_id
+    LEFT JOIN bb_target_period_evidence_decision_withdrawals w ON w.decision_id=d.id
+    WHERE d.owner_user_id=$1 AND d.project_id=$2 AND d.input_revision=$3 AND d.input_hash=$4
+    ORDER BY d.reviewed_at,d.id`,[input.ownerUserId,input.projectId,input.inputRevision,input.inputHash]);
+  const decisions=rows.rows.map(row=>({
+    id:String(row.id),requestId:String(row.request_id),requestHash:String(row.request_hash).trim(),
+    sourceProfile:{materialId:String(row.source_profile_material_id),materialVersion:Number(row.source_profile_material_version),
+      profileVersion:Number(row.source_profile_version),sha256:String(row.source_profile_sha256).trim()},
+    lockedMaterials:parseJson(row.locked_materials),periods:parseJson(row.periods),reviewerUserId:String(row.reviewer_user_id),
+    reviewerGrantId:String(row.reviewer_grant_id),authority:String(row.authority),reviewedAt:new Date(String(row.reviewed_at)).toISOString(),
+    grantRevokedAt:row.revoked_at===null?null:new Date(String(row.revoked_at)).toISOString(),grantRevokedBy:row.revoked_by??null,
+    grantRevocationReason:row.revocation_reason??null,reviewerStatus:row.reviewer_status??null,
+    withdrawal:row.withdrawal_id===null?null:{id:String(row.withdrawal_id),requestHash:String(row.withdrawal_request_hash).trim(),
+      reason:String(row.withdrawal_reason),withdrawnAt:new Date(String(row.withdrawn_at)).toISOString()},
+  }));
+  const financialMaterialVersions=[...input.financialMaterialVersions].map(item=>({materialId:item.materialId,materialVersion:item.materialVersion}))
+    .sort((a,b)=>a.materialId.localeCompare(b.materialId)||a.materialVersion-b.materialVersion);
+  return sha256({version:1,ownerUserId:input.ownerUserId,projectId:input.projectId,inputRevision:input.inputRevision,inputHash:input.inputHash,
+    targetRevision:input.targetRevision,source:input.source,financialMaterialVersions,targetReportingPeriods:input.targetReportingPeriods,
+    targetConfirmation:input.targetConfirmation??null,replacements:input.replacements,restatements:input.restatements,decisions});
+}
 function validateLockedManifestDigest(manifest: Record<string, unknown>, inputHash: string): void {
   const schema = manifest.manifest_schema;
   if (schema === undefined) return; // Legacy locks predate canonical manifest hashes.
@@ -137,13 +169,14 @@ export function classifyUpdateDifficultyFailure(error: unknown): ClassifiedUpdat
     FINANCIAL_MATERIAL_NOT_IN_INPUT_REVISION: 'data_integrity',
     HISTORICAL_MATERIAL_SELECTION_MISMATCH: 'data_integrity',
     TARGET_REPORTING_PERIODS_LOCK_MISMATCH: 'data_integrity',
+    TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH: 'data_integrity',
     TARGET_CONFIRMATION_REQUIRED: 'pending_input',
     TARGET_CONFIRMATION_INVALID: 'data_integrity',
   };
   return { category: categories[code] ?? 'internal', code };
 }
 
-function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput): string {
+function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput, evidenceIdentity?: string): string {
   const financialMaterialVersions = [...input.financialMaterialVersions]
     .map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
     .sort((left, right) => left.materialId.localeCompare(right.materialId) || left.materialVersion - right.materialVersion);
@@ -159,6 +192,7 @@ function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput): string {
     targetConfirmation: input.targetConfirmation ?? null,
     replacements: input.replacements,
     restatements: input.restatements,
+    ...(evidenceIdentity === undefined ? {} : { evidenceIdentity }),
   };
   return `update-difficulty-${sha256(identity).slice(0, 56)}`;
 }
@@ -290,13 +324,124 @@ function sameTargetConfirmation(manifest: Record<string, unknown>, persisted: Ta
 }
 
 function targetPeriodMatches(left: readonly TargetReportingPeriod[], right: readonly TargetReportingPeriod[]): boolean {
-  const targetPeriodKeys = ['end', 'evidence_refs', 'period_kind', 'scope', 'start', 'status'];
   const periodKey = (period: TargetReportingPeriod): unknown => ({ start: period.start, end: period.end,
-    period_kind: period.period_kind, scope: period.scope, status: period.status,
-    evidence_refs: 'evidence_refs' in period ? period.evidence_refs : [] });
-  return canonical(left.map(periodKey)) === canonical(right.map(periodKey)) &&
-    left.every(period => canonical(Object.keys(period).sort()) === canonical(targetPeriodKeys) &&
-      !('provenance' in period) && !('raw_value' in period));
+    period_kind: period.period_kind, scope: period.scope });
+  const sort = (periods: readonly TargetReportingPeriod[]) => periods.map(periodKey)
+    .sort((a,b)=>canonical(a).localeCompare(canonical(b)));
+  return canonical(sort(left)) === canonical(sort(right)) && left.every(period =>
+    ('provenance' in period
+      ? period.status === 'recognized' && period.provenance.evidence_refs.length > 0
+      : period.status === 'user_asserted' || period.status === 'needs_confirmation'));
+}
+
+function recordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Only a live, exact-scope reviewer decision can turn locked target intent into period evidence. */
+async function reviewedTargetPeriods(client: UpdateDifficultyClient, input: {
+  ownerUserId:string;projectId:string;inputRevision:number;inputHash:string;
+  source:{materialId:string;materialVersion:number;profileVersion:number};
+  targetReportingPeriods:readonly UserAssertedTargetPeriod[];
+  lockedMaterials:readonly {material_id:string;material_version:number;role:string;sha256:string}[];
+  blobs?:PrivateBlobs;
+}): Promise<TargetReportingPeriod[]> {
+  const result=await client.query(`SELECT d.*,g.id AS active_grant_id,w.id AS withdrawal_id,p.recognition AS source_recognition
+    FROM bb_target_period_evidence_decisions d
+    LEFT JOIN bb_target_period_reviewer_grants g ON g.id=d.reviewer_grant_id AND g.user_id=d.reviewer_user_id
+      AND g.scope_owner_user_id=d.owner_user_id AND g.scope_project_id=d.project_id AND g.revoked_at IS NULL
+      AND EXISTS(SELECT 1 FROM bb_users reviewer WHERE reviewer.id=g.user_id AND reviewer.status='active')
+    LEFT JOIN bb_target_period_evidence_decision_withdrawals w ON w.decision_id=d.id
+    LEFT JOIN bb_historical_profiles p ON p.owner_user_id=d.owner_user_id AND p.project_id=d.project_id
+      AND p.material_id=d.source_profile_material_id AND p.material_version=d.source_profile_material_version
+      AND p.profile_version=d.source_profile_version
+    WHERE d.owner_user_id=$1 AND d.project_id=$2 AND d.input_revision=$3 AND d.input_hash=$4
+    ORDER BY d.reviewed_at DESC,d.id DESC LIMIT 1`,
+    [input.ownerUserId,input.projectId,input.inputRevision,input.inputHash]);
+  const row=result.rows[0];
+  if(!row||!row.active_grant_id||row.withdrawal_id||Number(row.source_profile_version)!==input.source.profileVersion||
+     String(row.source_profile_material_id)!==input.source.materialId||Number(row.source_profile_material_version)!==input.source.materialVersion||
+     !row.source_recognition||sha256(parseJson(row.source_recognition))!==String(row.source_profile_sha256).trim())return [...input.targetReportingPeriods];
+  const locked=parsedJsonArray(row.locked_materials);
+  const expected=input.lockedMaterials.map(m=>({material_id:m.material_id,material_version:m.material_version,material_sha256:m.sha256.trim().toLowerCase()}))
+    .sort((a,b)=>a.material_id.localeCompare(b.material_id)||a.material_version-b.material_version);
+  if(!locked||canonical(locked)!==canonical(expected))return [...input.targetReportingPeriods];
+  const decisions=parsedJsonArray(row.periods);
+  if(!decisions)return [...input.targetReportingPeriods];
+  const byKey=new Map(decisions.filter(recordValue).map(period=>[
+    canonical({start:period.start??null,end:period.end??null,period_kind:period.period_kind??null,scope:period.scope??null}),period]));
+  const output:TargetReportingPeriod[]=[];
+  for(const target of input.targetReportingPeriods){
+    const decision=byKey.get(canonical({start:target.start,end:target.end,period_kind:target.period_kind,scope:target.scope}));
+    if(!recordValue(decision)||decision.outcome!=='confirmed'||!Array.isArray(decision.evidence)){output.push(target);continue;}
+    const refs=decision.evidence.filter(recordValue);
+    if(!refs.length||refs.some(ref=>typeof ref.material_id!=='string'||!Number.isSafeInteger(ref.material_version)||
+      typeof ref.material_sha256!=='string'||typeof ref.parse_snapshot_id!=='string'||typeof ref.parser_version!=='string'||
+      typeof ref.response_sha256!=='string'||typeof ref.record_id!=='string'||typeof ref.record_sha256!=='string')){output.push(target);continue;}
+    const identities=new Set(refs.map(ref=>`${ref.evidence_method}\0${ref.material_id}\0${ref.material_version}\0${ref.parse_snapshot_id}\0${ref.parser_version}\0${ref.response_sha256}`));
+    const roles=new Set(input.lockedMaterials.filter(m=>FINANCIAL_ROLES.has(m.role)).map(m=>`${m.material_id}\0${m.material_version}\0${m.sha256.trim().toLowerCase()}`));
+    if(identities.size!==1||refs.some(ref=>!roles.has(`${ref.material_id}\0${ref.material_version}\0${String(ref.material_sha256).toLowerCase()}`))){output.push(target);continue;}
+    const first=refs[0]!;
+    const anchorKinds=new Set(refs.map(ref=>String(ref.anchor_kind)));
+    if(['table_header','entity','scope','period_end'].some(kind=>!anchorKinds.has(kind))){output.push(target);continue;}
+    let valid=true;
+    for(const ref of refs){
+      if(ref.evidence_method==='ocr'){
+        if(!input.blobs||!Number.isSafeInteger(ref.page)||typeof ref.page_image_sha256!=='string'||!/[a-f0-9]{64}/.test(ref.page_image_sha256)||!Array.isArray(ref.ocr_uncertainty)) {valid=false;break;}
+        try{
+          const verified=await readOcrPeriodEvidence(client as any,input.blobs,{owner:input.ownerUserId,projectId:input.projectId,materialId:String(ref.material_id),
+            version:Number(ref.material_version),snapshotId:String(ref.parse_snapshot_id),resultSha256:String(ref.response_sha256),recordId:String(ref.record_id),
+            page:Number(ref.page),pageImageSha256:String(ref.page_image_sha256)});
+          if(verified.processorVersion!==ref.parser_version||verified.recordSha256!==ref.record_sha256||verified.materialSha256!==ref.material_sha256||
+             canonical(verified.uncertainty)!==canonical(ref.ocr_uncertainty)){valid=false;break;}
+        }catch{valid=false;break;}
+        const evidence=await client.query(`SELECT 1 FROM bb_ocr_snapshots s
+          JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id
+            AND m.id=s.material_id AND m.version=s.material_version AND m.deleted_at IS NULL
+          JOIN bb_target_period_reviewer_grants g ON g.id=$8 AND g.user_id=$9 AND g.scope_owner_user_id=$1
+            AND g.scope_project_id=$2 AND g.revoked_at IS NULL
+          WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4
+            AND trim(m.sha256)=$5 AND s.id=$6 AND trim(s.result_hash)=$7
+            AND s.id=(SELECT s2.id FROM bb_ocr_snapshots s2 WHERE s2.owner_user_id=s.owner_user_id AND s2.project_id=s.project_id
+              AND s2.material_id=s.material_id AND s2.material_version=s.material_version ORDER BY s2.created_at DESC,s2.id DESC LIMIT 1)` ,
+          [input.ownerUserId,input.projectId,ref.material_id,ref.material_version,ref.material_sha256,ref.parse_snapshot_id,
+            ref.response_sha256,String(row.reviewer_grant_id),String(row.reviewer_user_id)]);
+        if(evidence.rows.length!==1){valid=false;break;}
+        continue;
+      }
+      const evidence=await client.query(`SELECT 1 FROM bb_parse_snapshots s JOIN bb_parse_evidence e
+        ON e.owner_user_id=s.owner_user_id AND e.project_id=s.project_id AND e.material_id=s.material_id
+          AND e.material_version=s.material_version AND e.snapshot_id=s.id
+        JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id
+          AND m.id=s.material_id AND m.version=s.material_version AND m.deleted_at IS NULL
+        JOIN bb_target_period_reviewer_grants g ON g.id=$11 AND g.user_id=$12 AND g.scope_owner_user_id=$1
+          AND g.scope_project_id=$2 AND g.revoked_at IS NULL
+        WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4 AND trim(m.sha256)=$5
+          AND s.id=$6 AND s.parser_version=$7 AND trim(s.response_sha256)=$8 AND s.response_status='parsed'
+        AND e.record_id=$9 AND trim(e.record_sha256)=$10 AND e.extractor_version=s.parser_version AND e.extraction_method=$13
+          AND s.id=(SELECT s2.id FROM bb_parse_snapshots s2 WHERE s2.owner_user_id=s.owner_user_id AND s2.project_id=s.project_id
+            AND s2.material_id=s.material_id AND s2.material_version=s.material_version ORDER BY s2.created_at DESC,s2.id DESC LIMIT 1)`,
+        [input.ownerUserId,input.projectId,ref.material_id,ref.material_version,ref.material_sha256,ref.parse_snapshot_id,
+         ref.parser_version,ref.response_sha256,ref.record_id,ref.record_sha256,String(row.reviewer_grant_id),String(row.reviewer_user_id),ref.evidence_method]);
+      if(evidence.rows.length!==1){valid=false;break;}
+    }
+    if(!valid){output.push(target);continue;}
+    output.push({start:target.start,end:target.end,period_kind:target.period_kind,scope:target.scope,
+      raw_value:typeof decision.reason==='string'?decision.reason:null,
+      provenance:{material_id:String(first.material_id),material_version:Number(first.material_version),method:first.evidence_method as 'native_text'|'ocr',
+        extractor_version:String(first.parser_version),evidence_refs:refs.map(ref=>String(ref.record_id))},
+      // A confirmed OCR identity can retain unrelated amount/formula warnings in
+      // the immutable decision refs without treating them as period uncertainty.
+      uncertainty:[],status:'recognized'});
+  }
+  const targetKeys=input.targetReportingPeriods.map(p=>canonical({start:p.start,end:p.end,period_kind:p.period_kind,scope:p.scope}));
+  if(byKey.size!==input.targetReportingPeriods.length||targetKeys.some(key=>!byKey.has(key)))
+    return [...input.targetReportingPeriods];
+  return output;
+}
+
+function parsedJsonArray(value: unknown): unknown[] | null {
+  const parsed=parseJson(value);return Array.isArray(parsed)?parsed:null;
 }
 
 /**
@@ -307,6 +452,7 @@ function targetPeriodMatches(left: readonly TargetReportingPeriod[], right: read
 export async function loadLockedUpdateDifficultyInputWithClient(
   client: UpdateDifficultyClient,
   request: LockedUpdateDifficultyRequest,
+  options: UpdateDifficultyClientOptions = {},
 ): Promise<TrustedUpdateDifficultyInput> {
   if (![request.ownerUserId, request.projectId, request.requestId].every(validId) ||
       !Number.isSafeInteger(request.inputRevision) || request.inputRevision < 1 || !/^[a-f0-9]{64}$/.test(request.inputHash)) {
@@ -358,7 +504,7 @@ export async function loadLockedUpdateDifficultyInputWithClient(
       ORDER BY profile_version DESC LIMIT 1`,
     [request.ownerUserId, request.projectId, sourceMaterial.material_id, sourceMaterial.material_version]);
     if (profile.rows.length !== 1) throw fail('HISTORICAL_PROFILE_NOT_FOUND');
-    const targetReportingPeriods = manifestTargetPeriods(manifest);
+    const assertedTargetPeriods = manifestTargetPeriods(manifest);
     const confirmationRows = await client.query(`SELECT market,offering,document_purpose,as_of::text AS as_of,target_reporting_periods,confirmed_by,confirmed_at
       FROM bb_input_revision_target_confirmations WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3`,
     [request.ownerUserId, request.projectId, request.inputRevision]);
@@ -371,9 +517,13 @@ export async function loadLockedUpdateDifficultyInputWithClient(
       confirmed_by: String(confirmationRow.confirmed_by),
       confirmed_at: confirmationRow.confirmed_at instanceof Date ? confirmationRow.confirmed_at.toISOString() : String(confirmationRow.confirmed_at),
     };
-    const targetConfirmation = sameTargetConfirmation(manifest, persistedConfirmation, targetReportingPeriods, project.rows[0]!);
+    const targetConfirmation = sameTargetConfirmation(manifest, persistedConfirmation, assertedTargetPeriods, project.rows[0]!);
     const source = { materialId: String(sourceMaterial.material_id), materialVersion: Number(sourceMaterial.material_version),
       profileVersion: Number(profile.rows[0]!.profile_version) };
+    const targetReportingPeriods = await reviewedTargetPeriods(client, { ownerUserId:request.ownerUserId,projectId:request.projectId,
+      inputRevision:request.inputRevision,inputHash:request.inputHash,source,targetReportingPeriods:assertedTargetPeriods,
+      lockedMaterials:manifestMaterials.map(item=>({material_id:String(item.material_id),material_version:Number(item.material_version),
+        role:String(item.role),sha256:String(item.sha256)})),blobs:options.blobs });
     const financialMaterialVersions = finance.map(item => ({ materialId: String(item.material_id), materialVersion: Number(item.material_version) }));
   return { ownerUserId: request.ownerUserId, projectId: request.projectId, source,
       targetRevision: Number(project.rows[0]!.draft_revision), inputRevision: request.inputRevision, inputHash: request.inputHash,
@@ -407,7 +557,7 @@ export async function ensureCurrentUpdateDifficultySnapshotWithClient(
   // complete owner-locked snapshot tuple, never from an HTTP request id.
   const loaderRequestId = `difficulty-load-${sha256({ ownerUserId: request.ownerUserId, projectId: request.projectId,
     inputRevision: request.inputRevision, inputHash: request.inputHash }).slice(0, 48)}`;
-  const loaded = await loadLockedUpdateDifficultyInputWithClient(client, { ...request, requestId: loaderRequestId });
+  const loaded = await loadLockedUpdateDifficultyInputWithClient(client, { ...request, requestId: loaderRequestId },options);
   return createUpdateDifficultySnapshotWithClient(client, { ...loaded, requestId: stableSnapshotRequestId(loaded) }, options);
 }
 
@@ -429,7 +579,7 @@ export async function loadLockedUpdateDifficultyInput(
 }
 const RETURNING_COLUMNS = ['id', 'owner_user_id', 'project_id', 'request_id', 'request_hash', 'source_material_id', 'source_material_version',
   'source_profile_version', 'target_revision', 'source_market', 'source_offering', 'target_market', 'target_offering', 'input_revision',
-  'input_hash', 'financial_material_versions', 'comparison_input', 'old_profile_completeness', 'estimate', 'created_at'] as const;
+  'input_hash', 'evidence_identity', 'financial_material_versions', 'comparison_input', 'old_profile_completeness', 'estimate', 'created_at'] as const;
 const RETURNING = RETURNING_COLUMNS.join(', ');
 const QUALIFIED_RETURNING = RETURNING_COLUMNS.map(column => `s.${column}`).join(', ');
 
@@ -455,7 +605,8 @@ async function fetchProfile(client: UpdateDifficultyClient, input: TrustedUpdate
 }
 
 async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: TrustedUpdateDifficultyInput,
-  recognition: Recognition, targetPeriods: readonly TargetReportingPeriod[]): Promise<boolean> {
+  recognition: Recognition, targetPeriods: readonly TargetReportingPeriod[],
+  reviewedTargets: readonly TargetReportingPeriod[] = []): Promise<boolean> {
   for (const material of input.financialMaterialVersions) {
     const row = await client.query(
       `SELECT m.role FROM bb_material_versions m
@@ -526,6 +677,11 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
   for (const period of evidenceTargetPeriods) {
     const key = `${period.provenance.material_id}\0${period.provenance.material_version}`;
     if (!financialKeys.has(key)) { allEvidenceBound = false; continue; }
+    if(period.provenance.method==='ocr'){
+      const trusted=reviewedTargets.some(candidate=>'provenance' in candidate&&canonical(candidate)===canonical(period));
+      if(!trusted)allEvidenceBound=false;
+      continue;
+    }
     for (const ref of period.provenance.evidence_refs) {
       const result = await client.query(
         `SELECT 1 FROM bb_parse_snapshots s JOIN bb_parse_evidence e ON e.owner_user_id=s.owner_user_id AND e.project_id=s.project_id
@@ -573,15 +729,34 @@ export async function createUpdateDifficultySnapshotWithClient(
   options: UpdateDifficultyClientOptions = {},
 ): Promise<StoredUpdateDifficultySnapshot> {
   safeContext(input);
-  const normalizedMaterials = [...input.financialMaterialVersions].map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
-    .sort((a, b) => a.materialId.localeCompare(b.materialId) || a.materialVersion - b.materialVersion);
-  const requestPayload = { ...input, financialMaterialVersions: normalizedMaterials };
-  const requestHash = sha256(requestPayload);
+  let reviewedTargets: readonly TargetReportingPeriod[] = [];
+  let evidenceIdentity:string|null=null;
+  let requestHash='';
+  let normalizedMaterials:{materialId:string;materialVersion:number}[]=[];
   try {
     const activeProject = await client.query(
       `SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
       [input.ownerUserId, input.projectId]);
     if (activeProject.rows.length !== 1) throw fail('PROJECT_NOT_FOUND');
+    if(input.inputRevision!==undefined){
+      const assembled=await loadLockedUpdateDifficultyInputWithClient(client,{ownerUserId:input.ownerUserId,projectId:input.projectId,
+        inputRevision:input.inputRevision,inputHash:input.inputHash!,requestId:`difficulty-review-${sha256({owner:input.ownerUserId,project:input.projectId,
+          revision:input.inputRevision,inputHash:input.inputHash}).slice(0,48)}`},{blobs:options.blobs});
+      const sortMaterials=(items:readonly {materialId:string;materialVersion:number}[])=>[...items]
+        .sort((a,b)=>a.materialId.localeCompare(b.materialId)||a.materialVersion-b.materialVersion);
+      if(assembled.targetRevision!==input.targetRevision||assembled.source.materialId!==input.source.materialId||
+         assembled.source.materialVersion!==input.source.materialVersion||assembled.source.profileVersion!==input.source.profileVersion||
+         canonical(sortMaterials(assembled.financialMaterialVersions))!==canonical(sortMaterials(input.financialMaterialVersions))||
+         canonical(assembled.targetReportingPeriods)!==canonical(input.targetReportingPeriods)||
+         canonical(assembled.targetConfirmation)!==canonical(input.targetConfirmation))throw fail('TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH');
+      reviewedTargets=assembled.targetReportingPeriods;
+      evidenceIdentity=await difficultyEvidenceIdentity(client,assembled);
+      input={...input,requestId:stableSnapshotRequestId(assembled,evidenceIdentity??undefined)};
+    }
+    normalizedMaterials = [...input.financialMaterialVersions].map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
+      .sort((a, b) => a.materialId.localeCompare(b.materialId) || a.materialVersion - b.materialVersion);
+    requestHash = sha256({ ...input, financialMaterialVersions: normalizedMaterials,
+      ...(evidenceIdentity===null?{}:{evidenceIdentity}) });
     const prior = await client.query(
       `SELECT ${QUALIFIED_RETURNING}
          FROM bb_update_difficulty_snapshots s
@@ -601,12 +776,13 @@ export async function createUpdateDifficultySnapshotWithClient(
     if (Number(project.rows[0]!.draft_revision) !== input.targetRevision) throw fail('TARGET_REVISION_STALE');
     if (input.inputRevision !== undefined && Number(project.rows[0]!.latest_input_revision) !== input.inputRevision) throw fail('TARGET_INPUT_REVISION_STALE');
     const { recognition, state } = await fetchProfile(client, input);
-    const evidenceBound = await verifyEvidenceRefs(client, input, recognition, input.targetReportingPeriods);
+    const evidenceBound = await verifyEvidenceRefs(client, input, recognition, input.targetReportingPeriods,reviewedTargets);
     const sameTarget = await client.query(
       `SELECT id FROM bb_update_difficulty_snapshots WHERE owner_user_id=$1 AND project_id=$2
         AND source_material_id=$3 AND source_material_version=$4 AND source_profile_version=$5 AND target_revision=$6
-        AND input_revision IS NOT DISTINCT FROM $7`,
-      [input.ownerUserId, input.projectId, input.source.materialId, input.source.materialVersion, input.source.profileVersion, input.targetRevision, input.inputRevision ?? null]);
+        AND input_revision IS NOT DISTINCT FROM $7 AND evidence_identity IS NOT DISTINCT FROM $8`,
+      [input.ownerUserId, input.projectId, input.source.materialId, input.source.materialVersion, input.source.profileVersion,
+        input.targetRevision, input.inputRevision ?? null,evidenceIdentity]);
     if (sameTarget.rows.length) throw fail('TARGET_REVISION_ALREADY_SNAPSHOTTED');
     const sourceMarket: Market | null = recognition.source_market.status === 'recognized' ? recognition.source_market.value as Market | null : null;
     const sourceOffering: Offering | null = recognition.source_offering.status === 'recognized' ? recognition.source_offering.value as Offering | null : null;
@@ -631,13 +807,14 @@ export async function createUpdateDifficultySnapshotWithClient(
     const inserted = await client.query(
       `INSERT INTO bb_update_difficulty_snapshots
        (id,owner_user_id,project_id,request_id,request_hash,source_material_id,source_material_version,source_profile_version,
-        target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,financial_material_versions,comparison_input,old_profile_completeness,estimate)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING ${RETURNING}`,
+        target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,evidence_identity,
+        financial_material_versions,comparison_input,old_profile_completeness,estimate)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING ${RETURNING}`,
       [id, input.ownerUserId, input.projectId, input.requestId, requestHash, input.source.materialId, input.source.materialVersion,
         input.source.profileVersion, input.targetRevision,
         recognition.source_market.status === 'recognized' ? recognition.source_market.value : null,
         recognition.source_offering.status === 'recognized' ? recognition.source_offering.value : null,
-        project.rows[0]!.market as Market | null, project.rows[0]!.offering as Offering | null, input.inputRevision ?? null, input.inputHash ?? null,
+        project.rows[0]!.market as Market | null, project.rows[0]!.offering as Offering | null, input.inputRevision ?? null, input.inputHash ?? null,evidenceIdentity,
         JSON.stringify(normalizedMaterials), JSON.stringify({ targetReportingPeriods: input.targetReportingPeriods,
           ...(input.targetConfirmation ? { targetConfirmation: input.targetConfirmation } : {}),
           replacements: input.replacements, restatements: input.restatements }), completeness, JSON.stringify(gatedEstimate)]);
@@ -705,6 +882,7 @@ export async function getUpdateDifficultySnapshot(
 export async function getCurrentUpdateDifficultySnapshotWithClient(
   client: UpdateDifficultyClient,
   context: { ownerUserId: string; projectId: string; snapshotId: string },
+  options: UpdateDifficultyClientOptions = {},
 ): Promise<StoredUpdateDifficultySnapshot | null> {
   if (![context.ownerUserId, context.projectId, context.snapshotId].every(validId)) throw fail('INVALID_UPDATE_DIFFICULTY_CONTEXT');
   const result = await client.query(
@@ -728,12 +906,33 @@ export async function getCurrentUpdateDifficultySnapshotWithClient(
     [context.ownerUserId, context.projectId, context.snapshotId]);
   if (!result.rows.length) return null;
   if (result.rows.length !== 1) throw fail('INVALID_UPDATE_DIFFICULTY_ROW');
-  return mapRow(result.rows[0]!, false);
+  const row=result.rows[0]!;
+  if(row.evidence_identity!==null&&row.evidence_identity!==undefined&&row.input_revision!==null&&row.input_hash!==null){
+    try{
+      const assembled=await loadLockedUpdateDifficultyInputWithClient(client,{ownerUserId:context.ownerUserId,projectId:context.projectId,
+        inputRevision:Number(row.input_revision),inputHash:String(row.input_hash).trim(),
+        requestId:`difficulty-current-${sha256({owner:context.ownerUserId,project:context.projectId,snapshot:context.snapshotId}).slice(0,48)}`},options);
+      if(assembled.source.materialId!==String(row.source_material_id)||assembled.source.materialVersion!==Number(row.source_material_version)||
+         assembled.source.profileVersion!==Number(row.source_profile_version)||assembled.targetRevision!==Number(row.target_revision))return null;
+      const currentIdentity=await difficultyEvidenceIdentity(client,assembled);
+      if(currentIdentity!==String(row.evidence_identity).trim())return null;
+    }catch{return null;}
+  }else if(row.input_revision!==null&&row.input_hash!==null){
+    // Pre-0058 rows have no derivation fingerprint. Preserve them while their
+    // locked input has no reviewer ledger, but never expose one as current once
+    // that input has acquired any period decision (including a later withdrawal).
+    const ledger=await client.query(`SELECT 1 FROM bb_target_period_evidence_decisions
+      WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND input_hash=$4 LIMIT 1`,
+      [context.ownerUserId,context.projectId,Number(row.input_revision),String(row.input_hash).trim()]);
+    if(ledger.rows.length)return null;
+  }
+  return mapRow(row, false);
 }
 
 export async function getCurrentUpdateDifficultySnapshot(
   dependencies: UpdateDifficultyDependencies,
   context: { ownerUserId: string; projectId: string; snapshotId: string },
+  options: UpdateDifficultyClientOptions = {},
 ): Promise<StoredUpdateDifficultySnapshot | null> {
-  return getCurrentUpdateDifficultySnapshotWithClient(dependencies.pool, context);
+  return getCurrentUpdateDifficultySnapshotWithClient(dependencies.pool, context,options);
 }

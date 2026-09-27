@@ -103,7 +103,7 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
     materials, update_details: { target_reporting_periods: [] }, target_confirmation: confirmation,
     ...(schema === undefined ? {} : { manifest_schema: schema }) });
   const run = async (manifest: Record<string, unknown>, storedHash: string, persisted: Record<string, unknown> | null = confirmation,
-    projectTarget = { market: 'sse', offering: 'private' }) => {
+    projectTarget = { market: 'sse', offering: 'private' }, decisionRow?: Record<string, unknown>) => {
     let materialQueryCount = 0;
     const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
     const client: UpdateDifficultyClient = {
@@ -113,6 +113,8 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
         if (sql.includes('FROM bb_input_revision_target_confirmations')) return { rows: persisted ? [{ market: persisted.market, offering: persisted.offering,
           document_purpose: persisted.document_purpose, as_of: null, target_reporting_periods: persisted.target_reporting_periods,
           confirmed_by: persisted.confirmed_by, confirmed_at: new Date(String(persisted.confirmed_at)) }] : [] };
+        if (sql.includes('FROM bb_target_period_evidence_decisions')) return { rows: decisionRow ? [decisionRow] : [] };
+        if (sql.includes('FROM bb_parse_snapshots s JOIN bb_parse_evidence e')) return { rows: [{}] };
         if (sql.includes('FROM bb_material_versions')) {
           materialQueryCount++;
           return { rows: materials.map(item => ({ id: item.material_id, version: item.material_version, role: item.role, sha256: item.sha256 })) };
@@ -148,6 +150,28 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
   const sortedComparison = await run(orderedLock, createHash('sha256').update(canonical(orderedLock), 'utf8').digest('hex'),
     { ...confirmation, target_reporting_periods: [secondPeriod, firstPeriod] });
   assert.equal(sortedComparison.loaded.targetReportingPeriods.length, 2, 'period order is normalized as a set, not treated as drift');
+
+  const decisionRecognition = { material_id: input.source.materialId, material_version: 1, profile_version: 1 };
+  const decisionPeriods = [
+    { ...firstPeriod, outcome: 'confirmed', reason: 'Evidence aligns.', evidence: ['table_header','entity','scope','period_end'].map((anchor_kind,index) => ({
+      evidence_method: 'native_text', material_id: input.financialMaterialVersions[0]!.materialId, material_version: 1, material_sha256: 'b'.repeat(64),
+      parse_snapshot_id: 'parse-snapshot', parser_version: 'parser-v1', response_sha256: 'c'.repeat(64), record_id: `period-evidence-${index}`,
+      record_sha256: `${index+1}`.repeat(64), anchor_kind })) },
+    { ...secondPeriod, outcome: 'needs_confirmation', reason: 'Date/scope remain unclear.', evidence: [] },
+  ];
+  const decisionManifest = { ...manifestFor(), manifest_schema: 'production_rule_pin_v1', update_details: { target_reporting_periods: [firstPeriod,secondPeriod] },
+    target_confirmation: { ...confirmation, target_reporting_periods: [firstPeriod,secondPeriod] } };
+  const decisionManifestHash = createHash('sha256').update(canonical(decisionManifest), 'utf8').digest('hex');
+  const reviewed = await run(decisionManifest, decisionManifestHash, { ...confirmation, target_reporting_periods: [firstPeriod,secondPeriod] },
+    { market: 'sse', offering: 'private' }, { active_grant_id: 'grant', withdrawal_id: null, source_profile_version: 1,
+      source_profile_material_id: input.source.materialId, source_profile_material_version: 1,
+      source_profile_sha256: createHash('sha256').update(canonical(decisionRecognition), 'utf8').digest('hex'),
+      source_recognition: decisionRecognition, locked_materials: [{ material_id: input.financialMaterialVersions[0]!.materialId, material_version: 1, material_sha256: 'b'.repeat(64) },
+        { material_id: input.source.materialId, material_version: 1, material_sha256: 'a'.repeat(64) }], periods: decisionPeriods,
+      reviewer_grant_id: 'grant', reviewer_user_id: 'reviewer' });
+  assert.equal(reviewed.loaded.targetReportingPeriods[0]?.status, 'recognized', 'confirmed sibling remains available');
+  assert.equal((reviewed.loaded.targetReportingPeriods[0] as { provenance?: { method?: string } }).provenance?.method, 'native_text');
+  assert.equal(reviewed.loaded.targetReportingPeriods[1]?.status, 'needs_confirmation', 'pending sibling remains independently unresolved');
 
   const legacy = await run(manifestFor(), 'f'.repeat(64));
   assert.equal(legacy.loaded.inputHash, 'f'.repeat(64));

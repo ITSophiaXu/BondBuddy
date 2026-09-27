@@ -2,7 +2,7 @@ import { Ajv } from 'ajv';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, type SchemaName } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, type SchemaName, type TargetPeriodEvidenceDecisionRequest } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -10,6 +10,9 @@ const data = JSON.parse(readFileSync(file, 'utf8')) as { synthetic: boolean; cas
 const updateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/update-project.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(updateExamples.synthetic, true);
 data.cases.push(...updateExamples.cases);
+const targetPeriodEvidenceExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/target-period-evidence.json', import.meta.url)), 'utf8')) as { synthetic:boolean;cases:Example[] };
+assert.equal(targetPeriodEvidenceExamples.synthetic,true);
+data.cases.push(...targetPeriodEvidenceExamples.cases);
 const adminExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-logs.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(adminExamples.synthetic, true);
 data.cases.push(...adminExamples.cases);
@@ -71,7 +74,9 @@ for (const example of data.cases) {
   byName.set(example.name, example);
   assert.ok(Object.hasOwn(schemas, example.schema), `unknown schema ${example.schema}`);
   const validate = ajv.compile(schemas[example.schema]);
-  const result = validate(example.value);
+  const schemaValid = validate(example.value);
+  const result=example.schema==='TargetPeriodEvidenceDecisionRequest'&&schemaValid
+    ?validTargetPeriodEvidenceDecision(example.value as unknown as TargetPeriodEvidenceDecisionRequest):schemaValid;
   assert.equal(result, example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
 }
 const value = (name: string) => {
