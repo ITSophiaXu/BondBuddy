@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "issuer-annual-profile-approve-manual-evidence-review",
+      "schema": "IssuerAnnualProfileReviewRequest",
+      "valid": true,
+      "value": {
+        "request_id": "synthetic-annual-review-1",
+        "action": "approve",
+        "reason": "Synthetic reviewer checked the exact source evidence and arithmetic.",
+        "reviewer_attestation": "manual_source_evidence_review",
+        "profile_version": 1,
+        "profile_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "input_revision": 1,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "source_material_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "parse_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "issuer-annual-profile-approval-requires-manual-attestation",
+      "schema": "IssuerAnnualProfileReviewRequest",
+      "valid": false,
+      "value": {
+        "request_id": "synthetic-annual-review-2",
+        "action": "approve",
+        "reason": "Synthetic review omitted the attestation.",
+        "profile_version": 1,
+        "profile_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "input_revision": 1,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "source_material_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "parse_snapshot_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  ]
+}

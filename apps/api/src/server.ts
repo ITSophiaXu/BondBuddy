@@ -39,6 +39,7 @@ import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityConte
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
 import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
+import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 
@@ -231,6 +232,7 @@ export function createServer(settings: Settings = {}) {
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   installFactReviewRoutes(app,{db,owner});
   installCreditFacilitySupplementRoutes(app,{db,owner});
+  installIssuerAnnualProfileReviewRoutes(app,{db,owner});
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
