@@ -1,44 +1,55 @@
 // Usage (inside the api image): node deploy/m1/scripts/blob-snapshot.mjs export|import <dir>
-// Exports every blob of every container in AZURE_STORAGE_CONNECTION_STRING to <dir>/<container>/<name>
-// with a manifest (sha256, content type); import re-uploads and verifies the hashes.
-// The off-host backup container (bb-backups, #35) holds backups themselves and is never exported.
-import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Export the configured application containers; never export the off-host backup container.
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { BlobServiceClient } from '@azure/storage-blob';
+import { backupContainers, downloadFile, hashFile } from './backup-stream.mjs';
 
 const [mode, root] = process.argv.slice(2);
 if (!['export', 'import'].includes(mode) || !root) throw new Error('usage: blob-snapshot.mjs export|import <dir>');
 if (!process.env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('AZURE_STORAGE_CONNECTION_STRING required');
 const service = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
-const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const BACKUPS = process.env.BB_BACKUP_CONTAINER || 'bb-backups';
-const safe = name => { if (name.split('/').some(p => p === '..' || p === '')) throw new Error(`unsafe blob name ${name}`); return name; };
+const safe = name => { if (name.split('/').some(p => p === '..' || p === '.' || p === '')) throw new Error(`unsafe blob name ${name}`); return name; };
 
 if (mode === 'export') {
   const manifest = [];
-  for await (const c of service.listContainers()) {
-    if (c.name === BACKUPS) continue;
-    const container = service.getContainerClient(c.name);
-    for await (const b of container.listBlobsFlat()) {
-      const bytes = await container.getBlobClient(b.name).downloadToBuffer();
-      const file = join(root, c.name, safe(b.name));
+  const names = backupContainers();
+  for (const name of names) {
+    const container = service.getContainerClient(name);
+    if (!(await container.exists())) throw new Error(`configured backup container does not exist: ${name}`);
+    for await (const blob of container.listBlobsFlat()) {
+      const file = join(root, name, safe(blob.name));
       mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, bytes, { mode: 0o600 });
-      manifest.push({ container: c.name, name: b.name, bytes: bytes.length, sha256: sha(bytes), content_type: b.properties.contentType ?? null });
+      try {
+        const response = await container.getBlobClient(blob.name).download();
+        if (!response.readableStreamBody) throw new Error(`no download stream for ${name}/${blob.name}`);
+        const digest = await downloadFile(response.readableStreamBody, file);
+        manifest.push({ container: name, name: blob.name, ...digest, content_type: blob.properties.contentType ?? null });
+      } catch (error) {
+        try { unlinkSync(file); } catch { /* no partial file */ }
+        throw error;
+      }
     }
   }
+  mkdirSync(root, { recursive: true });
   writeFileSync(join(root, 'manifest.json'), JSON.stringify(manifest, null, 1));
-  console.log(JSON.stringify({ exported: manifest.length }));
+  console.log(JSON.stringify({ exported: manifest.length, containers: names.length }));
 } else {
   const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'));
+  let imported = 0;
   for (const entry of manifest) {
     if (entry.container === BACKUPS) continue;
-    const bytes = readFileSync(join(root, entry.container, safe(entry.name)));
-    if (sha(bytes) !== entry.sha256) throw new Error(`hash mismatch for ${entry.container}/${entry.name}`);
+    const file = join(root, safe(entry.container), safe(entry.name));
+    const digest = await hashFile(file);
+    if (digest.bytes !== entry.bytes || digest.sha256 !== entry.sha256) throw new Error(`hash mismatch for ${entry.container}/${entry.name}`);
     const container = service.getContainerClient(entry.container);
     await container.createIfNotExists();
-    await container.getBlockBlobClient(entry.name).uploadData(bytes, { blobHTTPHeaders: entry.content_type ? { blobContentType: entry.content_type } : undefined });
+    await container.getBlockBlobClient(entry.name).uploadFile(file, {
+      blockSize: 4 * 1024 * 1024, concurrency: 1,
+      blobHTTPHeaders: entry.content_type ? { blobContentType: entry.content_type } : undefined
+    });
+    imported++;
   }
-  console.log(JSON.stringify({ imported: manifest.length }));
+  console.log(JSON.stringify({ imported }));
 }
