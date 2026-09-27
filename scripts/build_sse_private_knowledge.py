@@ -169,9 +169,9 @@ def apply_overlay(pack, template, coverage, documents):
             rule['boundaries'][0] = OVERRIDES[key]
         rule['boundaries'].append('官方取证与待验收边界：' + limit)
         if key in EXECUTABLE_CHECKS:
-            rule['version'] = '4'
+            rule['version'] = '5'
             rule['checker'] = {'checker_id':'sse-private-structured-evidence',
-                               'checker_version':'2','parameter_version':VERSION}
+                               'checker_version':'3','parameter_version':VERSION}
             rule['boundaries'][1] = '已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。'
         item = coverage_by_id.get(key, {'item_id':key,'area':rule['title'],'document_stages':['registration','issuance']})
         item.update(disposition='uncovered', source_ref_ids=rule['source_ref_ids'],
@@ -190,7 +190,7 @@ def apply_overlay(pack, template, coverage, documents):
                 'effective_to':documents[d]['effective_to']} for d,loc in pairs],
             'not_applicable_or_uncovered':limit, 'professional_review':'pending',
             'result_acceptance':'pending',
-            'engineering_check': 'bounded-research-check-v2' if key in EXECUTABLE_CHECKS else 'unimplemented',
+            'engineering_check': 'bounded-research-check-v3' if key in EXECUTABLE_CHECKS else 'unimplemented',
         })
     pack['sources'] = list(sources.values())
     coverage['items'] = list(coverage_by_id.values())
@@ -209,7 +209,7 @@ def apply_overlay(pack, template, coverage, documents):
         'chapters':[{'chapter_id':c['chapter_id'], 'rule_ids':[r['rule_id'] for r in rule_map if c['chapter_id'] in r['chapter_ids']],
                      'uncovered': '税务现行依据与具体税率待核；不因目录有税项就认定合规覆盖。' if c['chapter_id']=='tax' else '须在真实成果中逐项确认披露和证据。'} for c in template['chapters']],
     })
-    lines = ['# #20 逐条规则审核清单', '', f'版本：`{VERSION}`。31条全部待业务审核；9条有受限检查，22条尚未实现。', '',
+    lines = ['# #20 逐条规则审核清单', '', f'版本：`{VERSION}`。{len(rule_map)}条全部待业务审核；{len(EXECUTABLE_CHECKS)}条有受限检查，{len(rule_map) - len(EXECUTABLE_CHECKS)}条尚未实现。', '',
              '由 `scripts/sse_private_review_items.py` 与来源映射生成，不在本文件直接签认。正式审核记录须绑定此版本/commit、实际审核人及权限、时间、决定、理由和证据；本表不写入发布审批。', '',
              '每条可选择同意、修改或待补证；同意文本方法不等于批准来源现行效力、真实财务事实或最终Word。工程检查的合成用例见 [交接](EXECUTABLE-CHECKS.md)，真实成果另填 [验收表](ACCEPTANCE.md)。', '']
     for row in rule_map:

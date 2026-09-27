@@ -4,7 +4,7 @@
 
 ## 接入与恢复
 
-`src/historical-model-stage.ts` 导出 `historicalModelGenerationStage()`；`WorkerRuntime` 默认通过 `defaultRunStages({ model_generation: historicalModelGenerationStage() })` 安装它。沿用 `input_lock → materials_ready → model_generation → word_delivery`，不改公开 DTO、计费模式或数据库 schema。无历史稿任务不进入此阶段；未安装的 Word 阶段仍暂停。
+`src/historical-model-stage.ts` 导出 `historicalModelGenerationStage()`；`WorkerRuntime` 默认经 `modelGenerationRouter` 路由到此有历史稿阶段，并安装 `historicalWordDeliveryStage`。沿用 `input_lock → materials_ready → model_generation → word_delivery`，不改公开 DTO、计费模式或数据库 schema。无历史稿任务不进入此阶段；当前默认已安装历史稿 Word 阶段，最终交付仍须通过其检查。
 
 1. `historical-generation-input.ts` 从 owner/project/input revision 读取锁定清单，校验材料版本/hash、唯一历史稿、解析作业和有效正文快照。使用原历史稿，不查 #77 参考库。
 2. 首次模型调用前在私有 job checkpoint 的 `historical_generation_input` 固定 parse snapshot、profile version/hash、全部财务候选 ID/hash，以及各事实决策的 version/hash（尚无决策记为 0）。恢复时重读指定版本；缺失、篡改或身份冲突不能改用 latest。新增 `getFactDecisionAtVersion` 补充 #193 的精确版本读取，不改变原 latest reader 的行为。
@@ -25,15 +25,15 @@ Word 端在原文锚点上执行 replacements/columns；将 reviewNotes 和 find
 
 | 原因/交接 | 当前状态及负责人 |
 | --- | --- |
-| `rule_pack_pin_missing` / `production_rule_pack_selector_unavailable` | #19 / loooo139：API 尚未写入可供生产验证的规则 pin；当前 input_lock 即使 pin 完整也暂停。需正式 registry/selector、规则来源及验收，不伪造审核人或绕过 gate。 |
+| `rule_pack_pin_missing` / 正式规则不可用 | #19 / loooo139：registry及API pin持久化已实现；整体批准loader和真实正式发布仍缺。本轮读取实际camelCase pin并在生成/恢复前再验证，不伪造审核或绕过gate。 |
 | `historical_fact_inventory_missing` | #15 / loooo139：需要从本次已锁定材料生成候选并落库；通用解析记录/上传样本不等于已有财务事实。 |
-| `historical_issuer_identity_not_bound` | #15 与 #17 输入冻结的交接：服务端须在计算 input hash 之前，把经来源核对的本发行人 FactIdentity.entityId 写入私有 manifest 的 `issuer_entity_id`。当前 input-revision API **尚未生成此字段**。不接受浏览器填写，不取候选中的第一家公司，不把子公司当发行人。需与 Xuefeng/平台对齐后接入，缺失时阶段明确暂停。 |
+| `historical_issuer_identity_not_bound` | #15 与 #17 输入冻结的交接：服务端须在计算 input hash 之前，把经来源核对的本发行人 FactIdentity.entityId 写入私有 manifest 的 `issuer_entity_id`。API现已通过已核对主体绑定生成该字段，须保持与财务候选identity一致。不接受浏览器填写，不取候选中的第一家公司，不把子公司当发行人。需与 Xuefeng/平台对齐后接入，缺失时阶段明确暂停。 |
 | `historical_profile_snapshot_missing` / `historical_structure_mapping_required` | #76 / loooo139：历史稿识别、有效基线/更正需提供对应版本；本切片不承诺跨市场/方式或扫描历史稿重建。 |
-| `word_delivery` 的 `stage_not_implemented` | #34 / ChrisLiu95：需要真实 DOCX writer，消费上述内部计划并通过交付检查。 |
+| Word真实成果验收 | #34 / ChrisLiu95：writer已安装，仍须用实际模型计划完成修订版/清洁版交付检查和WPS实测。 |
 | 预发真实运行 | #35 / muhualing 协同：在 Linux 目标环境使用既有数据库/Blob/contained Codex adapter 配置，更新并重启 worker，记录 run ID、prompt/attempt/usage、修订稿及检查结果。仅合并代码不会部署。 |
 | 真实样本解析性能 | #13/#15 / 解析负责人协同：`rq-202509-01` 在本机直接调用现有 Python parser 超过 300 秒。需在 Linux 预发复测/定位；不能据此宣称实际样本已经进入模型阶段。 |
 
-**API 尚未写入 issuer binding 和生产规则 pin，本轮不能宣称用户上传后已经能够直接下载更新成果。** #77 不阻塞有历史稿。首个授权联调样本是 `rq-202509`：目标上交所普通私募；2023、2024年度及2025年1—9月。
+**API的issuer binding和规则pin接缝已有实现；整体批准loader、正式规则发布和真实财务/模型/Word验收仍不能由组件测试替代。** #77 不阻塞有历史稿。首个授权联调样本是 `rq-202509`：目标上交所普通私募；2023、2024年度及2025年1—9月。
 
 ## 验证方法
 
@@ -53,3 +53,11 @@ BB_RUN_AUTHORIZED_SAMPLE_TESTS=1 BONDBUDDY_TEST_PYTHON=python3 node --test apps/
 额外显式启用真实 `rq-202509-01` 测试时，现有 Python parser 在 300 秒后超时，故真实样本分片验收**未通过**。该原件 926,528 字节，原始 XML 有 10,343 个段落、7,878 个单元格、134 张表；这只是只读结构统计，不是已完成解析。现有四组样本 bridge 测试在本机因 Node parser runner 只接受 POSIX 路径而失败。全 worker 测试在现有 `codex-adapter.test.ts` 的权限/进程组相关用例出现失败和超时，已终止，不能报告全绿。这些 parser/adapter 实现未在本轮修改。
 
 当前本机未配置数据库、Azure Blob 或 DeepSeek 凭据，不能提供实际 provider/队列/Word/WPS 验收。生产 Node 22/Linux 仍须完成全套检查及上述性能复测。
+
+## 2026-09-27 #20规则正文接入
+
+`historical-generation-input.ts`读取持久化的 `ProductionRulePackPin.packId/version/contentHash`（修复旧snake_case读取），调用 `loadHistoricalRuleGuidance` 复用 `revalidateProductionRulePackPin`，再按已有适用性逻辑筛出规则和源。输入包含规则正文、例外、要求证据、来源原文/定位/版本及content hash；规则文本只作参考数据，不能提升用户事实状态或授予执行权限。v3的十一项研究checker不会由本阶段自动启用。
+
+正式规则缺失/撤回转 `capability_not_ready`，内容或pin不一致不能选最新版本重试。正文超过180,000字节或完整prompt超过240,000字节时明确暂停，不截断。模板升为 `historical-sse-private-v2`，旧v1绑定回放会在供应商调用前报告 `UPDATE_GENERATION_INPUT_CHANGED`；不要删旧checkpoint/attempt冒充重试，保留原任务记录并按既有流程处理新run。
+
+因表达式暂不能完成的法律条款改写/章节重组仍须标needs_evidence及待人工确认，不以retain隐去。新增研究输入与#15/#19交接见[工程记录](../../docs/acceptance/issue-20-rule-integration-2026-09-27.md)。

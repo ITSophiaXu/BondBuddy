@@ -1,6 +1,6 @@
 # 上交所 · 普通私募公司债
 
-版本：2026.09.26-draft.4 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
+版本：2026.09.27-draft.5 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
 
 状态：知识研究草稿，尚未发布。章节骨架及方法可供开发；当前不构成合规通过或上线验收。
 
@@ -114,7 +114,7 @@
 
 ## 2026-09-26 官方取证与增量映射
 
-本目录版本已更新为 **2026.09.26-draft.4**；以上通用章节说明保留作为基线。以下规则及机器包为本次私募范围的增量，以此处对旧草稿的明确修正为准。
+本目录版本已更新为 **2026.09.27-draft.5**；以上通用章节说明保留作为基线。以下规则及机器包为本次私募范围的增量，以此处对旧草稿的明确修正为准。
 
 [官方证据登记与局限](../../verification/2026-09-26/README.md) · [逐规则/章节映射](rule-evidence-map.json) · [适用性与真实样本验收](ACCEPTANCE.md)
 
@@ -499,6 +499,10 @@
 - [sse-officer-2025 / P00009](../../verification/2026-09-26/sources/sse-officer-2025.md#p00009)；发布 2025-12-26，生效 2026-05-01。
 - [sse-officer-2025 / P00010](../../verification/2026-09-26/sources/sse-officer-2025.md#p00010)；发布 2025-12-26，生效 2026-05-01。
 - [sse-officer-2025 / P00011](../../verification/2026-09-26/sources/sse-officer-2025.md#p00011)；发布 2025-12-26，生效 2026-05-01。
+- [sse-officer-2025 / P00012](../../verification/2026-09-26/sources/sse-officer-2025.md#p00012)；发布 2025-12-26，生效 2026-05-01。
+- [sse-officer-2025 / P00013](../../verification/2026-09-26/sources/sse-officer-2025.md#p00013)；发布 2025-12-26，生效 2026-05-01。
+- [sse-officer-2025 / P00014](../../verification/2026-09-26/sources/sse-officer-2025.md#p00014)；发布 2025-12-26，生效 2026-05-01。
+- [sse-officer-2025 / P00015](../../verification/2026-09-26/sources/sse-officer-2025.md#p00015)；发布 2025-12-26，生效 2026-05-01。
 - [sse-officer-2025 / P00016](../../verification/2026-09-26/sources/sse-officer-2025.md#p00016)；发布 2025-12-26，生效 2026-05-01。
 - [sse-officer-2025 / P00017](../../verification/2026-09-26/sources/sse-officer-2025.md#p00017)；发布 2025-12-26，生效 2026-05-01。
 - [sse-officer-2025 / P00018](../../verification/2026-09-26/sources/sse-officer-2025.md#p00018)；发布 2025-12-26，生效 2026-05-01。

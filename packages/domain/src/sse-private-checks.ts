@@ -1,17 +1,20 @@
 import type { FactStatus } from './facts.js';
 import type { RulePack } from './index.js';
 import { evaluateFinancialCheck, type FinancialCheckInput } from './sse-private-financial-checks.js';
+import { evaluateProceedsOfficerCheck, type ProceedsOfficerCheckInput } from './sse-private-proceeds-officer-checks.js';
 
 /** Internal, pure research evaluator. Not an API DTO, fact verifier or release authority. */
-export const SSE_PRIVATE_CHECKER_VERSION = '2';
+export const SSE_PRIVATE_CHECKER_VERSION = '3';
 export const SSE_PRIVATE_CHECKER_ID = 'sse-private-structured-evidence';
-export const SSE_PRIVATE_CHECKED_RULES = [
+const V2_CHECKED_RULES = [
   'sse-private-private-investors', 'sse-private-financial-validity-sse',
   'sse-private-private-use-change', 'sse-private-idle-proceeds-2026',
   'sse-private-continuing-disclosure',
   'sse-private-period-window', 'sse-private-audit-opinion',
   'sse-private-financial-statements', 'sse-private-mdna-thresholds',
 ] as const;
+export const SSE_PRIVATE_CHECKED_RULES = [...V2_CHECKED_RULES,
+  'sse-private-funds-use-evidence', 'sse-private-disclosure-officer-2026'] as const;
 type RuleId = typeof SSE_PRIVATE_CHECKED_RULES[number];
 type Outcome = 'pass' | 'issue' | 'needs_evidence' | 'needs_judgement' | 'not_applicable';
 export interface CheckEvidence<T> {
@@ -20,7 +23,7 @@ export interface CheckEvidence<T> {
   /** Exact version-bound source anchors; supplied by the trusted fact/review adapter. */
   anchors: readonly string[];
 }
-export interface SsePrivateCheckInput extends FinancialCheckInput {
+export interface SsePrivateCheckInput extends FinancialCheckInput, ProceedsOfficerCheckInput {
   market: string | null;
   offering: string | null;
   /** Rule applicability date, never substituted with the financial cutoff. */
@@ -108,10 +111,16 @@ export function evaluateSsePrivateDraftChecks(pack: RulePack, input: SsePrivateC
     throw new Error('SSE_PRIVATE_CHECK_PACK_MISMATCH');
   }
   const findings: SsePrivateFinding[] = [];
-  for (const ruleId of SSE_PRIVATE_CHECKED_RULES) {
+  const checkerVersion = pack.rules.find(rule => rule.rule_id === V2_CHECKED_RULES[0])?.checker.checker_version;
+  const checkedRules = checkerVersion === '2' ? V2_CHECKED_RULES : SSE_PRIVATE_CHECKED_RULES;
+  if (checkerVersion !== '2' && checkerVersion !== SSE_PRIVATE_CHECKER_VERSION) throw new Error('SSE_PRIVATE_CHECKER_VERSION_MISMATCH');
+  if (pack.rules.some(rule => rule.checker.checker_id === SSE_PRIVATE_CHECKER_ID &&
+    (!(checkedRules as readonly string[]).includes(rule.rule_id) || rule.checker.checker_version !== checkerVersion)))
+    throw new Error('SSE_PRIVATE_CHECKER_VERSION_MISMATCH');
+  for (const ruleId of checkedRules) {
     const rule = pack.rules.find(item => item.rule_id === ruleId);
     if (!rule || rule.checker.checker_id !== SSE_PRIVATE_CHECKER_ID
-      || rule.checker.checker_version !== SSE_PRIVATE_CHECKER_VERSION
+      || rule.checker.checker_version !== checkerVersion
       || rule.checker.parameter_version !== pack.version) throw new Error(`SSE_PRIVATE_CHECKER_VERSION_MISMATCH:${ruleId}`);
     const add = (code: string, outcome: Outcome, message: string, ...evidence: (CheckEvidence<unknown> | undefined)[]) => {
       findings.push({ ruleId, code, outcome, message, sourceRefIds: [...rule.source_ref_ids],
@@ -205,15 +214,17 @@ export function evaluateSsePrivateDraftChecks(pack: RulePack, input: SsePrivateC
       if (yearEnd && annual) add('annual_disclosure', annual >= yearEnd && annual <= reportingDeadline(yearEnd, 4) ? 'pass' : 'issue', '募集说明书约定年后4个月内披露上年度经审计财务报告。', data?.financialYearEnd, data?.promisedAnnualBy);
       if (halfEnd && interim) add('interim_disclosure', interim >= halfEnd && interim <= reportingDeadline(halfEnd, 2) ? 'pass' : 'issue', '募集说明书约定上半年结束后2个月内披露中期报告。', data?.halfYearEnd, data?.promisedInterimBy);
       expect('annual_audited', data?.annualAudited, true, '约定披露的年度财务报告应经审计。');
+    } else if (ruleId === 'sse-private-funds-use-evidence' || ruleId === 'sse-private-disclosure-officer-2026') {
+      evaluateProceedsOfficerCheck(ruleId, input, { add, read, bool, expect });
     } else {
       evaluateFinancialCheck(ruleId, input, asOf, { add, read, bool, day, expect });
     }
   }
   return {
     mode: 'research_only' as const, productionEligible: false as const,
-    packId: pack.pack_id, packVersion: pack.version, checkerVersion: SSE_PRIVATE_CHECKER_VERSION,
+    packId: pack.pack_id, packVersion: pack.version, checkerVersion,
     findings,
-    uncoveredRuleIds: pack.rules.filter(rule => !(SSE_PRIVATE_CHECKED_RULES as readonly string[]).includes(rule.rule_id)).map(rule => rule.rule_id),
+    uncoveredRuleIds: pack.rules.filter(rule => !(checkedRules as readonly string[]).includes(rule.rule_id)).map(rule => rule.rule_id),
     limitations: ['只检查提供的结构化证据，不提取或批准事实；不覆盖整份募集书合规。',
       '部分检查通过不代表规则来源已签认、规则已发布或真实成果已通过行业验收。'],
   };

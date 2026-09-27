@@ -1,6 +1,6 @@
 # 上交所 · 普通私募公司债 · 募集说明书复核知识
 
-版本：2026.09.26-draft.4 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
+版本：2026.09.27-draft.5 · 对应 [Issue #20](https://github.com/ITSophiaXu/BondBuddy/issues/20)
 
 状态：知识研究草稿，尚未发布。章节骨架及方法可供开发；当前不构成合规通过或上线验收。
 ## 逐字段来源与冲突处理
@@ -175,7 +175,7 @@
 
 自2026-05-01起按负责人履职指引第2—6条核对适用性、负责人及联络人姓名职务联系方式、任职资格和签署承诺。负责人未变更无需重复签署但需既有有效承诺证据，不由模型代签。 边界：2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。
 
-依据：OV-sse-officer-2025:P00007;OV-sse-officer-2025:P00008;OV-sse-officer-2025:P00009;OV-sse-officer-2025:P00010;OV-sse-officer-2025:P00011;OV-sse-officer-2025:P00016;OV-sse-officer-2025:P00017;OV-sse-officer-2025:P00018。
+依据：OV-sse-officer-2025:P00007;OV-sse-officer-2025:P00008;OV-sse-officer-2025:P00009;OV-sse-officer-2025:P00010;OV-sse-officer-2025:P00011;OV-sse-officer-2025:P00012;OV-sse-officer-2025:P00013;OV-sse-officer-2025:P00014;OV-sse-officer-2025:P00015;OV-sse-officer-2025:P00016;OV-sse-officer-2025:P00017;OV-sse-officer-2025:P00018。
 
 ## 优化审核新旧版本边界
 

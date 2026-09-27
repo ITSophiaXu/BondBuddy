@@ -1,7 +1,7 @@
 {
   "schema_version": "chapter-template-v1",
   "template_id": "sse-private-chapters",
-  "version": "2026.09.26-draft.4",
+  "version": "2026.09.27-draft.5",
   "rule_pack_id": "sse-private",
   "market": "sse",
   "offering": "private",
@@ -232,6 +232,10 @@
         "ov-sse-officer-2025-p00009",
         "ov-sse-officer-2025-p00010",
         "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00012",
+        "ov-sse-officer-2025-p00013",
+        "ov-sse-officer-2025-p00014",
+        "ov-sse-officer-2025-p00015",
         "ov-sse-officer-2025-p00016",
         "ov-sse-officer-2025-p00017",
         "ov-sse-officer-2025-p00018"
@@ -412,6 +416,10 @@
         "ov-sse-officer-2025-p00009",
         "ov-sse-officer-2025-p00010",
         "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00012",
+        "ov-sse-officer-2025-p00013",
+        "ov-sse-officer-2025-p00014",
+        "ov-sse-officer-2025-p00015",
         "ov-sse-officer-2025-p00016",
         "ov-sse-officer-2025-p00017",
         "ov-sse-officer-2025-p00018"
@@ -607,6 +615,10 @@
         "ov-sse-officer-2025-p00009",
         "ov-sse-officer-2025-p00010",
         "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00012",
+        "ov-sse-officer-2025-p00013",
+        "ov-sse-officer-2025-p00014",
+        "ov-sse-officer-2025-p00015",
         "ov-sse-officer-2025-p00016",
         "ov-sse-officer-2025-p00017",
         "ov-sse-officer-2025-p00018"
