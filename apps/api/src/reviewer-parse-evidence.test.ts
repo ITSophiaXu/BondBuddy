@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { openApiDocument } from '@bondbuddy/contracts';
 import { changeRuleApplicabilityReviewerGrant } from './rule-applicability-reviewer-grants.js';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -65,6 +66,8 @@ test('reviewer parse-evidence lookup pages immutable anchors, fails closed, and 
       const first=await send(`${url}?q=literal%20quote`);
       assert.equal(first.statusCode,200,first.body);
       assert.equal(first.headers['cache-control'],'private, no-store');
+      const documented=(openApiDocument().paths as Record<string,any>)['/api/v1/reviewer/projects/{project_id}/materials/{material_id}/versions/{v}/parse-evidence'].get;
+      assert.equal(documented['x-implementation-status'],'implemented; requires-valid-session');
       const firstBody=first.json();
       assert.equal(firstBody.snapshot_id,snapshotId);
       assert.equal(firstBody.material_sha256,materialSha);
@@ -80,12 +83,31 @@ test('reviewer parse-evidence lookup pages immutable anchors, fails closed, and 
       assert.equal(second.json().items.length,2);
       assert.equal(second.json().items[0].record_id,`${snapshotId}-record-50`);
       assert.equal(second.json().next_cursor,null);
+      const cursorData=JSON.parse(Buffer.from(firstBody.next_cursor,'base64url').toString('utf8'));
+      const transplantedCursor=Buffer.from(JSON.stringify({...cursorData,project_id:foreignProjectId})).toString('base64url');
+      const transplanted=await send(`${url}?q=literal%20quote&cursor=${encodeURIComponent(transplantedCursor)}`);
+      assert.ok(transplanted.statusCode===409,`cursor scope includes project and material identity: ${transplanted.body}`);
+      assert.doesNotMatch(transplanted.body,/Synthetic literal quote/);
 
       const staleSnapshot=`${snapshotId}-new`;
       await insertSnapshot(staleSnapshot,`${parserVersion}-new`,sha('new-response'),new Date(Date.now()+2000).toISOString());
       const stale=await send(`${url}?q=literal%20quote&cursor=${encodeURIComponent(firstBody.next_cursor)}`);
       assert.equal(stale.statusCode,409,stale.body);
       assert.doesNotMatch(stale.body,/Synthetic literal quote/);
+
+      const failedId=`${snapshotId}-failed`,failedParser=`${parserVersion}-failed`,failedSha=sha('failed-response');
+      const failedMeta={schema_version:'document-parse-response-v1',request_id:`parse-failed-${suffix}`,status:'failed',
+        parser_version:failedParser,material:{material_id:materialId,material_version:1,media_type:'application/pdf',sha256:materialSha},
+        warnings:[],document:{page_count:0},error:{code:'synthetic_parse_failure'}};
+      await pool.query(`INSERT INTO bb_parse_snapshots
+        (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta,created_at)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'failed','document-parse-response-v1',$8,0,$9::jsonb,$10::timestamptz)`,
+      [failedId,ownerId,projectId,materialId,materialSha,failedParser,sha('failed-request'),failedSha,JSON.stringify(failedMeta),
+        new Date(Date.now()+4000).toISOString()]);
+      const latestFailed=await send();
+      assert.ok(latestFailed.statusCode===409,
+        `a newer failed parse snapshot must not silently fall back to the previous parsed snapshot: ${latestFailed.body}`);
+      assert.doesNotMatch(latestFailed.body,/Synthetic literal quote/);
 
       activeUser=reviewerId;
       const crossOwner=await send(`/api/v1/reviewer/projects/${foreignProjectId}/materials/${materialId}/versions/1/parse-evidence`);

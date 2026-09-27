@@ -298,16 +298,17 @@ export function createServer(settings: Settings = {}) {
       const q=query.q?.trim()??'';
       if(q.length>200||q.includes('\0'))throw new Problem(422,'VALIDATION_FAILED','Invalid evidence query');
       const queryHash=digest(q.toLocaleLowerCase('en-US'));
-      type EvidenceCursor={v:1;snapshot_id:string;material_version:number;after:number;query_hash:string};
+      type EvidenceCursor={v:1;project_id:string;material_id:string;snapshot_id:string;material_version:number;after:number;query_hash:string};
       let pageAfter=-1,cursorSnapshot:string|null=null;
       if(query.cursor!==undefined){
         if(query.cursor.length>2048)throw new Problem(422,'VALIDATION_FAILED','Invalid evidence cursor');
         try{
           const parsed=JSON.parse(Buffer.from(query.cursor,'base64url').toString('utf8')) as Partial<EvidenceCursor>;
-          if(parsed.v!==1||typeof parsed.snapshot_id!=='string'||!Number.isSafeInteger(parsed.material_version)||
+          if(parsed.v!==1||typeof parsed.project_id!=='string'||typeof parsed.material_id!=='string'||
+              typeof parsed.snapshot_id!=='string'||!Number.isSafeInteger(parsed.material_version)||
               !Number.isSafeInteger(parsed.after)||Number(parsed.after)<0||typeof parsed.query_hash!=='string'||
               !/^[a-f0-9]{64}$/.test(parsed.query_hash))throw new Error('shape');
-          if(parsed.material_version!==materialVersion||parsed.query_hash!==queryHash)
+          if(parsed.project_id!==projectId||parsed.material_id!==materialId||parsed.material_version!==materialVersion||parsed.query_hash!==queryHash)
             throw new Problem(409,'INPUT_REVISION_CONFLICT','Evidence cursor does not match this query or material version');
           cursorSnapshot=parsed.snapshot_id;pageAfter=Number(parsed.after);
         }catch(error){if(error instanceof Problem)throw error;throw new Problem(422,'VALIDATION_FAILED','Invalid evidence cursor');}
@@ -325,10 +326,12 @@ export function createServer(settings: Settings = {}) {
         const scopeOwner=String(allowed.rows[0].owner_user_id),materialSha=String(allowed.rows[0].material_sha256).trim();
         const selected=await client.query(`SELECT id,content_sha256,parser_version,response_sha256,response_status,response_meta
           FROM bb_parse_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
-            AND response_status IN ('parsed','needs_confirmation') AND content_sha256=$5
+            AND content_sha256=$5
           ORDER BY created_at DESC,id DESC LIMIT 1`,[scopeOwner,projectId,materialId,materialVersion,materialSha]);
         const snapshot=selected.rows[0];
         if(!snapshot)throw missing();
+        if(snapshot.response_status!=='parsed'&&snapshot.response_status!=='needs_confirmation')
+          throw new Problem(409,'INPUT_REVISION_CONFLICT','The latest parse snapshot is not readable');
         const snapshotId=String(snapshot.id);
         if(cursorSnapshot!==null&&cursorSnapshot!==snapshotId)
           throw new Problem(409,'INPUT_REVISION_CONFLICT','Evidence cursor refers to a stale parse snapshot');
@@ -339,7 +342,7 @@ export function createServer(settings: Settings = {}) {
           q?`%${q.replace(/[\\%_]/g,'\\$&')}%`:'',REVIEWER_PARSE_EVIDENCE_PAGE_SIZE+1]);
         const hasMore=records.rows.length>REVIEWER_PARSE_EVIDENCE_PAGE_SIZE;
         const page=records.rows.slice(0,REVIEWER_PARSE_EVIDENCE_PAGE_SIZE);
-        const next=hasMore?Buffer.from(JSON.stringify({v:1,snapshot_id:snapshotId,material_version:materialVersion,
+        const next=hasMore?Buffer.from(JSON.stringify({v:1,project_id:projectId,material_id:materialId,snapshot_id:snapshotId,material_version:materialVersion,
           after:Number(page.at(-1)!.ordinal),query_hash:queryHash} satisfies EvidenceCursor)).toString('base64url'):null;
         const warnings=Array.isArray(snapshot.response_meta?.warnings)?snapshot.response_meta.warnings:[];
         const warningCodes=warnings.map((warning:any)=>typeof warning?.code==='string'?warning.code:'UNKNOWN_WARNING');
