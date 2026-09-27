@@ -403,14 +403,19 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
-      if(run.channel==='non_production_test')return verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader);
+      if(run.channel==='non_production_test')
+        return (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
+          await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader);
       return (await verifyUpdateIssuerIdentityBinding(pool, run, input.manifest)) ?? await verifyProductionRulePin(pool, run, input, deps.reviewedContextLoader);
     } };
     for (const stage of deps.stages) {
       currentStage = stage.name;
       if(run.channel==='non_production_test' && stage.name!=='input_lock'){
         const input=await currentRunInput(pool,run);
-        const gate=input?await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader):{kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
+        const gate=input
+          ? (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
+            await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader)
+          : {kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
         if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return 'paused';}
         if(gate?.kind==='fail'){await finish(pool,lease,'failed',{errorCode:gate.code,failedStage:stage.name});return 'failed';}
       }

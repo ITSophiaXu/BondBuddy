@@ -29,7 +29,7 @@ test('a revoked grant pauses an executing test run at its next gate', {skip:!dat
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
       [grantId,owner,project,input.input_hash,sample,taxonomy,pack]);
     const run=(await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.input_hash,
-      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId})).json();
+      task_kind:'review',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId})).json();
     let reachedAfter=false;
     const stages:RunStage[]=[
       {name:'input_lock',run:async()=>({kind:'done'})},
@@ -47,6 +47,52 @@ test('a revoked grant pauses an executing test run at its next gate', {skip:!dat
     assert.equal((await pool.query('SELECT state FROM bb_jobs WHERE run_id=$1',[run.run_id])).rows[0].state,'paused');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,0);
   } finally{
+    await app.close();await pool.end();
+    if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
+    if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
+  }
+});
+
+test('an unbound update identity pauses a test run before its provider intent', {skip:!databaseUrl},async()=>{
+  const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+  process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+  const pool=new Pool({connectionString:databaseUrl});
+  const owner=`test-owner-${randomUUID()}`;
+  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
+  try{
+    const project=(await send('POST','/api/v1/projects',{name:'Synthetic identity gate',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
+    const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
+    const grantId=randomUUID(),sample='a'.repeat(64),taxonomy='b'.repeat(64),pack='c'.repeat(64);
+    await pool.query(`INSERT INTO bb_non_production_test_grants
+      (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+      VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
+      [grantId,owner,project,input.input_hash,sample,taxonomy,pack]);
+    const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.input_hash,
+      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId});
+    assert.equal(submitted.statusCode,202,submitted.body);
+    let providerIntents=0, capabilityChecks=0;
+    const stages:RunStage[]=[
+      {name:'input_lock',run:async()=>({kind:'done'})},
+      {name:'model_generation',run:async ctx=>{
+        const gate=await ctx.validateBeforeModelCall?.();
+        if(gate)return gate;
+        providerIntents++;
+        return {kind:'done'};
+      }}
+    ];
+    const result=await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:async()=>{
+      capabilityChecks++;
+      return {status:'ready',sampleManifestSha256:sample,taxonomyHash:taxonomy,rulePackHash:pack,uncoveredItems:[]};
+    }});
+    assert.equal(result,'paused');
+    assert.equal(providerIntents,0,'identity failure must stop before a provider intent');
+    assert.equal(capabilityChecks,0,'identity failure must precede the candidate capability gate');
+    const runId=submitted.json().run_id;
+    const stored=(await pool.query('SELECT state,stage,channel FROM bb_runs WHERE id=$1',[runId])).rows[0];
+    assert.equal(stored.state,'paused');assert.equal(stored.stage,'capability_not_ready');assert.equal(stored.channel,'non_production_test');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[runId])).rows[0].n,0);
+  }finally{
     await app.close();await pool.end();
     if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
     if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
@@ -73,7 +119,7 @@ test('test-only Word passes delivery inspection and stays isolated from another 
       VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
       [grantId,user,project,input.input_hash,sample,taxonomy,pack]);
     const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.input_hash,
-      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId});
+      task_kind:'review',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic',test_grant_id:grantId});
     assert.equal(submitted.statusCode,202,submitted.body);
     const stages:RunStage[]=[
       {name:'input_lock',run:async()=>({kind:'done'})},
