@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, copyFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { isTestUncoveredItems } from '@bondbuddy/contracts';
+import { toTestCoverageGap } from './test-coverage.js';
 import { loadHistoricalCandidateRuleGuidance } from './historical-candidate-rule-context.js';
 import { loadSsePrivateCandidateAssets, SSE_PRIVATE_CANDIDATE_ASSET_PIN as pin,
   SSE_PRIVATE_CANDIDATE_RUNTIME_ROOT as root } from './sse-private-candidate-assets.js';
@@ -40,6 +42,21 @@ test('exact research projection preserves every rule, source quote and coverage 
   assert.ok(g.coverage.items.every(i => i.ruleIds.length === 0));
   assert.ok(Buffer.byteLength(JSON.stringify(g)) < 180_000);
   assert.deepEqual(await loadHistoricalCandidateRuleGuidance(target, expected), g);
+});
+
+test('all 31 pinned uncovered items fit the shared result contract without absorbing the scope exclusion', async () => {
+  const { bundle } = await loadSsePrivateCandidateAssets(root);
+  const uncovered = bundle.coverage.items.filter(item => item.disposition === 'uncovered').map(toTestCoverageGap);
+  assert.equal(uncovered.length, 31);
+  assert.ok(isTestUncoveredItems(uncovered));
+  assert.deepEqual(uncovered.map(item => item.item_id),
+    bundle.coverage.items.filter(item => item.disposition === 'uncovered').map(item => item.itemId));
+  assert.ok(uncovered.every(item => item.rule_ids.length === 0 && !('rule_id' in item) &&
+    item.manifest_id === bundle.coverage.manifestId && item.manifest_version === bundle.coverage.version &&
+    item.candidate_asset_sha256 === bundle.coverage.rawSha256));
+  assert.equal(uncovered.some(item => item.item_id === 'other-markets'), false);
+  assert.equal(bundle.coverage.items.find(item => item.itemId === 'other-markets')?.disposition, 'not_applicable');
+  assert.equal(bundle.coverage.openBlockers.length, 4);
 });
 
 test('changed scope, dates and grant hashes do not load the candidate as a different release', async () => {

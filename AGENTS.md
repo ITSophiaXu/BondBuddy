@@ -70,6 +70,8 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 用户2026-09-27明确调整：Word/WPS桌面兼容性验收不阻断#20，交#146独立跟踪，实际问题另开缺陷。#20按[更新后的关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)G1–G3验收；真实生成稿的规则/章节结果验收已移至[#332](https://github.com/ITSophiaXu/BondBuddy/issues/332)，不再阻断#20关闭；第一次内部工作稿测试、规则/内容验收、客户端兼容性与对外发布分别推进。缺局部配套法规只限制对应结论，受控测试入口的工程缺口由#19/#35明确，不能继续用全库补证或生成后验收循环阻止首次运行。
 
+#19/#20 的[测试字典使用决定](knowledge/exchange-bonds/drafts/sse-private/TEST-TAXONOMY-DECISION-20260927.md)允许固定 v3 通过独立 test-only 门服务获授权上交所普通私募项目；不加入生产白名单，不替代真实项目审核。按“原始输入/审核 → 精确执行输入引用 → 执行授权 → 阶段复核”接线，避免授权与输入互相等待；公共契约仍由平台唯一实现。
+
 ### 交易商协会知识索引
 
 2026-09-27用户提供的交易商协会注册制度ZIP见[收件与使用指南](knowledge/nafmii/README.md)：79项收件、72份去重原件、7份官方补充证据；PPN/DFI各9项规则审核规范及DM/注册安排章节，MTN/CP/SCP的新草案改引2023披露正文。开发前阅读[适用性逐项答复](knowledge/nafmii/APPLICABILITY.md)及[逐Issue交接](knowledge/nafmii/ISSUE-HANDOFF.md)。DFI/PDFI与实际一期工具分开，PPN不用公募财务要求兜底，历史/境外/专项/图解与当前研究范围隔离；机器OCR、来源整理和合成测试均不冒充人工专业签认。沿用#19 schema，不另造公共市场/发行方式枚举；新包尚无自动业务checker或生产消费者，按交接推动#26–#30。
