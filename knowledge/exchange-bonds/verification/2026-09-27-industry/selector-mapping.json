@@ -1,0 +1,3474 @@
+{
+  "standard_id": "capco-listed-company-industry",
+  "standard_version": "2023-05-01",
+  "definition_sha256": "c8c16f572f40a5028331d6914b6d32d45581d701d4fbab3f9b903fe68ba7fff7",
+  "status": "source_extracted_candidate_only",
+  "production_eligible": false,
+  "industry_review": null,
+  "mapping_version": "sse-private-capco-division-candidate-v1",
+  "selector_field": "industry",
+  "selector_level": "division",
+  "scope": {
+    "market": "sse",
+    "offering": "private"
+  },
+  "runtime_binding": "not_installed",
+  "entries": [
+    {
+      "source_code": "A",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "01",
+      "source_level": "division",
+      "selector_code": "01",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "011",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "012",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "013",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "014",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "015",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "016",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "017",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "018",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "019",
+      "source_level": "group",
+      "selector_code": "01",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "02",
+      "source_level": "division",
+      "selector_code": "02",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "021",
+      "source_level": "group",
+      "selector_code": "02",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "022",
+      "source_level": "group",
+      "selector_code": "02",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "023",
+      "source_level": "group",
+      "selector_code": "02",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "024",
+      "source_level": "group",
+      "selector_code": "02",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "025",
+      "source_level": "group",
+      "selector_code": "02",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "03",
+      "source_level": "division",
+      "selector_code": "03",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "031",
+      "source_level": "group",
+      "selector_code": "03",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "032",
+      "source_level": "group",
+      "selector_code": "03",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "033",
+      "source_level": "group",
+      "selector_code": "03",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "039",
+      "source_level": "group",
+      "selector_code": "03",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "04",
+      "source_level": "division",
+      "selector_code": "04",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "041",
+      "source_level": "group",
+      "selector_code": "04",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "042",
+      "source_level": "group",
+      "selector_code": "04",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "05",
+      "source_level": "division",
+      "selector_code": "05",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "051",
+      "source_level": "group",
+      "selector_code": "05",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "052",
+      "source_level": "group",
+      "selector_code": "05",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "053",
+      "source_level": "group",
+      "selector_code": "05",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "054",
+      "source_level": "group",
+      "selector_code": "05",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "B",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "06",
+      "source_level": "division",
+      "selector_code": "06",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "061",
+      "source_level": "group",
+      "selector_code": "06",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "062",
+      "source_level": "group",
+      "selector_code": "06",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "069",
+      "source_level": "group",
+      "selector_code": "06",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "07",
+      "source_level": "division",
+      "selector_code": "07",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "071",
+      "source_level": "group",
+      "selector_code": "07",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "072",
+      "source_level": "group",
+      "selector_code": "07",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "08",
+      "source_level": "division",
+      "selector_code": "08",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "081",
+      "source_level": "group",
+      "selector_code": "08",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "082",
+      "source_level": "group",
+      "selector_code": "08",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "089",
+      "source_level": "group",
+      "selector_code": "08",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "09",
+      "source_level": "division",
+      "selector_code": "09",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "091",
+      "source_level": "group",
+      "selector_code": "09",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "092",
+      "source_level": "group",
+      "selector_code": "09",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "093",
+      "source_level": "group",
+      "selector_code": "09",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "10",
+      "source_level": "division",
+      "selector_code": "10",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "101",
+      "source_level": "group",
+      "selector_code": "10",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "102",
+      "source_level": "group",
+      "selector_code": "10",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "103",
+      "source_level": "group",
+      "selector_code": "10",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "109",
+      "source_level": "group",
+      "selector_code": "10",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "11",
+      "source_level": "division",
+      "selector_code": "11",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "111",
+      "source_level": "group",
+      "selector_code": "11",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "112",
+      "source_level": "group",
+      "selector_code": "11",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "119",
+      "source_level": "group",
+      "selector_code": "11",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "12",
+      "source_level": "division",
+      "selector_code": "12",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "120",
+      "source_level": "group",
+      "selector_code": "12",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "C",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "CA",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "13",
+      "source_level": "division",
+      "selector_code": "13",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "131",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "132",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "133",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "134",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "135",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "136",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "137",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "139",
+      "source_level": "group",
+      "selector_code": "13",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "14",
+      "source_level": "division",
+      "selector_code": "14",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "141",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "142",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "143",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "144",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "145",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "146",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "149",
+      "source_level": "group",
+      "selector_code": "14",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "15",
+      "source_level": "division",
+      "selector_code": "15",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "151",
+      "source_level": "group",
+      "selector_code": "15",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "152",
+      "source_level": "group",
+      "selector_code": "15",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "153",
+      "source_level": "group",
+      "selector_code": "15",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "16",
+      "source_level": "division",
+      "selector_code": "16",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "161",
+      "source_level": "group",
+      "selector_code": "16",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "162",
+      "source_level": "group",
+      "selector_code": "16",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "169",
+      "source_level": "group",
+      "selector_code": "16",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CB",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "17",
+      "source_level": "division",
+      "selector_code": "17",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "171",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "172",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "173",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "174",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "175",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "176",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "177",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "178",
+      "source_level": "group",
+      "selector_code": "17",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "18",
+      "source_level": "division",
+      "selector_code": "18",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "181",
+      "source_level": "group",
+      "selector_code": "18",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "182",
+      "source_level": "group",
+      "selector_code": "18",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "183",
+      "source_level": "group",
+      "selector_code": "18",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "19",
+      "source_level": "division",
+      "selector_code": "19",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "191",
+      "source_level": "group",
+      "selector_code": "19",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "192",
+      "source_level": "group",
+      "selector_code": "19",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "193",
+      "source_level": "group",
+      "selector_code": "19",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "194",
+      "source_level": "group",
+      "selector_code": "19",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "195",
+      "source_level": "group",
+      "selector_code": "19",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CC",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "20",
+      "source_level": "division",
+      "selector_code": "20",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "201",
+      "source_level": "group",
+      "selector_code": "20",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "202",
+      "source_level": "group",
+      "selector_code": "20",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "203",
+      "source_level": "group",
+      "selector_code": "20",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "204",
+      "source_level": "group",
+      "selector_code": "20",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "21",
+      "source_level": "division",
+      "selector_code": "21",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "211",
+      "source_level": "group",
+      "selector_code": "21",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "212",
+      "source_level": "group",
+      "selector_code": "21",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "213",
+      "source_level": "group",
+      "selector_code": "21",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "214",
+      "source_level": "group",
+      "selector_code": "21",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "219",
+      "source_level": "group",
+      "selector_code": "21",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CD",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "22",
+      "source_level": "division",
+      "selector_code": "22",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "221",
+      "source_level": "group",
+      "selector_code": "22",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "222",
+      "source_level": "group",
+      "selector_code": "22",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "223",
+      "source_level": "group",
+      "selector_code": "22",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "23",
+      "source_level": "division",
+      "selector_code": "23",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "231",
+      "source_level": "group",
+      "selector_code": "23",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "232",
+      "source_level": "group",
+      "selector_code": "23",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "233",
+      "source_level": "group",
+      "selector_code": "23",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "24",
+      "source_level": "division",
+      "selector_code": "24",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "241",
+      "source_level": "group",
+      "selector_code": "24",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "242",
+      "source_level": "group",
+      "selector_code": "24",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "243",
+      "source_level": "group",
+      "selector_code": "24",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "244",
+      "source_level": "group",
+      "selector_code": "24",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "245",
+      "source_level": "group",
+      "selector_code": "24",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "246",
+      "source_level": "group",
+      "selector_code": "24",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CE",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "25",
+      "source_level": "division",
+      "selector_code": "25",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "251",
+      "source_level": "group",
+      "selector_code": "25",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "252",
+      "source_level": "group",
+      "selector_code": "25",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "253",
+      "source_level": "group",
+      "selector_code": "25",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "254",
+      "source_level": "group",
+      "selector_code": "25",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "26",
+      "source_level": "division",
+      "selector_code": "26",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "261",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "262",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "263",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "264",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "265",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "266",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "267",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "268",
+      "source_level": "group",
+      "selector_code": "26",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "27",
+      "source_level": "division",
+      "selector_code": "27",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "271",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "272",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "273",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "274",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "275",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "276",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "277",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "278",
+      "source_level": "group",
+      "selector_code": "27",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "28",
+      "source_level": "division",
+      "selector_code": "28",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "281",
+      "source_level": "group",
+      "selector_code": "28",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "282",
+      "source_level": "group",
+      "selector_code": "28",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "283",
+      "source_level": "group",
+      "selector_code": "28",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "29",
+      "source_level": "division",
+      "selector_code": "29",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "291",
+      "source_level": "group",
+      "selector_code": "29",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "292",
+      "source_level": "group",
+      "selector_code": "29",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CF",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "30",
+      "source_level": "division",
+      "selector_code": "30",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "301",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "302",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "303",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "304",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "305",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "306",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "307",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "308",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "309",
+      "source_level": "group",
+      "selector_code": "30",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "31",
+      "source_level": "division",
+      "selector_code": "31",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "311",
+      "source_level": "group",
+      "selector_code": "31",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "312",
+      "source_level": "group",
+      "selector_code": "31",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "313",
+      "source_level": "group",
+      "selector_code": "31",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "314",
+      "source_level": "group",
+      "selector_code": "31",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "32",
+      "source_level": "division",
+      "selector_code": "32",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "321",
+      "source_level": "group",
+      "selector_code": "32",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "322",
+      "source_level": "group",
+      "selector_code": "32",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "323",
+      "source_level": "group",
+      "selector_code": "32",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "324",
+      "source_level": "group",
+      "selector_code": "32",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "325",
+      "source_level": "group",
+      "selector_code": "32",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "33",
+      "source_level": "division",
+      "selector_code": "33",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "331",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "332",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "333",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "334",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "335",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "336",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "337",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "338",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "339",
+      "source_level": "group",
+      "selector_code": "33",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CG",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "34",
+      "source_level": "division",
+      "selector_code": "34",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "341",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "342",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "343",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "344",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "345",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "346",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "347",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "348",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "349",
+      "source_level": "group",
+      "selector_code": "34",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "35",
+      "source_level": "division",
+      "selector_code": "35",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "351",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "352",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "353",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "354",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "355",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "356",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "357",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "358",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "359",
+      "source_level": "group",
+      "selector_code": "35",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "36",
+      "source_level": "division",
+      "selector_code": "36",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "361",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "362",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "363",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "364",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "365",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "366",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "367",
+      "source_level": "group",
+      "selector_code": "36",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "37",
+      "source_level": "division",
+      "selector_code": "37",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "371",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "372",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "373",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "374",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "375",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "376",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "377",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "378",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "379",
+      "source_level": "group",
+      "selector_code": "37",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CH",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "38",
+      "source_level": "division",
+      "selector_code": "38",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "381",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "382",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "383",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "384",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "385",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "386",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "387",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "389",
+      "source_level": "group",
+      "selector_code": "38",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "39",
+      "source_level": "division",
+      "selector_code": "39",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "391",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "392",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "393",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "394",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "395",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "396",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "397",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "398",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "399",
+      "source_level": "group",
+      "selector_code": "39",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CI",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "40",
+      "source_level": "division",
+      "selector_code": "40",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "401",
+      "source_level": "group",
+      "selector_code": "40",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "402",
+      "source_level": "group",
+      "selector_code": "40",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "403",
+      "source_level": "group",
+      "selector_code": "40",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "404",
+      "source_level": "group",
+      "selector_code": "40",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "405",
+      "source_level": "group",
+      "selector_code": "40",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "409",
+      "source_level": "group",
+      "selector_code": "40",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "CJ",
+      "source_level": "manufacturing_subsection",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "41",
+      "source_level": "division",
+      "selector_code": "41",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "411",
+      "source_level": "group",
+      "selector_code": "41",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "412",
+      "source_level": "group",
+      "selector_code": "41",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "419",
+      "source_level": "group",
+      "selector_code": "41",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "42",
+      "source_level": "division",
+      "selector_code": "42",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "421",
+      "source_level": "group",
+      "selector_code": "42",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "422",
+      "source_level": "group",
+      "selector_code": "42",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "43",
+      "source_level": "division",
+      "selector_code": "43",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "431",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "432",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "433",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "434",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "435",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "436",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "439",
+      "source_level": "group",
+      "selector_code": "43",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "D",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "44",
+      "source_level": "division",
+      "selector_code": "44",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "441",
+      "source_level": "group",
+      "selector_code": "44",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "442",
+      "source_level": "group",
+      "selector_code": "44",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "443",
+      "source_level": "group",
+      "selector_code": "44",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "45",
+      "source_level": "division",
+      "selector_code": "45",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "451",
+      "source_level": "group",
+      "selector_code": "45",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "452",
+      "source_level": "group",
+      "selector_code": "45",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "46",
+      "source_level": "division",
+      "selector_code": "46",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "461",
+      "source_level": "group",
+      "selector_code": "46",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "462",
+      "source_level": "group",
+      "selector_code": "46",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "463",
+      "source_level": "group",
+      "selector_code": "46",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "469",
+      "source_level": "group",
+      "selector_code": "46",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "E",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "47",
+      "source_level": "division",
+      "selector_code": "47",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "471",
+      "source_level": "group",
+      "selector_code": "47",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "472",
+      "source_level": "group",
+      "selector_code": "47",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "479",
+      "source_level": "group",
+      "selector_code": "47",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "48",
+      "source_level": "division",
+      "selector_code": "48",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "481",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "482",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "483",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "484",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "485",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "486",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "487",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "489",
+      "source_level": "group",
+      "selector_code": "48",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "49",
+      "source_level": "division",
+      "selector_code": "49",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "491",
+      "source_level": "group",
+      "selector_code": "49",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "492",
+      "source_level": "group",
+      "selector_code": "49",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "499",
+      "source_level": "group",
+      "selector_code": "49",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "50",
+      "source_level": "division",
+      "selector_code": "50",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "501",
+      "source_level": "group",
+      "selector_code": "50",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "502",
+      "source_level": "group",
+      "selector_code": "50",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "503",
+      "source_level": "group",
+      "selector_code": "50",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "509",
+      "source_level": "group",
+      "selector_code": "50",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "F",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "51",
+      "source_level": "division",
+      "selector_code": "51",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "511",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "512",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "513",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "514",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "515",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "516",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "517",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "518",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "519",
+      "source_level": "group",
+      "selector_code": "51",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "52",
+      "source_level": "division",
+      "selector_code": "52",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "521",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "522",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "523",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "524",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "525",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "526",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "527",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "528",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "529",
+      "source_level": "group",
+      "selector_code": "52",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "G",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "53",
+      "source_level": "division",
+      "selector_code": "53",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "531",
+      "source_level": "group",
+      "selector_code": "53",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "532",
+      "source_level": "group",
+      "selector_code": "53",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "533",
+      "source_level": "group",
+      "selector_code": "53",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "54",
+      "source_level": "division",
+      "selector_code": "54",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "541",
+      "source_level": "group",
+      "selector_code": "54",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "542",
+      "source_level": "group",
+      "selector_code": "54",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "543",
+      "source_level": "group",
+      "selector_code": "54",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "544",
+      "source_level": "group",
+      "selector_code": "54",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "55",
+      "source_level": "division",
+      "selector_code": "55",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "551",
+      "source_level": "group",
+      "selector_code": "55",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "552",
+      "source_level": "group",
+      "selector_code": "55",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "553",
+      "source_level": "group",
+      "selector_code": "55",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "56",
+      "source_level": "division",
+      "selector_code": "56",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "561",
+      "source_level": "group",
+      "selector_code": "56",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "562",
+      "source_level": "group",
+      "selector_code": "56",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "563",
+      "source_level": "group",
+      "selector_code": "56",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "57",
+      "source_level": "division",
+      "selector_code": "57",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "571",
+      "source_level": "group",
+      "selector_code": "57",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "572",
+      "source_level": "group",
+      "selector_code": "57",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "58",
+      "source_level": "division",
+      "selector_code": "58",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "581",
+      "source_level": "group",
+      "selector_code": "58",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "582",
+      "source_level": "group",
+      "selector_code": "58",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "59",
+      "source_level": "division",
+      "selector_code": "59",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "591",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "592",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "593",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "594",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "595",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "596",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "599",
+      "source_level": "group",
+      "selector_code": "59",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "60",
+      "source_level": "division",
+      "selector_code": "60",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "601",
+      "source_level": "group",
+      "selector_code": "60",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "602",
+      "source_level": "group",
+      "selector_code": "60",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "609",
+      "source_level": "group",
+      "selector_code": "60",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "H",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "61",
+      "source_level": "division",
+      "selector_code": "61",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "611",
+      "source_level": "group",
+      "selector_code": "61",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "612",
+      "source_level": "group",
+      "selector_code": "61",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "613",
+      "source_level": "group",
+      "selector_code": "61",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "614",
+      "source_level": "group",
+      "selector_code": "61",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "619",
+      "source_level": "group",
+      "selector_code": "61",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "62",
+      "source_level": "division",
+      "selector_code": "62",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "621",
+      "source_level": "group",
+      "selector_code": "62",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "622",
+      "source_level": "group",
+      "selector_code": "62",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "623",
+      "source_level": "group",
+      "selector_code": "62",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "624",
+      "source_level": "group",
+      "selector_code": "62",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "629",
+      "source_level": "group",
+      "selector_code": "62",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "I",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "63",
+      "source_level": "division",
+      "selector_code": "63",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "631",
+      "source_level": "group",
+      "selector_code": "63",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "632",
+      "source_level": "group",
+      "selector_code": "63",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "633",
+      "source_level": "group",
+      "selector_code": "63",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "64",
+      "source_level": "division",
+      "selector_code": "64",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "641",
+      "source_level": "group",
+      "selector_code": "64",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "642",
+      "source_level": "group",
+      "selector_code": "64",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "643",
+      "source_level": "group",
+      "selector_code": "64",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "644",
+      "source_level": "group",
+      "selector_code": "64",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "645",
+      "source_level": "group",
+      "selector_code": "64",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "649",
+      "source_level": "group",
+      "selector_code": "64",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "65",
+      "source_level": "division",
+      "selector_code": "65",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "651",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "652",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "653",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "654",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "655",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "656",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "657",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "659",
+      "source_level": "group",
+      "selector_code": "65",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "J",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "66",
+      "source_level": "division",
+      "selector_code": "66",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "661",
+      "source_level": "group",
+      "selector_code": "66",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "662",
+      "source_level": "group",
+      "selector_code": "66",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "663",
+      "source_level": "group",
+      "selector_code": "66",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "664",
+      "source_level": "group",
+      "selector_code": "66",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "665",
+      "source_level": "group",
+      "selector_code": "66",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "67",
+      "source_level": "division",
+      "selector_code": "67",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "671",
+      "source_level": "group",
+      "selector_code": "67",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "672",
+      "source_level": "group",
+      "selector_code": "67",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "673",
+      "source_level": "group",
+      "selector_code": "67",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "674",
+      "source_level": "group",
+      "selector_code": "67",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "675",
+      "source_level": "group",
+      "selector_code": "67",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "679",
+      "source_level": "group",
+      "selector_code": "67",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "68",
+      "source_level": "division",
+      "selector_code": "68",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "681",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "682",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "683",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "684",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "685",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "686",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "687",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "689",
+      "source_level": "group",
+      "selector_code": "68",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "69",
+      "source_level": "division",
+      "selector_code": "69",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "691",
+      "source_level": "group",
+      "selector_code": "69",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "692",
+      "source_level": "group",
+      "selector_code": "69",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "693",
+      "source_level": "group",
+      "selector_code": "69",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "694",
+      "source_level": "group",
+      "selector_code": "69",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "695",
+      "source_level": "group",
+      "selector_code": "69",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "699",
+      "source_level": "group",
+      "selector_code": "69",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "K",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "70",
+      "source_level": "division",
+      "selector_code": "70",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "701",
+      "source_level": "group",
+      "selector_code": "70",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "702",
+      "source_level": "group",
+      "selector_code": "70",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "703",
+      "source_level": "group",
+      "selector_code": "70",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "704",
+      "source_level": "group",
+      "selector_code": "70",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "709",
+      "source_level": "group",
+      "selector_code": "70",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "L",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "71",
+      "source_level": "division",
+      "selector_code": "71",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "711",
+      "source_level": "group",
+      "selector_code": "71",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "712",
+      "source_level": "group",
+      "selector_code": "71",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "713",
+      "source_level": "group",
+      "selector_code": "71",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "72",
+      "source_level": "division",
+      "selector_code": "72",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "721",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "722",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "723",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "724",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "725",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "726",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "727",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "728",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "729",
+      "source_level": "group",
+      "selector_code": "72",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "M",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "73",
+      "source_level": "division",
+      "selector_code": "73",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "731",
+      "source_level": "group",
+      "selector_code": "73",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "732",
+      "source_level": "group",
+      "selector_code": "73",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "733",
+      "source_level": "group",
+      "selector_code": "73",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "734",
+      "source_level": "group",
+      "selector_code": "73",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "735",
+      "source_level": "group",
+      "selector_code": "73",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "74",
+      "source_level": "division",
+      "selector_code": "74",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "741",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "742",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "743",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "744",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "745",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "746",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "747",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "748",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "749",
+      "source_level": "group",
+      "selector_code": "74",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "75",
+      "source_level": "division",
+      "selector_code": "75",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "751",
+      "source_level": "group",
+      "selector_code": "75",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "752",
+      "source_level": "group",
+      "selector_code": "75",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "753",
+      "source_level": "group",
+      "selector_code": "75",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "754",
+      "source_level": "group",
+      "selector_code": "75",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "759",
+      "source_level": "group",
+      "selector_code": "75",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "N",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "76",
+      "source_level": "division",
+      "selector_code": "76",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "761",
+      "source_level": "group",
+      "selector_code": "76",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "762",
+      "source_level": "group",
+      "selector_code": "76",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "763",
+      "source_level": "group",
+      "selector_code": "76",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "764",
+      "source_level": "group",
+      "selector_code": "76",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "769",
+      "source_level": "group",
+      "selector_code": "76",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "77",
+      "source_level": "division",
+      "selector_code": "77",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "771",
+      "source_level": "group",
+      "selector_code": "77",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "772",
+      "source_level": "group",
+      "selector_code": "77",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "78",
+      "source_level": "division",
+      "selector_code": "78",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "781",
+      "source_level": "group",
+      "selector_code": "78",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "782",
+      "source_level": "group",
+      "selector_code": "78",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "783",
+      "source_level": "group",
+      "selector_code": "78",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "784",
+      "source_level": "group",
+      "selector_code": "78",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "785",
+      "source_level": "group",
+      "selector_code": "78",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "786",
+      "source_level": "group",
+      "selector_code": "78",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "79",
+      "source_level": "division",
+      "selector_code": "79",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "791",
+      "source_level": "group",
+      "selector_code": "79",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "792",
+      "source_level": "group",
+      "selector_code": "79",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "793",
+      "source_level": "group",
+      "selector_code": "79",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "794",
+      "source_level": "group",
+      "selector_code": "79",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "799",
+      "source_level": "group",
+      "selector_code": "79",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "O",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "80",
+      "source_level": "division",
+      "selector_code": "80",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "801",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "802",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "803",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "804",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "805",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "806",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "807",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "808",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "809",
+      "source_level": "group",
+      "selector_code": "80",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "81",
+      "source_level": "division",
+      "selector_code": "81",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "811",
+      "source_level": "group",
+      "selector_code": "81",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "812",
+      "source_level": "group",
+      "selector_code": "81",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "813",
+      "source_level": "group",
+      "selector_code": "81",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "819",
+      "source_level": "group",
+      "selector_code": "81",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "82",
+      "source_level": "division",
+      "selector_code": "82",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "821",
+      "source_level": "group",
+      "selector_code": "82",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "822",
+      "source_level": "group",
+      "selector_code": "82",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "829",
+      "source_level": "group",
+      "selector_code": "82",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "P",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "83",
+      "source_level": "division",
+      "selector_code": "83",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "831",
+      "source_level": "group",
+      "selector_code": "83",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "832",
+      "source_level": "group",
+      "selector_code": "83",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "833",
+      "source_level": "group",
+      "selector_code": "83",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "834",
+      "source_level": "group",
+      "selector_code": "83",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "835",
+      "source_level": "group",
+      "selector_code": "83",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "839",
+      "source_level": "group",
+      "selector_code": "83",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "Q",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "84",
+      "source_level": "division",
+      "selector_code": "84",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "841",
+      "source_level": "group",
+      "selector_code": "84",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "842",
+      "source_level": "group",
+      "selector_code": "84",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "843",
+      "source_level": "group",
+      "selector_code": "84",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "849",
+      "source_level": "group",
+      "selector_code": "84",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "85",
+      "source_level": "division",
+      "selector_code": "85",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "851",
+      "source_level": "group",
+      "selector_code": "85",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "852",
+      "source_level": "group",
+      "selector_code": "85",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "R",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "86",
+      "source_level": "division",
+      "selector_code": "86",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "861",
+      "source_level": "group",
+      "selector_code": "86",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "862",
+      "source_level": "group",
+      "selector_code": "86",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "87",
+      "source_level": "division",
+      "selector_code": "87",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "871",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "872",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "873",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "874",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "875",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "876",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "877",
+      "source_level": "group",
+      "selector_code": "87",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "88",
+      "source_level": "division",
+      "selector_code": "88",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "881",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "882",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "883",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "884",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "885",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "886",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "887",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "889",
+      "source_level": "group",
+      "selector_code": "88",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "89",
+      "source_level": "division",
+      "selector_code": "89",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "891",
+      "source_level": "group",
+      "selector_code": "89",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "892",
+      "source_level": "group",
+      "selector_code": "89",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "893",
+      "source_level": "group",
+      "selector_code": "89",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "899",
+      "source_level": "group",
+      "selector_code": "89",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "90",
+      "source_level": "division",
+      "selector_code": "90",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "901",
+      "source_level": "group",
+      "selector_code": "90",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "902",
+      "source_level": "group",
+      "selector_code": "90",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "903",
+      "source_level": "group",
+      "selector_code": "90",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "904",
+      "source_level": "group",
+      "selector_code": "90",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "905",
+      "source_level": "group",
+      "selector_code": "90",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "909",
+      "source_level": "group",
+      "selector_code": "90",
+      "reason": "unique_parent_division"
+    },
+    {
+      "source_code": "S",
+      "source_level": "section",
+      "selector_code": null,
+      "reason": "insufficient_granularity"
+    },
+    {
+      "source_code": "91",
+      "source_level": "division",
+      "selector_code": "91",
+      "reason": "exact_division"
+    },
+    {
+      "source_code": "911",
+      "source_level": "group",
+      "selector_code": "91",
+      "reason": "unique_parent_division"
+    }
+  ]
+}

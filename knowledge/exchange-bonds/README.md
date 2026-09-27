@@ -11,6 +11,7 @@
 | 内容 | 入口 | 用途 |
 |---|---|---|
 | 本轮两包增量 | [收件/去重](intake/2026-09-26-archives/README.md)、[适用边界](intake/2026-09-26-archives/READING-GUIDE.md)、[Issue交接](intake/2026-09-26-archives/ISSUE-HANDOFF.md) | 深交所2026优化审核、行业标准出处、旧版本隔离及未补足项 |
+| 行业代码与#20关闭 | [2026-09-27完整代码/映射](verification/2026-09-27-industry/README.md)、[关闭清单](drafts/sse-private/CLOSURE-CHECKLIST.md) | 576个来源代码、同名标准边界、#19接入及真实验收责任 |
 | 原件及来源 | [来源目录](来源目录.md)、[来源元数据](sources.json) | 查原始文件、别名、hash、来源类别、版本及解析状态 |
 | 共通方法 | [共通方法与差异](共通方法与差异.md) | 事实/期间/证据、财务更新、私募/小公募/大公募分支 |
 | 易误用的内容 | [冲突与未覆盖项](冲突与未覆盖项.md) | 专家稿疑问、50%重组启发式、授信、2025/2026覆盖边界 |
@@ -35,7 +36,7 @@
 
 ## 数据与现有代码如何衔接
 
-每个 `drafts/<market>-<offering>/` 包含 `rule-pack.json`、`chapter-template.json`、`coverage.json` 和人读指南。前三份遵循 `packages/domain` 已有 #19 schema，可由 `validateRulePackCompanions` 验证。规则目前全部关闭、`research_only`：#20 draft.4有九组受限结构化检查，其余22条以及其他五套包的checker仍为人工证据审阅占位；不能将候选条数当作可执行覆盖。
+每个 `drafts/<market>-<offering>/` 包含 `rule-pack.json`、`chapter-template.json`、`coverage.json` 和人读指南。前三份遵循 `packages/domain` 已有 #19 schema，可由 `validateRulePackCompanions` 验证。规则目前全部关闭、`research_only`：#20 draft.5有十一组受限结构化检查，其余20条以及其他五套包的checker仍为人工证据审阅占位；不能将候选条数当作可执行覆盖。
 
 由于官方效力/专家签认未完成，包内 `RuleSource.kind` 暂用 `unverified_lead`；原件的实际类别仍在来源目录。以后由行业审核补齐依据和有效日期，再按 #19 升级来源类型、规则执行和发布状态。当前草稿`validity.effective_from=2026-09-26`只是整理基准，`transition_terms`已明确不是法规生效日；具体来源日期分别保存。
 

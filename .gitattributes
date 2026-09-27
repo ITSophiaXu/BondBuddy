@@ -6,3 +6,10 @@
 /knowledge/exchange-bonds/records/OV-*.json linguist-generated=true
 /knowledge/exchange-bonds/originals/* binary
 /knowledge/exchange-bonds/intake/*/*.html binary
+# Rebuilt industry evidence; review the extractor, source inventory and handoff.
+/knowledge/exchange-bonds/verification/2026-09-27-industry/catalog.json linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-industry/table-rows.json linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-industry/selector-mapping.json linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-industry/code-table.md linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-industry/guideline.md linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-industry/followup-sources.md linguist-generated=true

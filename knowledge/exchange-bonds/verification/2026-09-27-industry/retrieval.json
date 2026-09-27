@@ -1,0 +1,64 @@
+[
+  {
+    "file": "originals/capco-guideline.html",
+    "url": "https://www.capco.org.cn/xhdt/tzgg/202305/20230521/j_2023052117544500016846630061707656.html",
+    "fetched_at": "2026-09-27T04:02:59.1631083Z",
+    "status": 200,
+    "bytes": 36258,
+    "sha256": "67a602baeb6d26670734c0f75184232926ec8e2988fe81345a39427f628a898b",
+    "content_type": "text/html",
+    "last_modified": "Wed, 15 Jul 2026 07:55:17 GMT"
+  },
+  {
+    "file": "originals/capco-industry-codes.docx",
+    "url": "https://www.capco.org.cn/upload/ueditor/uploadfile/202305/20230522/2023052210111684721474074093662.docx",
+    "fetched_at": "2026-09-27T04:03:01.9530274Z",
+    "status": 200,
+    "bytes": 104432,
+    "sha256": "c8c16f572f40a5028331d6914b6d32d45581d701d4fbab3f9b903fe68ba7fff7",
+    "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "last_modified": "Mon, 22 May 2023 02:11:14 GMT"
+  },
+  {
+    "file": "originals/capco-notices-index.html",
+    "url": "https://www.capco.org.cn/xhdt/tzgg/index.html",
+    "fetched_at": "2026-09-27T04:03:04.4120989Z",
+    "status": 200,
+    "bytes": 29157,
+    "sha256": "ed82cab91ef3192eb69ebdb7a7ac36ac5037677006c283846e8257012cd1d6af",
+    "content_type": "text/html",
+    "last_modified": "Thu, 24 Sep 2026 08:33:44 GMT"
+  },
+  {
+    "file": "originals/capco-search-shell.html",
+    "url": "https://www.capco.org.cn/sousuo/index.html",
+    "captured_at_from_local_file_mtime": "2026-09-27T04:04:26.696069+00:00",
+    "bytes": 18695,
+    "sha256": "87ecaa1b69c90be1187ceb3af6c7755829f1acb8c9546ead37d075bbccc0e013",
+    "purpose": "search request reconstruction; archived only, do not execute"
+  },
+  {
+    "file": "originals/capco-search.js",
+    "url": "https://www.capco.org.cn/pub/zgssgsxh/images/search.js",
+    "captured_at_from_local_file_mtime": "2026-09-27T04:04:42.258307+00:00",
+    "bytes": 3562,
+    "sha256": "cfa06318ff07c1f9a86e1823598897462bc06238476a51f86258c5cb2c8427c2",
+    "purpose": "search request reconstruction; archived only, do not execute"
+  },
+  {
+    "file": "originals/capco-baseCode16.js",
+    "url": "https://www.capco.org.cn/images/baseCode16.js",
+    "captured_at_from_local_file_mtime": "2026-09-27T04:04:56.157825+00:00",
+    "bytes": 90180,
+    "sha256": "55decb63f6ad705d9d4d947e33955a83923cbaebbfa1de4a49b07181dc0d5c72",
+    "purpose": "search request reconstruction; archived only, do not execute"
+  },
+  {
+    "file": "originals/capco-utiltool.js",
+    "url": "https://www.capco.org.cn/images/utiltool.js",
+    "captured_at_from_local_file_mtime": "2026-09-27T04:05:29.501227+00:00",
+    "bytes": 29028,
+    "sha256": "b27d3d895efac00633d082924e497586fb2ccfe41b7c8ecd8a41420f9f814cbc",
+    "purpose": "search request reconstruction; archived only, do not execute"
+  }
+]
