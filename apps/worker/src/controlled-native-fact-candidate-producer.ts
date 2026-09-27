@@ -11,6 +11,7 @@ import {
   type NativeFinancialParseCompletionResolver,
 } from './native-financial-fact-extractor.js';
 import { createRqProspectusAnnualFactExtractor } from './rq-prospectus-annual-fact-extractor.js';
+import { createRqQ3FormulaCandidateExtractor } from './rq-q3-formula-candidate-extractor.js';
 import { getParseSnapshot, type StoredParseSnapshot } from './parse-evidence-repository.js';
 
 type SnapshotLoader = typeof getParseSnapshot;
@@ -59,12 +60,14 @@ function matchesRequestPin(snapshot: StoredParseSnapshot, request: SemanticFactE
 
 /** Internal controlled composition installed by the default worker runtime configuration. */
 export function createControlledNativeFactCandidateProducer(
-  dependencies: Omit<FactCandidateProducerDependencies, 'extractor' | 'historicalProspectusExtractor'>,
+  dependencies: Omit<FactCandidateProducerDependencies, 'extractor' | 'historicalProspectusExtractor' | 'rqQ3FormulaExtractor'>,
 ): (context: FactCandidateProductionContext) => Promise<FactCandidateProductionResult> {
   const resolver = createTrustedNativeParseCompletionResolver(
     dependencies.pool as Pool, dependencies.loadSnapshot,
   );
   const extractor = createNativeFinancialFactExtractor(resolver);
   const historicalProspectusExtractor = createRqProspectusAnnualFactExtractor(resolver);
-  return (context) => produceParsedFactCandidates({ ...dependencies, extractor, historicalProspectusExtractor }, context);
+  const rqQ3FormulaExtractor = createRqQ3FormulaCandidateExtractor(resolver);
+  return (context) => produceParsedFactCandidates({ ...dependencies, extractor, historicalProspectusExtractor,
+    rqQ3FormulaExtractor }, context);
 }

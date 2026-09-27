@@ -3,19 +3,20 @@ import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-id
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
 import type { FactCandidate, FactIdentity } from '@bondbuddy/domain/facts';
 import type { Pool } from 'pg';
+import { SEMANTIC_FACT_EXTRACTION_REQUEST_VERSION, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION } from './semantic-fact-extraction-constants.js';
+export { SEMANTIC_FACT_EXTRACTION_REQUEST_VERSION, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION } from './semantic-fact-extraction-constants.js';
 import {
   RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_ID,
   RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_VERSION,
   RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256,
 } from './rq-prospectus-annual-fact-constants.js';
+import { RQ_Q3_FORMULA_CANDIDATE_EXTRACTOR_ID, RQ_Q3_FORMULA_CANDIDATE_EXTRACTOR_VERSION,
+  RQ_Q3_FORMULA_SOURCE_SHA256 } from './rq-q3-formula-candidate-constants.js';
 import { getParseSnapshot, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { insertFactCandidate, listFactCandidates, type FactEvidenceAnchor, type FactRepositoryDependencies,
   type FactRepositoryContext, type StoredFactCandidate } from './fact-repository.js';
 
 /** Internal semantic extraction handoff. It deliberately does not belong to public API contracts. */
-export const SEMANTIC_FACT_EXTRACTION_REQUEST_VERSION = 'semantic-fact-extraction-request-v1' as const;
-export const SEMANTIC_FACT_EXTRACTION_RESULT_VERSION = 'semantic-fact-extraction-v1' as const;
-
 export type SemanticFactIdentity = Omit<FactIdentity, 'accountId' | 'entityId' | 'dataVersion'>;
 export type SemanticFactValue = FactCandidate['value'];
 
@@ -78,6 +79,8 @@ export interface FactCandidateProducerDependencies extends FactRepositoryDepende
   readonly extractor: SemanticFactExtractor;
   /** Explicit source-role exception for a controlled historical-prospectus-only mapper. */
   readonly historicalProspectusExtractor?: SemanticFactExtractor;
+  /** Exact-hash opt-in for the authorized rq-202509-02 formula-cache review candidates. */
+  readonly rqQ3FormulaExtractor?: SemanticFactExtractor;
   readonly loadSnapshot?: typeof getParseSnapshot;
   readonly loadIssuerIdentity?: typeof loadVerifiedIssuerIdentitySourceRecord;
 }
@@ -265,10 +268,16 @@ export async function produceParsedFactCandidates(
     materialMediaType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
     dependencies.historicalProspectusExtractor?.id === RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_ID &&
     dependencies.historicalProspectusExtractor.version === RQ_PROSPECTUS_ANNUAL_FACT_EXTRACTOR_VERSION;
-  if (!financialRoles.has(materialRole) && !isHistoricalProspectusSource) throw fail('FACT_EXTRACTION_MATERIAL_NOT_FINANCIAL');
-  const extractor = isHistoricalProspectusSource ? dependencies.historicalProspectusExtractor! : dependencies.extractor;
   const materialHash = String(materialResult.rows[0]!.sha256).trim().toLowerCase();
   if (!sha256.test(materialHash)) throw fail('FACT_EXTRACTION_MATERIAL_INVALID');
+  const isRqQ3FormulaSource = materialRole === 'interimFinancial' &&
+    materialMediaType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' &&
+    materialHash === RQ_Q3_FORMULA_SOURCE_SHA256 &&
+    dependencies.rqQ3FormulaExtractor?.id === RQ_Q3_FORMULA_CANDIDATE_EXTRACTOR_ID &&
+    dependencies.rqQ3FormulaExtractor.version === RQ_Q3_FORMULA_CANDIDATE_EXTRACTOR_VERSION;
+  if (!financialRoles.has(materialRole) && !isHistoricalProspectusSource) throw fail('FACT_EXTRACTION_MATERIAL_NOT_FINANCIAL');
+  const extractor = isHistoricalProspectusSource ? dependencies.historicalProspectusExtractor!
+    : isRqQ3FormulaSource ? dependencies.rqQ3FormulaExtractor! : dependencies.extractor;
 
   const scope = { ownerUserId: context.ownerUserId, projectId: context.projectId, materialId: context.materialId,
     materialVersion: context.materialVersion };
