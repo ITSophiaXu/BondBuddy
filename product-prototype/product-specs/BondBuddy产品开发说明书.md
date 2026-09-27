@@ -2078,6 +2078,10 @@ rejected 不产生有效冻结。failed/cancelled 全额释放。awaiting_input 
 
 派生项目状态使用最新运行记录，但最新成功成果永远独立保存；失败新版本不会把旧成功成果隐藏。
 
+#### 受控测试的覆盖缺口结果
+
+受控非生产测试的 `RunResponse.uncovered_items` 使用公共契约 `test-coverage.ts`：覆盖缺口以 `kind=coverage_gap` 保留清单 ID/版本、覆盖项 ID、候选资产 hash、范围说明、缺口理由、来源和零到多个显式规则引用；规则检查待核以 `kind=rule_check` 保留真实规则 ID、来源、原因和证据定位。无规则映射不得编造 ID；有依据的 `not_applicable` 留在原覆盖评估，不作为待补项。Word 对有定位的缺口添加批注，无定位的进入集中待确认清单，保留版本和来源。此接口仅服务测试通道，不变更生产审核或计费语义。
+
 ### 16.5 幂等、快照和租约
 
 execution_request_id 按账号唯一，同一键同一内容返回同一 run；同一键不同 input_hash 返回 IDEMPOTENCY_CONFLICT。网络重发不能生成新 UUID；用户新的主动执行才创建新键。
