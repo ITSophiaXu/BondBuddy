@@ -1058,7 +1058,7 @@ export function createServer(settings: Settings = {}) {
           try {
             updateDifficulty=await ensureCurrentUpdateDifficultySnapshotWithClient(client,{
               ownerUserId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash,
-            },{blobs:blob()});
+            },{blobs:blobs??undefined});
             if(updateDifficulty.estimate.status==='needs_confirmation')
               uncertainty.push('update_difficulty_needs_confirmation');
           } catch(error) {
