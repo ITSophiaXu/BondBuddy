@@ -151,12 +151,12 @@ test('#20 missing, conflicted and merely asserted evidence cannot satisfy new ch
   data.auditOpinion!.opinion!.anchors = [];
   assert.equal(finding(data, 'evidence:audit_opinion_type').outcome, 'needs_evidence');
 });
-test('#20 v2 rejects v1 checker declarations and parameter drift rather than replaying new checks against old packs', () => {
+test('#20 rejects unsupported v1 declarations and parameter drift', () => {
   const old = structuredClone(pack); old.rules.forEach(rule => { if (rule.checker.checker_id === 'sse-private-structured-evidence') rule.checker.checker_version = '1'; });
   assert.throws(() => evaluate(old, input()), /CHECKER_VERSION_MISMATCH/);
   const drift = structuredClone(pack); drift.version = 'unmatched-version';
   assert.throws(() => evaluate(drift, input()), /CHECKER_VERSION_MISMATCH/);
   const result = evaluate(pack, input());
-  assert.equal(result.uncoveredRuleIds.length, 22); assert.equal(result.productionEligible, false);
-  assert.equal(result.checkerVersion, '2');
+  assert.equal(result.uncoveredRuleIds.length, 20); assert.equal(result.productionEligible, false);
+  assert.equal(result.checkerVersion, '3');
 });

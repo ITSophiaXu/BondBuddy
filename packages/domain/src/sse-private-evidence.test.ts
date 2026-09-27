@@ -86,7 +86,7 @@ test('#20 review checklist covers every candidate while executable metadata iden
   const checklist = readFileSync(new URL('drafts/sse-private/RULE-REVIEW-CHECKLIST.md', base), 'utf8');
   assert.match(checklist, /31条全部待业务审核/);
   assert.equal((checklist.match(/审核决定、理由、证据记录：待填写。/g) ?? []).length, 31);
-  assert.equal(SSE_PRIVATE_CHECKED_RULES.length, 9);
+  assert.equal(SSE_PRIVATE_CHECKED_RULES.length, 11);
   for (const rule of pack.rules) {
     assert.ok(checklist.includes(`规则：\`${rule.rule_id}\``));
     const implemented = (SSE_PRIVATE_CHECKED_RULES as readonly string[]).includes(rule.rule_id);

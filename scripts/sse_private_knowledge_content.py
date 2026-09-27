@@ -4,15 +4,16 @@ References use archived official attachment paragraph indices / physical PDF pag
 The common authoring source and the other five scope drafts stay unchanged.
 """
 
-VERSION = '2026.09.26-draft.4'
-PREVIOUS_VERSION = '2026.09.26-draft.3'
+VERSION = '2026.09.27-draft.5'
+PREVIOUS_VERSION = '2026.09.26-draft.4'
 EVIDENCE_VERSION = '2026.09.26-evidence.1'
-AUTHORED_AT = '2026-09-26T09:36:34Z'
+AUTHORED_AT = '2026-09-27T03:39:12Z'
 
-# Nine bounded structured-evidence checks; all other candidates still need implementations.
+# Eleven bounded structured-evidence checks; all other candidates still need implementations.
 EXECUTABLE_CHECKS = {'private-investors', 'financial-validity-sse', 'private-use-change',
                      'idle-proceeds-2026', 'continuing-disclosure', 'period-window',
-                     'audit-opinion', 'financial-statements', 'mdna-thresholds'}
+                     'audit-opinion', 'financial-statements', 'mdna-thresholds',
+                     'funds-use-evidence', 'disclosure-officer-2026'}
 
 # key -> chapters, official reference pairs, limitation specific to this rule.
 A = 'sse-application-2023'
@@ -55,7 +56,7 @@ MAPPINGS = {
  'private-negative-list': (['terms','issuer','financial'], [(A,'P00455'),(A,'P00456')], '没有财务指标限制不等于没有准入/负面清单/偿债风险要求；证券业协会负面清单现行全文尚未核验。'),
  'idle-proceeds-2026': (['funds','protection'], [(P,'P00023'),(P,'P00024'),(P,'P00025'),(P,'P00026')], '受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。'),
  'continuing-disclosure': (['disclosure','reference'], [(A,'P00461'),(D,'P00009'),(D,'P00023')], '此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。'),
- 'disclosure-officer-2026': (['disclosure','issuer','declarations'], [(O,'P00007'),(O,'P00008'),(O,'P00009'),(O,'P00010'),(O,'P00011'),(O,'P00016'),(O,'P00017'),(O,'P00018')], '2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。'),
+ 'disclosure-officer-2026': (['disclosure','issuer','declarations'], [(O,'P00007'),(O,'P00008'),(O,'P00009'),(O,'P00010'),(O,'P00011'),(O,'P00012'),(O,'P00013'),(O,'P00014'),(O,'P00015'),(O,'P00016'),(O,'P00017'),(O,'P00018')], '2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。'),
  'optimized-review-version': (['terms','reference','funds'], [(V,'P00010'),(V,'P00054')], '2026-09-04起旧2023版废止；本包不实现知名成熟资格认定、简明披露或豁免，需独立审核新版本。'),
  'trustee-continuing-duties': (['trustee','holders','protection'], [(T,'P00005'),(T,'P00007'),(T,'P00012'),(T,'P00013'),(L,'P00128')], '2025指南包括鼓励措施和示范案例，不把示范案例写为发行人已履行事项；全量履职核验另作存续期覆盖。'),
 }

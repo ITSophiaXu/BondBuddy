@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.26-draft.4",
+  "version": "2026.09.27-draft.5",
   "sources": 36,
   "occurrences": 40,
   "official_evidence_catalog": "verification/2026-09-26/catalog.json",
@@ -7,7 +7,7 @@
     {
       "scope": "sse-private",
       "issue": 20,
-      "version": "2026.09.26-draft.4",
+      "version": "2026.09.27-draft.5",
       "status": "draft",
       "production_ready": false,
       "rules": 31,

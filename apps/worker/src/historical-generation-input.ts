@@ -10,6 +10,8 @@ import { listFactCandidates, type StoredFactCandidate } from './fact-repository.
 import { historicalUpdateFactsHash, prepareHistoricalUpdate, type LockedHistoricalUpdate, type HistoricalUpdateDecisionSnapshot, type HistoricalUpdateReaders } from './historical-update.js';
 import { getFactDecisionAtVersion, getLatestFactDecision, type StoredFactDecision } from './fact-decision-repository.js';
 import type { StageContext } from './run-pipeline.js';
+import type { ProductionRulePackPin } from '@bondbuddy/rule-pack-registry';
+import { loadHistoricalRuleGuidance, type HistoricalRuleGuidance, type HistoricalRuleResolver } from './historical-rule-context.js';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
 const audited = new Set<Material['role']>(['audit', 'financial', 'interimFinancial', 'notes']);
@@ -25,6 +27,7 @@ export interface HistoricalGenerationInput {
   decisions: HistoricalUpdateDecisionSnapshot[];
   planReaders: HistoricalUpdateReaders;
   details: UpdateDetails; issuerName: string; preparationHash: string;
+  ruleGuidance: HistoricalRuleGuidance;
 }
 interface PreparationPin {
   version: 'historical-generation-input-v1'; input_hash: string;
@@ -41,6 +44,7 @@ export interface GenerationInputReaders {
   prepare: typeof prepareHistoricalUpdate;
   decision: (ctx: StageContext, identity: FactIdentity, version?: number) => Promise<StoredFactDecision | null>;
   checkpoint: (ctx: StageContext, pin: Record<string, unknown>) => Promise<void>;
+  rules?: HistoricalRuleResolver;
 }
 
 /** Freeze derived parse/profile/candidate references before the first provider intent, then reread exact IDs on recovery. */
@@ -57,9 +61,10 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   if (manifest.market !== 'sse' || manifest.offering !== 'private') unavailable('historical_update_scope_not_installed');
   if (!details.reporting_cutoff || !Number.isFinite(Date.parse(details.reporting_cutoff)) ||
     new Date(details.reporting_cutoff).toISOString().slice(0,10) !== details.reporting_cutoff) unavailable('historical_target_period_required');
-  const rule = manifest.rule_pack_pin;
-  // Eligibility is checked by input_lock. This only binds the plan to that exact reference.
-  if (!rule || typeof rule.pack_id !== 'string' || !rule.pack_id || rule.version !== input.rule_pack_version || !hash(rule.content_hash)) unavailable('rule_pack_pin_missing');
+  const rule = manifest.rule_pack_pin as ProductionRulePackPin | undefined;
+  // Revalidate the exact API-shaped release again before loading facts or invoking the model.
+  if (!rule || typeof rule.packId !== 'string' || !rule.packId || rule.version !== input.rule_pack_version || !hash(rule.contentHash)) unavailable('rule_pack_pin_missing');
+  const ruleGuidance = await loadHistoricalRuleGuidance(pool, rule, manifest.rule_pack_context, readers.rules);
   if (typeof manifest.issuer_name !== 'string' || !manifest.issuer_name.trim()) unavailable('historical_issuer_required');
   const materials: LockedHistoricalUpdate['materials'] = Array.isArray(manifest.materials) ? manifest.materials.map((m: Record<string, unknown>) => ({
     materialId: m.material_id, materialVersion: m.material_version, contentHash: m.sha256, role: m.role,
@@ -134,7 +139,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     fact_ids: facts.map(f => f.candidate.candidateId).sort(), facts_hash: frozenFactsHash(facts), decisions: decisionPins };
   const locked: HistoricalGenerationInput['locked'] = { context: { ownerUserId: run.owner_user_id, projectId: run.project_id,
     issuerEntityId: entity, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), targetMarket: manifest.market,
-    targetOffering: manifest.offering, ruleSnapshot: { packId: rule.pack_id, version: rule.version, contentHash: rule.content_hash } },
+    targetOffering: manifest.offering, ruleSnapshot: { packId: rule.packId, version: rule.version, contentHash: rule.contentHash } },
     materials, baseline: { materialId: baseline.materialId, materialVersion: baseline.materialVersion, snapshotId: snapshot.snapshotId, profileVersion: profile.profileVersion },
     factCandidateIds: [], factsHash: historicalUpdateFactsHash([]) };
   // Reuse the #31 material, effective-baseline, parser and profile integrity gates before any model call.
@@ -157,7 +162,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
       return found.decision;
     },
   };
-  return { locked, snapshot, profile, facts, decisions, planReaders, details, issuerName: manifest.issuer_name, preparationHash: updateContentHash(pin) };
+  return { locked, snapshot, profile, facts, decisions, planReaders, details, ruleGuidance, issuerName: manifest.issuer_name, preparationHash: updateContentHash(pin) };
 }
 
 /** Never offer one clean member of a conflicted/uncertain identity while concealing the other candidates. */

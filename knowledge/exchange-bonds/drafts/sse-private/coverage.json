@@ -1,9 +1,9 @@
 {
   "schema_version": "capability-coverage-v1",
   "manifest_id": "sse-private-coverage",
-  "version": "2026.09.26-draft.4",
+  "version": "2026.09.27-draft.5",
   "rule_pack_id": "sse-private",
-  "assessed_at": "2026-09-26T09:36:34Z",
+  "assessed_at": "2026-09-27T03:39:12Z",
   "items": [
     {
       "item_id": "source-authority",
@@ -146,7 +146,7 @@
         "ov-sse-proceeds-2026-p00014",
         "ov-sse-proceeds-2026-p00018"
       ],
-      "rationale": "已登记官方证据/内部方法及章节映射；尚无行业签认、执行checker和真实结果验收。用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。"
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。"
     },
     {
       "item_id": "private-use-change",
@@ -541,11 +541,15 @@
         "ov-sse-officer-2025-p00009",
         "ov-sse-officer-2025-p00010",
         "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00012",
+        "ov-sse-officer-2025-p00013",
+        "ov-sse-officer-2025-p00014",
+        "ov-sse-officer-2025-p00015",
         "ov-sse-officer-2025-p00016",
         "ov-sse-officer-2025-p00017",
         "ov-sse-officer-2025-p00018"
       ],
-      "rationale": "已登记官方证据/内部方法及章节映射；尚无行业签认、执行checker和真实结果验收。2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。"
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。"
     },
     {
       "item_id": "optimized-review-version",

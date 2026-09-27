@@ -27,7 +27,7 @@ const check = (data: SsePrivateCheckInput, code: string) => {
 test('#20 research checks bind the pack version, sources and exact evidence, never publish', () => {
   const result = evaluate(pack, input());
   assert.equal(result.mode, 'research_only'); assert.equal(result.productionEligible, false);
-  assert.equal(result.uncoveredRuleIds.length, 22);
+  assert.equal(result.uncoveredRuleIds.length, 20);
   assert.ok(result.findings.every(row => row.sourceRefIds.length > 0));
   assert.ok(result.findings.filter(row => row.outcome === 'pass').every(row => row.evidenceAnchors.length > 0));
   assert.ok(!result.findings.some(row => row.outcome === 'issue'));

@@ -1,6 +1,6 @@
 # #20 逐条规则审核清单
 
-版本：`2026.09.26-draft.4`。31条全部待业务审核；9条有受限检查，22条尚未实现。
+版本：`2026.09.27-draft.5`。31条全部待业务审核；11条有受限检查，20条尚未实现。
 
 由 `scripts/sse_private_review_items.py` 与来源映射生成，不在本文件直接签认。正式审核记录须绑定此版本/commit、实际审核人及权限、时间、决定、理由和证据；本表不写入发布审批。
 
@@ -22,7 +22,7 @@
 
 ## 目标报告期及滚动窗口
 
-规则：`sse-private-period-window`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-period-window`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：自然年度普通私募两年及一期；章丘2022/2023年末、任丘2023/2024及2025中期分别检查，不删独立三年回溯。
 
@@ -64,7 +64,7 @@
 
 ## 私募发行对象与人数限制
 
-规则：`sse-private-private-investors`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-private-investors`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：发行200/201人和转让后200/201人分别核；补充穿透、分类和例外依据。
 
@@ -78,7 +78,7 @@
 
 ## 上交所财务有效期
 
-规则：`sse-private-financial-validity-sse`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-financial-validity-sse`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：6个月、获准至多1个月延期与到期新申报分别处理；已申请不等于同意。
 
@@ -106,7 +106,7 @@
 
 ## 组合资金用途与配套材料
 
-规则：`sse-private-funds-use-evidence`；工程：unimplemented；业务审核：待填写。
+规则：`sse-private-funds-use-evidence`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：偿债、补流、项目、股权、基金等组合用途逐项取证；缺许可证不编造取得事实。
 
@@ -114,13 +114,13 @@
 
 范围与保留项：用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。
 
-下一份交付：建立用途—材料—待确认映射，条件性简化披露须单独判断。
+下一份交付：已有同口径用途分项精确加总、逐项材料证据检查；仍须接本期条款/材料适配，条件性简化披露单独审核。
 
 审核决定、理由、证据记录：待填写。
 
 ## 私募资金用途与约定变更程序
 
-规则：`sse-private-private-use-change`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-private-use-change`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：限定偿债不能由持有人决议豁免；私募不机械套公募跨类别会议要求。
 
@@ -176,7 +176,7 @@
 
 ## 审计意见及非标补充说明
 
-规则：`sse-private-audit-opinion`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-audit-opinion`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：强调事项及保留意见需有权机构说明/会计师补充/偿债影响；保留事项是否消除需会计师核查。
 
@@ -190,7 +190,7 @@
 
 ## 合并及母公司六张表与重述
 
-规则：`sse-private-financial-statements`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-financial-statements`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：编合并报表时同时披露母公司三表；重述保留原数；新设子公司例外不免全部披露。
 
@@ -218,7 +218,7 @@
 
 ## 资产负债项目构成和变动分析
 
-规则：`sse-private-mdna-thresholds`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-mdna-thresholds`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：10%和30%均含边界、增减均算；零/负基数不机械比较，低占比重大风险仍需说明。
 
@@ -372,7 +372,7 @@
 
 ## 闲置募集资金临时补流边界
 
-规则：`sse-private-idle-proceeds-2026`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-idle-proceeds-2026`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：临时补流与最终补流区分；12个月和付款节点孰早，边界日前语义及原则禁止保留判断。
 
@@ -386,7 +386,7 @@
 
 ## 私募定期披露安排
 
-规则：`sse-private-continuing-disclosure`；工程：bounded-research-check-v2；业务审核：待填写。
+规则：`sse-private-continuing-disclosure`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：年后4个月内经审计财报、半年后2个月内中报；约定完整不证明实际已披露。
 
@@ -400,15 +400,15 @@
 
 ## 信息披露负责人及联络人
 
-规则：`sse-private-disclosure-officer-2026`；工程：unimplemented；业务审核：待填写。
+规则：`sse-private-disclosure-officer-2026`；工程：bounded-research-check-v3；业务审核：待填写。
 
 具体审核决定/反例：2025-12-26发布但2026-05-01生效；未变更可不重签，但要既有有效承诺。
 
-依据：[sse-officer-2025/P00007](../../verification/2026-09-26/sources/sse-officer-2025.md#p00007) · [sse-officer-2025/P00008](../../verification/2026-09-26/sources/sse-officer-2025.md#p00008) · [sse-officer-2025/P00009](../../verification/2026-09-26/sources/sse-officer-2025.md#p00009) · [sse-officer-2025/P00010](../../verification/2026-09-26/sources/sse-officer-2025.md#p00010) · [sse-officer-2025/P00011](../../verification/2026-09-26/sources/sse-officer-2025.md#p00011) · [sse-officer-2025/P00016](../../verification/2026-09-26/sources/sse-officer-2025.md#p00016) · [sse-officer-2025/P00017](../../verification/2026-09-26/sources/sse-officer-2025.md#p00017) · [sse-officer-2025/P00018](../../verification/2026-09-26/sources/sse-officer-2025.md#p00018)
+依据：[sse-officer-2025/P00007](../../verification/2026-09-26/sources/sse-officer-2025.md#p00007) · [sse-officer-2025/P00008](../../verification/2026-09-26/sources/sse-officer-2025.md#p00008) · [sse-officer-2025/P00009](../../verification/2026-09-26/sources/sse-officer-2025.md#p00009) · [sse-officer-2025/P00010](../../verification/2026-09-26/sources/sse-officer-2025.md#p00010) · [sse-officer-2025/P00011](../../verification/2026-09-26/sources/sse-officer-2025.md#p00011) · [sse-officer-2025/P00012](../../verification/2026-09-26/sources/sse-officer-2025.md#p00012) · [sse-officer-2025/P00013](../../verification/2026-09-26/sources/sse-officer-2025.md#p00013) · [sse-officer-2025/P00014](../../verification/2026-09-26/sources/sse-officer-2025.md#p00014) · [sse-officer-2025/P00015](../../verification/2026-09-26/sources/sse-officer-2025.md#p00015) · [sse-officer-2025/P00016](../../verification/2026-09-26/sources/sse-officer-2025.md#p00016) · [sse-officer-2025/P00017](../../verification/2026-09-26/sources/sse-officer-2025.md#p00017) · [sse-officer-2025/P00018](../../verification/2026-09-26/sources/sse-officer-2025.md#p00018)
 
 范围与保留项：2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。
 
-下一份交付：实现负责人/联络人字段、任职及签署证据检查，不由模型代签。
+下一份交付：已有负责人/联络人、任职审核完整性及真实签署证据检查；仍须接本期任职、禁止情形核验和有效承诺适配，不由模型代签。
 
 审核决定、理由、证据记录：待填写。
 
