@@ -7,6 +7,7 @@ import { appendRuleApplicabilityFieldReview, getRuleApplicabilityFieldReview,
 import { createRuleApplicabilityContextDraft } from '@bondbuddy/rule-applicability-context';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { createProductionServer, createServer } from './server.js';
+import { loadTargetConfirmation } from './target-confirmation.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const databaseUrl = await isolatedTestDatabase('RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL');
@@ -42,10 +43,12 @@ test('owner applicability API derives a needs_review ref from locked evidence an
     const sendWithoutProductionLoader = (method: string, url: string, payload?: unknown) => appWithoutProductionLoader.inject({ method: method as any, url,
       headers: { origin }, payload: payload as any });
     const base = `/api/v1/projects/${projectId}`;
-    const lockInput = async () => {
+    const lockInput = async (targetConfirmation?: { market: 'sse'; offering: 'private'; document_purpose: 'registration';
+      as_of: string; target_reporting_periods: [] }) => {
       const response = await send('POST', `${base}/input-revisions`, { draft_revision: 1,
         material_versions: [{ material_id: materialId, material_version: 1 },
-          { material_id: auditMaterialId, material_version: 1 }], requirement_message_ids: [] });
+          { material_id: auditMaterialId, material_version: 1 }], requirement_message_ids: [],
+        ...(targetConfirmation ? { target_confirmation: targetConfirmation } : {}) });
       assert.equal(response.statusCode, 201, response.body);
       return response.json() as { input_revision: number; input_hash: string };
     };
@@ -308,8 +311,25 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       activeOwner = owner;
       assert.equal((await send('GET', `${base}/rule-applicability-context-drafts/unknown/versions/1`)).statusCode, 404);
 
-      const secondInput = await lockInput();
+      const secondInput = await lockInput({ market: 'sse', offering: 'private', document_purpose: 'registration',
+        as_of: '2026-09-27', target_reporting_periods: [] });
       assert.equal(secondInput.input_revision, input.input_revision + 1);
+      const confirmedManifest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+        [owner, projectId, secondInput.input_revision])).rows[0]!.manifest;
+      assert.deepEqual(await loadTargetConfirmation(pool, owner, projectId, secondInput.input_revision),
+        confirmedManifest.target_confirmation);
+      const confirmedDraft = await send('POST', `${base}/input-revisions/${secondInput.input_revision}/rule-applicability-context-drafts`,
+        { request_id: `confirmed-draft-${suffix}` });
+      assert.equal(confirmedDraft.statusCode, 201, confirmedDraft.body);
+      assert.equal(confirmedDraft.json().status, 'needs_review', 'confirmed target intent never approves a context');
+      const confirmedFields = await pool.query(`SELECT field_key,candidate_value,source_kind,source_status
+        FROM bb_rule_applicability_context_candidates WHERE context_id=$1 AND field_key=ANY($2::text[])`,
+      [confirmedDraft.json().context_ref.context_id, ['asOf', 'documentPurpose']]);
+      const confirmedByKey = new Map(confirmedFields.rows.map(row => [row.field_key, row]));
+      assert.deepEqual(confirmedByKey.get('asOf'), { field_key: 'asOf', candidate_value: '2026-09-27',
+        source_kind: 'user_asserted', source_status: 'user_asserted' });
+      assert.deepEqual(confirmedByKey.get('documentPurpose'), { field_key: 'documentPurpose', candidate_value: 'registration',
+        source_kind: 'user_asserted', source_status: 'user_asserted' });
       const reusedKey = await send('POST', `${base}/input-revisions/${secondInput.input_revision}/rule-applicability-context-drafts`,
         { request_id: `draft-request-${suffix}` });
       assert.equal(reusedKey.statusCode, 409);
