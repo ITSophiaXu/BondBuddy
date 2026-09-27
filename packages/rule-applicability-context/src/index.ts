@@ -113,7 +113,7 @@ export interface ReviewedRuleApplicabilityContextArgs {
 
 export type ReviewedRuleApplicabilityContextResult =
   | { readonly status: 'needs_review'; readonly reasons: string[]; readonly contextPin?: RuleApplicabilityContextPin | null }
-  | { readonly request: {
+  | { readonly status: 'approved'; readonly reasons: string[]; readonly request: {
       market: Market; offering: Offering; instrument: string; documentStage: 'registration' | 'issuance';
       issuerScope: string; investorScope: string; industry: string; specialFeatures: readonly string[]; asOf: string;
     }; readonly contextPin: RuleApplicabilityContextPin & Record<string, unknown> };
@@ -769,7 +769,7 @@ export async function loadReviewedRuleApplicabilityContext(
           String(found.rows[0]!.material_sha256).trim() !== evidence.materialSha256) reasons.push('rule_applicability_overall_review_evidence_stale');
     }
     if (reasons.length) return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
-    return { contextPin: contextPin as RuleApplicabilityContextPin & Record<string, unknown>, request: { market: market as Market, offering: offering as Offering,
+    return { status: 'approved', reasons: [], contextPin: contextPin as RuleApplicabilityContextPin & Record<string, unknown>, request: { market: market as Market, offering: offering as Offering,
       instrument: instrument as string, documentStage: documentStage as 'registration' | 'issuance', issuerScope: issuerScope as string,
       investorScope: investorScope as string, industry: industry as string, specialFeatures: [...specialFeatures] as string[], asOf } };
 }

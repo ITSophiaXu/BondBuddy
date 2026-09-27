@@ -180,7 +180,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       if (loaded.status !== 'needs_review') assert.fail('draft unexpectedly became production-ready');
       assert.ok(!loaded.reasons.includes('rule_applicability_issuer_identity_stale'),
         'an unchanged PostgreSQL review must survive rule applicability revalidation');
-      assert.ok(loaded.reasons.includes('rule_applicability_taxonomy_and_review_threshold_not_defined'));
+      assert.ok(loaded.reasons.includes('rule_applicability_overall_review_required'));
       assert.equal('request' in loaded, false, 'draft must never return a production rule request');
       const oldBinding = { ...expectedIssuerBinding, reviewed_at: new Date(Math.floor(reviewedAt.getTime() / 1000) * 1000).toISOString() };
       const oldRevision = await loadInTransaction(pool, { ...exact, expectedIssuerBinding: oldBinding });
