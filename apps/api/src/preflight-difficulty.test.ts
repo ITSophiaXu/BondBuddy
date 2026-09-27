@@ -46,13 +46,20 @@ test('HTTP update preflight returns conservative, owner-scoped immutable difficu
   const addLock = async (revision: number, draftRevision: number, periods: ReturnType<typeof period>[], includeFinance = true, invalid = false) => {
     const materials = [{ material_id: history, material_version: 1, role: 'historical', sha256: digest },
       ...(includeFinance ? [{ material_id: finance, material_version: 1, role: 'financial', sha256: digest }] : [])];
+    const targetConfirmation = { status: 'confirmed', market: 'sse', offering: 'private', document_purpose: null, as_of: null,
+      target_reporting_periods: periods, confirmed_by: owner, confirmed_at: '2026-09-27T06:00:00.000Z' };
     const manifest = { kind: 'update', draft_revision: draftRevision, market: 'sse', offering: 'private', materials,
-      update_details: invalid ? null : { target_reporting_periods: periods } };
+      update_details: invalid ? null : { target_reporting_periods: periods }, target_confirmation: targetConfirmation };
     const inputHash = hash({ revision, manifest });
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'[]'::jsonb)`,
     [project, revision, owner, draftRevision, inputHash, JSON.stringify(manifest),
       JSON.stringify(materials.map(({ material_id, material_version }) => ({ material_id, material_version })))]);
+    await pool.query(`INSERT INTO bb_input_revision_target_confirmations(owner_user_id,project_id,input_revision,market,offering,
+      document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`,
+    [owner, project, revision, targetConfirmation.market, targetConfirmation.offering, targetConfirmation.document_purpose,
+      targetConfirmation.as_of, JSON.stringify(periods), targetConfirmation.confirmed_by, targetConfirmation.confirmed_at]);
     await pool.query('UPDATE bb_projects SET draft_revision=$3,latest_input_revision=$4 WHERE owner_user_id=$1 AND id=$2',
       [owner, project, draftRevision, revision]);
     return inputHash;

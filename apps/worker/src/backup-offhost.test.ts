@@ -78,7 +78,9 @@ test('blob-snapshot never exports the off-host backup container', { skip: !conne
   await service().getContainerClient(containerName).createIfNotExists();
   await service().getContainerClient(containerName).getBlockBlobClient('20260925T030000Z-x/db.dump').uploadData(Buffer.from('dump'));
   const out = await mkdtemp(join(tmpdir(), 'bb-snap-')); dirs.push(out);
-  await script('blob-snapshot.mjs', 'export', out);
+  await run(process.execPath, [join(scripts, 'blob-snapshot.mjs'), 'export', out], {
+    env: { ...env(), BB_BLOB_BACKUP_CONTAINERS: `${snap.containerName},${containerName}` }
+  });
   const manifest = JSON.parse(await readFile(join(out, 'manifest.json'), 'utf8')) as { container: string }[];
   assert.ok(manifest.some(e => e.container === `bbsnap${suffix}`));
   assert.ok(!manifest.some(e => e.container === containerName));

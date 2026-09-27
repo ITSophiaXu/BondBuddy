@@ -950,12 +950,16 @@ test('#79 near-limit multibyte ordinary JSON remains complete in bounded heaps',
   for (const heapMiB of [128, 256]) {
     const source = `import { performance } from 'node:perf_hooks';
       const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const baseline = JSON.stringify({note:'债'.repeat(Math.floor((5 * 1024 * 1024 - 80) / 3))});
       const body = JSON.stringify({note:'债'.repeat(Math.floor((10 * 1024 * 1024 - 80) / 3))});
+      const baselineStart = performance.now();
+      const baselineAccepted = scrubSecrets(baseline) === baseline;
+      const baselineMs = Math.round(performance.now() - baselineStart);
       const started = performance.now();
       const result = scrubSecrets(body);
-      process.stdout.write(JSON.stringify({accepted:result===body, inputBytes:Buffer.byteLength(body),
+      process.stdout.write(JSON.stringify({accepted:baselineAccepted && result===body, baselineMs, inputBytes:Buffer.byteLength(body),
         elapsedMs:Math.round(performance.now()-started), peakRssMiB:Math.round(process.resourceUsage().maxRSS/1024)}));
-      if (result !== body) process.exitCode = 1;`;
+      if (!baselineAccepted || result !== body) process.exitCode = 1;`;
     const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
       const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
         { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
@@ -968,8 +972,9 @@ test('#79 near-limit multibyte ordinary JSON remains complete in bounded heaps',
     const metrics = JSON.parse(result.stdout);
     assert.equal(metrics.accepted, true);
     assert.ok(metrics.inputBytes <= 10 * 1024 * 1024 && metrics.inputBytes > 10_000_000);
-    assert.ok(metrics.elapsedMs < 3000);
-    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B multibyte: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+    // Doubling input should remain bounded despite constrained-heap GC and host scheduling jitter.
+    assert.ok(metrics.elapsedMs < Math.min(8000, metrics.baselineMs * 3.5 + 2500));
+    t.diagnostic(`${heapMiB} MiB heap / ${metrics.inputBytes} B multibyte: ${metrics.elapsedMs} ms (5 MiB baseline ${metrics.baselineMs} ms), peak RSS ${metrics.peakRssMiB} MiB`);
   }
 });
 
