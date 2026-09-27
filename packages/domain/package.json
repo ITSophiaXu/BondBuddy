@@ -9,6 +9,7 @@
     "./facts": { "types": "./dist/facts.d.ts", "default": "./dist/facts.js" },
     "./historical-update": { "types": "./dist/historical-update.d.ts", "default": "./dist/historical-update.js" },
     "./update-difficulty": { "types": "./dist/update-difficulty.d.ts", "default": "./dist/update-difficulty.js" },
+    "./issuance-arrangement": { "types": "./dist/issuance-arrangement.d.ts", "default": "./dist/issuance-arrangement.js" },
     "./historical-native-extractor-version": { "types": "./dist/historical-native-extractor-version.d.ts", "default": "./dist/historical-native-extractor-version.js" },
     "./reference-match": { "types": "./dist/reference-match.d.ts", "default": "./dist/reference-match.js" },
     "./reference-source-selection": { "types": "./dist/reference-source-selection.d.ts", "default": "./dist/reference-source-selection.js" },
