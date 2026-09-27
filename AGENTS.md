@@ -66,6 +66,10 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 #20于2026-09-27补齐[协会行业标准原件、576代码与候选映射](knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)，含官方检索、2024相近标准边界及逐表格定位。#19在既有唯一字典中接入，不能把此离线资产当成已批准行业或直接启用生产。#20是否完成按[关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)逐关核对，已有样本/方法确认不重复索取，首次受控运行与生成后的专业验收分开。
 
+2026-09-27补充的[配套法规及跨标准比对](knowledge/exchange-bonds/verification/2026-09-27-companion/README.md)包含上交所适当性30条、公司法政府转载266条和证监会2024行业标准；[适用例外/验收场景](knowledge/exchange-bonds/drafts/sse-private/COMPANION-APPLICABILITY-20260927.md)给出24项预期及现有checker边界。576码结构相同但12处文字不同，不自动替代协会2023来源。#315/#317已合并，配套资产仍不代表正式规则发布；缺失来源和工程接入以关闭清单为准。
+
+用户2026-09-27明确调整：Word/WPS桌面兼容性验收不阻断#20，交#146独立跟踪，实际问题另开缺陷。#20按[更新后的关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)G1–G4验收；第一次内部工作稿测试、规则/内容验收、客户端兼容性与对外发布分别推进。缺局部配套法规只限制对应结论，受控测试入口的工程缺口由#19/#35明确，不能继续用全库补证或生成后验收循环阻止首次运行。
+
 ## Codex 接到 Issue 后
 
 #20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.6` / checker v4：25组受限检查和6组明确人工审核处理；原剩余20条已补14组检查与6组人工处理，全部仍为research_only。[31条已填文献核对记录](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-20260927.md)列出原文、效力观察、适用/例外与验收；人工专业签认/真实结果仍另行完成。#19的[A03九维到十二码交接](knowledge/exchange-bonds/drafts/sse-private/A03-FEATURE-MAPPING-20260927.md)明确多码、否定证据及单值/编码差距，不在业务checker复制公共契约。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。

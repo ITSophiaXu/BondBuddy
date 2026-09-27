@@ -13,3 +13,9 @@
 /knowledge/exchange-bonds/verification/2026-09-27-industry/code-table.md linguist-generated=true
 /knowledge/exchange-bonds/verification/2026-09-27-industry/guideline.md linguist-generated=true
 /knowledge/exchange-bonds/verification/2026-09-27-industry/followup-sources.md linguist-generated=true
+# Companion generated evidence; preserve reproducible output line endings.
+/knowledge/exchange-bonds/verification/2026-09-27-companion/sources/*.md text eol=lf linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-companion/*-articles.json text eol=lf linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-companion/industry-table-rows.json text eol=lf linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-companion/industry-codes.json text eol=lf linguist-generated=true
+/knowledge/exchange-bonds/verification/2026-09-27-companion/industry-comparison.json text eol=lf
