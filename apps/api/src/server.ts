@@ -32,7 +32,7 @@ import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
-import { confirmTargetIntent, type TargetConfirmationRequest } from './target-confirmation.js';
+import { confirmTargetIntent, loadTargetConfirmation, type TargetConfirmationRequest } from './target-confirmation.js';
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
@@ -453,6 +453,20 @@ export function createServer(settings: Settings = {}) {
       market==='szse'?MARKET_OFFERINGS.szse.includes(offering as never):
       market==='nafmii'?MARKET_OFFERINGS.nafmii.includes(offering as never):false;
     if((market!==null&&!validMarket)||(offering!==null&&(!validOffering||!validMarket)))throw stale();
+    const persistedTarget=await loadTargetConfirmation(db(),user,id,revision);
+    const lockedTarget=snapshot.target_confirmation;
+    if(persistedTarget===null){
+      if(!lockedTarget||typeof lockedTarget!=='object'||Array.isArray(lockedTarget)||
+         (lockedTarget as Record<string,unknown>).status!=='unconfirmed')throw stale();
+    }else if(!lockedTarget||typeof lockedTarget!=='object'||Array.isArray(lockedTarget)||
+             stableJson(lockedTarget)!==stableJson(persistedTarget)||
+             persistedTarget.market!==market||persistedTarget.offering!==offering||persistedTarget.confirmed_by!==user){
+      throw stale();
+    }
+    // User confirmation is immutable task intent, not a parsed or professionally reviewed source fact.
+    // Keep these candidates user_asserted until the independent #19 review path approves them.
+    const targetAsOf=persistedTarget?.as_of??null;
+    const targetPurpose=persistedTarget?.document_purpose??null;
     const unknown=(fieldKey:string)=>({fieldKey,value:null,sourceKind:'unknown' as const,sourceStatus:'unknown' as const});
     const asserted=(fieldKey:string,value:unknown)=>value===null?unknown(fieldKey):({fieldKey,value,sourceKind:'user_asserted' as const,sourceStatus:'user_asserted' as const});
     try{
@@ -462,8 +476,9 @@ export function createServer(settings: Settings = {}) {
           sha256:String(selected.sha256).trim().toLowerCase(),parseSnapshotId:identityBinding.source_snapshot_id},
         issuerIdentityBinding:{recordId:identityBinding.record_id,version:identityBinding.version,contentHash:identityBinding.content_hash,
           entityId:identityBinding.entity_id,materialId:identityBinding.material_id,materialVersion:identityBinding.material_version},
-        asOf:null,documentPurpose:null,requestId,
-        fieldCandidates:[asserted('market',market),asserted('offering',offering),unknown('asOf'),unknown('documentPurpose'),unknown('industry'),unknown('specialFeatures')],
+        asOf:targetAsOf,documentPurpose:targetPurpose,requestId,
+        fieldCandidates:[asserted('market',market),asserted('offering',offering),asserted('asOf',targetAsOf),
+          asserted('documentPurpose',targetPurpose),unknown('industry'),unknown('specialFeatures')],
       });
       return reply.code(201).send({status:'needs_review',production_eligible:false,context_ref:{context_id:result.contextId,version:result.version,
         content_hash:result.contentHash,source_input_revision:revision,source_input_hash:String(source.input_hash).trim()}});

@@ -51,13 +51,15 @@ export function confirmTargetIntent(request: TargetConfirmationRequest, draft: {
 
 /** Trusted, owner-scoped revision lookup for background/rule consumers. Null means unconfirmed. */
 export async function loadTargetConfirmation(db: Pool | PoolClient, ownerUserId: string, projectId: string, revision: number): Promise<TargetConfirmation | null> {
-  const result = await db.query(`SELECT market,offering,document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at
+  const result = await db.query(`SELECT market,offering,document_purpose,as_of::text AS as_of,target_reporting_periods,confirmed_by,confirmed_at
     FROM bb_input_revision_target_confirmations WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3`,
   [ownerUserId, projectId, revision]);
   const row = result.rows[0];
   if (!row) return null;
   return { status: 'confirmed', market: row.market, offering: row.offering,
-    document_purpose: row.document_purpose, as_of: row.as_of === null ? null : row.as_of.toISOString().slice(0, 10),
+    // PostgreSQL date is a calendar day, not an instant. Casting to text avoids
+    // node-postgres shifting midnight to the previous UTC day in positive timezones.
+    document_purpose: row.document_purpose, as_of: row.as_of === null ? null : String(row.as_of),
     target_reporting_periods: row.target_reporting_periods, confirmed_by: row.confirmed_by,
     confirmed_at: row.confirmed_at.toISOString() };
 }
