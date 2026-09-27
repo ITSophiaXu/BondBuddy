@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { isMarketOffering, RULE_APPLICABILITY_FEATURE_DIMENSIONS, type Market, type Offering } from '@bondbuddy/contracts';
+import { resolveSsePrivateFeatureEvidenceV2, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION,
+  type SsePrivateFeatureEvidenceV2 } from '@bondbuddy/domain';
 import { authorizeRuleApplicabilityReviewer, type RuleApplicabilityReviewerPrincipal,
   type RuleApplicabilityReviewerScope } from './rule-applicability-reviewer-grants.js';
 
@@ -16,17 +18,18 @@ export type RuleApplicabilityApprovedValues = {
   market: Market; offering: Offering; instrument: string; documentStage: 'registration' | 'issuance';
   issuerScope: string; investorScope: string; industry: string; specialFeatures: readonly string[]; asOf: string;
 };
-export type RuleApplicabilityFeatureEvidence = {
+export type RuleApplicabilityFeatureEvidenceV1 = {
   dimension: RuleApplicabilityFeatureDimension; outcome: 'present' | 'absent' | 'not_applicable';
   featureCode?: string; reason: string; evidenceRefs: readonly RuleApplicabilityEvidenceRef[];
 };
+export type RuleApplicabilityFeatureEvidence = readonly RuleApplicabilityFeatureEvidenceV1[] | SsePrivateFeatureEvidenceV2;
 export type AppendRuleApplicabilityOverallReviewInput = {
   principal: RuleApplicabilityReviewerPrincipal; scope: RuleApplicabilityReviewerScope;
   target: { contextId: string; contextVersion: number; contextContentHash: string; sourceInputRevision: number; sourceInputHash: string };
   requestId: string; action: 'approve' | 'request_more_evidence' | 'withdraw'; reason: string;
   approvedValues?: RuleApplicabilityApprovedValues;
   valueEvidence?: Readonly<Record<string, readonly RuleApplicabilityEvidenceRef[]>>;
-  featureEvidence?: readonly RuleApplicabilityFeatureEvidence[];
+  featureEvidence?: RuleApplicabilityFeatureEvidence;
   taxonomyVersion?: string;
 };
 export type RuleApplicabilityOverallReviewRecord = {
@@ -35,7 +38,7 @@ export type RuleApplicabilityOverallReviewRecord = {
   sourceInputRevision: number; sourceInputHash: string; action: 'approve' | 'request_more_evidence' | 'withdraw';
   reason: string; approvedValues: RuleApplicabilityApprovedValues | null;
   valueEvidence: Readonly<Record<string, readonly RuleApplicabilityEvidenceRef[]>>;
-  featureEvidence: readonly RuleApplicabilityFeatureEvidence[]; taxonomyVersion: string | null;
+  featureEvidence: RuleApplicabilityFeatureEvidence | null; taxonomyVersion: string | null;
   reviewerUserId: string; reviewerGrantId: string; reviewedAt: string; replayed: boolean;
 };
 type Queryable = Pick<Pool | PoolClient, 'query'>;
@@ -78,9 +81,9 @@ function validate(input: AppendRuleApplicabilityOverallReviewInput): void {
       !['registration', 'issuance'].includes(value.documentStage) || !['domestic-company', 'other'].includes(value.issuerScope) ||
       !['professional', 'other'].includes(value.investorScope) || typeof value.industry !== 'string' || !value.industry.trim() ||
       !Array.isArray(value.specialFeatures) || value.specialFeatures.length > 32 ||
-      value.specialFeatures.some(v => typeof v !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(v)) ||
+      value.specialFeatures.some(v => typeof v !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(v)) ||
       new Set(value.specialFeatures).size !== value.specialFeatures.length || !validDate(value.asOf) ||
-      !evidence || !isRecord(evidence) || !features || !Array.isArray(features) ||
+      !evidence || !isRecord(evidence) || !features || (!Array.isArray(features) && !isRecord(features)) ||
       typeof input.taxonomyVersion !== 'string' || !/^bondbuddy-applicability-[a-z0-9.-]{1,64}$/.test(input.taxonomyVersion))
     throw fail('OVERALL_REVIEW_APPROVED_VALUES_INVALID');
   const requiredEvidenceFields = ['instrument', 'issuerScope', 'investorScope', 'industry'];
@@ -88,21 +91,45 @@ function validate(input: AppendRuleApplicabilityOverallReviewInput): void {
     const refs = evidence[key]; if (!Array.isArray(refs) || refs.length === 0) throw fail(`OVERALL_REVIEW_FIELD_EVIDENCE_REQUIRED:${key}`);
     refs.forEach(validateEvidence);
   }
-  const keys = features.map(item => item?.dimension);
-  if (keys.length !== RULE_APPLICABILITY_FEATURE_DIMENSIONS.length || new Set(keys).size !== keys.length ||
-      RULE_APPLICABILITY_FEATURE_DIMENSIONS.some(key => !keys.includes(key))) throw fail('OVERALL_REVIEW_FEATURE_DIMENSIONS_INCOMPLETE');
   const positive: string[] = [];
-  for (const item of features) {
-    if (!['present', 'absent', 'not_applicable'].includes(item.outcome) || typeof item.reason !== 'string' ||
-        item.reason.trim().length < 1 || item.reason.trim().length > 1024 || !Array.isArray(item.evidenceRefs) || item.evidenceRefs.length === 0)
-      throw fail(`OVERALL_REVIEW_FEATURE_EVIDENCE_REQUIRED:${item.dimension}`);
-    item.evidenceRefs.forEach(validateEvidence);
-    if (item.outcome === 'present') {
-      if (!item.featureCode || !/^[a-z][a-z0-9_]{0,63}$/.test(item.featureCode)) throw fail('OVERALL_REVIEW_FEATURE_CODE_REQUIRED');
-      positive.push(item.featureCode);
-    } else if (item.featureCode !== undefined) throw fail('OVERALL_REVIEW_NEGATIVE_FEATURE_HAS_CODE');
+  if (Array.isArray(features)) {
+    const keys = features.map(item => item?.dimension);
+    if (keys.length !== RULE_APPLICABILITY_FEATURE_DIMENSIONS.length || new Set(keys).size !== keys.length ||
+        RULE_APPLICABILITY_FEATURE_DIMENSIONS.some(key => !keys.includes(key))) throw fail('OVERALL_REVIEW_FEATURE_DIMENSIONS_INCOMPLETE');
+    for (const item of features) {
+      if (!['present', 'absent', 'not_applicable'].includes(item.outcome) || typeof item.reason !== 'string' ||
+          item.reason.trim().length < 1 || item.reason.trim().length > 1024 || !Array.isArray(item.evidenceRefs) || item.evidenceRefs.length === 0)
+        throw fail(`OVERALL_REVIEW_FEATURE_EVIDENCE_REQUIRED:${item.dimension}`);
+      item.evidenceRefs.forEach(validateEvidence);
+      if (item.outcome === 'present') {
+        if (!item.featureCode || !/^[a-z][a-z0-9_]{0,63}$/.test(item.featureCode)) throw fail('OVERALL_REVIEW_FEATURE_CODE_REQUIRED');
+        positive.push(item.featureCode);
+      } else if (item.featureCode !== undefined) throw fail('OVERALL_REVIEW_NEGATIVE_FEATURE_HAS_CODE');
+    }
+  } else {
+    const resolved = resolveSsePrivateFeatureEvidenceV2(features);
+    if (!resolved.accepted) throw fail(`OVERALL_REVIEW_FEATURE_EVIDENCE_V2_INVALID:${resolved.reason}`);
+    if (input.taxonomyVersion !== SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION) throw fail('OVERALL_REVIEW_FEATURE_TAXONOMY_VERSION_MISMATCH');
+    positive.push(...resolved.specialFeatures);
   }
   if (canonical([...positive].sort()) !== canonical([...value.specialFeatures].sort())) throw fail('OVERALL_REVIEW_SPECIAL_FEATURES_MISMATCH');
+}
+
+function allFeatureEvidenceRefs(features: RuleApplicabilityFeatureEvidence | undefined): readonly RuleApplicabilityEvidenceRef[] {
+  if (!features) return [];
+  if (Array.isArray(features)) return features.flatMap(item => [...item.evidenceRefs]);
+  const v2 = features as SsePrivateFeatureEvidenceV2;
+  return v2.dimensions.flatMap(item => [
+    ...item.evidenceRefs as RuleApplicabilityEvidenceRef[],
+    ...item.childAssessments.flatMap(child => [...child.evidenceRefs as RuleApplicabilityEvidenceRef[]]),
+  ]);
+}
+
+function parentFeatureEvidence(features: RuleApplicabilityFeatureEvidence | undefined): readonly { dimension: string; evidenceRefs: readonly RuleApplicabilityEvidenceRef[] }[] {
+  if (!features) return [];
+  if (Array.isArray(features)) return features.map(item => ({ dimension: item.dimension, evidenceRefs: item.evidenceRefs }));
+  const v2 = features as SsePrivateFeatureEvidenceV2;
+  return v2.dimensions.map(item => ({ dimension: item.dimension, evidenceRefs: item.evidenceRefs as RuleApplicabilityEvidenceRef[] }));
 }
 function map(row: Row, replayed: boolean): RuleApplicabilityOverallReviewRecord {
   return { id: String(row.id), sequence: Number(row.sequence_id), requestId: String(row.request_id), ownerUserId: String(row.owner_user_id),
@@ -111,7 +138,7 @@ function map(row: Row, replayed: boolean): RuleApplicabilityOverallReviewRecord 
     sourceInputHash: String(row.source_input_hash).trim(), action: String(row.action) as RuleApplicabilityOverallReviewRecord['action'],
     reason: String(row.reason), approvedValues: parse(row.applicability_values) as RuleApplicabilityApprovedValues | null,
     valueEvidence: parse(row.value_evidence) as Record<string, readonly RuleApplicabilityEvidenceRef[]>,
-    featureEvidence: parse(row.feature_evidence) as RuleApplicabilityFeatureEvidence[],
+    featureEvidence: parse(row.feature_evidence) as RuleApplicabilityFeatureEvidence,
     taxonomyVersion: row.taxonomy_version === null ? null : String(row.taxonomy_version), reviewerUserId: String(row.reviewer_user_id),
     reviewerGrantId: String(row.reviewer_grant_id), reviewedAt: new Date(String(row.reviewed_at)).toISOString(), replayed };
 }
@@ -188,7 +215,7 @@ export async function appendRuleApplicabilityOverallReview(db: Db, input: Append
         if (!(key in approvedValueByField) || canonical(parse(decision.candidate_value)) !== canonical(approvedValueByField[key]))
           throw fail(`OVERALL_REVIEW_FIELD_ACTION_VALUE_MISMATCH:${key}`);
       }
-      const refs = [...Object.values(input.valueEvidence ?? {}).flat(), ...(input.featureEvidence ?? []).flatMap(f => [...f.evidenceRefs])];
+      const refs = [...Object.values(input.valueEvidence ?? {}).flat(), ...allFeatureEvidenceRefs(input.featureEvidence)];
       await validateEvidenceAgainstInput(client, input.scope.ownerUserId, input.scope.projectId, target.sourceInputRevision, target.sourceInputHash, refs);
       const materialRows = (await client.query(`SELECT material_versions,manifest FROM bb_input_revisions
         WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`,
@@ -199,7 +226,7 @@ export async function appendRuleApplicabilityOverallReview(db: Db, input: Append
         .map((item) => `${String(item.material_id)}\u0000${String(item.material_version)}`).sort();
       if (materials.length === 0 || new Set(materials).size !== materials.length || !Array.isArray(materialRows?.material_versions) ||
           materials.length !== materialRows.material_versions.length) throw fail('OVERALL_REVIEW_COMPLETE_MATERIAL_SET_UNAVAILABLE');
-      for (const feature of input.featureEvidence ?? []) {
+      for (const feature of parentFeatureEvidence(input.featureEvidence)) {
         const covered = [...new Set(feature.evidenceRefs.map(ref => `${ref.materialId}\u0000${ref.materialVersion}`))].sort();
         if (canonical(covered) !== canonical(materials)) throw fail(`OVERALL_REVIEW_FEATURE_MATERIAL_COVERAGE_INCOMPLETE:${feature.dimension}`);
       }
