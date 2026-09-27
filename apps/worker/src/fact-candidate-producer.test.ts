@@ -15,7 +15,9 @@ const sha = (value: string) => createHash('sha256').update(value, 'utf8').digest
 
 test('semantic producer binds reviewed issuer and exact parse evidence, replays idempotently, and retains conflicts',
   { skip: !testDatabaseUrl && 'set FACT_CANDIDATE_PRODUCER_TEST_DATABASE_URL for migrated PostgreSQL 16' }, async () => {
-    const pool = new Pool({ connectionString: testDatabaseUrl });
+    // Match runtime's BB_WORKER_CONCURRENCY=4 => pool.max=8, so nested checkouts
+    // cannot accidentally pass only because the default node-postgres pool is larger.
+    const pool = new Pool({ connectionString: testDatabaseUrl, max: 8 });
     const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
     const owner = `fact-ingest-owner-${suffix}`, reviewerId = `fact-ingest-reviewer-${suffix}`;
     const grantorId = `fact-ingest-grantor-${suffix}`, projectId = `fact-ingest-project-${suffix}`;
@@ -235,6 +237,43 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
         .every(item => item.candidate.identity.entityId === identityRecord.entityId));
       assert.ok(preservedOriginalCandidates.filter(item => revisedCandidateIds.has(item.candidate.candidateId))
         .every(item => item.candidate.identity.entityId === correctedIdentityRecord.entityId));
+
+      // Model four concurrent producers retaining their checked-out connection after
+      // ledger commit, while four context operations run against the remaining slots.
+      // The context parser read must reuse each context transaction connection. One
+      // request deliberately fails after acquiring its connection; all other contexts
+      // still complete, and the pool remains usable for a subsequent read.
+      const producerConnections = await Promise.all(Array.from({ length: 4 }, () => pool.connect()));
+      const candidateIds = preservedOriginalCandidates.slice(0, 3).map(item => item.candidate.candidateId);
+      const concurrentContexts = Promise.allSettled([
+        ...candidateIds.map(candidateId => createFactEvidenceContextSet({ pool }, { ownerUserId: owner, projectId, candidateId })),
+        createFactEvidenceContextSet({ pool }, { ownerUserId: owner, projectId, candidateId: `missing-${suffix}` }),
+      ]);
+      let finishedBeforeProducerRelease = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const boundedResult = await Promise.race([
+        concurrentContexts.then(results => ({ completed: true as const, results })),
+        new Promise<{ completed: false }>(resolve => { timeout = setTimeout(() => resolve({ completed: false }), 1500); }),
+      ]);
+      if (timeout) clearTimeout(timeout);
+      if (!boundedResult.completed) {
+        producerConnections.forEach(connection => connection.release());
+        await concurrentContexts;
+      } else {
+        finishedBeforeProducerRelease = true;
+        producerConnections.forEach(connection => connection.release());
+      }
+      assert.equal(finishedBeforeProducerRelease, true,
+        'context reads must finish with the bounded pool while producer connections remain checked out');
+      assert.equal(boundedResult.completed, true);
+      if (!boundedResult.completed) throw new Error('bounded context concurrency did not complete');
+      assert.deepEqual(boundedResult.results.map(result => result.status), ['fulfilled', 'fulfilled', 'fulfilled', 'rejected']);
+      const failedContext = boundedResult.results[3];
+      assert.equal(failedContext?.status, 'rejected');
+      if (failedContext?.status === 'rejected') assert.match(String(failedContext.reason), /FACT_EVIDENCE_CONTEXT_SOURCE_NOT_FOUND/);
+      assert.equal((await pool.query('SELECT 1 AS recovered')).rows[0]?.recovered, 1,
+        'a failed context request must release its connection for recovery');
+
       const extractionRun = await pool.query(`SELECT needs_review FROM bb_fact_extraction_runs
         WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=1 AND material_id=$3 AND snapshot_id=$4
           AND extractor_id='synthetic-financial-fields' AND extractor_version='1.0.0'`,

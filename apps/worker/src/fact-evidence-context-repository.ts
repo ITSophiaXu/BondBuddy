@@ -300,7 +300,18 @@ export async function createFactEvidenceContextSet(
       throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
     }
 
-    const snapshot = await getParseSnapshot(dependencies, {
+    // Keep the exact parser evidence read on the same transaction connection used to
+    // verify and persist this context. A separate pool checkout here can deadlock when
+    // producers retain their post-commit connections while the bounded worker pool is
+    // otherwise occupied by concurrent context transactions.
+    const transactionPool: FactEvidenceContextPool = {
+      connect: async () => ({
+        query: (sql, values) => client.query(sql, values),
+        release: () => undefined,
+      }),
+      query: (sql, values) => client.query(sql, values),
+    };
+    const snapshot = await getParseSnapshot({ pool: transactionPool }, {
       ownerUserId: request.ownerUserId, projectId: request.projectId,
       materialId: String(row.material_id), materialVersion: Number(row.material_version),
     }, String(row.snapshot_id));

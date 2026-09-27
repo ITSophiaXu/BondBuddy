@@ -351,8 +351,14 @@ export async function produceParsedFactCandidates(
   const client = await (dependencies.pool as Pool).connect();
   const transactionDependencies: FactRepositoryDependencies = { ...dependencies, pool: client };
   const inserted: StoredFactCandidate[] = [], replayed: StoredFactCandidate[] = [];
+  let transactionOpen = false;
+  let clientReleased = false;
+  const releaseClient = () => {
+    if (!clientReleased) { client.release(); clientReleased = true; }
+  };
   try {
     await client.query('BEGIN');
+    transactionOpen = true;
     const lockKey = `fact-extraction:${context.ownerUserId}:${context.projectId}:${context.inputRevision}:${context.materialId}:${context.materialVersion}:${snapshot.snapshotId}:${extractor.id}:${extractor.version}`;
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
     // Hold the immutable input/material/parse source plus reviewer grant rows while candidates,
@@ -406,6 +412,10 @@ export async function produceParsedFactCandidates(
       const candidates = ids.map(id => byId.get(id as string));
       if (candidates.some(item => item === undefined)) throw fail('FACT_EXTRACTION_CANDIDATE_MISSING');
       await client.query('COMMIT');
+      transactionOpen = false;
+      // Context creation has its own transaction and parse read. Return this slot
+      // before starting it so concurrent producers cannot nest pool reservations.
+      releaseClient();
       const replayedCandidates = candidates as StoredFactCandidate[];
       await ensureFactEvidenceContexts(dependencies.pool as Pool, context.ownerUserId, context.projectId, replayedCandidates);
       return { extractionRunId: String(row.id), snapshotId: snapshot.snapshotId, responseSha256: snapshot.responseSha256,
@@ -463,13 +473,17 @@ export async function produceParsedFactCandidates(
       parse_snapshot_id: snapshot.snapshotId, extractor_id: result.extractor.id, extractor_version: result.extractor.version,
       candidate_ids: persistedIds, needs_review_count: result.needs_review.length })]);
     await client.query('COMMIT');
+    transactionOpen = false;
+    // The immutable ledger/outbox is durable now. Release the producer's connection
+    // before context persistence starts its own transaction.
+    releaseClient();
     await ensureFactEvidenceContexts(dependencies.pool as Pool, context.ownerUserId, context.projectId, [...inserted, ...replayed]);
     return { extractionRunId, snapshotId: snapshot.snapshotId, responseSha256: snapshot.responseSha256,
       inserted, replayed, needsReview: result.needs_review };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
-    client.release();
+    releaseClient();
   }
 }
