@@ -88,9 +88,11 @@ test('#20 incomplete disqualification review is not a clean appointment conclusi
 });
 test('#20 v2 replay retains nine checks and rejects mixed checker declarations', () => {
   const old = structuredClone(pack); old.version = '2026.09.26-draft.4';
+  const v2 = ['private-investors','financial-validity-sse','private-use-change','idle-proceeds-2026','continuing-disclosure',
+    'period-window','audit-opinion','financial-statements','mdna-thresholds'];
   for (const rule of old.rules) {
     rule.checker.parameter_version = old.version;
-    if (['sse-private-funds-use-evidence', 'sse-private-disclosure-officer-2026'].includes(rule.rule_id))
+    if (!v2.includes(rule.rule_id.replace(/^sse-private-/, '')))
       rule.checker = { checker_id: 'exchange-manual-evidence-review', checker_version: 'unimplemented.1', parameter_version: old.version };
     else if (rule.checker.checker_id === 'sse-private-structured-evidence') rule.checker.checker_version = '2';
   }

@@ -157,6 +157,6 @@ test('#20 rejects unsupported v1 declarations and parameter drift', () => {
   const drift = structuredClone(pack); drift.version = 'unmatched-version';
   assert.throws(() => evaluate(drift, input()), /CHECKER_VERSION_MISMATCH/);
   const result = evaluate(pack, input());
-  assert.equal(result.uncoveredRuleIds.length, 20); assert.equal(result.productionEligible, false);
-  assert.equal(result.checkerVersion, '3');
+  assert.equal(result.uncoveredRuleIds.length, 6); assert.equal(result.productionEligible, false);
+  assert.equal(result.checkerVersion, '4');
 });

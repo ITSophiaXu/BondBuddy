@@ -96,3 +96,5 @@
 | 规则来源和上下文已审，但checker未实现 | capability_not_ready，不能宣称规则执行通过 |
 
 反例是待接入测试设计，不是实际测试通过记录。真实样本按 [ACCEPTANCE.md](ACCEPTANCE.md) 执行；逐项业务意见可填写 [REVIEW-WORKSHEET.md](REVIEW-WORKSHEET.md)。
+
+2026-09-27后续：#311已合入整体审核/撤回及loader分支，但发布字典仍为空；PR #315提出行业候选绑定。九维到十二码的多值/否定证据及实际单值和编码差距见[A03细化](A03-FEATURE-MAPPING-20260927.md)，不把以上历史“没有批准后分支”继续当作当前状态。

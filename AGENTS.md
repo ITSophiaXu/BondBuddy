@@ -68,7 +68,7 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 ## Codex 接到 Issue 后
 
-#20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.5`：十一组受限结构化检查已有实现（新增用途分项金额/证据、披露负责人/联络人与承诺），其他20条未实现；全部仍为research_only。完整[31条审核清单](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-CHECKLIST.md)列明具体决定、反例与下一份交付。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。
+#20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.6` / checker v4：25组受限检查和6组明确人工审核处理；原剩余20条已补14组检查与6组人工处理，全部仍为research_only。[31条已填文献核对记录](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-20260927.md)列出原文、效力观察、适用/例外与验收；人工专业签认/真实结果仍另行完成。#19的[A03九维到十二码交接](knowledge/exchange-bonds/drafts/sse-private/A03-FEATURE-MAPPING-20260927.md)明确多码、否定证据及单值/编码差距，不在业务checker复制公共契约。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。
 
 1. 拉取最新 `develop`，为该 Issue 建独立分支与工作区；阅读本文件、完整 Issue（含前置任务和验收标准）及其关联规格。部分 Issue 链接仍指向旧默认分支，应以当前 `develop` 中的对应文件为准。
 2. 开始修改前明确交付物、涉及模块、公共契约、前置任务和验收证据。GitHub assignee 对 Issue 交付负责；涉及其他人的模块时，请该模块负责人 review。同一 Issue 的多个 Codex 会话由 assignee 协调，避免各自实现不同契约。

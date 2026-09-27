@@ -1,10 +1,10 @@
 # #20 可执行检查交接
 
-版本：`2026.09.27-draft.5`，替代 `2026.09.26-draft.4`。实现为
+版本：`2026.09.27-draft.6` / checker v4，替代 `2026.09.27-draft.5`。实现为
 `@bondbuddy/domain/sse-private-checks::evaluateSsePrivateDraftChecks(pack, input)`。
 本文件记录工程实现，不代替业务签认。来源仍未专业签认，31条规则仍全部关闭、无发布记录。
 
-## 已实现的十一组受限检查
+## 延续的十一组受限检查
 
 | 原规则ID后缀 | 检查范围 | 边界与保留项 |
 | --- | --- | --- |
@@ -20,7 +20,7 @@
 | funds-use-evidence | 各用途分类、分项规模精确加总、逐项配套材料核对状态 | 仅在清单完整且币种单位/募集总额净额口径一致时比较；生产性支出简化安排另审，不由材料存在推定合法获批 |
 | disclosure-officer-2026 | 负责人/联络人姓名职务联系方式、任职审核状态与真实承诺 | 2026-05-01生效；禁止任职情形要完整核验，未变更且有有效既有承诺不重复签署；履职与变更公告另验 |
 
-其余20条仍无对应自动检查；完整覆盖清单继续标为 `uncovered`。十一组的 `checker_id=sse-private-structured-evidence`、`checker_version=3`，参数版本与规则包版本严格匹配。v3同时保留v2九项研究回放，拒绝v1、混合checker版本或错配参数；不把v3新增规则套在旧v2包上。
+本轮将原剩余20条补成14组受限检查和6组人工审核处理。共25组受限检查，6条无自动专业判定；正式覆盖清单31条继续标为 `uncovered`，不因有handler就等于全覆盖。全部声明checker v4；同时保留v2九项、v3十一项回放，拒绝混合版本及错配参数。
 
 31条（含未实现项）的具体审核决定、原文定位、反例和下一份交付见[逐条审核清单](RULE-REVIEW-CHECKLIST.md)。本轮没有以自动检查取代专业判断，也没有修改其他五个市场/方式的规则范围。
 
@@ -29,7 +29,7 @@
 - 复用 #19 的 `RulePack`、现有市场/发行方式值和 `FactStatus`。输入为内部结构化证据类型，**不是新增公开API，也不是浏览器可提交的审批对象**。
 - 每个值必须有 `status=verified` 和精确来源锚点才进入确定性计算；null、缺字段、无定位、冲突、用户陈述保留 `needs_evidence`。本函数不核验身份/权限或批准事实；可信 #15/#19 适配器负责绑定账号、项目、输入及材料版本，并验证实际审核记录。
 - 输入 `asOf` 与财务截止日分离。本次实现只回放2026-09-26研究基准；历史或未来适用日返回 `needs_judgement`，不得据此选择当前规则。日期边界仍在[审核工作表](REVIEW-WORKSHEET.md)等待专业审核。
-- 每条 finding 保留原规则ID、来源ID、证据锚点、具体结果。返回包ID/版本、checker版本和当前20条未覆盖规则，顶层始终为 `mode=research_only`、`productionEligible=false`，不提供“全稿合规通过”结论。`pass`只针对该条局部检查，必须连同其他issue/needs_evidence/needs_judgement显示。
+- 每条 finding 保留原规则ID、来源ID、证据锚点、具体结果。返回包ID/版本、checker版本；v4新增handledRuleIds（31）和manualRuleIds（6），uncoveredRuleIds保留6条无自动专业判定规则，顶层始终为 `mode=research_only`、`productionEligible=false`，不提供“全稿合规通过”结论。`pass`只针对该条局部检查，必须连同其他issue/needs_evidence/needs_judgement显示。
 - 财务新增输入位于 `FinancialCheckInput`：reportingWindow、auditOpinion、financialStatements、mdnaItem。后三者分别按一份报告、一期报表、一个比较项目调用；可信适配器必须按已锁定材料清单遍历所有应有年度/表种/近一年及近一期项目并保留未成功检查项。只抽出一项通过不得汇总成全部覆盖。金额是最多20位整数、12位小数的规范十进制字符串；比较使用整数缩放，不用浮点近似。证据中的comparable须包含主体、币种单位、期间以及重述口径。
 - 研究检查本身不调用模型、不扣积分，也不充当正式规则发布。本次另接入历史稿模型阶段的精确正式规则正文消费者，见下文；不改变 #19 的审核加载、正式发布和撤回门槛。
 - 缺失材料仍按 UPD-GAP-01 标待人工确认；这些研究检查不是新增的全文更新硬阻断条件。
@@ -44,7 +44,7 @@
 ## 剩余责任与下一份交付
 
 1. Maxy：按[审核工作表](REVIEW-WORKSHEET.md)和[31条审核清单](RULE-REVIEW-CHECKLIST.md)审阅业务方案、逐条来源和上述日期/例外边界；源码新增测试不自动构成签认。
-2. #19 / loooo139：审核通过后的上下文加载分支、真实审核身份、正式发布；调用本函数前须完成来源和事实授权校验。现有只返回待审核的路径不得绕过。
+2. #19 / loooo139：审核通过后的上下文加载分支、真实审核身份、正式发布；调用本函数前须完成来源和事实授权校验。#311已交付整体审核/撤回及loader分支，已发布字典为空时仍不放行；不得绕过。
 3. #15 / loooo139、#17 / muhualing：可用财务事实及生产接入；单报告/单期/单行检查需完整枚举适配。#265主体审核API及#267预检修复已合并，但不等于财务事实/行业验收完成；API的主体绑定与pin持久化已接入；当前原生财务提取仍仅特定布局/年度/指标，不能视为完整财务事实。
 4. #31 / #35：真实输入、生成成果与日志齐备后，由业务方填写成果验收；WPS另行实测。
 
@@ -64,4 +64,24 @@
 
 未批准/撤回/版本不一致不会回退研究包或latest；规则正文超过180,000 UTF-8字节暂停，完整prompt仍受240,000字节上限约束，不截断规则。prompt模板升为 `historical-sse-private-v2`；已有v1模型绑定不能在新模板下自动回放或再次计费，输入不匹配会在调用供应商前失败，需保留旧journal并按既有流程处理新run。
 
-以上是正式规则内容消费者，不是把十一项research checker在生产自动启用。#19整体批准loader/正式发布与#15可信事实适配未完成时，真实任务仍需保留明确阻塞原因。工程与真实联调状态见[本轮记录](../../../../docs/acceptance/issue-20-rule-integration-2026-09-27.md)。
+以上是正式规则内容消费者，不是把research checker在生产自动启用。#19整体批准loader/正式发布与#15可信事实适配未完成时，真实任务仍需保留明确阻塞原因。工程与真实联调状态见[本轮记录](../../../../docs/acceptance/issue-20-rule-integration-2026-09-27.md)。
+
+
+<a id="v4-input"></a>
+
+## v4 新增20条处理及接入
+
+[31条已填文献结论及反例](RULE-REVIEW-20260927.md)逐条附原文、效力观察、范围和例外；[合成输入](../../../../packages/domain/examples/sse-private-check-input-v4.json)由新增测试实际读取，来源为`scripts/build_sse_private_check_example.py`。本例覆盖v3两项及v4二十项，不包含全部v2检查字段，不能当作完整项目输入。
+
+- `AdditionalCheckInput`的14组：sourceSelection、evidenceUse、identityComparison、currentTerm、fundsSimulation/previousProceeds、businessSegment、indicator、causeStatement、debtReconciliation/creditFacility、ratingEnhancement、protectionTerms、riskUpdate、delivery、trusteeStatement。定义在`sse-private-additional-checks.ts`。
+- `ManualCheckInput`的6组：governanceReview、contingentReview、focusReview、specialReview、negativeListReview、optimizedReview。定义在`sse-private-manual-checks.ts`。可核证据缺口、错误用法及不适用分支，不批准重组、准入或豁免。
+- 金额最多20位整数/12位小数，用有理数运算；百分比与倍数明确，最终显示四舍五入且精度0–6。零负分母转判断；同口径必须包含主体、合并/母公司、币种单位、完整期间和重述基础。
+- `fundsSimulation`只处理到账、现金偿债和明确费用处理的简化模拟。feeTreatment须绑定真实口径：expense冲减权益，deduct_debt抵减债务初始账面金额；税项、投资、后续摊销等不在此模型内，不能由模型擅选政策。实际现金/债务流超出简化假设转人工。
+- `businessSegment`逐板块及近一年/近一期调用；totalRevenue/totalGrossProfit来自同一已核主营业务划分口径。10%一般主要板块披露与#77前三主营业务匹配独立；经营模式三年回溯和项目明细仍需另验。
+- `TextComparison`每次比较一个经核对的品种/条款/字段在一个位置的当前值和披露值；适配器负责完整列举与必要的有证据格式归一，不把文字不同自动说成法律冲突，也不遗漏跨章/跨协议位置。
+- sourceSelection要列完整可比候选。多个冲突值须绑定实际选值及理由审核，未知/OCR候选不能因另一个值verified而消失。
+- `contingentReview`五类及签署日覆盖不可省略；no_hits/not_searched均不是reviewed_absent。否定结论/空集合需要已核证据，不能用供应商无返回制造“无事项”。
+- `delivery`须绑定真实artifactHash，再核披露清单、修订/批注数和WPS回执。计数是初步检查，不替代每处修订完整性和实际打开；生成前不要求先拿到WPS验收。
+- 所有pass仍是单个小项，需连同同规则其他缺口/人工判断展示；coverage manifest保持未完整验收。v2/v3返回形状不增加v4字段，旧run不能自动升级检查。
+
+工程验证：新增23项分组测试逐一覆盖20条及版本/不可信输入。真实数字、专业签认、正式版本发布和Word验收未由本例完成。#15需把同一owner/project/input/material/parse/issuer pin及真实审核记录适配到上述字段；#19仍负责实际字典、审核和发布。A03的九维→十二码细化和现有单值/编码差距见[具体交接](A03-FEATURE-MAPPING-20260927.md)。

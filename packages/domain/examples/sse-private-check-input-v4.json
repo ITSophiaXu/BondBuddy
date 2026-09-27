@@ -1,0 +1,1307 @@
+{
+  "market": "sse",
+  "offering": "private",
+  "asOf": {
+    "value": "2026-09-26",
+    "status": "verified",
+    "anchors": [
+      "synthetic:terms-v2:paragraph-4"
+    ]
+  },
+  "fundsUse": {
+    "productiveExpenditureSimplification": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "completeAllocationInventory": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "sameCurrencyUnitAndGrossNetBasis": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "allocationTotal": {
+      "value": "0.3",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "allocations": [
+      {
+        "purpose": {
+          "value": "repay_debt",
+          "status": "verified",
+          "anchors": [
+            "synthetic:terms-v2:paragraph-4"
+          ]
+        },
+        "amount": {
+          "value": "0.1",
+          "status": "verified",
+          "anchors": [
+            "synthetic:terms-v2:paragraph-4"
+          ]
+        },
+        "supportingEvidence": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:terms-v2:paragraph-4"
+          ]
+        }
+      },
+      {
+        "purpose": {
+          "value": "construction",
+          "status": "verified",
+          "anchors": [
+            "synthetic:terms-v2:paragraph-4"
+          ]
+        },
+        "amount": {
+          "value": "0.2",
+          "status": "verified",
+          "anchors": [
+            "synthetic:terms-v2:paragraph-4"
+          ]
+        },
+        "supportingEvidence": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:terms-v2:paragraph-4"
+          ]
+        }
+      }
+    ]
+  },
+  "disclosureOfficer": {
+    "name": {
+      "value": "合成负责人",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "position": {
+      "value": "董事",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "contact": {
+      "value": "合成联系方式",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "liaisonName": {
+      "value": "合成联络人",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "liaisonPosition": {
+      "value": "合成岗位",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "liaisonContact": {
+      "value": "合成联络方式",
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "eligiblePosition": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "disqualificationReviewComplete": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "disqualificationPresent": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "changed": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    },
+    "previousValidCommitment": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:terms-v2:paragraph-4"
+      ]
+    }
+  },
+  "sourceSelection": {
+    "selected": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "completeCandidateInventory": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "candidates": [
+      {
+        "value": {
+          "value": "100",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "applicable": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        }
+      }
+    ]
+  },
+  "evidenceUse": {
+    "original": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "publishedAsConfirmed": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "markedForConfirmation": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "identityComparison": {
+    "expected": {
+      "value": {
+        "entityId": "synthetic-entity-1",
+        "scope": "consolidated",
+        "currency": "CNY",
+        "unit": "万元",
+        "periodStart": "2025-01-01",
+        "periodEnd": "2025-09-30"
+      },
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "actual": {
+      "value": {
+        "entityId": "synthetic-entity-1",
+        "scope": "consolidated",
+        "currency": "CNY",
+        "unit": "万元",
+        "periodStart": "2025-01-01",
+        "periodEnd": "2025-09-30"
+      },
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "currentTerm": {
+    "value": {
+      "key": {
+        "value": "本品种发行规模",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "current": {
+        "value": "5亿元",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "disclosed": {
+        "value": "5亿元",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    },
+    "trancheId": {
+      "value": "品种一",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "approvalRoute": {
+      "value": "private_listing",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "fundsSimulation": {
+    "included": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "simpleCashDebtOnly": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "comparable": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "assumptions": {
+      "value": "合成假设：到账、现金偿债，发行费用抵减债务初始账面金额；无税项、投资、后续摊销。",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "feeTreatment": {
+      "value": "deduct_debt",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "openingAssets": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "openingLiabilities": {
+      "value": "60",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "openingEquity": {
+      "value": "40",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "grossProceeds": {
+      "value": "10",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "expenses": {
+      "value": "1",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "debtRepayment": {
+      "value": "5",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "closingAssets": {
+      "value": "104",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "closingLiabilities": {
+      "value": "64",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "closingEquity": {
+      "value": "40",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "previousProceeds": {
+    "repeatApplication": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "total": {
+      "value": "0.3",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "used": {
+      "value": "0.1",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "balance": {
+      "value": "0.2",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "comparable": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "unrectifiedUnauthorizedUse": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "disclosureComplete": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "businessSegment": {
+    "comparable": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "revenue": {
+      "value": "10",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "cost": {
+      "value": "8",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "grossProfit": {
+      "value": "2",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "totalRevenue": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "totalGrossProfit": {
+      "value": "20",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "grossMarginPercent": {
+      "value": "20.00",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "marginPlaces": {
+      "value": 2,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "operationsDisclosed": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "materialRisk": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "indicator": {
+    "definition": {
+      "value": "合成流动比率：已核对流动资产/流动负债",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "comparable": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "numerator": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "denominator": {
+      "value": "30",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "disclosed": {
+      "value": "3.33",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "scale": {
+      "value": "ratio",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "decimalPlaces": {
+      "value": 2,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "causeStatement": {
+    "cause": {
+      "value": "业务量增长导致收入增加",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "supportKind": {
+      "value": "business_evidence",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "support": {
+      "value": "合成业务量及价格说明",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "causalLinkReviewed": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "markedForConfirmation": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "debtReconciliation": {
+    "comparable": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "completeInventory": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "total": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "statementTotal": {
+      "value": "95",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "differenceExplanation": {
+      "value": "合成调整：其他有息项目5",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "adjustments": [
+      {
+        "value": "5",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    ],
+    "maturityBuckets": [
+      {
+        "value": "30",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      {
+        "value": "70",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    ]
+  },
+  "creditFacility": {
+    "comparable": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "simpleAvailableEqualsTotalMinusUsed": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "total": {
+      "value": "100",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "used": {
+      "value": "40",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "available": {
+      "value": "60",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "ratingEnhancement": {
+    "rated": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "currentReport": {
+      "value": "合成本期评级报告",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "enhanced": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "currentContract": {
+      "value": "合成本期保证合同",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "rating": {
+      "key": {
+        "value": "主体评级",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "current": {
+        "value": "AA",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "disclosed": {
+        "value": "AA",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    },
+    "guarantee": {
+      "key": {
+        "value": "担保范围",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "current": {
+        "value": "本金及利息",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "disclosed": {
+        "value": "本金及利息",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    }
+  },
+  "protectionTerms": {
+    "trusteeAgreementPresent": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "meetingRulesPresent": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "referenceExampleAdded": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "actualAgreement": {
+      "value": "合成本期实际约定",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "term": {
+      "key": {
+        "value": "表决比例",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "current": {
+        "value": "2/3",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "disclosed": {
+        "value": "2/3",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    }
+  },
+  "riskUpdate": {
+    "historicalRiskRemoved": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "fact": {
+      "key": {
+        "value": "有息债务",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "current": {
+        "value": "100万元",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "disclosed": {
+        "value": "100万元",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    }
+  },
+  "delivery": {
+    "artifactHash": {
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "requiredSections": {
+      "value": [
+        "terms",
+        "financial",
+        "risk"
+      ],
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "deliveredSections": {
+      "value": [
+        "terms",
+        "financial",
+        "risk"
+      ],
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "exemptSections": {
+      "value": [],
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "hasHistory": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "contentChanged": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "revisionCount": {
+      "value": 3,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "commentsNeeded": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "commentCount": {
+      "value": 2,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "wpsOpenedAndReopened": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "trusteeStatement": {
+    "statementKind": {
+      "value": "performed",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "supportKind": {
+      "value": "performance_record",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "actualSupport": {
+      "value": "合成履职记录",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "duty": {
+      "key": {
+        "value": "信用监测",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "current": {
+        "value": "按协议季度跟踪",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      },
+      "disclosed": {
+        "value": "按协议季度跟踪",
+        "status": "verified",
+        "anchors": [
+          "synthetic:v4:material-version-1:paragraph-7"
+        ]
+      }
+    }
+  },
+  "governanceReview": {
+    "corporateEvents": {
+      "value": [
+        "合成董事变更"
+      ],
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "controlAndAppointmentsEvidence": {
+      "value": "合成控制链/任职记录",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "currentCompanyLawEvidence": {
+      "value": "合成公司法核对凭据",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "currentReorganizationDefinition": {
+      "value": "合成现行定义核对凭据",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "reorganizationAssessment": {
+      "value": "合成重组判断；非生产意见",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "contingentReview": {
+    "completeInventory": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "checkedThrough": {
+      "value": "2026-09-26",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "signingDate": {
+      "value": "2026-09-26",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "areas": [
+      {
+        "area": {
+          "value": "related_parties",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "observation": {
+          "value": "reviewed_absent",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "publishedAsAbsent": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "assessment": {
+          "value": "合成逐类排查记录",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        }
+      },
+      {
+        "area": {
+          "value": "guarantees",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "observation": {
+          "value": "reviewed_absent",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "publishedAsAbsent": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "assessment": {
+          "value": "合成逐类排查记录",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        }
+      },
+      {
+        "area": {
+          "value": "litigation_arbitration",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "observation": {
+          "value": "reviewed_absent",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "publishedAsAbsent": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "assessment": {
+          "value": "合成逐类排查记录",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        }
+      },
+      {
+        "area": {
+          "value": "restricted_assets",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "observation": {
+          "value": "reviewed_absent",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "publishedAsAbsent": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "assessment": {
+          "value": "合成逐类排查记录",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        }
+      },
+      {
+        "area": {
+          "value": "subsequent_events",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "observation": {
+          "value": "reviewed_absent",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "publishedAsAbsent": {
+          "value": true,
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        },
+        "assessment": {
+          "value": "合成逐类排查记录",
+          "status": "verified",
+          "anchors": [
+            "synthetic:v4:material-version-1:paragraph-7"
+          ]
+        }
+      }
+    ]
+  },
+  "focusReview": {
+    "completeFeatureReview": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "triggeredProfiles": {
+      "value": [
+        "city_construction",
+        "group"
+      ],
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "assessment": {
+      "value": "合成多项重点审核",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "blanketIssuanceBanClaimed": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "specialReview": {
+    "completeFeatureReview": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "features": {
+      "value": [],
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "ordinaryPackOnly": {
+      "value": true,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "negativeListReview": {
+    "currentOfficialList": {
+      "value": "合成负面清单引用，非正式效力确认",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "issuerAssessment": {
+      "value": "合成发行人逐项判断",
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "simultaneousSameInstrumentApplication": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "unusedPreviousSameInstrumentQuota": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    },
+    "publicProfitThresholdUsedToReject": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  },
+  "optimizedReview": {
+    "requested": {
+      "value": false,
+      "status": "verified",
+      "anchors": [
+        "synthetic:v4:material-version-1:paragraph-7"
+      ]
+    }
+  }
+}

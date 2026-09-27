@@ -1,7 +1,7 @@
 {
   "schema_version": "chapter-template-v1",
   "template_id": "sse-private-chapters",
-  "version": "2026.09.27-draft.5",
+  "version": "2026.09.27-draft.6",
   "rule_pack_id": "sse-private",
   "market": "sse",
   "offering": "private",

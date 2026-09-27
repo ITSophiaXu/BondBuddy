@@ -10,6 +10,8 @@ from sse_private_knowledge_content import (
     MAPPINGS, OVERRIDES, EXTRA_RULES, EXECUTABLE_CHECKS,
 )
 from sse_private_review_items import REVIEW_ITEMS
+from sse_private_handling import ADDITIONAL_CHECKS, MANUAL_HANDLERS, EXISTING_ACCEPTANCE
+from sse_private_review_report import write_review_report
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / 'knowledge/exchange-bonds'
@@ -168,16 +170,21 @@ def apply_overlay(pack, template, coverage, documents):
         if key in OVERRIDES:
             rule['boundaries'][0] = OVERRIDES[key]
         rule['boundaries'].append('官方取证与待验收边界：' + limit)
-        if key in EXECUTABLE_CHECKS:
-            rule['version'] = '5'
+        if key in EXECUTABLE_CHECKS or key in MANUAL_HANDLERS:
+            rule['version'] = '6'
             rule['checker'] = {'checker_id':'sse-private-structured-evidence',
-                               'checker_version':'3','parameter_version':VERSION}
-            rule['boundaries'][1] = '已有受限结构化证据检查，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。'
+                               'checker_version':'4','parameter_version':VERSION}
+            rule['boundaries'][1] = ('已有受限结构化证据检查' if key in EXECUTABLE_CHECKS else '已有明确人工审核处理及防误用检查，不作自动资格结论') + '，见EXECUTABLE-CHECKS.md；仅research_only，不等于已签认/发布或全文合规。'
+        handling = ADDITIONAL_CHECKS.get(key) or MANUAL_HANDLERS.get(key)
+        if handling:
+            rule['boundaries'].append('本条实际处理：' + handling[2])
         item = coverage_by_id.get(key, {'item_id':key,'area':rule['title'],'document_stages':['registration','issuance']})
         item.update(disposition='uncovered', source_ref_ids=rule['source_ref_ids'],
                     rationale='已登记官方证据/内部方法及章节映射；尚无行业签认、执行checker和真实结果验收。' + limit)
         if key in EXECUTABLE_CHECKS:
             item['rationale'] = '已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。' + limit
+        elif key in MANUAL_HANDLERS:
+            item['rationale'] = '已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。' + limit
         coverage_by_id[key] = item
         for chapter_id in chapters:
             chapter = chapter_by_id[chapter_id]
@@ -190,7 +197,10 @@ def apply_overlay(pack, template, coverage, documents):
                 'effective_to':documents[d]['effective_to']} for d,loc in pairs],
             'not_applicable_or_uncovered':limit, 'professional_review':'pending',
             'result_acceptance':'pending',
-            'engineering_check': 'bounded-research-check-v3' if key in EXECUTABLE_CHECKS else 'unimplemented',
+            'engineering_check': 'bounded-research-check-v4' if key in EXECUTABLE_CHECKS else 'manual-evidence-handler-v4',
+            'documentary_review': {'status':'completed_with_explicit_limits','reviewer':'Codex documentary analysis',
+                                    'reviewed_at':AUTHORED_AT,'baseline_as_of':'2026-09-26',
+                                    'record':'RULE-REVIEW-20260927.md#'+key},
         })
     pack['sources'] = list(sources.values())
     coverage['items'] = list(coverage_by_id.values())
@@ -202,24 +212,29 @@ def apply_overlay(pack, template, coverage, documents):
         required_evidence='verification/2026-09-26目录逐条核验、现行配套规则及适用性签认；不得把抓取或hash一致当行业审核。')
     coverage['open_blockers'].append({
         'blocker_id':'applicability-context',
-        'description':'#19适用性上下文的字段分类、证据和人工审核门槛尚需接入；无默认批准分支。',
+        'description':'#311已有整体审核/撤回及loader分支；仍需#19九维到十二码映射、已发布字典与真实项目/来源审核，不能默认批准。',
         'required_evidence':'instrument/documentStage/issuerScope/investorScope/industry/specialFeatures/asOf均有本期证据及真实审核。'})
     write_json(BASE / 'drafts/sse-private/rule-evidence-map.json', {
         'version':VERSION, 'status':'research_only', 'rules':rule_map,
         'chapters':[{'chapter_id':c['chapter_id'], 'rule_ids':[r['rule_id'] for r in rule_map if c['chapter_id'] in r['chapter_ids']],
                      'uncovered': '税务现行依据与具体税率待核；不因目录有税项就认定合规覆盖。' if c['chapter_id']=='tax' else '须在真实成果中逐项确认披露和证据。'} for c in template['chapters']],
     })
-    lines = ['# #20 逐条规则审核清单', '', f'版本：`{VERSION}`。{len(rule_map)}条全部待业务审核；{len(EXECUTABLE_CHECKS)}条有受限检查，{len(rule_map) - len(EXECUTABLE_CHECKS)}条尚未实现。', '',
+    write_review_report(BASE, pack, documents, MAPPINGS, REVIEW_ITEMS, VERSION, AUTHORED_AT)
+    lines = ['# #20 逐条规则审核清单', '', f'版本：`{VERSION}`。31条已完成有边界的文献核对；{len(EXECUTABLE_CHECKS)}条有受限检查，6条有明确人工审核处理。专业签认/真实结果另验。', '',
+             '已填好的[逐条依据、适用性、例外、处理和正反例记录](RULE-REVIEW-20260927.md)是本轮交付，不再将工程处理列为20条空白；不代填真人审核或发布审批。', '',
              '由 `scripts/sse_private_review_items.py` 与来源映射生成，不在本文件直接签认。正式审核记录须绑定此版本/commit、实际审核人及权限、时间、决定、理由和证据；本表不写入发布审批。', '',
              '每条可选择同意、修改或待补证；同意文本方法不等于批准来源现行效力、真实财务事实或最终Word。工程检查的合成用例见 [交接](EXECUTABLE-CHECKS.md)，真实成果另填 [验收表](ACCEPTANCE.md)。', '']
     for row in rule_map:
         key = row['rule_id'].removeprefix('sse-private-')
         decision, next_step = REVIEW_ITEMS[key]
+        handling = ADDITIONAL_CHECKS.get(key) or MANUAL_HANDLERS.get(key)
+        if handling:
+            next_step = '已实现 ' + handling[0] + ' 处理；可信事实/完整枚举适配、剩余专业判断与真实成果验收待完成。'
         refs = ' · '.join(f'[{d}/{loc}](../../verification/2026-09-26/sources/{d}.md#{loc.lower()})' for d, loc in MAPPINGS[key][1]) or '本切片尚无经登记的官方依据，待补齐。'
         lines += [f'## {row["title"]}', '', f'规则：`{row["rule_id"]}`；工程：{row["engineering_check"]}；业务审核：待填写。', '',
                   '具体审核决定/反例：' + decision, '', '依据：' + refs, '',
                   '范围与保留项：' + row['not_applicable_or_uncovered'], '', '下一份交付：' + next_step, '',
-                  '审核决定、理由、证据记录：待填写。', '']
+                  f'文献核对已填：[结论与验收](RULE-REVIEW-20260927.md#{key})；真人专业签认及发布记录仍另行填写。', '']
     (BASE / 'drafts/sse-private/RULE-REVIEW-CHECKLIST.md').write_text('\n'.join(lines), 'utf8')
     return pack, template, coverage
 

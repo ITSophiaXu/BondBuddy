@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.27-draft.5",
+  "version": "2026.09.27-draft.6",
   "status": "research_only",
   "rules": [
     {
@@ -40,7 +40,14 @@
       "not_applicable_or_uncovered": "逐字段证据优先级为内部方法；官方来源没有规定一个适用于全部事实的文件排名。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#source-authority"
+      }
     },
     {
       "rule_id": "sse-private-period-window",
@@ -107,7 +114,14 @@
       "not_applicable_or_uncovered": "8.1.4是财务材料两年及一期要求，不自动缩短业务、评级、重组等独立回溯期间；年末、成立不足两年及豁免按证据判断。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#period-window"
+      }
     },
     {
       "rule_id": "sse-private-evidence-state",
@@ -140,7 +154,14 @@
       "not_applicable_or_uncovered": "用户陈述、OCR置信度与待确认标记是产品事实状态；不能因有用户输入就声明审计或公开核验通过。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#evidence-state"
+      }
     },
     {
       "rule_id": "sse-private-identity",
@@ -191,7 +212,14 @@
       "not_applicable_or_uncovered": "实体、合并/母公司、币种、单位、期间逐项绑定；地方国有企业不能据名称自动认定城建类。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#identity"
+      }
     },
     {
       "rule_id": "sse-private-private-investors",
@@ -246,7 +274,14 @@
       "not_applicable_or_uncovered": "200人分别检查发行及同次债券转让后持有人；机构适当性分类、穿透或例外仍需投资者适当性完整规则。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#private-investors"
+      }
     },
     {
       "rule_id": "sse-private-financial-validity-sse",
@@ -301,7 +336,14 @@
       "not_applicable_or_uncovered": "有效期截止日后新申报应更新材料；在审封卷延期不是自动宽限，须申请和交易所同意。缺申报日/批准证据不能判通过。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#financial-validity-sse"
+      }
     },
     {
       "rule_id": "sse-private-current-terms",
@@ -352,7 +394,14 @@
       "not_applicable_or_uncovered": "挂牌条件确认不能写成证监会公募注册。发行批文、规模、期限、机构变化均需本期依据；不推定全部条款不变。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#current-terms"
+      }
     },
     {
       "rule_id": "sse-private-funds-use-evidence",
@@ -415,7 +464,14 @@
       "not_applicable_or_uncovered": "用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#funds-use-evidence"
+      }
     },
     {
       "rule_id": "sse-private-private-use-change",
@@ -505,7 +561,14 @@
       "not_applicable_or_uncovered": "3.2中公募跨用途类别的会议要求不直接变成所有私募要求；私募仍受8.4.1的未约定/重大影响和3.1限定偿债限制。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#private-use-change"
+      }
     },
     {
       "rule_id": "sse-private-funds-simulation",
@@ -585,7 +648,14 @@
       "not_applicable_or_uncovered": "发行后模拟公式是待验收内部方法。前次资金用途整改记录、台账和专户凭证缺失，不伪造已整改/合规意见。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#funds-simulation"
+      }
     },
     {
       "rule_id": "sse-private-issuer-governance",
@@ -667,7 +737,14 @@
       "not_applicable_or_uncovered": "重大重组按引用的现行重组规则判断，单一50%启发式不作为已确认事实；公司法任职/监事安排仍须当期核验。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#issuer-governance"
+      }
     },
     {
       "rule_id": "sse-private-business-revenue",
@@ -724,7 +801,14 @@
       "not_applicable_or_uncovered": "一般10%以上主要板块是披露要求；后台前三合并主营业务收入匹配不替代全文披露。并列、分类变动和非可比期间须保留。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#business-revenue"
+      }
     },
     {
       "rule_id": "sse-private-audit-opinion",
@@ -764,7 +848,14 @@
       "not_applicable_or_uncovered": "非标事项说明应来自有权机构/会计师。中期未经审计不可写成审计通过；缺意见页仍可生成标记缺口的工作稿。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#audit-opinion"
+      }
     },
     {
       "rule_id": "sse-private-financial-statements",
@@ -837,7 +928,14 @@
       "not_applicable_or_uncovered": "私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#financial-statements"
+      }
     },
     {
       "rule_id": "sse-private-indicators",
@@ -879,7 +977,14 @@
       "not_applicable_or_uncovered": "3.7.2第二段为面向普通投资者公募附加表，不作为私募强制清单。私募仍披露适用指标，定义取本期条款/专业口径。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#indicators"
+      }
     },
     {
       "rule_id": "sse-private-mdna-thresholds",
@@ -916,7 +1021,14 @@
       "not_applicable_or_uncovered": "10%以上/30%以上保留原文字义；低于阈值不豁免重大事项，零/负基数不机械使用百分比。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#mdna-thresholds"
+      }
     },
     {
       "rule_id": "sse-private-cause-evidence",
@@ -956,7 +1068,14 @@
       "not_applicable_or_uncovered": "计算差额不证明业务原因；原专家稿的推测仅作为待确认问题。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#cause-evidence"
+      }
     },
     {
       "rule_id": "sse-private-debt-liquidity",
@@ -1012,7 +1131,14 @@
       "not_applicable_or_uncovered": "全口径债务与报表差异要解释；授信总/已用/剩余额度按实际证据时点，不从余额差自动推断银行承诺。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#debt-liquidity"
+      }
     },
     {
       "rule_id": "sse-private-related-contingent",
@@ -1061,7 +1187,14 @@
       "not_applicable_or_uncovered": "关联方、或有事项和受限资产需材料及签署日后续事项核验；未检索到不能写为不存在。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#related-contingent"
+      }
     },
     {
       "rule_id": "sse-private-rating-enhancement",
@@ -1125,7 +1258,14 @@
       "not_applicable_or_uncovered": "无评级不是自动缺合规条件；有评级/增信以本期报告及合同为准，不添加担保人承诺。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#rating-enhancement"
+      }
     },
     {
       "rule_id": "sse-private-protection",
@@ -1231,7 +1371,14 @@
       "not_applicable_or_uncovered": "参考文本可以参照，不等于每个示例条款均为强制或已约定。增信、会议、违约和受托协议逐项一致；证券业协会配套规则仍待核验。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#protection"
+      }
     },
     {
       "rule_id": "sse-private-risk-disclosure",
@@ -1287,7 +1434,14 @@
       "not_applicable_or_uncovered": "财务和已发生事项更新后回写；金额正确仍不能证明风险措辞充分，不自动删除历史有效风险。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#risk-disclosure"
+      }
     },
     {
       "rule_id": "sse-private-sse-focus-2025",
@@ -1388,7 +1542,14 @@
       "not_applicable_or_uncovered": "城建/房地产/集团等触发后需专门审核。2025重点关注规则仍不能替代2026优化审核包或把审慎论证一律变为禁发。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#sse-focus-2025"
+      }
     },
     {
       "rule_id": "sse-private-special-overlays-sse",
@@ -1412,7 +1573,14 @@
       "not_applicable_or_uncovered": "专项品种2026原件已有，但本切片不完成其官方效力及专业验收；不得按普通私募包自动放行专项债。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#special-overlays-sse"
+      }
     },
     {
       "rule_id": "sse-private-document-delivery",
@@ -1480,7 +1648,14 @@
       "not_applicable_or_uncovered": "16节是专家工作骨架，不是唯一法定目录/字体标准。税务依据、签章要求、真实Word修订/批注及WPS均另验。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#document-delivery"
+      }
     },
     {
       "rule_id": "sse-private-private-negative-list",
@@ -1518,7 +1693,14 @@
       "not_applicable_or_uncovered": "没有财务指标限制不等于没有准入/负面清单/偿债风险要求；证券业协会负面清单现行全文尚未核验。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#private-negative-list"
+      }
     },
     {
       "rule_id": "sse-private-idle-proceeds-2026",
@@ -1572,7 +1754,14 @@
       "not_applicable_or_uncovered": "受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#idle-proceeds-2026"
+      }
     },
     {
       "rule_id": "sse-private-continuing-disclosure",
@@ -1616,7 +1805,14 @@
       "not_applicable_or_uncovered": "此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#continuing-disclosure"
+      }
     },
     {
       "rule_id": "sse-private-disclosure-officer-2026",
@@ -1736,7 +1932,14 @@
       "not_applicable_or_uncovered": "2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "bounded-research-check-v3"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#disclosure-officer-2026"
+      }
     },
     {
       "rule_id": "sse-private-optimized-review-version",
@@ -1774,7 +1977,14 @@
       "not_applicable_or_uncovered": "2026-09-04起旧2023版废止；本包不实现知名成熟资格认定、简明披露或豁免，需独立审核新版本。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#optimized-review-version"
+      }
     },
     {
       "rule_id": "sse-private-trustee-continuing-duties",
@@ -1836,7 +2046,14 @@
       "not_applicable_or_uncovered": "2025指南包括鼓励措施和示范案例，不把示范案例写为发行人已履行事项；全量履职核验另作存续期覆盖。",
       "professional_review": "pending",
       "result_acceptance": "pending",
-      "engineering_check": "unimplemented"
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#trustee-continuing-duties"
+      }
     }
   ],
   "chapters": [

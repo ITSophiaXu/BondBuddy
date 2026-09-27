@@ -4,7 +4,7 @@
     "scope": "sse-private",
     "kind": "update",
     "title": "上交所 · 普通私募公司债 · 募集说明书更新知识",
-    "version": "2026.09.27-draft.5",
+    "version": "2026.09.27-draft.6",
     "filename": "sse-private-update.md",
     "ruleCount": 31,
     "sourceIds": [
@@ -46,7 +46,7 @@
     "scope": "sse-private",
     "kind": "review",
     "title": "上交所 · 普通私募公司债 · 募集说明书复核知识",
-    "version": "2026.09.27-draft.5",
+    "version": "2026.09.27-draft.6",
     "filename": "sse-private-review.md",
     "ruleCount": 31,
     "sourceIds": [
