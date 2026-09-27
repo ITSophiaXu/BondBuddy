@@ -280,6 +280,71 @@ class DocumentParserTests(unittest.TestCase):
             for warning in result["warnings"]
         ))
 
+    def test_docx_move_source_range_keeps_unmarked_text_and_excludes_move_from(self):
+        path = self.root / "move-source-range.docx"
+        document = Document()
+        paragraph = document.add_paragraph("期末资产：")
+        range_start = OxmlElement("w:moveFromRangeStart")
+        range_start.set(qn("w:id"), "7")
+        range_start.set(qn("w:author"), "Synthetic")
+        paragraph._p.append(range_start)
+
+        # The range markers identify a move-source container; ordinary run
+        # content inside that range is not itself moved-from content.
+        current_run = OxmlElement("w:r")
+        current_properties = OxmlElement("w:rPr")
+        current_fonts = OxmlElement("w:rFonts")
+        current_fonts.set(qn("w:ascii"), "CurrentAmountFont")
+        current_fonts.set(qn("w:eastAsia"), "CurrentAmountFont")
+        current_size = OxmlElement("w:sz")
+        current_size.set(qn("w:val"), "26")
+        current_properties.extend([current_fonts, current_size])
+        current_run.append(current_properties)
+        current_text = OxmlElement("w:t")
+        current_text.text = "120万元"
+        current_run.append(current_text)
+        paragraph._p.append(current_run)
+
+        moved_from = OxmlElement("w:moveFrom")
+        old_run = OxmlElement("w:r")
+        old_properties = OxmlElement("w:rPr")
+        old_fonts = OxmlElement("w:rFonts")
+        old_fonts.set(qn("w:ascii"), "OldAmountFont")
+        old_fonts.set(qn("w:eastAsia"), "OldAmountFont")
+        old_size = OxmlElement("w:sz")
+        old_size.set(qn("w:val"), "44")
+        old_properties.extend([old_fonts, old_size])
+        old_run.append(old_properties)
+        old_text = OxmlElement("w:t")
+        old_text.text = "999万元"
+        old_run.append(old_text)
+        moved_from.append(old_run)
+        paragraph._p.append(moved_from)
+
+        range_end = OxmlElement("w:moveFromRangeEnd")
+        range_end.set(qn("w:id"), "7")
+        paragraph._p.append(range_end)
+        paragraph.add_run("，核验完毕")
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertEqual(len(result["records"]), 1)
+        record = result["records"][0]
+        self.assertEqual(record["literal_quote"], "期末资产：120万元，核验完毕")
+        self.assertNotIn("999万元", record["literal_quote"])
+        self.assertEqual(record["locator_type"], "docx_block")
+        self.assertEqual(record["locator"]["stable_ref"], "docx:p0001")
+        self.assertNotIn("page", record["locator"])
+        self.assertIn("docx_revision_effective_text_unresolved", record["uncertainty"])
+        formats = record["formatting"]["runs"]
+        amount_format = next(item for item in formats if item["sample"] == "120万元")
+        self.assertEqual(amount_format["latin_font"], "CurrentAmountFont")
+        self.assertEqual(amount_format["east_asia_font"], "CurrentAmountFont")
+        self.assertEqual(amount_format["half_points"], "26")
+        self.assertNotIn("999万元", json.dumps(record["formatting"], ensure_ascii=False))
+        self.assertNotIn("OldAmountFont", json.dumps(record["formatting"], ensure_ascii=False))
+
     def test_pdf_preserves_page_and_source_bbox(self):
         path = self.root / "synthetic.pdf"
         pdf = canvas.Canvas(str(path), pagesize=(300, 300))
