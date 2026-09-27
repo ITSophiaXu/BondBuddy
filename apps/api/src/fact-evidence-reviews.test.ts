@@ -1,0 +1,83 @@
+import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
+import test from 'node:test';
+import { Pool } from 'pg';
+import { appendFactEvidenceReview, changeFactEvidenceReviewerGrant, withdrawFactEvidenceReview } from './fact-evidence-reviews.js';
+import type { FactEvidenceReviewRequest } from '@bondbuddy/contracts';
+
+const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
+const testUrl=process.env.BB_TEST_DATABASE_URL;
+
+test('fact evidence reviewer ledger is exact, append-only, external-safe, and fail-closed (PostgreSQL 16)',{skip:!testUrl&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0061'},async()=>{
+  const db=new Pool({connectionString:testUrl});
+  const suffix=randomUUID().replaceAll('-',''),owner=`fer-owner-${suffix}`,reviewer=`fer-reviewer-${suffix}`,manager=`fer-manager-${suffix}`,project=`fer-project-${suffix}`;
+  const material=`fer-material-${suffix}`,upload=`fer-upload-${suffix}`,snapshot=`fer-parse-${suffix}`,candidate=`fer-candidate-${suffix}`,context=`fer-context-${suffix}`;
+  const contentHash=sha(`synthetic material ${suffix}`),responseHash=sha(`synthetic response ${suffix}`),inputHash=sha(`synthetic input ${suffix}`),factHash=sha(`synthetic fact ${suffix}`),evidenceHash=sha(`synthetic context ${suffix}`);
+  const incompleteContext=`fer-context-incomplete-${suffix}`,incompleteHash=sha(`synthetic incomplete context ${suffix}`);
+  const manifest={schema_version:'fact-evidence-context-v1',owner_user_id:owner,project_id:project,candidate_id:candidate,input_revision:1,input_hash:inputHash,
+    candidate_identity_sha256:factHash,fact_identity:{entity_id:'synthetic-issuer',metric:'assets'},source_kind:'external',candidate_status:'needs_confirmation',
+    candidate_uncertainty:['EXTERNAL_WORKBOOK_SOURCE_NOT_AUTHORIZED'],candidate_confidence:0.72,material_id:material,material_version:1,material_sha256:contentHash,
+    snapshot_id:snapshot,parser_version:'synthetic-parser-1',parse_request_hash:sha('request'),parse_response_sha256:responseHash,parse_status:'needs_confirmation',original_warnings:[],
+    selected_body:[{record_id:'body-anchor',content_sha256:sha('cell'),locator_type:'xlsx_cell',locator:{sheet:'Synthetic',cell:'A1'},confidence:null,uncertainty:[]}],
+    auxiliary_targets:[],completeness_status:'complete',completeness_reasons:[],reviewable:true,evidence_set_sha256:evidenceHash};
+  const client=await db.connect();
+  try{
+    const version=await client.query("SELECT current_setting('server_version_num')::integer AS v");assert.ok(Number(version.rows[0]!.v)>=160000,'requires PostgreSQL 16+');
+    const migrations=await client.query("SELECT to_regclass('public.bb_fact_evidence_reviewer_grants') g,to_regclass('public.bb_fact_evidence_context_sets') c");assert.ok(migrations.rows[0]!.g&&migrations.rows[0]!.c,'migrations 0060 and 0061 must be applied');
+    const phoneTail=(Number.parseInt(suffix.slice(-6),16)%1000000).toString().padStart(6,'0');
+    for(const [id,n] of [[owner,1],[reviewer,2],[manager,3]] as const) await client.query('INSERT INTO bb_users(id,phone_e164,username) VALUES($1,$2,$3)',[id,`+1202555${phoneTail}${n}`,`fer${n}${suffix.slice(0,10)}`]);
+    await client.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,draft_revision) VALUES($1,$2,'synthetic fact evidence review','update',1)",[project,owner]);
+    await client.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',20,$4,'financial',$5,now()+interval '1 hour','completed')`,[upload,owner,project,contentHash,`synthetic/${suffix}/upload`]);
+    await client.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'financial','synthetic.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',20,$5,$6,'parsed')`,[material,owner,project,upload,contentHash,`synthetic/${suffix}/material`]);
+    await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,'{}','[]','[]')`,[project,owner,inputHash]);
+    await client.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[project]);
+    await client.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta)
+      VALUES($1,$2,$3,$4,1,$5,'synthetic-parser-1',$6,'needs_confirmation','document-parse-response-v1',$7,1,$8::jsonb)`,[snapshot,owner,project,material,contentHash,sha('request'),responseHash,
+        JSON.stringify({schema_version:'document-parse-response-v1',request_id:`parse-${suffix}`,status:'needs_confirmation',parser_version:'synthetic-parser-1',material:{material_id:material,material_version:1,media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',sha256:contentHash},warnings:[],document:{},error:null})]);
+    const factKey={accountId:owner,entityId:'synthetic-issuer',scope:'consolidated',metric:'assets',period:{end:'2025-12-31'},currency:'CNY',unit:'yuan',basis:'balance_sheet',dataVersion:'synthetic-v1'};
+    await client.query(`INSERT INTO bb_fact_candidates(id,owner_user_id,project_id,entity_id,fact_key_hash,fact_key,value_decimal,value_kind,source_kind,source_ref,status,material_id,material_version,evidence,uncertainty)
+      VALUES($1,$2,$3,'synthetic-issuer',$4,$5::jsonb,'100.00','decimal','external','external-cache','needs_confirmation',$6,1,$7::jsonb,$8::jsonb)`,[candidate,owner,project,factHash,JSON.stringify(factKey),material,JSON.stringify([{evidence_id:'body-anchor',material_id:material,material_version:1}]),JSON.stringify(['EXTERNAL_WORKBOOK_SOURCE_NOT_AUTHORIZED'])]);
+    await client.query(`INSERT INTO bb_fact_evidence_context_sets(id,owner_user_id,project_id,candidate_id,input_revision,input_hash,material_id,material_version,snapshot_id,parser_version,parse_response_sha256,content_sha256,schema_version,evidence_set_sha256,completeness_status,reviewable,manifest)
+      VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,'complete',true,$11::jsonb)`,[context,owner,project,candidate,inputHash,material,snapshot,responseHash,contentHash,evidenceHash,JSON.stringify(manifest)]);
+    const incompleteManifest={...manifest,completeness_status:'incomplete',completeness_reasons:['AUXILIARY_SCOPE_UNKNOWN'],reviewable:false,evidence_set_sha256:incompleteHash};
+    await client.query(`INSERT INTO bb_fact_evidence_context_sets(id,owner_user_id,project_id,candidate_id,input_revision,input_hash,material_id,material_version,snapshot_id,parser_version,parse_response_sha256,content_sha256,schema_version,evidence_set_sha256,completeness_status,reviewable,manifest)
+      VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,'incomplete',false,$11::jsonb)`,[incompleteContext,owner,project,candidate,inputHash,material,snapshot,responseHash,contentHash,incompleteHash,JSON.stringify(incompleteManifest)]);
+  }finally{client.release();}
+  const grant=await changeFactEvidenceReviewerGrant(db,{action:'grant',reviewerUserId:reviewer,actorUserId:manager,reasonCode:'authorized_review',authorizationBasis:'Synthetic test-only authorization',ownerUserId:owner,projectId:project});
+  const request:FactEvidenceReviewRequest={request_id:`review-${suffix}`,candidate_id:candidate,evidence_context_set_id:context,evidence_set_sha256:evidenceHash,
+    assessments:[{target_id:'body-anchor',assessment:'supports_candidate',reason:'Synthetic exact evidence inspected'}],reason:'Synthetic evidence and impact reviewed'};
+  await assert.rejects(appendFactEvidenceReview(db,{userId:owner},project,{...request,request_id:`owner-${suffix}`}),/FACT_EVIDENCE_REVIEWER_FORBIDDEN/,'owner cannot self-review');
+  await assert.rejects(appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`missing-${suffix}`,assessments:[]}),/FACT_EVIDENCE_REVIEW_INVALID/);
+  const reviewed=await appendFactEvidenceReview(db,{userId:reviewer},project,request,()=>`review-${suffix}`);
+  assert.equal(reviewed.outcome,'external_evidence_impact_reviewed');assert.equal(reviewed.source_kind,'external');assert.equal(reviewed.verification_effect,'none');
+  assert.deepEqual(reviewed.candidate_snapshot.uncertainty,['EXTERNAL_WORKBOOK_SOURCE_NOT_AUTHORIZED']);
+  const status=await db.query('SELECT status,source_kind,uncertainty FROM bb_fact_candidates WHERE id=$1',[candidate]);
+  assert.equal(status.rows[0]!.status,'needs_confirmation');assert.equal(status.rows[0]!.source_kind,'external');
+  const current=await db.query('SELECT id,outcome FROM bb_current_fact_evidence_reviews WHERE id=$1',[reviewed.review_id]);assert.equal(current.rows.length,1);
+  const replay=await appendFactEvidenceReview(db,{userId:reviewer},project,request,()=>`unused-${suffix}`);assert.equal(replay.review_id,reviewed.review_id);assert.equal(replay.replayed,true);
+  const incomplete=await appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`incomplete-${suffix}`,evidence_context_set_id:incompleteContext,evidence_set_sha256:incompleteHash},()=>`incomplete-review-${suffix}`);
+  assert.equal(incomplete.outcome,'needs_more_evidence','unknown or incomplete context cannot produce a reviewed/offerable outcome');
+  const withdrawal=await withdrawFactEvidenceReview(db,{userId:reviewer},project,{request_id:`withdraw-${suffix}`,review_id:reviewed.review_id,reason:'Synthetic withdrawal'});
+  assert.equal(withdrawal.replayed,false);assert.equal((await db.query('SELECT id FROM bb_current_fact_evidence_reviews WHERE id=$1',[reviewed.review_id])).rows.length,0);
+  await assert.rejects(db.query('UPDATE bb_fact_evidence_reviews SET reason=\'rewritten\' WHERE id=$1',[reviewed.review_id]),/fact evidence reviews are append-only/);
+  const rechecked=await appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`review-again-${suffix}`},()=>`review-again-${suffix}`);
+  assert.equal((await db.query('SELECT id FROM bb_current_fact_evidence_reviews WHERE id=$1',[rechecked.review_id])).rows.length,1);
+  await changeFactEvidenceReviewerGrant(db,{action:'revoke',reviewerUserId:reviewer,actorUserId:manager,reasonCode:'scope_ended',authorizationBasis:'Synthetic test revocation',ownerUserId:owner,projectId:project,reason:'Synthetic revocation'});
+  assert.equal((await db.query('SELECT id FROM bb_fact_evidence_reviewer_grants WHERE id=$1 AND revoked_at IS NOT NULL',[grant])).rows.length,1);
+  assert.equal((await db.query('SELECT id FROM bb_current_fact_evidence_reviews WHERE id=$1',[rechecked.review_id])).rows.length,0,'grant revocation immediately removes the review from current projection');
+  await assert.rejects(appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`after-revoke-${suffix}`}),/FACT_EVIDENCE_REVIEWER_FORBIDDEN/);
+  await changeFactEvidenceReviewerGrant(db,{action:'grant',reviewerUserId:reviewer,actorUserId:manager,reasonCode:'authorized_review',authorizationBasis:'Synthetic renewed test authorization',ownerUserId:owner,projectId:project});
+  const currentAgain=await appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`review-currentness-${suffix}`},()=>`review-currentness-${suffix}`);
+  await db.query('UPDATE bb_projects SET draft_revision=2 WHERE owner_user_id=$1 AND id=$2',[owner,project]);
+  assert.equal((await db.query('SELECT id FROM bb_current_fact_evidence_reviews WHERE id=$1',[currentAgain.review_id])).rows.length,0,'draft/input change fails closed');
+  await db.query('UPDATE bb_projects SET draft_revision=1 WHERE owner_user_id=$1 AND id=$2',[owner,project]);
+  const newerSnapshot=`${snapshot}-v2`,newerResponse=sha(`newer parse ${suffix}`);
+  await db.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta,created_at)
+    VALUES($1,$2,$3,$4,1,$5,'synthetic-parser-2',$6,'needs_confirmation','document-parse-response-v1',$7,1,$8::jsonb,now()+interval '1 second')`,[newerSnapshot,owner,project,material,contentHash,sha(`new request ${suffix}`),newerResponse,
+      JSON.stringify({schema_version:'document-parse-response-v1',request_id:`parse-v2-${suffix}`,status:'needs_confirmation',parser_version:'synthetic-parser-2',material:{material_id:material,material_version:1,media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',sha256:contentHash},warnings:[],document:{},error:null})]);
+  assert.equal((await db.query('SELECT id FROM bb_current_fact_evidence_reviews WHERE id=$1',[currentAgain.review_id])).rows.length,0,'newer parse version fails closed');
+  await db.end();
+});
