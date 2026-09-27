@@ -15,7 +15,7 @@ export type ReviewedContextArgs = {
   expectedIssuerBinding: VerifiedIssuerIdentityBinding;
   currentDraftRevision: number;
   /** Only an already locked run may replay against a later project draft. */
-  mode?: 'selection' | 'replay';
+  mode?: 'selection' | 'replay' | 'non_production_test';
   currentMaterialVersions: readonly { materialId: string; materialVersion: number; sha256: string }[];
 };
 export type ReviewedContextResult =
