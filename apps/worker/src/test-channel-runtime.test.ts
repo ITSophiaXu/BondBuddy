@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { runPipelineOnce, type RunStage } from './run-pipeline.js';
@@ -101,9 +103,13 @@ test('an unbound update identity pauses a test run before its provider intent', 
 
 test('test-only Word passes delivery inspection and stays isolated from another account',
   {skip:!databaseUrl || !process.env.BB_TEST_AZURITE_CONNECTION_STRING || !process.env.BB_PYTHON_BIN},async()=>{
+  // Keep this delivery run away from queued jobs and leases created by other cases in this file.
+  const wordDatabaseUrl=await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL','word-delivery');
+  const previousCwd=process.cwd();
+  process.chdir(resolve(dirname(fileURLToPath(import.meta.url)),'..'));
   const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
   process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
-  const pool=new Pool({connectionString:databaseUrl});
+  const pool=new Pool({connectionString:wordDatabaseUrl});
   const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING!;
   const container=`bb-test-channel-${randomUUID()}`;
   const blobs=azureBlobs(blobConnection,container);
@@ -125,10 +131,11 @@ test('test-only Word passes delivery inspection and stays isolated from another 
       {name:'input_lock',run:async()=>({kind:'done'})},
       {name:'word_delivery',run:async()=>({kind:'deliver',bytes:makeWorkerDocxFixture({externalLink:false})})}
     ];
-    const result=await runPipelineOnce({pool,blobs,stages,testRuleCapabilityLoader:async()=>
+    const unexpected:string[]=[];
+    const result=await runPipelineOnce({pool,blobs,stages,onUnexpectedError:error=>unexpected.push(JSON.stringify(error)),testRuleCapabilityLoader:async()=>
       ({status:'ready',sampleManifestSha256:sample,taxonomyHash:taxonomy,rulePackHash:pack,
         uncoveredItems:[{rule_id:'synthetic-rule',reason_code:'needs_review',evidence_ref:'docx:p0001'}]})});
-    assert.equal(result,'test_completed');
+    assert.equal(result,'test_completed',unexpected.join('; '));
     const run=(await send('GET',`/api/v1/runs/${submitted.json().run_id}`)).json();
     assert.equal(run.state,'test_completed');assert.equal(run.channel,'non_production_test');
     assert.equal(run.uncovered_items.length,1);assert.equal(run.billing_mode,'non_billable_test');
@@ -142,6 +149,7 @@ test('test-only Word passes delivery inspection and stays isolated from another 
   }finally{
     await app.close();await pool.end();
     await BlobServiceClient.fromConnectionString(blobConnection).getContainerClient(container).deleteIfExists();
+    process.chdir(previousCwd);
     if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
     if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
   }

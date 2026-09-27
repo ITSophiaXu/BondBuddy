@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import { schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { missing, Problem, unavailable, type PrivateBlobs } from './data.js';
 import { gateState, resumeEvidenceGate } from './evidence-gate.js';
+import { assertTestChannelReadable } from './non-production-test.js';
 import { adminAlerts, adminEvents, adminJobTimeline, adminMetrics, adminPromptView, correctUsage, operatorRoles, parseAdminFilter } from './log-ops.js';
 
 type Deps = { db: () => Pool; blobs: () => PrivateBlobs; owner: (request: FastifyRequest) => Promise<string>; promptViewDeadlineMs?: number };
@@ -62,9 +63,17 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
     const actor = await operator(request, 'prompt_viewer');
     const query = request.query as Record<string, unknown>;
     if (Object.keys(query).some(key => key !== 'reason_code') || typeof query.reason_code !== 'string') throw new Problem(422, 'VALIDATION_FAILED', 'reason_code is required');
+    const snapshotId = param(request, 'snapshot_id');
+    const linkedTestRun = await deps.db().query(`SELECT EXISTS (
+      SELECT 1 FROM bb_snapshot_refs s
+      LEFT JOIN bb_model_call_attempts a ON a.prompt_snapshot_id=s.id
+      LEFT JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=s.owner_user_id
+      JOIN bb_runs r ON r.id=COALESCE(s.run_id,j.run_id) AND r.owner_user_id=s.owner_user_id
+      WHERE s.id=$1 AND r.channel='non_production_test') AS linked`, [snapshotId]);
+    if(linkedTestRun.rows[0]?.linked)assertTestChannelReadable('non_production_test');
     reply.header('cache-control', 'no-store');
     let blobs: PrivateBlobs; try { blobs = deps.blobs(); } catch { throw unavailable(); }
-    const result = await adminPromptView(deps.db(), blobs, actor, param(request, 'snapshot_id'), query.reason_code, controller.signal, deadlineAt);
+    const result = await adminPromptView(deps.db(), blobs, actor, snapshotId, query.reason_code, controller.signal, deadlineAt);
     release = result.release;
     if (disconnected) { await release(); throw unavailable(); }
     return result.view;

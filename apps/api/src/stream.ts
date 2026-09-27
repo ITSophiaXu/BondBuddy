@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 import { STREAM_LIMITS, type StreamEnd } from '@bondbuddy/contracts';
 import { date, Problem, run, runDto } from './data.js';
+import { assertTestChannelReadable } from './non-production-test.js';
 import { currentMaterialParseJob, materialParseJobDto, readMaterialParseJobEvents } from './material-jobs.js';
 
 // #17: server-sent events of persisted state only. Each frame is read back from PostgreSQL
@@ -60,13 +61,13 @@ function sse(request: FastifyRequest, settings: StreamSettings, source: {
 export function installEventStreams(app: FastifyInstance, deps: Deps, settings: StreamSettings = {}) {
   app.get('/api/v1/runs/:run_id/stream', async (request, reply) => {
     const user = await deps.owner(request), runId = (request.params as { run_id: string }).run_id;
-    await run(deps.db(), user, runId); // owner check before parsing the cursor; foreign IDs share 404
+    assertTestChannelReadable((await run(deps.db(), user, runId)).channel); // owner check before parsing the cursor; foreign IDs share 404
     const cursor = streamCursor(request);
     const body = sse(request, settings, {
-      snapshot: async () => runDto(await run(deps.db(), user, runId)),
+      snapshot: async () => { const row=await run(deps.db(),user,runId);assertTestChannelReadable(row.channel);return runDto(row); },
       page: async after => (await deps.db().query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT $4', [user, runId, after, STREAM_LIMITS.pageSize])).rows
         .map(e => ({ seq: Number(e.seq), event: e.type, data: { event_id: e.id, schema_version: 1, trace_id: e.trace_id, run_id: e.run_id, seq: Number(e.seq), occurred_at: date(e.occurred_at), stage: e.stage, type: e.type, state: e.state, payload: e.payload } })),
-      terminal: async () => runTerminal.has((await run(deps.db(), user, runId)).state),
+      terminal: async () => { const row=await run(deps.db(),user,runId);assertTestChannelReadable(row.channel);return runTerminal.has(row.state); },
     }, cursor);
     return reply.header('content-type', 'text/event-stream; charset=utf-8').header('cache-control', 'private, no-store').header('x-accel-buffering', 'no').send(body);
   });

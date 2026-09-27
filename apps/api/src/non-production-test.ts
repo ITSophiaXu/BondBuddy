@@ -1,8 +1,13 @@
 import type { Pool, PoolClient } from 'pg';
-import { Problem } from './data.js';
+import { missing, Problem } from './data.js';
 
 export const testChannelEnabled = (env: NodeJS.ProcessEnv = process.env) =>
   env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
+
+/** Test run metadata is unavailable whenever this deployment cannot serve test artifacts. */
+export function assertTestChannelReadable(channel: string | null | undefined) {
+  if (channel === 'non_production_test' && !testChannelEnabled()) throw missing();
+}
 
 export type TestGrantScope = { grantId: string; userId: string; projectId: string; inputRevision: number; inputHash: string };
 
