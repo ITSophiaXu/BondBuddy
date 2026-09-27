@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { inputManifestHash, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { isVerifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { AUTHORIZED_SAMPLE_MANIFEST_SHA256 } from './authorized-sample-membership.generated.js';
@@ -19,18 +20,6 @@ const notReady = (reason: string): TestRuleCapability => ({ status: 'not_ready',
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const sha256 = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value.trim());
-
-function readTestApplicabilityRef(manifest: Record<string, unknown>) {
-  // This field must be written by the trusted input-lock path. Never look up the
-  // latest draft/review, and never treat the target confirmation as this pin.
-  const raw = manifest.test_rule_applicability_ref;
-  if (!isRecord(raw) || typeof raw.context_id !== 'string' || !raw.context_id ||
-      !Number.isSafeInteger(raw.version) || Number(raw.version) < 1 || !sha256(raw.content_hash) ||
-      !Number.isSafeInteger(raw.source_input_revision) || Number(raw.source_input_revision) < 1 ||
-      !sha256(raw.source_input_hash)) return null;
-  return { context_id: raw.context_id, version: Number(raw.version), content_hash: raw.content_hash.trim(),
-    source_input_revision: Number(raw.source_input_revision), source_input_hash: raw.source_input_hash.trim() };
-}
 
 /**
  * Trusted worker-only candidate capability. Coverage-item gaps retain their

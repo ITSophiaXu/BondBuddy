@@ -432,7 +432,7 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         'a reviewer-provided synthetic version is not a server-published taxonomy and cannot reach selection');
       assert.ok(!approvedPin.rule_pack_block_reasons.includes('production_rule_pack_registry_empty'),
         'the loader stops before production selection while the real taxonomy mapping remains unpublished');
-      const previousTier=process.env.BB_DEPLOYMENT_TIER,previousChannel=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+      const previousTestTier=process.env.BB_DEPLOYMENT_TIER,previousTestChannel=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
       process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
       const reviewRef=confirmedDraft.json().context_ref;
       const testLock=async (ref: unknown, materials=[{material_id:materialId,material_version:1},
@@ -490,8 +490,8 @@ test('owner applicability API derives a needs_review ref from locked evidence an
           test_rule_applicability_context_ref:reviewRef});
         assert.equal(switchOff.statusCode,403);assert.equal(switchOff.json().code,'TEST_CHANNEL_DISABLED');
       } finally {
-        if(previousTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTier;
-        if(previousChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousChannel;
+        if(previousTestTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTestTier;
+        if(previousTestChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousTestChannel;
       }
       activeOwner = ruleReviewerId;
       const withdrawApproved = await send('POST', confirmedReviewUrl, { request_id: `overall-withdraw-approved-${suffix}`,
@@ -524,8 +524,8 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         assert.equal(readTestApplicabilityRef(withdrawnManifest),null);
         assert.equal(withdrawnManifest.test_rule_applicability_block_reason,'rule_applicability_overall_review_withdrawn');
       } finally {
-        if(previousTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTier;
-        if(previousChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousChannel;
+        if(previousTestTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=previousTestTier;
+        if(previousTestChannel===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=previousTestChannel;
       }
 
       // V2 uses the same exact domain resolver at API approval and approved-load time.
@@ -599,18 +599,18 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       const productionReview = await loadReviewedRuleApplicabilityContext(pool, { ...reviewedArgs, mode: 'selection' });
       assert.deepEqual(productionReview.status, 'needs_review');
       assert.deepEqual(productionReview.reasons, ['rule_applicability_taxonomy_not_published']);
-      const previousTier = process.env.BB_DEPLOYMENT_TIER;
-      const previousChannel = process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+      const previousReviewTier = process.env.BB_DEPLOYMENT_TIER;
+      const previousReviewChannel = process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
       process.env.BB_DEPLOYMENT_TIER = 'preprod';
       process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
       try {
         const testReview = await loadReviewedRuleApplicabilityContext(pool, { ...reviewedArgs, mode: 'non_production_test' });
         assert.equal(testReview.status, 'approved', JSON.stringify(testReview));
       } finally {
-        if (previousTier === undefined) delete process.env.BB_DEPLOYMENT_TIER;
-        else process.env.BB_DEPLOYMENT_TIER = previousTier;
-        if (previousChannel === undefined) delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
-        else process.env.BB_NON_PRODUCTION_TEST_CHANNEL = previousChannel;
+        if (previousReviewTier === undefined) delete process.env.BB_DEPLOYMENT_TIER;
+        else process.env.BB_DEPLOYMENT_TIER = previousReviewTier;
+        if (previousReviewChannel === undefined) delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+        else process.env.BB_NON_PRODUCTION_TEST_CHANNEL = previousReviewChannel;
       }
       activeOwner = owner;
       const confirmedFields = await pool.query(`SELECT field_key,candidate_value,source_kind,source_status
