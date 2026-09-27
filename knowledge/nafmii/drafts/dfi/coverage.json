@@ -1,0 +1,143 @@
+{
+  "schema_version": "capability-coverage-v1",
+  "manifest_id": "nafmii-dfi-coverage",
+  "version": "2026.09.27-draft.1",
+  "rule_pack_id": "nafmii-dfi",
+  "assessed_at": "2026-09-27T10:00:00Z",
+  "items": [
+    {
+      "item_id": "dfi-arrangement",
+      "area": "统一注册与本期实际工具分开",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na015-page003-0a9c6f35"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-tier",
+      "area": "成熟层资格与第一/二类区分",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na015-page002-8af5115b"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-mature-2025",
+      "area": "成熟层2025优化与有效期",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na039-page001-a5503939"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-basic-2026",
+      "area": "基础层PDFI及总额度",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na023-page001-a5503939"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-basic-exceptions",
+      "area": "分产品注册触发及历史衔接",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na022-page001-a5503939"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-transition",
+      "area": "PDFI在途/决议过渡与60工作日",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na023-page002-d609ac8a"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-funds",
+      "area": "注册匡算与发行用途分层",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na022-page001-eb92221f"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-refresh",
+      "area": "季度更新及发行披露时点",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na022-page001-a5503939"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "dfi-syndicate",
+      "area": "主承销商团与变更",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na022-page002-7fb8820f"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    }
+  ],
+  "open_blockers": [
+    {
+      "blocker_id": "rule-consumer",
+      "description": "#19生产规则导入/审核发布及实际工具组合待联调；不在此资产脚本复制公共契约。",
+      "required_evidence": "@loooo139 明确消费者版本、导入和项目适用性证据。"
+    },
+    {
+      "blocker_id": "authorized-real",
+      "description": "本批为规则，无PPN/DFI授权真实项目及成果；现有四组沪深私募测试稿不能替代。",
+      "required_evidence": "@ITSophiaXu 提供相应注册/发行材料及目标；产出后做行业验收。"
+    },
+    {
+      "blocker_id": "companion-source",
+      "description": "2025第146号承销通知、PPN2020年12月修订发布依据及过渡等精确缺口见交接。",
+      "required_evidence": "按缺口逐条核对，不把局部问题当全部工作稿无法运行。"
+    }
+  ]
+}

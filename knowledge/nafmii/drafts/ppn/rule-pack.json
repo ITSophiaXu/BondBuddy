@@ -1,0 +1,1173 @@
+{
+  "schema_version": "rule-pack-v1",
+  "pack_id": "nafmii-ppn",
+  "version": "2026.09.27-draft.1",
+  "supersedes_version": null,
+  "status": "draft",
+  "scope": {
+    "market": "nafmii",
+    "offering": "ppn",
+    "instruments": [
+      "standard-ppn"
+    ],
+    "document_stages": [
+      "registration",
+      "issuance"
+    ],
+    "issuer_scopes": [
+      "domestic-nonfinancial-enterprise"
+    ]
+  },
+  "validity": {
+    "published_on": null,
+    "effective_from": "2026-09-27",
+    "effective_to": null,
+    "transition_terms": [
+      "本日期为研究快照候选适用起点，不是法规生效日；实际效力按来源事件和文书时点核验。",
+      "缺材料在全文工作稿标待人工确认，不编造事实或生产发布。"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "na044-page001-d411d11a",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-4【20200630】非金融企业债务融资工具定向发行注册工作规程（2020 版）",
+      "source_version": "2020-dec-revision",
+      "official_url": null,
+      "document_hash": "39bf2d10444384eaca9591837f46c3955c1f13c4b9b16e8a1f064e235410e880",
+      "clause_locator": "PAGE001, PAGE002, PAGE003, PAGE010",
+      "exact_quote": "1 \n \n附件： \n \n非金融企业债务融资工具定向发行注册工作规程 \n（2020 版） \n（2017年8月29日第五届常务理事会第三次会议审议通过；2020年4月30日第五届\n常务理事会第十五次会议修订；根据常务理事会相关授权，2020年12月第四届债\n券市场专业委员会第十八次会议修订） \n \n第一章  总则 \n \n第一条 为规范非金融企业债务融资工具（ 以下简称债务融\n资工具） 定向发行注册工作，促进多层次债券市场发展，根据 《银\n行间债券市场非金融企业债务融资工具管理办法》 （中国人民银\n行令〔2008〕第 1 号）及中国银行间市场交易商协会（以下简称\n交易商协会） 《非金融企业债务融资工具注册发行规则》等相关\n规定，制定本规程。 \n第二条 企业可以向银行间债券市场合格机构投资人（ 以下\n简称定向投资人）定向发行债务融资工具。 \n交易商协会常务理事会授权交易商协会秘书处 （以下简称秘\n书处）可根据市场发展需要优化定向投资人管理机制， 经债券市\n场专业委员会议定后发布实施。 \n第三条 秘书处注册发行部门负责接收定向债务融资工具的\n注册文件、 对注册文件及拟披露信息的齐备性进行核对。 秘书处\n注册发行 部门不对定向 债务融资工具的投资价值及投资风险作\n2 \n \n实质性判断。 \n第四条 企业定向发行债务融资工具，应当按照交易商协会\n相关自律规则为定向债务融资工具持有人聘请受托管理人， 并签\n署受托管理协议。 \n企业应当在定向债务融资工具发行文件中披露受托管理人\n基本情况及受托管理协议的主要内容， 并在显要位置提示定向投\n资人认购或持有本期债务融资工具视作同意受托管理协议。 \n第五条 债务融资工具定向发行及存续期相关文件及信息应\n通过交易商协会综合业务和信息服务平台 （以下简称综合服务平\n台）对银行间债券市场合格机构投资人定向披露， 接受投资人监\n督。 \n只向部分经遴选的银行间债券市场合格机构投资人定向发\n行债务融资工具的， 发行及存续期相关文件及信息应通过综合服\n务平台在约定的定向投资人范围内披露。 \n \n第二章 定向投资人 \n \n第六条 本规程所称定向投资人包括专项机构投资人和特定\n机构投资人。 \n第七条 本规程所称专项机构投资人，是指除具有丰富的债\n券市场投资经验和风险识别能力外， 还熟悉定向债务融资工具风\n险特征和投资流程， 具有承担风险的意愿和能力， 自愿接受交易\n商协会自律管理的合格机构投资人。 \n专项机构投资人由交易商协会按照市场化原则， 根据常务理\n3 \n \n事会确定的程序遴选确定并在交易商协会认可的网站公告。 \n第八条 本规程所称特定机构投资人，是指了解并能够识别\n某发行人定向发行的特定债务融资工具风险特征和投资流程， 具\n有承担该债务融资工具投资风险的意愿和能力， 自愿接受交易商\n协会自律管理的合格机构投资人。 \n特定机构投资人由企业和主承销商遴选确定。 \n第九条 由定向投资人作为资产管理人，在依法合规的前提\n下， 接受客户的委托或者授权， 按照与客户约定的投资计划和方\n式开展资产管理或投资业务所设立或管理的各类投资产品， 包括\n但不限于：证券投资基金、银行理财产品、资产管理计划、信托\n计划、保险产品、住房公积金、社会保障基金、企业年金、养老\n基金等非法人类合格机构投资人 （以下简称非法人类定向投资人）\n参照定向投资人管理， 由其资产管理人行使相关法定或约定的权\n利，接受交易商协会自律管理。 \n第十条 非法人类定向投资人的资产管理人应遵守与委托人\n之间的约定， 不得投资于超出投资范围或委托人风险承受能力的\n定向债务融资工具。 \n第十一条 非法人类定向投资人的资产管理人和托管人应不\n断加强内部控制等各类制度建设， 完善部门和岗位设置， 提高相\n关人员业务能力， 防止有关机构和个人利用职务之便损害委托人\n的合法权益。 \n第十二条 企业和主承销商应当在报送注册文件前确定定向\n投资人范围。 \n向专项机构投资人和特定机构投资人 （如有） 定向发行债务\n10 \n \n资人定向披露当期发行文件。 \n第三十七条 企业在债务融资工具定向发行完成后，应在完\n成债权债务关系登记的次一工作日， 通过综合服务平台向银行间\n债券市场合格机构投资人定向披露本期债务融资工 具的发行结\n果。 \n第三十八条 定向发行的债务融资工具在定向募集说明书或\n定向发行协议约定的定向投资人之间流通转让。 \n第三十九条 定向发行的债务融资工具可以根据银行间债券\n市场相关规定用于回购交易。 \n \n第六章  附则 \n \n第四十条 秘书处注册发行工作人员应严格遵守《注册发行\n工作人员行为守则》等工作纪律。 \n第四十一条 秘书处审计部对注册工作实行全流程监督，相\n关规则另行制定。 \n第四十二条 违反本规程及交易商协会相关自律规则规定的，\n按交易商协会 《非金融企业债务融资工具市场自律处分规则》 进\n行自律处分。 \n第四十三条 秘书处与北京金融资产交易所有限公司、全国\n银行间同业拆借中心、 银行间市场清算所股份有限公司等金融基\n础设施加强沟通， 共同做好定向债务融资工具发行、 交易等各环\n节的定向投资人管理相关工作。 \n第四十四条 定向发行的资产支持票据、项目收益票据、 置",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00088-b5893f5d",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00088, P00305, P00306",
+      "exact_quote": "1、DM、DX系列表：母表为必选，采用定向募集版本定向发行债务融资工具的，注册及注册后首期定向发行应当按照DM表编制定向募集说明书，注册有效期内后续定向发行可适用BDM表；采用定向协议版本定向发行债务融资工具的，注册及注册后首期定向发行应当按照DX表和F1表编制定向发行协议，注册有效期内后续定向发行可适用F2表；项目收益票据注册及注册后首期定向发行适用XDM表或DX表和F1表。子表为可选，涉及特定产品、特定行业或特定情形时使用。应用相关子表时，应根据DM表、BDM表或F1表、F2表关于信息披露相关要求，结合子表格内容予以披露。\n选择定向募集版本定向发行债务融资工具的，注册及注册后首期定向发行应当按照DM表编制定向募集说明书，注册有效期内后续定向发行适用BDM表。选择定向协议版本定向发行债务融资工具的，注册及注册后首期定向发行应当按照DX表和F1表编制定向发行协议，注册有效期内后续定向发行适用F2表，并通过综合服务平台向投资人定向披露。\n企业在注册有效期内后续定向发行债务融资工具时，同一注册额度项下《定向募集说明书》或《定向发行协议》中未发生变化的内容，可在《补充定向募集说明书》或《补充信息披露文件》中进行引用。",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na041-page002-7fb8820f",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-1【20200416】关于发布《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》等有关事项的通知",
+      "source_version": "2020-43",
+      "official_url": null,
+      "document_hash": "94e67ebc6ad929168087ff105e9b9f4530fda1c599a98f9c26040f733dac47de",
+      "clause_locator": "PAGE002",
+      "exact_quote": "2\n《定向表格（2020版）》自 2020年 7月 1日起施行，7月 1\n日起新报送的注册项目应按照《定向表格（2020版）》要求进行\n信息披露，7月 1日起新发行的项目应按照《定向表格（2020版）》\nDM-11持有人会议机制要求进行信息披露。7月 1日前，鼓励企\n业按照协会自律规则和表格体系相关要求披露信息。\n二、配套分层分类注册发行机制及信息披露基本要求\n1、【PPN纳入成熟层企业统一注册品种范畴】企业按照《非\n金融企业债务融资工具公开发行注册工作规程（2020版）》新注\n册以及换发取得新的 DFI注册通知书的，可选择定向发行方式。\n成熟层企业选择采用定向发行方式发行 PPN，可自主选用按照定\n向发行或公开发行表格体系进行披露。\n2、【财务报告】企业采用定向募集说明书发行的，提供两年\n审计报告及半年度会计报表，采用定向协议发行的，提供近一年\n审计报告即可。针对成熟层企业和上市公司，如采用定向募集说\n明书方式的，不强制要求披露半年报情况。\n3、【募集资金用途】成熟层企业如单独注册 PPN，无需披露\n募集资金用途和发行条款；其他企业注册时均应按照《定向表格\n（2020版》相关要求披露发行条款和募集资金用途。特定产品、\n行业应符合相应补充表格要求。\n4、【发行前排查】除按照 D.13表（涉及重要事项信息披露\n表）履行补充信息披露义务外，不同类型企业按如下机制处理：\n成熟层企业仅需就“提交注册会议评议的重要事项”通报协会完\n成处理；其他企业除需就“提交注册会议评议的重要事项”通报\n协会外，还需就 D.13表所列明的“其他企业需要在发行前通报",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00610-ea51e700",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00610, P00614, P00630, P00634, P00638, P00642",
+      "exact_quote": "板块构成——各业务板块近两年及近半年（如有）营业收入、营业成本、毛利及毛利率的数额与占比。\n收入占近一年或近半年（如有）主营业务收入10%以上，或毛利润占10%以上的主要业务板块，披露近两年及近半年（如有）盈利模式、上下游产业链情况、产销区域、关键技术工艺、行业地位等。披露能说明其行业地位和经营优势的行业关键指标数据，并说明相关数据来源。\n披露近两年经审计的财务报告及近半年（如有）会计报表编制基础、重大会计政策变更、审计情况、重要合并报表范围变化情况。如会计师事务所变更，披露变更原因；如合并报表范围发生重大变化，披露变动原因。\n以列表形式披露近两年及近半年（如有）资产负债表、利润表及现金流量表，注明数据来源。企业编制合并财务报表的，同时披露合并和母公司财务报表。\n重大会计科目分析——披露近两年及近半年（如有）资产负债结构表。对近一年或近半年（如有）占总资产10%以上的资产类科目、占总负债10%以上的负债类科目，或者变化幅度在30%以上的会计科目，以列表形式简要分析变动情况及变动原因。\n重要财务指标分析——以列表形式简要披露近两年及近半年（如有）偿债能力、盈利能力、运营效率等财务指标及变动原因。",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00307-0adf260c",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00307, P00308, P00309, P00311",
+      "exact_quote": "（五）首期发行前新的年报披露后应“刷报”\n如果定向发行的债务融资工具在完成注册后、首期发行前，出具了新的年度审计报告且在4月30日后首期发行的，发行人应按照DM表或F1表对拟定向披露的《定向募集说明书》或《信息披露文件》进行更新。如果定向发行的债务融资工具在完成注册后、首期发行前仅披露了新的半年度报表，应同时定向披露半年报，但无需对发行文件进行修改。\n（六）发行前重要事项排查\n律师应按照定向发行法律意见书信息披露表（DF表）要求于定向披露前对发行人截至定向募集说明书或定向发行协议信息披露文件落款日的法律事项更新发表法律意见。",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00548-d27ca5fd",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00548, P00549, P00550, P00554",
+      "exact_quote": "募集资金用途——披露募集资金使用合规性、使用安排，如偿还债务、补充流动资金、项目投资、股权投资或资产收购等；用于项目的，披露项目基本内容，投资额，自有资本金及资本金到位情况，建设计划及现状，土地、环保、立项批复情况（批复文件作为备查文件）；用于股权投资、基金出资的，应符合国家宏观调控和产业政策要求，不得用于对金融机构出资，不得直接用于上市公司二级市场股票投资等。闲置的募集资金如进行合理的流动性管理应事先在募集中披露资金使用决议程序等，并承诺不得用于购买高收益理财。如设置募集资金专户和偿债资金专户，应当按要求披露信息。企业可披露所制定的具体偿债计划及保障措施。\n募集资金应按照实需原则用于生产经营活动，严禁用于套利、脱实向虚。\n采取发行金额动态调整机制发行的，按照发行金额上限披露募集资金用途。\n承诺——用于符合国家法律法规及政策要求的企业生产经营活动；在债务融资工具存续期间变更资金用途前及时在中国银行间市场交易商协会综合业务和信息服务平台（简称综合服务平台）向投资人定向披露有关信息。",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na044-page002-e01f4b6d",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-4【20200630】非金融企业债务融资工具定向发行注册工作规程（2020 版）",
+      "source_version": "2020-dec-revision",
+      "official_url": null,
+      "document_hash": "39bf2d10444384eaca9591837f46c3955c1f13c4b9b16e8a1f064e235410e880",
+      "clause_locator": "PAGE002, PAGE007",
+      "exact_quote": "2 \n \n实质性判断。 \n第四条 企业定向发行债务融资工具，应当按照交易商协会\n相关自律规则为定向债务融资工具持有人聘请受托管理人， 并签\n署受托管理协议。 \n企业应当在定向债务融资工具发行文件中披露受托管理人\n基本情况及受托管理协议的主要内容， 并在显要位置提示定向投\n资人认购或持有本期债务融资工具视作同意受托管理协议。 \n第五条 债务融资工具定向发行及存续期相关文件及信息应\n通过交易商协会综合业务和信息服务平台 （以下简称综合服务平\n台）对银行间债券市场合格机构投资人定向披露， 接受投资人监\n督。 \n只向部分经遴选的银行间债券市场合格机构投资人定向发\n行债务融资工具的， 发行及存续期相关文件及信息应通过综合服\n务平台在约定的定向投资人范围内披露。 \n \n第二章 定向投资人 \n \n第六条 本规程所称定向投资人包括专项机构投资人和特定\n机构投资人。 \n第七条 本规程所称专项机构投资人，是指除具有丰富的债\n券市场投资经验和风险识别能力外， 还熟悉定向债务融资工具风\n险特征和投资流程， 具有承担风险的意愿和能力， 自愿接受交易\n商协会自律管理的合格机构投资人。 \n专项机构投资人由交易商协会按照市场化原则， 根据常务理\n7 \n \n务关系确立前， 企业发生重大事项， 或者发生非重大、 但可能对\n投资价值及投资决策判断有重要影响的事项， 需要补充披露相关\n信息的，应通过综合服务平台定向披露相关文件， 并按照秘书处\n相关流程处理。 \n企业发生需再次提交注册会议评议的重大事项的， 注册发行\n部门应将企业修改完毕的注册文件提交注册会议评议， 并参照再\n次提交注册会议评议相关程序处理。 \n第二十四条 提交注册会议评议流程及后续处理参照 再次提\n交注册会议评议相关程序处理。 \n第二十五条 主承销商在企业注册过程中及注册有效期内，\n应跟踪企业的业务经营和财务情况， 督促企业做好重大事项及其\n它重要事项的补充信息披露工作。 \n第二十六条 定向债务融资工具信用评级和跟踪评级的具体\n安排由企业确定， 并在定向募集说明书或定向发行协议中明确披\n露。 \n第二十七条 注册发行部门应及时整理并妥善保管咨询专家\n意见及注册会议相关档案， 保存期至相关咨询专家或注册会议评\n议项目注册额度下最后一期债务融资工具债权债务关系解除后\n三年止。 \n \n第四章  中介机构职责 \n \n第二十八条 为债务融资工具定向发行提供中介服务的主承\n销商、受托管理人、 会计师事务所、 律师事务所等相关中介机构",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na044-page009-36723e05",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-4【20200630】非金融企业债务融资工具定向发行注册工作规程（2020 版）",
+      "source_version": "2020-dec-revision",
+      "official_url": null,
+      "document_hash": "39bf2d10444384eaca9591837f46c3955c1f13c4b9b16e8a1f064e235410e880",
+      "clause_locator": "PAGE009, PAGE010",
+      "exact_quote": "9 \n \n工作。 \n第三十三条 会计师事务所应当具备并有效执行健全的质量\n控制制度和内部管理制度， 执业质量和执业道德良好， 加强对本\n所会计师从事债务融资工具相关审计服务的管理。 会计师事务所\n及其指派的会计师应当在充分尽职调查的基础上， 依据法律、 法\n规、 规章、 企业会计准则及相关规定、 交易商协会相关自律规则\n及会计师行业公认的业务标准、 道德规范和勤勉尽责精神出具审\n计报告。 \n企业应委托执业时间长、 执业经验丰富、 市场认可度高的会\n计师事务所出具审计报告。 \n第三十四条 律师事务所应当建立健全风险控制制度，加强\n对本所律师从事债务融资工具相关中介法律服务的管理。 律师事\n务所及其指派的律师应当在充分尽职调查的基础上，依据法律、\n法规、 规章、 交易商协会相关自律规则及律师行业公认的业务标\n准、道德规范和勤勉尽责精神出具法律意见书。 \n第三十五条 为债务融资工具定向发行提供中介服务的主承\n销商、受托管理人、会计师事务所、 律师事务所等相关中介机构\n和人员在业务开展过程中不得有违反公平竞争、 进行不正当利益\n输送、破坏市场秩序等行为。 \n \n第五章 发行及其他 \n \n第三十六条 企业定向发行债务融资工具的，应至少于发行\n前一个工作日 通过综合服务平台 向银行间债券市场合格机构投\n10 \n \n资人定向披露当期发行文件。 \n第三十七条 企业在债务融资工具定向发行完成后，应在完\n成债权债务关系登记的次一工作日， 通过综合服务平台向银行间\n债券市场合格机构投资人定向披露本期债务融资工 具的发行结\n果。 \n第三十八条 定向发行的债务融资工具在定向募集说明书或\n定向发行协议约定的定向投资人之间流通转让。 \n第三十九条 定向发行的债务融资工具可以根据银行间债券\n市场相关规定用于回购交易。 \n \n第六章  附则 \n \n第四十条 秘书处注册发行工作人员应严格遵守《注册发行\n工作人员行为守则》等工作纪律。 \n第四十一条 秘书处审计部对注册工作实行全流程监督，相\n关规则另行制定。 \n第四十二条 违反本规程及交易商协会相关自律规则规定的，\n按交易商协会 《非金融企业债务融资工具市场自律处分规则》 进\n行自律处分。 \n第四十三条 秘书处与北京金融资产交易所有限公司、全国\n银行间同业拆借中心、 银行间市场清算所股份有限公司等金融基\n础设施加强沟通， 共同做好定向债务融资工具发行、 交易等各环\n节的定向投资人管理相关工作。 \n第四十四条 定向发行的资产支持票据、项目收益票据、 置",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na044-page006-bcea40bd",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-4【20200630】非金融企业债务融资工具定向发行注册工作规程（2020 版）",
+      "source_version": "2020-dec-revision",
+      "official_url": null,
+      "document_hash": "39bf2d10444384eaca9591837f46c3955c1f13c4b9b16e8a1f064e235410e880",
+      "clause_locator": "PAGE006, PAGE007, PAGE011",
+      "exact_quote": "6 \n \n（三）企业或相关中介机构应于收到建议后十个工作日内，\n向注册发行部门提交经补充、 修改后的注册文件 （以下简称补充\n文件） 。 \n未在规定时间内提交的， 应出具延迟提交的书面说明。 未出\n具书面说明， 或自受理之日起累计办理时间超过六十个工作日的，\n交易商协会可建议企业或相关中介机构撤回注册文件。 \n（四）注册发行部门收到企业或相关中介机构补充文件后，\n如核对人认为补充文件及拟披露信息仍不完备， 应由主办核对人\n汇总意见后， 于收到补充文件后五个工作日内出具书面或口头建\n议； 如核对人认为补充文件及拟披露信息符合相关规则指引要求，\n交易商协会按照相关工作流程办理接受注册手续， 并向企业出具\n《接受注册通知书》 。 \n第二十一条 注册发行部门可就注册文件及拟披露信息咨询\n注册专家意见。 专家应在收到拟咨询专家意见的注册文件及相关\n材料后五个工作日内向主办核对人反馈书面意见。 \n主办核对人在收到专家意见后， 应在一个工作日内将专家意\n见反馈给企业及相关中介机构。 企业或相关中介机构在收到专家\n意见后五个工作日内提交补充文件， 并在定向募集说明书或定向\n发行协议的显要位置就专家意见及补充披露情况进行提示。 \n第二十二条 企业自最近一个完整会计年度起始日至接受注\n册之日发生需再次提交注册会议评议的重大事项的， 注册发行部\n门应将企业修改完毕的注册文件提交注册会议评议， 由注册会议\n决定是否接受定向债务融资工具注册。 \n第二十三条 自接受注册之日起至定向债务融资工具债权债\n7 \n \n务关系确立前， 企业发生重大事项， 或者发生非重大、 但可能对\n投资价值及投资决策判断有重要影响的事项， 需要补充披露相关\n信息的，应通过综合服务平台定向披露相关文件， 并按照秘书处\n相关流程处理。 \n企业发生需再次提交注册会议评议的重大事项的， 注册发行\n部门应将企业修改完毕的注册文件提交注册会议评议， 并参照再\n次提交注册会议评议相关程序处理。 \n第二十四条 提交注册会议评议流程及后续处理参照 再次提\n交注册会议评议相关程序处理。 \n第二十五条 主承销商在企业注册过程中及注册有效期内，\n应跟踪企业的业务经营和财务情况， 督促企业做好重大事项及其\n它重要事项的补充信息披露工作。 \n第二十六条 定向债务融资工具信用评级和跟踪评级的具体\n安排由企业确定， 并在定向募集说明书或定向发行协议中明确披\n露。 \n第二十七条 注册发行部门应及时整理并妥善保管咨询专家\n意见及注册会议相关档案， 保存期至相关咨询专家或注册会议评\n议项目注册额度下最后一期债务融资工具债权债务关系解除后\n三年止。 \n \n第四章  中介机构职责 \n \n第二十八条 为债务融资工具定向发行提供中介服务的主承\n销商、受托管理人、 会计师事务所、 律师事务所等相关中介机构\n11 \n \n换票据等相关产品指引对本规程有关条款另有规定的， 从其规定。 \n第四十五条 本规程由交易商协会秘书处负责解释。 \n第四十六条 本规程自公布之日起施行。 \n ",
+      "published_on": null,
+      "effective_from": null,
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00396-af3096a1",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00396, P00397",
+      "exact_quote": "DM-0\n声明与承诺、目录",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00468-f2fbbb1d",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00468, P00469",
+      "exact_quote": "DM-1\n第一章 释义",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00476-4258f823",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00476, P00477",
+      "exact_quote": "DM-2\n第二章 风险提示及说明",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00512-9751b631",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00512, P00513",
+      "exact_quote": "DM-3\n第三章 发行条款",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00543-b0124773",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00543, P00544",
+      "exact_quote": "DM-4\n第四章 募集资金运用",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00557-d83023b4",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00557, P00558",
+      "exact_quote": "DM-5\n第五章 企业基本情况",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00625-60c98bbe",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00625, P00626",
+      "exact_quote": "DM-6\n第六章 企业主要财务状况",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00665-4dccba32",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00665, P00666",
+      "exact_quote": "DM-7\n第七章 企业资信状况",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00686-923dcaa9",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00686, P00687",
+      "exact_quote": "DM-8\n第八章 债务融资工具信用增进（如有）",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00694-1bcd9b7f",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00694, P00695",
+      "exact_quote": "DM-9\n第九章 主动债务管理（如有）",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00706-b01a82df",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00706, P00707",
+      "exact_quote": "DM-10\n第十章 定向信息披露安排",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00722-57db90b0",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00722, P00723",
+      "exact_quote": "DM-11\n第十一章 持有人会议机制",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00750-0592eb28",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00750, P00751",
+      "exact_quote": "DM-12\n第十二章 受托管理人机制",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00766-087545d6",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00766, P00767",
+      "exact_quote": "DM-13\n第十三章 投资人保护条款（如有）",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00782-acf15499",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00782, P00783",
+      "exact_quote": "DM-14\n第十四章 违约、风险情形及处置",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00826-c015461a",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00826, P00827",
+      "exact_quote": "DM-15\n第十五章 发行有关机构",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    },
+    {
+      "source_id": "na042-p00874-87737dc3",
+      "kind": "unverified_lead",
+      "authority": "中国银行间市场交易商协会",
+      "document_title": "2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》",
+      "source_version": "2020",
+      "official_url": null,
+      "document_hash": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "clause_locator": "P00874, P00875",
+      "exact_quote": "DM-16\n第十六章 备查文件",
+      "published_on": "2020-04-16",
+      "effective_from": "2020-07-01",
+      "effective_to": null,
+      "verified_by": null,
+      "verified_at": null
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "ppn-scope",
+      "version": "1",
+      "title": "定向投资者、披露渠道及转让范围",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na044-page001-d411d11a"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "investor_scope",
+        "investor_selection_evidence",
+        "disclosure_channel",
+        "transfer_scope"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "投资人名单随版本更新，不硬编码2018年180家。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "区分专项、特定及非法人投资人；全部合格机构与约定部分名单的披露范围不同。公开上传不能替代定向披露。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-scope-positive",
+          "summary": "有名单及协议依据，渠道/转让范围一致",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-scope-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-scope-negative",
+          "summary": "将定向披露写成面向社会公众",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-scope-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-scope-boundary",
+          "summary": "仅简称PPN，无投资人范围依据",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-scope-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-route",
+      "version": "1",
+      "title": "定向募集说明书与定向协议分支",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na042-p00088-b5893f5d"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "document_stage",
+        "disclosure_route",
+        "first_issue_in_registration",
+        "prior_document_reference"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "成熟层DFI下定向发行可选择公开或定向表格，需明确实际选择。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "DM用于注册及首期定向募集说明书；后续可用BDM。DX/F1/F2是协议路径，不能静默互换。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-route-positive",
+          "summary": "首期募集说明书采用DM，后续引用有版本",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-route-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-route-negative",
+          "summary": "首期误用BDM删掉核心内容",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-route-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-route-boundary",
+          "summary": "用户未确定募集说明书或协议路径",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-route-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-financial",
+      "version": "1",
+      "title": "财务期间、口径及定向例外",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na041-page002-7fb8820f"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "disclosure_route",
+        "issuer_tier",
+        "listed_status",
+        "financial_periods",
+        "consolidated_and_parent_sources"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "成立不足所需年限按自成立日起；选择公开表格时按该路径，不能无条件套两年。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "定向募集说明书通常两年审计及半年度；定向协议近一年审计。成熟层和上市公司定向募集说明书不强制半年报，缺少资格依据不自动豁免。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-financial-positive",
+          "summary": "两年审计和合并/母公司披露有证据",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-financial-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-financial-negative",
+          "summary": "PPN协议无条件要求三年一期或将半年省略泛化",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-financial-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-financial-boundary",
+          "summary": "成熟层资格与半年报要求不确定",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-financial-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-financial-detail",
+      "version": "1",
+      "title": "财务分析、业务及科目变动证据",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na042-p00610-ea51e700"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "financial_periods",
+        "accounting_scope",
+        "business_revenue",
+        "account_balances",
+        "change_reasons"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "科目30%变动与资产/负债10%等原文条件分开，分母零或负数待判断。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "逐表保留期间、主体、合并/母公司和来源；金额/比例/变化分析不能凭模型补数，重大科目和业务披露依DM条款。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-financial-detail-positive",
+          "summary": "同期间口径算数一致且原因有依据",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-financial-detail-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-financial-detail-negative",
+          "summary": "母公司数据混进合并表且无提示",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-financial-detail-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-financial-detail-boundary",
+          "summary": "零分母或重分类导致不可比",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-financial-detail-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-refresh",
+      "version": "1",
+      "title": "发行前刷报及重要事项",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na042-p00307-0adf260c"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "registration_date",
+        "first_issuance_date",
+        "annual_audit_available",
+        "interim_available",
+        "material_events",
+        "legal_opinion_date"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "监管最低刷报要求不缩减用户全文更新；D.13及后续规则另叠加。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "注册后首期前出具新年审且4月30日后首期发行按DM/F1更新；仅新半年报的特殊安排保留。全文更新仍按用户最新材料执行。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-refresh-positive",
+          "summary": "满足新年度刷报条件并更新跨章内容",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-refresh-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-refresh-negative",
+          "summary": "将仅半年报例外泛化为所有项目无需更新",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-refresh-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-refresh-boundary",
+          "summary": "首次/后续及签署时间不明",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-refresh-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-funds",
+      "version": "1",
+      "title": "募集资金用途、项目材料与账户",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na042-p00548-d27ca5fd"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "funds_use_items",
+        "issue_amount",
+        "project_approvals",
+        "account_arrangements"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "后续2022用途规程及专项要求叠加；注册可简化不等于发行免披露。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "核对实需用途、金额、项目资本金及批复，动态金额按上限；股权/基金等用途核政策，不以用户选择直接判合规。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-funds-positive",
+          "summary": "用途及项目文件可追溯且金额相符",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-funds-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-funds-negative",
+          "summary": "用途合计超过发行规模或缺批复仍声称合规",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-funds-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-funds-boundary",
+          "summary": "项目批复缺失标待人工确认",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-funds-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-trustee",
+      "version": "1",
+      "title": "受托管理、评级和保护安排",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na044-page002-e01f4b6d"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "trustee",
+        "trust_agreement",
+        "rating_choice",
+        "investor_protection_terms"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "投资人保护示范条款如有才按实际写入，不能强制全部勾选；受托制度另核现行配套。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "PPN按相关自律规则聘请受托人、披露协议主要内容；评级安排由企业确定并披露，不编造评级。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-trustee-positive",
+          "summary": "实际受托协议和已选择评级有来源",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-trustee-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-trustee-negative",
+          "summary": "将公开通用“受托如有”直接删PPN受托章节",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-trustee-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-trustee-boundary",
+          "summary": "受托协议尚未提供",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-trustee-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-timing",
+      "version": "1",
+      "title": "发行前、结果及存续披露",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na044-page009-36723e05"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "issuance_date",
+        "disclosure_date",
+        "registration_completion_date",
+        "business_calendar",
+        "ongoing_arrangements"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "不能将公开首次发行2工作日或交易流通首日直接替代定向特别安排；工作日历未锁定不自动算。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "定向发行前至少1工作日披露；完成债权债务登记次一工作日定向披露结果，转让限约定投资人。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-timing-positive",
+          "summary": "披露日期与受众依据齐全",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-timing-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-timing-negative",
+          "summary": "以自然日直接代替工作日判通过",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-timing-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-timing-boundary",
+          "summary": "节假日历缺失",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-timing-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    },
+    {
+      "rule_id": "ppn-changes",
+      "version": "1",
+      "title": "版本变化、定向事项与授权边界",
+      "enabled": false,
+      "enforcement": "research_only",
+      "source_ref_ids": [
+        "na044-page006-bcea40bd"
+      ],
+      "applicability": {
+        "document_stages": [
+          "registration",
+          "issuance"
+        ],
+        "issuer_scopes": [
+          "domestic-nonfinancial-enterprise"
+        ],
+        "investor_scopes": [
+          "directional-institutional"
+        ],
+        "industries": [],
+        "special_features": []
+      },
+      "required_inputs": [
+        "material_events",
+        "registration_notice",
+        "latest_rule_version",
+        "special_features"
+      ],
+      "checker": {
+        "checker_id": "nafmii-manual-evidence-review",
+        "checker_version": "1",
+        "parameter_version": "2026.09.27-draft.1"
+      },
+      "exceptions": [
+        "本批NA044为2020年12月修订文本，配套发布公告仍需补核；不能以文件名6月日期套效力。"
+      ],
+      "evidence_requirements": [
+        "锁定材料/规则版本和原文定位",
+        "逐字段状态及人工确认记录"
+      ],
+      "outputs": {
+        "when_met": "needs_judgement",
+        "when_not_met": "needs_evidence",
+        "severity": "warning"
+      },
+      "boundaries": [
+        "接受注册前后重大/重要事项按相应程序披露与评议；专项产品另有规定从其规定。",
+        "本项为人工审核规范；尚未实现自动业务checker，不以字段非空判业务通过。"
+      ],
+      "positive_examples": [
+        {
+          "example_id": "ppn-changes-positive",
+          "summary": "变更记录与本期文件对应",
+          "expected_outcome": "pass",
+          "evidence_ref": "synthetic:ppn-changes-positive"
+        }
+      ],
+      "negative_examples": [
+        {
+          "example_id": "ppn-changes-negative",
+          "summary": "未审核重大事项就继续声明没有事项",
+          "expected_outcome": "issue",
+          "evidence_ref": "synthetic:ppn-changes-negative"
+        }
+      ],
+      "boundary_examples": [
+        {
+          "example_id": "ppn-changes-boundary",
+          "summary": "再评议结果或规则施行时点不明",
+          "expected_outcome": "needs_evidence",
+          "evidence_ref": "synthetic:ppn-changes-boundary"
+        }
+      ],
+      "owner_role": "industry_reviewer"
+    }
+  ],
+  "sample_suite": {
+    "suite_id": "nafmii-ppn-bundle-integrity",
+    "version": "1",
+    "data_classification": "synthetic",
+    "cases": [
+      {
+        "case_id": "ppn-positive",
+        "polarity": "positive",
+        "evidence_ref": "engineering:nafmii-knowledge.test.ts#schema",
+        "result": "passed",
+        "reviewed_by": "engineering-fixture-author",
+        "reviewed_at": "2026-09-27T10:00:00Z"
+      },
+      {
+        "case_id": "ppn-negative",
+        "polarity": "negative",
+        "evidence_ref": "engineering:nafmii-knowledge.test.ts#cross-market",
+        "result": "passed",
+        "reviewed_by": "engineering-fixture-author",
+        "reviewed_at": "2026-09-27T10:00:00Z"
+      },
+      {
+        "case_id": "ppn-boundary",
+        "polarity": "boundary",
+        "evidence_ref": "engineering:nafmii-knowledge.test.ts#draft-gate",
+        "result": "passed",
+        "reviewed_by": "engineering-fixture-author",
+        "reviewed_at": "2026-09-27T10:00:00Z"
+      }
+    ]
+  },
+  "reviews": [],
+  "release": null,
+  "withdrawal": null
+}

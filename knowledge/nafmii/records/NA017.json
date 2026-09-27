@@ -1,0 +1,99 @@
+{
+  "source_id": "NA017",
+  "original_sha256": "f552d2c3db70efe2a80606fa28dced7de1e28b837d210ab937cfeebe8fdbe57f",
+  "extraction_status": "legacy_doc_text_extracted",
+  "extraction_tool": "word-extractor@1.0.4",
+  "locator_note": "Extracted body line, not original page or Word paragraph; table cells may be linearized. Quoted form identifiers must be retained.",
+  "records": [
+    {
+      "locator": "L00001",
+      "role": "body",
+      "text": "附件1："
+    },
+    {
+      "locator": "L00003",
+      "role": "body",
+      "text": "定向债务融资工具专项机构投资人遴选细则"
+    },
+    {
+      "locator": "L00004",
+      "role": "body",
+      "text": "（2018版）"
+    },
+    {
+      "locator": "L00005",
+      "role": "body",
+      "text": "（2015年11月经第四届常务理事会第八次会议审议通过；"
+    },
+    {
+      "locator": "L00006",
+      "role": "body",
+      "text": "2018年7月经第四届债券市场专业委员会第五次会议审议通过修订）"
+    },
+    {
+      "locator": "L00008",
+      "role": "body",
+      "text": "    第一条 为规范定向债务融资工具专项机构投资人（以下简称专项机构投资人）遴选程序，促进投资人队伍建设，加快推进多层次资本市场体系建设，根据中国人民银行《银行间债券市场非金融企业债务融资工具管理办法》（中国人民银行令〔2008〕第1号）以及中国银行间市场交易商协会（简称交易商协会）相关自律规则，制定本细则。 "
+    },
+    {
+      "locator": "L00009",
+      "role": "body",
+      "text": "    第二条 本细则所称专项机构投资人，是指除具有丰富的债券市场投资经验和风险识别能力外，还熟悉定向债务融资工具风险特征和投资流程，具有承担风险的意愿和能力，自愿接受交易商协会自律管理，履行会员义务的合格机构投资人群体。"
+    },
+    {
+      "locator": "L00010",
+      "role": "body",
+      "text": "    第三条 符合以下条件之一的机构可成为专项机构投资人： "
+    },
+    {
+      "locator": "L00011",
+      "role": "body",
+      "text": "    （一）中国人民银行公开市场业务一级交易商； "
+    },
+    {
+      "locator": "L00012",
+      "role": "body",
+      "text": "    （二）银行间债券市场做市商； "
+    },
+    {
+      "locator": "L00013",
+      "role": "body",
+      "text": "    （三）银行间债券市场债券结算代理人； "
+    },
+    {
+      "locator": "L00014",
+      "role": "body",
+      "text": "    （四）非金融企业债务融资工具主承销商； "
+    },
+    {
+      "locator": "L00015",
+      "role": "body",
+      "text": "    （五）信用风险缓释工具核心交易商或信用风险缓释凭证创设机构； "
+    },
+    {
+      "locator": "L00016",
+      "role": "body",
+      "text": "    （六）定向债务融资工具平均托管量或交易量达到一定规模的机构投资人。"
+    },
+    {
+      "locator": "L00017",
+      "role": "body",
+      "text": "    第四条 交易商协会秘书处根据本细则第三条的条件拟定180家专项机构投资人名单，经债券市场专业委员会评议后发布。"
+    },
+    {
+      "locator": "L00018",
+      "role": "body",
+      "text": "    第五条 专项机构投资人名单原则上每两年调整一次。 "
+    },
+    {
+      "locator": "L00019",
+      "role": "body",
+      "text": "    第六条 本细则由交易商协会秘书处负责解释和修订。 "
+    },
+    {
+      "locator": "L00020",
+      "role": "body",
+      "text": "    第七条 本细则自发布之日起施行。"
+    }
+  ]
+}

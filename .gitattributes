@@ -13,3 +13,15 @@
 /knowledge/exchange-bonds/verification/2026-09-27-industry/code-table.md linguist-generated=true
 /knowledge/exchange-bonds/verification/2026-09-27-industry/guideline.md linguist-generated=true
 /knowledge/exchange-bonds/verification/2026-09-27-industry/followup-sources.md linguist-generated=true
+
+# NAFMII evidence must retain the exact supplied/downloaded bytes.
+/knowledge/nafmii/originals/* binary
+/knowledge/nafmii/official/*.html binary
+/knowledge/nafmii/official/*.pdf binary
+/knowledge/nafmii/official/*.doc binary
+/knowledge/nafmii/official/*.docx binary
+/knowledge/nafmii/records/*.json linguist-generated=true
+/knowledge/nafmii/ocr/*.json linguist-generated=true
+/knowledge/nafmii/sources/*.md linguist-generated=true
+/knowledge/nafmii/research-index.json linguist-generated=true
+/packages/domain/src/nafmii-source-evidence.ts linguist-generated=true

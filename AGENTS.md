@@ -66,6 +66,10 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 #20于2026-09-27补齐[协会行业标准原件、576代码与候选映射](knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)，含官方检索、2024相近标准边界及逐表格定位。#19在既有唯一字典中接入，不能把此离线资产当成已批准行业或直接启用生产。#20是否完成按[关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)逐关核对，已有样本/方法确认不重复索取，首次受控运行与生成后的专业验收分开。
 
+### 交易商协会知识索引
+
+2026-09-27用户提供的交易商协会注册制度ZIP见[收件与使用指南](knowledge/nafmii/README.md)：79项收件、72份去重原件、7份官方补充证据；PPN/DFI各9项规则审核规范及DM/注册安排章节，MTN/CP/SCP的新草案改引2023披露正文。开发前阅读[适用性逐项答复](knowledge/nafmii/APPLICABILITY.md)及[逐Issue交接](knowledge/nafmii/ISSUE-HANDOFF.md)。DFI/PDFI与实际一期工具分开，PPN不用公募财务要求兜底，历史/境外/专项/图解与当前研究范围隔离；机器OCR、来源整理和合成测试均不冒充人工专业签认。沿用#19 schema，不另造公共市场/发行方式枚举；新包尚无自动业务checker或生产消费者，按交接推动#26–#30。
+
 ## Codex 接到 Issue 后
 
 #20 的[可执行检查交接](knowledge/exchange-bonds/drafts/sse-private/EXECUTABLE-CHECKS.md)对应 `2026.09.27-draft.6` / checker v4：25组受限检查和6组明确人工审核处理；原剩余20条已补14组检查与6组人工处理，全部仍为research_only。[31条已填文献核对记录](knowledge/exchange-bonds/drafts/sse-private/RULE-REVIEW-20260927.md)列出原文、效力观察、适用/例外与验收；人工专业签认/真实结果仍另行完成。#19的[A03九维到十二码交接](knowledge/exchange-bonds/drafts/sse-private/A03-FEATURE-MAPPING-20260927.md)明确多码、否定证据及单值/编码差距，不在业务checker复制公共契约。历史稿规则消费者已修复API pin字段并接入精确正式规则正文，见[接入验收记录](docs/acceptance/issue-20-rule-integration-2026-09-27.md)。输入适配、真实审核和生产发布未完成，不因checker存在就开放规则。

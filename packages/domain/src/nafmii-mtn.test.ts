@@ -41,7 +41,7 @@ test('official binary sources retain reproducible SHA-256 fingerprints',()=>{
     'nafmii-mtn-guide-2021':'a908a42699ab94c9c396fdbcad6fcacb9a0a12b505a3933b36b3f01d3c612b9e',
     'nafmii-public-forms-2020':'bc07230ee3368b5ee22ec421e6755c6170ed24fe906b9213b53545c4bf0a531c',
     'nafmii-registration-rules-2023':'0047ae2b57158d2a89ae5dff725aed9c296a52e55b20860a382b0920b28e7e6b',
-    'nafmii-disclosure-rules-2021':'c945af5d28b06bab33b4100160945793bae013d745151fde438df19cdef4ea05',
+    'nafmii-disclosure-rules-2023':'cca3cfaed55d9c3a81b3b2fa12480bd325b8bf920af1c437148b34e56a2780da',
   } as const;
   for(const [sourceId,hash] of Object.entries(expected)){
     assert.equal(nafmiiMtnDraftRulePack.sources.find(item=>item.source_id===sourceId)?.document_hash,hash);
@@ -65,12 +65,12 @@ test('the MTN draft cannot advertise a production capability',()=>{
   assert.deepEqual(result.reason_codes,['pack_not_production_published']);
 });
 
-test('production publication remains blocked without authorized real samples',()=>{
+test('production publication rejects research sources even with test-only attestations',()=>{
   const reviews=[
     { reviewer_id:'industry-reviewer',reviewer_role:'industry_reviewer' as const,reviewed_at:'2026-09-24T09:00:00Z',source_verified:true,scope_verified:true,samples_verified:true,notes:'test-only attestation' },
     { reviewer_id:'technical-reviewer',reviewer_role:'technical_reviewer' as const,reviewed_at:'2026-09-24T09:01:00Z',source_verified:true,scope_verified:true,samples_verified:true,notes:'test-only attestation' },
   ];
-  assert.throws(()=>publishRulePack(nafmiiMtnDraftRulePack,{channel:'production',reviews,released_by:'test-release-operator',released_at:'2026-09-24T10:00:00Z',reason:'negative gate test'}),/PRODUCTION_REQUIRES_AUTHORIZED_REAL_SAMPLES/);
+  assert.throws(()=>publishRulePack(nafmiiMtnDraftRulePack,{channel:'production',reviews,released_by:'test-release-operator',released_at:'2026-09-27T10:00:00Z',reason:'negative gate test'}),/RULE_PACK_HAS_UNPUBLISHABLE_RULES/);
 });
 
 test('bundle publication cannot bypass explicit uncovered items or blockers',()=>{

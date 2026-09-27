@@ -1,0 +1,1977 @@
+{
+  "source_id": "OF003",
+  "original_sha256": "d900473b28ad3cc97c5aa3373fba8fe5db25d6606ffa9ceccea4f6861c5c25d0",
+  "extraction_status": "html_text_extracted",
+  "records": [
+    {
+      "locator": "L00001",
+      "role": "body",
+      "text": "关于优化债务融资工具成熟层企业机制有关事项的通知"
+    },
+    {
+      "locator": "L00002",
+      "role": "body",
+      "text": "English"
+    },
+    {
+      "locator": "L00003",
+      "role": "body",
+      "text": "English"
+    },
+    {
+      "locator": "L00004",
+      "role": "body",
+      "text": "首页"
+    },
+    {
+      "locator": "L00005",
+      "role": "body",
+      "text": "要闻"
+    },
+    {
+      "locator": "L00006",
+      "role": "body",
+      "text": "时政要闻"
+    },
+    {
+      "locator": "L00007",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00008",
+      "role": "body",
+      "text": "总行新闻"
+    },
+    {
+      "locator": "L00009",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00010",
+      "role": "body",
+      "text": "党建动态"
+    },
+    {
+      "locator": "L00011",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00012",
+      "role": "body",
+      "text": "纪检工作"
+    },
+    {
+      "locator": "L00013",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00014",
+      "role": "body",
+      "text": "会员"
+    },
+    {
+      "locator": "L00015",
+      "role": "body",
+      "text": "会员服务"
+    },
+    {
+      "locator": "L00016",
+      "role": "body",
+      "text": "服务资讯"
+    },
+    {
+      "locator": "L00017",
+      "role": "body",
+      "text": "新手入门"
+    },
+    {
+      "locator": "L00018",
+      "role": "body",
+      "text": "会员建议"
+    },
+    {
+      "locator": "L00019",
+      "role": "body",
+      "text": "研究报告"
+    },
+    {
+      "locator": "L00020",
+      "role": "body",
+      "text": "服务指南"
+    },
+    {
+      "locator": "L00021",
+      "role": "body",
+      "text": "会籍管理"
+    },
+    {
+      "locator": "L00022",
+      "role": "body",
+      "text": "入会"
+    },
+    {
+      "locator": "L00023",
+      "role": "body",
+      "text": "信息变更"
+    },
+    {
+      "locator": "L00024",
+      "role": "body",
+      "text": "退会"
+    },
+    {
+      "locator": "L00025",
+      "role": "body",
+      "text": "会员名单"
+    },
+    {
+      "locator": "L00026",
+      "role": "body",
+      "text": "会员总名单"
+    },
+    {
+      "locator": "L00027",
+      "role": "body",
+      "text": "会员分类名单"
+    },
+    {
+      "locator": "L00028",
+      "role": "body",
+      "text": "领导机构名单"
+    },
+    {
+      "locator": "L00029",
+      "role": "body",
+      "text": "CRM交易商名单"
+    },
+    {
+      "locator": "L00030",
+      "role": "body",
+      "text": "非金融企业债务融资工具承销机构名单"
+    },
+    {
+      "locator": "L00031",
+      "role": "body",
+      "text": "做市商名单"
+    },
+    {
+      "locator": "L00032",
+      "role": "body",
+      "text": "评级机构名单"
+    },
+    {
+      "locator": "L00033",
+      "role": "body",
+      "text": "受托管理机构名单"
+    },
+    {
+      "locator": "L00034",
+      "role": "body",
+      "text": "专业委员会"
+    },
+    {
+      "locator": "L00035",
+      "role": "body",
+      "text": "债券市场专业委员会"
+    },
+    {
+      "locator": "L00036",
+      "role": "body",
+      "text": "金融衍生品专业委员会"
+    },
+    {
+      "locator": "L00037",
+      "role": "body",
+      "text": "金币市场专业委员会"
+    },
+    {
+      "locator": "L00038",
+      "role": "body",
+      "text": "信用评级专业委员会"
+    },
+    {
+      "locator": "L00039",
+      "role": "body",
+      "text": "交易专业委员会"
+    },
+    {
+      "locator": "L00040",
+      "role": "body",
+      "text": "法律专业委员会"
+    },
+    {
+      "locator": "L00041",
+      "role": "body",
+      "text": "会计专业委员会"
+    },
+    {
+      "locator": "L00042",
+      "role": "body",
+      "text": "资产证券化暨结构化融资专业委员会"
+    },
+    {
+      "locator": "L00043",
+      "role": "body",
+      "text": "从业人员培训专家委员会"
+    },
+    {
+      "locator": "L00044",
+      "role": "body",
+      "text": "纠纷调解"
+    },
+    {
+      "locator": "L00045",
+      "role": "body",
+      "text": "纠纷调解工作介绍"
+    },
+    {
+      "locator": "L00046",
+      "role": "body",
+      "text": "调解规则"
+    },
+    {
+      "locator": "L00047",
+      "role": "body",
+      "text": "调解员名册"
+    },
+    {
+      "locator": "L00048",
+      "role": "body",
+      "text": "相关文书"
+    },
+    {
+      "locator": "L00049",
+      "role": "body",
+      "text": "调解动态"
+    },
+    {
+      "locator": "L00050",
+      "role": "body",
+      "text": "投融e动"
+    },
+    {
+      "locator": "L00051",
+      "role": "body",
+      "text": "我要提问"
+    },
+    {
+      "locator": "L00052",
+      "role": "body",
+      "text": "企业之声"
+    },
+    {
+      "locator": "L00053",
+      "role": "body",
+      "text": "自律"
+    },
+    {
+      "locator": "L00054",
+      "role": "body",
+      "text": "自律规则"
+    },
+    {
+      "locator": "L00055",
+      "role": "body",
+      "text": "会员管理类"
+    },
+    {
+      "locator": "L00056",
+      "role": "body",
+      "text": "产品创新类"
+    },
+    {
+      "locator": "L00057",
+      "role": "body",
+      "text": "注册发行类"
+    },
+    {
+      "locator": "L00058",
+      "role": "body",
+      "text": "存续期管理"
+    },
+    {
+      "locator": "L00059",
+      "role": "body",
+      "text": "交易规范类"
+    },
+    {
+      "locator": "L00060",
+      "role": "body",
+      "text": "标准协议文本"
+    },
+    {
+      "locator": "L00061",
+      "role": "body",
+      "text": "标准协议文本"
+    },
+    {
+      "locator": "L00062",
+      "role": "body",
+      "text": "协议备案名单"
+    },
+    {
+      "locator": "L00063",
+      "role": "body",
+      "text": "自律公约"
+    },
+    {
+      "locator": "L00064",
+      "role": "body",
+      "text": "评价与通报"
+    },
+    {
+      "locator": "L00065",
+      "role": "body",
+      "text": "市场评价"
+    },
+    {
+      "locator": "L00066",
+      "role": "body",
+      "text": "承销调查评估"
+    },
+    {
+      "locator": "L00067",
+      "role": "body",
+      "text": "存续期管理"
+    },
+    {
+      "locator": "L00068",
+      "role": "body",
+      "text": "自律处分"
+    },
+    {
+      "locator": "L00069",
+      "role": "body",
+      "text": "自律处分工作动态"
+    },
+    {
+      "locator": "L00070",
+      "role": "body",
+      "text": "自律处分概览"
+    },
+    {
+      "locator": "L00071",
+      "role": "body",
+      "text": "自律处分会议专家管理"
+    },
+    {
+      "locator": "L00072",
+      "role": "body",
+      "text": "产品"
+    },
+    {
+      "locator": "L00073",
+      "role": "body",
+      "text": "债务融资工具"
+    },
+    {
+      "locator": "L00074",
+      "role": "body",
+      "text": "注册流程"
+    },
+    {
+      "locator": "L00075",
+      "role": "body",
+      "text": "基础产品"
+    },
+    {
+      "locator": "L00076",
+      "role": "body",
+      "text": "专项产品"
+    },
+    {
+      "locator": "L00077",
+      "role": "body",
+      "text": "DCM注册发行通知书"
+    },
+    {
+      "locator": "L00078",
+      "role": "body",
+      "text": "信用风险缓释工具CRM"
+    },
+    {
+      "locator": "L00079",
+      "role": "body",
+      "text": "业务规则"
+    },
+    {
+      "locator": "L00080",
+      "role": "body",
+      "text": "产品指引及通知"
+    },
+    {
+      "locator": "L00081",
+      "role": "body",
+      "text": "基本术语与适用规则"
+    },
+    {
+      "locator": "L00082",
+      "role": "body",
+      "text": "信用事项决定机制"
+    },
+    {
+      "locator": "L00083",
+      "role": "body",
+      "text": "业务运行情况"
+    },
+    {
+      "locator": "L00084",
+      "role": "body",
+      "text": "更多信用衍生品知识"
+    },
+    {
+      "locator": "L00085",
+      "role": "body",
+      "text": "业务问答"
+    },
+    {
+      "locator": "L00086",
+      "role": "body",
+      "text": "注册发行类"
+    },
+    {
+      "locator": "L00087",
+      "role": "body",
+      "text": "产品创新类"
+    },
+    {
+      "locator": "L00088",
+      "role": "body",
+      "text": "披露"
+    },
+    {
+      "locator": "L00089",
+      "role": "body",
+      "text": "债务融资工具信息披露"
+    },
+    {
+      "locator": "L00090",
+      "role": "body",
+      "text": "发行披露"
+    },
+    {
+      "locator": "L00091",
+      "role": "body",
+      "text": "发行结果"
+    },
+    {
+      "locator": "L00092",
+      "role": "body",
+      "text": "信用评级"
+    },
+    {
+      "locator": "L00093",
+      "role": "body",
+      "text": "财务报告"
+    },
+    {
+      "locator": "L00094",
+      "role": "body",
+      "text": "ABN定期报告"
+    },
+    {
+      "locator": "L00095",
+      "role": "body",
+      "text": "付息兑付"
+    },
+    {
+      "locator": "L00096",
+      "role": "body",
+      "text": "重大事项及其他"
+    },
+    {
+      "locator": "L00097",
+      "role": "body",
+      "text": "持有人会议"
+    },
+    {
+      "locator": "L00098",
+      "role": "body",
+      "text": "评级机构业务报告"
+    },
+    {
+      "locator": "L00099",
+      "role": "body",
+      "text": "CRM信息披露"
+    },
+    {
+      "locator": "L00100",
+      "role": "body",
+      "text": "凭证类产品创设披露"
+    },
+    {
+      "locator": "L00101",
+      "role": "body",
+      "text": "凭证类产品存续期披露"
+    },
+    {
+      "locator": "L00102",
+      "role": "body",
+      "text": "CDS指数披露"
+    },
+    {
+      "locator": "L00103",
+      "role": "body",
+      "text": "数据"
+    },
+    {
+      "locator": "L00104",
+      "role": "body",
+      "text": "主承分类统计"
+    },
+    {
+      "locator": "L00105",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00106",
+      "role": "body",
+      "text": "发行"
+    },
+    {
+      "locator": "L00107",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00108",
+      "role": "body",
+      "text": "托管"
+    },
+    {
+      "locator": "L00109",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00110",
+      "role": "body",
+      "text": "持有人结构"
+    },
+    {
+      "locator": "L00111",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00112",
+      "role": "body",
+      "text": "自律处分措施"
+    },
+    {
+      "locator": "L00113",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00114",
+      "role": "body",
+      "text": "CRMW创设"
+    },
+    {
+      "locator": "L00115",
+      "role": "body",
+      "text": ">>>"
+    },
+    {
+      "locator": "L00116",
+      "role": "body",
+      "text": "培训"
+    },
+    {
+      "locator": "L00117",
+      "role": "body",
+      "text": "培训动态"
+    },
+    {
+      "locator": "L00118",
+      "role": "body",
+      "text": "培训体系介绍"
+    },
+    {
+      "locator": "L00119",
+      "role": "body",
+      "text": "培训通知"
+    },
+    {
+      "locator": "L00120",
+      "role": "body",
+      "text": "培训教材"
+    },
+    {
+      "locator": "L00121",
+      "role": "body",
+      "text": "交流园地"
+    },
+    {
+      "locator": "L00122",
+      "role": "body",
+      "text": "常见问题"
+    },
+    {
+      "locator": "L00123",
+      "role": "body",
+      "text": "在线报名"
+    },
+    {
+      "locator": "L00124",
+      "role": "body",
+      "text": "能力建设"
+    },
+    {
+      "locator": "L00125",
+      "role": "body",
+      "text": "能力建设水平测试简介"
+    },
+    {
+      "locator": "L00126",
+      "role": "body",
+      "text": "公告与通知"
+    },
+    {
+      "locator": "L00127",
+      "role": "body",
+      "text": "考试参考书"
+    },
+    {
+      "locator": "L00128",
+      "role": "body",
+      "text": "常见问题"
+    },
+    {
+      "locator": "L00129",
+      "role": "body",
+      "text": "研究"
+    },
+    {
+      "locator": "L00130",
+      "role": "body",
+      "text": "《金融市场研究》"
+    },
+    {
+      "locator": "L00131",
+      "role": "body",
+      "text": "学术委员会"
+    },
+    {
+      "locator": "L00132",
+      "role": "body",
+      "text": "主要栏目"
+    },
+    {
+      "locator": "L00133",
+      "role": "body",
+      "text": "征稿主题"
+    },
+    {
+      "locator": "L00134",
+      "role": "body",
+      "text": "在线征订"
+    },
+    {
+      "locator": "L00135",
+      "role": "body",
+      "text": "学术资讯"
+    },
+    {
+      "locator": "L00136",
+      "role": "body",
+      "text": "期刊"
+    },
+    {
+      "locator": "L00137",
+      "role": "body",
+      "text": "市场研究与分析"
+    },
+    {
+      "locator": "L00138",
+      "role": "body",
+      "text": "NAFMII研究计划"
+    },
+    {
+      "locator": "L00139",
+      "role": "body",
+      "text": "研究报告"
+    },
+    {
+      "locator": "L00140",
+      "role": "body",
+      "text": "科技"
+    },
+    {
+      "locator": "L00141",
+      "role": "body",
+      "text": "开放接口"
+    },
+    {
+      "locator": "L00142",
+      "role": "body",
+      "text": "开放接口服务介绍"
+    },
+    {
+      "locator": "L00143",
+      "role": "body",
+      "text": "开放接口服务目录"
+    },
+    {
+      "locator": "L00144",
+      "role": "body",
+      "text": "开放接口服务管理规程"
+    },
+    {
+      "locator": "L00145",
+      "role": "body",
+      "text": "技术支持材料"
+    },
+    {
+      "locator": "L00146",
+      "role": "body",
+      "text": "联系方式"
+    },
+    {
+      "locator": "L00147",
+      "role": "body",
+      "text": "业务标准"
+    },
+    {
+      "locator": "L00148",
+      "role": "body",
+      "text": "银行间市场业务标准工作组简介"
+    },
+    {
+      "locator": "L00149",
+      "role": "body",
+      "text": "银行间市场业务标准工作组章程"
+    },
+    {
+      "locator": "L00150",
+      "role": "body",
+      "text": "银行间市场业务标准工作组成员单位"
+    },
+    {
+      "locator": "L00151",
+      "role": "body",
+      "text": "银行间市场业务标准工作组专家库"
+    },
+    {
+      "locator": "L00152",
+      "role": "body",
+      "text": "关于"
+    },
+    {
+      "locator": "L00153",
+      "role": "body",
+      "text": "协会介绍"
+    },
+    {
+      "locator": "L00154",
+      "role": "body",
+      "text": "协会概况"
+    },
+    {
+      "locator": "L00155",
+      "role": "body",
+      "text": "协会章程"
+    },
+    {
+      "locator": "L00156",
+      "role": "body",
+      "text": "协会现任领导"
+    },
+    {
+      "locator": "L00157",
+      "role": "body",
+      "text": "组织机构图"
+    },
+    {
+      "locator": "L00158",
+      "role": "body",
+      "text": "部门设置"
+    },
+    {
+      "locator": "L00159",
+      "role": "body",
+      "text": "所属公司"
+    },
+    {
+      "locator": "L00160",
+      "role": "body",
+      "text": "协会年报"
+    },
+    {
+      "locator": "L00161",
+      "role": "body",
+      "text": "人才招聘"
+    },
+    {
+      "locator": "L00162",
+      "role": "body",
+      "text": "采购公示"
+    },
+    {
+      "locator": "L00163",
+      "role": "body",
+      "text": "采购公告"
+    },
+    {
+      "locator": "L00164",
+      "role": "body",
+      "text": "采购结果公示"
+    },
+    {
+      "locator": "L00165",
+      "role": "body",
+      "text": "联系我们"
+    },
+    {
+      "locator": "L00166",
+      "role": "body",
+      "text": "会员热线"
+    },
+    {
+      "locator": "L00167",
+      "role": "body",
+      "text": "意见反馈"
+    },
+    {
+      "locator": "L00168",
+      "role": "body",
+      "text": "信访电话和地址"
+    },
+    {
+      "locator": "L00169",
+      "role": "body",
+      "text": "首页"
+    },
+    {
+      "locator": "L00170",
+      "role": "body",
+      "text": "返回首页"
+    },
+    {
+      "locator": "L00171",
+      "role": "body",
+      "text": "要闻"
+    },
+    {
+      "locator": "L00172",
+      "role": "body",
+      "text": "要闻"
+    },
+    {
+      "locator": "L00173",
+      "role": "body",
+      "text": "时政要闻"
+    },
+    {
+      "locator": "L00174",
+      "role": "body",
+      "text": "总行新闻"
+    },
+    {
+      "locator": "L00175",
+      "role": "body",
+      "text": "党建动态"
+    },
+    {
+      "locator": "L00176",
+      "role": "body",
+      "text": "纪检工作"
+    },
+    {
+      "locator": "L00177",
+      "role": "body",
+      "text": "会员"
+    },
+    {
+      "locator": "L00178",
+      "role": "body",
+      "text": "会员"
+    },
+    {
+      "locator": "L00179",
+      "role": "body",
+      "text": "会员服务"
+    },
+    {
+      "locator": "L00180",
+      "role": "body",
+      "text": "服务资讯"
+    },
+    {
+      "locator": "L00181",
+      "role": "body",
+      "text": "新手入门"
+    },
+    {
+      "locator": "L00182",
+      "role": "body",
+      "text": "会员建议"
+    },
+    {
+      "locator": "L00183",
+      "role": "body",
+      "text": "研究报告"
+    },
+    {
+      "locator": "L00184",
+      "role": "body",
+      "text": "服务指南"
+    },
+    {
+      "locator": "L00185",
+      "role": "body",
+      "text": "会籍管理"
+    },
+    {
+      "locator": "L00186",
+      "role": "body",
+      "text": "入会"
+    },
+    {
+      "locator": "L00187",
+      "role": "body",
+      "text": "信息变更"
+    },
+    {
+      "locator": "L00188",
+      "role": "body",
+      "text": "退会"
+    },
+    {
+      "locator": "L00189",
+      "role": "body",
+      "text": "会员名单"
+    },
+    {
+      "locator": "L00190",
+      "role": "body",
+      "text": "会员总名单"
+    },
+    {
+      "locator": "L00191",
+      "role": "body",
+      "text": "会员分类名单"
+    },
+    {
+      "locator": "L00192",
+      "role": "body",
+      "text": "领导机构名单"
+    },
+    {
+      "locator": "L00193",
+      "role": "body",
+      "text": "CRM交易商名单"
+    },
+    {
+      "locator": "L00194",
+      "role": "body",
+      "text": "非金融企业债务融资工具承销机构名单"
+    },
+    {
+      "locator": "L00195",
+      "role": "body",
+      "text": "做市商名单"
+    },
+    {
+      "locator": "L00196",
+      "role": "body",
+      "text": "评级机构名单"
+    },
+    {
+      "locator": "L00197",
+      "role": "body",
+      "text": "受托管理机构名单"
+    },
+    {
+      "locator": "L00198",
+      "role": "body",
+      "text": "专业委员会"
+    },
+    {
+      "locator": "L00199",
+      "role": "body",
+      "text": "债券市场专业委员会"
+    },
+    {
+      "locator": "L00200",
+      "role": "body",
+      "text": "金融衍生品专业委员会"
+    },
+    {
+      "locator": "L00201",
+      "role": "body",
+      "text": "金币市场专业委员会"
+    },
+    {
+      "locator": "L00202",
+      "role": "body",
+      "text": "信用评级专业委员会"
+    },
+    {
+      "locator": "L00203",
+      "role": "body",
+      "text": "交易专业委员会"
+    },
+    {
+      "locator": "L00204",
+      "role": "body",
+      "text": "法律专业委员会"
+    },
+    {
+      "locator": "L00205",
+      "role": "body",
+      "text": "会计专业委员会"
+    },
+    {
+      "locator": "L00206",
+      "role": "body",
+      "text": "资产证券化暨结构化融资专业委员会"
+    },
+    {
+      "locator": "L00207",
+      "role": "body",
+      "text": "从业人员培训专家委员会"
+    },
+    {
+      "locator": "L00208",
+      "role": "body",
+      "text": "纠纷调解"
+    },
+    {
+      "locator": "L00209",
+      "role": "body",
+      "text": "纠纷调解工作介绍"
+    },
+    {
+      "locator": "L00210",
+      "role": "body",
+      "text": "调解规则"
+    },
+    {
+      "locator": "L00211",
+      "role": "body",
+      "text": "调解员名册"
+    },
+    {
+      "locator": "L00212",
+      "role": "body",
+      "text": "相关文书"
+    },
+    {
+      "locator": "L00213",
+      "role": "body",
+      "text": "调解动态"
+    },
+    {
+      "locator": "L00214",
+      "role": "body",
+      "text": "投融e动"
+    },
+    {
+      "locator": "L00215",
+      "role": "body",
+      "text": "我要提问"
+    },
+    {
+      "locator": "L00216",
+      "role": "body",
+      "text": "企业之声"
+    },
+    {
+      "locator": "L00217",
+      "role": "body",
+      "text": "自律"
+    },
+    {
+      "locator": "L00218",
+      "role": "body",
+      "text": "自律"
+    },
+    {
+      "locator": "L00219",
+      "role": "body",
+      "text": "自律规则"
+    },
+    {
+      "locator": "L00220",
+      "role": "body",
+      "text": "会员管理类"
+    },
+    {
+      "locator": "L00221",
+      "role": "body",
+      "text": "产品创新类"
+    },
+    {
+      "locator": "L00222",
+      "role": "body",
+      "text": "注册发行类"
+    },
+    {
+      "locator": "L00223",
+      "role": "body",
+      "text": "存续期管理"
+    },
+    {
+      "locator": "L00224",
+      "role": "body",
+      "text": "交易规范类"
+    },
+    {
+      "locator": "L00225",
+      "role": "body",
+      "text": "标准协议文本"
+    },
+    {
+      "locator": "L00226",
+      "role": "body",
+      "text": "标准协议文本"
+    },
+    {
+      "locator": "L00227",
+      "role": "body",
+      "text": "协议备案名单"
+    },
+    {
+      "locator": "L00228",
+      "role": "body",
+      "text": "自律公约"
+    },
+    {
+      "locator": "L00229",
+      "role": "body",
+      "text": "评价与通报"
+    },
+    {
+      "locator": "L00230",
+      "role": "body",
+      "text": "市场评价"
+    },
+    {
+      "locator": "L00231",
+      "role": "body",
+      "text": "承销调查评估"
+    },
+    {
+      "locator": "L00232",
+      "role": "body",
+      "text": "存续期管理"
+    },
+    {
+      "locator": "L00233",
+      "role": "body",
+      "text": "自律处分"
+    },
+    {
+      "locator": "L00234",
+      "role": "body",
+      "text": "自律处分工作动态"
+    },
+    {
+      "locator": "L00235",
+      "role": "body",
+      "text": "自律处分概览"
+    },
+    {
+      "locator": "L00236",
+      "role": "body",
+      "text": "自律处分会议专家管理"
+    },
+    {
+      "locator": "L00237",
+      "role": "body",
+      "text": "产品"
+    },
+    {
+      "locator": "L00238",
+      "role": "body",
+      "text": "产品"
+    },
+    {
+      "locator": "L00239",
+      "role": "body",
+      "text": "债务融资工具"
+    },
+    {
+      "locator": "L00240",
+      "role": "body",
+      "text": "注册流程"
+    },
+    {
+      "locator": "L00241",
+      "role": "body",
+      "text": "基础产品"
+    },
+    {
+      "locator": "L00242",
+      "role": "body",
+      "text": "专项产品"
+    },
+    {
+      "locator": "L00243",
+      "role": "body",
+      "text": "DCM注册发行通知书"
+    },
+    {
+      "locator": "L00244",
+      "role": "body",
+      "text": "信用风险缓释工具CRM"
+    },
+    {
+      "locator": "L00245",
+      "role": "body",
+      "text": "业务规则"
+    },
+    {
+      "locator": "L00246",
+      "role": "body",
+      "text": "产品指引及通知"
+    },
+    {
+      "locator": "L00247",
+      "role": "body",
+      "text": "基本术语与适用规则"
+    },
+    {
+      "locator": "L00248",
+      "role": "body",
+      "text": "信用事项决定机制"
+    },
+    {
+      "locator": "L00249",
+      "role": "body",
+      "text": "业务运行情况"
+    },
+    {
+      "locator": "L00250",
+      "role": "body",
+      "text": "更多信用衍生品知识"
+    },
+    {
+      "locator": "L00251",
+      "role": "body",
+      "text": "业务问答"
+    },
+    {
+      "locator": "L00252",
+      "role": "body",
+      "text": "注册发行类"
+    },
+    {
+      "locator": "L00253",
+      "role": "body",
+      "text": "产品创新类"
+    },
+    {
+      "locator": "L00254",
+      "role": "body",
+      "text": "披露"
+    },
+    {
+      "locator": "L00255",
+      "role": "body",
+      "text": "披露"
+    },
+    {
+      "locator": "L00256",
+      "role": "body",
+      "text": "债务融资工具信息披露"
+    },
+    {
+      "locator": "L00257",
+      "role": "body",
+      "text": "发行披露"
+    },
+    {
+      "locator": "L00258",
+      "role": "body",
+      "text": "发行结果"
+    },
+    {
+      "locator": "L00259",
+      "role": "body",
+      "text": "信用评级"
+    },
+    {
+      "locator": "L00260",
+      "role": "body",
+      "text": "财务报告"
+    },
+    {
+      "locator": "L00261",
+      "role": "body",
+      "text": "ABN定期报告"
+    },
+    {
+      "locator": "L00262",
+      "role": "body",
+      "text": "付息兑付"
+    },
+    {
+      "locator": "L00263",
+      "role": "body",
+      "text": "重大事项及其他"
+    },
+    {
+      "locator": "L00264",
+      "role": "body",
+      "text": "持有人会议"
+    },
+    {
+      "locator": "L00265",
+      "role": "body",
+      "text": "评级机构业务报告"
+    },
+    {
+      "locator": "L00266",
+      "role": "body",
+      "text": "CRM信息披露"
+    },
+    {
+      "locator": "L00267",
+      "role": "body",
+      "text": "凭证类产品创设披露"
+    },
+    {
+      "locator": "L00268",
+      "role": "body",
+      "text": "凭证类产品存续期披露"
+    },
+    {
+      "locator": "L00269",
+      "role": "body",
+      "text": "CDS指数披露"
+    },
+    {
+      "locator": "L00270",
+      "role": "body",
+      "text": "数据"
+    },
+    {
+      "locator": "L00271",
+      "role": "body",
+      "text": "数据"
+    },
+    {
+      "locator": "L00272",
+      "role": "body",
+      "text": "主承分类统计"
+    },
+    {
+      "locator": "L00273",
+      "role": "body",
+      "text": "发行"
+    },
+    {
+      "locator": "L00274",
+      "role": "body",
+      "text": "托管"
+    },
+    {
+      "locator": "L00275",
+      "role": "body",
+      "text": "持有人结构"
+    },
+    {
+      "locator": "L00276",
+      "role": "body",
+      "text": "自律处分措施"
+    },
+    {
+      "locator": "L00277",
+      "role": "body",
+      "text": "CRMW创设"
+    },
+    {
+      "locator": "L00278",
+      "role": "body",
+      "text": "培训"
+    },
+    {
+      "locator": "L00279",
+      "role": "body",
+      "text": "培训"
+    },
+    {
+      "locator": "L00280",
+      "role": "body",
+      "text": "培训动态"
+    },
+    {
+      "locator": "L00281",
+      "role": "body",
+      "text": "培训体系介绍"
+    },
+    {
+      "locator": "L00282",
+      "role": "body",
+      "text": "培训通知"
+    },
+    {
+      "locator": "L00283",
+      "role": "body",
+      "text": "培训教材"
+    },
+    {
+      "locator": "L00284",
+      "role": "body",
+      "text": "交流园地"
+    },
+    {
+      "locator": "L00285",
+      "role": "body",
+      "text": "常见问题"
+    },
+    {
+      "locator": "L00286",
+      "role": "body",
+      "text": "在线报名"
+    },
+    {
+      "locator": "L00287",
+      "role": "body",
+      "text": "能力建设"
+    },
+    {
+      "locator": "L00288",
+      "role": "body",
+      "text": "能力建设水平测试简介"
+    },
+    {
+      "locator": "L00289",
+      "role": "body",
+      "text": "公告与通知"
+    },
+    {
+      "locator": "L00290",
+      "role": "body",
+      "text": "考试参考书"
+    },
+    {
+      "locator": "L00291",
+      "role": "body",
+      "text": "常见问题"
+    },
+    {
+      "locator": "L00292",
+      "role": "body",
+      "text": "研究"
+    },
+    {
+      "locator": "L00293",
+      "role": "body",
+      "text": "研究"
+    },
+    {
+      "locator": "L00294",
+      "role": "body",
+      "text": "《金融市场研究》"
+    },
+    {
+      "locator": "L00295",
+      "role": "body",
+      "text": "学术委员会"
+    },
+    {
+      "locator": "L00296",
+      "role": "body",
+      "text": "主要栏目"
+    },
+    {
+      "locator": "L00297",
+      "role": "body",
+      "text": "征稿主题"
+    },
+    {
+      "locator": "L00298",
+      "role": "body",
+      "text": "在线征订"
+    },
+    {
+      "locator": "L00299",
+      "role": "body",
+      "text": "学术资讯"
+    },
+    {
+      "locator": "L00300",
+      "role": "body",
+      "text": "期刊"
+    },
+    {
+      "locator": "L00301",
+      "role": "body",
+      "text": "市场研究与分析"
+    },
+    {
+      "locator": "L00302",
+      "role": "body",
+      "text": "科技"
+    },
+    {
+      "locator": "L00303",
+      "role": "body",
+      "text": "培训"
+    },
+    {
+      "locator": "L00304",
+      "role": "body",
+      "text": "开放接口"
+    },
+    {
+      "locator": "L00305",
+      "role": "body",
+      "text": "开放接口服务介绍"
+    },
+    {
+      "locator": "L00306",
+      "role": "body",
+      "text": "开放接口服务目录"
+    },
+    {
+      "locator": "L00307",
+      "role": "body",
+      "text": "开放接口服务管理规程"
+    },
+    {
+      "locator": "L00308",
+      "role": "body",
+      "text": "技术支持材料"
+    },
+    {
+      "locator": "L00309",
+      "role": "body",
+      "text": "联系方式"
+    },
+    {
+      "locator": "L00310",
+      "role": "body",
+      "text": "业务标准"
+    },
+    {
+      "locator": "L00311",
+      "role": "body",
+      "text": "银行间市场业务标准工作组简介"
+    },
+    {
+      "locator": "L00312",
+      "role": "body",
+      "text": "银行间市场业务标准工作组章程"
+    },
+    {
+      "locator": "L00313",
+      "role": "body",
+      "text": "银行间市场业务标准工作组成员单位"
+    },
+    {
+      "locator": "L00314",
+      "role": "body",
+      "text": "银行间市场业务标准工作组专家库"
+    },
+    {
+      "locator": "L00315",
+      "role": "body",
+      "text": "关于"
+    },
+    {
+      "locator": "L00316",
+      "role": "body",
+      "text": "关于"
+    },
+    {
+      "locator": "L00317",
+      "role": "body",
+      "text": "协会介绍"
+    },
+    {
+      "locator": "L00318",
+      "role": "body",
+      "text": "协会概况"
+    },
+    {
+      "locator": "L00319",
+      "role": "body",
+      "text": "协会章程"
+    },
+    {
+      "locator": "L00320",
+      "role": "body",
+      "text": "协会现任领导"
+    },
+    {
+      "locator": "L00321",
+      "role": "body",
+      "text": "组织机构图"
+    },
+    {
+      "locator": "L00322",
+      "role": "body",
+      "text": "部门设置"
+    },
+    {
+      "locator": "L00323",
+      "role": "body",
+      "text": "所属公司"
+    },
+    {
+      "locator": "L00324",
+      "role": "body",
+      "text": "协会年报"
+    },
+    {
+      "locator": "L00325",
+      "role": "body",
+      "text": "人才招聘"
+    },
+    {
+      "locator": "L00326",
+      "role": "body",
+      "text": "采购公示"
+    },
+    {
+      "locator": "L00327",
+      "role": "body",
+      "text": "采购公告"
+    },
+    {
+      "locator": "L00328",
+      "role": "body",
+      "text": "采购结果公示"
+    },
+    {
+      "locator": "L00329",
+      "role": "body",
+      "text": "联系我们"
+    },
+    {
+      "locator": "L00330",
+      "role": "body",
+      "text": "会员热线"
+    },
+    {
+      "locator": "L00331",
+      "role": "body",
+      "text": "意见反馈"
+    },
+    {
+      "locator": "L00332",
+      "role": "body",
+      "text": "信访电话和地址"
+    },
+    {
+      "locator": "L00333",
+      "role": "body",
+      "text": "通知"
+    },
+    {
+      "locator": "L00334",
+      "role": "body",
+      "text": "首页"
+    },
+    {
+      "locator": "L00335",
+      "role": "body",
+      "text": ">"
+    },
+    {
+      "locator": "L00336",
+      "role": "body",
+      "text": "公告与通知"
+    },
+    {
+      "locator": "L00337",
+      "role": "body",
+      "text": ">"
+    },
+    {
+      "locator": "L00338",
+      "role": "body",
+      "text": "通知"
+    },
+    {
+      "locator": "L00339",
+      "role": "body",
+      "text": "关于优化债务融资工具成熟层企业机制有关事项的通知"
+    },
+    {
+      "locator": "L00340",
+      "role": "body",
+      "text": "打印"
+    },
+    {
+      "locator": "L00341",
+      "role": "body",
+      "text": "分享到微信朋友圈"
+    },
+    {
+      "locator": "L00342",
+      "role": "body",
+      "text": "×"
+    },
+    {
+      "locator": "L00343",
+      "role": "body",
+      "text": "用微信“扫一扫”，点击右上角分享按钮，"
+    },
+    {
+      "locator": "L00344",
+      "role": "body",
+      "text": "即可将网页分享给您的微信好友或朋友圈。"
+    },
+    {
+      "locator": "L00345",
+      "role": "body",
+      "text": "中市协发"
+    },
+    {
+      "locator": "L00346",
+      "role": "body",
+      "text": "〔2025〕182号"
+    },
+    {
+      "locator": "L00347",
+      "role": "body",
+      "text": "各市场成员："
+    },
+    {
+      "locator": "L00348",
+      "role": "body",
+      "text": "为进一步提升注册发行工作质效，增强服务实体经济的能力，交易商协会在《非金融企业债务融资工具注册工作规程（2023版）》（协会公告〔2023〕15号发布，以下简称《注册工作规程（2023版）》）的基础上，进一步优化成熟层企业服务便利机制，不断提升债务融资工具市场服务实体经济的能力和水平。现就有关事项通知如下："
+    },
+    {
+      "locator": "L00349",
+      "role": "body",
+      "text": "一、优化成熟层企业标准"
+    },
+    {
+      "locator": "L00350",
+      "role": "body",
+      "text": "（一）《注册工作规程（2023版）》第七条第（二）项及第八条总资产报酬率指标由3%调整为2.5%。"
+    },
+    {
+      "locator": "L00351",
+      "role": "body",
+      "text": "（二）《注册工作规程（2023版）》第七条第（二）项中“若资产规模超过3000亿元，可适当调整资产负债率、总资产报酬率财务指标要求”的资产规模要求，由3000亿元调整为2500亿元。"
+    },
+    {
+      "locator": "L00352",
+      "role": "body",
+      "text": "（三）《注册工作规程（2023版）》第七条第（三）项关于信息披露成熟的要求，由“不少于3期，发行规模不少于100亿元”调整为“不少于3期或发行规模不少于100亿元”。"
+    },
+    {
+      "locator": "L00353",
+      "role": "body",
+      "text": "（四）主业处于关系国家安全、国民经济命脉和国计民生的重要行业和关键领域，服务国家重大战略和重大专项任务的企业，可豁免总资产报酬率要求，在满足成熟层企业其他相关要求基础上成为第一类企业。支持民营企业享受成熟层企业注册发行流程便利。"
+    },
+    {
+      "locator": "L00354",
+      "role": "body",
+      "text": "二、提升成熟层企业注册发行便利"
+    },
+    {
+      "locator": "L00355",
+      "role": "body",
+      "text": "（一）优化成熟层企业发行挂网时间。统一注册模式下，成熟层企业各品种债务融资工具的发行挂网时间均缩短至1个工作日。"
+    },
+    {
+      "locator": "L00356",
+      "role": "body",
+      "text": "（二）延长第一类企业注册通知书有效期。统一注册模式下，第一类企业注册通知书有效期由2年延长至3年。"
+    },
+    {
+      "locator": "L00357",
+      "role": "body",
+      "text": "（三）精简第一类企业受理环节。注册要件齐备性问题与信息披露完备性问题一次性反馈，提高注册效率。"
+    },
+    {
+      "locator": "L00358",
+      "role": "body",
+      "text": "三、切实做好机制优化配套工作"
+    },
+    {
+      "locator": "L00359",
+      "role": "body",
+      "text": "（一）企业、主承销商应按照市场化原则开展发行承销，严肃市场纪律，公平对待所有投资者，维护公平竞争秩序和市场良好生态。"
+    },
+    {
+      "locator": "L00360",
+      "role": "body",
+      "text": "（二）鼓励主承销商推动符合条件的企业注册，加强对重大战略、重点领域和薄弱环节的金融服务，鼓励主承销商积极参与债券做市，相关情况将纳入主承销商日常评价。"
+    },
+    {
+      "locator": "L00361",
+      "role": "body",
+      "text": "（三）发挥交易商协会作为自律组织的桥梁纽带作用，为企业债券发行搭建专业服务平台，鼓励主承销商组织线上线下路演，促进企业与投资者深度交流互动。"
+    },
+    {
+      "locator": "L00362",
+      "role": "body",
+      "text": "四、保障机制优化平稳实施与过渡"
+    },
+    {
+      "locator": "L00363",
+      "role": "body",
+      "text": "本通知自发布之日起实施。企业和中介机构可按照要求，积极做好新注册项目申报准备，稳妥做好已完成注册和注册过程中项目与本通知的衔接，切实保障相关机制优化平稳有序推进。交易商协会将根据市场发展及投资者保护的需要，进一步优化分层分类管理工作机制，更好提升各类型企业融资便利，加大民营经济等重点领域支持力度，具体措施另行通知。"
+    },
+    {
+      "locator": "L00364",
+      "role": "body",
+      "text": "特此通知。"
+    },
+    {
+      "locator": "L00365",
+      "role": "body",
+      "text": "中国银行间市场交易商协会"
+    },
+    {
+      "locator": "L00366",
+      "role": "body",
+      "text": "2025年9月12日"
+    },
+    {
+      "locator": "L00367",
+      "role": "body",
+      "text": "翻译"
+    },
+    {
+      "locator": "L00368",
+      "role": "body",
+      "text": "搜索"
+    },
+    {
+      "locator": "L00369",
+      "role": "body",
+      "text": "复制"
+    },
+    {
+      "locator": "L00370",
+      "role": "body",
+      "text": "友情链接："
+    },
+    {
+      "locator": "L00371",
+      "role": "body",
+      "text": "中华人民共和国国家发展和改革委员会"
+    },
+    {
+      "locator": "L00372",
+      "role": "body",
+      "text": "中债信用增进投资股份有限公司"
+    },
+    {
+      "locator": "L00373",
+      "role": "body",
+      "text": "中华人民共和国民政部"
+    },
+    {
+      "locator": "L00374",
+      "role": "body",
+      "text": "中债资信评估有限责任公司"
+    },
+    {
+      "locator": "L00375",
+      "role": "body",
+      "text": "中国人民银行"
+    },
+    {
+      "locator": "L00376",
+      "role": "body",
+      "text": "北京金融资产交易所"
+    },
+    {
+      "locator": "L00377",
+      "role": "body",
+      "text": "中华人民共和国国家发展和改革委员会"
+    },
+    {
+      "locator": "L00378",
+      "role": "body",
+      "text": "中华人民共和国民政部"
+    },
+    {
+      "locator": "L00379",
+      "role": "body",
+      "text": "中国人民银行"
+    },
+    {
+      "locator": "L00380",
+      "role": "body",
+      "text": "中债信用增进投资股份有限公司"
+    },
+    {
+      "locator": "L00381",
+      "role": "body",
+      "text": "中债资信评估有限责任公司"
+    },
+    {
+      "locator": "L00382",
+      "role": "body",
+      "text": "北京金融资产交易所"
+    },
+    {
+      "locator": "L00383",
+      "role": "body",
+      "text": "快速链接："
+    },
+    {
+      "locator": "L00384",
+      "role": "body",
+      "text": "关于我们"
+    },
+    {
+      "locator": "L00385",
+      "role": "body",
+      "text": "联系我们"
+    },
+    {
+      "locator": "L00386",
+      "role": "body",
+      "text": "网站导航"
+    },
+    {
+      "locator": "L00387",
+      "role": "body",
+      "text": "意见反馈"
+    },
+    {
+      "locator": "L00388",
+      "role": "body",
+      "text": "微信公众号"
+    },
+    {
+      "locator": "L00389",
+      "role": "body",
+      "text": "NAFMII之窗安卓版"
+    },
+    {
+      "locator": "L00390",
+      "role": "body",
+      "text": "NAFMII之窗iOS版"
+    },
+    {
+      "locator": "L00391",
+      "role": "body",
+      "text": "版权所有 © 中国银行间市场交易商协会    未经允许 请勿转载"
+    },
+    {
+      "locator": "L00392",
+      "role": "body",
+      "text": "京ICP备 08009794号"
+    },
+    {
+      "locator": "L00393",
+      "role": "body",
+      "text": "京公网安备 11010202007637号"
+    },
+    {
+      "locator": "L00394",
+      "role": "body",
+      "text": "本网站支持IPv6。请使用IE9及以上版本内核浏览器，或其它主流浏览器浏览。"
+    }
+  ]
+}
