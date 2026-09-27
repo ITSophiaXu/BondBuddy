@@ -215,6 +215,8 @@ export async function withdrawTargetPeriodEvidenceDecision(db: Db, principal: Pr
   const client=await db.connect();
   try{
     await client.query('BEGIN');
+    const project=(await client.query('SELECT 1 FROM bb_projects WHERE id=$1 AND deleted_at IS NULL FOR SHARE',[projectId])).rows[0];
+    if(!project)throw fail('TARGET_PERIOD_DECISION_NOT_FOUND');
     const grant=(await client.query(`SELECT g.id,g.scope_owner_user_id FROM bb_target_period_reviewer_grants g
       JOIN bb_users u ON u.id=g.user_id AND u.status='active'
       WHERE g.user_id=$1 AND g.scope_project_id=$2 AND g.revoked_at IS NULL FOR SHARE OF g,u`,[principal.userId,projectId])).rows[0];

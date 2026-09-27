@@ -4,7 +4,8 @@ import { Pool } from 'pg';
 import { test } from 'node:test';
 import { appendTargetPeriodEvidenceDecision, changeTargetPeriodReviewerGrant, ocrPeriodUncertaintyRequiresConfirmation, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 import { validTargetPeriodEvidenceDecision, type OcrEngineResponse, type TargetPeriodEvidenceDecisionRequest } from '@bondbuddy/contracts';
-import { createUpdateDifficultySnapshotWithClient, ensureCurrentUpdateDifficultySnapshotWithClient, loadLockedUpdateDifficultyInputWithClient } from './update-difficulty-repository.js';
+import { createUpdateDifficultySnapshotWithClient, ensureCurrentUpdateDifficultySnapshotWithClient, getCurrentUpdateDifficultySnapshotWithClient,
+  getUpdateDifficultySnapshotWithClient, loadLockedUpdateDifficultyInputWithClient } from './update-difficulty-repository.js';
 import { type PrivateBlobs } from './data.js';
 import { readOcrPeriodEvidence, validateOcrResponse } from './ocr.js';
 import { PNG, pngSample } from './upload-safety.samples.js';
@@ -108,8 +109,8 @@ test('OCR anchors preserve method/page identity and date or scope suspicion cann
     'amount review remains independent and the warning is retained in the immutable decision evidence');
 });
 
-test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail closed',
-  {skip:!process.env.BB_TEST_DATABASE_URL&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0057'},async()=>{
+test('PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and invalidate after review changes',
+  {skip:!process.env.BB_TEST_DATABASE_URL&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0058'},async()=>{
     const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL});
     const suffix=randomUUID().replaceAll('-','').slice(0,14), owner=`period-owner-${suffix}`,reviewer=`period-reviewer-${suffix}`,
       actor=`period-actor-${suffix}`,project=`period-project-${suffix}`,history=`period-history-${suffix}`,finance=`period-finance-${suffix}`;
@@ -140,6 +141,11 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
       assert.ok(Number(version.rows[0]!.v)>=160000,'requires PostgreSQL 16+');
       const applied=await client.query("SELECT to_regclass('public.bb_target_period_evidence_decisions') AS t, to_regclass('public.bb_target_period_evidence_decision_withdrawals') AS w");
       assert.ok(applied.rows[0]!.t&&applied.rows[0]!.w,'migration 0057 must be applied');
+      const identityConstraint=await client.query(`SELECT conname,pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conrelid='bb_update_difficulty_snapshots'::regclass AND conname='bb_update_difficulty_snapshot_evidence_identity_key'`);
+      assert.match(String(identityConstraint.rows[0]?.definition??''),/evidence_identity/,'migration 0058 must replace the over-broad snapshot uniqueness key');
+      assert.match(String(identityConstraint.rows[0]?.definition??''),/source_material_id.*source_material_version.*source_profile_version.*target_revision.*input_revision.*evidence_identity/,
+        'the unique key remains scoped and deduplicates exact derivation identities');
       const phoneTail=Number.parseInt(suffix.slice(-4),16).toString().padStart(4,'0');
       for(const [id,username,phone] of [[owner,`po${suffix}`,`+1202555${phoneTail}`],[reviewer,`pr${suffix}`,`+1202556${phoneTail}`],[actor,`pa${suffix}`,`+1202557${phoneTail}`]] as const)
         await client.query('INSERT INTO bb_users(id,phone_e164,username) VALUES($1,$2,$3)',[id,phone,username]);
@@ -188,6 +194,32 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
         provenance:{material_id:finance,material_version:1,method:'native_text' as const,extractor_version:parserVersion,evidence_refs:evidenceIds},uncertainty:[]}]};
       await assert.rejects(createUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},forgedInput),
         /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/,'a direct caller cannot upgrade target intent using parse-shaped provenance without an active review decision');
+      const preflight=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash});
+      assert.equal(preflight.estimate.estimatedN,null,'same locked input first persists an unreviewed N=null preflight');
+      const legacyRow=(await client.query(`INSERT INTO bb_update_difficulty_snapshots
+        (id,owner_user_id,project_id,request_id,request_hash,source_material_id,source_material_version,source_profile_version,
+         target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,evidence_identity,
+         financial_material_versions,comparison_input,old_profile_completeness,estimate)
+        SELECT $2,owner_user_id,project_id,$3,$4,source_material_id,source_material_version,source_profile_version,target_revision,
+          source_market,source_offering,target_market,target_offering,input_revision,input_hash,NULL,
+          financial_material_versions,comparison_input,old_profile_completeness,estimate
+        FROM bb_update_difficulty_snapshots WHERE id=$1 RETURNING id`,
+        [preflight.id,`legacy-${suffix}`,`legacy-request-${suffix}`,digest(`legacy ${suffix}`)])).rows[0]!;
+      assert.equal((await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:String(legacyRow.id)}))?.id,legacyRow.id,
+        'a pre-0058 row without a review ledger remains current after the migration');
+      await client.query('SAVEPOINT duplicate_identity_check');
+      await assert.rejects(client.query(`INSERT INTO bb_update_difficulty_snapshots
+        (id,owner_user_id,project_id,request_id,request_hash,source_material_id,source_material_version,source_profile_version,
+         target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,evidence_identity,
+         financial_material_versions,comparison_input,old_profile_completeness,estimate)
+        SELECT $2,owner_user_id,project_id,$3,$4,source_material_id,source_material_version,source_profile_version,target_revision,
+          source_market,source_offering,target_market,target_offering,input_revision,input_hash,evidence_identity,
+          financial_material_versions,comparison_input,old_profile_completeness,estimate
+        FROM bb_update_difficulty_snapshots WHERE id=$1`,[preflight.id,`duplicate-${suffix}`,`duplicate-request-${suffix}`,digest(`duplicate ${suffix}`)]),
+        /bb_update_difficulty_snapshot_evidence_identity_key/,'a different request key cannot persist a duplicate of the same derivation identity');
+      await client.query('ROLLBACK TO SAVEPOINT duplicate_identity_check');
       const review:TargetPeriodEvidenceDecisionRequest={request_id:requestId,input_revision:revision,input_hash:inputHash,source_profile_version:1,
         periods:[{start:target.start,end:target.end,period_kind:'annual',scope:'consolidated',outcome:'confirmed',reason:'All four synthetic anchors align.',evidence:periods}]};
       const appended=await appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,review,()=>`period-decision-row-${suffix}`);
@@ -202,7 +234,16 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
       assert.equal((await load())?.status,'recognized','exact active grant and latest native parse load confirmed period');
       const snapshot1=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash});
+      assert.notEqual(snapshot1.id,preflight.id,'a period decision appends a new immutable derivation for the exact same locked input');
       assert.equal(snapshot1.estimate.estimatedN,1,'confirmed later target financial cutoff persists N=1');
+      const replayedSnapshot=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash});
+      assert.equal(replayedSnapshot.id,snapshot1.id,'same reviewed evidence identity replays the same immutable snapshot');
+      assert.equal(await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:preflight.id}),null,'pre-review estimate is no longer current after a new decision');
+      assert.equal(await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:String(legacyRow.id)}),null,
+        'a legacy snapshot becomes non-current once its locked input gains a reviewer decision');
 
       // Same financial period as the historical source, with a cross-market target: it persists N=0.
       const target2={...target,start:'2024-01-01',end:'2024-12-31'};
@@ -229,6 +270,14 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
       const afterWithdrawal=await loadLockedUpdateDifficultyInputWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:2,inputHash:inputHash2,requestId:`period-load-after-withdrawal-${suffix}`});
       assert.equal(afterWithdrawal.targetReportingPeriods[0]?.status,'user_asserted','withdrawal immediately removes the decision from trusted period assembly');
+      const afterWithdrawalEstimate=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:2,inputHash:inputHash2});
+      assert.notEqual(afterWithdrawalEstimate.id,snapshot2.id,'withdrawal creates a fresh pending estimate instead of replaying stale N=0 evidence');
+      assert.equal(afterWithdrawalEstimate.estimate.estimatedN,null);
+      assert.equal((await getUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:snapshot2.id}))?.id,snapshot2.id,'withdrawn estimate remains available for immutable audit');
+      assert.equal(await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:snapshot2.id}),null,'withdrawn estimate is not returned as current');
       await assert.rejects(createUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},staleReviewedInput),
         /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/,'a pre-withdrawal trusted input cannot be replayed to recreate N after withdrawal');
       await client.query('SAVEPOINT immutable_check');
@@ -285,6 +334,16 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
       const ocrSnapshot=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:3,inputHash:ocrHash},{blobs});
       assert.equal(ocrSnapshot.estimate.estimatedN,1,'OCR amount/formula-only uncertainty is retained in audit evidence but does not block period identity N=1');
+      const reparsedOcr=await saveOcr(30,['synthetic reparse creates a newer OCR snapshot']);
+      assert.ok(reparsedOcr.snapshotId!==ocrTarget.snapshotId);
+      assert.equal(await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:ocrSnapshot.id},{blobs}),null,'new OCR parse makes the prior reviewed snapshot non-current');
+      const afterReparse=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,inputRevision:3,inputHash:ocrHash},{blobs});
+      assert.notEqual(afterReparse.id,ocrSnapshot.id,'reparse state gets a distinct immutable snapshot identity');
+      assert.equal(afterReparse.estimate.estimatedN,null,'review against a superseded OCR response cannot preserve N=1');
+      assert.equal((await getUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:ocrSnapshot.id}))?.id,ocrSnapshot.id,'reparsed old estimate remains auditable by ID');
 
       const uncertainTarget=await saveOcr(4,['reporting date is uncertain','consolidation scope unclear']);
       const uncertainHash=await addOcrRevision(4,target);
@@ -298,10 +357,19 @@ test('PostgreSQL 16 migration 0057: append, assemble and withdraw decisions fail
       const uncertainSnapshot=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:4,inputHash:uncertainHash},{blobs});
       assert.equal(uncertainSnapshot.estimate.estimatedN,null,'date/scope uncertainty stays pending and cannot be confirmed');
+      assert.equal((await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:uncertainSnapshot.id},{blobs}))?.id,uncertainSnapshot.id,
+        'the same active reviewer-grant state keeps the pending estimate current');
 
       await assert.rejects(appendTargetPeriodEvidenceDecision(pg,{userId:owner},project,{...review2,request_id:`owner-denied-${suffix}`}),/TARGET_PERIOD_REVIEWER_FORBIDDEN/);
       await changeTargetPeriodReviewerGrant(pg,{action:'revoke',reviewerUserId:reviewer,actorUserId:actor,reasonCode:'synthetic_test',
         authorizationBasis:'Explicit synthetic PG16 integration authorization',ownerUserId:owner,projectId:project,reason:'synthetic revoke'});
+      assert.equal(await getCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:uncertainSnapshot.id},{blobs}),null,
+        'grant revocation changes the evidence identity and makes the prior current estimate stale');
+      assert.equal((await getUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {ownerUserId:owner,projectId:project,snapshotId:uncertainSnapshot.id}))?.id,uncertainSnapshot.id,
+        'grant-revoked estimate remains available for audit');
       await assert.rejects(appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,{...review2,request_id:`revoked-${suffix}`}),/TARGET_PERIOD_REVIEWER_FORBIDDEN/);
     }finally{
       await client.query('ROLLBACK').catch(()=>undefined);

@@ -105,6 +105,35 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 function sha256(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
+async function difficultyEvidenceIdentity(client: UpdateDifficultyClient, input: TrustedUpdateDifficultyInput): Promise<string | null> {
+  if(input.inputRevision===undefined)return null;
+  const rows=await client.query(`SELECT d.id,d.request_id,d.request_hash,d.source_profile_material_id,d.source_profile_material_version,
+      d.source_profile_version,d.source_profile_sha256,d.locked_materials,d.periods,d.reviewer_user_id,d.reviewer_grant_id,
+      d.authority,d.reviewed_at,g.revoked_at,g.revoked_by,g.revocation_reason,u.status AS reviewer_status,
+      w.id AS withdrawal_id,w.request_hash AS withdrawal_request_hash,w.reason AS withdrawal_reason,w.withdrawn_at
+    FROM bb_target_period_evidence_decisions d
+    LEFT JOIN bb_target_period_reviewer_grants g ON g.id=d.reviewer_grant_id
+    LEFT JOIN bb_users u ON u.id=d.reviewer_user_id
+    LEFT JOIN bb_target_period_evidence_decision_withdrawals w ON w.decision_id=d.id
+    WHERE d.owner_user_id=$1 AND d.project_id=$2 AND d.input_revision=$3 AND d.input_hash=$4
+    ORDER BY d.reviewed_at,d.id`,[input.ownerUserId,input.projectId,input.inputRevision,input.inputHash]);
+  const decisions=rows.rows.map(row=>({
+    id:String(row.id),requestId:String(row.request_id),requestHash:String(row.request_hash).trim(),
+    sourceProfile:{materialId:String(row.source_profile_material_id),materialVersion:Number(row.source_profile_material_version),
+      profileVersion:Number(row.source_profile_version),sha256:String(row.source_profile_sha256).trim()},
+    lockedMaterials:parseJson(row.locked_materials),periods:parseJson(row.periods),reviewerUserId:String(row.reviewer_user_id),
+    reviewerGrantId:String(row.reviewer_grant_id),authority:String(row.authority),reviewedAt:new Date(String(row.reviewed_at)).toISOString(),
+    grantRevokedAt:row.revoked_at===null?null:new Date(String(row.revoked_at)).toISOString(),grantRevokedBy:row.revoked_by??null,
+    grantRevocationReason:row.revocation_reason??null,reviewerStatus:row.reviewer_status??null,
+    withdrawal:row.withdrawal_id===null?null:{id:String(row.withdrawal_id),requestHash:String(row.withdrawal_request_hash).trim(),
+      reason:String(row.withdrawal_reason),withdrawnAt:new Date(String(row.withdrawn_at)).toISOString()},
+  }));
+  const financialMaterialVersions=[...input.financialMaterialVersions].map(item=>({materialId:item.materialId,materialVersion:item.materialVersion}))
+    .sort((a,b)=>a.materialId.localeCompare(b.materialId)||a.materialVersion-b.materialVersion);
+  return sha256({version:1,ownerUserId:input.ownerUserId,projectId:input.projectId,inputRevision:input.inputRevision,inputHash:input.inputHash,
+    targetRevision:input.targetRevision,source:input.source,financialMaterialVersions,targetReportingPeriods:input.targetReportingPeriods,
+    targetConfirmation:input.targetConfirmation??null,replacements:input.replacements,restatements:input.restatements,decisions});
+}
 function validateLockedManifestDigest(manifest: Record<string, unknown>, inputHash: string): void {
   const schema = manifest.manifest_schema;
   if (schema === undefined) return; // Legacy locks predate canonical manifest hashes.
@@ -147,7 +176,7 @@ export function classifyUpdateDifficultyFailure(error: unknown): ClassifiedUpdat
   return { category: categories[code] ?? 'internal', code };
 }
 
-function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput): string {
+function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput, evidenceIdentity?: string): string {
   const financialMaterialVersions = [...input.financialMaterialVersions]
     .map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
     .sort((left, right) => left.materialId.localeCompare(right.materialId) || left.materialVersion - right.materialVersion);
@@ -163,6 +192,7 @@ function stableSnapshotRequestId(input: TrustedUpdateDifficultyInput): string {
     targetConfirmation: input.targetConfirmation ?? null,
     replacements: input.replacements,
     restatements: input.restatements,
+    ...(evidenceIdentity === undefined ? {} : { evidenceIdentity }),
   };
   return `update-difficulty-${sha256(identity).slice(0, 56)}`;
 }
@@ -549,7 +579,7 @@ export async function loadLockedUpdateDifficultyInput(
 }
 const RETURNING_COLUMNS = ['id', 'owner_user_id', 'project_id', 'request_id', 'request_hash', 'source_material_id', 'source_material_version',
   'source_profile_version', 'target_revision', 'source_market', 'source_offering', 'target_market', 'target_offering', 'input_revision',
-  'input_hash', 'financial_material_versions', 'comparison_input', 'old_profile_completeness', 'estimate', 'created_at'] as const;
+  'input_hash', 'evidence_identity', 'financial_material_versions', 'comparison_input', 'old_profile_completeness', 'estimate', 'created_at'] as const;
 const RETURNING = RETURNING_COLUMNS.join(', ');
 const QUALIFIED_RETURNING = RETURNING_COLUMNS.map(column => `s.${column}`).join(', ');
 
@@ -700,28 +730,33 @@ export async function createUpdateDifficultySnapshotWithClient(
 ): Promise<StoredUpdateDifficultySnapshot> {
   safeContext(input);
   let reviewedTargets: readonly TargetReportingPeriod[] = [];
-  if(input.inputRevision!==undefined){
-    const assembled=await loadLockedUpdateDifficultyInputWithClient(client,{ownerUserId:input.ownerUserId,projectId:input.projectId,
-      inputRevision:input.inputRevision,inputHash:input.inputHash!,requestId:`difficulty-review-${sha256({owner:input.ownerUserId,project:input.projectId,
-        revision:input.inputRevision,inputHash:input.inputHash}).slice(0,48)}`},{blobs:options.blobs});
-    const sortMaterials=(items:readonly {materialId:string;materialVersion:number}[])=>[...items]
-      .sort((a,b)=>a.materialId.localeCompare(b.materialId)||a.materialVersion-b.materialVersion);
-    if(assembled.targetRevision!==input.targetRevision||assembled.source.materialId!==input.source.materialId||
-       assembled.source.materialVersion!==input.source.materialVersion||assembled.source.profileVersion!==input.source.profileVersion||
-       canonical(sortMaterials(assembled.financialMaterialVersions))!==canonical(sortMaterials(input.financialMaterialVersions))||
-       canonical(assembled.targetReportingPeriods)!==canonical(input.targetReportingPeriods)||
-       canonical(assembled.targetConfirmation)!==canonical(input.targetConfirmation))throw fail('TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH');
-    reviewedTargets=assembled.targetReportingPeriods;
-  }
-  const normalizedMaterials = [...input.financialMaterialVersions].map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
-    .sort((a, b) => a.materialId.localeCompare(b.materialId) || a.materialVersion - b.materialVersion);
-  const requestPayload = { ...input, financialMaterialVersions: normalizedMaterials };
-  const requestHash = sha256(requestPayload);
+  let evidenceIdentity:string|null=null;
+  let requestHash='';
+  let normalizedMaterials:{materialId:string;materialVersion:number}[]=[];
   try {
     const activeProject = await client.query(
       `SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
       [input.ownerUserId, input.projectId]);
     if (activeProject.rows.length !== 1) throw fail('PROJECT_NOT_FOUND');
+    if(input.inputRevision!==undefined){
+      const assembled=await loadLockedUpdateDifficultyInputWithClient(client,{ownerUserId:input.ownerUserId,projectId:input.projectId,
+        inputRevision:input.inputRevision,inputHash:input.inputHash!,requestId:`difficulty-review-${sha256({owner:input.ownerUserId,project:input.projectId,
+          revision:input.inputRevision,inputHash:input.inputHash}).slice(0,48)}`},{blobs:options.blobs});
+      const sortMaterials=(items:readonly {materialId:string;materialVersion:number}[])=>[...items]
+        .sort((a,b)=>a.materialId.localeCompare(b.materialId)||a.materialVersion-b.materialVersion);
+      if(assembled.targetRevision!==input.targetRevision||assembled.source.materialId!==input.source.materialId||
+         assembled.source.materialVersion!==input.source.materialVersion||assembled.source.profileVersion!==input.source.profileVersion||
+         canonical(sortMaterials(assembled.financialMaterialVersions))!==canonical(sortMaterials(input.financialMaterialVersions))||
+         canonical(assembled.targetReportingPeriods)!==canonical(input.targetReportingPeriods)||
+         canonical(assembled.targetConfirmation)!==canonical(input.targetConfirmation))throw fail('TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH');
+      reviewedTargets=assembled.targetReportingPeriods;
+      evidenceIdentity=await difficultyEvidenceIdentity(client,assembled);
+      input={...input,requestId:stableSnapshotRequestId(assembled,evidenceIdentity??undefined)};
+    }
+    normalizedMaterials = [...input.financialMaterialVersions].map(item => ({ materialId: item.materialId, materialVersion: item.materialVersion }))
+      .sort((a, b) => a.materialId.localeCompare(b.materialId) || a.materialVersion - b.materialVersion);
+    requestHash = sha256({ ...input, financialMaterialVersions: normalizedMaterials,
+      ...(evidenceIdentity===null?{}:{evidenceIdentity}) });
     const prior = await client.query(
       `SELECT ${QUALIFIED_RETURNING}
          FROM bb_update_difficulty_snapshots s
@@ -745,8 +780,9 @@ export async function createUpdateDifficultySnapshotWithClient(
     const sameTarget = await client.query(
       `SELECT id FROM bb_update_difficulty_snapshots WHERE owner_user_id=$1 AND project_id=$2
         AND source_material_id=$3 AND source_material_version=$4 AND source_profile_version=$5 AND target_revision=$6
-        AND input_revision IS NOT DISTINCT FROM $7`,
-      [input.ownerUserId, input.projectId, input.source.materialId, input.source.materialVersion, input.source.profileVersion, input.targetRevision, input.inputRevision ?? null]);
+        AND input_revision IS NOT DISTINCT FROM $7 AND evidence_identity IS NOT DISTINCT FROM $8`,
+      [input.ownerUserId, input.projectId, input.source.materialId, input.source.materialVersion, input.source.profileVersion,
+        input.targetRevision, input.inputRevision ?? null,evidenceIdentity]);
     if (sameTarget.rows.length) throw fail('TARGET_REVISION_ALREADY_SNAPSHOTTED');
     const sourceMarket: Market | null = recognition.source_market.status === 'recognized' ? recognition.source_market.value as Market | null : null;
     const sourceOffering: Offering | null = recognition.source_offering.status === 'recognized' ? recognition.source_offering.value as Offering | null : null;
@@ -771,13 +807,14 @@ export async function createUpdateDifficultySnapshotWithClient(
     const inserted = await client.query(
       `INSERT INTO bb_update_difficulty_snapshots
        (id,owner_user_id,project_id,request_id,request_hash,source_material_id,source_material_version,source_profile_version,
-        target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,financial_material_versions,comparison_input,old_profile_completeness,estimate)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING ${RETURNING}`,
+        target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,evidence_identity,
+        financial_material_versions,comparison_input,old_profile_completeness,estimate)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING ${RETURNING}`,
       [id, input.ownerUserId, input.projectId, input.requestId, requestHash, input.source.materialId, input.source.materialVersion,
         input.source.profileVersion, input.targetRevision,
         recognition.source_market.status === 'recognized' ? recognition.source_market.value : null,
         recognition.source_offering.status === 'recognized' ? recognition.source_offering.value : null,
-        project.rows[0]!.market as Market | null, project.rows[0]!.offering as Offering | null, input.inputRevision ?? null, input.inputHash ?? null,
+        project.rows[0]!.market as Market | null, project.rows[0]!.offering as Offering | null, input.inputRevision ?? null, input.inputHash ?? null,evidenceIdentity,
         JSON.stringify(normalizedMaterials), JSON.stringify({ targetReportingPeriods: input.targetReportingPeriods,
           ...(input.targetConfirmation ? { targetConfirmation: input.targetConfirmation } : {}),
           replacements: input.replacements, restatements: input.restatements }), completeness, JSON.stringify(gatedEstimate)]);
@@ -845,6 +882,7 @@ export async function getUpdateDifficultySnapshot(
 export async function getCurrentUpdateDifficultySnapshotWithClient(
   client: UpdateDifficultyClient,
   context: { ownerUserId: string; projectId: string; snapshotId: string },
+  options: UpdateDifficultyClientOptions = {},
 ): Promise<StoredUpdateDifficultySnapshot | null> {
   if (![context.ownerUserId, context.projectId, context.snapshotId].every(validId)) throw fail('INVALID_UPDATE_DIFFICULTY_CONTEXT');
   const result = await client.query(
@@ -868,12 +906,33 @@ export async function getCurrentUpdateDifficultySnapshotWithClient(
     [context.ownerUserId, context.projectId, context.snapshotId]);
   if (!result.rows.length) return null;
   if (result.rows.length !== 1) throw fail('INVALID_UPDATE_DIFFICULTY_ROW');
-  return mapRow(result.rows[0]!, false);
+  const row=result.rows[0]!;
+  if(row.evidence_identity!==null&&row.evidence_identity!==undefined&&row.input_revision!==null&&row.input_hash!==null){
+    try{
+      const assembled=await loadLockedUpdateDifficultyInputWithClient(client,{ownerUserId:context.ownerUserId,projectId:context.projectId,
+        inputRevision:Number(row.input_revision),inputHash:String(row.input_hash).trim(),
+        requestId:`difficulty-current-${sha256({owner:context.ownerUserId,project:context.projectId,snapshot:context.snapshotId}).slice(0,48)}`},options);
+      if(assembled.source.materialId!==String(row.source_material_id)||assembled.source.materialVersion!==Number(row.source_material_version)||
+         assembled.source.profileVersion!==Number(row.source_profile_version)||assembled.targetRevision!==Number(row.target_revision))return null;
+      const currentIdentity=await difficultyEvidenceIdentity(client,assembled);
+      if(currentIdentity!==String(row.evidence_identity).trim())return null;
+    }catch{return null;}
+  }else if(row.input_revision!==null&&row.input_hash!==null){
+    // Pre-0058 rows have no derivation fingerprint. Preserve them while their
+    // locked input has no reviewer ledger, but never expose one as current once
+    // that input has acquired any period decision (including a later withdrawal).
+    const ledger=await client.query(`SELECT 1 FROM bb_target_period_evidence_decisions
+      WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND input_hash=$4 LIMIT 1`,
+      [context.ownerUserId,context.projectId,Number(row.input_revision),String(row.input_hash).trim()]);
+    if(ledger.rows.length)return null;
+  }
+  return mapRow(row, false);
 }
 
 export async function getCurrentUpdateDifficultySnapshot(
   dependencies: UpdateDifficultyDependencies,
   context: { ownerUserId: string; projectId: string; snapshotId: string },
+  options: UpdateDifficultyClientOptions = {},
 ): Promise<StoredUpdateDifficultySnapshot | null> {
-  return getCurrentUpdateDifficultySnapshotWithClient(dependencies.pool, context);
+  return getCurrentUpdateDifficultySnapshotWithClient(dependencies.pool, context,options);
 }
