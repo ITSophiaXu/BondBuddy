@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-27T12:18:57.398Z",
+  "assembled_at": "2026-09-27T12:23:06.406Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -83,7 +83,7 @@
     {
       "file": "15-后台规则模板及数据接入.md",
       "title": "15 后台规则、模板及数据接入",
-      "sha256": "2a0a62dc570d01a2e3bcb52c8f25a1b46a3352100e3baf3d667d570391579a9e"
+      "sha256": "b4810fb07178567806f608498115498e224790ad4810cf26eae57a247f51bcc1"
     },
     {
       "file": "16-数据模型接口与状态机.md",
@@ -98,7 +98,7 @@
     {
       "file": "18-当前实现与来源索引.md",
       "title": "18 当前实现与来源索引",
-      "sha256": "ac018a6dfd9de0194f9edda5a19f4082f12dcd6e970e7d1a21ec7c04abb8137c"
+      "sha256": "11651a489708d0ab6f29c98cf81d3e155bf0ec796c1a720532562c1144403d98"
     }
   ],
   "sources": [
@@ -347,8 +347,8 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 63897,
-    "local_links_checked": 190,
+    "han_characters": 64418,
+    "local_links_checked": 200,
     "tables_checked": 133,
     "json_examples_checked": 4,
     "errors": []

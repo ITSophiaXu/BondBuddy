@@ -1,0 +1,844 @@
+{
+  "source_id": "OF006",
+  "original_sha256": "c945af5d28b06bab33b4100160945793bae013d745151fde438df19cdef4ea05",
+  "extraction_status": "ooxml_text_extracted",
+  "records": [
+    {
+      "locator": "P00001",
+      "role": "body",
+      "text": "附件1："
+    },
+    {
+      "locator": "P00003",
+      "role": "body",
+      "text": "银行间债券市场非金融企业债务融资工具信息"
+    },
+    {
+      "locator": "P00004",
+      "role": "body",
+      "text": "披露规则"
+    },
+    {
+      "locator": "P00005",
+      "role": "body",
+      "text": "（2021版）"
+    },
+    {
+      "locator": "P00006",
+      "role": "body",
+      "text": "（2008年4月15日第一届常务理事会第二次会议审议通过；2012年3月1日第三届常务理事会第一次会议修订；2017年6月16日第三届理事会第三次会议修订；2021年2月9日第三届理事会第十三次会议修订，自2021年5月1日起施行）"
+    },
+    {
+      "locator": "P00008",
+      "role": "body",
+      "text": "第一章 总则"
+    },
+    {
+      "locator": "P00009",
+      "role": "body",
+      "text": "为规范银行间债券市场非金融企业债务融资工具发行企业（以下简称“企业”）和其他信息披露义务人的信息披露行为，维护银行间债券市场秩序，保护市场参与者合法权益，根据中国人民银行《银行间债券市场非金融企业债务融资工具管理办法》（中国人民银行令〔2008〕第1号）、《公司信用类债券信息披露管理办法》及相关法律法规，制定本规则。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00010",
+      "role": "body",
+      "text": "中国银行间市场交易商协会（以下简称“交易商协会”）对非金融企业债务融资工具（以下简称“债务融资工具”）信息披露及相关工作实施自律管理。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00011",
+      "role": "body",
+      "text": "债务融资工具发行及存续期的信息披露适用本规则。法律法规或交易商协会另有规定的，从其规定。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00012",
+      "role": "body",
+      "text": "本规则所称存续期为债务融资工具发行登记完成直至付息兑付全部完成或发生债务融资工具债权债务关系终止的其他情形期间。"
+    },
+    {
+      "locator": "P00013",
+      "role": "body",
+      "text": "信息披露应当遵循真实、准确、完整、及时、公平的原则，不得有虚假记载、误导性陈述或重大遗漏。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00014",
+      "role": "body",
+      "text": "信息披露语言应简洁、平实和明确，不得有祝贺性、广告性、恭维性或诋毁性的词句。"
+    },
+    {
+      "locator": "P00015",
+      "role": "body",
+      "text": "信息披露文件一经公布不得随意变更。确有必要进行变更或更正的，应披露变更公告和变更或更正后的信息披露文件。已披露的原文件应在信息披露渠道予以保留，相关机构和个人不得对其进行更改或替换。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00016",
+      "role": "body",
+      "text": "债务融资工具的投资者应当对披露信息进行独立分析，独立判断债务融资工具的投资价值，自行承担投资风险。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00017",
+      "role": "body",
+      "text": "本规则是债务融资工具信息披露的最低要求。不论本规则是否明确规定，凡对发行债务融资工具的非金融企业偿债能力或投资者权益可能有重大影响的信息，企业和其他相关信息披露义务人均应当及时披露。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00018",
+      "role": "body",
+      "text": "除依本规则需要披露的信息之外，信息披露义务人可以自愿披露与投资者作出价值判断和投资决策有关的信息，但应符合法律法规及本规则相关要求，以事实为基础，不得误导投资者。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00019",
+      "role": "body",
+      "text": "第二章 企业信息披露"
+    },
+    {
+      "locator": "P00020",
+      "role": "body",
+      "text": "第一节 一般规定"
+    },
+    {
+      "locator": "P00021",
+      "role": "body",
+      "text": "企业应当及时、公平地履行信息披露义务，企业及其全体董事、监事、高级管理人员应当忠实、勤勉地履行信息披露职责，保证信息披露内容真实、准确、完整，不存在虚假记载、误导性陈述或重大遗漏。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00022",
+      "role": "body",
+      "text": "企业的董事、监事和高级管理人员或履行同等职责的人员无法保证发行文件和定期报告内容的真实性、准确性、完整性或者有异议的，应当在发行文件和定期报告中发表意见并陈述理由，企业应当披露。企业不予披露的，董事、监事和高级管理人员可以提供能够证明其身份的证明材料，并向交易商协会申请披露对发行文件或定期报告的相关异议。企业控股股东、实际控制人应当诚实守信、勤勉尽责，配合企业履行信息披露义务。"
+    },
+    {
+      "locator": "P00023",
+      "role": "body",
+      "text": "企业应当建立信息披露事务管理制度。信息披露事务管理制度应当经企业董事会或其他有权决策机构审议通过。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00024",
+      "role": "body",
+      "text": "企业应当设置并披露信息披露事务负责人。信息披露事务负责人负责组织和协调债务融资工具信息披露相关工作，接受投资者问询，维护投资者关系。信息披露事务负责人应当由企业董事、高级管理人员或具有同等职责的人员担任。对未按规定设置并披露信息披露事务负责人的，视为由企业法定代表人担任。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00025",
+      "role": "body",
+      "text": "债务融资工具清偿义务承继方（以下简称“承继方”）、为债务融资工具提供信用增进服务的机构（以下简称“增进机构”）及相关责任人应比照本节对企业的要求建立信息披露事务管理制度，设置信息披露事务负责人，承担信息披露责任。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00026",
+      "role": "body",
+      "text": "第二节 发行的信息披露"
+    },
+    {
+      "locator": "P00027",
+      "role": "body",
+      "text": "企业发行债务融资工具，应当根据相关规定于发行前披露以下文件：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00028",
+      "role": "body",
+      "text": "（一）企业最近三年经审计的财务报告及最近一期会计报表；"
+    },
+    {
+      "locator": "P00029",
+      "role": "body",
+      "text": "（二）募集说明书；"
+    },
+    {
+      "locator": "P00030",
+      "role": "body",
+      "text": "（三）信用评级报告（如有）；"
+    },
+    {
+      "locator": "P00031",
+      "role": "body",
+      "text": "（四）受托管理协议（如有）；"
+    },
+    {
+      "locator": "P00032",
+      "role": "body",
+      "text": "（五）法律意见书；"
+    },
+    {
+      "locator": "P00033",
+      "role": "body",
+      "text": "（六）交易商协会要求的其他文件。"
+    },
+    {
+      "locator": "P00034",
+      "role": "body",
+      "text": "定向发行对本条涉及内容另有规定或约定的，从其规定或约定。"
+    },
+    {
+      "locator": "P00035",
+      "role": "body",
+      "text": "企业应当在募集说明书显著位置作如下提示：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00036",
+      "role": "body",
+      "text": "“本企业发行本期债务融资工具已在交易商协会注册，注册不代表交易商协会对本期债务融资工具的投资价值作出任何评价，也不表明对债务融资工具的投资风险做出了任何判断。凡欲认购本期债务融资工具的投资者，请认真阅读本募集说明书全文及有关的信息披露文件，对信息披露的真实性、准确性和完整性进行独立分析，并据以独立判断投资价值，自行承担与其有关的任何投资风险。”"
+    },
+    {
+      "locator": "P00037",
+      "role": "body",
+      "text": "定向发行对本条涉及内容另有规定或约定的，从其规定或约定。"
+    },
+    {
+      "locator": "P00038",
+      "role": "body",
+      "text": "企业应当在首次发行前披露信息披露事务管理制度主要内容的公告，并在发行文件中披露信息披露事务负责人相关情况。增进机构未披露过信息披露事务管理制度的，应在首次提供信用增进业务前披露信息披露事务管理制度主要内容的公告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00039",
+      "role": "body",
+      "text": "企业或簿记管理人应当在不晚于债务融资工具交易流通首日披露发行结果。公告内容包括但不限于当期债券的实际发行规模、期限、价格等信息。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00040",
+      "role": "body",
+      "text": "第三节 存续期信息披露"
+    },
+    {
+      "locator": "P00041",
+      "role": "body",
+      "text": "债务融资工具存续期内，企业信息披露的时间应当不晚于企业按照境内外监管机构、市场自律组织、证券交易场所要求，或者将有关信息刊登在其他指定信息披露渠道上的时间。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00042",
+      "role": "body",
+      "text": "债务融资工具同时在境内境外公开发行、交易的，其信息披露义务人在境外披露的信息，应当在境内同时披露。"
+    },
+    {
+      "locator": "P00043",
+      "role": "body",
+      "text": "债务融资工具存续期内，企业应当按以下要求披露定期报告：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00044",
+      "role": "body",
+      "text": "（一）企业应当在每个会计年度结束之日后4个月内披露上一年年度报告。年度报告应当包含报告期内企业主要情况、审计机构出具的审计报告、经审计的财务报表、附注以及其他必要信息；"
+    },
+    {
+      "locator": "P00045",
+      "role": "body",
+      "text": "（二）企业应当在每个会计年度的上半年结束之日后2个月内披露半年度报告；"
+    },
+    {
+      "locator": "P00046",
+      "role": "body",
+      "text": "（三）企业应当在每个会计年度前3个月、9个月结束后的1个月内披露季度财务报表，第一季度财务报表的披露时间不得早于上一年年度报告的披露时间；"
+    },
+    {
+      "locator": "P00047",
+      "role": "body",
+      "text": "（四）定期报告的财务报表部分应当至少包含资产负债表、利润表和现金流量表。编制合并财务报表的企业，除提供合并财务报表外，还应当披露母公司财务报表。"
+    },
+    {
+      "locator": "P00048",
+      "role": "body",
+      "text": "企业定向发行债务融资工具的，应当按照前款规定时间，比照定向注册发行关于财务信息披露的要求披露定期报告。"
+    },
+    {
+      "locator": "P00049",
+      "role": "body",
+      "text": "增进机构应当比照企业的披露时间要求披露定期报告。增进机构披露的年度报告应包括审计报告、经审计的财务报表及附注。定期报告的财务报表部分应当至少包含资产负债表、利润表和现金流量表。编制合并财务报表的，除提供合并财务报表外，还应当披露母公司财务报表。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00050",
+      "role": "body",
+      "text": "企业、增进机构无法按时披露定期报告的，应当于本规则第十八条、第十九条规定的披露截止时间前，披露未按期披露定期报告的说明文件，内容包括但不限于未按期披露的原因、预计披露时间等情况。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00051",
+      "role": "body",
+      "text": "企业、增进机构披露前款说明文件的，不代表豁免定期报告的信息披露义务。"
+    },
+    {
+      "locator": "P00052",
+      "role": "body",
+      "text": "存续期内，企业发生可能影响债务融资工具偿债能力或投资者权益的重大事项时，应当及时披露，并说明事项的起因、目前的状态和可能产生的影响。所称重大事项包括但不限于：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00053",
+      "role": "body",
+      "text": "（一）企业名称变更；"
+    },
+    {
+      "locator": "P00054",
+      "role": "body",
+      "text": "（二）企业生产经营状况发生重大变化，包括全部或主要业务陷入停顿、生产经营外部条件发生重大变化等；"
+    },
+    {
+      "locator": "P00055",
+      "role": "body",
+      "text": "（三）企业变更财务报告审计机构、债务融资工具受托管理人、信用评级机构；"
+    },
+    {
+      "locator": "P00056",
+      "role": "body",
+      "text": "（四）企业1/3以上董事、2/3以上监事、董事长、总经理或具有同等职责的人员发生变动；"
+    },
+    {
+      "locator": "P00057",
+      "role": "body",
+      "text": "（五）企业法定代表人、董事长、总经理或具有同等职责的人员无法履行职责；"
+    },
+    {
+      "locator": "P00058",
+      "role": "body",
+      "text": "（六）企业控股股东或者实际控制人变更，或股权结构发生重大变化；"
+    },
+    {
+      "locator": "P00059",
+      "role": "body",
+      "text": "（七）企业提供重大资产抵押、质押，或者对外提供担保超过上年末净资产的20%；"
+    },
+    {
+      "locator": "P00060",
+      "role": "body",
+      "text": "（八）企业发生可能影响其偿债能力的资产出售、转让、报废、无偿划转以及重大投资行为、重大资产重组；"
+    },
+    {
+      "locator": "P00061",
+      "role": "body",
+      "text": "（九）企业发生超过上年末净资产10%的重大损失，或者放弃债权或者财产超过上年末净资产的10%；"
+    },
+    {
+      "locator": "P00062",
+      "role": "body",
+      "text": "（十）企业股权、经营权涉及被委托管理；"
+    },
+    {
+      "locator": "P00063",
+      "role": "body",
+      "text": "（十一）企业丧失对重要子公司的实际控制权；"
+    },
+    {
+      "locator": "P00064",
+      "role": "body",
+      "text": "（十二）债务融资工具信用增进安排发生变更；"
+    },
+    {
+      "locator": "P00065",
+      "role": "body",
+      "text": "（十三）企业转移债务融资工具清偿义务；"
+    },
+    {
+      "locator": "P00066",
+      "role": "body",
+      "text": "（十四）企业一次承担他人债务超过上年末净资产10%，或者新增借款超过上年末净资产的20%；"
+    },
+    {
+      "locator": "P00067",
+      "role": "body",
+      "text": "（十五）企业未能清偿到期债务或企业进行债务重组；"
+    },
+    {
+      "locator": "P00068",
+      "role": "body",
+      "text": "（十六）企业涉嫌违法违规被有权机关调查，受到刑事处罚、重大行政处罚或行政监管措施、市场自律组织做出的债券业务相关的处分，或者存在严重失信行为；"
+    },
+    {
+      "locator": "P00069",
+      "role": "body",
+      "text": "（十七）企业法定代表人、控股股东、实际控制人、董事、监事、高级管理人员涉嫌违法违规被有权机关调查、采取强制措施，或者存在严重失信行为；"
+    },
+    {
+      "locator": "P00070",
+      "role": "body",
+      "text": "（十八）企业涉及重大诉讼、仲裁事项；"
+    },
+    {
+      "locator": "P00071",
+      "role": "body",
+      "text": "（十九）企业发生可能影响其偿债能力的资产被查封、扣押或冻结的情况；"
+    },
+    {
+      "locator": "P00072",
+      "role": "body",
+      "text": "（二十）企业拟分配股利，或发生减资、合并、分立、解散及申请破产的情形；"
+    },
+    {
+      "locator": "P00073",
+      "role": "body",
+      "text": "（二十一）企业涉及需要说明的市场传闻；"
+    },
+    {
+      "locator": "P00074",
+      "role": "body",
+      "text": "（二十二）债务融资工具信用评级发生变化；"
+    },
+    {
+      "locator": "P00075",
+      "role": "body",
+      "text": "（二十三）企业订立其他可能对其资产、负债、权益和经营成果产生重要影响的重大合同；"
+    },
+    {
+      "locator": "P00076",
+      "role": "body",
+      "text": "（二十四）发行文件中约定或企业承诺的其他应当披露事项；"
+    },
+    {
+      "locator": "P00077",
+      "role": "body",
+      "text": "（二十五）其他可能影响其偿债能力或投资者权益的事项。"
+    },
+    {
+      "locator": "P00078",
+      "role": "body",
+      "text": "定向发行对本条涉及内容另有规定或约定的，从其规定或约定。"
+    },
+    {
+      "locator": "P00079",
+      "role": "body",
+      "text": "增进机构在发生以下可能影响其信用增进能力的重大事项时，应当及时披露，并说明事项的起因、目前的状态和可能产生的影响。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00080",
+      "role": "body",
+      "text": "（一）名称变更；"
+    },
+    {
+      "locator": "P00081",
+      "role": "body",
+      "text": "（二）未能清偿到期债务；"
+    },
+    {
+      "locator": "P00082",
+      "role": "body",
+      "text": "（三）未能按照约定履行债券信用增进义务或超过上年末净资产10%以上的担保责任；"
+    },
+    {
+      "locator": "P00083",
+      "role": "body",
+      "text": "（四）发生减资、合并、分立、解散及申请破产的情形，或受到重大行政处罚；"
+    },
+    {
+      "locator": "P00084",
+      "role": "body",
+      "text": "（五）发行文件中约定或增进机构承诺的其他应当披露事项；"
+    },
+    {
+      "locator": "P00085",
+      "role": "body",
+      "text": "（六）其他可能影响其信用增进能力或投资者权益的事项。"
+    },
+    {
+      "locator": "P00086",
+      "role": "body",
+      "text": "企业、增进机构应当在出现以下情形之日后2个工作日内，履行本规则第二十一条、第二十二条规定的重大事项的信息披露义务：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00087",
+      "role": "body",
+      "text": "（一）董事会、监事会或者其他有权决策机构就该重大事项形成决议时；"
+    },
+    {
+      "locator": "P00088",
+      "role": "body",
+      "text": "（二）有关各方就该重大事项签署意向书或者协议时；"
+    },
+    {
+      "locator": "P00089",
+      "role": "body",
+      "text": "（三）董事、监事、高级管理人员或者具有同等职责的人员知道该重大事项发生时；"
+    },
+    {
+      "locator": "P00090",
+      "role": "body",
+      "text": "（四）收到相关主管部门关于重大事项的决定或通知时；"
+    },
+    {
+      "locator": "P00091",
+      "role": "body",
+      "text": "（五）完成工商登记变更时。"
+    },
+    {
+      "locator": "P00092",
+      "role": "body",
+      "text": "重大事项出现泄露或市场传闻的，企业、增进机构应当在出现该情形之日后2个工作日内履行本规则第二十一条、第二十二条规定的重大事项的信息披露义务。"
+    },
+    {
+      "locator": "P00093",
+      "role": "body",
+      "text": "已披露的重大事项出现重大进展或变化的，企业、增进机构应当在进展或变化发生之日后2个工作日内披露进展或者变化情况及可能产生的影响。"
+    },
+    {
+      "locator": "P00094",
+      "role": "body",
+      "text": "企业、增进机构变更信息披露事务管理制度的，应当在披露最近一期年度报告或半年度报告披露变更后制度的主要内容；企业、增进机构无法按时披露上述定期报告的，企业、增进机构应当于本规则第十八条、第十九条规定的披露截止时间前披露变更后制度的主要内容。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00095",
+      "role": "body",
+      "text": "企业、增进机构变更信息披露事务负责人的，应当在变更之日后2个工作日内披露变更情况及接任人员；对于未在信息披露事务负责人变更后确定并披露接任人员的，视为由法定代表人担任。如后续确定接任人员，应当在确定接任人员之日后2个工作日内披露。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00096",
+      "role": "body",
+      "text": "债务融资工具存续期内变更增进机构的，变更后的增进机构应当在不晚于信用增进承诺函披露之日前披露信息披露事务负责人相关情况及信息披露事务管理制度的主要内容。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00097",
+      "role": "body",
+      "text": "企业变更债务融资工具募集资金用途的，应当按照规定和约定履行必要变更程序，并至少于募集资金使用前5个工作日披露拟变更后的募集资金用途。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00098",
+      "role": "body",
+      "text": "企业、增进机构对财务信息差错进行更正，涉及未经审计的财务信息的，应当同时披露更正公告及更正后的财务信息。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00099",
+      "role": "body",
+      "text": "涉及经审计财务信息的，企业、增进机构应当聘请会计师事务所进行全面审计或对更正事项进行专项鉴证，并在更正公告披露之日后30个工作日内披露专项鉴证报告及更正后的财务信息；如更正事项对经审计的财务报表具有广泛性影响，或者该事项导致公司相关年度盈亏性质发生改变，应当聘请会计师事务所对更正后的财务信息进行全面审计，并在更正公告披露之日后30个工作日内披露审计报告及经审计的财务信息。"
+    },
+    {
+      "locator": "P00100",
+      "role": "body",
+      "text": "债务融资工具清偿义务发生转移的，承继方应当接受交易商协会的自律管理，比照本规则中对企业的要求履行相应义务，并在提交债务融资工具登记要变更申请之日前披露信息披露事务负责人相关情况及信息披露事务管理制度的主要内容。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00101",
+      "role": "body",
+      "text": "债务融资工具附选择权条款、投资人保护条款等特殊条款的，企业应当按照相关规定和发行文件约定及时披露相关条款的触发和执行情况。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00102",
+      "role": "body",
+      "text": "企业应当至少于债务融资工具利息支付日或本金兑付日前5个工作日披露付息或兑付安排情况的公告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00103",
+      "role": "body",
+      "text": "债务融资工具偿付存在较大不确定性的，企业应当及时披露付息或兑付存在较大不确定性的风险提示公告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00104",
+      "role": "body",
+      "text": "债务融资工具未按照约定按期足额支付利息或兑付本金的，企业应在当日披露未按期足额付息或兑付的公告；存续期管理机构应当不晚于次1个工作日披露未按期足额付息或兑付的公告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00105",
+      "role": "body",
+      "text": "债务融资工具违约处置期间，企业及存续期管理机构应当披露违约处置进展，企业应当披露处置方案主要内容。企业在处置期间支付利息或兑付本金的，应当在1个工作日内进行披露。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00106",
+      "role": "body",
+      "text": "若企业无法履行支付利息或兑付本金义务，提请增进机构履行信用增进义务的，企业应当及时披露提请启动信用增进程序的公告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00107",
+      "role": "body",
+      "text": "增进机构应在知道或应当知道其需履行信用增进义务的5个工作日内，披露信用增进履行安排公告，并于履行债务融资工具信用增进义务之日后1个工作日内进行披露。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00108",
+      "role": "body",
+      "text": "增进机构未能按照约定履行债务融资工具信用增进义务的，应于约定履行日期后的1个工作日内进行披露。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00109",
+      "role": "body",
+      "text": "企业进入破产程序的，信息披露义务由破产管理人承担，企业自行管理财产或营业事务的，由企业承担。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00110",
+      "role": "body",
+      "text": "破产信息披露义务人无需按照本节要求披露定期报告和重大事项，但应当在知道或应当知道以下情形之日后2个工作日内披露破产进展："
+    },
+    {
+      "locator": "P00111",
+      "role": "body",
+      "text": "（一）人民法院作出受理企业破产申请的裁定；"
+    },
+    {
+      "locator": "P00112",
+      "role": "body",
+      "text": "（二）人民法院公告债权申报安排；"
+    },
+    {
+      "locator": "P00113",
+      "role": "body",
+      "text": "（三）计划召开债权人会议；"
+    },
+    {
+      "locator": "P00114",
+      "role": "body",
+      "text": "（四）破产管理人提交破产重整计划、和解协议或破产财产变价方案和破产财产分配方案；"
+    },
+    {
+      "locator": "P00115",
+      "role": "body",
+      "text": "（五）人民法院裁定破产重整计划、和解协议、破产财产变价方案和破产财产分配方案；"
+    },
+    {
+      "locator": "P00116",
+      "role": "body",
+      "text": "（六）重整计划、和解协议和清算程序开始执行及执行完毕；"
+    },
+    {
+      "locator": "P00117",
+      "role": "body",
+      "text": "（七）人民法院终结重整程序、和解程序或宣告破产；"
+    },
+    {
+      "locator": "P00118",
+      "role": "body",
+      "text": "（八）其他可能影响投资者决策的重要信息。"
+    },
+    {
+      "locator": "P00119",
+      "role": "body",
+      "text": "破产信息披露义务人应当在向人民法院提交破产重整计划、和解协议、破产财产变价方案和破产财产分配方案及其他影响投资者决策的重要信息之日后5个工作日内披露上述文件的主要内容，并同时披露审计报告、资产评估报告等财产状况报告。"
+    },
+    {
+      "locator": "P00120",
+      "role": "body",
+      "text": "发生对债权人利益有重大影响的财产处分行为的，破产信息披露义务人应当在知道或应当知道后2个工作日内进行信息披露。"
+    },
+    {
+      "locator": "P00121",
+      "role": "body",
+      "text": "第三章 其他机构信息披露"
+    },
+    {
+      "locator": "P00122",
+      "role": "body",
+      "text": "为债务融资工具的发行、交易、存续期管理提供中介服务的专业机构（以下简称“中介机构”）和人员，包括但不限于承销机构、存续期管理机构、受托管理人、会计师事务所、律师事务所、资产评估机构、信用评级机构或具有同等职责的机构等，应当勤勉尽责，严格遵守相关法律法规、执业规范和自律规则，按规定和约定履行义务，并对所出具的专业报告、专业意见以及其所披露的其他信息负责。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00123",
+      "role": "body",
+      "text": "承担存续期管理职责的机构（以下简称“存续期管理机构”），应当按照规定和约定履行信息披露职责或义务，并督促企业依照本规则规定履行信息披露义务。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00124",
+      "role": "body",
+      "text": "受托管理人应当建立信息披露事务管理制度，并按照规定和约定履行信息披露职责或义务。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00125",
+      "role": "body",
+      "text": "会计师事务所应当严格执行注册会计师执业准则及相关规定，合理运用职业判断，通过设计和实施恰当的程序、方法和技术，获取充分、适当证据，并在此基础上发表独立意见。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00126",
+      "role": "body",
+      "text": "律师事务所应当严格执行律师执业准则及相关从业规定，合理运用职业判断，勤勉尽责，依法独立发表法律意见。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00127",
+      "role": "body",
+      "text": "信用评级机构应当按照规定及合同约定持续跟踪受评对象信用状况的变化情况，及时发布定期跟踪评级报告。跟踪评级期间，发生可能影响受评对象偿债能力的重大事项时，信用评级机构应当及时启动不定期跟踪评级程序，发布不定期跟踪评级报告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00128",
+      "role": "body",
+      "text": "企业、承继方、增进机构等应当确保其向中介机构提供的与债务融资工具相关的所有资料真实、准确、完整。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00129",
+      "role": "body",
+      "text": "中介机构出具文件需要依据企业、承继方、增进机构等提供文件资料的，应当对其内容的真实性、准确性、完整性进行必要的核查和验证。中介机构认为文件资料存在虚假记载、误导性陈述、重大遗漏等情形的，应当要求其补充、纠正。提供方不予以纠正的，中介机构应在其出具的文件中就上述情形进行说明。"
+    },
+    {
+      "locator": "P00130",
+      "role": "body",
+      "text": "中介机构应当制作并妥善保存信息披露相关工作底稿，包括出具文件所依据的资料、尽职调查报告、会议纪要、谈话记录等。工作底稿至少应保存至债权债务关系终止后5年，并符合法律法规及行业规范相关要求。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00131",
+      "role": "body",
+      "text": "为债务融资工具提供登记托管和代理付息兑付的机构（以下简称“登记托管机构”）在债务融资工具利息支付日或本金兑付日未足额收到兑付资金的，应及时以书面形式向交易商协会报告,并不晚于次1个工作日向投资者公告或告知持有人。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00132",
+      "role": "body",
+      "text": "交易商协会授权北京金融资产交易所（以下简称“北金所”）在本规则第十八条、第十九条规定的信息披露期限结束之日后5个工作日内，将定期报告信息披露情况通过协会认可的信息披露渠道向市场公告。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00133",
+      "role": "body",
+      "text": "第四章 自律管理和自律处分"
+    },
+    {
+      "locator": "P00134",
+      "role": "body",
+      "text": "企业等相关信息披露义务人未按规定建立信息披露事务管理制度并披露制度主要内容，或者未设置并披露信息披露事务负责人的，予以通报批评，可并处责令改正。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00135",
+      "role": "body",
+      "text": "企业披露的债务融资工具发行文件缺失，或者发行文件披露信息缺少重要内容的，予以诫勉谈话、通报批评或警告，可并处责令改正、责令致歉、暂停相关业务或暂停会员权利。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00136",
+      "role": "body",
+      "text": "企业、增进机构未按第十八条和第十九条规定披露半年度报告或季度财务报表的，予以诫勉谈话或通报批评，可并处责令改正或责令致歉；未按规定披露年度报告的，予以通报批评或警告，可并处责令改正、责令致歉、暂停相关业务或暂停会员权利。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00137",
+      "role": "body",
+      "text": "企业、增进机构在存续期内未按第二十一条、第二十二条、第二十三条规定披露重大事项的，予以诫勉谈话、通报批评、警告或严重警告，可并处责令改正、责令致歉、暂停相关业务或暂停会员权利。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00138",
+      "role": "body",
+      "text": "企业、增进机构已经披露的有关制度、信息披露事务负责人、募集资金用途或财务信息等需要变更或更正，未按规定披露有关公告的，予以诫勉谈话或通报批评，可并处责令改正或责令致歉。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00139",
+      "role": "body",
+      "text": "企业未按规定披露兑付安排公告或风险提示公告的，予以诫勉谈话或通报批评，可并处责令改正；债务融资工具未按期足额兑付，企业未按规定披露有关公告的，予以通报批评或警告，可并处责令改正、责令致歉、暂停相关业务或暂停会员权利。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00140",
+      "role": "body",
+      "text": "中介机构未按规定或约定履行信息披露义务，或者披露的信息存在错误的，予以诫勉谈话或通报批评，可并处责令改正。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00141",
+      "role": "body",
+      "text": "中介机构未按规定保存有关文件和资料等工作底稿的，予以诫勉谈话或通报批评，可并处责令改正；工作底稿严重缺失，或者泄露、隐匿、伪造或损毁工作底稿的，予以警告、严重警告或公开谴责，可并处责令改正、暂停相关业务、暂停会员权利或取消业务资格。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00142",
+      "role": "body",
+      "text": "企业、中介机构等信息披露义务人披露的信息存在虚假记载、误导性陈述或重大遗漏的，予以警告、严重警告或公开谴责，可并处责令改正、责令致歉、暂停相关业务或暂停会员权利。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00143",
+      "role": "body",
+      "text": "企业、增进机构等信息披露义务人因违反本规则被自律处分的，对负有直接责任的信息披露事务负责人、董事、监事、高级管理人员和其他责任人员，根据情节严重程度，予以诫勉谈话、通报批评、警告、严重警告或公开谴责的处分，可并处责令改正、责令致歉或认定不适当人选。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00144",
+      "role": "body",
+      "text": "中介机构因违反本规则被自律处分的，对直接负责的主管人员和其他直接责任人员，根据情节严重程度，予以诫勉谈话、通报批评、警告、严重警告或公开谴责的处分，可并处责令改正、责令致歉或认定不适当人选。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00145",
+      "role": "body",
+      "text": "承继方等未按规定履行信息披露义务的，参照对企业的标准予以相应的自律处分。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00146",
+      "role": "body",
+      "text": "上述违规事项情形明显轻微或者情形严重、需要先行予以处理的，可根据相关规定予以自律管理措施。企业等信息披露义务人及相关责任人员存在违反本规则规定的其他行为的，交易商协会将依据相关规定，根据情节予以自律管理措施或自律处分措施。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00147",
+      "role": "body",
+      "text": "第五章 附 则"
+    },
+    {
+      "locator": "P00148",
+      "role": "body",
+      "text": "对资产支持票据、境外非金融企业债务融资工具等产品的信息披露另有规定或约定的，从其规定或约定。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00149",
+      "role": "body",
+      "text": "本规则所称净资产，指企业合并范围内经审计的净资产。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00150",
+      "role": "body",
+      "text": "信息披露文件应以符合规定的格式送达交易商协会综合业务和信息服务平台（以下简称“综合平台”）。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00151",
+      "role": "body",
+      "text": "交易商协会授权北金所对发送至综合平台的信息披露文件进行格式审核。完成格式审核的信息披露文件应当通过综合平台披露。"
+    },
+    {
+      "locator": "P00152",
+      "role": "body",
+      "text": "综合平台应当将符合要求的信息披露文件同时发送至全国银行间同业拆借中心、登记托管机构和北金所等信息披露服务平台，由其及时在官方网站公布。"
+    },
+    {
+      "locator": "P00153",
+      "role": "body",
+      "text": "北金所作为综合平台的技术支持机构，应当做好基础设施的运营和维护，为信息披露提供必要的服务支持和技术保障，及时发布并妥善保管信息，不得发布虚假信息或故意隐匿、伪造、篡改或毁损信息披露文件或泄露非公开信息。"
+    },
+    {
+      "locator": "P00154",
+      "role": "body",
+      "text": "企业及其他信息披露义务人可以依据国家有关保密法律法规豁免披露本规则规定的信息。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00155",
+      "role": "body",
+      "text": "本规则由交易商协会秘书处负责解释。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00156",
+      "role": "body",
+      "text": "本规则自2021年5月1日起施行。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"1\" /></ns0:numPr>"
+    }
+  ]
+}

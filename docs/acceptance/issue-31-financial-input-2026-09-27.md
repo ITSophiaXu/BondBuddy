@@ -55,6 +55,8 @@ node product-prototype/product-specs/build-spec.mjs
 
 最终合流至develop@4fbeced（含#322/#324）：全仓build通过，domain254/254；上述worker85项仍为83通过、2原有条件跳过、0失败。补充裸Git仓库防护，按HEAD及objects/commondir识别无`.git`外壳的存储目录，禁止直接、嵌套、路径穿越和符号链接别名输出；实际临时`git init --bare`合成回归及原有校验共5/5通过，无客户数据读写。说明书19模块、190链接、133表格、4JSON、190验收标识，0错误。
 
+随后合流至develop@98909ac（#320已合并），本PR的运行代码未再改动；保留交易商协会来源及规格索引并重建合订本。五条PR合流后的全仓build与domain262/262通过，文档19模块、200链接、133表格、4JSON、190验收标识，0错误。
+
 ## 尚未解决的真实运行依赖
 
 1. **#15 / @loooo139**：#314的16条年度候选实际为external/needs_confirmation，含PARSE_SNAPSHOT_NEEDS_CONFIRMATION、SOURCE_CONFIDENCE_MISSING，仍不可用。#323已将新一期8项公式缓存入库，但仍有FORMULA_CACHE_VALUE_UNVERIFIED、FORMULA_SOURCE_CHAIN_UNVERIFIED等疑义，不能用于生成；[逐项核对交接](issue-15-rq202509-review-handoff-2026-09-27.md)只是待用户确认的证据表，不代写审核。DOCX_DRAWINGS/DOCX_AUXILIARY_PARTS还影响整个基线入口，需按原文位置/影响范围处理，不在本切片批量清空。

@@ -1,0 +1,560 @@
+{
+  "schema_version": "nafmii-intake-v1",
+  "archive_name": "交易商协会注册类制度规则.zip",
+  "archive_sha256": "ce4b55cb30035392df94c5b5032146012bb173898bc7a3f77a6b90178c0c01a2",
+  "received_on": "2026-09-27",
+  "authorization": "User supplied this archive for repository knowledge curation and related issues; not commercial prospectus-reference authorization.",
+  "entries": [
+    {
+      "archive_path": "2-2 注册类制度/0-10【20200930】非金融企业债务融资工具募集说明书投资人保护机制示范文本-废止.pdf",
+      "bytes": 399677,
+      "sha256": "485bba044c824933183c67adb0dd47b2ed25f93990e90c523aad586f45a52271",
+      "disposition": "new_original",
+      "source_id": "NA001"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-10【20231225】投资人保护条款示范文本.docx",
+      "bytes": 88885,
+      "sha256": "25d3cfb96421875f9e7c04c1158f55fc18c0fb1c84a525939856018d26f6c666",
+      "disposition": "new_original",
+      "source_id": "NA002"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-11【20251031】非金融企业债务融资工具注册专家管理办法（2025版）.pdf",
+      "bytes": 140650,
+      "sha256": "4262b8104c797db017ba6d7d3e84015967bb459b86bf9ac62325712cf7d4fde8",
+      "disposition": "new_original",
+      "source_id": "NA003"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-12【20221122】《银行间债券市场非金融企业债务融资工具募集资金用途管理规程》.pdf",
+      "bytes": 302663,
+      "sha256": "c456615379afad6ccce41b5b5e1c338185e74572023d245da332c2e788dbfa0f",
+      "disposition": "new_original",
+      "source_id": "NA004"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-13【20160912】关于进一步优化债务融资工具注册发行便利的通知.pdf",
+      "bytes": 333040,
+      "sha256": "65dc5d0ca33b015ec13072fbbeb729ddeffc4e087337e7db29cee7ac6077c7a2",
+      "disposition": "new_original",
+      "source_id": "NA005"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-1【20080409】银行间债券市场非金融企业债务融资工具管理办法（中国人民银行令〔2008〕第1号）.docx",
+      "bytes": 20518,
+      "sha256": "19141cfb5ffd36f1325de0e8d649ffefdf7078bc2c18b3e6b2c5ae43aeae558c",
+      "disposition": "new_original",
+      "source_id": "NA006"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-2【20201204】关于发布《非金融企业债务融资工具主承销商尽职调查指引》的公告（2022版）-废止.pdf",
+      "bytes": 253427,
+      "sha256": "a94186e59a2d6e7b35ccf4b46ecb2824455a006ff261b4da792770aaf2c981cf",
+      "disposition": "new_original",
+      "source_id": "NA007"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-2【2020】非金融企业债务融资工具主承销商尽职调查指引-2020年-废止.docx",
+      "bytes": 35328,
+      "sha256": "e20827fd4210c4946123fd6bfd3ef6a626417be6213cf3b5b73639493e5067d4",
+      "disposition": "new_original",
+      "source_id": "NA008"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-2【20230803】非金融企业债务融资工具尽职调查指引（2023 版）.pdf",
+      "bytes": 374056,
+      "sha256": "7f06dc12c9a46a556a2bb405563d06c49566bf7eb83c3733628bc637b2377892",
+      "disposition": "new_original",
+      "source_id": "NA009"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-3【20101119】银行间债券市场非金融企业债务融资工具募集说明书指引.docx",
+      "bytes": 28651,
+      "sha256": "44d201d348a148a83b594a18990c6afd9f38bef5ec651ddb193d6194fee7067c",
+      "disposition": "new_original",
+      "source_id": "NA010"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-4【20130902】银行间债券市场非金融企业债务融资工具承销团协议文本（2013年版）.docx",
+      "bytes": 62134,
+      "sha256": "7d6a5243a52efbe94cbae77b47575717db7f708e2b608e46dfe34e9f1025bf75",
+      "disposition": "new_original",
+      "source_id": "NA011"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-5【20130902】银行间债券市场非金融企业债务融资工具承销协议文本（2013年版）.docx",
+      "bytes": 48992,
+      "sha256": "546e7c2c9fd31636ada18d1aa7f12e306eca4f86ad54ed15d481150bfb8ac002",
+      "disposition": "new_original",
+      "source_id": "NA012"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-6【20160219】非金融企业债务融资工具注册发行规则（2016版）-废止.doc",
+      "bytes": 42496,
+      "sha256": "f8e4591aa7f59c4b9a8ba11643aa5213e5d2e8c880207367f02badd98b886bb6",
+      "disposition": "new_original",
+      "source_id": "NA013"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-6【20230629】非金融企业债务融资工具注册发行规则（2023版）.pdf",
+      "bytes": 260422,
+      "sha256": "0047ae2b57158d2a89ae5dff725aed9c296a52e55b20860a382b0920b28e7e6b",
+      "disposition": "new_original",
+      "source_id": "NA014"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-7【20230629】非金融企业债务融资工具注册工作规程（2023 版）.pdf",
+      "bytes": 297866,
+      "sha256": "869d244620462616ec5e4a1fa9a9c2c929054e150ab990ad9a2449d1bfc1f959",
+      "disposition": "new_original",
+      "source_id": "NA015"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-8【20170901】非金融企业债务融资工具标准分销协议文本.docx",
+      "bytes": 34074,
+      "sha256": "fcbe2d9672c863b5204768ad517f4665cbd1dd927059383c424f74dd4e133922",
+      "disposition": "new_original",
+      "source_id": "NA016"
+    },
+    {
+      "archive_path": "2-2 注册类制度/0-9【20181214】定向债务融资工具专项机构投资人遴选细则（2018版）.doc",
+      "bytes": 40448,
+      "sha256": "f552d2c3db70efe2a80606fa28dced7de1e28b837d210ab937cfeebe8fdbe57f",
+      "disposition": "new_original",
+      "source_id": "NA017"
+    },
+    {
+      "archive_path": "2-2 注册类制度/01_关于推出科技创新债券 构建债市“科技板”的通知.pdf",
+      "bytes": 1133431,
+      "sha256": "acc2b39fb60ca3678b842151ad45b58c8775276be62d73f3d91acbaa1a19d413",
+      "disposition": "new_original",
+      "source_id": "NA018"
+    },
+    {
+      "archive_path": "2-2 注册类制度/02_注册文件信息披露关注要点系列小课堂（第3期）.pdf",
+      "bytes": 10404248,
+      "sha256": "49e3b6f342217b0af068976ca04a1517173159d2bd38227d1844a74685673ee1",
+      "disposition": "new_original",
+      "source_id": "NA019"
+    },
+    {
+      "archive_path": "2-2 注册类制度/03_注册发行业务系列问答一：募集资金用途专题篇.pdf",
+      "bytes": 8588236,
+      "sha256": "ac1eef3f7658320941850fd39436213b1ff52a17f807d68e7d6bc1e49d6a9a39",
+      "disposition": "new_original",
+      "source_id": "NA020"
+    },
+    {
+      "archive_path": "2-2 注册类制度/04_关于发布《银行间市场信息服务业务自律指引（试行）》的公告.pdf",
+      "bytes": 448607,
+      "sha256": "2645f905816f79234b06e9ad5b4379369a39eb47e4c899840dfcb4ffac2b5630",
+      "disposition": "new_original",
+      "source_id": "NA021"
+    },
+    {
+      "archive_path": "2-2 注册类制度/05_关于优化债务融资工具基础层企业注册发行机制有关事项的通知.pdf",
+      "bytes": 362549,
+      "sha256": "f7d1c2226608c5159b784e10830969420bd439ea0e08c14c9359cc08c403f2bb",
+      "disposition": "new_original",
+      "source_id": "NA022"
+    },
+    {
+      "archive_path": "2-2 注册类制度/06_《关于优化债务融资工具基础层企业注册发行机制有关事项的通知》问答.pdf",
+      "bytes": 367741,
+      "sha256": "93d810a09dc64b70ff7ac313c39a17602fe05f88d12e11eb8e3b120f585ea254",
+      "disposition": "new_original",
+      "source_id": "NA023"
+    },
+    {
+      "archive_path": "2-2 注册类制度/07_注册文件信息披露关注要点系列小课堂（第2期）.pdf",
+      "bytes": 6581795,
+      "sha256": "f4013bdeb0048223b00a77d1d32593c84b44ad5452a0e69785022e313c9a22a9",
+      "disposition": "new_original",
+      "source_id": "NA024"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-1【20200416】1-1 关于公布实施《非金融企业债务融资工具公开发行注册工作规程（2020版）》《非金融企业债务融资工具公开发行注册文件表格体系（2020版）》等有关事项的通知.pdf.pdf",
+      "bytes": 356006,
+      "sha256": "1ad3152a357f47f3fee1975ba81821cb8324a5c3877f280209f84afdbe6b4ec4",
+      "disposition": "new_original",
+      "source_id": "NA025"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-1【20210326】关于发布 2021 年版《非金融企业短期融资券业务指引》《非金融企业中期票据业务指引》《非金融企业超短期融资券业务指引》的公告.pdf",
+      "bytes": 223671,
+      "sha256": "597e32d49bbd1228e47df2574f406b1a2308e23dc2713318de96cd686330519b",
+      "disposition": "new_original",
+      "source_id": "NA026"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-2【20200416】《非金融企业债务融资工具公开发行注册工作规程（2020版）》.docx",
+      "bytes": 66394,
+      "sha256": "d9acfcff07ae7f20cd27fe302d59de8875f5a56ca9aa7e8c6c2960a6a961254d",
+      "disposition": "new_original",
+      "source_id": "NA027"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-2【20210317】非金融企业短期融资券业务指引.docx",
+      "bytes": 13731,
+      "sha256": "20995cb88877bd53e81bfc9190898fa21433c544ad2fb35fcd75737ac84ad5b1",
+      "disposition": "new_original",
+      "source_id": "NA028"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-3【20200416】《非金融企业债务融资工具公开发行注册文件表格体系（2020版）》.doc",
+      "bytes": 2043636,
+      "sha256": "7e3a9cc78802d9b9c418a393b23a6d26beca914367c40ebd70afc9c1a127acb3",
+      "disposition": "new_original",
+      "source_id": "NA029"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-3【20210327】非金融企业中期票据业务指引.docx",
+      "bytes": 13673,
+      "sha256": "a908a42699ab94c9c396fdbcad6fcacb9a0a12b505a3933b36b3f01d3c612b9e",
+      "disposition": "new_original",
+      "source_id": "NA030"
+    },
+    {
+      "archive_path": "2-2 注册类制度/1-4【20210317】非金融企业超短期融资券业务指引.docx",
+      "bytes": 13860,
+      "sha256": "40f61b362161686852c44fe048f1e90448a230374e2ebce8b0bf2818adc4e2a4",
+      "disposition": "new_original",
+      "source_id": "NA031"
+    },
+    {
+      "archive_path": "2-2 注册类制度/10-1_关于发布《信用风险缓释凭证创设说明书示范文本（2025年版）》的通知.pdf",
+      "bytes": 225509,
+      "sha256": "d46c2e6d149c14a03a3e6d49408dc5b494391447d235a17162d9cb00795836ac",
+      "disposition": "new_original",
+      "source_id": "NA032"
+    },
+    {
+      "archive_path": "2-2 注册类制度/10-2《信用风险缓释凭证业务指引》及配套细则业务问答.pdf",
+      "bytes": 582671,
+      "sha256": "282666ab7164d1097b136937367be1585b72ec2c873a285cebab51f19be83448",
+      "disposition": "new_original",
+      "source_id": "NA033"
+    },
+    {
+      "archive_path": "2-2 注册类制度/10-3 关于修订《银行间市场信用风险缓释工具业务规则》的公告.pdf",
+      "bytes": 432597,
+      "sha256": "075845161823d7712f77aa7bf78d91e8f8a6562e8c72c21c94fd5b0203165d73",
+      "disposition": "new_original",
+      "source_id": "NA034"
+    },
+    {
+      "archive_path": "2-2 注册类制度/10-4 关于修订《信用风险缓释凭证业务指引》的公告.pdf",
+      "bytes": 470856,
+      "sha256": "52a1ef38bdb4e53214a227fa9552cabd82b23ec01c1c079521a2004c945f4315",
+      "disposition": "new_original",
+      "source_id": "NA035"
+    },
+    {
+      "archive_path": "2-2 注册类制度/10-5 关于发布《信用风险缓释凭证信息披露操作细则》《信用风险缓释凭证创设定价操作细则》《信用风险缓释凭证持有人会议规程》的公告.pdf",
+      "bytes": 275362,
+      "sha256": "e54bb853e0a83f0d69dc36e4d266f948d47d099b2e654c7209073d9999626ca9",
+      "disposition": "new_original",
+      "source_id": "NA036"
+    },
+    {
+      "archive_path": "2-2 注册类制度/10-6 关于《信用风险缓释凭证业务指引》及配套制度施行有关事宜的通知.pdf",
+      "bytes": 356010,
+      "sha256": "8f5ab288d0ccc4aa3f41e679add1358fba2cb991aa65d6a7bdf02fef7ffb2650",
+      "disposition": "new_original",
+      "source_id": "NA037"
+    },
+    {
+      "archive_path": "2-2 注册类制度/11_关于绿色债券适用《绿色金融支持项目目录（2025年版）》工作机制的通知.pdf",
+      "bytes": 395059,
+      "sha256": "0b4f715fc94fa4d3125e9943e9530f8aadc353705fed68fb1d0d810d74379982",
+      "disposition": "new_original",
+      "source_id": "NA038"
+    },
+    {
+      "archive_path": "2-2 注册类制度/12_关于优化债务融资工具成熟层企业机制有关事项的通知.pdf",
+      "bytes": 346225,
+      "sha256": "ddfd5215a5ccd3e62d0187b74b6ed2b8b694a30fcab1cae1860c9521f44fd3bc",
+      "disposition": "new_original",
+      "source_id": "NA039"
+    },
+    {
+      "archive_path": "2-2 注册类制度/14_一图读懂《关于金融支持林业高质量发展的通知》.pdf",
+      "bytes": 2618097,
+      "sha256": "7c2f2b4bbac1d4b68abb96992a48b36544f83402ff0a8ea8b82cf75da90b1391",
+      "disposition": "new_original",
+      "source_id": "NA040"
+    },
+    {
+      "archive_path": "2-2 注册类制度/2-1【20200416】关于发布《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》等有关事项的通知.pdf",
+      "bytes": 228603,
+      "sha256": "94e67ebc6ad929168087ff105e9b9f4530fda1c599a98f9c26040f733dac47de",
+      "disposition": "new_original",
+      "source_id": "NA041"
+    },
+    {
+      "archive_path": "2-2 注册类制度/2-2【20200416】《非金融企业债务融资工具定向发行注册文件表格体系（2020版）》.docx",
+      "bytes": 281554,
+      "sha256": "1d94d7b4a1343eacd46506f2645e542a7892b87f0d2db272ceba2fd747bcc21c",
+      "disposition": "new_original",
+      "source_id": "NA042"
+    },
+    {
+      "archive_path": "2-2 注册类制度/2-3【20200416】《债务融资工具定向发行协议（2020版）》.docx",
+      "bytes": 47214,
+      "sha256": "e72f6615b18bfe3540778bbed8e78b482fe2b53ec0dc0f0cf1d7b532b7a80b76",
+      "disposition": "new_original",
+      "source_id": "NA043"
+    },
+    {
+      "archive_path": "2-2 注册类制度/2-4【20200630】非金融企业债务融资工具定向发行注册工作规程（2020 版）.pdf",
+      "bytes": 297080,
+      "sha256": "39bf2d10444384eaca9591837f46c3955c1f13c4b9b16e8a1f064e235410e880",
+      "disposition": "new_original",
+      "source_id": "NA044"
+    },
+    {
+      "archive_path": "2-2 注册类制度/2-5【20200630】关于发布实施《非金融企业债务融资工具定向发行注册工作规程（2020 版）》有关事项的通知.pdf",
+      "bytes": 221594,
+      "sha256": "d57f9da62c000291d72c15af06af4e160b2518b5926229ff0c069160e3f25b57",
+      "disposition": "new_original",
+      "source_id": "NA045"
+    },
+    {
+      "archive_path": "2-2 注册类制度/3-1【20200630】关于发布实施《非金融企业债务融资工具定向发行注册工作规程（2020 版）》有关事项的通知.pdf",
+      "bytes": 221594,
+      "sha256": "d57f9da62c000291d72c15af06af4e160b2518b5926229ff0c069160e3f25b57",
+      "disposition": "byte_duplicate",
+      "source_id": "NA045"
+    },
+    {
+      "archive_path": "2-2 注册类制度/3-1【20230629】境外非金融企业债务融资工具业务指引（2023版）（熊猫债）.pdf",
+      "bytes": 403451,
+      "sha256": "a64dede296f50fa97f0d6eaf413f6078f95fc30bd76a7e7143b3e62699a9560c",
+      "disposition": "new_original",
+      "source_id": "NA046"
+    },
+    {
+      "archive_path": "2-2 注册类制度/3-2【20200630】非金融企业债务融资工具定向发行注册工作规程（2020版）.doc",
+      "bytes": 59392,
+      "sha256": "edf737e7dafa8e6ba2a8353fad53f4cdaab332e96d1d881cc1c46cb736a3978b",
+      "disposition": "new_original",
+      "source_id": "NA047"
+    },
+    {
+      "archive_path": "2-2 注册类制度/3-2【20201204】非金融企业债务融资工具定向发行注册工作规程（2020 版）.pdf",
+      "bytes": 297080,
+      "sha256": "39bf2d10444384eaca9591837f46c3955c1f13c4b9b16e8a1f064e235410e880",
+      "disposition": "byte_duplicate",
+      "source_id": "NA044"
+    },
+    {
+      "archive_path": "2-2 注册类制度/3-2【20230629】境外非金融企业债务融资工具分层分类管理细则.docx",
+      "bytes": 22721,
+      "sha256": "124bd211c14628e29807f885ed40a105db759355835830e253c8cb23318051aa",
+      "disposition": "new_original",
+      "source_id": "NA048"
+    },
+    {
+      "archive_path": "2-2 注册类制度/3-3【20230629】境外非金融企业债务融资工具注册文件表格.docx",
+      "bytes": 105039,
+      "sha256": "6201202178bcda3f4d0cfde24c275d3e6d459200f073bb7104f60617950001d5",
+      "disposition": "new_original",
+      "source_id": "NA049"
+    },
+    {
+      "archive_path": "2-2 注册类制度/4-1【20200930】 关于公布实施《境外非金融企业债务融资工具分层分类管理细则》、《境外非金融企业债务融资工具注册文件表格》等有关事项的通知.pdf",
+      "bytes": 218133,
+      "sha256": "3d342818b9e59e5259696e666764b8a25f684ee74f9d892c27a04926ebf42bb8",
+      "disposition": "new_original",
+      "source_id": "NA050"
+    },
+    {
+      "archive_path": "2-2 注册类制度/4-2【20200930】境外非金融企业债务融资工具分层分类管理细则.docx",
+      "bytes": 22721,
+      "sha256": "124bd211c14628e29807f885ed40a105db759355835830e253c8cb23318051aa",
+      "disposition": "byte_duplicate",
+      "source_id": "NA048"
+    },
+    {
+      "archive_path": "2-2 注册类制度/4-3【20200930】境外非金融企业债务融资工具注册文件表格.docx",
+      "bytes": 105039,
+      "sha256": "6201202178bcda3f4d0cfde24c275d3e6d459200f073bb7104f60617950001d5",
+      "disposition": "byte_duplicate",
+      "source_id": "NA049"
+    },
+    {
+      "archive_path": "2-2 注册类制度/5-1【20231212】银行间债券市场非金融企业项目收益票据业务指引.pdf",
+      "bytes": 197807,
+      "sha256": "a056365e18c77fdcb8593805b161f69d5c00e13055230f7f78460024ab5680b9",
+      "disposition": "new_original",
+      "source_id": "NA051"
+    },
+    {
+      "archive_path": "2-2 注册类制度/6-1【20231212】银行间债券市场企业资产证券化业务信息披露指引.pdf",
+      "bytes": 369807,
+      "sha256": "e1ba778fb2270b39e138a98523e98df4b59132158d2c5b37e6a489fae79498f4",
+      "disposition": "new_original",
+      "source_id": "NA052"
+    },
+    {
+      "archive_path": "2-2 注册类制度/6-2【20230307】关于《银行间债券市场企业资产证券化业务规则》及《银行间债券市场企业资产证券化业务信息披露指引》施行有关事宜的通知.pdf",
+      "bytes": 384922,
+      "sha256": "b5437badebeea2e4db1c740f70a612ad69d925ef8f7f575149fd44aad5348123",
+      "disposition": "new_original",
+      "source_id": "NA053"
+    },
+    {
+      "archive_path": "2-2 注册类制度/6-3【20230306】银行间债券市场企业资产证券化业务规则.pdf",
+      "bytes": 303542,
+      "sha256": "8240d20c4fa406588d3e79c75c63b98fbf43d16ff7e985c8a7b05584bf5a1508",
+      "disposition": "new_original",
+      "source_id": "NA054"
+    },
+    {
+      "archive_path": "2-2 注册类制度/7-1【20230428】非金融企业债务融资工具注册发行业务问答.pdf",
+      "bytes": 1150700,
+      "sha256": "e2ca05f32858c83db69c243a20ca3207c74df66a353502cef79e4d4e3e67fbc3",
+      "disposition": "new_original",
+      "source_id": "NA055"
+    },
+    {
+      "archive_path": "2-2 注册类制度/7-2【20210812】革命老区振兴发展债务融资工具问答.docx",
+      "bytes": 13286,
+      "sha256": "354129037edbb70cb68070156cf2c2d6c8db72cf7716f49da9ee4073bbcc8568",
+      "disposition": "new_original",
+      "source_id": "NA056"
+    },
+    {
+      "archive_path": "2-2 注册类制度/7-3【20220714】项目收益票据问答.docx",
+      "bytes": 13760,
+      "sha256": "35845c0b1d50cba035a89cf64c24435192f10cc190aab4ac6f8d8813dfd8078c",
+      "disposition": "new_original",
+      "source_id": "NA057"
+    },
+    {
+      "archive_path": "2-2 注册类制度/7-4【20250805】注册发行流程相关问题.docx",
+      "bytes": 24060,
+      "sha256": "4a03ab80a40b157deca2357579ebf378076041e3d9258d95a79ad9f91548b3ea",
+      "disposition": "new_original",
+      "source_id": "NA058"
+    },
+    {
+      "archive_path": "2-2 注册类制度/7-5【20240702】资产担保债务融资工具问答.docx",
+      "bytes": 15659,
+      "sha256": "72f71c9cb04dad8d8a463a04eb1db06e89aced459e56013c8a083548c59242fe",
+      "disposition": "new_original",
+      "source_id": "NA059"
+    },
+    {
+      "archive_path": "2-2 注册类制度/7-6【20210507】资产支持商业票据（ABCP）问答.docx",
+      "bytes": 16012,
+      "sha256": "dbdd09a5e0ee91cf435ff44f7b0dd6c44e219e3c3385a35d4ba6246b118105ad",
+      "disposition": "new_original",
+      "source_id": "NA060"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-1【20250507】关于推出科技创新债券 构建债市“科技板”的通知.docx",
+      "bytes": 16787,
+      "sha256": "7cd9fbe3fdb3d74a2973a637e2aaa52118350b76e9f854e1e70a192b49a125ce",
+      "disposition": "new_original",
+      "source_id": "NA061"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-1【20250507】推出科技创新债券的通知.pdf",
+      "bytes": 163655,
+      "sha256": "19ccc3e5abfd35ea6025ee8caebe6dfdb66ffa420298fd4eac4f8f7aa6e60193",
+      "disposition": "new_original",
+      "source_id": "NA062"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-2【20250507】附件1.两类机构科技创新债券信息披露表（试行）.docx",
+      "bytes": 17141,
+      "sha256": "6ecd9c92adf428d1702e96fe9653ff7f35c7d6c86bdaf61764efb9e40bc1c713",
+      "disposition": "new_original",
+      "source_id": "NA063"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-3【20250807】行业表格：股权投资行业信息披露表（试行）.docx",
+      "bytes": 12883,
+      "sha256": "b13f6da353e5a6cdcf916acf4319f28735dca6f2e2463455449317106e9e05d7",
+      "disposition": "new_original",
+      "source_id": "NA064"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-4【20250507】产品表格：科技创新债券特殊条款披露表（试行）.docx",
+      "bytes": 13022,
+      "sha256": "bb9aa5200afcf77ae3623a387ce658ff7cb7e340ea0b55bdf53e9df651f208d4",
+      "disposition": "new_original",
+      "source_id": "NA065"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-5【20250507】NAFMII市场创新自律问答（第十期）_科技创新债券操作问答.pdf",
+      "bytes": 905653,
+      "sha256": "11d98747d233a91120c115b4742559985be870284474878fa289da3423dfac61",
+      "disposition": "new_original",
+      "source_id": "NA066"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-6【20250507】六问六答｜科技创新债券发行要点详解.pdf",
+      "bytes": 12315876,
+      "sha256": "017545e8147d77749cb1930bbacce8b5e0fdd3bfebe8ff861cafc2cda7e704ad",
+      "disposition": "new_original",
+      "source_id": "NA067"
+    },
+    {
+      "archive_path": "2-2 注册类制度/8-7【20260302】关于进一步优化科技创新债券机制的通知.pdf",
+      "bytes": 410510,
+      "sha256": "b9711076aab0f0e70c321e351ee0cb1fa2c6c8410b2dedfd42ba6c4b18a41301",
+      "disposition": "new_original",
+      "source_id": "NA068"
+    },
+    {
+      "archive_path": "2-2 注册类制度/9-1【】关于优化并购票据相关工作机制的通知.pdf",
+      "bytes": 382830,
+      "sha256": "e6611419f2b5430b0c5547231cda200a38bcd003ebdd938ffdb8a3ff9516c3ed",
+      "disposition": "new_original",
+      "source_id": "NA069"
+    },
+    {
+      "archive_path": "2-2 注册类制度/~$10【20231225】投资人保护条款示范文本.docx",
+      "bytes": 162,
+      "sha256": "17829016aa66db7f91346c48b04aa3b9a0d776c54b2e73a8840d8c90f0354a00",
+      "disposition": "excluded_office_lock_file"
+    },
+    {
+      "archive_path": "2-2 注册类制度/~$1【20250507】关于推出科技创新债券 构建债市“科技板”的通知.docx",
+      "bytes": 162,
+      "sha256": "17829016aa66db7f91346c48b04aa3b9a0d776c54b2e73a8840d8c90f0354a00",
+      "disposition": "excluded_office_lock_file"
+    },
+    {
+      "archive_path": "2-2 注册类制度/【20200925】债务融资工具增发信息披露表（ZF表）.docx",
+      "bytes": 24476,
+      "sha256": "ab803a3a459ac1b4a590f1e9863bf5f779af28feeb8eff023b9990a805e9eb72",
+      "disposition": "new_original",
+      "source_id": "NA070"
+    },
+    {
+      "archive_path": "2-2 注册类制度/【20210813】关于取消非金融企业债务融资工具信用评级要求有关事项的通知.pdf",
+      "bytes": 393721,
+      "sha256": "5ec4c253c6c4120ab1388e1727770afc0d29de7c0dfd033e39601da10bd26645",
+      "disposition": "new_original",
+      "source_id": "NA071"
+    },
+    {
+      "archive_path": "2-2 注册类制度/【20240102】0-14（交易商协会）投资人保护条款示范文本.docx",
+      "bytes": 88885,
+      "sha256": "25d3cfb96421875f9e7c04c1158f55fc18c0fb1c84a525939856018d26f6c666",
+      "disposition": "byte_duplicate",
+      "source_id": "NA002"
+    },
+    {
+      "archive_path": "2-2 注册类制度/资产支持证券化问答.docx",
+      "bytes": 13975,
+      "sha256": "d4f198ef33f20841195c00149eb46de7642bfe49cd2bdf8043e4d286587b8b71",
+      "disposition": "new_original",
+      "source_id": "NA072"
+    }
+  ]
+}
