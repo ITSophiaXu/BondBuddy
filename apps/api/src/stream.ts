@@ -5,6 +5,7 @@ import { STREAM_LIMITS, type StreamEnd } from '@bondbuddy/contracts';
 import { date, Problem, run, runDto } from './data.js';
 import { assertTestChannelReadable } from './non-production-test.js';
 import { currentMaterialParseJob, materialParseJobDto, readMaterialParseJobEvents } from './material-jobs.js';
+import { runEventPayloadDto } from './run-event-dto.js';
 
 // #17: server-sent events of persisted state only. Each frame is read back from PostgreSQL
 // (bb_run_events / bb_job_events); nothing is pushed from in-memory worker state. The stream
@@ -66,7 +67,7 @@ export function installEventStreams(app: FastifyInstance, deps: Deps, settings: 
     const body = sse(request, settings, {
       snapshot: async () => { const row=await run(deps.db(),user,runId);assertTestChannelReadable(row.channel);return runDto(row); },
       page: async after => (await deps.db().query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT $4', [user, runId, after, STREAM_LIMITS.pageSize])).rows
-        .map(e => ({ seq: Number(e.seq), event: e.type, data: { event_id: e.id, schema_version: 1, trace_id: e.trace_id, run_id: e.run_id, seq: Number(e.seq), occurred_at: date(e.occurred_at), stage: e.stage, type: e.type, state: e.state, payload: e.payload } })),
+        .map(e => ({ seq: Number(e.seq), event: e.type, data: { event_id: e.id, schema_version: 1, trace_id: e.trace_id, run_id: e.run_id, seq: Number(e.seq), occurred_at: date(e.occurred_at), stage: e.stage, type: e.type, state: e.state, payload: runEventPayloadDto(e.payload) } })),
       terminal: async () => { const row=await run(deps.db(),user,runId);assertTestChannelReadable(row.channel);return runTerminal.has(row.state); },
     }, cursor);
     return reply.header('content-type', 'text/event-stream; charset=utf-8').header('cache-control', 'private, no-store').header('x-accel-buffering', 'no').send(body);
