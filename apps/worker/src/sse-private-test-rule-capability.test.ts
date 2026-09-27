@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import type { Pool, PoolClient } from 'pg';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { loadReviewedRuleApplicabilityContext, type ReviewedRuleApplicabilityContextArgs } from '@bondbuddy/rule-applicability-context';
 import { AUTHORIZED_SAMPLE_CASE_FILES, AUTHORIZED_SAMPLE_MANIFEST_SHA256 } from './authorized-sample-membership.generated.js';
 import { createSsePrivateTestRuleCapabilityLoader } from './sse-private-test-rule-capability.js';
 import { SSE_PRIVATE_CANDIDATE_ASSET_PIN as pin } from './sse-private-candidate-assets.js';
@@ -143,4 +144,19 @@ test('WorkerRuntime installs the candidate selector only for the explicit prepro
     BB_NON_PRODUCTION_TEST_CHANNEL: 'enabled' }).testRuleCapabilityLoader, undefined);
   assert.equal(typeof workerRuntimeOptionsFromEnv(pool, blobs, { BB_WORKER_JOB_KINDS: 'run', BB_DEPLOYMENT_TIER: 'preprod',
     BB_NON_PRODUCTION_TEST_CHANNEL: 'enabled' }).testRuleCapabilityLoader, 'function');
+});
+
+test('shared applicability loader rejects a test-only mode on the production tier before reading a review', async () => {
+  const previous = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'production'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    const noRead = { query: async () => { throw new Error('production must not read a test review'); } } as unknown as Pool;
+    const result = await loadReviewedRuleApplicabilityContext(noRead,
+      { mode: 'non_production_test' } as ReviewedRuleApplicabilityContextArgs);
+    assert.deepEqual(result, { status: 'needs_review', reasons: ['rule_applicability_test_channel_disabled'] });
+  } finally {
+    for (const [index, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index];
+    }
+  }
 });
