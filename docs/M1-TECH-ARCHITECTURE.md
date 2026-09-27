@@ -440,7 +440,7 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 
 历史稿生成另外增加 `apps/worker/src/historical-rule-context.ts`，消费API实际写入的 `ProductionRulePackPin.packId/contentHash`，在生成和恢复前重复使用registry的精确release revalidator。仅向prompt投影本次适用的规则、边界、例外及相关原文证据；不选latest、不回退本地研究文件。`historical-sse-private-v2`变更prompt绑定，旧v1 checkpoint不能静默复用。正文180,000字节、完整prompt240,000字节，超限暂停而非截断。此消费者不批准规则、不替代#19整体review loader；研究checker不因此进入生产。没有公开DTO、迁移或run状态机变化。现有运行日志保存完整prompt，公开进度只留计数和引用。详细限制和依赖见[本轮工程记录](acceptance/issue-20-rule-integration-2026-09-27.md)。
 
-2026-09-27行业源资产独立放在[固定来源目录](../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)：离线Python提取19门类/10制造业辅助次类/91大类/456中类及原表锚点，附576项来源代码→大类候选映射。仅#19现有domain字典可以成为运行标准的唯一绑定；此切片不修改公共枚举、迁移、review ledger或loader。精确匹配selector没有祖先推断，门类/中类规则的覆盖映射须显式审核。2024相近金融标准与2023协会指引不自动等价。#20工程/来源/结果四项关口及独立兼容性跟踪见[关闭清单](../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)。
+2026-09-27行业源资产独立放在[固定来源目录](../knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)：离线Python提取19门类/10制造业辅助次类/91大类/456中类及原表锚点，附576项来源代码→大类候选映射。仅#19现有domain字典可以成为运行标准的唯一绑定；此切片不修改公共枚举、迁移、review ledger或loader。精确匹配selector没有祖先推断，门类/中类规则的覆盖映射须显式审核。2024相近金融标准与2023协会指引不自动等价。#20业务审核/规则章节实现/版本接入三项关口，以及独立的#332成果验收和#146兼容性跟踪见[关闭清单](../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)。
 
 
 ### #20 complete documentary review and explicit handling (2026-09-27)
@@ -453,7 +453,7 @@ The internal [v4 input example](../packages/domain/examples/sse-private-check-in
 
 ### #20 内部首次测试与关闭边界（用户2026-09-27调整）
 
-Word/WPS桌面兼容验收不阻断#20关闭，由#146独立跟踪，发现实际缺陷后另开issue。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
+生成后的规则/章节结果验收移至#332，Word/WPS桌面兼容验收由#146独立跟踪，两者均不阻断#20关闭，发现实际缺陷后另开issue。[31条固定业务决定](../knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)完成本轮委托审核，保留25条有限检查、6条人工处理及未覆盖；运行资产和生产批准未改变。生成/下载、DOCX基础结构及内容验证继续由原有#31/#34/#35链路负责；本决定不改run成功条件或声称客户端已兼容。
 
 首次内部工作稿测试需要固定指定账号、已授权样本、输入/规则来源版本和日志，并将局部缺材料/配套未核状态传到结果；不应等待全库正文核验、同一次成果的产出后验收或WPS矩阵。当前`rule-applicability-context`先检查整体批准，再检查已发布字典；`rule-pack-registry`生产入口要求真实生产release和完整已核coverage。#35最新暂停证明整体审核未通过，不证明缺少某一配套PDF本身直接使模型失败。
 

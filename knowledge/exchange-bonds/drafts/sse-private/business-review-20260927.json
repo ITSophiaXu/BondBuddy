@@ -1,0 +1,3936 @@
+{
+  "record_type": "delegated_business_review_not_runtime_approval",
+  "review_id": "sse-private-business-review-20260927-v1",
+  "review_date": "2026-09-27",
+  "baseline_commit": "25bd6297548401d1b911c91edf99ce259a219595",
+  "evidence_as_of": "2026-09-26",
+  "candidate_version": "2026.09.27-draft.6",
+  "reviewer": {
+    "actor": "Codex",
+    "role": "user-delegated business analysis",
+    "human_signature": null
+  },
+  "authorization": "用户要求完成固定规则版本的逐条业务审核，明确适用、例外和未覆盖项；真实成果验收移至#332。",
+  "scope": "上交所普通私募有历史稿，固定来源基准；供#20业务交付及受控工作稿接入使用。",
+  "effects": {
+    "runtime_approval_written": false,
+    "production_enabled": false,
+    "customer_facts_approved": false,
+    "generated_result_accepted": false
+  },
+  "pins": [
+    {
+      "path": "knowledge/exchange-bonds/drafts/sse-private/rule-pack.json",
+      "git_blob_oid": "ea90ac09098f9077a3e195e9122b5baef65b6b1b",
+      "sha256": "47d01c552225a279463f118f67c528ec93d6b49ab10ac68f772d04ba30592e58"
+    },
+    {
+      "path": "knowledge/exchange-bonds/drafts/sse-private/chapter-template.json",
+      "git_blob_oid": "a2afd577c20a40d42af7d59f6ea37ea95b83cb16",
+      "sha256": "e5a2cb613648c1dd2e16e8ab6642e927f707309387a1af39079f2d904c7fb30b"
+    },
+    {
+      "path": "knowledge/exchange-bonds/drafts/sse-private/coverage.json",
+      "git_blob_oid": "5d9e938b2d2d299b4aaf16876a87c2ecd04f5ec2",
+      "sha256": "bc92432cd2b62a4c33712e5fd4d61884254a728325a2a4ec37f26d23c05a498a"
+    },
+    {
+      "path": "knowledge/exchange-bonds/drafts/sse-private/rule-evidence-map.json",
+      "git_blob_oid": "05b3fc8cf6d664b7f7a24d5235ee4448eb662cce",
+      "sha256": "cb846373cfc514923ac74a3b3cc399eee50ed1a5d76ed14dd473050dd263d43f"
+    },
+    {
+      "path": "knowledge/exchange-bonds/drafts/sse-private/rule-review-20260927.json",
+      "git_blob_oid": "a62d3ed787db93ceca24317176efacf73eb8791c",
+      "sha256": "603e0f41fd7976a707b1b73ba1448ed325fc2448c84a10812a5d90c50f19ebf0"
+    }
+  ],
+  "counts": {
+    "reviewed": 31,
+    "bounded": 25,
+    "manual": 6,
+    "template_chapters": 17,
+    "coverage_uncovered": 31,
+    "coverage_not_applicable": 1
+  },
+  "chapter_mapping_gaps": [],
+  "coverage_without_rule": [
+    {
+      "item_id": "other-markets",
+      "area": "交易商协会及其他市场",
+      "disposition": "not_applicable",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [],
+      "rationale": "本包仅限指定交易所及发行方式，不改变NAFMII包。"
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "sse-private-source-authority",
+      "title": "逐字段来源与冲突处理",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用逐字段选源及冲突保留方法，不采用全文件统一权威排名。",
+      "applies_when": "全部章节中引用的发行人事实；同主体、口径、期间和单位的候选才可比较。",
+      "exceptions": "审计、工商、条款及评级各有对应证据；更新日期较晚不能自动覆盖权威原件。",
+      "uncovered": "尚未证明每个字段已遍历全部来源；不自动裁定冲突中的正确值。专家指南（含深交所写作经验）仅支持内部方法，不转为上交所强制规范。",
+      "execution_handling": "候选一致性和审核记录作有限检查；冲突列值、定位和理由，缺少实际决定时留待确认。",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "source-authority",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "同名不同口径不可选；候选冲突、选值不在候选、OCR候选未核、缺冲突理由均不能通过。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00093",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00082",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00082",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex017-p00151",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00151",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00093",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00093",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-disclosure-2023-p00024",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+          "clause_locator": "P00024",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#source-authority"
+    },
+    {
+      "rule_id": "sse-private-period-window",
+      "title": "目标报告期及滚动窗口",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用普通私募最近两年及一期财务窗口；接受已确认四组样本的目标期间。",
+      "applies_when": "自然年度、境内普通公司债的财务披露；法规适用日独立锁定。",
+      "exceptions": "年末目标不重复补一期；成立不足两年另核。业务模式、重组等独立三年回溯不得缩短。",
+      "uncovered": "非自然年度、成立不足两年或豁免，以及缺失期间的事实完整性尚非自动覆盖。",
+      "execution_handling": "检查完整期间集合及年末/中期边界；缺期逐项提示，不补造第三年度或无依据中期。",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "period-window",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "普通自然年度两年及一期，年末不重复一期；章丘2022/2023目标与任丘中期分别回放；特殊窗口另审。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00440",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00453",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00183",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00186",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex017-p00209",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00209",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex017-p00210",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00210",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex001-p00443",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00443",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00617",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00617",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00440",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00440",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00443",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00443",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00453",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00453",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00183",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00183",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00186",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00186",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#period-window"
+    },
+    {
+      "rule_id": "sse-private-evidence-state",
+      "title": "空值、用户陈述与待确认信息",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用事实状态与缺口标记；局部证据不足不一律阻断有依据的全文更新。",
+      "applies_when": "所有原件抽取、用户多轮补充和模型解释。",
+      "exceptions": "用户明确确认可以成为相应决策证据，但不自动代表审计、工商或财务数值已经核验。",
+      "uncovered": "OCR置信度、已解析状态与文字流畅度均不能证明事实真实。",
+      "execution_handling": "空、零、破折号分开；未核/冲突保留标记及锚点，禁止无依据升级为verified。",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "evidence-state",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "user_asserted/conflicted/空值/无定位均保留needs_evidence；正确标缺口允许工作稿继续。",
+      "official_evidence": [
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex017-p00845",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00845",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00622",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00622",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00647",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00647",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-disclosure-2023-p00024",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+          "clause_locator": "P00024",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#evidence-state"
+    },
+    {
+      "rule_id": "sse-private-identity",
+      "title": "发行主体、口径与单位一致",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用主体、合并口径、币种单位及期间的独立绑定。",
+      "applies_when": "全部财务数值及发行人、子公司、担保人、参考发行人的事实引用。",
+      "exceptions": "有证据的单位换算可进行，保留原值和换算；同名不能替代主体审核。",
+      "uncovered": "公司简称无法证明城建属性、控制关系或本期发行主体。",
+      "execution_handling": "可信适配器提供审核后的ID/口径，逐处比较；任一维度不明或不一致留缺口。",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "identity",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "只改主体、期间、合并口径或单位任何一项都报差异；无效日期不能进入比较。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00093",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00094",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00617",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00617",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00621",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00621",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00595",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00595",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00093",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00093",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00094",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00094",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00200",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00200",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#identity"
+    },
+    {
+      "rule_id": "sse-private-private-investors",
+      "title": "私募发行对象与人数限制",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用专业投资者及每次发行不超过200人的规则；转让后同次持有人另核200人。",
+      "applies_when": "普通私募的发行对象、推介和转让安排；发行与持有为两个时点。",
+      "exceptions": "不将发行人数和转让后人数相加；穿透、产品及具体资格例外需对应适当性依据。",
+      "uncovered": "现有限制比较不等于已审核每名投资者资格或穿透结果；配套正文已有补充但尚未完整接入。",
+      "execution_handling": "200/201/未知分别处理；仅在人数和身份有证据时出对应小项结果，保留适当性缺口。",
+      "chapter_ids": [
+        "front",
+        "terms"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "private-investors",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "发行200/201人与转让后200/201人分别比较，不相加；穿透与适当性例外另审。",
+      "official_evidence": [
+        {
+          "document_id": "csrc-measures-2023",
+          "locator": "PAGE011",
+          "sha256": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a"
+        },
+        {
+          "document_id": "csrc-measures-2023",
+          "locator": "PAGE012",
+          "sha256": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00011",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00025",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex035-page011",
+          "authority": "中国证监会/相关联合发布机关（依原件）",
+          "document_title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+          "source_version": "provided-2023",
+          "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+          "clause_locator": "PAGE011",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex035-page012",
+          "authority": "中国证监会/相关联合发布机关（依原件）",
+          "document_title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+          "source_version": "provided-2023",
+          "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+          "clause_locator": "PAGE012",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-csrc-measures-2023-page011",
+          "authority": "中国证监会（上交所官方转载）",
+          "document_title": "公司债券发行与交易管理办法（证监会令第222号）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+          "clause_locator": "PAGE011",
+          "official_url": "https://www.sse.com.cn/lawandrules/regulations/csrcorder/c/10747815/files/4030433c068d42eeaaf90845b23d8bc8.pdf",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-csrc-measures-2023-page012",
+          "authority": "中国证监会（上交所官方转载）",
+          "document_title": "公司债券发行与交易管理办法（证监会令第222号）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+          "clause_locator": "PAGE012",
+          "official_url": "https://www.sse.com.cn/lawandrules/regulations/csrcorder/c/10747815/files/4030433c068d42eeaaf90845b23d8bc8.pdf",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00011",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00011",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00025",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00025",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#private-investors"
+    },
+    {
+      "rule_id": "sse-private-financial-validity-sse",
+      "title": "上交所财务有效期",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用最近一期截止日起6个月有效期；在审封卷延期单独判断。",
+      "applies_when": "申报/封卷相关时效判断，使用真实阶段与日期，不取上传日代替。",
+      "exceptions": "到期日起20日内可封卷的在审项目才进入至多1个月延期审查；申请不等于同意，新申报不沿用延期。",
+      "uncovered": "20日封卷条件、批准凭证及特殊程序尚需项目证据和人工判断。",
+      "execution_handling": "日历月/月末/闰日有限计算；未知阶段或批准列待核，可出工作稿但不称当前可申报。",
+      "chapter_ids": [
+        "financial",
+        "reference"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "financial-validity-sse",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "六个日历月、月末/闰日、最多一月实际获准延期；新申报不得沿用在审延期；封卷20日及批准凭证另核。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00445",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00446",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00447",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00452",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex001-p00195",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00195",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex001-p00446",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00446",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00445",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00445",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00446",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00446",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00447",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00447",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00452",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00452",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#financial-validity-sse"
+    },
+    {
+      "rule_id": "sse-private-current-terms",
+      "title": "本期条款、多品种及机构联动",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用本期条款逐品种、逐发生位置比对；私募使用挂牌条件确认相应措辞。",
+      "applies_when": "申报稿与具体一期发行稿各自的规模、期限、利率、机构及审批依据。",
+      "exceptions": "未明确变更不等于全部不变；历史仍有效文字可保留但需标明当期尚未确认部分。",
+      "uncovered": "未取得本期决议/协议的条款不能从历史标题或模型推断。",
+      "execution_handling": "本期有依据的标准值全文回写；缺条款保留待确认，禁止复制公募注册表述。",
+      "chapter_ids": [
+        "front",
+        "terms",
+        "institutions",
+        "declarations"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "current-terms",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "单项规模/机构跨章不一致报差异；私募写公募注册报问题；缺本期条款留待确认。",
+      "official_evidence": [
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00022",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00038",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00018",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00471",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00471",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00475",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00475",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex017-p00173",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00173",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00022",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00022",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00038",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00038",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00018",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00018",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#current-terms"
+    },
+    {
+      "rule_id": "sse-private-funds-use-evidence",
+      "title": "组合资金用途与配套材料",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用组合用途分项取证和同口径精确加总。",
+      "applies_when": "偿债、补流、建设、股权/收购、基金出资等本期实际用途。",
+      "exceptions": "生产性支出概括约定仅在条件满足时采用；各类项目所需权证以实际适用性判断。",
+      "uncovered": "许可真实效力、投资资格和简化披露条件不由金额相加证明。",
+      "execution_handling": "币种、单位、总额/净额先统一；缺可研、许可或协议逐项标记，不编造已取得。",
+      "chapter_ids": [
+        "funds"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "funds-use-evidence",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "各用途分项精确加总，币种/单位/总净额与完整清单先核；缺许可等标缺口，生产性支出简化另审。",
+      "official_evidence": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00009",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00010",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00011",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00014",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00018",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00512",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00512",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00009",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00009",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00010",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00010",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00011",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00011",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00014",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00014",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00018",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00018",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#funds-use-evidence"
+    },
+    {
+      "rule_id": "sse-private-private-use-change",
+      "title": "私募资金用途与约定变更程序",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用私募约定、重大影响及会议程序判断；限定偿债限制单独执行。",
+      "applies_when": "本期用途及其变更约定，依8.4.1与2026募集资金指南的适用条款。",
+      "exceptions": "持有人表决不能豁免限定偿债限制；公募跨用途类别额外会议规则不直接套全部私募。",
+      "uncovered": "重大影响认定、实际约定效力和程序是否履行仍需人工及材料。",
+      "execution_handling": "先检查限定用途，再检查约定/会议分支；缺证只给对应缺口，不作变更已合法结论。",
+      "chapter_ids": [
+        "funds",
+        "holders",
+        "trustee"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "private-use-change",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "限定偿债不可由会议豁免；私募的未约定/重大影响与公募跨用途额外要求分开。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00458",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00459",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00028",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00029",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00030",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00031",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00032",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00033",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex035-page004",
+          "authority": "中国证监会/相关联合发布机关（依原件）",
+          "document_title": "附件1：公司债券发行与交易管理办法（2023-10-20）",
+          "source_version": "provided-2023",
+          "document_hash": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a",
+          "clause_locator": "PAGE004",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex001-p00458",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00458",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00539",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00539",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00458",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00458",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00459",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00459",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00028",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00028",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00029",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00029",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00030",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00030",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00031",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00031",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00032",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00032",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00033",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00033",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#private-use-change"
+    },
+    {
+      "rule_id": "sse-private-funds-simulation",
+      "title": "发行后模拟及前次资金使用",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用显式假设的简化发行后模拟，与前次资金使用事实分开。",
+      "applies_when": "已确认本期净额、用途、最新财务基准及前次债券清单。",
+      "exceptions": "偿债、留存现金、费用计损益或冲减债务不能使用同一公式；复杂交易另审。",
+      "uncovered": "未经证实的费用口径、前次整改及专户情况不能自动填入。",
+      "execution_handling": "按已审核假设精确复算；前次使用逐只取证，模拟注明非历史事实。",
+      "chapter_ids": [
+        "funds",
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "funds-simulation",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "小数和大数精确复算；错误费用处理/金额、无假设、复杂现金流转判断；前次未整改报问题；无前次须有依据。",
+      "official_evidence": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00035",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00036",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00037",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00038",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00039",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00040",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00041",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00546",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00546",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00554",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00554",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00035",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00035",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00036",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00036",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00037",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00037",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00038",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00038",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00039",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00039",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00040",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00040",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00041",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00041",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#funds-simulation"
+    },
+    {
+      "rule_id": "sse-private-issuer-governance",
+      "title": "主体、控制链、董监高与重组",
+      "decision": "adopt_manual_handling",
+      "adoption_and_reason": "采用发行人治理披露要求；重大重组及治理合规资格结论保留人工判断。",
+      "applies_when": "工商、章程、控制链、资本、子公司、任职和重组线索。",
+      "exceptions": "公司类型与过渡安排分别判断；不以单一50%或名称认定重组/城建，历史事件日不滚动。",
+      "uncovered": "现行重组完整正文、公司法母本与相关过渡核验仍有缺口，不能确认无重组或治理全面合规。",
+      "execution_handling": "人工handler列事件及来源，已知事实可更新；待核的定义/资格逐项标记，不新增全局问卷。",
+      "chapter_ids": [
+        "issuer",
+        "declarations"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "issuer-governance",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "空事件清单需核证；不以持股50%推出重大重组；公司法/重组依据或判断缺失均留缺口，即使全有仍needs_judgement。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00171",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00175",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00177",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00178",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00179",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00186",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00187",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00559",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00559",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00565",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00565",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00566",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00566",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00171",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00171",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00175",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00175",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00177",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00177",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00178",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00178",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00179",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00179",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00186",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00186",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00187",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00187",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#issuer-governance"
+    },
+    {
+      "rule_id": "sse-private-business-revenue",
+      "title": "业务板块与收入成本毛利",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用全部可比板块披露和收入/毛利受限复算；前三主营业务匹配只作后台检索。",
+      "applies_when": "合并口径的业务收入、成本、毛利及经营模式；上交所披露按其3.6.7执行。",
+      "exceptions": "收入或毛利占比达到10%的经营板块需关注；前三之外的重要板块不得删除，分类变化和并列保留。",
+      "uncovered": "行业判断、分部映射、负毛利/零基数可比性及持续经营解释非自动通过。",
+      "execution_handling": "同口径复算并列经营披露缺口；不把深交所条文直接升级为本市场依据。",
+      "chapter_ids": [
+        "issuer",
+        "financial",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "business-revenue",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "恰10%及毛利单独达线触发；零负分母不硬算；超过前三个的重要板块仍需披露；分类改名/重述先核可比。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00181",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00182",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00183",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00184",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex001-p00181",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00181",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00596",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00596",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00181",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00181",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00182",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00182",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00183",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00183",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00184",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00184",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#business-revenue"
+    },
+    {
+      "rule_id": "sse-private-audit-opinion",
+      "title": "审计意见及非标补充说明",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用逐年度审计意见识别和非标事项独立保留。",
+      "applies_when": "各年度审计报告、相关说明和本期是否经审计的财务资料。",
+      "exceptions": "强调事项段无保留意见不同于保留意见；中期未经审计不得写成已审计。",
+      "uncovered": "否定/无法表示意见、非标是否消除及偿债影响需会计师/有权机构意见。",
+      "execution_handling": "有限检查说明及报告存在性；缺意见页标记，禁止模型代签或自行消除非标。",
+      "chapter_ids": [
+        "financial",
+        "front",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "audit-opinion",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "中期未审计不得称审计；强调/保留所需实际说明与会计师补充；否定/无法表示意见不自动放行。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00198",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00608",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00608",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00611",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00611",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00198",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00198",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00443",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00443",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#audit-opinion"
+    },
+    {
+      "rule_id": "sse-private-financial-statements",
+      "title": "合并及母公司六张表与重述",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用各适用期间合并/母公司三表分别更新，保留重述前原数和锚点。",
+      "applies_when": "资产负债表、利润表、现金流量表及对应附注。",
+      "exceptions": "合并范围变化、新设/重组备考和会计政策变更独立解释；不能为勾平改源数。",
+      "uncovered": "完整金额勾稽、重组备考条件、全部附注及OCR不确定值仍需实际适配和审核。",
+      "execution_handling": "按期检查表种与说明；缺表/缺值定位，保留母公司与合并来源，未核数不升级。",
+      "chapter_ids": [
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "financial-statements",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "合并/母公司三表按单期核；重述不覆盖原数；合并范围变化及新设例外分别核；附注/备考另审。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00195",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00196",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00199",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00202",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00618",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00618",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00619",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00619",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00623",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00623",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00195",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00195",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00196",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00196",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00199",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00199",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00200",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00200",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00202",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00202",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00443",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00443",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#financial-statements"
+    },
+    {
+      "rule_id": "sse-private-indicators",
+      "title": "财务指标定义、重算与缺项",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用有定义、有输入来源的指标复算，不强塞大公募附加表。",
+      "applies_when": "本期适用偿债、流动性及约定指标。",
+      "exceptions": "零/负分母、不同EBITDA/全部债务口径先判断；财务费用净额不替代利息支出。",
+      "uncovered": "缺折旧、摊销或资本化利息不能填零；指标定义有效性仍需审核。",
+      "execution_handling": "输入单位/期间固定后精确计算、按最终精度显示；不能计算时给原因。",
+      "chapter_ids": [
+        "financial",
+        "front"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "indicators",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "比例/百分数分开，零负分母转判断，不用浮点或强套大公募指标；错误舍入报问题。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00201",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex017-p00775",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00775",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex017-p00779",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00779",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00632",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00632",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00634",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00634",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00200",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00200",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00201",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00201",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#indicators"
+    },
+    {
+      "rule_id": "sse-private-mdna-thresholds",
+      "title": "资产负债项目构成和变动分析",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用10%/30%含边界、增减均核的披露触发，不将其降为纯建议。",
+      "applies_when": "最近一年及最近一期末的适用资产/负债项目；本包依据上交所3.7.3。",
+      "exceptions": "零/负或不可比基数不机械算；低于阈值的重大风险仍需披露。",
+      "uncovered": "阈值通过不证明原因、评估价值及全项目遍历完整，沪深原文字义不得混用。",
+      "execution_handling": "单项精确比较，完整遍历交事实适配；缺原因/不可比输出明确待判断。",
+      "chapter_ids": [
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "mdna-thresholds",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "10%/30%含边界及增减；零负基数和不可比不机械算；低占比重大风险仍保留。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00203",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00204",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex001-p00203",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00203",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00203",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00203",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00204",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00204",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#mdna-thresholds"
+    },
+    {
+      "rule_id": "sse-private-cause-evidence",
+      "title": "变动原因不能仅凭勾稽推断",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用原因句到业务依据的绑定，禁止用算术差额证明因果。",
+      "applies_when": "财务、业务、债务等全部变动原因。",
+      "exceptions": "管理层说明作为相应来源保留状态；专家建议中的推测只能作待确认问题。",
+      "uncovered": "模型推理或勾稽结果不能替代实际交易、管理决策和因果证据。",
+      "execution_handling": "逐句取证；没有支持时保留问题和待确认，不伪造流畅解释。",
+      "chapter_ids": [
+        "issuer",
+        "financial",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "cause-evidence",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "计算正确但没有业务原因仍不得作为确定性因果披露；缺标记报问题。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00203",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex017-p00782",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00782",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00647",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00647",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00203",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00203",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-disclosure-2023-p00024",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+          "clause_locator": "P00024",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#cause-evidence"
+    },
+    {
+      "rule_id": "sse-private-debt-liquidity",
+      "title": "全口径有息债务与集中偿付",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用全口径债务勾稽及同一时点授信分项核对。",
+      "applies_when": "有息负债、存续债券、到期安排和授信总/已用/剩余。",
+      "exceptions": "共享、循环及附条件额度不简单相减即认定可用承诺；报表与台账范围差异可有合理解释。",
+      "uncovered": "完整非标债务集合、授信合同效力及未来可用性仍需材料判断。",
+      "execution_handling": "核期限完整性与调整理由；未知集合不能空表，用户提供额度保留消息与确认状态。",
+      "chapter_ids": [
+        "financial",
+        "credit",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "debt-liquidity",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "期限漏项、调整差异未说明、金额不合均提示；共享/循环/附条件额度不机械算可用承诺；未知集合不作空表。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00205",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00217",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00218",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00219",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00649",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00649",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00205",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00205",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00217",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00217",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00218",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00218",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00219",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00219",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#debt-liquidity"
+    },
+    {
+      "rule_id": "sse-private-related-contingent",
+      "title": "关联交易、担保、诉讼与受限资产",
+      "decision": "adopt_manual_handling",
+      "adoption_and_reason": "采用关联/或有事项披露与查询状态分离，认定和重大性保留人工判断。",
+      "applies_when": "关联交易、担保、诉讼、受限资产及报告期后至签署日的事项。",
+      "exceptions": "担保/总资产和担保/净资产分母不混用；无检索命中不等于无事项。",
+      "uncovered": "公开查询覆盖、关联关系认定、损失估计及后续事项完整性未自动覆盖。",
+      "execution_handling": "人工handler分别列未查、无命中、已核不存在、已发现；不能生成无依据否定结论。",
+      "chapter_ids": [
+        "issuer",
+        "financial",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "related-contingent",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "未查/无命中却写不存在报问题；已发现仍写无报问题；缺类/过早截止/缺评估不能形成全量通过。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00206",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00207",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00208",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00659",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00659",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00206",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00206",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00207",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00207",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00208",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00208",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#related-contingent"
+    },
+    {
+      "rule_id": "sse-private-rating-enhancement",
+      "title": "评级与增信分支",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用实际评级/增信的条件性披露，不默认普通私募必须评级。",
+      "applies_when": "本期主体/债项评级及实际增信合同。",
+      "exceptions": "无评级、有主体无债项等分支分开；流动性支持、差额补足不等同保证担保。",
+      "uncovered": "合同效力、保证人资质与担保承诺无法由模板一致性证明。",
+      "execution_handling": "有安排核报告/合同及全篇一致性；没有安排须依据，缺证留待确认。",
+      "chapter_ids": [
+        "front",
+        "credit",
+        "enhancement",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "rating-enhancement",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "确无评级不报违规；缺报告/合同、结论变化未回写须提示；保证人资料与效力仍人工核。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00210",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00212",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00222",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00225",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00231",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00669",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00669",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00210",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00210",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00212",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00212",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00222",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00222",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00225",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00225",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00231",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00231",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#rating-enhancement"
+    },
+    {
+      "rule_id": "sse-private-protection",
+      "title": "投资者保护与协议一致性",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用私募基本受托/会议义务及跨文件一致性；参考示例不强制全选。",
+      "applies_when": "募集书、受托协议、会议规则及实际增信条款。",
+      "exceptions": "交叉违约、提前清偿等示例必须有本期约定，不新增用户“是否设置”问卷。",
+      "uncovered": "协会受托配套现行正文和全部强制条款覆盖仍缺，不能称保护机制全面合规。",
+      "execution_handling": "逐条核差异与已约定承诺；无约定不添加，未核配套仅标相应结论缺口。",
+      "chapter_ids": [
+        "protection",
+        "default",
+        "holders",
+        "trustee",
+        "enhancement"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "protection",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "无实际约定不得套入示例；会议/受托/增信/募集书差异报问题；协会配套未核不声称全量覆盖。",
+      "official_evidence": [
+        {
+          "document_id": "sse-protection-2021",
+          "locator": "NOTICE",
+          "sha256": "db4b4d36d7ba3a34b515348f6ac741b960923c6eb240a1f0c6422265e93fbbce"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00127",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00128",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00143",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00144",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00145",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00146",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00147",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00148",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00462",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex001-p00462",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "provided-2023",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00462",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00960",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00960",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-protection-2021-notice",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核业务指南第2号——投资者权益保护（参考文本）（发布通知）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "db4b4d36d7ba3a34b515348f6ac741b960923c6eb240a1f0c6422265e93fbbce",
+          "clause_locator": "NOTICE",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/c_20210813_5543887.shtml",
+          "published_on": "2021-08-13",
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00127",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00127",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00128",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00128",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00143",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00143",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00144",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00144",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00145",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00145",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00146",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00146",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00147",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00147",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00148",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00148",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00462",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00462",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#protection"
+    },
+    {
+      "rule_id": "sse-private-risk-disclosure",
+      "title": "风险、重大事项与全文回写",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用更新事实后的风险回写；保留有依据历史风险。",
+      "applies_when": "封面重大事项、风险章、正文及摘要中的金额/事件。",
+      "exceptions": "已发生风险不得只写可能发生；拟采取与已采取措施分开。",
+      "uncovered": "数字一致不证明风险措辞充分；删除历史风险的合理性需依据。",
+      "execution_handling": "有限检查跨章值和删除依据；充分性留人工，不自动消除风险。",
+      "chapter_ids": [
+        "risk",
+        "front"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "risk-disclosure",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "正文已改风险未改报差异；没有依据的风险删除报缺口；数值通过仍保留措辞判断。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00089",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00090",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00109",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00028",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00117",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00117",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00465",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00465",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00467",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00467",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00089",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00089",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00090",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00090",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00109",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00109",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-disclosure-2023-p00028",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+          "clause_locator": "P00028",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#risk-disclosure"
+    },
+    {
+      "rule_id": "sse-private-sse-focus-2025",
+      "title": "上交所2025审核重点增量",
+      "decision": "adopt_manual_handling",
+      "adoption_and_reason": "采用2025重点关注事项的披露与审慎处理，触发/例外由人工核定。",
+      "applies_when": "按事实可能同时触发城建、房地产、集团及量化重点。",
+      "exceptions": "审慎论证不一律等同禁发；原则性用途限制与优化例外按原条款分别判断。",
+      "uncovered": "所有重点情形量化口径、资格和例外尚无自动判定覆盖。",
+      "execution_handling": "人工handler完整列触发项，漏筛或机械拒绝报问题；未核条目保留缺口。",
+      "chapter_ids": [
+        "issuer",
+        "funds",
+        "financial",
+        "risk"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "sse-focus-2025",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "未完整排查提示缺口；多项触发不丢失；把审慎要求全写成禁发报问题；数值条件及例外未自动验收。",
+      "official_evidence": [
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00030",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00052",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00095",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00096",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00097",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00098",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00099",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00100",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00101",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex006-p00030",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "provided-2025",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00030",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex006-p00052",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "provided-2025",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00052",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex006-p00095",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "provided-2025",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00095",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex006-p00100",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "provided-2025",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00100",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00030",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00030",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00052",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00052",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00095",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00095",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00096",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00096",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00097",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00097",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00098",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00098",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00099",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00099",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00100",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00100",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-focus-2025-p00101",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第3号——审核重点关注事项（2025年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5",
+          "clause_locator": "P00101",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779394/files/8a21ff89505a4b24a4d6738569a9d80e.docx",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#sse-focus-2025"
+    },
+    {
+      "rule_id": "sse-private-special-overlays-sse",
+      "title": "上交所2026专项品种需增量包",
+      "decision": "adopt_manual_handling",
+      "adoption_and_reason": "采用普通包能力隔离；专项资格及投向规则在本版本中明确未覆盖。",
+      "applies_when": "核对本期是否涉及可续期、可交换、绿色等特殊安排。",
+      "exceptions": "完整审核确认无专项才可不适用；未知不等于空集合。",
+      "uncovered": "2026专项原件存在不代表其效力、主体条件、投向及存续义务已审完。",
+      "execution_handling": "人工handler提示所需增量包，不自动按普通包放行或仅改债券名。",
+      "chapter_ids": [
+        "front",
+        "terms",
+        "funds",
+        "protection"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "special-overlays-sse",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "未知不当无；完整核查为空才not_applicable；有专项却只用普通包报问题，有增量引用仍须判断。",
+      "official_evidence": [],
+      "source_refs": [
+        {
+          "source_id": "ex005-p00007",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第2号——专项品种公司债券（2026年修订）",
+          "source_version": "provided-2026",
+          "document_hash": "60c4b46f1664c419f272957fa9d3667d6efb9b08c8671e939b2a23cf09168e9f",
+          "clause_locator": "P00007",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex005-p00189",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第2号——专项品种公司债券（2026年修订）",
+          "source_version": "provided-2026",
+          "document_hash": "60c4b46f1664c419f272957fa9d3667d6efb9b08c8671e939b2a23cf09168e9f",
+          "clause_locator": "P00189",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#special-overlays-sse"
+    },
+    {
+      "rule_id": "sse-private-document-delivery",
+      "title": "全文更新、定位和Word交付",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用全文处理及有历史稿原文修订的产品交付标准。",
+      "applies_when": "最低披露项及本稿实际章节；专家16节加前置部分可映射原结构。",
+      "exceptions": "16节不是唯一法定目录，私募不强制公募摘要；允许有依据的不适用并留理由。",
+      "uncovered": "税务、签章细节及真实文件结构/呈现不能由文献审核证明。",
+      "execution_handling": "运行时继续检查修订/批注与交付；生成后规则/章节验收归#332，桌面兼容归#146，均不阻断#20关单。",
+      "chapter_ids": [
+        "front",
+        "tax",
+        "disclosure",
+        "reference",
+        "declarations"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "document-delivery",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "空清单不能通过；非16节不误报；私募不硬要求摘要；无修订/批注报问题；XML检查不替代WPS。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00089",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00096",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00440",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00441",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00442",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ex038-p00448",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00448",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex038-p00748",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "深交所公司债券募集说明书全文更新知识Draft_V1 (2)",
+          "source_version": "expert-draft-v1",
+          "document_hash": "908828dbfeaabe648720e1f59512c22f04085eed4b427852fb576a6a184efc62",
+          "clause_locator": "P00748",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ex017-p00146",
+          "authority": "用户提供的专家指南作者（未登记签认人）",
+          "document_title": "私募债全文更新知识V6",
+          "source_version": "expert-v6",
+          "document_hash": "c2e4fadee04d59efe7e03107740fb16304ab3332aa3d71cb6099ddbcb436a637",
+          "clause_locator": "P00146",
+          "official_url": null,
+          "published_on": null,
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00089",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00089",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00096",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00096",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00440",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00440",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00441",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00441",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00442",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00442",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#document-delivery"
+    },
+    {
+      "rule_id": "sse-private-private-negative-list",
+      "title": "私募准入与公募财务门槛隔离",
+      "decision": "adopt_manual_handling",
+      "adoption_and_reason": "采用8.3.1/2私募准入边界；不套公募利润门槛，也不承诺无条件可发行。",
+      "applies_when": "私募承接准入、其他场所申请及前次同品种未募足核对。",
+      "exceptions": "无公募式财务指标限制不免除负面清单、偿债风险及其他适用要求。",
+      "uncovered": "协会现行负面清单全文及发行人逐条准入核验尚未完成。",
+      "execution_handling": "人工handler核已支持条件并列负面清单缺口；不出全部准入通过，继续有依据章节更新。",
+      "chapter_ids": [
+        "terms",
+        "issuer",
+        "financial"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "private-negative-list",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "并行同品种或前次未募足报问题；公募利润门槛误用于私募报问题；当前清单及发行人逐项审核缺失不能通过。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00455",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00456",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ov-sse-application-2023-p00455",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00455",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-application-2023-p00456",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00456",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#private-negative-list"
+    },
+    {
+      "rule_id": "sse-private-idle-proceeds-2026",
+      "title": "闲置募集资金临时补流边界",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用临时补流约定、回收机制和程序检查，与最终补流用途区分。",
+      "applies_when": "适用2026募集资金指南的闲置募集资金安排。",
+      "exceptions": "12个月与原用途付款节点孰早；限定偿债等原则限制不能随意豁免。",
+      "uncovered": "原则例外、边界日前措辞及实际决策/合同有效性仍须人工审核。",
+      "execution_handling": "无约定不写可用；检查期限与材料，将新规建议与过去已签事实分开。",
+      "chapter_ids": [
+        "funds",
+        "protection"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "idle-proceeds-2026",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "明确条款/机制/内部程序，12个月与付款节点孰早；边界日前语义、原则限制另审。",
+      "official_evidence": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00023",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00024",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00025",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00026",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ov-sse-proceeds-2026-p00023",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00023",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00024",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00024",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00025",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00025",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-proceeds-2026-p00026",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第3号——募集资金管理重点关注事项（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1",
+          "clause_locator": "P00026",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10810440/files/d832456b6f6a4ffc9d36920ade55d424.docx",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#idle-proceeds-2026"
+    },
+    {
+      "rule_id": "sse-private-continuing-disclosure",
+      "title": "私募定期披露安排",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用私募年度结束4个月、中期结束2个月的披露约定核对。",
+      "applies_when": "本期募集书定期披露安排，对应8.4.3。",
+      "exceptions": "年度报告应有经审计财务报告；特定豁免与额外存续义务另核。",
+      "uncovered": "约定通过不证明实际按期披露，也不覆盖所有存续期监管事项。",
+      "execution_handling": "分别核年度/中期条款和期限；实际已披露说法需发布记录。",
+      "chapter_ids": [
+        "disclosure",
+        "reference"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "continuing-disclosure",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "年度四月/中期两月约定分别核；月末不减一天；约定通过不代表已披露。",
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00461",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00009",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00023",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ov-sse-application-2023-p00461",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第1号——申请文件及编制（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc",
+          "clause_locator": "P00461",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10779380/files/f91630768ebc43dd8fbad0c4da977564.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-disclosure-2023-p00009",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+          "clause_locator": "P00009",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-disclosure-2023-p00023",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第1号——公司债券持续信息披露（2023年10月修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5",
+          "clause_locator": "P00023",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779485/files/e1a7faf2a713423380115f88059289a7.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#continuing-disclosure"
+    },
+    {
+      "rule_id": "sse-private-disclosure-officer-2026",
+      "title": "信息披露负责人及联络人",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用2026-05-01生效后的负责人/联络人及承诺要求。",
+      "applies_when": "按本期法规日判断，2025-12-26仅为发布日期。",
+      "exceptions": "负责人未变更且有有效承诺时不要求重复签署；上市公司可转债不在本条范围。",
+      "uncovered": "任职禁止情形、签署真实性和履职记录仍需本期证据。",
+      "execution_handling": "有限核字段完整性和有效承诺，不由模型代签，不把财务期末代作生效判断日。",
+      "chapter_ids": [
+        "disclosure",
+        "issuer",
+        "declarations"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "disclosure-officer-2026",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "生效日2026-05-01不是发布日期；未变更且有效承诺无需重签；任职禁止及签署须真实证据。",
+      "official_evidence": [
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00007",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00008",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00009",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00010",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00011",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00012",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00013",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00014",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00015",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00016",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00017",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00018",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ov-sse-officer-2025-p00007",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00007",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00008",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00008",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00009",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00009",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00010",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00010",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00011",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00011",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00012",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00012",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00013",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00013",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00014",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00014",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00015",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00015",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00016",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00016",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00017",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00017",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-officer-2025-p00018",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券自律监管规则适用指引第6号——信息披露事务负责人履职",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6",
+          "clause_locator": "P00018",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10803074/files/11dec2e7142e42d5aca9b406a6282856.docx",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#disclosure-officer-2026"
+    },
+    {
+      "rule_id": "sse-private-optimized-review-version",
+      "title": "优化审核新旧版本边界",
+      "decision": "adopt_manual_handling",
+      "adoption_and_reason": "采用2026-09-04替代2023版的版本隔离；不在普通包确认优化资格。",
+      "applies_when": "本次是否采用优化审核及引用版本的核对。",
+      "exceptions": "已审确认不采用才不适用；未知不默认无，实际采用需新版增量审核。",
+      "uncovered": "知名成熟、简明披露、额度和豁免资格/条件未在本包实现。",
+      "execution_handling": "人工handler阻止沿用2023资格，列新版具体审核需求，不自动授予简化待遇。",
+      "chapter_ids": [
+        "terms",
+        "reference",
+        "funds"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "optimized-review-version",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "未核是否采用须缺证；确未采用才not_applicable；采用旧版报问题，当前版也须独立资格审核。",
+      "official_evidence": [
+        {
+          "document_id": "sse-mature-2026",
+          "locator": "P00010",
+          "sha256": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163"
+        },
+        {
+          "document_id": "sse-mature-2026",
+          "locator": "P00054",
+          "sha256": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ov-sse-mature-2026-p00010",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第6号——知名成熟发行人优化审核（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163",
+          "clause_locator": "P00010",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10831327/files/5d96a33eb9104d9d912bce016bfede45.docx",
+          "published_on": "2026-09-04",
+          "effective_from": "2026-09-04",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-mature-2026-p00054",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所公司债券发行上市审核规则适用指引第6号——知名成熟发行人优化审核（2026年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163",
+          "clause_locator": "P00054",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/review/c/10831327/files/5d96a33eb9104d9d912bce016bfede45.docx",
+          "published_on": "2026-09-04",
+          "effective_from": "2026-09-04",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#optimized-review-version"
+    },
+    {
+      "rule_id": "sse-private-trustee-continuing-duties",
+      "title": "受托协议与持续履职衔接",
+      "decision": "adopt_bounded_check",
+      "adoption_and_reason": "采用受托安排与已履职事实分开取证，区分强制、鼓励和示范。",
+      "applies_when": "募集书/受托协议职责、信用监测安排和实际履职表述。",
+      "exceptions": "指南示例及计划不能证明已经实施；私募适用范围不得从公募必备条款直接推定。",
+      "uncovered": "协会受托现行配套正文及全量存续履职覆盖仍未完成。",
+      "execution_handling": "安排绑定协议、已做绑定记录；有限一致性检查，缺配套和事实分别标记。",
+      "chapter_ids": [
+        "trustee",
+        "holders",
+        "protection"
+      ],
+      "checker": {
+        "checker_id": "sse-private-structured-evidence",
+        "checker_version": "4",
+        "parameter_version": "2026.09.27-draft.6"
+      },
+      "coverage_item_id": "trustee-continuing-duties",
+      "coverage_disposition_unchanged": "uncovered",
+      "engineering_acceptance": "仅有指南示例不得写已履职；协议安排不能证明已经实施；全存续期核验仍人工。",
+      "official_evidence": [
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00005",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00007",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00012",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00013",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00128",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        }
+      ],
+      "source_refs": [
+        {
+          "source_id": "ov-sse-trustee-2025-p00005",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第5号——公司债券受托管理",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166",
+          "clause_locator": "P00005",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10802771/files/9b4967b582704681861dfdafb6d45e20.docx",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-trustee-2025-p00007",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第5号——公司债券受托管理",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166",
+          "clause_locator": "P00007",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10802771/files/9b4967b582704681861dfdafb6d45e20.docx",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-trustee-2025-p00012",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第5号——公司债券受托管理",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166",
+          "clause_locator": "P00012",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10802771/files/9b4967b582704681861dfdafb6d45e20.docx",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-trustee-2025-p00013",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所债券存续期业务指南第5号——公司债券受托管理",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166",
+          "clause_locator": "P00013",
+          "official_url": "https://www.sse.com.cn/lawandrules/guide/zqznlc/c/10802771/files/9b4967b582704681861dfdafb6d45e20.docx",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "source_id": "ov-sse-private-listing-2023-p00128",
+          "authority": "上海证券交易所",
+          "document_title": "上海证券交易所非公开发行公司债券挂牌规则（2023年修订）",
+          "source_version": "2026.09.26-evidence.1",
+          "document_hash": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253",
+          "clause_locator": "P00128",
+          "official_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/listing/corporatebond/c/10779473/files/27d63de6ff704c93afb3df48f24ff895.docx",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "documentary_detail": "RULE-REVIEW-20260927.md#trustee-continuing-duties"
+    }
+  ]
+}
