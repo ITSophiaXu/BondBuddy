@@ -9,6 +9,8 @@ import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, revi
 import { createProductionServer, createServer } from './server.js';
 import { loadTargetConfirmation } from './target-confirmation.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { SSE_PRIVATE_APPLICABILITY_DICTIONARY, SSE_PRIVATE_APPLICABILITY_FEATURE_MAPPING,
+  SSE_PRIVATE_APPLICABILITY_FEATURE_EVIDENCE_VERSION, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain';
 
 const databaseUrl = await isolatedTestDatabase('RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL');
 const origin = 'http://bondbuddy.test';
@@ -22,7 +24,7 @@ const migrated = async () => {
 const hasSchema = await migrated();
 
 test('owner applicability API derives a needs_review ref from locked evidence and remains fail-closed',
-  { skip: !hasSchema && 'set RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL to PostgreSQL 16 migrated through 0054' }, async () => {
+  { skip: !hasSchema && 'set RULE_APPLICABILITY_CONTEXT_TEST_DATABASE_URL to PostgreSQL 16 migrated through 0055' }, async () => {
     const pool = new Pool({ connectionString: databaseUrl! });
     const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
     const owner = `context-api-owner-${suffix}`, foreign = `context-api-foreign-${suffix}`;
@@ -382,6 +384,27 @@ test('owner applicability API derives a needs_review ref from locked evidence an
         { materialId, materialVersion: 1, materialSha256: materialHash, parseSnapshotId: snapshotId, recordId: evidenceId, recordSha256: sha(`record-${suffix}`) },
         { materialId: auditMaterialId, materialVersion: 1, materialSha256: auditHash, parseSnapshotId: auditSnapshotId, recordId: auditEvidenceId, recordSha256: sha(`audit-record-${suffix}`) },
       ];
+      const featureEvidenceV2 = (overrides: Record<string, { outcome?: 'present' | 'absent' | 'not_applicable';
+        children?: Array<{ featureCode: string; outcome: 'present' | 'absent' | 'not_applicable' | 'unknown'; reason: string; evidenceRefs?: typeof evidenceRefs }>;
+      }> = {}) => ({
+        contractVersion: SSE_PRIVATE_APPLICABILITY_FEATURE_EVIDENCE_VERSION,
+        dictionaryVersion: SSE_PRIVATE_APPLICABILITY_DICTIONARY.version,
+        dictionarySha256: SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256,
+        dimensions: SSE_PRIVATE_APPLICABILITY_FEATURE_MAPPING.map(({ dimension, selectorCodes }) => {
+          const override = overrides[dimension];
+          return { dimension, outcome: override?.outcome ?? 'absent', reason: `Synthetic scope review for ${dimension}.`, evidenceRefs,
+            childAssessments: override?.children ?? selectorCodes.map((featureCode) => ({ featureCode, outcome: 'absent' as const,
+              reason: `Synthetic independent check for ${featureCode}.`, evidenceRefs: [evidenceRefs[0]!] })) };
+        }),
+      });
+      const v2Review = (requestId: string, featureEvidence: ReturnType<typeof featureEvidenceV2>,
+        specialFeatures: string[], taxonomyVersion: string = SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION) => send('POST', confirmedReviewUrl, {
+        request_id: requestId, action: 'approve', reason: 'Synthetic regression only; no professional signoff is represented.',
+        approved_values: { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond', documentStage: 'registration',
+          issuerScope: 'domestic-company', investorScope: 'professional', industry: 'industry-code-v1', specialFeatures, asOf: '2026-09-27' },
+        value_evidence: { instrument: [evidenceRefs[0]], issuerScope: [evidenceRefs[0]], investorScope: [evidenceRefs[0]], industry: [evidenceRefs[0]] },
+        feature_evidence: featureEvidence, taxonomy_version: taxonomyVersion,
+      });
       const completeFeatureEvidence = ['urban_construction','real_estate','group_operations','special_product_or_use','embedded_or_perpetual',
         'optimized_review','restructuring','special_issuer','transition_arrangement'].map(dimension => ({ dimension, outcome: 'absent',
           reason: 'Synthetic regression only; the complete locked material set is enumerated.', evidenceRefs }));
@@ -427,6 +450,62 @@ test('owner applicability API derives a needs_review ref from locked evidence an
       const withdrawnPin = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
         [owner, projectId, withdrawnInput.json().input_revision])).rows[0]!.manifest;
       assert.ok(withdrawnPin.rule_pack_block_reasons.includes('rule_applicability_overall_review_withdrawn'));
+
+      // V2 uses the same exact domain resolver at API approval and approved-load time.
+      // Parent scope retains complete locked-material coverage; child evidence can be independent subsets.
+      const presentPair = [
+        { featureCode: 'convertible-structure', outcome: 'present' as const, reason: 'Synthetic evidence for convertible structure.', evidenceRefs: [evidenceRefs[0]!] },
+        { featureCode: 'exchangeable-structure', outcome: 'present' as const, reason: 'Independent synthetic evidence for exchangeable structure.', evidenceRefs: [evidenceRefs[1]!] },
+        { featureCode: 'perpetual-structure', outcome: 'absent' as const, reason: 'Synthetic negative check.', evidenceRefs: [evidenceRefs[0]!] },
+      ];
+      const v2Payload = featureEvidenceV2({ embedded_or_perpetual: { outcome: 'present', children: presentPair } });
+      const invalidV2 = [
+        featureEvidenceV2({ embedded_or_perpetual: { outcome: 'present', children: [presentPair[0]!] } }),
+        featureEvidenceV2({ embedded_or_perpetual: { outcome: 'absent', children: presentPair } }),
+        featureEvidenceV2({ embedded_or_perpetual: { outcome: 'present', children: presentPair.map(child => ({ ...child, outcome: 'absent' as const })) } }),
+        featureEvidenceV2({ embedded_or_perpetual: { outcome: 'not_applicable', children: presentPair } }),
+        featureEvidenceV2({ optimized_review: { outcome: 'present', children: [
+          { featureCode: 'optimized-review', outcome: 'present', reason: 'Synthetic positive.', evidenceRefs: [evidenceRefs[0]!] },
+          { featureCode: 'simplified-disclosure', outcome: 'unknown', reason: 'Not reviewed.', evidenceRefs: [evidenceRefs[1]!] },
+        ] } }),
+        featureEvidenceV2({ optimized_review: { outcome: 'present', children: [
+          { featureCode: 'made-up-valid-looking-code', outcome: 'present', reason: 'Unknown code.', evidenceRefs: [evidenceRefs[0]!] },
+          { featureCode: 'simplified-disclosure', outcome: 'absent', reason: 'Synthetic negative.', evidenceRefs: [evidenceRefs[1]!] },
+        ] } }),
+      ];
+      activeOwner = ruleReviewerId;
+      for (const [index, invalid] of invalidV2.entries()) {
+        const rejected = await v2Review(`overall-v2-invalid-${index}-${suffix}`, invalid, []);
+        assert.equal(rejected.statusCode, 422, `v2 contradiction/incomplete/unknown case ${index} is rejected: ${rejected.body}`);
+      }
+      const wrongV2Taxonomy = await v2Review(`overall-v2-old-taxonomy-${suffix}`, v2Payload,
+        ['convertible-structure', 'exchangeable-structure'], 'bondbuddy-applicability-synthetic-test-v1');
+      assert.equal(wrongV2Taxonomy.statusCode, 422, 'v2 evidence cannot use the v1 test taxonomy pin');
+      const acceptedV2 = await v2Review(`overall-v2-approve-${suffix}`, v2Payload,
+        ['convertible-structure', 'exchangeable-structure']);
+      assert.equal(acceptedV2.statusCode, 201, acceptedV2.body);
+      const storedV2 = await pool.query('SELECT feature_evidence FROM bb_rule_applicability_overall_reviews WHERE request_id=$1',
+        [`overall-v2-approve-${suffix}`]);
+      assert.deepEqual(storedV2.rows[0]!.feature_evidence, v2Payload, 'the v2 JSON envelope persists exactly in the existing append-only ledger');
+      const replayWithdrawnV1AfterV2 = await send('POST', confirmedReviewUrl, { request_id: `overall-approve-${suffix}`, action: 'approve',
+        reason: 'Synthetic regression only; no professional signoff is represented.', approved_values: { market: 'sse', offering: 'private',
+          instrument: 'ordinary-company-bond', documentStage: 'registration', issuerScope: 'domestic-company', investorScope: 'professional',
+          industry: 'industry-code-v1', specialFeatures: [], asOf: '2026-09-27' },
+        value_evidence: { instrument: [evidenceRefs[0]], issuerScope: [evidenceRefs[0]], investorScope: [evidenceRefs[0]], industry: [evidenceRefs[0]] },
+        feature_evidence: completeFeatureEvidence, taxonomy_version: 'bondbuddy-applicability-synthetic-test-v1' });
+      assert.equal(replayWithdrawnV1AfterV2.statusCode, 201, replayWithdrawnV1AfterV2.body);
+      assert.equal(replayWithdrawnV1AfterV2.json().replayed, true, 'old v1 replay hash remains addressable after a later v2 row');
+      activeOwner = owner;
+      const v2PinnedInput = await send('POST', `${base}/input-revisions`, { draft_revision: 1,
+        material_versions: [{ material_id: materialId, material_version: 1 }, { material_id: auditMaterialId, material_version: 1 }],
+        requirement_message_ids: [], rule_applicability_context_ref: confirmedDraft.json().context_ref });
+      assert.equal(v2PinnedInput.statusCode, 201, v2PinnedInput.body);
+      const v2PinnedManifest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+        [owner, projectId, v2PinnedInput.json().input_revision])).rows[0]!.manifest;
+      assert.ok(v2PinnedManifest.rule_pack_block_reasons.includes('rule_applicability_taxonomy_not_published'),
+        'v2 review loads only as an unpublished, blocked candidate');
+      assert.ok(!v2PinnedManifest.rule_pack_block_reasons.includes('rule_applicability_overall_review_withdrawn'),
+        'later v2 approval is selected; replaying the prior v1 request did not supersede it');
       activeOwner = owner;
       const confirmedFields = await pool.query(`SELECT field_key,candidate_value,source_kind,source_status
         FROM bb_rule_applicability_context_candidates WHERE context_id=$1 AND field_key=ANY($2::text[])`,
