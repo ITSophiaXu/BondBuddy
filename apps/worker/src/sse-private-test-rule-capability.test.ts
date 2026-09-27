@@ -10,7 +10,7 @@ import { workerRuntimeOptionsFromEnv } from './runtime.js';
 
 type Fixture = ReturnType<typeof fixture>;
 
-function fixture(withReviewPin = true) {
+function fixture(withReviewPin = true, investorScope = 'professional') {
   const owner = `synthetic-owner-${randomUUID()}`, project = `synthetic-project-${randomUUID()}`;
   const files = AUTHORIZED_SAMPLE_CASE_FILES.filter(file => file.caseId === 'rq-202509');
   const selected = [files.find(file => file.uploadRole === 'historical')!, files.find(file => file.uploadRole === 'interimFinancial')!];
@@ -78,7 +78,7 @@ function fixture(withReviewPin = true) {
     assert.equal(args.mode, 'non_production_test');
     assert.deepEqual(args.currentMaterialVersions.map(item => item.materialId).sort(), materials.map(item => item.material_id).sort());
     return { request: { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond',
-      documentStage: 'issuance', issuerScope: 'domestic-company', investorScope: 'professional', industry: 'industry-synthetic',
+      documentStage: 'issuance', issuerScope: 'domestic-company', investorScope, industry: 'industry-synthetic',
       specialFeatures: [], asOf: '2026-09-27' }, contextPin: {} };
   } });
   return { owner, project, materials, manifest, input, inputHash, grant, pool, run, loader, reviewCalls: () => reviewCalls, queries };
@@ -127,6 +127,13 @@ test('candidate capability fails closed before applicability when grant, members
   assert.deepEqual(await withoutPin.loader(withoutPin.run, withoutPin.input),
     { status: 'not_ready', reason: 'test_reviewed_applicability_pin_missing' });
   assert.equal(withoutPin.reviewCalls(), 0);
+}));
+
+test('candidate capability does not treat a reviewed non-professional investor scope as the ordinary private-bond candidate', async () => preprod(async () => {
+  const f = fixture(true, 'other');
+  assert.deepEqual(await f.loader(f.run, f.input),
+    { status: 'not_ready', reason: 'test_reviewed_applicability_scope_mismatch' });
+  assert.equal(f.reviewCalls(), 1);
 }));
 
 test('WorkerRuntime installs the candidate selector only for the explicit preproduction channel', () => {
