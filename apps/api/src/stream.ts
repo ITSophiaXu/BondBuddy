@@ -12,7 +12,7 @@ export type StreamSettings = { maxDurationMs?: number; pollMs?: number };
 type Deps = { db: () => Pool; owner: (request: FastifyRequest) => Promise<string> };
 type Frame = { id?: number; event: string; data: unknown };
 
-const runTerminal = new Set(['succeeded', 'failed', 'cancelled', 'rejected']);
+const runTerminal = new Set(['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected']);
 const jobTerminal = new Set(['succeeded', 'failed', 'cancelled']);
 
 /** Last-Event-ID header wins over ?after=; both must be a non-negative decimal integer. */

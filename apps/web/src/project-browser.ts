@@ -8,7 +8,7 @@ type Item = Dto<'ProjectListResponse'>['items'][number];
 type Filters = Dto<'ProjectListQuery'>;
 const states: Record<typeof PROJECT_STATES[number], string> = {
   draft:'草稿',preparing:'准备中',rejected:'未启动',queued:'排队中',running:'处理中',awaiting_input:'待补材料',paused:'等待恢复',
-  validating:'检查中',delivering:'交付中',settlement_pending:'结算处理中',succeeded:'已完成',failed:'失败',cancelled:'已取消'
+  validating:'检查中',delivering:'交付中',settlement_pending:'结算处理中',succeeded:'已完成',test_completed:'内部测试工作稿',failed:'失败',cancelled:'已取消'
 };
 const kinds: Record<typeof TASK_KINDS[number], string> = {update:'募集书更新',review:'募集书复核',generation:'材料生成',qa:'QA 问答'};
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');

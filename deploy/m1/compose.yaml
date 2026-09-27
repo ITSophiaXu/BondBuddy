@@ -7,6 +7,8 @@ x-db-url: &db-url postgresql://bondbuddy:${POSTGRES_PASSWORD:?set in .env}@postg
 x-blob: &blob ${AZURE_STORAGE_CONNECTION_STRING:?set in .env}
 
 x-bb-policy-env: &bb-policy-env
+  BB_DEPLOYMENT_TIER: ${BB_DEPLOYMENT_TIER:-production}
+  BB_NON_PRODUCTION_TEST_CHANNEL: ${BB_NON_PRODUCTION_TEST_CHANNEL:-disabled}
   # Trial guard (#35, docs/runbooks/m1-trial-operations.md). NODE_ENV=production in the image turns the guard on.
   BB_TRIAL_GUARD: ${BB_TRIAL_GUARD:-on}
   BB_TRIAL_SOURCE_SALT: ${BB_TRIAL_SOURCE_SALT:?set a random per-environment value in .env}

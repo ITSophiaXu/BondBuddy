@@ -108,6 +108,10 @@ run_case() {
 }
 
 export TEST_IMAGES=partial TEST_FREE_BYTES=2684354560
+printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=enabled\n' > "$test_dir/deploy/m1/.env"
+run_case 'production rejects enabled test channel before archive' reject
+rg -q 'requires BB_DEPLOYMENT_TIER=preprod' "$test_dir/error"
+printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=disabled\n' > "$test_dir/deploy/m1/.env"
 run_case 'local build rejects at 2.5 GiB' reject
 rg -q '2684354560 bytes available; requires 4294967296 bytes.*local Docker build' "$test_dir/error"
 export TEST_FREE_BYTES=4294967296

@@ -3,6 +3,10 @@
 # Builds images from the exact commit (git archive, so no uncommitted files leak in), takes a
 # pre-deploy backup when a database already exists, runs migrations, starts the stack and smokes it.
 source "$(dirname "$0")/lib.sh"
+if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value BB_DEPLOYMENT_TIER)" != preprod ]; then
+  echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2
+  exit 2
+fi
 sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?usage: deploy.sh <git-sha>}^{commit}")"
 tag="${sha:0:12}"
 build_required_bytes=$(( 4 * 1024 * 1024 * 1024 ))

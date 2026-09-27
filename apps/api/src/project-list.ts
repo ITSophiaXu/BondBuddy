@@ -28,7 +28,7 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
     LEFT JOIN LATERAL (
       SELECT id,state,updated_at FROM bb_runs
       WHERE owner_user_id=p.owner_user_id AND project_id=p.id
-      ORDER BY (state IN ('succeeded','failed','cancelled','rejected')),created_at DESC,id DESC LIMIT 1
+      ORDER BY (state IN ('succeeded','test_completed','failed','cancelled','rejected')),created_at DESC,id DESC LIMIT 1
     ) r ON true
     LEFT JOIN LATERAL (
       SELECT a.id,a.version,a.run_id,a.created_at FROM bb_runs completed

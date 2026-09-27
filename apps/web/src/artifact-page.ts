@@ -32,10 +32,13 @@ export class ArtifactPage {
     try {
       const artifact = await this.api.artifact(id, signal);
       if (!this.current() || signal.aborted) return;
-      if (artifact.artifact_id !== id || artifact.quality_status !== 'passed' || artifact.delivery_status !== 'available') throw new ApiError(0, 'DATA_UNAVAILABLE');
+      if (artifact.artifact_id !== id || artifact.quality_status !== 'passed' || !['available','test_only'].includes(artifact.delivery_status)) throw new ApiError(0, 'DATA_UNAVAILABLE');
       const run = await this.api.run(artifact.run_id, signal);
       if (!this.current() || signal.aborted) return;
-      if (run.run_id !== artifact.run_id || run.state !== 'succeeded' || run.artifact_id !== (artifact.word_delivery?.revision_artifact_id ?? id)) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      if (run.run_id !== artifact.run_id ||
+        !((run.state === 'succeeded' && run.channel === 'production' && artifact.delivery_status === 'available') ||
+          (run.state === 'test_completed' && run.channel === 'non_production_test' && artifact.delivery_status === 'test_only')) ||
+        run.artifact_id !== (artifact.word_delivery?.revision_artifact_id ?? id)) throw new ApiError(0, 'DATA_UNAVAILABLE');
       const project = await this.api.project(run.project_id, signal);
       if (!this.current() || generation !== this.generation) return;
       if (project.project_id !== run.project_id) throw new ApiError(0, 'DATA_UNAVAILABLE');
@@ -55,7 +58,7 @@ export class ArtifactPage {
       : [{ id: artifact.artifact_id, variant: undefined, label: 'Word 成果', description: '此历史成果未提供修订、清洁版和基线的分类信息。' }];
     this.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(project.project_id)}">← 返回项目工作区</a>
       <div class="page-heading"><div><p class="eyebrow">成果与下载</p><h1>${esc(project.name)}</h1><p class="muted">成果 v${artifact.version} · 输入版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p></div><button class="button secondary" id="refresh-artifact">重新读取成果</button></div>
-      <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
+      <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${artifact.delivery_status === 'test_only' ? '内部测试工作稿·未经专业审核·不得对外使用' : pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
         <p>文件已通过服务端交付检查；生成完成不表示业务事实已全部确认或达到正式申报条件。</p>
         ${delivery ? `<p>本轮完成 ${delivery.replacements} 处替换、${delivery.columns} 处表格增列。</p>
           <div class="artifact-review" aria-labelledby="artifact-review-title"><h3 id="artifact-review-title">待人工确认（${pending} 项）</h3>
@@ -80,7 +83,7 @@ export class ArtifactPage {
           const fresh = await this.api.artifact(file.id, signal);
           if (!this.current() || generation !== this.generation || signal.aborted) return;
           if (fresh.artifact_id !== file.id || fresh.run_id !== artifact.run_id || fresh.version !== artifact.version ||
-            fresh.quality_status !== 'passed' || fresh.delivery_status !== 'available' ||
+            fresh.quality_status !== 'passed' || fresh.delivery_status !== artifact.delivery_status ||
             (file.variant && (fresh.word_delivery?.variant !== file.variant || fresh.word_delivery.revision_artifact_id !== delivery?.revision_artifact_id))) throw new ApiError(0, 'DATA_UNAVAILABLE');
           const bytes = await this.api.artifactBytes(fresh, signal);
           if (!this.current() || generation !== this.generation || signal.aborted) return;
