@@ -9,8 +9,6 @@ import {
   type PersistedSampleMaterialMetadata,
 } from './authorized-sample-membership.js';
 
-type Db = Pick<Pool | PoolClient, 'query'>;
-
 export interface LockedInputMembershipRef {
   readonly ownerUserId: string;
   readonly projectId: string;
@@ -22,9 +20,11 @@ export type AuthorizedSampleMembershipLoadFailure =
   | 'locked_input_not_found'
   | 'locked_input_hash_mismatch'
   | 'locked_input_manifest_hash_mismatch'
+  | 'locked_input_concurrent_change'
   | 'locked_input_material_manifest_invalid'
   | 'locked_material_reference_set_mismatch'
   | 'locked_material_deleted_or_missing'
+  | 'locked_material_concurrent_change'
   | 'locked_material_state_invalid'
   | AuthorizedSampleMembershipFailure;
 
@@ -61,63 +61,98 @@ function normalizeInputMaterialRefs(value: unknown): Array<{ material_id: string
   return refs;
 }
 
-const LIVE_MATERIAL_STATES = new Set(['persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed']);
+const MATERIAL_STATES = new Set(['persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed']);
+
+function isSerializationFailure(error: unknown): boolean {
+  return isRecord(error) && error.code === '40001';
+}
 
 /**
  * Resolve the authorized-sample membership only from an immutable, owner-scoped
- * input revision and its exact live material rows. The caller cannot supply the
- * manifest SHA: this loader always pins the whole tracked sample manifest hash.
+ * input revision and its exact live material rows. A repeatable-read transaction
+ * establishes one snapshot and holds row locks through verification; it commits
+ * before returning, so later execution stages must recheck their own gates. The
+ * caller cannot supply the manifest SHA: this loader pins the tracked batch hash.
  */
 export async function loadAuthorizedSampleMembershipFromLockedInput(
-  db: Db,
+  pool: Pool,
   ref: LockedInputMembershipRef,
 ): Promise<AuthorizedSampleMembershipLoadResult> {
   if (!ref.ownerUserId || !ref.projectId || !Number.isSafeInteger(ref.inputRevision) || ref.inputRevision < 1 ||
       !/^[a-f0-9]{64}$/.test(ref.inputHash)) return invalid('locked_input_not_found');
 
-  const inputResult = await db.query<{ input_hash: string; manifest: unknown; material_versions: unknown }>(
-    `SELECT input_hash, manifest, material_versions
-       FROM bb_input_revisions
-      WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`,
-    [ref.ownerUserId, ref.projectId, ref.inputRevision],
-  );
-  const input = inputResult.rows[0];
-  if (!input) return invalid('locked_input_not_found');
-  if (String(input.input_hash).trim() !== ref.inputHash) return invalid('locked_input_hash_mismatch');
-  if (!isRecord(input.manifest) || !Array.isArray(input.manifest.materials)) return invalid('locked_input_material_manifest_invalid');
-  if (inputManifestHash(input.manifest) !== ref.inputHash) return invalid('locked_input_manifest_hash_mismatch');
+  const client: PoolClient = await pool.connect();
+  let transactionOpen = false;
+  let phase: 'input' | 'materials' = 'input';
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    transactionOpen = true;
 
-  const lockedMaterials = normalizeMaterialReferences(input.manifest.materials);
-  const revisionMaterials = normalizeInputMaterialRefs(input.material_versions);
-  if (!lockedMaterials || !revisionMaterials) return invalid('locked_input_material_manifest_invalid');
+    const inputResult = await client.query<{ input_hash: string; manifest: unknown; material_versions: unknown }>(
+      `SELECT input_hash, manifest, material_versions
+         FROM bb_input_revisions
+        WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3
+        FOR SHARE`,
+      [ref.ownerUserId, ref.projectId, ref.inputRevision],
+    );
+    const input = inputResult.rows[0];
+    if (!input) return invalid('locked_input_not_found');
+    if (String(input.input_hash).trim() !== ref.inputHash) return invalid('locked_input_hash_mismatch');
+    if (!isRecord(input.manifest) || !Array.isArray(input.manifest.materials)) return invalid('locked_input_material_manifest_invalid');
+    if (inputManifestHash(input.manifest) !== ref.inputHash) return invalid('locked_input_manifest_hash_mismatch');
 
-  const manifestKeys = lockedMaterials.map(item => pairKey(item.material_id, item.material_version));
-  const revisionKeys = revisionMaterials.map(item => pairKey(item.material_id, item.material_version));
-  if (new Set(manifestKeys).size !== manifestKeys.length || new Set(lockedMaterials.map(item => item.material_id)).size !== lockedMaterials.length ||
-      new Set(revisionKeys).size !== revisionKeys.length || new Set(revisionMaterials.map(item => item.material_id)).size !== revisionMaterials.length ||
-      manifestKeys.length !== revisionKeys.length || manifestKeys.some(key => !revisionKeys.includes(key))) {
-    return invalid('locked_material_reference_set_mismatch');
-  }
+    const lockedMaterials = normalizeMaterialReferences(input.manifest.materials);
+    const revisionMaterials = normalizeInputMaterialRefs(input.material_versions);
+    if (!lockedMaterials || !revisionMaterials) return invalid('locked_input_material_manifest_invalid');
 
-  const persistedMaterials: PersistedSampleMaterialMetadata[] = [];
-  for (const item of lockedMaterials) {
-    const materialResult = await db.query<{
+    const manifestKeys = lockedMaterials.map(item => pairKey(item.material_id, item.material_version));
+    const revisionKeys = revisionMaterials.map(item => pairKey(item.material_id, item.material_version));
+    if (new Set(manifestKeys).size !== manifestKeys.length || new Set(lockedMaterials.map(item => item.material_id)).size !== lockedMaterials.length ||
+        new Set(revisionKeys).size !== revisionKeys.length || new Set(revisionMaterials.map(item => item.material_id)).size !== revisionMaterials.length ||
+        manifestKeys.length !== revisionKeys.length || manifestKeys.some(key => !revisionKeys.includes(key))) {
+      return invalid('locked_material_reference_set_mismatch');
+    }
+
+    phase = 'materials';
+    const materialResult = await client.query<{
       owner_user_id: string; project_id: string; id: string; version: number;
       role: string; sha256: string; state: string;
     }>(
       `SELECT owner_user_id, project_id, id, version, role, sha256, state
          FROM bb_material_versions
-        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL
+        WHERE owner_user_id=$1 AND project_id=$2
+          AND (id,version) IN (SELECT * FROM unnest($3::text[],$4::integer[]))
+          AND deleted_at IS NULL
+        ORDER BY id,version
         FOR SHARE`,
-      [ref.ownerUserId, ref.projectId, item.material_id, item.material_version],
+      [ref.ownerUserId, ref.projectId, lockedMaterials.map(item => item.material_id), lockedMaterials.map(item => item.material_version)],
     );
-    const material = materialResult.rows[0];
-    if (!material) return invalid('locked_material_deleted_or_missing');
-    if (!LIVE_MATERIAL_STATES.has(material.state)) return invalid('locked_material_state_invalid');
-    persistedMaterials.push({ owner_user_id: material.owner_user_id, project_id: material.project_id,
-      id: material.id, version: Number(material.version), role: material.role, sha256: String(material.sha256).trim().toLowerCase() });
-  }
+    const persistedByKey = new Map(materialResult.rows.map(material => [pairKey(material.id, Number(material.version)), material]));
+    const persistedMaterials: PersistedSampleMaterialMetadata[] = [];
+    for (const item of lockedMaterials) {
+      const material = persistedByKey.get(pairKey(item.material_id, item.material_version));
+      if (!material) return invalid('locked_material_deleted_or_missing');
+      // Processing state does not grant or revoke sample membership. It is checked
+      // only against the persisted enum; readiness is a separate execution gate.
+      if (!MATERIAL_STATES.has(material.state)) return invalid('locked_material_state_invalid');
+      persistedMaterials.push({ owner_user_id: material.owner_user_id, project_id: material.project_id,
+        id: material.id, version: Number(material.version), role: material.role, sha256: String(material.sha256).trim().toLowerCase() });
+    }
 
-  return verifyAuthorizedSampleMembership({ ownerUserId: ref.ownerUserId, projectId: ref.projectId,
-    lockedMaterials, persistedMaterials, grantManifestSha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256 });
+    const result = verifyAuthorizedSampleMembership({ ownerUserId: ref.ownerUserId, projectId: ref.projectId,
+      lockedMaterials, persistedMaterials, grantManifestSha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256 });
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return result;
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      transactionOpen = false;
+    }
+    if (isSerializationFailure(error)) return invalid(phase === 'input' ? 'locked_input_concurrent_change' : 'locked_material_concurrent_change');
+    throw error;
+  } finally {
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+    client.release();
+  }
 }

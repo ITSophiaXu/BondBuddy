@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { AUTHORIZED_SAMPLE_CASE_FILES } from './authorized-sample-membership.generated.js';
 import { loadAuthorizedSampleMembershipFromLockedInput } from './authorized-sample-membership-loader.js';
@@ -67,6 +67,10 @@ test('locked authorized-sample membership uses exact owner/project/revision/hash
 
     const selected = makeSelected(1);
     const exactRef = await insertRevision(selected);
+    await pool.query(`UPDATE bb_material_versions SET state=CASE id
+        WHEN $3 THEN 'failed' ELSE 'prechecking' END
+      WHERE owner_user_id=$1 AND project_id=$2 AND id=ANY($4::text[])`,
+    [owner, project, selected[0]!.material_id, selected.map(material => material.material_id)]);
     assert.deepEqual(await loadAuthorizedSampleMembershipFromLockedInput(pool, exactRef), {
       accepted: true, caseId: 'rq-202509', gaps: [{
         fileId: 'rq-202509-03', role: 'notes', reason: 'authorized_sample_material_not_locked',
@@ -81,6 +85,32 @@ test('locked authorized-sample membership uses exact owner/project/revision/hash
     });
     assert.deepEqual(await loadAuthorizedSampleMembershipFromLockedInput(pool, { ...exactRef, projectId: `${project}-other` }), {
       accepted: false, reason: 'locked_input_not_found',
+    });
+
+    const concurrentSelected = makeSelected(10);
+    const concurrentRef = await insertRevision(concurrentSelected, undefined, project, owner, 10);
+    const concurrentPool = {
+      connect: async () => {
+        const client = await pool.connect();
+        const query = client.query.bind(client);
+        let mutated = false;
+        const wrapped = {
+          query: async (statement: string, values?: unknown[]) => {
+            const result = await query(statement, values as never);
+            if (!mutated && statement.includes('FROM bb_input_revisions')) {
+              mutated = true;
+              await pool.query('UPDATE bb_material_versions SET role=$4 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=1',
+                [owner, project, concurrentSelected[1]!.material_id, 'notes']);
+            }
+            return result;
+          },
+          release: () => client.release(),
+        } as unknown as PoolClient;
+        return wrapped;
+      },
+    } as unknown as Pool;
+    assert.deepEqual(await loadAuthorizedSampleMembershipFromLockedInput(concurrentPool, concurrentRef), {
+      accepted: false, reason: 'locked_material_concurrent_change',
     });
 
     const roleSelected = makeSelected(2);
