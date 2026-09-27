@@ -57,7 +57,7 @@ function matchesRequestPin(snapshot: StoredParseSnapshot, request: SemanticFactE
     snapshot.response.parser_version === request.parser_version;
 }
 
-/** Internal controlled composition. Construct this in worker configuration; it is not installed by default. */
+/** Internal controlled composition installed by the default worker runtime configuration. */
 export function createControlledNativeFactCandidateProducer(
   dependencies: Omit<FactCandidateProducerDependencies, 'extractor' | 'historicalProspectusExtractor'>,
 ): (context: FactCandidateProductionContext) => Promise<FactCandidateProductionResult> {

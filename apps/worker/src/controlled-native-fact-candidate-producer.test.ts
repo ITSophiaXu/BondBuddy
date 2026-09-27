@@ -98,7 +98,7 @@ test('unsupported parser and uncertain parse produce needs_review without facts'
   assert.equal(uncertain.needs_review[0]?.reason_code, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION');
 });
 
-test('controlled factory is an uninstalled producer function over the existing persistence path', () => {
+test('controlled factory produces a function over the existing persistence path', () => {
   const producer = createControlledNativeFactCandidateProducer({ pool: syntheticPool });
   assert.equal(typeof producer, 'function');
 });
