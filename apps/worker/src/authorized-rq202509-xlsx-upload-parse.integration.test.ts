@@ -11,8 +11,13 @@ import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
+import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, loadVerifiedIssuerIdentitySourceRecord,
+  reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
+import { verifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import { runDocumentParser } from './document-parser.js';
 import { runMaterialParseOnce } from './material-parse-job.js';
+import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
+import { listFactCandidates } from './fact-repository.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 type ManifestEvidence = { readonly locator: string; readonly quote: string };
@@ -85,6 +90,8 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
   const suffix = randomUUID().replaceAll('-', '');
   const owner = `rq509-xlsx-owner-${suffix}`;
   const foreignOwner = `rq509-xlsx-foreign-${suffix}`;
+  const reviewerUserId = `rq509-xlsx-reviewer-${suffix}`;
+  const grantorUserId = `rq509-xlsx-grantor-${suffix}`;
   let activeOwner = owner;
   const containerName = `bb-rq509-xlsx-${suffix}`;
   const blobs = azureBlobs(blobConnection, containerName);
@@ -98,8 +105,9 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
     const version = await pool.query<{ server_version_num: string }>('SHOW server_version_num');
     assert.ok(Number(version.rows[0]!.server_version_num) >= 160000 && Number(version.rows[0]!.server_version_num) < 170000,
       'this regression requires PostgreSQL 16');
-    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4)', [
-      owner, `r${suffix.slice(0, 30)}`, foreignOwner, `f${suffix.slice(0, 30)}`,
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2),($3,$4),($5,$6),($7,$8)', [
+      owner, `r${suffix.slice(0, 24)}`, foreignOwner, `f${suffix.slice(0, 24)}`,
+      reviewerUserId, `v${suffix.slice(0, 24)}`, grantorUserId, `g${suffix.slice(0, 24)}`,
     ]);
 
     const created = await send('POST', '/api/v1/projects', {
@@ -202,6 +210,101 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
     assert.equal(independent.status, 0, 'independent openpyxl source check completes');
     assert.equal(JSON.parse(independent.stdout).manifest_quote_matches_source_cell, true,
       'persisted parser quote is independently recovered from its original workbook cell');
+
+    const identityEvidence = await pool.query<{ record_id: string }>(`SELECT record_id FROM bb_parse_evidence
+      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1 AND snapshot_id=$4
+        AND literal_quote LIKE '%任丘市建设投资集团有限公司%' ORDER BY ordinal LIMIT 1`,
+    [owner, projectId, materialId, snapshotId]);
+    assert.equal(identityEvidence.rowCount, 1, 'the authorized report provides an exact issuer identity anchor');
+    const reviewerGrantId = randomUUID();
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants
+      (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'authorized_test','authorized rq Q3 formula candidate integration',$4,$5)`,
+    [reviewerGrantId, reviewerUserId, grantorUserId, owner, projectId]);
+    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerUserId, { ownerUserId: owner, projectId });
+    assert.ok(reviewer);
+    const observation = await appendIssuerIdentitySourceRecord({ pool }, {
+      ownerUserId: owner, projectId, materialId, materialVersion: 1,
+      requestId: `rq-q3-identity-${suffix}`, sourceRecordId: identityEvidence.rows[0]!.record_id,
+      issuerDisplayName: '任丘市建设投资集团有限公司', entityId: `rq-q3-observed-${suffix}`,
+    });
+    await reviewIssuerIdentitySourceRecord({ pool }, {
+      ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: observation.id,
+      reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+      entityBasisKind: 'manual_attestation', entityBasisRef: 'authorized rq Q3 sample integration fixture',
+      reasonCode: 'authorized_test_fixture',
+    });
+    const verifiedIdentity = await loadVerifiedIssuerIdentitySourceRecord(pool, {
+      ownerUserId: owner, projectId, materialId, materialVersion: 1,
+    });
+    assert.ok(verifiedIdentity);
+    const inputHash = sha256(Buffer.from(`authorized rq Q3 input ${suffix}`));
+    await pool.query(`INSERT INTO bb_input_revisions
+      (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`, [projectId, owner, inputHash,
+      JSON.stringify({ issuer_identity: verifiedIssuerIdentityBinding(verifiedIdentity), issuer_entity_id: verifiedIdentity.entityId,
+        materials: [{ material_id: materialId, material_version: 1, role: 'interimFinancial', sha256: EXPECTED_SHA256 }] }),
+      JSON.stringify([{ material_id: materialId, material_version: 1 }])]);
+
+    const producer = createControlledNativeFactCandidateProducer({ pool });
+    const productionContext = { ownerUserId: owner, projectId, inputRevision: 1, inputHash, materialId,
+      materialVersion: 1, snapshotId };
+    const produced = await producer(productionContext);
+    assert.equal(produced.inserted.length, 8, 'the exact authorized formula-cache matrix persists eight candidates');
+    assert.equal(produced.needsReview.length, 0);
+    const candidates = await listFactCandidates({ pool }, { ownerUserId: owner, projectId });
+    const persistedCandidates = candidates.filter(item => item.candidate.source.sourceId === materialId);
+    assert.equal(persistedCandidates.length, 8);
+    assert.ok(persistedCandidates.every(item => item.candidate.source.kind === 'external' &&
+      item.provenance.status === 'needs_confirmation' && item.candidate.auditCheck === null &&
+      item.candidate.identity.entityId === verifiedIdentity.entityId));
+    assert.ok(persistedCandidates.filter(item => item.candidate.identity.scope === 'parent_only').every(item =>
+      item.provenance.uncertainty.some(reason => reason.includes('PERIOD_HEADER_FORMULA_CACHE_UNVERIFIED'))),
+    'parent-only candidates explicitly retain uncertainty from their formula-derived period header');
+    for (const item of persistedCandidates) {
+      const { scope, metric } = item.candidate.identity;
+      const expected = metric === 'total_assets' ? { sheet: '01', cell: 'D78' }
+        : metric === 'operating_revenue' ? { sheet: '02', cell: 'D6' }
+          : metric === 'net_profit' ? { sheet: '02', cell: 'D44' } : { sheet: '03', cell: 'C32' };
+      const exactSheetPrefix = `${expected.sheet}${scope === 'consolidated' ? '合并' : '母公司'}`;
+      assert.ok(item.provenance.evidence.some(anchor => anchor.locator_type === 'xlsx_cell' &&
+        typeof anchor.locator.sheet === 'string' && anchor.locator.sheet.startsWith(exactSheetPrefix) &&
+        anchor.locator.cell === expected.cell && anchor.literal_quote.startsWith('=') &&
+        anchor.uncertainty.includes('formula_cached_result_unverified')),
+      'each candidate binds the exact formula cell for its metric and scope');
+      if (scope === 'parent_only') assert.ok(item.provenance.evidence.some(anchor => anchor.locator_type === 'xlsx_cell' &&
+        typeof anchor.locator.sheet === 'string' && anchor.locator.sheet.startsWith(exactSheetPrefix) && anchor.locator.cell === 'B3' &&
+        anchor.literal_quote.startsWith('=') && anchor.uncertainty.includes('formula_cached_result_unverified')),
+      'parent scope retains its formula-derived period header as unresolved evidence');
+    }
+    const durableRows = await pool.query<{ status: string; source_kind: string; uncertainty: string[]; evidence: Array<{
+      locator_type: string; locator: { sheet?: string; cell?: string }; literal_quote: string; uncertainty: string[];
+    }> }>(`SELECT status,source_kind,uncertainty,evidence FROM bb_fact_candidates
+      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1`, [owner, projectId, materialId]);
+    assert.equal(durableRows.rowCount, 8);
+    assert.ok(durableRows.rows.every(row => row.status === 'needs_confirmation' && row.source_kind === 'external' &&
+      row.uncertainty.some(reason => reason.includes('FORMULA_CACHE_VALUE_UNVERIFIED')) &&
+      row.uncertainty.some(reason => reason.includes('FORMULA_SOURCE_CHAIN_UNVERIFIED'))));
+    assert.ok(durableRows.rows.every(row => row.evidence.some(anchor => anchor.locator_type === 'xlsx_cell' &&
+      anchor.literal_quote.startsWith('=') && anchor.uncertainty.includes('formula_cached_result_unverified') &&
+      typeof anchor.locator.sheet === 'string' && typeof anchor.locator.cell === 'string')));
+
+    const replay = await producer(productionContext);
+    assert.equal(replay.inserted.length, 0);
+    assert.equal(replay.replayed.length, 8, 'replaying the exact extraction pin returns its eight prior candidates');
+    const ledger = await pool.query<{ extractor_id: string; candidate_ids: string[] }>(`SELECT extractor_id,candidate_ids
+      FROM bb_fact_extraction_runs WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=1 AND material_id=$3`,
+    [owner, projectId, materialId]);
+    assert.equal(ledger.rowCount, 1, 'exact replay reuses one durable extraction ledger row');
+    assert.equal(ledger.rows[0]!.extractor_id, 'rq-202509-q3-formula-cache-candidates');
+    assert.equal(ledger.rows[0]!.candidate_ids.length, 8);
+    const outbox = await pool.query(`SELECT id FROM bb_outbox WHERE owner_user_id=$1 AND aggregate_id=$2
+      AND event_type='fact.extraction.completed'`, [owner, projectId]);
+    assert.equal(outbox.rowCount, 1, 'candidate persistence and extraction outbox are idempotent');
+    assert.equal((await listFactCandidates({ pool }, { ownerUserId: foreignOwner, projectId })).length, 0,
+      'another owner cannot read these persisted candidates');
+    await assert.rejects(producer({ ...productionContext, ownerUserId: foreignOwner }), /FACT_EXTRACTION_INPUT_REVISION_MISMATCH/,
+      'another owner cannot run extraction using this immutable input pin');
 
     activeOwner = foreignOwner;
     assert.equal((await send('GET', `/api/v1/projects/${projectId}`)).statusCode, 404, 'foreign account cannot read the project');

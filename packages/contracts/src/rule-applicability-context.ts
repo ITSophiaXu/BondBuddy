@@ -7,6 +7,7 @@ export const RULE_APPLICABILITY_FEATURE_DIMENSIONS = [
   'urban_construction', 'real_estate', 'group_operations', 'special_product_or_use',
   'embedded_or_perpetual', 'optimized_review', 'restructuring', 'special_issuer', 'transition_arrangement',
 ] as const;
+export const RULE_APPLICABILITY_FEATURE_EVIDENCE_V2_CONTRACT_VERSION = 'sse-private-feature-evidence-v2' as const;
 const evidenceRef = Type.Object({
   materialId: id, materialVersion: revision, materialSha256: hash,
   parseSnapshotId: id, recordId: id, recordSha256: hash,
@@ -42,18 +43,37 @@ export const ruleApplicabilityContextSchemas = {
       issuerScope: Type.Union([Type.Literal('domestic-company'), Type.Literal('other')]),
       investorScope: Type.Union([Type.Literal('professional'), Type.Literal('other')]),
       industry: Type.String({ minLength: 1, maxLength: 128 }),
-      specialFeatures: Type.Array(Type.String({ pattern: '^[a-z][a-z0-9_]{0,63}$' }), { maxItems: 32, uniqueItems: true }),
+      specialFeatures: Type.Array(Type.String({ pattern: '^[a-z][a-z0-9_-]{0,63}$' }), { maxItems: 32, uniqueItems: true }),
       asOf: Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' }),
     }, { additionalProperties: false })),
     value_evidence: Type.Optional(Type.Record(Type.String(), Type.Array(evidenceRef, { minItems: 1, maxItems: 64 }),
       { maxProperties: 8 })),
-    feature_evidence: Type.Optional(Type.Array(Type.Object({
+    feature_evidence: Type.Optional(Type.Union([
+      Type.Array(Type.Object({
       dimension: Type.Union(RULE_APPLICABILITY_FEATURE_DIMENSIONS.map(dimension => Type.Literal(dimension))),
       outcome: Type.Union([Type.Literal('present'), Type.Literal('absent'), Type.Literal('not_applicable')]),
       featureCode: Type.Optional(Type.String({ pattern: '^[a-z][a-z0-9_]{0,63}$' })),
       reason: nonEmptyReason,
       evidenceRefs: Type.Array(evidenceRef, { minItems: 1, maxItems: 64 }),
-    }, { additionalProperties: false }), { maxItems: RULE_APPLICABILITY_FEATURE_DIMENSIONS.length })),
+      }, { additionalProperties: false }), { maxItems: RULE_APPLICABILITY_FEATURE_DIMENSIONS.length }),
+      Type.Object({
+        contractVersion: Type.Literal(RULE_APPLICABILITY_FEATURE_EVIDENCE_V2_CONTRACT_VERSION),
+        dictionaryVersion: Type.String({ minLength: 1, maxLength: 64 }),
+        dictionarySha256: hash,
+        dimensions: Type.Array(Type.Object({
+          dimension: Type.Union(RULE_APPLICABILITY_FEATURE_DIMENSIONS.map(dimension => Type.Literal(dimension))),
+          outcome: Type.Union([Type.Literal('present'), Type.Literal('absent'), Type.Literal('not_applicable')]),
+          reason: nonEmptyReason,
+          evidenceRefs: Type.Array(evidenceRef, { minItems: 1, maxItems: 64 }),
+          childAssessments: Type.Array(Type.Object({
+            featureCode: Type.String({ pattern: '^[a-z][a-z0-9-]{0,63}$' }),
+            outcome: Type.Union([Type.Literal('present'), Type.Literal('absent'), Type.Literal('not_applicable'), Type.Literal('unknown')]),
+            reason: nonEmptyReason,
+            evidenceRefs: Type.Array(evidenceRef, { maxItems: 64 }),
+          }, { additionalProperties: false }), { maxItems: 3 }),
+        }, { additionalProperties: false }), { maxItems: RULE_APPLICABILITY_FEATURE_DIMENSIONS.length }),
+      }, { additionalProperties: false }),
+    ])),
     taxonomy_version: Type.Optional(Type.String({ pattern: '^bondbuddy-applicability-[a-z0-9.-]{1,64}$' })),
   }, { additionalProperties: false }),
   RuleApplicabilityOverallReviewResponse: Type.Object({

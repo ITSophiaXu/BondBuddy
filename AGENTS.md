@@ -66,6 +66,10 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 #20于2026-09-27补齐[协会行业标准原件、576代码与候选映射](knowledge/exchange-bonds/verification/2026-09-27-industry/README.md)，含官方检索、2024相近标准边界及逐表格定位。#19在既有唯一字典中接入，不能把此离线资产当成已批准行业或直接启用生产。#20是否完成按[关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)逐关核对，已有样本/方法确认不重复索取，首次受控运行与生成后的专业验收分开。
 
+2026-09-27补充的[配套法规及跨标准比对](knowledge/exchange-bonds/verification/2026-09-27-companion/README.md)包含上交所适当性30条、公司法政府转载266条和证监会2024行业标准；[适用例外/验收场景](knowledge/exchange-bonds/drafts/sse-private/COMPANION-APPLICABILITY-20260927.md)给出24项预期及现有checker边界。576码结构相同但12处文字不同，不自动替代协会2023来源。#315/#317已合并，配套资产仍不代表正式规则发布；缺失来源和工程接入以关闭清单为准。
+
+用户2026-09-27明确调整：Word/WPS桌面兼容性验收不阻断#20，交#146独立跟踪，实际问题另开缺陷。#20按[更新后的关闭清单](knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)G1–G4验收；第一次内部工作稿测试、规则/内容验收、客户端兼容性与对外发布分别推进。缺局部配套法规只限制对应结论，受控测试入口的工程缺口由#19/#35明确，不能继续用全库补证或生成后验收循环阻止首次运行。
+
 ### 交易商协会知识索引
 
 2026-09-27用户提供的交易商协会注册制度ZIP见[收件与使用指南](knowledge/nafmii/README.md)：79项收件、72份去重原件、7份官方补充证据；PPN/DFI各9项规则审核规范及DM/注册安排章节，MTN/CP/SCP的新草案改引2023披露正文。开发前阅读[适用性逐项答复](knowledge/nafmii/APPLICABILITY.md)及[逐Issue交接](knowledge/nafmii/ISSUE-HANDOFF.md)。DFI/PDFI与实际一期工具分开，PPN不用公募财务要求兜底，历史/境外/专项/图解与当前研究范围隔离；机器OCR、来源整理和合成测试均不冒充人工专业签认。沿用#19 schema，不另造公共市场/发行方式枚举；新包尚无自动业务checker或生产消费者，按交接推动#26–#30。

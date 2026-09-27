@@ -3,8 +3,12 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   buildSsePrivateApplicabilityCandidate,
+  resolveSsePrivateFeatureEvidenceV2,
   SSE_PRIVATE_APPLICABILITY_DICTIONARY,
   SSE_PRIVATE_APPLICABILITY_DICTIONARY_V1,
+  SSE_PRIVATE_APPLICABILITY_DICTIONARY_V2,
+  SSE_PRIVATE_APPLICABILITY_FEATURE_MAPPING,
+  SSE_PRIVATE_APPLICABILITY_FEATURE_EVIDENCE_VERSION,
   SSE_PRIVATE_FEATURE_DIMENSIONS,
   type ApplicabilityDimensionAssessment,
 } from './sse-private-applicability-taxonomy.js';
@@ -44,13 +48,13 @@ function build(input: {
 }
 
 test('dictionary is immutable, versioned, and fingerprinted independently from #77 matching vocabulary', () => {
-  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.version, 'sse-private-applicability-v2');
-  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256, '0d30e4c4d761b5bc4112c8428a1e4be83b158ff0aeeec53715dd3529a749cc24');
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V2.version, 'sse-private-applicability-v2');
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V2.contentSha256, '0d30e4c4d761b5bc4112c8428a1e4be83b158ff0aeeec53715dd3529a749cc24');
   assert.equal(Object.isFrozen(SSE_PRIVATE_APPLICABILITY_DICTIONARY), true);
   assert.equal(Object.isFrozen(SSE_PRIVATE_APPLICABILITY_DICTIONARY.featureDimensions), true);
   assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.isolation.referenceMatchingDictionary, 'not-a-#77-business-matching-dictionary');
   assert.equal('mainBusinessRevenue' in SSE_PRIVATE_APPLICABILITY_DICTIONARY, false);
-  const binding = SSE_PRIVATE_APPLICABILITY_DICTIONARY.industry.standardBinding;
+  const binding = SSE_PRIVATE_APPLICABILITY_DICTIONARY_V2.industry.standardBinding;
   assert.ok(binding);
   assert.equal(binding.standardId, 'capco-listed-company-industry');
   assert.equal(binding.standardVersion, '2023-05-01');
@@ -69,6 +73,133 @@ test('dictionary is immutable, versioned, and fingerprinted independently from #
   assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V1.version, 'sse-private-applicability-v1');
   assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V1.industry.standardBinding, null);
   assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V1.contentSha256, '47c833b3311e918c8024844c4c4ca20694416431b12cd95f076c151bcf860f0e');
+});
+
+function featureEvidenceV2(overrides: Record<string, {
+  outcome?: 'present' | 'absent' | 'not_applicable';
+  children?: Array<{ featureCode: string; outcome: 'present' | 'absent' | 'not_applicable' | 'unknown'; reason?: string; evidenceRefs?: unknown[] }>;
+}> = {}) {
+  return {
+    contractVersion: SSE_PRIVATE_APPLICABILITY_FEATURE_EVIDENCE_VERSION,
+    dictionaryVersion: SSE_PRIVATE_APPLICABILITY_DICTIONARY.version,
+    dictionarySha256: SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256,
+    dimensions: SSE_PRIVATE_APPLICABILITY_FEATURE_MAPPING.map(({ dimension, selectorCodes }) => {
+      const change = overrides[dimension];
+      return {
+        dimension, outcome: change?.outcome ?? 'absent', reason: `父维度 ${dimension} 已检查。`,
+        evidenceRefs: [validReviewEvidence, validReviewEvidence2],
+        childAssessments: change?.children?.map((child) => ({ reason: `子码 ${child.featureCode} 已独立检查。`, ...child })) ?? selectorCodes.map((featureCode) => ({ featureCode, outcome: 'absent' as const,
+          reason: `子码 ${featureCode} 已独立检查。`, evidenceRefs: [validReviewEvidence] })),
+      };
+    }),
+  };
+}
+
+const validReviewEvidence = {
+  materialId: 'material-1', materialVersion: 1, materialSha256: 'a'.repeat(64),
+  parseSnapshotId: 'snapshot-1', recordId: 'record-1', recordSha256: 'b'.repeat(64),
+};
+const validReviewEvidence2 = {
+  materialId: 'material-2', materialVersion: 1, materialSha256: 'c'.repeat(64),
+  parseSnapshotId: 'snapshot-2', recordId: 'record-2', recordSha256: 'd'.repeat(64),
+};
+
+test('feature evidence v2 binds all nine parent dimensions to the exact twelve dictionary selector codes', () => {
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.version, 'sse-private-applicability-v3');
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V2.version, 'sse-private-applicability-v2');
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY_V2.contentSha256, '0d30e4c4d761b5bc4112c8428a1e4be83b158ff0aeeec53715dd3529a749cc24');
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.featureEvidenceMapping?.parentDimensions.length, 9);
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.featureEvidenceMapping?.selectorCodesByDimension.flatMap((item) => item.selectorCodes).length, 12);
+  const mapped = resolveSsePrivateFeatureEvidenceV2(featureEvidenceV2({
+    embedded_or_perpetual: { outcome: 'present', children: [
+      { featureCode: 'convertible-structure', outcome: 'present', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'exchangeable-structure', outcome: 'present', evidenceRefs: [validReviewEvidence2] },
+      { featureCode: 'perpetual-structure', outcome: 'absent', evidenceRefs: [validReviewEvidence] },
+    ] },
+    optimized_review: { outcome: 'present', children: [
+      { featureCode: 'optimized-review', outcome: 'present', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'simplified-disclosure', outcome: 'absent', evidenceRefs: [validReviewEvidence2] },
+    ] },
+  }));
+  assert.deepEqual(mapped, { accepted: true, specialFeatures: [
+    'convertible-structure', 'exchangeable-structure', 'optimized-review',
+  ] });
+});
+
+test('feature evidence v2 leaves unrefined, incomplete, contradictory and unknown child states in needs_review', () => {
+  const base = featureEvidenceV2();
+  const withDimension = (dimension: string, patch: Record<string, unknown>) => ({
+    ...base, dimensions: base.dimensions.map((item) => item.dimension === dimension ? { ...item, ...patch } : item),
+  });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('embedded_or_perpetual', {
+    outcome: 'present', childAssessments: [],
+  })), { accepted: false, reason: 'feature_evidence_needs_review' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('embedded_or_perpetual', {
+    outcome: 'present', childAssessments: [{ featureCode: 'perpetual-structure', outcome: 'present', reason: 'only one was checked', evidenceRefs: [validReviewEvidence] }],
+  })), { accepted: false, reason: 'feature_evidence_needs_review' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('embedded_or_perpetual', {
+    outcome: 'absent', childAssessments: [
+      { featureCode: 'convertible-structure', outcome: 'present', reason: 'conflict', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'exchangeable-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'perpetual-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+    ],
+  })), { accepted: false, reason: 'feature_evidence_mapping_mismatch' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('embedded_or_perpetual', {
+    outcome: 'absent', childAssessments: [
+      { featureCode: 'convertible-structure', outcome: 'not_applicable', reason: 'range not established', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'exchangeable-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'perpetual-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+    ],
+  })), { accepted: false, reason: 'feature_evidence_needs_review' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('embedded_or_perpetual', {
+    outcome: 'present', childAssessments: [
+      { featureCode: 'convertible-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'exchangeable-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'perpetual-structure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+    ],
+  })), { accepted: false, reason: 'feature_evidence_needs_review' });
+  for (const outcome of ['present', 'absent'] as const) {
+    assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('embedded_or_perpetual', {
+      outcome: 'not_applicable', childAssessments: [
+        { featureCode: 'convertible-structure', outcome, reason: 'range check', evidenceRefs: [validReviewEvidence] },
+        { featureCode: 'exchangeable-structure', outcome: 'not_applicable', reason: 'range check', evidenceRefs: [validReviewEvidence] },
+        { featureCode: 'perpetual-structure', outcome: 'not_applicable', reason: 'range check', evidenceRefs: [validReviewEvidence] },
+      ],
+    })), { accepted: false, reason: 'feature_evidence_needs_review' });
+  }
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('optimized_review', {
+    outcome: 'present', childAssessments: [
+      { featureCode: 'optimized-review', outcome: 'present', reason: 'scheme evidence', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'simplified-disclosure', outcome: 'unknown', reason: 'not checked', evidenceRefs: [] },
+    ],
+  })), { accepted: false, reason: 'feature_evidence_needs_review' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('optimized_review', {
+    outcome: 'absent', childAssessments: [
+      { featureCode: 'optimized-review', outcome: 'absent', reason: 'x'.repeat(1025), evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'simplified-disclosure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+    ],
+  })), { accepted: false, reason: 'feature_evidence_invalid' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('optimized_review', {
+    outcome: 'absent', childAssessments: [
+      { featureCode: 'optimized-review', outcome: 'absent', reason: 'checked', evidenceRefs: [] },
+      { featureCode: 'simplified-disclosure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+    ],
+  })), { accepted: false, reason: 'feature_evidence_invalid' });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(withDimension('optimized_review', {
+    outcome: 'absent', childAssessments: [
+      { featureCode: 'optimized-review', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+      { featureCode: 'simplified-disclosure', outcome: 'absent', reason: 'checked', evidenceRefs: [validReviewEvidence] },
+    ],
+  })), { accepted: true, specialFeatures: [] });
+});
+
+test('feature evidence v2 rejects syntactically valid but non-dictionary selector codes and mismatched pins', () => {
+  const wrongCode = featureEvidenceV2({ urban_construction: { outcome: 'present', children: [
+    { featureCode: 'valid-looking-code', outcome: 'present', evidenceRefs: [validReviewEvidence] },
+  ] } });
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(wrongCode), { accepted: false, reason: 'feature_evidence_mapping_mismatch' });
+  const wrongDictionary = { ...featureEvidenceV2(), dictionarySha256: '0'.repeat(64) };
+  assert.deepEqual(resolveSsePrivateFeatureEvidenceV2(wrongDictionary), { accepted: false, reason: 'feature_evidence_mapping_mismatch' });
 });
 
 test('CAPCO division codes remain exact and verified groups map only to their listed parent division', () => {
