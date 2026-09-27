@@ -106,11 +106,14 @@ async function assertAnchors(client: Queryable, owner: string, projectId: string
         ref.parser_version,ref.response_sha256,ref.record_id,ref.record_sha256,ref.evidence_method]);
     const row=result.rows[0];
     const financialRoles=new Set<string>(M1_MATERIAL_PARTITIONS.find(p=>p.label==='财务与审计')?.roles.map(r=>r.code)??[]);
-    if (!row || row.deleted_at !== null || !financialRoles.has(String(row.role)) || row.response_status === 'failed')
+    if (!row || row.deleted_at !== null || !financialRoles.has(String(row.role)) ||
+        !['parsed','needs_confirmation'].includes(String(row.response_status)))
       throw fail('TARGET_PERIOD_DECISION_EVIDENCE_STALE');
     // Anchors must point to actual parse output. Semantic adequacy remains the reviewer's decision.
+    const uncertainty=parsed(row.uncertainty);
     if (typeof row.literal_quote !== 'string' || !row.literal_quote.trim() || !record(row.locator) ||
-        typeof row.context !== 'string' || !Array.isArray(parsed(row.uncertainty))) throw fail('TARGET_PERIOD_DECISION_EVIDENCE_INVALID');
+        typeof row.context !== 'string' || !Array.isArray(uncertainty)) throw fail('TARGET_PERIOD_DECISION_EVIDENCE_INVALID');
+    if(period.outcome==='confirmed'&&uncertainty.length!==0)throw fail('TARGET_PERIOD_DECISION_EVIDENCE_INCOMPLETE');
   }
 }
 

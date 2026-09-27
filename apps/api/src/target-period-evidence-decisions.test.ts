@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { test } from 'node:test';
+import { isolatedTestDatabase } from './test-database.js';
 import { appendTargetPeriodEvidenceDecision, changeTargetPeriodReviewerGrant, ocrPeriodUncertaintyRequiresConfirmation, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 import { validTargetPeriodEvidenceDecision, type OcrEngineResponse, type TargetPeriodEvidenceDecisionRequest } from '@bondbuddy/contracts';
 import { createUpdateDifficultySnapshotWithClient, ensureCurrentUpdateDifficultySnapshotWithClient, getCurrentUpdateDifficultySnapshotWithClient,
@@ -110,8 +111,10 @@ test('OCR anchors preserve method/page identity and date or scope suspicion cann
 });
 
 test('PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and invalidate after review changes',
-  {skip:!process.env.BB_TEST_DATABASE_URL&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0058'},async()=>{
-    const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL});
+  {skip:!process.env.BB_TEST_DATABASE_URL&&!process.env.TARGET_PERIOD_EVIDENCE_TEST_DATABASE_URL&&'set TARGET_PERIOD_EVIDENCE_TEST_DATABASE_URL (or BB_TEST_DATABASE_URL) to a disposable PostgreSQL 16 database migrated through 0058'},async()=>{
+    const databaseUrl=await isolatedTestDatabase('TARGET_PERIOD_EVIDENCE_TEST_DATABASE_URL','target-period-evidence-decisions');
+    assert.ok(databaseUrl,'the suite must run against a private clone, not a shared template');
+    const pool=new Pool({connectionString:databaseUrl});
     const suffix=randomUUID().replaceAll('-','').slice(0,14), owner=`period-owner-${suffix}`,reviewer=`period-reviewer-${suffix}`,
       actor=`period-actor-${suffix}`,project=`period-project-${suffix}`,history=`period-history-${suffix}`,finance=`period-finance-${suffix}`;
     const digest=(value:string)=>createHash('sha256').update(value).digest('hex'), sha=(value:unknown)=>createHash('sha256').update(canonical(value)).digest('hex');
@@ -167,8 +170,8 @@ test('PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and 
         VALUES($1,$2,$3,1,$4,'history-source-ref',$5,'pdf_bbox','{"page":1,"bbox":[0,0,1,1]}'::jsonb,'Synthetic historical issuer identity and 2024 reporting cutoff','synthetic historical anchor','native_text','parser-synthetic',0.99,'[]','{}',$6,0)`,
         [owner,project,history,historySnapshot,hsha,digest('history-source-ref')]);
       await client.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta)
-        VALUES($1,$2,$3,$4,1,$5,$6,$7,'parsed','document-parse-response-v1',$8,4,$9::jsonb)`,[snapshot,owner,project,finance,fsha,parserVersion,digest('parse request'),responseHash,
-          JSON.stringify({schema_version:'document-parse-response-v1',request_id:`parse-request-${suffix}`,status:'parsed',parser_version:parserVersion,material:{material_id:finance,material_version:1,media_type:'application/pdf',sha256:fsha},warnings:[],document:{page_count:1},error:null})]);
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'needs_confirmation','document-parse-response-v1',$8,4,$9::jsonb)`,[snapshot,owner,project,finance,fsha,parserVersion,digest('parse request'),responseHash,
+          JSON.stringify({schema_version:'document-parse-response-v1',request_id:`parse-request-${suffix}`,status:'needs_confirmation',parser_version:parserVersion,material:{material_id:finance,material_version:1,media_type:'application/pdf',sha256:fsha},warnings:[{code:'UNRELATED_GLOBAL_WARNING',message:'Synthetic parser warning unrelated to selected anchors.'}],document:{page_count:1},error:null})]);
       for(let index=0;index<4;index++)await client.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
         VALUES($1,$2,$3,1,$4,$5,$6,'pdf_bbox','{"page":1,"bbox":[0,0,1,1]}'::jsonb,$7,'synthetic exact financial evidence','native_text',$8,0.99,'[]','{}',$9,$10)` ,
         [owner,project,finance,snapshot,evidenceIds[index],fsha,`synthetic ${['header','entity','scope','date'][index]} anchor`,parserVersion,digest(evidenceIds[index]),index]);
@@ -222,6 +225,22 @@ test('PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and 
       await client.query('ROLLBACK TO SAVEPOINT duplicate_identity_check');
       const review:TargetPeriodEvidenceDecisionRequest={request_id:requestId,input_revision:revision,input_hash:inputHash,source_profile_version:1,
         periods:[{start:target.start,end:target.end,period_kind:'annual',scope:'consolidated',outcome:'confirmed',reason:'All four synthetic anchors align.',evidence:periods}]};
+      const entityUncertainParseSnapshot=`period-parse-uncertain-${suffix}`,entityUncertainParserVersion=`${parserVersion}-uncertain`,uncertainResponseHash=digest(`uncertain parse response ${suffix}`);
+      await client.query('SAVEPOINT uncertain_entity_anchor_check');
+      await client.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta,created_at)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'needs_confirmation','document-parse-response-v1',$8,4,$9::jsonb,now()+interval '1 second')`,
+        [entityUncertainParseSnapshot,owner,project,finance,fsha,entityUncertainParserVersion,digest('uncertain parse request'),uncertainResponseHash,
+          JSON.stringify({schema_version:'document-parse-response-v1',request_id:`uncertain-parse-request-${suffix}`,status:'needs_confirmation',parser_version:entityUncertainParserVersion,
+            material:{material_id:finance,material_version:1,media_type:'application/pdf',sha256:fsha},warnings:[],document:{page_count:1},error:null})]);
+      for(let index=0;index<4;index++)await client.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,1,$4,$5,$6,'pdf_bbox','{"page":1,"bbox":[0,0,1,1]}'::jsonb,$7,'synthetic exact financial evidence','native_text',$8,0.99,$9::jsonb,'{}',$10,$11)` ,
+        [owner,project,finance,entityUncertainParseSnapshot,evidenceIds[index],fsha,`synthetic ${['header','entity','scope','date'][index]} anchor`,entityUncertainParserVersion,
+          JSON.stringify(index===1?['formula_cached_result_unverified']:[]),digest(evidenceIds[index]),index]);
+      const entityUncertainRefs=periods.map(ref=>({...ref,parse_snapshot_id:entityUncertainParseSnapshot,parser_version:entityUncertainParserVersion,response_sha256:uncertainResponseHash}));
+      await assert.rejects(appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,{...review,request_id:`${requestId}-uncertain-entity`,periods:[{...review.periods[0]!,evidence:entityUncertainRefs}]}),
+        /TARGET_PERIOD_DECISION_EVIDENCE_INCOMPLETE/,'a selected entity anchor with its own cached-formula uncertainty cannot be confirmed');
+      await client.query('ROLLBACK TO SAVEPOINT uncertain_entity_anchor_check');
+      await client.query('RELEASE SAVEPOINT uncertain_entity_anchor_check');
       const appended=await appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,review,()=>`period-decision-row-${suffix}`);
       assert.equal(appended.replayed,false);
       const replay=await appendTargetPeriodEvidenceDecision(pg,{userId:reviewer},project,review,()=>`unused-period-row-${suffix}`);
@@ -232,10 +251,44 @@ test('PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and 
         return result.targetReportingPeriods[0];
       };
       assert.equal((await load())?.status,'recognized','exact active grant and latest native parse load confirmed period');
+      await client.query('SAVEPOINT tampered_decision_check');
+      await client.query(`INSERT INTO bb_target_period_evidence_decisions
+        (id,request_id,request_hash,owner_user_id,project_id,input_revision,input_hash,locked_materials,source_profile_material_id,
+         source_profile_material_version,source_profile_version,source_profile_sha256,periods,reviewer_user_id,reviewer_grant_id,authority,reviewed_at)
+        SELECT $2,$3,$4,owner_user_id,project_id,input_revision,input_hash,locked_materials,source_profile_material_id,
+         source_profile_material_version,source_profile_version,source_profile_sha256,$5::jsonb,reviewer_user_id,reviewer_grant_id,authority,now()+interval '1 second'
+        FROM bb_target_period_evidence_decisions WHERE id=$1`,[appended.decision_id,`tampered-${suffix}`,`tampered-request-${suffix}`,
+          digest(`tampered decision ${suffix}`),JSON.stringify([{...review.periods[0]!,evidence:periods.map((ref,index)=>index===1?{...ref,record_sha256:digest('wrong selected entity hash')}:ref)}])]);
+      assert.equal((await load())?.status,'user_asserted','a newer altered decision cannot bypass exact native evidence-ref revalidation');
+      await client.query('ROLLBACK TO SAVEPOINT tampered_decision_check');
+      await client.query('RELEASE SAVEPOINT tampered_decision_check');
+
       const snapshot1=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash});
       assert.notEqual(snapshot1.id,preflight.id,'a period decision appends a new immutable derivation for the exact same locked input');
       assert.equal(snapshot1.estimate.estimatedN,1,'confirmed later target financial cutoff persists N=1');
+      const postReviewSnapshot=`period-parse-post-review-${suffix}`,postReviewParser=`${parserVersion}-post-review`,postReviewResponseHash=digest(`post-review parse response ${suffix}`);
+      await client.query('SAVEPOINT post_review_uncertainty_check');
+      await client.query(`INSERT INTO bb_parse_snapshots(id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta,created_at)
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'needs_confirmation','document-parse-response-v1',$8,4,$9::jsonb,now()+interval '2 seconds')`,
+        [postReviewSnapshot,owner,project,finance,fsha,postReviewParser,digest('post-review parse request'),postReviewResponseHash,
+          JSON.stringify({schema_version:'document-parse-response-v1',request_id:`post-review-parse-request-${suffix}`,status:'needs_confirmation',parser_version:postReviewParser,
+            material:{material_id:finance,material_version:1,media_type:'application/pdf',sha256:fsha},warnings:[],document:{page_count:1},error:null})]);
+      for(let index=0;index<4;index++)await client.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,1,$4,$5,$6,'pdf_bbox','{"page":1,"bbox":[0,0,1,1]}'::jsonb,$7,'synthetic exact financial evidence','native_text',$8,0.99,$9::jsonb,'{}',$10,$11)` ,
+        [owner,project,finance,postReviewSnapshot,evidenceIds[index],fsha,`synthetic ${['header','entity','scope','date'][index]} anchor`,postReviewParser,
+          JSON.stringify(index===1?['formula_cached_result_unverified']:[]),digest(evidenceIds[index]),index]);
+      const postReviewRefs=periods.map(ref=>({...ref,parse_snapshot_id:postReviewSnapshot,parser_version:postReviewParser,response_sha256:postReviewResponseHash}));
+      await client.query(`INSERT INTO bb_target_period_evidence_decisions
+        (id,request_id,request_hash,owner_user_id,project_id,input_revision,input_hash,locked_materials,source_profile_material_id,
+         source_profile_material_version,source_profile_version,source_profile_sha256,periods,reviewer_user_id,reviewer_grant_id,authority,reviewed_at)
+        SELECT $2,$3,$4,owner_user_id,project_id,input_revision,input_hash,locked_materials,source_profile_material_id,
+         source_profile_material_version,source_profile_version,source_profile_sha256,$5::jsonb,reviewer_user_id,reviewer_grant_id,authority,now()+interval '3 seconds'
+        FROM bb_target_period_evidence_decisions WHERE id=$1`,[appended.decision_id,`post-review-tampered-${suffix}`,`post-review-request-${suffix}`,
+          digest(`post-review decision ${suffix}`),JSON.stringify([{...review.periods[0]!,evidence:postReviewRefs}])]);
+      assert.equal((await load())?.status,'user_asserted','a forged confirmed decision is rechecked against each latest anchor uncertainty and fails closed');
+      await client.query('ROLLBACK TO SAVEPOINT post_review_uncertainty_check');
+      await client.query('RELEASE SAVEPOINT post_review_uncertainty_check');
       const replayedSnapshot=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash});
       assert.equal(replayedSnapshot.id,snapshot1.id,'same reviewed evidence identity replays the same immutable snapshot');
