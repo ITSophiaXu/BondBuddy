@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
-import { isMarketOffering, RULE_APPLICABILITY_FEATURE_DIMENSIONS, type Market, type Offering } from '@bondbuddy/contracts';
+import { isMarketOffering, RULE_APPLICABILITY_FEATURE_DIMENSIONS, RULE_APPLICABILITY_FEATURE_EVIDENCE_V2_CONTRACT_VERSION,
+  type Market, type Offering } from '@bondbuddy/contracts';
+import { resolveSsePrivateFeatureEvidenceV2, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-// No #19 industry/feature codebook has Maxy-reviewed source, scope, and mapping yet.
-// Reviewer-supplied version strings are evidence metadata, never a server catalog entry.
+// Deliberately empty until industry/source evidence and release review are complete.
+// Reviewer-supplied version strings and candidate dictionary maps never publish a taxonomy.
 const PUBLISHED_RULE_APPLICABILITY_TAXONOMY_VERSIONS: readonly string[] = [];
 
 export type ApplicabilitySourceKind = 'parse_evidence' | 'user_asserted' | 'unknown';
@@ -685,7 +687,10 @@ export async function loadReviewedRuleApplicabilityContext(
     const isEvidenceRef = (value: unknown): value is RuleApplicabilityEvidenceRef => isRecord(value) &&
       typeof value.materialId === 'string' && Number.isSafeInteger(value.materialVersion) && typeof value.materialSha256 === 'string' &&
       typeof value.parseSnapshotId === 'string' && typeof value.recordId === 'string' && typeof value.recordSha256 === 'string';
-    if (!isRecord(approved) || !isRecord(valueEvidence) || !Array.isArray(featureEvidence) || !taxonomyVersion.startsWith('bondbuddy-applicability-')) {
+    const legacyFeatureEvidence = Array.isArray(featureEvidence);
+    const v2FeatureEvidence = isRecord(featureEvidence) && featureEvidence.contractVersion === RULE_APPLICABILITY_FEATURE_EVIDENCE_V2_CONTRACT_VERSION;
+    if (!isRecord(approved) || !isRecord(valueEvidence) || (!legacyFeatureEvidence && !v2FeatureEvidence) ||
+        !taxonomyVersion.startsWith('bondbuddy-applicability-')) {
       reasons.push('rule_applicability_overall_review_snapshot_invalid');
       return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
     }
@@ -705,7 +710,7 @@ export async function loadReviewedRuleApplicabilityContext(
         typeof instrument !== 'string' || instrument.trim() === '' || !['registration', 'issuance'].includes(String(documentStage)) ||
         !['domestic-company', 'other'].includes(String(issuerScope)) || !['professional', 'other'].includes(String(investorScope)) ||
         typeof industry !== 'string' || industry.trim() === '' || !Array.isArray(specialFeatures) ||
-        specialFeatures.some((feature) => typeof feature !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(feature)) ||
+        specialFeatures.some((feature) => typeof feature !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(feature)) ||
         !validDate(asOf) || new Set(specialFeatures).size !== specialFeatures.length) {
       reasons.push('rule_applicability_overall_review_values_invalid');
       return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
@@ -719,7 +724,9 @@ export async function loadReviewedRuleApplicabilityContext(
     if (!confirmed || confirmed.confirmed_by !== expected.ownerUserId || confirmed.market !== market || confirmed.offering !== offering ||
         confirmed.document_purpose !== documentStage || dateText(confirmed.as_of) !== asOf) reasons.push('rule_applicability_target_confirmation_stale');
 
-    const featureKeys = featureEvidence.map((item) => isRecord(item) ? item.dimension : null);
+    const featureDimensions = legacyFeatureEvidence ? featureEvidence :
+      (v2FeatureEvidence && Array.isArray(featureEvidence.dimensions) ? featureEvidence.dimensions : []);
+    const featureKeys = featureDimensions.map((item) => isRecord(item) ? item.dimension : null);
     if (featureKeys.length !== RULE_APPLICABILITY_FEATURE_DIMENSIONS.length || new Set(featureKeys).size !== featureKeys.length ||
         RULE_APPLICABILITY_FEATURE_DIMENSIONS.some((key) => !featureKeys.includes(key))) {
       reasons.push('rule_applicability_special_features_evidence_incomplete');
@@ -732,21 +739,44 @@ export async function loadReviewedRuleApplicabilityContext(
         reasons.push(`rule_applicability_approved_field_evidence_missing:${key}`);
       } else approvedEvidence.push(...fieldEvidence);
     }
-    for (const item of featureEvidence) {
-      if (!isRecord(item) || !['present', 'absent', 'not_applicable'].includes(String(item.outcome)) ||
-          typeof item.reason !== 'string' || item.reason.trim() === '' || !Array.isArray(item.evidenceRefs) ||
-          item.evidenceRefs.length === 0 || !item.evidenceRefs.every(isEvidenceRef)) {
-        reasons.push(`rule_applicability_feature_evidence_invalid:${String(isRecord(item) ? item.dimension : 'unknown')}`);
-        continue;
+    if (legacyFeatureEvidence) {
+      for (const item of featureEvidence) {
+        if (!isRecord(item) || !['present', 'absent', 'not_applicable'].includes(String(item.outcome)) ||
+            typeof item.reason !== 'string' || item.reason.trim() === '' || !Array.isArray(item.evidenceRefs) ||
+            item.evidenceRefs.length === 0 || !item.evidenceRefs.every(isEvidenceRef)) {
+          reasons.push(`rule_applicability_feature_evidence_invalid:${String(isRecord(item) ? item.dimension : 'unknown')}`);
+          continue;
+        }
+        const featureMaterials = [...new Set(item.evidenceRefs.map((evidence) => `${evidence.materialId}\u0000${evidence.materialVersion}`))].sort();
+        const pinnedMaterials = contextPin.sourceMaterials.map((material) => `${material.materialId}\u0000${material.materialVersion}`).sort();
+        if (canonical(featureMaterials) !== canonical(pinnedMaterials)) reasons.push(`rule_applicability_feature_material_coverage_incomplete:${String(item.dimension)}`);
+        approvedEvidence.push(...item.evidenceRefs);
+        if (item.outcome === 'present') {
+          if (typeof item.featureCode !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(item.featureCode)) reasons.push('rule_applicability_feature_code_invalid');
+          else positiveFeatures.push(item.featureCode);
+        } else if (item.featureCode !== undefined) reasons.push('rule_applicability_negative_feature_code_invalid');
       }
-      const featureMaterials = [...new Set(item.evidenceRefs.map((evidence) => `${evidence.materialId}\u0000${evidence.materialVersion}`))].sort();
-      const pinnedMaterials = contextPin.sourceMaterials.map((material) => `${material.materialId}\u0000${material.materialVersion}`).sort();
-      if (canonical(featureMaterials) !== canonical(pinnedMaterials)) reasons.push(`rule_applicability_feature_material_coverage_incomplete:${String(item.dimension)}`);
-      approvedEvidence.push(...item.evidenceRefs);
-      if (item.outcome === 'present') {
-        if (typeof item.featureCode !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(item.featureCode)) reasons.push('rule_applicability_feature_code_invalid');
-        else positiveFeatures.push(item.featureCode);
-      } else if (item.featureCode !== undefined) reasons.push('rule_applicability_negative_feature_code_invalid');
+    } else {
+      if (taxonomyVersion !== SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION) reasons.push('rule_applicability_feature_taxonomy_version_mismatch');
+      const resolved = resolveSsePrivateFeatureEvidenceV2(featureEvidence);
+      if (!resolved.accepted) reasons.push(`rule_applicability_feature_evidence_invalid:${resolved.reason}`);
+      else positiveFeatures.push(...resolved.specialFeatures);
+      for (const item of featureDimensions) {
+        if (!isRecord(item) || !Array.isArray(item.evidenceRefs) || item.evidenceRefs.length === 0 || !item.evidenceRefs.every(isEvidenceRef)) {
+          reasons.push(`rule_applicability_feature_evidence_invalid:${String(isRecord(item) ? item.dimension : 'unknown')}`);
+        } else {
+          const featureMaterials = [...new Set(item.evidenceRefs.map((evidence) => `${evidence.materialId}\u0000${evidence.materialVersion}`))].sort();
+          const pinnedMaterials = contextPin.sourceMaterials.map((material) => `${material.materialId}\u0000${material.materialVersion}`).sort();
+          if (canonical(featureMaterials) !== canonical(pinnedMaterials)) reasons.push(`rule_applicability_feature_material_coverage_incomplete:${String(item.dimension)}`);
+          approvedEvidence.push(...item.evidenceRefs);
+        }
+        const children = isRecord(item) && Array.isArray(item.childAssessments) ? item.childAssessments : [];
+        for (const child of children) {
+          if (!isRecord(child) || !Array.isArray(child.evidenceRefs) || child.evidenceRefs.length === 0 || !child.evidenceRefs.every(isEvidenceRef)) {
+            reasons.push(`rule_applicability_feature_child_evidence_invalid:${String(isRecord(child) ? child.featureCode : 'unknown')}`);
+          } else approvedEvidence.push(...child.evidenceRefs);
+        }
+      }
     }
     if (canonical([...positiveFeatures].sort()) !== canonical([...specialFeatures].sort())) reasons.push('rule_applicability_special_features_value_mismatch');
     for (const evidence of approvedEvidence) {

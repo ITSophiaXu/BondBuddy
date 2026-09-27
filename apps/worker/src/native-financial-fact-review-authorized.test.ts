@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import type { SemanticFactExtractionRequest } from './fact-candidate-producer.js';
 import { createNativeFinancialFactExtractor } from './native-financial-fact-extractor.js';
+import { createRqQ3FormulaCandidateExtractor } from './rq-q3-formula-candidate-extractor.js';
 import { runDocumentParser, type DocumentParseRequest } from './document-parser.js';
 
 const sourceRoot = resolve(join(fileURLToPath(new URL('.', import.meta.url)), '../../..'));
@@ -111,6 +112,9 @@ test('authorized rq XLSX extracts direct consolidated lines and holds cached ope
     status: parsed.status,
     warnings: parsed.warnings,
   })).extract(factRequest);
+  const q3Candidates = await createRqQ3FormulaCandidateExtractor(async () => ({
+    status: parsed.status, warnings: parsed.warnings,
+  })).extract(factRequest);
   assert.deepEqual(mapped.parse_snapshot, {
     snapshot_id: factRequest.parse_snapshot_id, response_sha256: factRequest.parse_response_sha256,
     parser_version: parsed.parser_version, material_id: file.file_id, material_version: 1, content_sha256: contentHash,
@@ -140,6 +144,36 @@ test('authorized rq XLSX extracts direct consolidated lines and holds cached ope
   assert.deepEqual(mapped.facts.map((fact) => fact.identity.metric).sort(), ['interest_expense', 'interest_income']);
   assert.ok(mapped.facts.every((fact) => fact.source_kind === 'external' && fact.identity.basis === 'reported_financial_statement'));
   assert.equal(mapped.needs_review.length, 1);
+  assert.equal(q3Candidates.facts.length, 8, `the separate Q3 mapper emits exactly the eight allowlisted current-period formula candidates; mapped=${q3Candidates.facts.map(fact => `${fact.identity.scope}:${fact.identity.metric}`).join(',')}; reviewed=${JSON.stringify(q3Candidates.needs_review.map(item => ({ reason: item.reason_code, cells: item.evidence_refs.map(id => { const record = parsed.records.find(row => row.record_id === id)!; return record.locator_type === 'xlsx_cell' ? `${record.locator.sheet}!${record.locator.cell}` : record.locator_type; }) })))}`);
+  assert.equal(q3Candidates.needs_review.length, 0);
+  assert.ok(q3Candidates.facts.every((fact) => fact.source_kind === 'external' && fact.confidence < 0.9 &&
+    fact.uncertainty.includes('FORMULA_CACHE_VALUE_UNVERIFIED') && fact.uncertainty.includes('FORMULA_SOURCE_CHAIN_UNVERIFIED')));
+  assert.ok(q3Candidates.facts.filter((fact) => fact.identity.metric === 'operating_revenue').every((fact) =>
+    fact.uncertainty.includes('REVENUE_EXTERNAL_WORKBOOK_NOT_AUTHORIZED')));
+  assert.ok(q3Candidates.facts.filter((fact) => fact.identity.scope === 'parent_only').every((fact) =>
+    fact.uncertainty.includes('PERIOD_HEADER_FORMULA_CACHE_UNVERIFIED')));
+  assert.deepEqual(q3Candidates.facts.map((fact) => `${fact.identity.scope}:${fact.identity.metric}`).sort(), [
+    'consolidated:net_cash_from_operating_activities', 'consolidated:net_profit', 'consolidated:operating_revenue',
+    'consolidated:total_assets', 'parent_only:net_cash_from_operating_activities', 'parent_only:net_profit',
+    'parent_only:operating_revenue', 'parent_only:total_assets',
+  ]);
+  for (const fact of q3Candidates.facts) {
+    const expected = fact.identity.metric === 'total_assets' ? { sheet: '01', cell: 'D78' }
+      : fact.identity.metric === 'operating_revenue' ? { sheet: '02', cell: 'D6' }
+        : fact.identity.metric === 'net_profit' ? { sheet: '02', cell: 'D44' } : { sheet: '03', cell: 'C32' };
+    const expectedSheet = `${expected.sheet}${fact.identity.scope === 'consolidated' ? '合并' : '母公司'}`;
+    const target = fact.evidence_refs.map((id) => parsed.records.find((record) => record.record_id === id)!).find((record) =>
+      record.locator_type === 'xlsx_cell' && typeof record.locator.sheet === 'string' &&
+      record.locator.sheet.startsWith(expectedSheet) && record.locator.cell === expected.cell);
+    assert.ok(target, 'each Q3 candidate retains its exact formula and cache evidence anchor');
+    assert.ok(target.literal_quote.startsWith('='));
+    assert.ok(target.uncertainty.includes('formula_cached_result_unverified'));
+    assert.equal(typeof target.formatting.cached_formula_result, 'string');
+    assert.equal(fact.identity.period.start, fact.identity.metric === 'total_assets' ? '2025-09-30' : '2025-01-01');
+    assert.equal(fact.identity.period.end, '2025-09-30');
+    assert.equal(fact.identity.currency, 'CNY');
+    assert.equal(fact.identity.unit, 'yuan');
+  }
   const revenueReview = mapped.needs_review[0]!;
   assert.equal(revenueReview.reason_code, 'PARSER_EVIDENCE_NEEDS_CONFIRMATION');
   assert.ok(revenueReview.evidence_refs.includes(byCell('D6')!.record_id), 'uncertain operating revenue must retain its exact cell anchor');
