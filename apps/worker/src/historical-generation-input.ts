@@ -13,6 +13,7 @@ import type { StageContext } from './run-pipeline.js';
 import type { ProductionRulePackPin } from '@bondbuddy/rule-pack-registry';
 import { loadHistoricalRuleGuidance, type HistoricalRuleGuidance, type HistoricalRuleResolver } from './historical-rule-context.js';
 import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistoricalFactMaterial, projectHistoricalFact } from './historical-fact-policy.js';
+import type { HistoricalCandidateRuleGuidance } from './historical-candidate-rule-context.js';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
 const detailsValidator = new Ajv({ strict: false }).compile(UpdateDetailsSchema);
@@ -27,7 +28,7 @@ export interface HistoricalGenerationInput {
   decisions: HistoricalUpdateDecisionSnapshot[];
   planReaders: HistoricalUpdateReaders;
   details: UpdateDetails; issuerName: string; preparationHash: string;
-  ruleGuidance: HistoricalRuleGuidance;
+  ruleGuidance: HistoricalRuleGuidance | HistoricalCandidateRuleGuidance;
 }
 interface PreparationPin {
   version: 'historical-generation-input-v1'; input_hash: string;
