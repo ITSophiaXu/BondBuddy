@@ -130,6 +130,23 @@ Product-specific releases must use `publishRulePackBundle`; it validates the pac
 
 `nafmiiCpDraftRulePack` is an independent `nafmii` + `cp` bundle. It reuses only the association-wide M-table chapter structure and common registration/disclosure sources. Its product identity comes from the fingerprinted 2021 CP guide, including the one-year tenor boundary. SCP's 270-day definition and disclosure omission mechanism are explicitly outside this pack. Like the MTN bundle, CP remains a non-advertised draft until its machine-readable blockers are resolved with industry review and authorized real samples.
 
+`cp-tenor-evidence.ts` is a separate internal evidence-shape check for the
+NA028 “within one year” statement. It preserves the instrument, stated month
+tenor, interest start and maturity assertions with their source references,
+material versions, locators, quotes and uncertainty flags. A clear synthetic
+11-month example can pass this narrow check; a clearly later-than-anniversary
+date can be flagged as exceeding one calendar year. The code does not convert
+one year to 365 days. Stated months must exactly match the month distance
+between dates on the same day of month; no end-of-month normalization is
+inferred. Date-adjustment status must itself have cited, certain evidence.
+Same-date, exact-anniversary, leap-day, adjusted-date, unsupported-year,
+missing/uncertain and conflicting-source cases return `needs_review`.
+
+This check is not legal interpretation, professional acceptance, rule-pack
+release or capability activation. The endpoint and calendar questions recorded
+in `knowledge/nafmii/APPLICABILITY.md` remain unresolved, and CP remains draft
+until its real authorized sample and reviewer gates are met.
+
 ## SCP engineering draft (#29)
 
 `nafmiiScpDraftRulePack` is scoped to standard public SCP only. It pins the official 2021 product guide, enforces the 270-day-inclusive boundary and the working-capital-only/no-long-term-investment use boundary, and overlays MC.4-1 through MC.4-4 on the shared M-table chapters. Omission of M-5/M-6/M-7 is evidence-dependent and is rejected for first public registration or when effective public issuer information is unavailable. Specialist products, 2026 transition interpretation and authorized real samples remain explicit release blockers.
