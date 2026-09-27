@@ -679,9 +679,9 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
   for (const period of evidenceTargetPeriods) {
     const key = `${period.provenance.material_id}\0${period.provenance.material_version}`;
     if (!financialKeys.has(key)) { allEvidenceBound = false; continue; }
+    const trustedReviewedTarget=reviewedTargets.some(candidate=>'provenance' in candidate&&canonical(candidate)===canonical(period));
     if(period.provenance.method==='ocr'){
-      const trusted=reviewedTargets.some(candidate=>'provenance' in candidate&&canonical(candidate)===canonical(period));
-      if(!trusted)allEvidenceBound=false;
+      if(!trustedReviewedTarget)allEvidenceBound=false;
       continue;
     }
     for (const ref of period.provenance.evidence_refs) {
@@ -691,9 +691,9 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
          JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id AND m.id=s.material_id
           AND m.version=s.material_version AND m.deleted_at IS NULL
          WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4
-          AND s.parser_version=$5 AND s.response_status IN ('parsed','needs_confirmation') AND e.record_id=$6 AND e.extractor_version=s.parser_version LIMIT 2`,
+          AND s.parser_version=$5 AND s.response_status = ANY($7::text[]) AND e.record_id=$6 AND e.extractor_version=s.parser_version LIMIT 2`,
         [input.ownerUserId, input.projectId, period.provenance.material_id, period.provenance.material_version,
-          period.provenance.extractor_version ?? '', ref]);
+          period.provenance.extractor_version ?? '', ref, trustedReviewedTarget?['parsed','needs_confirmation']:['parsed']]);
       if (result.rows.length !== 1) allEvidenceBound = false;
     }
   }

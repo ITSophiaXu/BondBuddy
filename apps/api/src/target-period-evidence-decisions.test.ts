@@ -192,14 +192,19 @@ test('PostgreSQL 16 migration 0058: evidence-state snapshots append, replay and 
         authorizationBasis:'Explicit synthetic PG16 integration authorization',ownerUserId:owner,projectId:project});
       const rawInput=await loadLockedUpdateDifficultyInputWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash,requestId:`period-raw-${suffix}`});
+      assert.equal(rawInput.targetReportingPeriods[0]?.status,'user_asserted','global needs_confirmation warnings do not independently recognize target intent');
       const forgedInput={...rawInput,targetReportingPeriods:[{...rawInput.targetReportingPeriods[0]!,status:'recognized' as const,
         raw_value:'Forged parse-shaped target period',
         provenance:{material_id:finance,material_version:1,method:'native_text' as const,extractor_version:parserVersion,evidence_refs:evidenceIds},uncertainty:[]}]};
       await assert.rejects(createUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},forgedInput),
-        /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/,'a direct caller cannot upgrade target intent using parse-shaped provenance without an active review decision');
+        /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/,'a manual recognized target cannot use a needs_confirmation parser snapshot to become ready without an exact reviewer decision');
       const preflight=await ensureCurrentUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
         {ownerUserId:owner,projectId:project,inputRevision:revision,inputHash});
       assert.equal(preflight.estimate.estimatedN,null,'same locked input first persists an unreviewed N=null preflight');
+      const manualUnreviewedSnapshot=await createUpdateDifficultySnapshotWithClient({query:(sql,values)=>client.query(sql,values as any)},
+        {...forgedInput,requestId:`manual-recognized-${suffix}`,inputRevision:undefined,inputHash:undefined});
+      assert.equal(manualUnreviewedSnapshot.estimate.estimatedN,null,
+        'a manually recognized native period cannot use a needs_confirmation snapshot as evidence without an exact reviewer decision');
       const legacyRow=(await client.query(`INSERT INTO bb_update_difficulty_snapshots
         (id,owner_user_id,project_id,request_id,request_hash,source_material_id,source_material_version,source_profile_version,
          target_revision,source_market,source_offering,target_market,target_offering,input_revision,input_hash,evidence_identity,
