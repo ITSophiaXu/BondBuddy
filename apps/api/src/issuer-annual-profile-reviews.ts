@@ -56,7 +56,7 @@ export function installIssuerAnnualProfileReviewRoutes(app: FastifyInstance, dep
             AND (SELECT count(*) FROM jsonb_each_text(p.evidence_record_hashes) h JOIN bb_parse_evidence e
               ON e.owner_user_id=p.owner_user_id AND e.project_id=p.project_id AND e.material_id=p.source_material_id
                 AND e.material_version=p.source_material_version AND e.snapshot_id=p.parse_snapshot_id
-                AND e.record_id=h.key AND btrim(e.record_sha256::text)=h.value)=jsonb_object_length(p.evidence_record_hashes)
+                AND e.record_id=h.key AND btrim(e.record_sha256::text)=h.value)=(SELECT count(*) FROM jsonb_object_keys(p.evidence_record_hashes))
           ORDER BY p.created_at DESC LIMIT 50`, [ownerUserId, projectId]);
         await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
           VALUES($1,$2,'project',$3,'issuer.annual_profile.reviewer_read',$4::jsonb)`,
