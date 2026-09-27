@@ -1,6 +1,7 @@
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
+import { ProjectExecution } from './project-execution';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
@@ -31,6 +32,7 @@ let newDirty = false;
 let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
 let artifactPage: ArtifactPage | undefined;
+let projectExecution: ProjectExecution | undefined;
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
 type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
@@ -61,6 +63,7 @@ const accountPage: AccountContext = {
 
 function clearPrivateState() {
   artifactPage?.dispose(); artifactPage = undefined;
+  projectExecution?.dispose(); projectExecution = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   factReview?.dispose(); factReview = undefined;
@@ -266,6 +269,7 @@ async function renderRoute() {
   draft?.dispose(); draft = undefined;
   projectBrowser?.dispose(); projectBrowser = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
+  projectExecution?.dispose(); projectExecution = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   factReview?.dispose(); factReview = undefined;
@@ -330,7 +334,11 @@ function renderProject(project: Dto<'ProjectResponse'>) {
     <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section>${supplementaryPanel(value)}</div></form>
     <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section><div id="fact-review-root"></div>`, 'projects');
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section><div id="execution-root"></div><div id="fact-review-root"></div>`, 'projects');
+  if (project.kind === 'update') {
+    projectExecution = new ProjectExecution(api, draft);
+    projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!);
+  }
   factReview = new FactReview(api, project.project_id);
   factReview.mount(document.querySelector<HTMLElement>('#fact-review-root')!);
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
@@ -352,6 +360,7 @@ function renderProject(project: Dto<'ProjectResponse'>) {
 
 function updateSaveState() {
   if (!draft) return;
+  syncProjectExecution(draft.project.project_id);
   const labels = { saved: '已保存', dirty: '尚未保存', saving: '正在保存…', conflict: '有版本冲突', error: '保存未确认' };
   const badge = document.querySelector<HTMLElement>('#save-state');
   if (!badge) return;
@@ -507,7 +516,14 @@ function renderMaterialPartitions(projectId: string) {
   return groups;
 }
 
+function syncProjectExecution(projectId: string) {
+  if (currentRoute !== `/projects/${projectId}`) return;
+  const unsettled = (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
+  projectExecution?.sync(confirmedMaterials(projectId), recoveryStates.get(projectId)?.state === 'ready' && !unsettled);
+}
+
 function updateMaterialWorkspace(projectId: string) {
+  syncProjectExecution(projectId);
   if (currentRoute === `/projects/${projectId}`) materialProcessing?.sync(confirmedMaterials(projectId));
   const list = document.querySelector<HTMLElement>('#material-partitions');
   if (list && currentRoute === `/projects/${projectId}`) {

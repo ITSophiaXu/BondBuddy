@@ -109,6 +109,21 @@ export class ApiClient {
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
   artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }
   run(id: string, signal?: AbortSignal) { return this.request<Dto<'RunResponse'>>('GET', `/runs/${encodeURIComponent(id)}`, undefined, {}, signal); }
+  inputRevision(id: string, revision: number, signal?: AbortSignal) {
+    return this.request<Dto<'InputRevisionResponse'>>('GET', `/projects/${encodeURIComponent(id)}/input-revisions/${revision}`, undefined, {}, signal);
+  }
+  createInputRevision(id: string, input: Dto<'InputRevisionCreateRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'InputRevisionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/input-revisions`, input, {}, signal);
+  }
+  preflight(id: string, input: Dto<'PreflightRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'PreflightResponse'>>('POST', `/projects/${encodeURIComponent(id)}/preflight`, input, {}, signal);
+  }
+  execute(input: Dto<'ExecuteRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'RunResponse'>>('POST', '/runs/execute', input, {}, signal);
+  }
+  runEvents(id: string, after: number, signal?: AbortSignal) {
+    return this.request<Dto<'RunEventsResponse'>>('GET', `/runs/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
+  }
   async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal): Promise<Blob> {
     const activeSignal = signal ?? this.controller.signal;
     const url = new URL(artifact.download_url, location.origin);
