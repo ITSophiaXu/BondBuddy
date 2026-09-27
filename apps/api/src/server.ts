@@ -324,27 +324,46 @@ export function createServer(settings: Settings = {}) {
             AND g.revoked_at IS NULL FOR SHARE OF p,g,u,m`,[projectId,reviewerUserId,materialId,materialVersion]);
         if(allowed.rows.length!==1)throw missing();
         const scopeOwner=String(allowed.rows[0].owner_user_id),materialSha=String(allowed.rows[0].material_sha256).trim();
-        const selected=await client.query(`SELECT id,content_sha256,parser_version,response_sha256,response_status,response_meta
+        const selected=await client.query(`SELECT id,content_sha256,parser_version,response_sha256,response_status,response_schema_version,record_count,response_meta
           FROM bb_parse_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
-            AND content_sha256=$5
-          ORDER BY created_at DESC,id DESC LIMIT 1`,[scopeOwner,projectId,materialId,materialVersion,materialSha]);
+          ORDER BY created_at DESC,id DESC LIMIT 1`,[scopeOwner,projectId,materialId,materialVersion]);
         const snapshot=selected.rows[0];
         if(!snapshot)throw missing();
+        if(String(snapshot.content_sha256).trim()!==materialSha)
+          throw new Problem(409,'INPUT_REVISION_CONFLICT','The latest parse snapshot does not match the active material hash');
         if(snapshot.response_status!=='parsed'&&snapshot.response_status!=='needs_confirmation')
           throw new Problem(409,'INPUT_REVISION_CONFLICT','The latest parse snapshot is not readable');
+        const responseMeta=snapshot.response_meta;
+        if(snapshot.response_schema_version!=='document-parse-response-v1'||!responseMeta||
+            responseMeta.schema_version!==snapshot.response_schema_version||responseMeta.status!==snapshot.response_status||
+            responseMeta.parser_version!==snapshot.parser_version||responseMeta.material?.material_id!==materialId||
+            Number(responseMeta.material?.material_version)!==materialVersion||responseMeta.material?.sha256!==materialSha||
+            typeof responseMeta.request_id!=='string'||!responseMeta.request_id.trim()||!Array.isArray(responseMeta.warnings)||
+            !responseMeta.document||typeof responseMeta.document!=='object'||Array.isArray(responseMeta.document)||
+            !/^[a-f0-9]{64}$/.test(String(snapshot.response_sha256).trim())||
+            typeof snapshot.parser_version!=='string'||!snapshot.parser_version.trim())
+          throw new Problem(409,'INPUT_REVISION_CONFLICT','The latest parse snapshot metadata is inconsistent');
         const snapshotId=String(snapshot.id);
         if(cursorSnapshot!==null&&cursorSnapshot!==snapshotId)
           throw new Problem(409,'INPUT_REVISION_CONFLICT','Evidence cursor refers to a stale parse snapshot');
+        const recordInventory=await client.query(`SELECT count(*)::int AS record_count,
+            count(*) FILTER (WHERE content_sha256=$6 AND extractor_version=$7 AND extraction_method='native_text')::int AS eligible_count
+          FROM bb_parse_evidence WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 AND snapshot_id=$5`,
+        [scopeOwner,projectId,materialId,materialVersion,snapshotId,materialSha,snapshot.parser_version]);
+        const inventory=recordInventory.rows[0];
+        if(Number(inventory.record_count)!==Number(snapshot.record_count)||Number(inventory.eligible_count)!==Number(snapshot.record_count))
+          throw new Problem(409,'INPUT_REVISION_CONFLICT','The latest parse snapshot evidence inventory is incomplete or inconsistent');
         const records=await client.query(`SELECT record_id,record_sha256,content_sha256,locator_type,locator,literal_quote,uncertainty,ordinal
           FROM bb_parse_evidence WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
-            AND snapshot_id=$5 AND ordinal>$6 AND ($7='' OR literal_quote ILIKE $7 ESCAPE '\\')
-          ORDER BY ordinal LIMIT $8`,[scopeOwner,projectId,materialId,materialVersion,snapshotId,pageAfter,
+            AND snapshot_id=$5 AND content_sha256=$6 AND extractor_version=$7 AND extraction_method='native_text'
+            AND ordinal>$8 AND ($9='' OR literal_quote ILIKE $9 ESCAPE '\\')
+          ORDER BY ordinal LIMIT $10`,[scopeOwner,projectId,materialId,materialVersion,snapshotId,materialSha,snapshot.parser_version,pageAfter,
           q?`%${q.replace(/[\\%_]/g,'\\$&')}%`:'',REVIEWER_PARSE_EVIDENCE_PAGE_SIZE+1]);
         const hasMore=records.rows.length>REVIEWER_PARSE_EVIDENCE_PAGE_SIZE;
         const page=records.rows.slice(0,REVIEWER_PARSE_EVIDENCE_PAGE_SIZE);
         const next=hasMore?Buffer.from(JSON.stringify({v:1,project_id:projectId,material_id:materialId,snapshot_id:snapshotId,material_version:materialVersion,
           after:Number(page.at(-1)!.ordinal),query_hash:queryHash} satisfies EvidenceCursor)).toString('base64url'):null;
-        const warnings=Array.isArray(snapshot.response_meta?.warnings)?snapshot.response_meta.warnings:[];
+        const warnings=responseMeta.warnings;
         const warningCodes=warnings.map((warning:any)=>typeof warning?.code==='string'?warning.code:'UNKNOWN_WARNING');
         await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
           VALUES($1,$2,'project',$3,'rule_applicability.reviewer_parse_evidence_read',$4::jsonb)`,

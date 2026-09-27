@@ -49,10 +49,11 @@ test('reviewer parse-evidence lookup pages immutable anchors, fails closed, and 
       await changeRuleApplicabilityReviewerGrant(pool,{...grantArgs,scopeOwnerUserId:foreignOwnerId,scopeProjectId:foreignProjectId});
       const meta={schema_version:'document-parse-response-v1',request_id:`parse-${suffix}`,status:'parsed',parser_version:parserVersion,
         material:{material_id:materialId,material_version:1,media_type:'application/pdf',sha256:materialSha},warnings:[],document:{page_count:1},error:null};
-      const insertSnapshot=async(id:string,version:string,responseHash:string,createdAt?:string)=>pool.query(`INSERT INTO bb_parse_snapshots
+      const insertSnapshot=async(id:string,version:string,responseHash:string,createdAt?:string,snapshotContentSha=materialSha,recordCount=52)=>pool.query(`INSERT INTO bb_parse_snapshots
         (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta,created_at)
-        VALUES($1,$2,$3,$4,1,$5,$6,$7,'parsed','document-parse-response-v1',$8,52,$9::jsonb,COALESCE($10::timestamptz,now()))`,
-      [id,ownerId,projectId,materialId,materialSha,version,sha(`request-${version}`),responseHash,JSON.stringify({...meta,parser_version:version}),createdAt??null]);
+        VALUES($1,$2,$3,$4,1,$5,$6,$7,'parsed','document-parse-response-v1',$8,$9,$10::jsonb,COALESCE($11::timestamptz,now()))`,
+      [id,ownerId,projectId,materialId,snapshotContentSha,version,sha(`request-${version}`),responseHash,recordCount,
+        JSON.stringify({...meta,parser_version:version,material:{...meta.material,sha256:snapshotContentSha}}),createdAt??null]);
       await insertSnapshot(snapshotId,parserVersion,responseSha);
       for(let ordinal=0;ordinal<52;ordinal++){
         const recordId=`${snapshotId}-record-${ordinal}`;
@@ -89,11 +90,31 @@ test('reviewer parse-evidence lookup pages immutable anchors, fails closed, and 
       assert.ok(transplanted.statusCode===409,`cursor scope includes project and material identity: ${transplanted.body}`);
       assert.doesNotMatch(transplanted.body,/Synthetic literal quote/);
 
+      const timeline=Date.now()+2000;
       const staleSnapshot=`${snapshotId}-new`;
-      await insertSnapshot(staleSnapshot,`${parserVersion}-new`,sha('new-response'),new Date(Date.now()+2000).toISOString());
+      await insertSnapshot(staleSnapshot,`${parserVersion}-new`,sha('new-response'),new Date(timeline).toISOString());
       const stale=await send(`${url}?q=literal%20quote&cursor=${encodeURIComponent(firstBody.next_cursor)}`);
       assert.equal(stale.statusCode,409,stale.body);
       assert.doesNotMatch(stale.body,/Synthetic literal quote/);
+
+      const mismatchedSnapshot=`${snapshotId}-mismatched`;
+      await insertSnapshot(mismatchedSnapshot,`${parserVersion}-mismatched`,sha('mismatched-response'),new Date(timeline+1000).toISOString(),sha('other-material'));
+      const mismatched=await send();
+      assert.ok(mismatched.statusCode===409,
+        `a newer snapshot for another material hash must not fall back to the older matching snapshot: ${mismatched.body}`);
+      assert.doesNotMatch(mismatched.body,/Synthetic literal quote/);
+
+      const badRecordSnapshot=`${snapshotId}-bad-record`,badRecordParser=`${parserVersion}-bad-record`,badRecordSha=sha('bad-record-response');
+      await insertSnapshot(badRecordSnapshot,badRecordParser,badRecordSha,new Date(timeline+2000).toISOString(),materialSha,1);
+      await pool.query(`INSERT INTO bb_parse_evidence(owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,
+        locator_type,locator,literal_quote,context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+        VALUES($1,$2,$3,1,$4,$5,$6,'pdf_bbox','{"page":1}'::jsonb,'Invalid synthetic evidence','synthetic context',
+          'native_text','wrong-parser',0.98,'[]'::jsonb,'{}'::jsonb,$7,0)`,
+      [ownerId,projectId,materialId,badRecordSnapshot,`${badRecordSnapshot}-record`,sha('wrong-material'),sha('bad-record')]);
+      const badRecord=await send();
+      assert.ok(badRecord.statusCode===409,
+        `a newer snapshot with non-submittable evidence anchors must fail closed instead of returning older references: ${badRecord.body}`);
+      assert.doesNotMatch(badRecord.body,/Invalid synthetic evidence|Synthetic literal quote/);
 
       const failedId=`${snapshotId}-failed`,failedParser=`${parserVersion}-failed`,failedSha=sha('failed-response');
       const failedMeta={schema_version:'document-parse-response-v1',request_id:`parse-failed-${suffix}`,status:'failed',
@@ -103,7 +124,7 @@ test('reviewer parse-evidence lookup pages immutable anchors, fails closed, and 
         (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,response_status,response_schema_version,response_sha256,record_count,response_meta,created_at)
         VALUES($1,$2,$3,$4,1,$5,$6,$7,'failed','document-parse-response-v1',$8,0,$9::jsonb,$10::timestamptz)`,
       [failedId,ownerId,projectId,materialId,materialSha,failedParser,sha('failed-request'),failedSha,JSON.stringify(failedMeta),
-        new Date(Date.now()+4000).toISOString()]);
+        new Date(timeline+3000).toISOString()]);
       const latestFailed=await send();
       assert.ok(latestFailed.statusCode===409,
         `a newer failed parse snapshot must not silently fall back to the previous parsed snapshot: ${latestFailed.body}`);
