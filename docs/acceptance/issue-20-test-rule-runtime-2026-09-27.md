@@ -22,10 +22,10 @@
 
 ## 部署与验收交接
 
-1. #326/0056 已随 develop `30fdbe5` 合入，本分支已与该正式基线合并；覆盖项公共契约补丁见 #337，本分支纳入组合验证，须先于 #329 合入。#330 membership 已合并；#19 的 test-only taxonomy、独立测试审核 ref/pin 与实际 runtime 注入仍需完成。不能用空 uncoveredItems、任意 manifest SHA 或假生产 release 代替。[测试字典决定](../../knowledge/exchange-bonds/drafts/sse-private/TEST-TAXONOMY-DECISION-20260927.md)明确适用范围和审核/输入/执行授权的先后顺序。
+1. #326/0056 已随 develop `30fdbe5` 合入，覆盖项公共契约补丁 #337 也已合并（`f8d6a9e`）；本分支包含最终 develop 基线，PR 差异不再带入二者的修改。#330 membership 已合并；#19 的 test-only taxonomy、独立测试审核 ref/pin 与实际 runtime 注入仍需完成。不能用空 uncoveredItems、任意 manifest SHA 或假生产 release 代替。[测试字典决定](../../knowledge/exchange-bonds/drafts/sse-private/TEST-TAXONOMY-DECISION-20260927.md)明确适用范围和审核/输入/执行授权的先后顺序。
 2. 预发按准确合并 SHA 构建镜像；执行资产探针，应用新增迁移，核对健康检查、备份和回滚点。未取得目标机证据前不得称已部署。
 3. 仅在预发开启既有测试通道。运维给指定测试账号/项目/不可变输入创建有期限 grant；原版年度/当期材料依 #19 最小清单逐份校验。
 4. 跑真实历史稿任务，保留阶段、输入/规则/模板 pin、prompt、真实模型用量、失败原因和 Word hash。每个模型意图和恢复继续验证身份/授权。检查 `test_completed`、`test_only`、不结算及 Word 首页/页眉/待核清单。
 5. 从真实浏览器覆盖上传后保存材料版本、目标确认、提交、同页进度、关闭重开和下载。#18 页面与 #76 校正版本单独验收。
 
-本切片不解除存疑财务候选/历史稿结构支持的真实限制；局部缺口继续标待人工确认。有历史稿不等待#77。#334已合入31条[固定业务决定](../../knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)；真实生成稿的规则/章节结果移至#332，Word/WPS兼容性归#146，均不阻断#20关闭。#330样本DB loader、#326通道/迁移已合并；#337覆盖项后续补丁及#19实际runtime接入尚待最终联调，#329保持draft。不能把前端恢复显示或组合组件测试称为通道已开放。
+本切片不解除存疑财务候选/历史稿结构支持的真实限制；局部缺口继续标待人工确认。有历史稿不等待#77。#334已合入31条[固定业务决定](../../knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)；真实生成稿的规则/章节结果移至#332，Word/WPS兼容性归#146，均不阻断#20关闭。#330样本DB loader、#326通道/迁移和#337覆盖项契约已合并；#19实际runtime接入尚待最终联调，#329保持draft。不能把前端恢复显示或组合组件测试称为通道已开放。
