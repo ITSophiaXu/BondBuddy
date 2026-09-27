@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
-import { inputManifestHash, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { isVerifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
@@ -13,7 +13,7 @@ import type { RunRow, TestRuleCapability, TestRuleCapabilityLoader } from './run
 type LockedInput = Parameters<TestRuleCapabilityLoader>[1];
 type CapabilityDependencies = {
   readonly candidateRoot?: string;
-  readonly reviewedContextLoader?: ReviewedContextLoader;
+  readonly reviewedContextLoader?: typeof loadReviewedRuleApplicabilityContext;
 };
 
 const notReady = (reason: string): TestRuleCapability => ({ status: 'not_ready', reason });
@@ -83,7 +83,7 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
         materialVersion: Number((item as Record<string, unknown>).material_version),
         sha256: String((item as Record<string, unknown>).sha256).trim().toLowerCase() })),
     });
-    if ('status' in reviewed) return notReady(`test_reviewed_applicability_${reviewed.reasons[0] ?? 'not_approved'}`);
+    if (reviewed.status !== 'approved') return notReady(`test_reviewed_applicability_${reviewed.reasons[0] ?? 'not_approved'}`);
 
     const request = reviewed.request;
     const target = manifest.target_confirmation;

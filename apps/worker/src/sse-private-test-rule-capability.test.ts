@@ -11,7 +11,7 @@ import { workerRuntimeOptionsFromEnv } from './runtime.js';
 
 type Fixture = ReturnType<typeof fixture>;
 
-function fixture(withReviewPin = true, investorScope = 'professional') {
+function fixture(withReviewPin = true, investorScope = 'professional', reviewState: { reasons: string[] | null } = { reasons: null }) {
   const owner = `synthetic-owner-${randomUUID()}`, project = `synthetic-project-${randomUUID()}`;
   const files = AUTHORIZED_SAMPLE_CASE_FILES.filter(file => file.caseId === 'rq-202509');
   const selected = [files.find(file => file.uploadRole === 'historical')!, files.find(file => file.uploadRole === 'interimFinancial')!];
@@ -78,9 +78,20 @@ function fixture(withReviewPin = true, investorScope = 'professional') {
     assert.equal(args.expectedSourceInputRevision, 1);
     assert.equal(args.mode, 'non_production_test');
     assert.deepEqual(args.currentMaterialVersions.map(item => item.materialId).sort(), materials.map(item => item.material_id).sort());
-    return { request: { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond',
+    if (reviewState.reasons !== null) return { status: 'needs_review', reasons: reviewState.reasons };
+    return { status: 'approved', reasons: [], request: { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond',
       documentStage: 'issuance', issuerScope: 'domestic-company', investorScope, industry: 'industry-synthetic',
-      specialFeatures: [], asOf: '2026-09-27' }, contextPin: {} };
+      specialFeatures: [], asOf: '2026-09-27' }, contextPin: {
+        id: args.contextId, version: args.version, status: 'needs_review', ownerUserId: owner, projectId: project,
+        source: { inputRevision: args.expectedSourceInputRevision, inputHash: args.expectedSourceInputHash,
+          draftRevision: args.currentDraftRevision },
+        sourceMaterials: args.currentMaterialVersions,
+        selectedMaterial: { ...args.currentMaterialVersions[0]!, parseSnapshotId: 'synthetic-snapshot' },
+        issuerIdentityBinding: { recordId: args.expectedIssuerBinding.record_id, version: args.expectedIssuerBinding.version,
+          contentHash: args.expectedIssuerBinding.content_hash, entityId: args.expectedIssuerBinding.entity_id,
+          materialId: args.expectedIssuerBinding.material_id, materialVersion: args.expectedIssuerBinding.material_version },
+        asOf: '2026-09-27', documentPurpose: 'issuance', fieldCandidates: [],
+      } };
   } });
   return { owner, project, materials, manifest, input, inputHash, grant, pool, run, loader, reviewCalls: () => reviewCalls, queries };
 }
@@ -135,6 +146,18 @@ test('candidate capability does not treat a reviewed non-professional investor s
   assert.deepEqual(await f.loader(f.run, f.input),
     { status: 'not_ready', reason: 'test_reviewed_applicability_scope_mismatch' });
   assert.equal(f.reviewCalls(), 1);
+}));
+
+test('candidate capability preserves review failures and rechecks review withdrawal on later invocations', async () => preprod(async () => {
+  const reviewState: { reasons: string[] | null } = { reasons: null };
+  const f = fixture(true, 'professional', reviewState);
+  assert.equal((await f.loader(f.run, f.input)).status, 'ready');
+  for (const reasons of [['rule_applicability_overall_review_withdrawn'], []]) {
+    reviewState.reasons = reasons;
+    assert.deepEqual(await f.loader(f.run, f.input), { status: 'not_ready',
+      reason: `test_reviewed_applicability_${reasons[0] ?? 'not_approved'}` });
+  }
+  assert.equal(f.reviewCalls(), 3, 'an earlier approval must not be cached across stage/recovery checks');
 }));
 
 test('WorkerRuntime installs the candidate selector only for the explicit preproduction channel', () => {
