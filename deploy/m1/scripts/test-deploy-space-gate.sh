@@ -11,7 +11,7 @@ printf 'old-release\n' > "$test_dir/state/current"
 printf 'old-release\n' > "$test_dir/state/previous"
 cat > "$test_dir/deploy/m1/scripts/backup.sh" <<'SH'
 #!/usr/bin/env bash
-echo backup >> "$TEST_CALLS"
+echo "backup image=$BB_IMAGE_TAG source=$BB_BACKUP_SOURCE_TAG" >> "$TEST_CALLS"
 SH
 cat > "$test_dir/deploy/m1/scripts/smoke.sh" <<'SH'
 #!/usr/bin/env bash
@@ -55,6 +55,10 @@ case " $* " in
   *' image ls '*)
     printf '%s\n' "$*" >> "$TEST_CALLS"
     printf 'bondbuddy-m1-api:aaaaaaaaaaaa\n'
+    ;;
+  *' compose '*' ps --status running --services '*)
+    printf '%s\n' "$*" >> "$TEST_CALLS"
+    printf 'postgres\n'
     ;;
   *' compose '*|*' build '*|*' image rm '*)
     printf '%s\n' "$*" >> "$TEST_CALLS"
@@ -111,6 +115,7 @@ run_case 'local build passes at 4 GiB' pass
 rg -q 'build' "$TEST_CALLS"
 export TEST_IMAGES=all TEST_FREE_BYTES=2684354560
 run_case 'four preloaded images pass at 2.5 GiB' pass
+rg -q '^backup image=aaaaaaaaaaaa source=old-release$' "$TEST_CALLS"
 if rg -q 'build' "$TEST_CALLS"; then echo 'unexpected build with preloaded images' >&2; exit 1; fi
 export TEST_FREE_BYTES=2684354559
 run_case 'preloaded deploy rejects below 2.5 GiB' reject

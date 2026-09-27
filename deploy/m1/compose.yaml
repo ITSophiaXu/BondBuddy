@@ -66,6 +66,10 @@ services:
       <<: *bb-policy-env
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
+      BB_BLOB_BACKUP_CONTAINERS: ${BB_BLOB_BACKUP_CONTAINERS:-}
+      BB_BACKUP_CONTAINER: ${BB_BACKUP_CONTAINER:-bb-backups}
+      BB_LOG_ARCHIVE_CONTAINER: ${BB_LOG_ARCHIVE_CONTAINER:-bondbuddy-private}
+      BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
       BB_ALLOWED_ORIGIN: ${BB_PUBLIC_ORIGIN:?set in .env}
       # #17: run submission commits durable jobs for the deployed WorkerRuntime to claim.
       BB_RUN_RUNTIME_ENABLED: '1'
@@ -94,6 +98,7 @@ services:
       <<: *bb-policy-env
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
+      BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
       # #17: stage materials on disk; the /tmp tmpfs is charged to the worker memory limit and a
       # 100 MiB DOCX staged there OOM-killed the parser on the 320M production profile.
       BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
@@ -147,6 +152,8 @@ services:
       BB_LOG_ARCHIVE_ENABLED: ${BB_LOG_ARCHIVE_ENABLED:-0}
       BB_LOG_ARCHIVE_LOCAL_MAX_BYTES: ${BB_LOG_ARCHIVE_LOCAL_MAX_BYTES:-268435456}
       BB_LOG_ARCHIVE_CONTAINER: ${BB_LOG_ARCHIVE_CONTAINER:-bondbuddy-private}
+      BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
+      BB_BACKUP_CONTAINER: ${BB_BACKUP_CONTAINER:-bb-backups}
       BB_OPS_PARSE_BACKFILL: ${BB_OPS_PARSE_BACKFILL:-off}
       # #78 scheduled library sync (off by default; raise this service's memory limit before enabling).
       BB_OPS_LIBRARY_SYNC: ${BB_OPS_LIBRARY_SYNC:-off}

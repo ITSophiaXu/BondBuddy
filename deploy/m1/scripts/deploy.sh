@@ -63,7 +63,8 @@ fi
 previous="$(current_tag)"
 export BB_IMAGE_TAG="$tag"
 if [ -n "$previous" ] && compose ps --status running --services 2>/dev/null | grep -qx postgres; then
-  BB_IMAGE_TAG="$previous" "$(dirname "$0")/backup.sh" "pre-deploy-$tag"
+  # Use the new image's backup tooling against the still-running database before switching services.
+  BB_BACKUP_SOURCE_TAG="$previous" "$(dirname "$0")/backup.sh" "pre-deploy-$tag"
 fi
 compose up -d postgres $( [ "$(env_value COMPOSE_PROFILES)" = staging-blob ] && echo azurite )
 compose run --rm migrate
