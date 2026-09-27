@@ -74,6 +74,7 @@ DECLARE revenue_sum numeric;
 DECLARE revenue_lines integer;
 DECLARE third_amount numeric;
 DECLARE third_tie_count integer;
+DECLARE at_or_above_third_count integer;
 DECLARE tied_codes text[];
 DECLARE proof_codes text[];
 BEGIN
@@ -130,12 +131,13 @@ BEGIN
   SELECT (line->>'revenue')::numeric INTO third_amount FROM jsonb_array_elements(NEW.profile->'lines') AS line
     ORDER BY (line->>'revenue')::numeric DESC,line->>'code' LIMIT 1 OFFSET 2;
   SELECT count(*) INTO third_tie_count FROM jsonb_array_elements(NEW.profile->'lines') AS line WHERE (line->>'revenue')::numeric=third_amount;
+  SELECT count(*) INTO at_or_above_third_count FROM jsonb_array_elements(NEW.profile->'lines') AS line WHERE (line->>'revenue')::numeric>=third_amount;
   SELECT array_agg(line->>'code' ORDER BY line->>'code') INTO tied_codes FROM jsonb_array_elements(NEW.profile->'lines') AS line
     WHERE (line->>'revenue')::numeric=third_amount;
   SELECT array_agg(code ORDER BY code) INTO proof_codes FROM jsonb_array_elements_text(NEW.third_place_tie_proof->'tiedBusinessCodes') AS codes(code);
   IF third_amount IS NULL OR (NEW.third_place_tie_proof->>'thresholdRevenue')::numeric<>third_amount
-     OR (NEW.third_place_tie_proof->>'status'='clear' AND third_tie_count<>1)
-     OR (NEW.third_place_tie_proof->>'status'='unresolved' AND third_tie_count<2)
+     OR (NEW.third_place_tie_proof->>'status'='clear' AND at_or_above_third_count>3)
+     OR (NEW.third_place_tie_proof->>'status'='unresolved' AND (third_tie_count<2 OR at_or_above_third_count<=3))
      OR tied_codes IS DISTINCT FROM proof_codes THEN
     RAISE EXCEPTION 'third-place tie proof does not match the complete revenue rows' USING ERRCODE='23514';
   END IF;

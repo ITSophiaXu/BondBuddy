@@ -194,10 +194,11 @@ function validateAnnualRevenueProof(profile: AnnualBusinessProfile, proof: Annua
   }
   const threshold = byAmount[2]!;
   const tiedCodes = byAmount.filter(line => factor(line.amount) === factor(threshold.amount)).map(line => String(line.code)).sort();
+  const topThreeBoundaryIsAmbiguous = byAmount.filter(line => factor(line.amount) >= factor(threshold.amount)).length > 3;
   if (proof.thirdPlaceTieProof.thresholdRevenue !== threshold.revenue ||
       canonical([...proof.thirdPlaceTieProof.tiedBusinessCodes].sort()) !== canonical(tiedCodes) ||
-      (proof.thirdPlaceTieProof.status === 'clear' && tiedCodes.length !== 1) ||
-      (proof.thirdPlaceTieProof.status === 'unresolved' && tiedCodes.length < 2)) {
+      (proof.thirdPlaceTieProof.status === 'clear' && topThreeBoundaryIsAmbiguous) ||
+      (proof.thirdPlaceTieProof.status === 'unresolved' && !topThreeBoundaryIsAmbiguous)) {
     throw fail('ISSUER_PROFILE_THIRD_PLACE_TIE_PROOF_MISMATCH');
   }
   for (const ref of [...proof.totalEvidence, ...proof.thirdPlaceTieProof.evidence]) {

@@ -165,18 +165,35 @@ test('does not accept fabricated review fields, foreign sources or unbound evide
   assert.equal(client.outbox.length, 0);
 });
 
-test('complete revenue universe requires a reconciled denominator and records a third-place tie as unresolved', async () => {
+test('complete revenue universe marks only a top-three boundary-crossing tie unresolved', async () => {
   const client = new MockClient();
   const deps = dependencies(client);
   await assert.rejects(appendIssuerBusinessProfile(deps, appendInput({ requestId: 'wrong-total', annualRevenueProof: {
     ...annualRevenueProof, total: '599' } })), /ISSUER_PROFILE_ANNUAL_REVENUE_TOTAL_OR_RANK_MISMATCH/);
-  const tiedProfile = profile({ lines: ['A','B','C'].map((code,index)=>({ code,label:`Synthetic ${code}`,originalLabel:`原始业务${code}`,
-    revenue:'100',rank:index+1,evidence:[evidenceRefs[index+1]!],classificationEvidence:[evidenceRefs[0]!] })) });
-  const tiedProof = { ...annualRevenueProof, total:'300',totalEvidence:[evidenceRefs[0]!],thirdPlaceTieProof:{status:'unresolved' as const,
-    thresholdRevenue:'100',tiedBusinessCodes:['A','B','C'],evidence:[evidenceRefs[3]!]}};
-  const stored = await appendIssuerBusinessProfile(deps,appendInput({requestId:'unresolved-tie',profile:tiedProfile,annualRevenueProof:tiedProof}));
-  assert.equal(stored.reviewStatus,'pending_review');
-  assert.equal(stored.annualRevenueProof.thirdPlaceTieProof.status,'unresolved');
+  const cases = [
+    { name: 'internal second/third tie', amounts: ['100','50','50','10'], status: 'clear' as const, tied: ['B','C'] },
+    { name: 'all three rows tied', amounts: ['50','50','50'], status: 'clear' as const, tied: ['A','B','C'] },
+    { name: 'third/fourth boundary tie', amounts: ['100','80','50','50'], status: 'unresolved' as const, tied: ['C','D'] },
+  ];
+  for (const [index, item] of cases.entries()) {
+    const lines = item.amounts.map((revenue, lineIndex) => ({ code: String.fromCharCode(65 + lineIndex),
+      label: `Synthetic ${String.fromCharCode(65 + lineIndex)}`, originalLabel: `原始业务${String.fromCharCode(65 + lineIndex)}`,
+      revenue, rank: lineIndex + 1, evidence: [evidenceRefs[(lineIndex % 3) + 1]!], classificationEvidence: [evidenceRefs[0]!] }));
+    const threshold = [...item.amounts].sort((a,b) => Number(b) - Number(a))[2]!;
+    const inputProfile = profile({ lines });
+    const proof = { ...annualRevenueProof, total: item.amounts.reduce((sum, value) => sum + Number(value), 0).toString(),
+      totalEvidence: [evidenceRefs[0]!], thirdPlaceTieProof: { status: item.status, thresholdRevenue: threshold,
+        tiedBusinessCodes: item.tied, evidence: [evidenceRefs[3]!] } };
+    const stored = await appendIssuerBusinessProfile(deps, appendInput({ requestId: `tie-${index}`, profile: inputProfile, annualRevenueProof: proof }));
+    assert.equal(stored.reviewStatus, 'pending_review', item.name);
+    assert.equal(stored.annualRevenueProof.thirdPlaceTieProof.status, item.status, item.name);
+  }
+  const invalidBoundary = profile({ lines: ['100','80','50','50'].map((revenue,index) => ({ code: String.fromCharCode(65+index),
+    label: `Synthetic ${String.fromCharCode(65+index)}`, originalLabel: `原始业务${String.fromCharCode(65+index)}`, revenue,
+    rank: index+1, evidence: [evidenceRefs[(index%3)+1]!], classificationEvidence: [evidenceRefs[0]!] })) });
+  await assert.rejects(appendIssuerBusinessProfile(deps, appendInput({ requestId: 'false-clear-boundary-tie', profile: invalidBoundary,
+    annualRevenueProof: { ...annualRevenueProof, total:'280', thirdPlaceTieProof: { status:'clear',thresholdRevenue:'50',
+      tiedBusinessCodes:['C','D'],evidence:[evidenceRefs[3]!] } } })), /ISSUER_PROFILE_THIRD_PLACE_TIE_PROOF_MISMATCH/);
   assert.equal(await loadReviewedIssuerAnnualProfile(deps.pool,{...scope,runId:'no-review'}),null);
 });
 
@@ -274,16 +291,16 @@ test('PostgreSQL 16: input/run/material/evidence binding, append-only guard and 
     let profileIdSequence = 0;
     const liveDeps: IssuerBusinessProfileDependencies = { pool: { connect: async () => proxy, query: (sql, values) => connection.query(sql, values) },
       newId: () => `issuer-profile-${suffix}-${++profileIdSequence}` };
-    const liveProfile = profile({ issuerId:entityId, sourceEvidence: [evidenceId], lines: ['A','B','C'].map((code,index)=>({
-      code,label:`Synthetic ${code}`,originalLabel:`原始业务${code}`,revenue:String(300-index*100),rank:index+1,
-      evidence:[liveEvidenceIds[index+2]!],classificationEvidence:[evidenceId] })) });
+    const liveProfile = profile({ issuerId:entityId, sourceEvidence: [evidenceId], lines: ['A','B','C','D'].map((code,index)=>({
+      code,label:`Synthetic ${code}`,originalLabel:`原始业务${code}`,revenue:['100','50','50','10'][index]!,rank:index+1,
+      evidence:[index < 3 ? liveEvidenceIds[index+2]! : evidenceId],classificationEvidence:[evidenceId] })) });
     const saved = await appendIssuerBusinessProfile(liveDeps, { ownerUserId: liveOwner, projectId: liveProject, runId: liveRun,
       inputRevision: 1, inputHash: liveInputHash, requestId: `profile-${suffix}`, sourceMaterialId: liveMaterial, sourceMaterialVersion: 1,
-      profile: liveProfile, annualRevenueProof:{...annualRevenueProof,total:'600',totalEvidence:[evidenceId],thirdPlaceTieProof:{status:'clear',thresholdRevenue:'100',tiedBusinessCodes:['C'],evidence:[`${evidenceId}-c`]}} });
+      profile: liveProfile, annualRevenueProof:{...annualRevenueProof,total:'210',totalEvidence:[evidenceId],thirdPlaceTieProof:{status:'clear',thresholdRevenue:'50',tiedBusinessCodes:['B','C'],evidence:[`${evidenceId}-c`]}} });
     assert.equal(saved.reviewStatus, 'pending_review');
     await assert.rejects(appendIssuerBusinessProfile(liveDeps, { ownerUserId: liveOwner, projectId: liveProject, runId: liveRun,
       inputRevision: 1, inputHash: 'f'.repeat(64), requestId: `profile-wrong-hash-${suffix}`, sourceMaterialId: liveMaterial,
-      sourceMaterialVersion: 1, profile: liveProfile,annualRevenueProof:{...annualRevenueProof,total:'600',totalEvidence:[evidenceId],thirdPlaceTieProof:{status:'clear',thresholdRevenue:'100',tiedBusinessCodes:['C'],evidence:[`${evidenceId}-c`]}} }), /ISSUER_PROFILE_RUN_OR_SOURCE_NOT_FOUND/);
+      sourceMaterialVersion: 1, profile: liveProfile,annualRevenueProof:{...annualRevenueProof,total:'210',totalEvidence:[evidenceId],thirdPlaceTieProof:{status:'clear',thresholdRevenue:'50',tiedBusinessCodes:['B','C'],evidence:[`${evidenceId}-c`]}} }), /ISSUER_PROFILE_RUN_OR_SOURCE_NOT_FOUND/);
     assert.equal(await loadReviewedIssuerAnnualProfile(liveDeps.pool, { ownerUserId: liveOwner, projectId: liveProject,
       runId: liveRun, inputRevision: 1, inputHash: liveInputHash }), null);
     const profileGrantId = `annual-review-grant-${suffix}`;
@@ -333,11 +350,14 @@ test('PostgreSQL 16: input/run/material/evidence binding, append-only guard and 
     const secondRun = `issuer-run-second-${suffix}`;
     await connection.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
       VALUES($1,$2,$3,1,$4,$5,'update',$4,'preparing')`, [secondRun,liveOwner,liveProject,liveInputHash,`execute-second-${suffix}`]);
+    const allTieProfile = profile({ issuerId:entityId, sourceEvidence:[evidenceId], lines:['A','B','C'].map((code,index)=>({
+      code,label:`Synthetic ${code}`,originalLabel:`原始业务${code}`,revenue:'50',rank:index+1,
+      evidence:[liveEvidenceIds[index+2]!],classificationEvidence:[evidenceId] })) });
     const savedSecond = await appendIssuerBusinessProfile(liveDeps, { ownerUserId: liveOwner, projectId: liveProject, runId: secondRun,
       inputRevision: 1, inputHash: liveInputHash, requestId: `profile-second-${suffix}`, sourceMaterialId: liveMaterial,
-      sourceMaterialVersion: 1, profile: liveProfile, annualRevenueProof:{basis:{fiscalYear:2025,accountingScope:'consolidated',
-        revenueBasis:'main_business_revenue',currency:'CNY',unit:'yuan'},total:'600',totalEvidence:[evidenceId],
-        thirdPlaceTieProof:{status:'clear',thresholdRevenue:'100',tiedBusinessCodes:['C'],evidence:[`${evidenceId}-c`]}} });
+      sourceMaterialVersion: 1, profile: allTieProfile, annualRevenueProof:{basis:{fiscalYear:2025,accountingScope:'consolidated',
+        revenueBasis:'main_business_revenue',currency:'CNY',unit:'yuan'},total:'150',totalEvidence:[evidenceId],
+        thirdPlaceTieProof:{status:'clear',thresholdRevenue:'50',tiedBusinessCodes:['A','B','C'],evidence:[`${evidenceId}-c`]}} });
     const secondReviewPins = [liveOwner,liveProject,secondRun,savedSecond.id,savedSecond.profileVersion,savedSecond.profileSha256,1,liveInputHash,
       liveMaterial,1,sourceHash,parserId,'e'.repeat(64),identityRecordId,1,identityHash,entityId];
     await connection.query(`INSERT INTO bb_issuer_annual_profile_reviews(id,request_id,request_hash,owner_user_id,project_id,run_id,profile_id,

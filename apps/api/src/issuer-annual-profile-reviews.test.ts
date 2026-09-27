@@ -60,9 +60,9 @@ test('PostgreSQL 16: reviewer GET lists exact parser evidence hashes and pinned 
     const profile = { issuerId: entityId, profileVersion: '1', taxonomyVersion: 'taxonomy-synthetic-v1', fiscalYear: 2025,
       completeAnnualPeriod: true, latestCompleteAnnual: true, verificationStatus: 'pending', accountingScope: 'consolidated',
       revenueBasis: 'main_business_revenue', currency: 'CNY', unit: 'yuan', allComparableBusinessLinesPresent: true,
-      sourceEvidence: [sourceEvidence], lines: ['A', 'B', 'C'].map((code, index) => ({ code, label: `Synthetic ${code}`,
-        originalLabel: `原始业务${code}`, revenue: String(300 - index * 100), rank: index + 1,
-        evidence: [revenueEvidence[index + 1]!], classificationEvidence: [sourceEvidence] })) };
+      sourceEvidence: [sourceEvidence], lines: ['A', 'B', 'C', 'D'].map((code, index) => ({ code, label: `Synthetic ${code}`,
+        originalLabel: `原始业务${code}`, revenue: ['100', '50', '50', '10'][index]!, rank: index + 1,
+        evidence: [revenueEvidence[Math.min(index + 1, 3)]!], classificationEvidence: [sourceEvidence] })) };
     const evidenceRefs = [...new Set([sourceEvidence, ...revenueEvidence.slice(1), revenueEvidence[3]!])].sort();
     const manifest = { issuer_identity: identityBinding, materials: [{ material_id: material, material_version: 1, sha256: materialSha }] };
     const app = createServer({ pool, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: reviewer, csrfVerified: true }) });
@@ -110,11 +110,33 @@ test('PostgreSQL 16: reviewer GET lists exact parser evidence hashes and pinned 
       await pool.query(`INSERT INTO bb_issuer_business_profiles(id,owner_user_id,project_id,run_id,input_revision,input_hash,source_material_id,
         source_material_version,profile_version,request_id,request_hash,profile,profile_sha256,evidence_refs,review_status,source_material_sha256,
         parse_snapshot_id,parse_snapshot_sha256,evidence_record_hashes,annual_revenue_basis,annual_revenue_total,annual_revenue_total_evidence,third_place_tie_proof)
-        VALUES($1,$2,$3,$4,1,$5,$6,1,1,$7,$8,$9::jsonb,$10,$11::jsonb,'pending_review',$12,$13,$14,$15::jsonb,$16::jsonb,'600',$17::jsonb,$18::jsonb)`,
+        VALUES($1,$2,$3,$4,1,$5,$6,1,1,$7,$8,$9::jsonb,$10,$11::jsonb,'pending_review',$12,$13,$14,$15::jsonb,$16::jsonb,'210',$17::jsonb,$18::jsonb)`,
         [profileId, owner, project, run, inputHash, material, `profile-${suffix}`, sha(`profile-request:${suffix}`), JSON.stringify(profile),
           sha(stable(profile)), JSON.stringify(evidenceRefs), materialSha, snapshot, parseSha, JSON.stringify(Object.fromEntries(evidenceRefs.map(id => [id, evidenceHash[id]]))),
           JSON.stringify({ fiscalYear: 2025, accountingScope: 'consolidated', revenueBasis: 'main_business_revenue', currency: 'CNY', unit: 'yuan' }),
-          JSON.stringify([sourceEvidence]), JSON.stringify({ status: 'clear', thresholdRevenue: '100', tiedBusinessCodes: ['C'], evidence: [revenueEvidence[3]] })]);
+          JSON.stringify([sourceEvidence]), JSON.stringify({ status: 'clear', thresholdRevenue: '50', tiedBusinessCodes: ['B', 'C'], evidence: [revenueEvidence[3]] })]);
+
+      const boundaryTieProfile = { ...profile, lines: ['100', '80', '50', '50'].map((revenue, index) => ({
+        ...profile.lines[index]!, code: String.fromCharCode(65 + index), label: `Synthetic ${String.fromCharCode(65 + index)}`,
+        originalLabel: `原始业务${String.fromCharCode(65 + index)}`, revenue, rank: index + 1,
+      })) };
+      const boundaryClient = await pool.connect();
+      try {
+        await boundaryClient.query('BEGIN');
+        await boundaryClient.query('SAVEPOINT reviewer_boundary_tie');
+        await assert.rejects(boundaryClient.query(`INSERT INTO bb_issuer_business_profiles(id,owner_user_id,project_id,run_id,input_revision,input_hash,source_material_id,
+          source_material_version,profile_version,request_id,request_hash,profile,profile_sha256,evidence_refs,review_status,source_material_sha256,
+          parse_snapshot_id,parse_snapshot_sha256,evidence_record_hashes,annual_revenue_basis,annual_revenue_total,annual_revenue_total_evidence,third_place_tie_proof)
+          VALUES($1,$2,$3,$4,1,$5,$6,1,2,$7,$8,$9::jsonb,$10,$11::jsonb,'pending_review',$12,$13,$14,$15::jsonb,$16::jsonb,'280',$17::jsonb,$18::jsonb)`,
+          [`${profileId}-boundary`, owner, project, run, inputHash, material, `profile-boundary-${suffix}`, sha(`profile-boundary:${suffix}`),
+            JSON.stringify(boundaryTieProfile), sha(stable(boundaryTieProfile)), JSON.stringify(evidenceRefs), materialSha, snapshot, parseSha,
+            JSON.stringify(Object.fromEntries(evidenceRefs.map(id => [id, evidenceHash[id]]))),
+            JSON.stringify({ fiscalYear: 2025, accountingScope: 'consolidated', revenueBasis: 'main_business_revenue', currency: 'CNY', unit: 'yuan' }),
+            JSON.stringify([sourceEvidence]), JSON.stringify({ status: 'clear', thresholdRevenue: '50', tiedBusinessCodes: ['C', 'D'], evidence: [revenueEvidence[3]] })]),
+          /third-place tie proof does not match/);
+        await boundaryClient.query('ROLLBACK TO SAVEPOINT reviewer_boundary_tie');
+        await boundaryClient.query('COMMIT');
+      } finally { boundaryClient.release(); }
       await pool.query(`INSERT INTO bb_issuer_annual_profile_reviewer_grants(id,user_id,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
         VALUES($1,$2,$3,'synthetic_test','synthetic fixture only',$4,$5)`, [annualGrant, reviewer, grantor, owner, project]);
 
