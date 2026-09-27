@@ -57,6 +57,29 @@ function sampleRecords(): DocumentParseRecord[] {
   ];
 }
 
+// Synthetic literal-value variant exercises the positive branch; the authorized workbook's D6 is a formula.
+function rqInterimRecords(value = '641154596.19', uncertainty: string[] = []): DocumentParseRecord[] {
+  return [
+    evidence('rq-title', '02合并利润表', 'A1', '合并利润表'),
+    evidence('rq-period-note', '02合并利润表', 'B3', '2025年1-9月'),
+    evidence('rq-unit', '02合并利润表', 'E3', '金额单位：人民币元'),
+    evidence('rq-current-header', '02合并利润表', 'D4', '2025年1-9月'),
+    evidence('rq-comparison-header', '02合并利润表', 'E4', '2024年1-9月'),
+    evidence('rq-metric', '02合并利润表', 'A6', '    其中：营业收入'),
+    { ...evidence('rq-value', '02合并利润表', 'D6', value), uncertainty,
+      formatting: { number_format: 'General', data_type: value.startsWith('=') ? 'f' : 'n', sheet_state: 'visible',
+        ...(value.startsWith('=') ? { cached_formula_result: '641154596.19000006' } : {}) } },
+    evidence('rq-parent-title', '02母公司利润表', 'A1', '母公司利润表'),
+    evidence('rq-parent-period', '02母公司利润表', 'B3', '2025年1-9月'),
+    evidence('rq-parent-metric', '02母公司利润表', 'A6', '其中：营业收入'),
+    evidence('rq-parent-value', '02母公司利润表', 'D6', '100.00'),
+    evidence('rq-interest-expense-label', '02合并利润表', 'A24', '          其中：利息费用'),
+    evidence('rq-interest-expense-value', '02合并利润表', 'D24', '295374639.70999998'),
+    evidence('rq-interest-income-label', '02合并利润表', 'A25', '                  利息收入'),
+    evidence('rq-interest-income-value', '02合并利润表', 'D25', '5438663.7699999996'),
+  ];
+}
+
 function request(records: DocumentParseRecord[], parserVersion = 'bondbuddy-document-parser-1.0.3'): SemanticFactExtractionRequest {
   return {
     schema_version: 'semantic-fact-extraction-request-v1',
@@ -135,19 +158,56 @@ test('duplicate metric rows and unsupported units return anchored needs_review i
   assert.ok(unitResult.needs_review[0]?.evidence_refs.includes('unit'));
 });
 
-test('hidden sheets and parser completion warnings/status fail closed', async () => {
+test('hidden auxiliary sheets do not override visible facts or contribute values', async () => {
   const hidden = [...sampleRecords(), evidence('hidden-sheet-cell', '辅助表', 'A1', '2022年度', 'hidden')];
   const hiddenResult = await extractor.extract(request(hidden));
-  assert.equal(hiddenResult.facts.length, 0);
-  assert.equal(hiddenResult.needs_review[0]?.reason_code, 'PARSER_EVIDENCE_NEEDS_CONFIRMATION');
-  assert.ok(hiddenResult.needs_review[0]?.evidence_refs.includes('hidden-sheet-cell'));
+  assert.equal(hiddenResult.facts.length, 1);
+  assert.ok(hiddenResult.facts[0]?.evidence_refs.every((id) => id !== 'hidden-sheet-cell'));
 
-  const warningExtractor = createNativeFinancialFactExtractor(async () => ({
+  const hiddenOnly = [evidence('hidden-only-title', '合并利润表', 'A1', '合并利润表', 'hidden'),
+    evidence('hidden-only-value', '合并利润表', 'C5', '999999.00', 'hidden')];
+  const hiddenOnlyResult = await extractor.extract(request(hiddenOnly));
+  assert.equal(hiddenOnlyResult.facts.length, 0);
+
+  const hiddenWarningExtractor = createNativeFinancialFactExtractor(async () => ({
     status: 'needs_confirmation', warnings: [{ code: 'XLSX_HIDDEN_SHEET', message: 'hidden sheet present' }],
   }));
-  const warningResult = await warningExtractor.extract(request(sampleRecords()));
-  assert.equal(warningResult.facts.length, 0);
-  assert.equal(warningResult.needs_review[0]?.reason_code, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION');
+  const hiddenWarningResult = await hiddenWarningExtractor.extract(request(sampleRecords()));
+  assert.equal(hiddenWarningResult.facts.length, 1);
+  assert.ok(hiddenWarningResult.facts[0]?.evidence_refs.every((id) => !id.includes('hidden')));
+});
+
+test('synthetic exact current nine-month values keep consolidated and parent sheets separate', async () => {
+  const result = await extractor.extract(request(rqInterimRecords(), 'bondbuddy-document-parser-1.0.6'));
+  assert.equal(result.facts.length, 3);
+  const fact = result.facts.find((candidate) => candidate.identity.metric === 'operating_revenue')!;
+  assert.deepEqual(fact.identity, {
+    scope: 'consolidated', metric: 'operating_revenue', period: { start: '2025-01-01', end: '2025-09-30' },
+    currency: 'CNY', unit: 'yuan', basis: 'reported_financial_statement',
+  });
+  assert.equal(fact.value.kind, 'known');
+  if (fact.value.kind === 'known') assert.equal(fact.value.decimalOrText, '641154596.19');
+  assert.deepEqual(fact.evidence_refs, ['rq-title', 'rq-period-note', 'rq-unit', 'rq-current-header', 'rq-metric', 'rq-value']);
+  assert.ok(fact.evidence_refs.every((id) => !id.includes('parent')));
+  assert.equal(result.facts.find((candidate) => candidate.identity.metric === 'interest_expense')?.value.kind, 'known');
+  assert.equal(result.facts.find((candidate) => candidate.identity.metric === 'interest_expense')?.identity.scope, 'consolidated');
+  assert.equal(result.facts.find((candidate) => candidate.identity.metric === 'interest_income')?.identity.unit, 'yuan');
+});
+
+test('a cached formula value for current-period revenue stays needs_confirmation', async () => {
+  const records = rqInterimRecords("='[1]利润试算'!$AI$7", ['formula_cached_result_unverified']);
+  const result = await extractor.extract(request(records, 'bondbuddy-document-parser-1.0.6'));
+  assert.equal(result.facts.length, 2, 'certain direct numeric lines remain independently extractable');
+  assert.ok(result.facts.every((fact) => fact.identity.metric !== 'operating_revenue'));
+  const revenueReview = result.needs_review.find((item) => item.evidence_refs.includes('rq-value'));
+  assert.equal(revenueReview?.reason_code, 'PARSER_EVIDENCE_NEEDS_CONFIRMATION');
+
+  const warningExtractor = createNativeFinancialFactExtractor(async () => ({
+    status: 'needs_confirmation', warnings: [{ code: 'XLSX_FORMULA_CACHE_UNVERIFIED', message: 'formula cache present' }],
+  }));
+  const warningResult = await warningExtractor.extract(request(records, 'bondbuddy-document-parser-1.0.6'));
+  assert.equal(warningResult.facts.length, 2);
+  assert.ok(warningResult.needs_review.some((item) => item.evidence_refs.includes('rq-value') && item.reason_code === 'PARSER_EVIDENCE_NEEDS_CONFIRMATION'));
 });
 
 test('large parser warning results cap evidence refs at 32 in stable record-id order', async () => {
@@ -163,7 +223,10 @@ test('large parser warning results cap evidence refs at 32 in stable record-id o
   assert.ok(needsReview);
   assert.equal(needsReview.reason_code, 'PARSER_STATUS_OR_WARNING_NEEDS_CONFIRMATION');
   assert.equal(needsReview.evidence_refs.length, 32);
-  assert.deepEqual(needsReview.evidence_refs, records.map((record) => record.record_id).sort().slice(0, 32));
+  assert.deepEqual(needsReview.evidence_refs, [
+    'title', 'scope', 'period-note', 'unit', 'period-2023', 'metric', 'value',
+    ...records.map((record) => record.record_id).filter((id) => id.startsWith('bulk-')).sort().slice(0, 25),
+  ]);
 });
 
 test('zero parse evidence raises a controlled fail-closed error', async () => {
