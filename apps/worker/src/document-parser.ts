@@ -6,6 +6,7 @@ import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDia
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
+export const DOCX_AUXILIARY_TARGETS_PARSER_VERSION = 'bondbuddy-document-parser-1.0.7' as const;
 export const DOCUMENT_PARSER_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 export const DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 export const DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES = 16 * 1024 * 1024;
@@ -50,6 +51,19 @@ export type DocumentParseRecord = {
   formatting: Record<string, unknown>;
 };
 
+export type DocxAuxiliaryTarget = {
+  target_id: string;
+  kind: 'header'|'footer'|'footnote'|'endnote'|'drawing'|'auxiliary_part';
+  part_name: string;
+  locator: Record<string, unknown>;
+  part_sha256: string|null;
+  target_sha256: string|null;
+  locator_resolved: boolean;
+  parseable: boolean;
+  parse_status: 'parsed'|'empty'|'not_extracted'|'read_failed'|'parse_failed'|'unsafe_xml'|'size_limited'|'unrecognized_part';
+  text_summary: {sha256:string;character_count:number;has_text:boolean}|null;
+};
+
 export type DocumentParseResponse = {
   schema_version: typeof DOCUMENT_PARSE_RESPONSE_VERSION;
   request_id: string|null;
@@ -63,7 +77,7 @@ export type DocumentParseResponse = {
   }|null;
   records: DocumentParseRecord[];
   warnings: Array<{code:string;message:string}>;
-  document: Record<string, unknown> & {page_count:number|null};
+  document: Record<string, unknown> & {page_count:number|null;auxiliary_targets?:DocxAuxiliaryTarget[]};
   error: {code:string;message:string}|null;
 };
 
@@ -155,6 +169,62 @@ function validLocator(type:string,locator:Record<string,unknown>,pageCount:numbe
   return false;
 }
 
+function validDocxAuxiliaryTargets(value:unknown):value is DocxAuxiliaryTarget[] {
+  if(!Array.isArray(value) || value.length>10_000)return false;
+  const ids=new Set<string>();
+  for(const target of value) {
+    if(!isObject(target) || !hasExactKeys(target,['target_id','kind','part_name','locator','part_sha256','target_sha256',
+      'locator_resolved','parseable','parse_status','text_summary']) ||
+      typeof target.target_id!=='string' || !/^aux-[a-f0-9]{64}$/.test(target.target_id) || ids.has(target.target_id) ||
+      !['header','footer','footnote','endnote','drawing','auxiliary_part'].includes(String(target.kind)) ||
+      typeof target.part_name!=='string' || !/^word\/(?:header\d+|footer\d+|footnotes|endnotes|document|auxiliary-[a-f0-9]{64})\.xml$/.test(target.part_name) ||
+      !isObject(target.locator) || typeof target.locator.part_name!=='string' || target.locator.part_name!==target.part_name ||
+      !(target.part_sha256===null || (typeof target.part_sha256==='string' && /^[a-f0-9]{64}$/.test(target.part_sha256))) ||
+      !(target.target_sha256===null || (typeof target.target_sha256==='string' && /^[a-f0-9]{64}$/.test(target.target_sha256))) ||
+      typeof target.locator_resolved!=='boolean' || typeof target.parseable!=='boolean' ||
+      !['parsed','empty','not_extracted','read_failed','parse_failed','unsafe_xml','size_limited','unrecognized_part'].includes(String(target.parse_status))) return false;
+    ids.add(target.target_id);
+    const locator=target.locator;
+    if(target.kind==='drawing') {
+      if(target.part_name!=='word/document.xml' || !hasExactKeys(locator,['part_name','drawing_index','parent_stable_ref','drawing_ids']) ||
+        !positiveInteger(locator.drawing_index) || !(locator.parent_stable_ref===null || nonEmptyString(locator.parent_stable_ref,512)) ||
+        !Array.isArray(locator.drawing_ids) || !locator.drawing_ids.every(item=>nonEmptyString(item,128)) ||
+        target.parse_status!=='not_extracted' || target.parseable || !target.locator_resolved || target.text_summary!==null) return false;
+    } else if(target.kind==='header' || target.kind==='footer') {
+      if(!/^word\/(?:header\d+|footer\d+)\.xml$/.test(target.part_name) ||
+        (target.kind==='header' && !target.part_name.includes('/header')) ||
+        (target.kind==='footer' && !target.part_name.includes('/footer')) ||
+        !hasExactKeys(locator,['part_name','paragraph_index']) ||
+        !(locator.paragraph_index===null || positiveInteger(locator.paragraph_index))) return false;
+    } else if(target.kind==='footnote' || target.kind==='endnote') {
+      if(target.part_name!==(target.kind==='footnote'?'word/footnotes.xml':'word/endnotes.xml') ||
+        !hasExactKeys(locator,['part_name','note_id','paragraph_index']) || !nonEmptyString(locator.note_id,128) ||
+        !(locator.paragraph_index===null || positiveInteger(locator.paragraph_index))) return false;
+    } else if(target.kind==='auxiliary_part') {
+      const unknownPart=/^word\/auxiliary-[a-f0-9]{64}\.xml$/.test(target.part_name);
+      if(unknownPart) {
+        if(!hasExactKeys(locator,['part_name','member_name_sha256']) || locator.member_name_sha256!==target.part_name.slice('word/auxiliary-'.length,-'.xml'.length)) return false;
+      } else if(!hasExactKeys(locator,['part_name'])) return false;
+    } else return false;
+
+    const summary=target.text_summary;
+    if(summary!==null && (!isObject(summary) || !hasExactKeys(summary,['sha256','character_count','has_text']) ||
+      typeof summary.sha256!=='string' || !/^[a-f0-9]{64}$/.test(summary.sha256) ||
+      !Number.isSafeInteger(summary.character_count) || Number(summary.character_count)<0 ||
+      typeof summary.has_text!=='boolean')) return false;
+    if(target.parseable!==(target.parse_status==='parsed'||target.parse_status==='empty') ||
+      target.locator_resolved!==!['read_failed','parse_failed','unsafe_xml','size_limited','unrecognized_part'].includes(String(target.parse_status)) ||
+      (target.parseable && (!summary || target.part_sha256===null || target.target_sha256===null)) ||
+      (target.parse_status==='not_extracted' && (target.kind!=='drawing' || target.part_sha256===null || target.target_sha256===null)) ||
+      (target.parse_status==='read_failed' && (target.part_sha256!==null || target.target_sha256!==null || summary!==null)) ||
+      (['parse_failed','unsafe_xml'].includes(String(target.parse_status)) &&
+        (target.part_sha256===null || target.target_sha256===null || summary!==null)) ||
+      (target.parse_status==='size_limited' && (target.part_sha256!==null || target.target_sha256!==null || summary!==null)) ||
+      (target.parse_status==='unrecognized_part' && (target.kind!=='auxiliary_part' || target.part_sha256===null || target.target_sha256===null || summary!==null))) return false;
+  }
+  return true;
+}
+
 function safeJson(value:unknown,authorizedPath:string):boolean {
   if(value===null || typeof value==='boolean' || typeof value==='number') return typeof value!=='number' || Number.isFinite(value);
   if(typeof value==='string') return !value.includes(authorizedPath);
@@ -234,7 +304,8 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
   if(!hasExactKeys(value.document,value.status==='failed'?['page_count']:request.material.media_type==='application/pdf'
     ? ['page_count','pages_without_native_text','pages_with_images']
     : request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ? (value.status==='failed'?['page_count']:['page_count','revision_summary'])
+      ? (value.status==='failed'?['page_count']:value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION
+        ? ['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary'])
       : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ? ['page_count','worksheet_count','missing_formula_results','cached_formula_results']
         : request.material.media_type==='text/csv'
@@ -253,7 +324,10 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
       if(!Array.isArray(pages) || !pages.every(page=>positiveInteger(page) && page<=pageCount)) throw parserError('INVALID_PARSE_RESPONSE');
     }
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    if(!isObject(value.document.revision_summary) || !hasExactKeys(value.document.revision_summary,['insertions','deletions']) ||
+    const hasAuxiliaryTargets=value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION;
+    if(!hasExactKeys(value.document,hasAuxiliaryTargets?['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary']) ||
+      (hasAuxiliaryTargets && !validDocxAuxiliaryTargets(value.document.auxiliary_targets)) ||
+      !isObject(value.document.revision_summary) || !hasExactKeys(value.document.revision_summary,['insertions','deletions']) ||
       !Number.isSafeInteger(value.document.revision_summary.insertions) || Number(value.document.revision_summary.insertions)<0 ||
       !Number.isSafeInteger(value.document.revision_summary.deletions) || Number(value.document.revision_summary.deletions)<0) throw parserError('INVALID_PARSE_RESPONSE');
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
@@ -266,6 +340,14 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
   for(const warning of value.warnings) {
     if(!isObject(warning) || !hasExactKeys(warning,['code','message']) || typeof warning.code!=='string' || !/^[A-Z][A-Z0-9_]{0,127}$/.test(warning.code) ||
       !nonEmptyString(warning.message,4096)) throw parserError('INVALID_PARSE_RESPONSE');
+  }
+  if(value.status!=='failed' && request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
+    value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION) {
+    const targets=value.document.auxiliary_targets as DocxAuxiliaryTarget[];
+    const hasAuxiliary=targets.some(target=>target.kind!=='drawing');
+    const hasDrawings=targets.some(target=>target.kind==='drawing');
+    if(hasAuxiliary!==value.warnings.some(warning=>warning.code==='DOCX_AUXILIARY_PARTS') ||
+      hasDrawings!==value.warnings.some(warning=>warning.code==='DOCX_DRAWINGS')) throw parserError('INVALID_PARSE_RESPONSE');
   }
   const recordIds=new Set<string>();
   const pageCount=value.document.page_count as number|null;

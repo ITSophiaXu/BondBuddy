@@ -116,6 +116,51 @@ test('worker validates type-specific PDF and DOCX anchors without fabricating DO
   await assert.rejects(runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(badDocx)}),/INVALID_PARSE_RESPONSE/);
 });
 
+test('worker strictly retains parser 1.0.7 auxiliary targets without treating them as facts or clearing warnings',async()=>{
+  const docxRequest:DocumentParseRequest={...request,material:{...request.material,
+    media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}};
+  const hash=(char:string)=>char.repeat(64);
+  const targets=[
+    {target_id:`aux-${hash('a')}`,kind:'header',part_name:'word/header1.xml',
+      locator:{part_name:'word/header1.xml',paragraph_index:1},part_sha256:hash('b'),target_sha256:hash('c'),
+      locator_resolved:true,parseable:true,parse_status:'parsed',text_summary:{sha256:hash('d'),character_count:32,has_text:true}},
+    {target_id:`aux-${hash('e')}`,kind:'footnote',part_name:'word/footnotes.xml',
+      locator:{part_name:'word/footnotes.xml',note_id:'9',paragraph_index:null},part_sha256:hash('f'),target_sha256:hash('1'),
+      locator_resolved:true,parseable:true,parse_status:'empty',text_summary:{sha256:hash('2'),character_count:0,has_text:false}},
+    {target_id:`aux-${hash('3')}`,kind:'drawing',part_name:'word/document.xml',
+      locator:{part_name:'word/document.xml',drawing_index:1,parent_stable_ref:'docx:p0001',drawing_ids:['77']},
+      part_sha256:hash('4'),target_sha256:hash('5'),locator_resolved:true,parseable:false,parse_status:'not_extracted',text_summary:null},
+    {target_id:`aux-${hash('6')}`,kind:'auxiliary_part',part_name:`word/auxiliary-${hash('7')}.xml`,
+      locator:{part_name:`word/auxiliary-${hash('7')}.xml`,member_name_sha256:hash('7')},
+      part_sha256:hash('8'),target_sha256:hash('8'),locator_resolved:false,parseable:false,parse_status:'unrecognized_part',text_summary:null},
+    {target_id:`aux-${hash('9')}`,kind:'auxiliary_part',part_name:'word/footer2.xml',
+      locator:{part_name:'word/footer2.xml'},part_sha256:null,target_sha256:null,
+      locator_resolved:false,parseable:false,parse_status:'size_limited',text_summary:null},
+  ];
+  const response107={...response,parser_version:'bondbuddy-document-parser-1.0.7',
+    material:{...response.material,media_type:docxRequest.material.media_type},status:'needs_confirmation',
+    warnings:[{code:'DOCX_DRAWINGS',message:'Synthetic drawing warning'},
+      {code:'DOCX_AUXILIARY_PARTS',message:'Synthetic auxiliary warning'}],
+    document:{page_count:null,revision_summary:{insertions:0,deletions:0},auxiliary_targets:targets},
+    records:[{...response.records[0],locator_type:'docx_block',locator:{path:[{paragraph:1}],stable_ref:'docx:p0001'}}]};
+  const result=await runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(response107)});
+  assert.deepEqual(result.document.auxiliary_targets,targets);
+  assert.deepEqual(result.warnings.map(warning=>warning.code),['DOCX_DRAWINGS','DOCX_AUXILIARY_PARTS']);
+  assert.equal(result.status,'needs_confirmation');
+  assert.equal(result.records[0]?.confidence,null);
+  assert.deepEqual(result.records[0]?.uncertainty,[]);
+
+  const invalid=[
+    {...response107,document:{...response107.document,auxiliary_targets:[...targets,{...targets[0]}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[0],part_name:'word/../../secret.xml'}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[0],text_summary:{...targets[0].text_summary,sha256:'bad'}}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[2],parseable:true}]}},
+    {...response107,document:{...response107.document,auxiliary_targets:[{...targets[3],locator:{...targets[3].locator,member_name_sha256:hash('a')}}]}},
+    {...response107,warnings:[{code:'DOCX_DRAWINGS',message:'Synthetic drawing warning'}]},
+  ];
+  for(const candidate of invalid) await assert.rejects(runDocumentParser(docxRequest,{invoke:async()=>JSON.stringify(candidate)}),/INVALID_PARSE_RESPONSE/);
+});
+
 test('XLSX response accepts the exact cached-formula count and keeps cached values unverified',async()=>{
   const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}};
   const cell={...response.records[0],locator_type:'xlsx_cell',locator:{sheet:'Synthetic',cell:'C3',merged_range:null,stable_ref:'xlsx:Synthetic:cell:C3'},
@@ -170,7 +215,7 @@ test('authorized rq-202509-02 XLSX passes the bounded strict Python to Node brid
     assert.ok(outputBytes<32*1024*1024);
     return child.stdout;
   }});
-  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.6');
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.7');
   assert.equal(parsed.status,'needs_confirmation');
   assert.equal(parsed.records.length,22014);
   assert.equal(parsed.document.cached_formula_results,3821);
@@ -194,7 +239,7 @@ test('authorized zq-202312-02 XLSX crosses the real Python to Node parser bounda
   const xlsxRequest:DocumentParseRequest={...request,material:{...request.material,material_id:'zq-202312-02',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     sha256,authorized_local_path:path}};
   const parsed=await runDocumentParser(xlsxRequest,{pythonExecutable:localPython,repoRoot:repositoryRoot});
-  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.6');
+  assert.equal(parsed.parser_version,'bondbuddy-document-parser-1.0.7');
   assert.equal(parsed.status,'parsed');
   assert.equal(parsed.records.length,1392);
   assert.equal(parsed.warnings.length,0);

@@ -7,9 +7,11 @@ import io
 import json
 import re
 import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 from urllib.parse import quote
+from lxml import etree
 
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
@@ -25,12 +27,14 @@ from pypdf import PdfReader
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.6"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.7"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
 MAX_TEXT_BYTES = 100 * 1024 * 1024
 MAX_TEXT_LINE_CHARS = 16 * 1024
+MAX_DOCX_AUXILIARY_PART_BYTES = 4 * 1024 * 1024
+MAX_DOCX_AUXILIARY_TARGETS = 10_000
 
 MEDIA_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MEDIA_PDF = "application/pdf"
@@ -58,11 +62,14 @@ def _sha256(path: Path) -> str:
 def _validate_archive(path: Path, required_entry: str) -> None:
     try:
         with zipfile.ZipFile(path) as archive:
-            names = set(archive.namelist())
+            entries = archive.infolist()
+            names = {entry.filename for entry in entries}
+            if len(names) != len(entries):
+                raise ParseFailure("MATERIAL_UNREADABLE", "Office document contains ambiguous package entries")
             if required_entry not in names:
                 raise ParseFailure("MATERIAL_CONTENT_MISMATCH", "Office container does not match its declared format")
             total = 0
-            for info in archive.infolist():
+            for info in entries:
                 total += info.file_size
                 if total > MAX_UNCOMPRESSED_OFFICE_BYTES:
                     raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "Expanded Office content exceeds the parser limit")
@@ -253,6 +260,211 @@ def _unsupported_docx_revision_count(root: Any) -> int:
     return count
 
 
+def _stable_auxiliary_target_id(kind: str, locator: dict[str, Any]) -> str:
+    identity = json.dumps([kind, locator], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "aux-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _auxiliary_target(
+    kind: str,
+    part_name: str,
+    locator: dict[str, Any],
+    *,
+    part_sha256: str | None,
+    target_sha256: str | None,
+    parse_status: str,
+    text: str | None = None,
+) -> dict[str, Any]:
+    summary = None if text is None else {
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "character_count": len(text),
+        "has_text": bool(text.strip()),
+    }
+    return {
+        "target_id": _stable_auxiliary_target_id(kind, locator),
+        "kind": kind,
+        "part_name": part_name,
+        "locator": locator,
+        "part_sha256": part_sha256,
+        "target_sha256": target_sha256,
+        "locator_resolved": parse_status not in {"read_failed", "parse_failed", "unsafe_xml", "size_limited", "unrecognized_part"},
+        "parseable": parse_status in {"parsed", "empty"},
+        "parse_status": parse_status,
+        "text_summary": summary,
+    }
+
+
+def _docx_auxiliary_targets(path: Path, body_root: Any, body_locators: dict[Any, str]) -> list[dict[str, Any]]:
+    """Describe uncovered DOCX content without copying auxiliary text into logs or the response."""
+    targets: list[dict[str, Any]] = []
+
+    def append_target(target: dict[str, Any]) -> None:
+        if len(targets) >= MAX_DOCX_AUXILIARY_TARGETS:
+            raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "DOCX has too many auxiliary content targets")
+        targets.append(target)
+
+    known_part_pattern = re.compile(r"word/(?:header\d+|footer\d+|footnotes|endnotes)\.xml\Z")
+    with zipfile.ZipFile(path) as archive:
+        # Keep the historical prefix-based warning scope. Nonstandard members are
+        # represented by an opaque, content-addressed alias so archive paths never
+        # leak into parser responses or become path-like locator input.
+        parts = sorted(name for name in archive.namelist()
+                       if name.startswith(("word/header", "word/footer", "word/footnotes", "word/endnotes"))
+                       and name.endswith(".xml"))
+        for member_name in parts:
+            if len(targets) >= MAX_DOCX_AUXILIARY_TARGETS:
+                raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "DOCX has too many auxiliary content targets")
+            part_target_start = len(targets)
+            is_known_part = bool(known_part_pattern.fullmatch(member_name))
+            part_name = member_name if is_known_part else "word/auxiliary-" + hashlib.sha256(member_name.encode("utf-8")).hexdigest() + ".xml"
+            part_locator = {"part_name": part_name}
+            if not is_known_part:
+                part_locator["member_name_sha256"] = hashlib.sha256(member_name.encode("utf-8")).hexdigest()
+            try:
+                info = archive.getinfo(member_name)
+            except (KeyError, OSError, RuntimeError, zipfile.BadZipFile):
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, part_locator, part_sha256=None,
+                    target_sha256=None, parse_status="read_failed",
+                ))
+                continue
+
+            # ZIP metadata is untrusted but lets us reject declared oversize parts
+            # before allocating their decompressed contents. The post-read check
+            # below remains as a defensive assertion against inconsistent metadata.
+            if info.file_size > MAX_DOCX_AUXILIARY_PART_BYTES:
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, part_locator, part_sha256=None,
+                    target_sha256=None, parse_status="size_limited",
+                ))
+                continue
+            try:
+                # Read at most the limit plus one byte so a dishonest ZIP size
+                # field cannot turn this check into an unbounded decompression.
+                with archive.open(info) as member:
+                    raw = member.read(MAX_DOCX_AUXILIARY_PART_BYTES + 1)
+            except (KeyError, OSError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error):
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, part_locator, part_sha256=None,
+                    target_sha256=None, parse_status="read_failed",
+                ))
+                continue
+            part_hash = hashlib.sha256(raw).hexdigest()
+            if len(raw) > MAX_DOCX_AUXILIARY_PART_BYTES:
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, part_locator, part_sha256=None,
+                    target_sha256=None, parse_status="size_limited",
+                ))
+                continue
+            if not is_known_part:
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, part_locator, part_sha256=part_hash,
+                    target_sha256=part_hash, parse_status="unrecognized_part",
+                ))
+                continue
+            if re.search(br"<!\s*(?:DOCTYPE|ENTITY)\b", raw, flags=re.IGNORECASE):
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, {"part_name": part_name}, part_sha256=part_hash,
+                    target_sha256=part_hash, parse_status="unsafe_xml",
+                ))
+                continue
+            try:
+                xml_root = etree.fromstring(raw, parser=etree.XMLParser(
+                    resolve_entities=False, no_network=True, load_dtd=False, huge_tree=False,
+                ))
+            except (etree.XMLSyntaxError, ValueError):
+                append_target(_auxiliary_target(
+                    "auxiliary_part", part_name, {"part_name": part_name}, part_sha256=part_hash,
+                    target_sha256=part_hash, parse_status="parse_failed",
+                ))
+                continue
+
+            paragraphs = list(xml_root.iter(qn("w:p")))
+            kind = part_name.rsplit("/", 1)[-1]
+            if kind.startswith("header"):
+                target_kind = "header_paragraph"
+            elif kind.startswith("footer"):
+                target_kind = "footer_paragraph"
+            elif kind == "footnotes.xml":
+                target_kind = "footnote_paragraph"
+            else:
+                target_kind = "endnote_paragraph"
+
+            if target_kind in {"footnote_paragraph", "endnote_paragraph"}:
+                note_tag = qn("w:footnote") if target_kind == "footnote_paragraph" else qn("w:endnote")
+                notes = [note for note in xml_root if note.tag == note_tag and note.get(qn("w:id")) not in {"-1", "-2"}]
+                for note_index, note in enumerate(notes, 1):
+                    note_id = note.get(qn("w:id")) or str(note_index)
+                    note_paragraphs = list(note.iter(qn("w:p")))
+                    if not note_paragraphs:
+                        locator = {"part_name": part_name, "note_id": note_id, "paragraph_index": None}
+                        node_hash = hashlib.sha256(etree.tostring(note, encoding="utf-8", with_tail=False)).hexdigest()
+                        append_target(_auxiliary_target(
+                            "footnote" if target_kind == "footnote_paragraph" else "endnote", part_name, locator,
+                            part_sha256=part_hash, target_sha256=node_hash, parse_status="empty", text="",
+                        ))
+                    for paragraph_index, paragraph in enumerate(note_paragraphs, 1):
+                        locator = {"part_name": part_name, "note_id": note_id, "paragraph_index": paragraph_index}
+                        node_hash = hashlib.sha256(etree.tostring(paragraph, encoding="utf-8", with_tail=False)).hexdigest()
+                        text = _final_text(paragraph)
+                        append_target(_auxiliary_target(
+                            "footnote" if target_kind == "footnote_paragraph" else "endnote", part_name, locator,
+                            part_sha256=part_hash, target_sha256=node_hash,
+                            parse_status="parsed" if text.strip() else "empty", text=text,
+                        ))
+                if len(targets) == part_target_start:
+                    append_target(_auxiliary_target(
+                        "auxiliary_part", part_name, {"part_name": part_name}, part_sha256=part_hash,
+                        target_sha256=part_hash, parse_status="empty", text="",
+                    ))
+            else:
+                for paragraph_index, paragraph in enumerate(paragraphs, 1):
+                    locator = {"part_name": part_name, "paragraph_index": paragraph_index}
+                    node_hash = hashlib.sha256(etree.tostring(paragraph, encoding="utf-8", with_tail=False)).hexdigest()
+                    text = _final_text(paragraph)
+                    append_target(_auxiliary_target(
+                        "header" if target_kind == "header_paragraph" else "footer", part_name, locator,
+                        part_sha256=part_hash, target_sha256=node_hash,
+                        parse_status="parsed" if text.strip() else "empty", text=text,
+                    ))
+                if not paragraphs:
+                    locator = {"part_name": part_name, "paragraph_index": None}
+                    append_target(_auxiliary_target(
+                        "header" if target_kind == "header_paragraph" else "footer", part_name, locator,
+                        part_sha256=part_hash, target_sha256=part_hash, parse_status="empty", text="",
+                    ))
+
+        drawing_index = 0
+        try:
+            document_xml = archive.read("word/document.xml")
+        except (KeyError, OSError, RuntimeError, zipfile.BadZipFile, zlib.error):
+            document_xml = b""
+        document_hash = hashlib.sha256(document_xml).hexdigest() if document_xml else None
+        for drawing in body_root.iter(qn("w:drawing")):
+            drawing_index += 1
+            if len(targets) >= MAX_DOCX_AUXILIARY_TARGETS:
+                raise ParseFailure("MATERIAL_LIMIT_EXCEEDED", "DOCX has too many auxiliary content targets")
+            parent = drawing.getparent()
+            while parent is not None and parent.tag != qn("w:p"):
+                parent = parent.getparent()
+            parent_ref = body_locators.get(parent) if parent is not None else None
+            drawing_ids = [node.get("id") for node in drawing.iter()
+                           if isinstance(node.tag, str) and node.tag.endswith("}docPr") and node.get("id")]
+            locator = {
+                "part_name": "word/document.xml",
+                "drawing_index": drawing_index,
+                "parent_stable_ref": parent_ref,
+                "drawing_ids": drawing_ids,
+            }
+            serialized = etree.tostring(drawing, encoding="utf-8", with_tail=False)
+            drawing_hash = hashlib.sha256(serialized).hexdigest()
+            append_target(_auxiliary_target(
+                "drawing", "word/document.xml", locator, part_sha256=document_hash,
+                target_sha256=drawing_hash, parse_status="not_extracted",
+            ))
+    return targets
+
+
 def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:
     _validate_archive(path, "word/document.xml")
     try:
@@ -279,6 +491,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     records: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
     heading = ""
+    body_locators: dict[Any, str] = {}
     for locator, paragraph in _walk_docx_blocks(document):
         value = _final_text(paragraph._p)
         if not value.strip():
@@ -287,6 +500,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
         if paragraph_style and ("Heading" in paragraph_style.name or "标题" in paragraph_style.name):
             heading = value
         locator["stable_ref"] = _docx_locator_text(locator)
+        body_locators[paragraph._p] = locator["stable_ref"]
         uncertainty = ["docx_revision_effective_text_unresolved"] if unsupported_revision_count else None
         records.append(_record(
             len(records) + 1,
@@ -327,13 +541,13 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
         count = len(list(root.iter(qn(tag))))
         if count:
             warnings.append({"code": code, "message": f"The document contains {count} {label}; non-body content requires confirmation."})
-    with zipfile.ZipFile(path) as archive:
-        extra_parts = sorted(name for name in archive.namelist() if name.startswith(("word/header", "word/footer", "word/footnotes", "word/endnotes")) and name.endswith(".xml"))
-    if extra_parts:
+    auxiliary_targets = _docx_auxiliary_targets(path, root, body_locators)
+    if any(target["part_name"] != "word/document.xml" for target in auxiliary_targets):
         warnings.append({"code": "DOCX_AUXILIARY_PARTS", "message": "Headers, footers, footnotes, or endnotes are not included in body records."})
     if not records:
         raise ParseFailure("MATERIAL_UNREADABLE", "DOCX contains no extractable effective body text")
-    return records, warnings, {"page_count": None, "revision_summary": {"insertions": inserted, "deletions": deleted}}
+    return records, warnings, {"page_count": None, "revision_summary": {"insertions": inserted, "deletions": deleted},
+                               "auxiliary_targets": auxiliary_targets}
 
 
 def _parse_pdf(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:

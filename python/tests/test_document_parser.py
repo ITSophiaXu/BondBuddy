@@ -123,6 +123,187 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["document"]["revision_summary"], {"insertions": 1, "deletions": 1})
         self.assertEqual(digest(path), result["material"]["sha256"])
 
+    def test_docx_auxiliary_targets_are_stable_safe_and_leave_body_records_unchanged(self):
+        base_path = self.root / "auxiliary-base.docx"
+        document = Document()
+        body = document.add_paragraph("Synthetic body amount 120")
+        document.save(base_path)
+        base = self.request(base_path, MEDIA_DOCX)
+
+        path = self.root / "auxiliary.docx"
+        document = Document(base_path)
+        document.sections[0].header.paragraphs[0].text = "Synthetic issuer and year header"
+        document.sections[0].footer.paragraphs[0].text = "Synthetic footer"
+        body = document.paragraphs[0]
+        drawing = OxmlElement("w:drawing")
+        doc_properties = OxmlElement("wp:docPr")
+        doc_properties.set("id", "77")
+        doc_properties.set("descr", "Synthetic drawing alt text")
+        drawing.append(doc_properties)
+        body._p.append(drawing)
+        document.save(path)
+
+        footnotes = b'''<?xml version="1.0" encoding="UTF-8"?>
+          <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:footnote w:id="9"><w:p/></w:footnote>
+          </w:footnotes>'''
+        endnotes = b'''<?xml version="1.0" encoding="UTF-8"?>
+          <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:endnote w:id="12"><w:p><w:r><w:t>Synthetic endnote-only secret</w:t></w:r></w:p></w:endnote>
+          </w:endnotes>'''
+        rewritten = self.root / "auxiliary-with-notes.docx"
+        with zipfile.ZipFile(path) as source, zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as target:
+            for entry in source.infolist():
+                target.writestr(entry, source.read(entry))
+            target.writestr("word/footnotes.xml", footnotes)
+            target.writestr("word/endnotes.xml", endnotes)
+
+        result = self.request(rewritten, MEDIA_DOCX)
+        repeated = self.request(rewritten, MEDIA_DOCX)
+        self.assertEqual(result["parser_version"], "bondbuddy-document-parser-1.0.7")
+        self.assertEqual([item["target_id"] for item in result["document"]["auxiliary_targets"]],
+                         [item["target_id"] for item in repeated["document"]["auxiliary_targets"]])
+        semantic_body_fields = ("record_id", "locator_type", "locator", "literal_quote", "context", "extraction_method",
+                                "confidence", "uncertainty", "formatting")
+        self.assertEqual([[record[key] for key in semantic_body_fields] for record in base["records"]],
+                         [[record[key] for key in semantic_body_fields] for record in result["records"]])
+        self.assertEqual([warning["code"] for warning in result["warnings"]],
+                         ["DOCX_DRAWINGS", "DOCX_AUXILIARY_PARTS"])
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertTrue(all(record["confidence"] is None and record["uncertainty"] == [] for record in result["records"]))
+        targets = result["document"]["auxiliary_targets"]
+        header = next(item for item in targets if item["kind"] == "header")
+        self.assertEqual(header["part_name"], "word/header1.xml")
+        self.assertTrue(header["parseable"] and header["text_summary"]["has_text"])
+        self.assertNotIn("Synthetic issuer and year header", json.dumps(result, ensure_ascii=False))
+        empty_footnote = next(item for item in targets if item["kind"] == "footnote")
+        self.assertEqual(empty_footnote["locator"]["note_id"], "9")
+        self.assertEqual(empty_footnote["parse_status"], "empty")
+        self.assertEqual(empty_footnote["text_summary"]["character_count"], 0)
+        endnote = next(item for item in targets if item["kind"] == "endnote")
+        self.assertTrue(endnote["text_summary"]["has_text"])
+        self.assertNotIn("Synthetic endnote-only secret", json.dumps(result, ensure_ascii=False))
+        drawing_target = next(item for item in targets if item["kind"] == "drawing")
+        self.assertEqual(drawing_target["locator"]["parent_stable_ref"], result["records"][0]["locator"]["stable_ref"])
+        self.assertEqual(drawing_target["locator"]["drawing_ids"], ["77"])
+        self.assertTrue(drawing_target["locator_resolved"])
+        self.assertFalse(drawing_target["parseable"])
+        self.assertEqual(drawing_target["parse_status"], "not_extracted")
+        self.assertIsNone(drawing_target["text_summary"])
+
+    def test_docx_auxiliary_malicious_or_malformed_xml_stays_unresolved_without_expansion(self):
+        document_path = self.root / "auxiliary-xml.docx"
+        document = Document()
+        document.add_paragraph("Synthetic safe body")
+        document.save(document_path)
+        malicious = b'''<!DOCTYPE w:footnotes [<!ENTITY private SYSTEM "file:///etc/passwd">]>
+          <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:footnote w:id="4"><w:p><w:r><w:t>&private;</w:t></w:r></w:p></w:footnote>
+          </w:footnotes>'''
+        malformed = b"<w:endnotes><w:endnote>"
+        rewritten = self.root / "auxiliary-hostile.docx"
+        with zipfile.ZipFile(document_path) as source, zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as target:
+            for entry in source.infolist():
+                target.writestr(entry, source.read(entry))
+            target.writestr("word/footnotes.xml", malicious)
+            target.writestr("word/endnotes.xml", malformed)
+
+        result = self.request(rewritten, MEDIA_DOCX)
+        targets = result["document"]["auxiliary_targets"]
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertEqual(next(item for item in targets if item["part_name"] == "word/footnotes.xml")["parse_status"], "unsafe_xml")
+        self.assertEqual(next(item for item in targets if item["part_name"] == "word/endnotes.xml")["parse_status"], "parse_failed")
+        self.assertNotIn("/etc/passwd", json.dumps(result, ensure_ascii=False))
+        self.assertNotIn("root:", json.dumps(result, ensure_ascii=False))
+        self.assertNotIn("private SYSTEM", json.dumps(result, ensure_ascii=False))
+
+    def test_docx_auxiliary_unknown_parts_remain_locatable_and_oversize_is_rejected_before_read(self):
+        document_path = self.root / "auxiliary-prefix-source.docx"
+        document = Document()
+        document.add_paragraph("Synthetic safe body")
+        document.save(document_path)
+        odd_header = "word/headerLegacy.xml"
+        oversize_footer = "word/footerCustom.xml"
+        rewritten = self.root / "auxiliary-prefix-members.docx"
+        with zipfile.ZipFile(document_path) as source, zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as target:
+            for entry in source.infolist():
+                target.writestr(entry, source.read(entry))
+            target.writestr(odd_header, b"<not-a-known-header/>" )
+            target.writestr(oversize_footer, b"x" * (parser_module.MAX_DOCX_AUXILIARY_PART_BYTES + 1))
+
+        original_open = zipfile.ZipFile.open
+        opened_members = []
+
+        def guarded_open(archive, name, *args, **kwargs):
+            member_name = name.filename if isinstance(name, zipfile.ZipInfo) else name
+            opened_members.append(member_name)
+            self.assertNotEqual(member_name, oversize_footer, "oversize auxiliary part must not be opened/inflated")
+            return original_open(archive, name, *args, **kwargs)
+
+        with patch.object(zipfile.ZipFile, "open", guarded_open):
+            result = self.request(rewritten, MEDIA_DOCX)
+
+        targets = result["document"]["auxiliary_targets"]
+        expected_name_hash = hashlib.sha256(odd_header.encode("utf-8")).hexdigest()
+        unknown = next(item for item in targets if item["kind"] == "auxiliary_part" and
+                       item["locator"].get("member_name_sha256") == expected_name_hash)
+        self.assertEqual(unknown["part_name"], f"word/auxiliary-{expected_name_hash}.xml")
+        self.assertEqual(unknown["locator"]["member_name_sha256"], expected_name_hash)
+        self.assertEqual(unknown["parse_status"], "unrecognized_part")
+        self.assertFalse(unknown["locator_resolved"])
+        self.assertFalse(unknown["parseable"])
+        self.assertNotIn(odd_header, json.dumps(result, ensure_ascii=False))
+        oversize = next(item for item in targets if item["parse_status"] == "size_limited")
+        self.assertIsNone(oversize["part_sha256"])
+        self.assertIsNone(oversize["target_sha256"])
+        self.assertNotIn(oversize_footer, opened_members)
+        self.assertEqual(result["warnings"][0]["code"], "DOCX_AUXILIARY_PARTS")
+
+    def test_docx_auxiliary_empty_part_gets_placeholder_and_target_cap_fails_closed(self):
+        empty_path = self.root / "empty-header-source.docx"
+        document = Document()
+        document.add_paragraph("Synthetic body")
+        document.sections[0].header.paragraphs[0].text = "will be replaced"
+        document.save(empty_path)
+        rewritten = self.root / "empty-header.docx"
+        empty_header = b'''<?xml version="1.0" encoding="UTF-8"?>
+          <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>'''
+        with zipfile.ZipFile(empty_path) as source, zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as target:
+            for entry in source.infolist():
+                target.writestr(entry, empty_header if entry.filename == "word/header1.xml" else source.read(entry))
+
+        result = self.request(rewritten, MEDIA_DOCX)
+        placeholder = next(item for item in result["document"]["auxiliary_targets"] if item["kind"] == "header")
+        self.assertIsNone(placeholder["locator"]["paragraph_index"])
+        self.assertEqual(placeholder["parse_status"], "empty")
+        self.assertFalse(placeholder["text_summary"]["has_text"])
+
+        capped_path = self.root / "capped-header.docx"
+        capped = Document()
+        capped.add_paragraph("Synthetic body")
+        capped.sections[0].header.paragraphs[0].text = "first target"
+        capped.sections[0].header.add_paragraph("second target")
+        capped.save(capped_path)
+        with patch.object(parser_module, "MAX_DOCX_AUXILIARY_TARGETS", 1):
+            capped_result = self.request(capped_path, MEDIA_DOCX)
+        self.assertEqual(capped_result["status"], "failed")
+        self.assertEqual(capped_result["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+
+    def test_docx_duplicate_or_invalid_package_entries_fail_with_safe_response(self):
+        valid_path = self.root / "duplicate-source.docx"
+        document = Document()
+        document.add_paragraph("Synthetic body")
+        document.save(valid_path)
+        invalid_path = self.root / "duplicate-member.docx"
+        with zipfile.ZipFile(valid_path) as source, zipfile.ZipFile(invalid_path, "w", zipfile.ZIP_DEFLATED) as target:
+            for entry in source.infolist():
+                target.writestr(entry, source.read(entry))
+            target.writestr("word/document.xml", b"<invalid/>")
+        result = self.request(invalid_path, MEDIA_DOCX)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "MATERIAL_UNREADABLE")
+        self.assertNotIn(str(invalid_path), json.dumps(result, ensure_ascii=False))
+
     def test_docx_table_cells_are_not_lost_to_reused_object_ids(self):
         path = self.root / "many-cells.docx"
         document = Document()
