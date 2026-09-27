@@ -94,6 +94,38 @@ BB_TEST_DATABASE_URL=... BB_TEST_AZURITE_CONNECTION_STRING=... node --test apps/
 BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TERMS_VERSION=synthetic-web-test-v1 npm test -w @bondbuddy/web
 ```
 
+`tests/project-execution.integration.spec.ts` 是保存精确材料版本与目标、预检、明确提交、关闭整个浏览器上下文、重新登录并恢复同一 run 的真实 API 浏览器回归。它仅使用 `deploy/local/compose.yaml` 的临时 PostgreSQL 16/Azurite、API 的 `createServer({ enableRunStaging: true, enableRunRuntime: false })` 测试 seam，以及 `upload-safety.samples.ts` 中的合成 PDF。运行时断言输入材料版本/目标快照、数据库中的同一幂等键/run、唯一暂停事件及 `capability_not_ready` 原因；它不启动 worker、模型或 Word 生成，也不构成用户更新任务链路验收。`enableRunStaging` 是测试进程内设置，不是生产环境开关。未启用真实 runtime 的服务端 execute 仍按设计返回 `501 CAPABILITY_NOT_READY`；具备真实 queue/runtime 的测试环境必须隔离并有相应非生产授权，不能复用本测试的 staging 结论。
+
+先在空闲的本机端口启动专用临时栈，并应用当前迁移；不要设置预发/生产连接串：
+
+```sh
+docker compose -f deploy/local/compose.yaml -p bondbuddy_issue13_execution up -d --wait
+DATABASE_URL=postgresql://bondbuddy_local@127.0.0.1:55433/bondbuddy_local npm run migrate:api
+npm run build
+```
+
+另一个终端用本地 HTTPS 证书启动 Vite（证书应信任 `127.0.0.1`，不入库）：
+
+```sh
+BB_WEB_TLS_CERT=/path/to/local-cert.pem BB_WEB_TLS_KEY=/path/to/local-key.pem npm run dev:web
+```
+
+运行专用测试：
+
+```sh
+BB_E2E_REAL_API=1 BB_E2E_EXECUTION_STAGING=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 \
+BB_E2E_TERMS_VERSION=synthetic-web-test-v1 \
+BB_TEST_DATABASE_URL=postgresql://bondbuddy_local@127.0.0.1:55433/bondbuddy_local \
+BB_TEST_AZURITE_CONNECTION_STRING=UseDevelopmentStorage=true \
+npm test -w @bondbuddy/web -- tests/project-execution.integration.spec.ts
+```
+
+The live test requires the local HTTPS origin `https://127.0.0.1:5173` or an equivalent loopback hostname on port 5173. It rejects remote hosts and alternate ports before registering its synthetic account, so the browser cannot send test credentials to a remote web server.
+
+此用例执行真实 Fastify `/api/v1` 路由、PostgreSQL 写入及 Azurite 材料保存，但故意将 run 留在测试 staging 暂停态。下一步真实浏览器 execute 必须接入 #326 的非生产运行授权/队列和 #79 日志门禁，并确认失败/暂停事件归属及 `execution_request_id` 幂等恢复；不得把该本地 paused run 作为预发/生产 capability、模型用量或 Word 交付证据。
+
+完成后可运行 `docker compose -f deploy/local/compose.yaml -p bondbuddy_issue13_execution down` 停止并移除本测试自己的容器和网络（不要加 `-v`）。该 Compose 文件将 PostgreSQL 与 Azurite 数据目录挂到容器 tmpfs，没有命名卷；容器删除后测试账号、项目、材料字节和 run 记录不保留。
+
 ## #9 账号设置页
 
 `#/account`（侧栏“账号设置”）只调用 #100 已实现的 `/api/v1/account*` 路由，不新增契约或迁移。
