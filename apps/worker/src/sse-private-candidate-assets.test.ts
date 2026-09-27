@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { SSE_PRIVATE_APPLICABILITY_DICTIONARY } from '@bondbuddy/domain/sse-private-applicability';
+import { SSE_PRIVATE_APPLICABILITY_DICTIONARY, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain/sse-private-applicability';
 import {
   loadSsePrivateCandidateBundle,
   SSE_PRIVATE_CANDIDATE_ASSET_PIN,
@@ -26,7 +26,8 @@ async function readCandidateBytes() {
 test('loads the exact draft.6 assets as a candidate-only descriptor with deterministic coverage gaps', async () => {
   const bundle = await loadSsePrivateCandidateBundle(repositoryRoot);
   assert.equal(bundle.status, 'candidate_only');
-  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.version, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.version);
+  assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.version, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.dictionaryVersion);
+  assert.equal(SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.reviewTaxonomyVersion);
   assert.equal(SSE_PRIVATE_APPLICABILITY_DICTIONARY.contentSha256, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.contentSha256);
   assert.deepEqual(bundle.taxonomy, SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy);
   assert.equal(bundle.rulePack.id, 'sse-private');

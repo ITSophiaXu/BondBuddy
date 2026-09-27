@@ -7,7 +7,7 @@ import {
   type CoverageManifest,
   type RulePack,
 } from '@bondbuddy/domain';
-import { SSE_PRIVATE_APPLICABILITY_DICTIONARY } from '@bondbuddy/domain/sse-private-applicability';
+import { SSE_PRIVATE_APPLICABILITY_DICTIONARY, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain/sse-private-applicability';
 
 const ASSET_DIRECTORY = 'knowledge/exchange-bonds/drafts/sse-private';
 const RULE_PACK_FILE = 'rule-pack.json';
@@ -20,7 +20,8 @@ const COVERAGE_FILE = 'coverage.json';
  */
 export const SSE_PRIVATE_CANDIDATE_ASSET_PIN = Object.freeze({
   taxonomy: Object.freeze({
-    version: 'sse-private-applicability-v3',
+    dictionaryVersion: 'sse-private-applicability-v3',
+    reviewTaxonomyVersion: 'bondbuddy-applicability-sse-private-v3',
     contentSha256: 'd3feccf27a5a4c833402cbc1dd08bb96edcc35cad2f0ed00626b986a663b1c95',
   }),
   rulePack: Object.freeze({
@@ -70,7 +71,7 @@ export type CandidateCoverageBlocker = Readonly<{
 
 export type SsePrivateCandidateBundle = Readonly<{
   status: 'candidate_only';
-  taxonomy: Readonly<{ version: string; contentSha256: string }>;
+  taxonomy: Readonly<{ dictionaryVersion: string; reviewTaxonomyVersion: string; contentSha256: string }>;
   rulePack: Readonly<{
     id: string;
     version: string;
@@ -184,7 +185,9 @@ export function verifySsePrivateCandidateAssetBytes(input: {
   const { pack, template, coverage } = validated;
   const taxonomy = SSE_PRIVATE_APPLICABILITY_DICTIONARY;
 
-  if (taxonomy.version !== pin.taxonomy.version || taxonomy.contentSha256 !== pin.taxonomy.contentSha256) {
+  if (taxonomy.version !== pin.taxonomy.dictionaryVersion ||
+      SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION !== pin.taxonomy.reviewTaxonomyVersion ||
+      taxonomy.contentSha256 !== pin.taxonomy.contentSha256) {
     throw new SsePrivateCandidateAssetError('TAXONOMY_PIN_MISMATCH', 'Applicability dictionary version/hash differs from the pinned candidate');
   }
   if (pack.pack_id !== pin.rulePack.id || pack.version !== pin.rulePack.version || pack.status !== 'draft' ||
@@ -210,7 +213,8 @@ export function verifySsePrivateCandidateAssetBytes(input: {
   const records = createCoverageRecords(coverage, hashes.coverage);
   return Object.freeze({
     status: 'candidate_only',
-    taxonomy: Object.freeze({ version: taxonomy.version, contentSha256: taxonomy.contentSha256 }),
+    taxonomy: Object.freeze({ dictionaryVersion: taxonomy.version,
+      reviewTaxonomyVersion: SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION, contentSha256: taxonomy.contentSha256 }),
     rulePack: Object.freeze({
       id: pack.pack_id,
       version: pack.version,
