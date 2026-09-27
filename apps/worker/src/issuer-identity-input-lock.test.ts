@@ -11,13 +11,15 @@ import {
 } from '@bondbuddy/api/issuer-identity-source';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
 import { inputManifestHash, lockProductionRulePack, verifyRuleApplicabilitySourceLock,
-  type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+  type ReviewedContextLoader, type ReviewedContextResult } from '@bondbuddy/api/production-rule-pin';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import type { ProductionRulePackRequest } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const origin = 'http://bondbuddy.test';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+const approvedContext = (request: ProductionRulePackRequest, contextPin: Record<string, unknown>): ReviewedContextResult =>
+  ({ status: 'approved', reasons: [], request, contextPin } as unknown as ReviewedContextResult);
 const ownerLoaderContract: ReviewedContextLoader = loadReviewedRuleApplicabilityContext;
 void ownerLoaderContract;
 
@@ -157,7 +159,7 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
         { owner_user_id: owner, id: projectId, market: 'sse', offering: 'private' }, v2Lock,
         firstManifest.issuer_identity, contextRef, async () => {
           staleLoaderCalled = true;
-          return { request, contextPin: reviewedContextPin };
+          return approvedContext(request, reviewedContextPin);
         }), { status: 'blocked', reasons: ['rule_applicability_source_material_mismatch'] });
       assert.equal(staleLoaderCalled, false, 'A(v2) never reaches the loader or selector');
       const reviewedApp = createServer({ pool: scopedPool, allowedOrigin: origin,
@@ -171,7 +173,7 @@ test('synthetic PostgreSQL: input_lock pauses on reviewer revocation and fails o
           assert.equal(args.expectedIssuerBinding.entity_id, 'entity:11111111-1111-4111-8111-111111111111');
           assert.equal(args.currentDraftRevision, 1);
           assert.deepEqual(args.currentMaterialVersions, [{ materialId, materialVersion: 1, sha256: contentHash }]);
-          return { request, contextPin: reviewedContextPin };
+          return approvedContext(request, reviewedContextPin);
         } });
       try {
         const extraUpload = `synthetic-extra-upload-${suffix}`, extraMaterial = `synthetic-extra-material-${suffix}`;

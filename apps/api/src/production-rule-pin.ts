@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { revalidateProductionRulePackPin, selectProductionRulePack, type ProductionRulePackApplicabilityContext,
-  type ProductionRulePackPin, type ProductionRulePackRequest } from '@bondbuddy/rule-pack-registry';
+  type ProductionRulePackPin } from '@bondbuddy/rule-pack-registry';
+import type { ReviewedRuleApplicabilityContextArgs, ReviewedRuleApplicabilityContextResult } from '@bondbuddy/rule-applicability-context';
 import { digest } from './data.js';
 import { isVerifiedIssuerIdentityBinding, type VerifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 
@@ -9,18 +10,8 @@ export type RuleApplicabilityContextRef = {
   context_id: string; version: number; content_hash: string;
   source_input_revision: number; source_input_hash: string;
 };
-export type ReviewedContextArgs = {
-  ownerUserId: string; projectId: string; contextId: string; version: number; contentHash: string;
-  expectedSourceInputRevision: number; expectedSourceInputHash: string;
-  expectedIssuerBinding: VerifiedIssuerIdentityBinding;
-  currentDraftRevision: number;
-  /** Only an already locked run may replay against a later project draft. */
-  mode?: 'selection' | 'replay' | 'non_production_test';
-  currentMaterialVersions: readonly { materialId: string; materialVersion: number; sha256: string }[];
-};
-export type ReviewedContextResult =
-  | { request: ProductionRulePackRequest; contextPin: Record<string, unknown> }
-  | { status: 'needs_review'; reasons: string[] };
+export type ReviewedContextArgs = ReviewedRuleApplicabilityContextArgs;
+export type ReviewedContextResult = ReviewedRuleApplicabilityContextResult;
 /** #15/#19 owns implementation and review semantics; production injects the fail-closed loader. */
 export type ReviewedContextLoader = (db: Db, args: ReviewedContextArgs) => Promise<ReviewedContextResult>;
 export type RulePackBinding =
@@ -114,7 +105,7 @@ export async function loadExactReviewedContext(db: Db, owner: string, projectId:
     currentDraftRevision: current.draftRevision, mode,
     currentMaterialVersions: currentMaterials.map(material => ({ materialId: material.material_id,
       materialVersion: material.material_version, sha256: material.sha256 })) });
-  if ('status' in result) return result;
+  if (result.status !== 'approved') return result;
   if (!isRecord(result.contextPin) || inputManifestHash(result.contextPin) !== ref.content_hash)
     return { status: 'needs_review', reasons: ['rule_applicability_context_hash_mismatch'] };
   return result;
@@ -126,7 +117,7 @@ export async function lockProductionRulePack(db: Db, project: { owner_user_id: s
   if (!identity) return { status: 'blocked', reasons: ['issuer_identity_not_bound'] };
   if (!ref || !validContextRef(ref)) return { status: 'blocked', reasons: ['rule_applicability_reference_missing'] };
   const reviewed = await loadExactReviewedContext(db, project.owner_user_id, project.id, ref, identity, current, loader);
-  if ('status' in reviewed) return { status: 'blocked', reasons: reviewed.reasons };
+  if (reviewed.status !== 'approved') return { status: 'blocked', reasons: reviewed.reasons };
   if (reviewed.request.market !== project.market || reviewed.request.offering !== project.offering)
     return { status: 'blocked', reasons: ['rule_applicability_project_scope_mismatch'] };
   const selection = await selectProductionRulePack(db as Pool, reviewed.request);
@@ -180,7 +171,7 @@ export async function revalidateStoredProductionRulePin(db: Db, scope: { ownerUs
     return { status: 'tampered', reason: 'rule_pack_pin_mismatch' };
   const current = { draftRevision: Number(input.draft_revision), materials: lockedMaterials };
   const reviewed = await loadExactReviewedContext(db, scope.ownerUserId, scope.projectId, ref, identity, current, loader, mode);
-  if ('status' in reviewed)
+  if (reviewed.status !== 'approved')
     return { status: 'blocked', reason: reviewed.reasons[0] ?? 'rule_applicability_needs_review' };
   if (canonicalInputManifest(reviewed.contextPin) !== canonicalInputManifest(contextPin) ||
       reviewed.request.market !== pin.market || reviewed.request.offering !== pin.offering ||

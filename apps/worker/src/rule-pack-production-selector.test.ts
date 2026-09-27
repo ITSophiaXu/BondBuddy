@@ -14,7 +14,7 @@ import {
   type RulePack,
 } from '@bondbuddy/domain';
 import { isolatedTestDatabase } from './test-database.js';
-import { inputManifestHash, lockProductionRulePack } from '@bondbuddy/api/production-rule-pin';
+import { inputManifestHash, lockProductionRulePack, type ReviewedContextResult } from '@bondbuddy/api/production-rule-pin';
 import { createServer } from '@bondbuddy/api';
 import { codexModelStage, inputLockStage, type StageContext } from './run-pipeline.js';
 import {
@@ -25,6 +25,8 @@ import {
 } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = await isolatedTestDatabase('PRODUCTION_RULE_PACK_SELECTOR_TEST_DATABASE_URL');
+const approvedContext = (request: ProductionRulePackRequest, contextPin: Record<string, unknown>): ReviewedContextResult =>
+  ({ status: 'approved', reasons: [], request, contextPin } as unknown as ReviewedContextResult);
 
 function transactionalPool(client: PoolClient): Pool {
   let serial = 0;
@@ -50,7 +52,7 @@ async function preflightRuleReasons(client: PoolClient, ownerUserId: string, pro
     reviewedContextLoader: async (_db, args) => {
       assert.equal(args.currentDraftRevision, 1);
       assert.deepEqual(args.currentMaterialVersions, []);
-      return { request: selectionRequest, contextPin };
+      return approvedContext(selectionRequest, contextPin);
     } });
   try {
     const response = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`,
@@ -519,13 +521,13 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref),
       { status: 'blocked', reasons: ['rule_applicability_loader_unavailable'] });
     assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, { ...ref, source_input_hash: '0'.repeat(64) },
-      async () => ({ request: selectionRequest, contextPin })),
+      async () => approvedContext(selectionRequest, contextPin)),
     { status: 'blocked', reasons: ['rule_applicability_source_input_mismatch'] });
     assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref,
       async () => ({ status: 'needs_review', reasons: ['rule_applicability_review_pending'] })),
     { status: 'blocked', reasons: ['rule_applicability_review_pending'] });
     assert.deepEqual(await lockProductionRulePack(client, scope, currentLock, identity, ref,
-      async () => ({ request: selectionRequest, contextPin: { ...contextPin, overall_review: null } })),
+      async () => approvedContext(selectionRequest, { ...contextPin, overall_review: null })),
     { status: 'blocked', reasons: ['rule_applicability_context_hash_mismatch'] });
     const locked = await lockProductionRulePack(client, scope, currentLock, identity, ref,
       async (_db, args) => {
@@ -534,7 +536,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         assert.equal(args.expectedIssuerBinding, identity);
         assert.equal(args.currentDraftRevision, 1);
         assert.deepEqual(args.currentMaterialVersions, []);
-        return { request: selectionRequest, contextPin };
+        return approvedContext(selectionRequest, contextPin);
       });
     assert.equal(locked.status, 'selected', JSON.stringify(locked));
     let gateCtx: StageContext | undefined;
@@ -564,7 +566,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
           assert.equal(args.currentDraftRevision, 1);
           assert.equal(args.mode, 'replay');
           assert.deepEqual(args.currentMaterialVersions, []);
-          return { request: selectionRequest, contextPin };
+          return approvedContext(selectionRequest, contextPin);
         } } as StageContext;
       gateCtx = ctx;
       assert.deepEqual(await inputLockStage.run(ctx), { kind: 'done' });
@@ -578,7 +580,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
           const draft = await _db.query('SELECT draft_revision FROM bb_projects WHERE owner_user_id=$1 AND id=$2', [operator, projectId]);
           if (Number(draft.rows[0]?.draft_revision) !== args.currentDraftRevision)
             return { status: 'needs_review', reasons: ['rule_applicability_current_draft_stale'] };
-          return reviewActive ? { request: selectionRequest, contextPin }
+          return reviewActive ? approvedContext(selectionRequest, contextPin)
             : { status: 'needs_review', reasons: ['rule_applicability_review_revoked'] };
         } });
       const preflight = async () => app.inject({ method: 'POST',
@@ -594,7 +596,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         const stalePreflight = await preflight();
         assert.ok(stalePreflight.json().missing_inputs.includes('rule_pack:rule_applicability_current_draft_stale'));
         assert.deepEqual(await lockProductionRulePack(client, scope, { draftRevision: 2, materials: [] }, identity, ref,
-          async () => ({ request: selectionRequest, contextPin })),
+          async () => approvedContext(selectionRequest, contextPin)),
         { status: 'blocked', reasons: ['rule_applicability_source_draft_mismatch'] },
         'a new selection still rejects the stale source');
         reviewActive = false;
@@ -667,7 +669,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
           expiredRequest, expiredContextPin, 6)).includes('rule_pack:production_rule_pack_not_effective'));
       const expiredCtx = { ...gateCtx,
         run: { ...gateCtx.run, input_revision: 6, input_hash: expiredHash },
-        reviewedContextLoader: async () => ({ request: expiredRequest, contextPin: expiredContextPin }) };
+        reviewedContextLoader: async () => approvedContext(expiredRequest, expiredContextPin) };
       const expiredGate = await inputLockStage.run(expiredCtx);
       assert.deepEqual(expiredGate,
         { kind: 'pause', stage: 'capability_not_ready', reason: 'production_rule_pack_not_effective' });
