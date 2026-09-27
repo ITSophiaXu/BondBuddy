@@ -2,6 +2,7 @@ import { RECOVERY_ROLE } from './account-recovery.js';
 import { TRIAL_ALERT_KINDS } from './trial-guard.js';
 import { OPS_SCHEDULER_ALERT_KINDS } from './ops-scheduler.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import { RUN_CHANNELS, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
 
 // #79 operator surface. Only these DTOs leave the admin routes; none carries prompt plaintext
 // except AdminPromptView, which needs the separate prompt_viewer grant and is always audited.
@@ -30,18 +31,18 @@ const count = Type.Integer({ minimum: 0 });
 const tokens = nullable(count);
 
 const TokenBreakdown = obj({ input_tokens: tokens, output_tokens: tokens, cached_input_tokens: tokens, reasoning_tokens: tokens });
-const AdminLogEvent = obj({ event_id: id, kind: Type.String({ pattern: '^[a-z_]+\\.[a-z_]+$' }), occurred_at: utc, user_id: id, project_id: nullable(id), job_id: nullable(id), run_id: nullable(id), trace_id: id, actor_type: enumOf(['user', 'system', 'operator'] as const), status: nullable(safeCode), stage: nullable(safeCode), error_code: nullable(code), logical_call_id: nullable(id), attempt_no: nullable(Type.Integer({ minimum: 1 })), prompt_snapshot_ref: nullable(id) });
+const AdminLogEvent = obj({ event_id: id, kind: Type.String({ pattern: '^[a-z_]+\\.[a-z_]+$' }), occurred_at: utc, user_id: id, project_id: nullable(id), job_id: nullable(id), run_id: nullable(id), channel: enumOf(RUN_CHANNELS), trace_id: id, actor_type: enumOf(['user', 'system', 'operator'] as const), status: nullable(safeCode), stage: nullable(safeCode), error_code: nullable(code), logical_call_id: nullable(id), attempt_no: nullable(Type.Integer({ minimum: 1 })), prompt_snapshot_ref: nullable(id) });
 const PromptRef = obj({ snapshot_id: id, kind: enumOf(['user_prompt', 'model_request', 'structured_input'] as const), version: Type.Integer({ minimum: 1 }), content_sha256: hash, redaction_version: safeCode, input_revision: nullable(Type.Integer({ minimum: 1 })), template_version: nullable(Type.String()), rule_pack_version: nullable(Type.String()), model_parameters_version: nullable(Type.String()), content_state: enumOf(LOG_CONTENT_STATES), created_at: utc });
-const Attempt = obj({ attempt_id: id, logical_call_id: id, attempt_no: Type.Integer({ minimum: 1 }), status: enumOf(ADMIN_ATTEMPT_STATUSES), model_id: nullable(Type.String({ maxLength: 128 })), provider_request_id: nullable(Type.String({ maxLength: 256 })), prompt_snapshot_ref: nullable(id), usage_status: enumOf(ADMIN_USAGE_STATUSES), usage: TokenBreakdown, corrected: Type.Boolean(), duration_ms: nullable(count), error_code: nullable(code), created_at: utc });
+const Attempt = obj({ attempt_id: id, logical_call_id: id, attempt_no: Type.Integer({ minimum: 1 }), channel: enumOf(RUN_CHANNELS), status: enumOf(ADMIN_ATTEMPT_STATUSES), model_id: nullable(Type.String({ maxLength: 128 })), provider_request_id: nullable(Type.String({ maxLength: 256 })), prompt_snapshot_ref: nullable(id), usage_status: enumOf(ADMIN_USAGE_STATUSES), usage: TokenBreakdown, corrected: Type.Boolean(), duration_ms: nullable(count), error_code: nullable(code), created_at: utc });
 const Stage = obj({ seq: Type.Integer({ minimum: 1 }), type: Type.String({ maxLength: 64 }), state: safeCode, stage: nullable(safeCode), reason: nullable(safeCode), occurred_at: utc });
 const ErrorRow = obj({ error_id: id, code, category: safeCode, stage: nullable(safeCode), attempt_id: nullable(id), retry_count: count, fingerprint: nullable(hash), recovery_status: nullable(safeCode), created_at: utc });
-const Artifact = obj({ artifact_id: id, version: Type.Integer({ minimum: 1 }), sha256: hash, quality_status: enumOf(['pending', 'passed', 'failed'] as const), delivery_status: enumOf(['pending', 'available', 'revoked'] as const), created_at: utc });
+const Artifact = obj({ artifact_id: id, version: Type.Integer({ minimum: 1 }), sha256: hash, quality_status: enumOf(['pending', 'passed', 'failed'] as const), delivery_status: enumOf(['pending', ...ARTIFACT_DELIVERY_STATUSES, 'revoked'] as const), created_at: utc });
 const Consumption = obj({ attempts: count, measured_attempts: count, unresolved_attempts: count, ...TokenBreakdown.properties });
 
 export const adminSchemas = {
   AdminLogEventsResponse: obj({ items: Type.Array(AdminLogEvent, { maxItems: ADMIN_LOG_PAGE_LIMIT }), truncated: Type.Boolean() }),
   AdminJobTimelineResponse: obj({
-    job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), operation_id: Type.Optional(nullable(id)), request_id: Type.Optional(nullable(id)), execution_request_id: Type.Optional(nullable(id)), execution_request_key_hash: Type.Optional(nullable(hash)), trace_id: nullable(id), input_revision: Type.Optional(nullable(Type.Integer({ minimum: 1 }))), input_hash: Type.Optional(nullable(hash)), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
+    job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), channel: enumOf(RUN_CHANNELS), operation_id: Type.Optional(nullable(id)), request_id: Type.Optional(nullable(id)), execution_request_id: Type.Optional(nullable(id)), execution_request_key_hash: Type.Optional(nullable(hash)), trace_id: nullable(id), input_revision: Type.Optional(nullable(Type.Integer({ minimum: 1 }))), input_hash: Type.Optional(nullable(hash)), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
     prompts: Type.Array(PromptRef),
     stages: Type.Array(Stage),
     attempts: Type.Array(Attempt),

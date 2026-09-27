@@ -14,7 +14,7 @@ const bytes = Buffer.from('synthetic Word download bytes');
 const project: Dto<'ProjectResponse'> = { project_id: projectId, draft_revision: 4, input_revision: 3, input_hash: 'a'.repeat(64),
   name: '合成成果项目', kind: 'update', issuer_name: '合成发行人', market: 'sse', offering: 'private', updated_at: now };
 const run: Dto<'RunResponse'> = { run_id: runId, execution_request_id: 'synthetic-execution', project_id: projectId,
-  input_revision: 2, input_hash: 'b'.repeat(64), state: 'succeeded', stage: 'completed', event_cursor: 5,
+  input_revision: 2, input_hash: 'b'.repeat(64), channel: 'production', test_grant_id: null, uncovered_items: [], state: 'succeeded', stage: 'completed', event_cursor: 5,
   billing_mode: 'platform_trial', reservation_id: null, artifact_id: ids.revision, prompt_snapshot_ref: 'private-snapshot', updated_at: now };
 const summary: NonNullable<Dto<'ArtifactResponse'>['word_delivery']> = {
   variant: 'revision', revision_artifact_id: ids.revision, clean_artifact_id: ids.clean, baseline_artifact_id: ids.baseline,

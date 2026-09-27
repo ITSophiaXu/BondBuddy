@@ -6,6 +6,8 @@ export * from './platform-processing-cost.js';
 export * from './ocr.js';
 export * from './ocr-v2.js';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import { RUN_CHANNELS, RUN_BILLING_MODES, ARTIFACT_DELIVERY_STATUSES } from './run-channel.js';
+export * from './run-channel.js';
 import { UpdateDetailsSchema, TargetReportingPeriodSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
@@ -50,13 +52,13 @@ export const M1_UPLOAD_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/csv', 'text/plain', 'image/png', 'image/jpeg'
 ] as const;
-export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'failed', 'cancelled'] as const;
+export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'test_completed', 'failed', 'cancelled'] as const;
 /** Project list projection: no run is a draft; otherwise reuse the actual run state. */
 export const PROJECT_STATES = ['draft', ...RUN_STATES] as const;
 export const PROJECT_ARCHIVE_VIEWS = ['active', 'archived', 'all'] as const;
 export const MATERIAL_STATES = ['uploading', 'persisted', 'prechecking', 'ready', 'parsing', 'needs_confirmation', 'parsed', 'failed'] as const;
 export const PROFILE_STATES = ['queued', 'analyzing', 'ready', 'needs_confirmation', 'failed'] as const;
-export const ERROR_CODES = ['INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
+export const ERROR_CODES = ['TEST_CHANNEL_DISABLED', 'TEST_GRANT_INVALID', 'TEST_GRANT_EXPIRED', 'TEST_GRANT_REVOKED', 'TEST_GRANT_MISMATCH', 'INPUT_REQUIRED', 'INPUT_REVISION_CONFLICT', 'ISSUER_IDENTITY_VERIFICATION_INVALID', 'ISSUER_IDENTITY_SNAPSHOT_CONFLICT', 'MATERIAL_UNREADABLE', 'MATERIAL_PARSE_TIMEOUT', 'MATERIAL_TOO_LARGE', 'MATERIAL_FORMAT_UNSUPPORTED', 'MATERIAL_ENCRYPTED', 'MATERIAL_CONTENT_MISMATCH', 'FACT_CONFLICT', 'CAPABILITY_NOT_READY', 'DATA_NOT_ENTITLED', 'DATA_UNAVAILABLE', 'CREDITS_INSUFFICIENT', 'METERING_PENDING', 'DELIVERY_FAILED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'ALREADY_TERMINAL', 'NOT_FOUND', 'UNAUTHENTICATED', 'VALIDATION_FAILED', 'CHALLENGE_INVALID', 'AGREEMENT_REQUIRED', 'CSRF_DENIED', 'PASSWORD_INVALID', 'ACCOUNT_CLOSURE_BLOCKED', 'PROJECT_DELETE_BLOCKED', ...TRIAL_GUARD_ERROR_CODES] as const;
 export const PROJECT_EVENT_TYPES = ['material.upload_progress', 'material.parse_progress', 'historical_profile.updated'] as const;
 export const RUN_EVENT_TYPES = ['run.state_changed', 'run.progress', 'conversation.clarification', 'artifact.ready'] as const;
 export const EVENT_TYPES = [...PROJECT_EVENT_TYPES, ...RUN_EVENT_TYPES] as const;
@@ -65,7 +67,7 @@ export const CLOSURE_RETAINED_RECORDS = ['account_identifier', 'agreement_accept
 export const TASK_KINDS = ['update', 'review', 'generation', 'qa'] as const;
 export const USAGE_STATUSES = ['reported', 'pending', 'unavailable'] as const;
 export const JOB_KINDS = ['update', 'review', 'generation', 'qa', 'preflight', 'parse', 'library'] as const;
-export const JOB_STATUSES = ['created', 'queued', 'running', 'awaiting_input', 'paused', 'succeeded', 'failed', 'cancelled', 'rejected'] as const;
+export const JOB_STATUSES = ['created', 'queued', 'running', 'awaiting_input', 'paused', 'succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'] as const;
 export const ERROR_CATEGORIES = ['validation', 'auth', 'material_parse', 'ocr', 'model_provider', 'tool', 'queue', 'export', 'delivery', 'metering', 'internal'] as const;
 // #16 contained model adapter (internal worker/#79 codes; never shown as a public API error).
 export const MODEL_ADAPTER_KINDS = ['codex_exec'] as const;
@@ -193,8 +195,8 @@ export const schemas = {
   ] }),
   PreflightRequest: obj({ input_revision: revision, input_hash: hash }),
   PreflightResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation'), Type.Literal('blocked')]), missing_inputs: Type.Array(Type.String()), uncertainty: Type.Array(Type.String()), billing_mode: Type.Literal('platform_trial'), update_difficulty: Type.Optional(obj({ snapshot_id: id, status: Type.Union([Type.Literal('ready'), Type.Literal('needs_confirmation')]), estimated_n: nullable(Type.Integer({ minimum: 0 })), structure_adaptation_required: nullable(Type.Boolean()), confirmation_reasons: Type.Array(Type.String()), source_profile_version: revision })) }),
-  ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id }),
-  RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: Type.Literal('platform_trial'), reservation_id: Type.Null(), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
+  ExecuteRequest: obj({ execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, task_kind: taskKind, input_manifest_ref: id, storage_origin: Type.Literal('cloud'), workspace_id: id, test_grant_id: Type.Optional(id) }),
+  RunResponse: Type.Object({ run_id: id, execution_request_id: id, project_id: id, input_revision: revision, input_hash: hash, channel: enumOf(RUN_CHANNELS), test_grant_id: nullable(id), uncovered_items: Type.Array(obj({ rule_id: id, reason_code: safeCode, evidence_ref: nullable(id) })), state: runState, stage: nullable(Type.String()), event_cursor: nullable(Type.Integer({ minimum: 0 })), billing_mode: enumOf(RUN_BILLING_MODES), reservation_id: Type.Null(), artifact_id: nullable(id), prompt_snapshot_ref: nullable(id), updated_at: utc }, { additionalProperties: false, if: { properties: { state: { const: 'succeeded' } } }, then: { properties: { artifact_id: { type: 'string', minLength: 1 } } } }),
   RunActionRequest: obj({ reason: Type.String({ minLength: 1 }) }),
   MaterialParseJobResponse: MaterialParseJobSchema,
   RunEvent: RunEventSchema,
@@ -203,7 +205,7 @@ export const schemas = {
   ProjectEventsResponse: obj({ items: Type.Array(ProjectEventSchema), next_cursor: nullable(Type.Integer({ minimum: 0 })) }),
   InternalObservabilityEvent: InternalObservabilityEventSchema,
   UsageObservation: UsageObservationSchema,
-  ArtifactResponse: obj({ artifact_id: id, run_id: id, version: revision, media_type: Type.Literal('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), sha256: hash, quality_status: Type.Literal('passed'), delivery_status: Type.Literal('available'), download_url: Type.String({ description: 'Short-lived authorized URL, only after owner and hash check.' }), expires_at: utc,
+  ArtifactResponse: obj({ artifact_id: id, run_id: id, version: revision, media_type: Type.Literal('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), sha256: hash, quality_status: Type.Literal('passed'), delivery_status: enumOf(ARTIFACT_DELIVERY_STATUSES), download_url: Type.String({ description: 'Short-lived authorized URL, only after owner and hash check.' }), expires_at: utc,
     word_delivery: Type.Optional(obj({ variant: Type.Union([Type.Literal('revision'), Type.Literal('clean'), Type.Literal('baseline')]),
       revision_artifact_id: id, clean_artifact_id: id, baseline_artifact_id: id,
       writer_version: Type.Literal('bondbuddy-word-delivery-1.0.0'), source_sha256: hash, baseline_hash: hash, effective_baseline_sha256: hash, plan_hash: hash,
@@ -290,7 +292,7 @@ export const operations: readonly Operation[] = [
   op('post', '/projects/{project_id}/credit-facility-supplements', 'Append owner-scoped user credit assertions with exact immutable revision ancestry', 'CreditFacilitySupplementResponse', 201, 'CreditFacilitySupplementRequest', [404, 409, 422]),
   op('get', '/projects/{project_id}/credit-facility-supplements/{supplement_id}/versions/{version}', 'Read one exact owner/project-scoped credit supplement version', 'CreditFacilitySupplementResponse', 200, undefined, [404, 422]),
   op('post', '/projects/{project_id}/preflight', 'Evaluate an immutable input revision against durable parse jobs, profiles and capability', 'PreflightResponse', 200, 'PreflightRequest', [404, 409]),
-  op('post', '/runs/execute', 'Submit idempotent persistent run (contract only)', 'RunResponse', 202, 'ExecuteRequest', [404, 409]),
+  op('post', '/runs/execute', 'Submit idempotent persistent run (contract only)', 'RunResponse', 202, 'ExecuteRequest', [403, 404, 409]),
   op('get', '/runs/{run_id}', 'Re-read owner run after new session (contract only)', 'RunResponse', 200, undefined, [404]),
   op('get', '/runs/{run_id}/events', 'Read events after cursor (contract only)', 'RunEventsResponse', 200, undefined, [404]),
   op('post', '/runs/{run_id}/cancel', 'Cancel server run explicitly (contract only)', 'RunResponse', 200, 'RunActionRequest', [404, 409]),

@@ -22,7 +22,7 @@ const retainedLabels: Record<typeof CLOSURE_RETAINED_RECORDS[number], string> = 
 };
 const runStateLabels: Record<typeof RUN_STATES[number], string> = {
   preparing: '准备中', rejected: '未通过检查', queued: '排队中', running: '执行中', awaiting_input: '等待补充信息', paused: '已暂停',
-  validating: '正在检查成果', delivering: '正在交付', settlement_pending: '等待结算', succeeded: '已完成', failed: '已失败', cancelled: '已取消'
+  validating: '正在检查成果', delivering: '正在交付', settlement_pending: '等待结算', succeeded: '已完成', test_completed: '内部测试工作稿', failed: '已失败', cancelled: '已取消'
 };
 // DTO enums infer as string; the Record keys above still make the label tables track the contract values.
 const labelOf = (labels: Record<string, string>, code: string) => labels[code] ?? code;

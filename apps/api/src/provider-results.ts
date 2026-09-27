@@ -149,7 +149,7 @@ async function lockIdentity(client: PoolClient, observation: ProviderCallObserva
   if (r.project_id !== observation.project_id) throw missing();
   const job = (await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.run_id])).rows[0];
   if (!job) throw missing();
-  if (['succeeded','failed','cancelled','rejected'].includes(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+  if (['succeeded','test_completed','failed','cancelled','rejected'].includes(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
   if (lease) {
     if (lease.owner !== observation.owner_user_id || lease.runId !== observation.run_id || lease.jobId !== observation.job_id || job.state !== 'running' || job.lease_token !== lease.token || !job.lease_until || new Date(job.lease_until).getTime() <= Date.now()) {
       throw new Problem(409,'CAPABILITY_NOT_READY','Provider observation lease is no longer active');
@@ -168,7 +168,7 @@ async function assertObservationScope(pool: Pool, observation: ProviderCallObser
       AND a.logical_call_id=$5 AND a.attempt_no=$6 AND a.id=$7`,[observation.owner_user_id,observation.project_id,observation.run_id,observation.job_id,observation.logical_call_id,observation.attempt_no,observation.call_id]);
   const row=q.rows[0];
   if(!row || row.model_id!==observation.model_id || row.prompt_snapshot_id!==observation.prompt_snapshot_ref)throw missing();
-  if(['succeeded','failed','cancelled','rejected'].includes(row.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
+  if(['succeeded','test_completed','failed','cancelled','rejected'].includes(row.state))throw new Problem(409,'ALREADY_TERMINAL','Run already finished');
   if(lease){
     if(lease.owner!==observation.owner_user_id || lease.runId!==observation.run_id || lease.jobId!==observation.job_id || row.job_state!=='running' || row.lease_token!==lease.token || !row.lease_until || new Date(row.lease_until).getTime()<=Date.now())throw new Problem(409,'CAPABILITY_NOT_READY','Provider observation lease is no longer active');
   }else if(row.state!=='paused' || row.job_state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting provider reconciliation');

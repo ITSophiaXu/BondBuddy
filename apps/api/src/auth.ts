@@ -11,7 +11,7 @@ const dummyHash = argon2.hash(randomBytes(32), passwordOptions);
 const loginError = () => new Problem(401,'UNAUTHENTICATED','Invalid username or password');
 // Re-authentication inside a live session must not look like session expiry to the browser.
 const passwordError = () => new Problem(403,'PASSWORD_INVALID','Current password is incorrect');
-const terminalRunStates = ['succeeded','failed','cancelled','rejected'];
+const terminalRunStates = ['succeeded','test_completed','failed','cancelled','rejected'];
 const activeRunStates = RUN_STATES.filter(state => !terminalRunStates.includes(state));
 function username(raw: string) {
   const value=raw.toLowerCase();

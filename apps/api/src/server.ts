@@ -37,6 +37,7 @@ import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoi
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
+import { assertTestGrant } from './non-production-test.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -135,6 +136,8 @@ export function createServer(settings: Settings = {}) {
     const inputRevision=isPgInputRevision(submitted.input_revision)?submitted.input_revision:undefined;
     const inputHash=typeof submitted.input_hash==='string'&&/^[a-f0-9]{64}$/.test(submitted.input_hash)?submitted.input_hash:undefined;
     const requestId=request.id,traceId=uid();
+    const testGrantId=kind==='execute'&&safeId(submitted.test_grant_id)?submitted.test_grant_id:undefined;
+    const channel=testGrantId?'non_production_test' as const:'production' as const;
     return transaction(db(),async client=>{
       const owned=safeId(projectId)&&await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,projectId]);
       if(!owned||!owned.rowCount){
@@ -161,7 +164,7 @@ export function createServer(settings: Settings = {}) {
           return {status:409,code:'IDEMPOTENCY_CONFLICT'};
         }
       }
-      const logged=await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'submission',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',executionRequestId,requestHash,httpStatus:422,schemaRejected:true});
+      const logged=await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'submission',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',executionRequestId,requestHash,httpStatus:422,schemaRejected:true,channel,testGrantId});
       return {status:logged.httpStatus!,code:logged.errorCode!};
     });
   }
@@ -307,7 +310,7 @@ export function createServer(settings: Settings = {}) {
       const found=await client.query('SELECT deleted_at FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,id]);
       if(!found.rows[0])throw missing();
       if(found.rows[0].deleted_at!==null)return; // Owned repeat deletion is idempotent.
-      const active=await client.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND state NOT IN ('succeeded','failed','cancelled','rejected') LIMIT 1",[user,id]);
+      const active=await client.query("SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND state NOT IN ('succeeded','test_completed','failed','cancelled','rejected') LIMIT 1",[user,id]);
       if(active.rows[0])throw conflict('PROJECT_DELETE_BLOCKED','Cancel or finish active runs before deleting the project');
       // Material soft deletion writes 0006 storage tombstones; 0026 purges derived content after the same window.
       const materials=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id]);
@@ -712,12 +715,12 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);
-    const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string}>(request);
+    const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string;test_grant_id?:string}>(request);
     const traceId=uid();
-    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id}));
+    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
     const storedExecutionKey=executionKeyStorage(b.execution_request_id);
     const wideRevision=!isPgInputRevision(b.input_revision);
-    const logical=(errorCode:string,httpStatus:number,stage:string)=>({owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
+    const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:b.test_grant_id?'non_production_test' as const:'production' as const,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
     const priorRejection=async(client:PoolClient,prior:any)=>{
       if(wideRevision){
         const same=prior.request_hash.trim()===requestHash;
@@ -763,9 +766,10 @@ export function createServer(settings: Settings = {}) {
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+      if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
-      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused']);
+      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',b.test_grant_id?'non_production_test':'production',b.test_grant_id??null]);
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
         await enqueue(client,q.rows[0],runRuntime?RUN_PIPELINE_SUBTYPE:'default');
@@ -820,9 +824,13 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
-      JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
+      JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
+      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
-      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
+      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
+        ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
+         (r.channel='non_production_test' AND r.state='test_completed' AND a.delivery_status='test_only'
+          AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id]);
     if(!q.rows[0])throw missing();const a=q.rows[0];await verifiedArtifactBytes(a);
     const pairRow=await db().query("SELECT checkpoint->'stages'->'word_delivery_pair' AS pair FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2",[user,a.run_id]);
     const pair=pairRow.rows[0]?.pair as Record<string,unknown>|undefined;
@@ -840,9 +848,13 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
     const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
-      JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
+      JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
+      LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
-      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY a.version DESC LIMIT 1`,[user,id]);
+      WHERE a.owner_user_id=$1 AND a.id=$2 AND a.quality_status='passed' AND
+        ((r.channel='production' AND r.state='succeeded' AND a.delivery_status='available') OR
+         (r.channel='non_production_test' AND r.state='test_completed' AND a.delivery_status='test_only'
+          AND tg.user_id=$1 AND tg.revoked_at IS NULL AND tg.expires_at>now())) ORDER BY a.version DESC LIMIT 1`,[user,id]);
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
     const bytes=await verifiedArtifactBytes(a);

@@ -13,12 +13,14 @@ import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
 import { revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
+import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
+import { markTestWord, type UncoveredItem } from './test-word-marking.js';
 
-export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string };
+export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
   pool: Pool; blobs: PrivateBlobs; lease: Lease; run: RunRow; signal: AbortSignal;
   /** Checkpoint of completed stages, then values produced by stages in this attempt. */
@@ -26,6 +28,7 @@ export type StageContext = {
   /** Revalidate update issuer identity immediately before constructing a prompt and before each provider intent. */
   validateBeforeModelCall?: () => Promise<InputBindingGate | null>;
   reviewedContextLoader?: ReviewedContextLoader;
+  testRuleCapabilityLoader?: TestRuleCapabilityLoader;
 };
 export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
@@ -40,10 +43,11 @@ export type RunStage = {
   replay?: boolean;
   run: (ctx: StageContext) => Promise<StageOutcome>;
 };
-export type RunPipelineOutcome = 'idle' | 'succeeded' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
+export type RunPipelineOutcome = 'idle' | 'succeeded' | 'test_completed' | 'failed' | 'paused' | 'lost' | 'retry' | 'stopped';
 export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
   signal?: AbortSignal; reviewedContextLoader?: ReviewedContextLoader;
+  testRuleCapabilityLoader?: TestRuleCapabilityLoader;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -74,8 +78,34 @@ const lost = (error: unknown) => error instanceof Problem && (error.code === 'AL
 const notImplemented = (name: string): RunStage => ({ name, run: async () => ({ kind: 'pause', stage: 'capability_not_ready', reason: 'stage_not_implemented' }) });
 
 type InputBindingGate = Extract<StageOutcome, { kind: 'pause' | 'fail' }>;
+export type TestRuleCapability = { status: 'ready'; sampleManifestSha256: string; taxonomyHash: string; rulePackHash: string;
+  uncoveredItems: {rule_id:string;reason_code:string;evidence_ref:string|null}[] } | { status: 'not_ready'; reason: string };
+export type TestRuleCapabilityLoader = (run: RunRow, input: InputRevisionRow) => Promise<TestRuleCapability>;
+// #19 supplies the candidate selector. Until then a test run stays paused before any model call.
+export const unavailableTestRuleCapability: TestRuleCapabilityLoader = async () =>
+  ({ status:'not_ready', reason:'test_rule_capability_not_ready' });
 type InputRevisionRow = { input_hash: string; draft_revision: number; material_versions: unknown;
   manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
+
+async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRevisionRow,
+  loader: TestRuleCapabilityLoader = unavailableTestRuleCapability): Promise<InputBindingGate | null> {
+  let grant: any;
+  try { grant=await assertTestGrant(pool,{grantId:run.test_grant_id!,userId:run.owner_user_id,projectId:run.project_id,inputRevision:run.input_revision,inputHash:run.input_hash}); }
+  catch(error){ return {kind:'pause',stage:'capability_not_ready',reason:error instanceof Problem?error.code.toLowerCase():'test_grant_invalid'}; }
+  const capability=await loader(run,input);
+  if(capability.status==='not_ready')return {kind:'pause',stage:'capability_not_ready',reason:capability.reason};
+  if(capability.sampleManifestSha256!==grant.sample_manifest_sha256.trim() ||
+     capability.taxonomyHash!==grant.taxonomy_hash.trim() || capability.rulePackHash!==grant.rule_pack_hash.trim())
+    return {kind:'pause',stage:'capability_not_ready',reason:'test_grant_hash_mismatch'};
+  if(!Array.isArray(capability.uncoveredItems) || capability.uncoveredItems.length>200 ||
+    capability.uncoveredItems.some(item=>!item || typeof item.rule_id!=='string' || item.rule_id.length<1 || item.rule_id.length>128 ||
+      !/^[a-z][a-z0-9_]{0,63}$/.test(item.reason_code) ||
+      (item.evidence_ref!==null && (typeof item.evidence_ref!=='string' || item.evidence_ref.length<1 || item.evidence_ref.length>128))))
+    return {kind:'pause',stage:'capability_not_ready',reason:'test_rule_capability_invalid'};
+  await pool.query('UPDATE bb_runs SET uncovered_items=$2 WHERE id=$1 AND channel=\'non_production_test\'',
+    [run.id,JSON.stringify(capability.uncoveredItems)]);
+  return null;
+}
 
 async function verifyProductionRulePin(pool: Pool, run: RunRow, input: InputRevisionRow, loader?: ReviewedContextLoader): Promise<InputBindingGate | null> {
   if (String(input.input_hash).trim() !== run.input_hash.trim())
@@ -134,7 +164,7 @@ export const inputLockStage: RunStage = {
   name: 'input_lock',
   // Recovery must re-check the production rule pin before any later stage can run.
   replay: true,
-  run: async ({ pool, run, reviewedContextLoader }) => {
+  run: async ({ pool, run, reviewedContextLoader, testRuleCapabilityLoader }) => {
     const q = await pool.query(`SELECT i.input_hash,i.draft_revision,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
       JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id AND p.deleted_at IS NULL
       WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
@@ -144,6 +174,7 @@ export const inputLockStage: RunStage = {
     const manifest = input.manifest as Record<string, unknown> | null;
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
+    if(run.channel==='non_production_test')return (await verifyTestRuleCapability(pool,run,input,testRuleCapabilityLoader)) ?? {kind:'done'};
     return (await verifyProductionRulePin(pool, run, input, reviewedContextLoader)) ?? { kind: 'done' };
   },
 };
@@ -364,18 +395,25 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
   let currentStage: string | undefined;
   try {
-    const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
+    const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind,channel,test_grant_id FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
-    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, validateBeforeModelCall: async () => {
+    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader, validateBeforeModelCall: async () => {
       // Synthetic mechanics tests install their own input-lock stage. The production stage
       // always rechecks both bindings before a provider intent, including checkpoint replay.
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if(run.channel==='non_production_test')return verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader);
       return (await verifyUpdateIssuerIdentityBinding(pool, run, input.manifest)) ?? await verifyProductionRulePin(pool, run, input, deps.reviewedContextLoader);
     } };
     for (const stage of deps.stages) {
       currentStage = stage.name;
+      if(run.channel==='non_production_test' && stage.name!=='input_lock'){
+        const input=await currentRunInput(pool,run);
+        const gate=input?await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader):{kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
+        if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return 'paused';}
+        if(gate?.kind==='fail'){await finish(pool,lease,'failed',{errorCode:gate.code,failedStage:stage.name});return 'failed';}
+      }
       const saved = checkpoint[stage.name];
       if (saved && !stage.replay) { ctx.values.set(stage.name, saved); continue; }
       const outcome = await stage.run(ctx);
@@ -401,8 +439,12 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       }
       let cleanArtifactId: string | undefined;
       let baselineArtifactId: string | undefined;
+      const uncovered:UncoveredItem[]=run.channel==='non_production_test'
+        ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
+        : [];
+      const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
       if (outcome.baselineBytes) {
-        const baseline = await promoteWordArtifact(pool, lease, outcome.baselineBytes, blobs);
+        const baseline = await promoteWordArtifact(pool, lease, await wordBytes(outcome.baselineBytes), blobs);
         if (baseline.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: baseline.failureCode, failedStage: stage.name });
           return 'failed';
@@ -410,14 +452,14 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         baselineArtifactId = baseline.artifactId;
       }
       if (outcome.cleanBytes) {
-        const clean = await promoteWordArtifact(pool, lease, outcome.cleanBytes, blobs);
+        const clean = await promoteWordArtifact(pool, lease, await wordBytes(outcome.cleanBytes), blobs);
         if (clean.status !== 'available') {
           await finish(pool, lease, 'failed', { errorCode: clean.failureCode, failedStage: stage.name });
           return 'failed';
         }
         cleanArtifactId = clean.artifactId;
       }
-      const delivered = await promoteWordArtifact(pool, lease, outcome.bytes, blobs);
+      const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs);
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') { await finish(pool, lease, 'failed', { errorCode: delivered.failureCode, failedStage: stage.name }); return 'failed'; }
       if (cleanArtifactId) {
@@ -426,8 +468,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         await checkpointStage(pool, lease, 'word_delivery_pair', pair);
         ctx.checkpoint.word_delivery_pair = pair;
       }
-      await finish(pool, lease, 'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
-      return 'succeeded';
+      await finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
+      return run.channel==='non_production_test'?'test_completed':'succeeded';
     }
     // Every production pipeline ends in delivery; running out of stages is never success.
     await pauseRun(pool, lease, 'capability_not_ready', 'stage_not_implemented');
@@ -435,6 +477,10 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
+    if (error instanceof Problem && (error.code.startsWith('TEST_GRANT_') || error.code==='TEST_CHANNEL_DISABLED')) {
+      await pauseRun(pool,lease,'capability_not_ready',error.code.toLowerCase());
+      return 'paused';
+    }
     deps.onUnexpectedError?.(safeRunError(error, currentStage));
     try {
       // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
