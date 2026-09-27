@@ -409,7 +409,7 @@ async function reviewedTargetPeriods(client: UpdateDifficultyClient, input: {
         if(evidence.rows.length!==1){valid=false;break;}
         continue;
       }
-      const evidence=await client.query(`SELECT 1 FROM bb_parse_snapshots s JOIN bb_parse_evidence e
+      const evidence=await client.query(`SELECT e.uncertainty FROM bb_parse_snapshots s JOIN bb_parse_evidence e
         ON e.owner_user_id=s.owner_user_id AND e.project_id=s.project_id AND e.material_id=s.material_id
           AND e.material_version=s.material_version AND e.snapshot_id=s.id
         JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id
@@ -417,13 +417,15 @@ async function reviewedTargetPeriods(client: UpdateDifficultyClient, input: {
         JOIN bb_target_period_reviewer_grants g ON g.id=$11 AND g.user_id=$12 AND g.scope_owner_user_id=$1
           AND g.scope_project_id=$2 AND g.revoked_at IS NULL
         WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4 AND trim(m.sha256)=$5
-          AND s.id=$6 AND s.parser_version=$7 AND trim(s.response_sha256)=$8 AND s.response_status='parsed'
+          AND s.id=$6 AND s.parser_version=$7 AND trim(s.response_sha256)=$8 AND s.response_status IN ('parsed','needs_confirmation')
         AND e.record_id=$9 AND trim(e.record_sha256)=$10 AND e.extractor_version=s.parser_version AND e.extraction_method=$13
           AND s.id=(SELECT s2.id FROM bb_parse_snapshots s2 WHERE s2.owner_user_id=s.owner_user_id AND s2.project_id=s.project_id
             AND s2.material_id=s.material_id AND s2.material_version=s.material_version ORDER BY s2.created_at DESC,s2.id DESC LIMIT 1)`,
         [input.ownerUserId,input.projectId,ref.material_id,ref.material_version,ref.material_sha256,ref.parse_snapshot_id,
          ref.parser_version,ref.response_sha256,ref.record_id,ref.record_sha256,String(row.reviewer_grant_id),String(row.reviewer_user_id),ref.evidence_method]);
       if(evidence.rows.length!==1){valid=false;break;}
+      const uncertainty=evidence.rows[0]!.uncertainty;
+      if(!Array.isArray(uncertainty)||uncertainty.length!==0){valid=false;break;}
     }
     if(!valid){output.push(target);continue;}
     output.push({start:target.start,end:target.end,period_kind:target.period_kind,scope:target.scope,
@@ -677,9 +679,9 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
   for (const period of evidenceTargetPeriods) {
     const key = `${period.provenance.material_id}\0${period.provenance.material_version}`;
     if (!financialKeys.has(key)) { allEvidenceBound = false; continue; }
+    const trustedReviewedTarget=reviewedTargets.some(candidate=>'provenance' in candidate&&canonical(candidate)===canonical(period));
     if(period.provenance.method==='ocr'){
-      const trusted=reviewedTargets.some(candidate=>'provenance' in candidate&&canonical(candidate)===canonical(period));
-      if(!trusted)allEvidenceBound=false;
+      if(!trustedReviewedTarget)allEvidenceBound=false;
       continue;
     }
     for (const ref of period.provenance.evidence_refs) {
@@ -689,9 +691,9 @@ async function verifyEvidenceRefs(client: UpdateDifficultyClient, input: Trusted
          JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id AND m.id=s.material_id
           AND m.version=s.material_version AND m.deleted_at IS NULL
          WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.material_id=$3 AND s.material_version=$4
-          AND s.parser_version=$5 AND s.response_status='parsed' AND e.record_id=$6 AND e.extractor_version=s.parser_version LIMIT 2`,
+          AND s.parser_version=$5 AND s.response_status = ANY($7::text[]) AND e.record_id=$6 AND e.extractor_version=s.parser_version LIMIT 2`,
         [input.ownerUserId, input.projectId, period.provenance.material_id, period.provenance.material_version,
-          period.provenance.extractor_version ?? '', ref]);
+          period.provenance.extractor_version ?? '', ref, trustedReviewedTarget?['parsed','needs_confirmation']:['parsed']]);
       if (result.rows.length !== 1) allEvidenceBound = false;
     }
   }
