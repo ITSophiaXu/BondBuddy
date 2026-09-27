@@ -48,6 +48,7 @@ class TxMock implements UpdateDifficultyClient {
   currentInputRevision: number | null = null;
   lockedInput: Record<string, unknown> | null = null;
   lockedMaterials: Record<string, unknown>[] = [];
+  targetConfirmationRows: Record<string, unknown>[] = [];
   private backup: { snapshots: Record<string, unknown>[]; outbox: Record<string, unknown>[] } | null = null;
   released = false;
   async query(sql: string, values: unknown[] = []): Promise<{ rows: Record<string, unknown>[] }> {
@@ -62,6 +63,8 @@ class TxMock implements UpdateDifficultyClient {
     if (sql.includes('FROM bb_projects') && sql.includes('draft_revision')) return { rows: [{ market: 'sse', offering: 'private', draft_revision: 4, latest_input_revision: this.currentInputRevision }] };
     if (sql.includes('FROM bb_projects') && sql.includes('FOR UPDATE')) return { rows: this.active && values[0] === owner && values[1] === project ? [{ id: project }] : [] };
     if (sql.includes('FROM bb_input_revisions') && sql.includes('SELECT input_hash')) return { rows: this.lockedInput ? [this.lockedInput] : [] };
+    if (sql.includes('FROM bb_input_revision_target_confirmations')) return { rows: this.targetConfirmationRows.filter(row =>
+      row.owner_user_id === values[0] && row.project_id === values[1] && Number(row.input_revision) === Number(values[2])) };
     if (sql.includes('SELECT m.id,m.version,m.role,m.sha256')) return { rows: this.lockedMaterials };
     if (sql.includes('SELECT profile_version FROM bb_historical_profiles')) return { rows: [{ profile_version: 1 }] };
     if (sql.includes('FROM bb_update_difficulty_snapshots') && sql.includes('request_id=$3')) return {
@@ -163,15 +166,22 @@ test('input revision hash/draft/material binding is checked before an estimate',
 
 test('locked input assembler derives source, financial materials and user asserted target periods from the owner scoped manifest', async () => {
   const client = new TxMock();
+  const confirmedAt = '2026-09-27T00:00:00.000Z';
+  const lockedPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
+    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] };
+  const targetConfirmation = { status: 'confirmed', market: 'sse', offering: 'private', document_purpose: null,
+    as_of: null, target_reporting_periods: [lockedPeriod], confirmed_by: owner, confirmed_at: confirmedAt };
   const manifest = { draft_revision: 4, kind: 'update', materials: [
     { material_id: historical, material_version: 1, role: 'historical', sha256: hash },
     { material_id: finance, material_version: 1, role: 'financial', sha256: hash },
-  ], update_details: { target_reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
-    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }] } };
+  ], market: 'sse', offering: 'private', target_confirmation: targetConfirmation,
+    update_details: { target_reporting_periods: [lockedPeriod] } };
   client.currentInputRevision = 2;
   client.lockedInput = { input_hash: hash, draft_revision: 4, manifest, material_versions: [
     { material_id: historical, material_version: 1 }, { material_id: finance, material_version: 1 },
   ] };
+  client.targetConfirmationRows = [{ owner_user_id: owner, project_id: project, input_revision: 2, market: 'sse', offering: 'private',
+    document_purpose: null, as_of: null, target_reporting_periods: [lockedPeriod], confirmed_by: owner, confirmed_at: new Date(confirmedAt) }];
   client.lockedMaterials = [
     { id: historical, version: 1, role: 'historical', sha256: hash },
     { id: finance, version: 1, role: 'financial', sha256: hash },
@@ -183,10 +193,40 @@ test('locked input assembler derives source, financial materials and user assert
   assert.deepEqual(assembled.financialMaterialVersions, [{ materialId: finance, materialVersion: 1 }]);
   assert.deepEqual(assembled.targetReportingPeriods, [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
     scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }]);
+  assert.deepEqual(assembled.targetConfirmation, targetConfirmation,
+    'the confirmed user intent is read from its owner/revision scoped immutable row and matches the manifest');
   const snapshot = await createUpdateDifficultySnapshot(dependencies(client), assembled);
   assert.equal(snapshot.estimate.status, 'needs_confirmation');
   assert.equal(snapshot.estimate.estimatedN, null);
   assert.ok(snapshot.estimate.confirmationReasons.includes('period_evidence_missing_or_unverified'));
+  assert.deepEqual(snapshot.comparisonInput.targetConfirmation, targetConfirmation,
+    'the intent decision is retained in the snapshot without promoting target periods to recognized facts');
+
+  const unconfirmedClient = new TxMock();
+  unconfirmedClient.currentInputRevision = 2;
+  unconfirmedClient.lockedInput = { ...client.lockedInput, manifest: { ...manifest,
+    target_confirmation: { ...targetConfirmation, status: 'unconfirmed' } } };
+  unconfirmedClient.lockedMaterials = client.lockedMaterials;
+  await assert.rejects(loadLockedUpdateDifficultyInput(dependencies(unconfirmedClient), {
+    ownerUserId: owner, projectId: project, inputRevision: 2, inputHash: hash, requestId: 'unconfirmed-locked-request',
+  }), /TARGET_CONFIRMATION_REQUIRED/);
+
+  const missingRowClient = new TxMock();
+  missingRowClient.currentInputRevision = 2;
+  missingRowClient.lockedInput = client.lockedInput;
+  missingRowClient.lockedMaterials = client.lockedMaterials;
+  await assert.rejects(loadLockedUpdateDifficultyInput(dependencies(missingRowClient), {
+    ownerUserId: owner, projectId: project, inputRevision: 2, inputHash: hash, requestId: 'missing-confirmation-row-request',
+  }), /TARGET_CONFIRMATION_INVALID/);
+
+  const staleClient = new TxMock();
+  staleClient.currentInputRevision = 2;
+  staleClient.lockedInput = client.lockedInput;
+  staleClient.lockedMaterials = client.lockedMaterials;
+  staleClient.targetConfirmationRows = [{ ...client.targetConfirmationRows[0], confirmed_at: new Date('2026-09-26T00:00:00.000Z') }];
+  await assert.rejects(loadLockedUpdateDifficultyInput(dependencies(staleClient), {
+    ownerUserId: owner, projectId: project, inputRevision: 2, inputHash: hash, requestId: 'stale-confirmation-request',
+  }), /TARGET_CONFIRMATION_INVALID/);
 });
 
 test('locked snapshot callers cannot substitute target periods', async () => {
