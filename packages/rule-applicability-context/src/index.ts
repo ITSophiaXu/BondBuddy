@@ -102,7 +102,7 @@ export interface ReviewedRuleApplicabilityContextArgs {
   /** Current project draft revision at the point of production pinning/recovery. */
   readonly currentDraftRevision: number;
   /** Server-selected mode: only a run with a stored production pin may replay. */
-  readonly mode?: 'selection' | 'replay';
+  readonly mode?: 'selection' | 'replay' | 'non_production_test';
   /** Full material set resolved by the server for the current input request, not browser-provided hashes. */
   readonly currentMaterialVersions: readonly { readonly materialId: string; readonly materialVersion: number; readonly sha256: string }[];
   readonly expectedIssuerBinding: {
@@ -574,7 +574,8 @@ export async function loadReviewedRuleApplicabilityContext(
     const currentDraft = await db.query(`SELECT draft_revision FROM bb_projects
       WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL`, [expected.ownerUserId, expected.projectId]);
     if (!currentDraft.rows.length || Number(input.rows[0]?.draft_revision) !== expected.currentDraftRevision ||
-        (expected.mode !== 'replay' && Number(currentDraft.rows[0]!.draft_revision) !== expected.currentDraftRevision)) {
+        (!['replay', 'non_production_test'].includes(expected.mode ?? 'selection') &&
+          Number(currentDraft.rows[0]!.draft_revision) !== expected.currentDraftRevision)) {
       reasons.push('rule_applicability_current_draft_stale');
     }
     const requestMaterials = expected.currentMaterialVersions.map((item) => ({ ...item, sha256: item.sha256.toLowerCase() }))
@@ -694,9 +695,13 @@ export async function loadReviewedRuleApplicabilityContext(
       reasons.push('rule_applicability_overall_review_snapshot_invalid');
       return { status: 'needs_review', reasons: [...new Set(reasons)], contextPin };
     }
-    if (!PUBLISHED_RULE_APPLICABILITY_TAXONOMY_VERSIONS.includes(taxonomyVersion)) {
+    // The authorized preproduction candidate channel can validate this single
+    // pinned review taxonomy after its caller has rechecked a live test grant and
+    // sample membership. It is deliberately excluded from the production list.
+    const testOnlyTaxonomy = expected.mode === 'non_production_test' &&
+      taxonomyVersion === 'bondbuddy-applicability-sse-private-v3';
+    if (!testOnlyTaxonomy && !PUBLISHED_RULE_APPLICABILITY_TAXONOMY_VERSIONS.includes(taxonomyVersion))
       reasons.push('rule_applicability_taxonomy_not_published');
-    }
     const market = approved.market;
     const offering = approved.offering;
     const instrument = approved.instrument;
