@@ -16,7 +16,10 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY apps apps
-RUN npm run build && npm prune --omit=dev --no-audit --no-fund \
+# Copy only the pinned public research assets, never source documents or test materials.
+COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
+RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
+ && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src
 COPY db db
 COPY python python
@@ -61,6 +64,7 @@ COPY --from=build --chown=root:root /app/packages packages
 COPY --from=build --chown=root:root /app/apps/api apps/api
 COPY --from=build --chown=root:root /app/apps/worker apps/worker
 COPY --from=build --chown=root:root /app/db db
+COPY --from=build --chown=root:root /app/knowledge/exchange-bonds/drafts/sse-private knowledge/exchange-bonds/drafts/sse-private
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/blob-snapshot.mjs
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-offhost.mjs
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/backup-stream.mjs

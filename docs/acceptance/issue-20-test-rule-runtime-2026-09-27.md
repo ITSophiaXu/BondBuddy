@@ -1,0 +1,31 @@
+# #20 / #31 内部测试规则部署与模型消费者
+
+本切片衔接 #325 候选资产和 #326 非生产测试通道。目标是解除“input_lock 已准许测试、模型阶段仍只读取 production pin”的第二处接线缺口；不把 draft.6 发布为生产规则，不关闭 #20。
+
+## 已实现
+
+- 三份候选 JSON 逐路径固定 LF；Docker build/node-runtime 仅复制该三文件，构建时校验原始字节、schema、范围与字典 hash。无样本原件/来源附件入镜像。探针 `node apps/worker/dist/verify-sse-private-candidate-assets.js` 使用编译模块位置查找根目录，可在任意工作目录运行。
+- `loadSsePrivateCandidateAssets(root)` 返回同一批已核缓冲区解析出的内容，原有 descriptor loader 保持兼容。没有校验后重新读取文件的时间窗口。
+- `loadAuthorizedHistoricalTestRuleGuidance(ctx, input)` 复用 #17 身份/授权门与 #19 `testRuleCapabilityLoader`，再次检查输入 hash、有效 grant、sample/taxonomy/rule hash，再读取三份精确候选资产。只有 `non_production_test` 的 update run 可进入；生产分支继续精确复核 production release。
+- 目标市场、发行方式、文书阶段和法规日取已确认且锁定的 `target_confirmation`。财务截止日不代替法规日；当前研究快照不冒充 2025 年历史法规包。
+- 模型参考保留 31 条 research_only 规则、179 处原文/定位、16 组完整来源信息和 32 条 coverage（31 uncovered、1 not_applicable）及四项 blockers。无规则映射的 item 保留空 ruleIds。去重来源元数据后完整参考约 169,529 字节，不裁引文或例外。
+- 测试 prompt 模板为 `historical-sse-private-test-v1`，参考和授权信息参与 prompt/checkpoint hash；生产 v3 不改。规则/来源均待核，不声称合规通过。原文分段在完整规则/事实之后按剩余 UTF-8 字节预算执行；单块仍超限则明确暂停，不截断。
+- #331项目页兼容恢复`test_completed`：显示“内部测试工作稿”及不可正式申报提示，仅当`channel=non_production_test`时给测试稿入口；终态停止轮询。补全合成RunResponse的channel/test_grant_id/uncovered_items字段。不创建grant、不将普通execute改为测试请求，成果页和服务器继续独立复核读取权限。
+
+## 验证边界
+
+组件测试包括准确资产加载、独立运行目录、缺失/篡改拒绝、来源完整读回、生产隔离、grant 归属/过期/撤销、输入变更、未确认目标拒绝、无 production pin 的历史稿规划、恢复前重新校验，以及中文长文档的字节预算。
+
+本地验证：基于已合并#326的develop `30fdbe5`，并纳入#337覆盖项修复，七个workspace构建通过。相关worker测试90/90通过、无跳过（含实际Python的合成DOCX读写，以及全部31个真实候选缺口按公共DTO输出、other-markets范围排除不混入的回归）；任丘九月授权原件只读解析得到9,690个原文块，在完整169,529字节规则参考及额外预留20KB下分成132段，无遗漏/重复；此预留测试不代表实际模型prompt的最终财务上下文规模。Chromium合成HTTP浏览器测试15/15通过，涵盖保存/提交/恢复及测试完成停止轮询、错误channel不显示测试下载。运行资产探针、15项授权清单、31条固定业务记录校验通过。规格重建19模块、208链接、133表格、4 JSON、190验收标识，零错误。
+
+数据库/身份/候选选择与模型使用合成组件替身；不代表真实 #19 selector、PostgreSQL/Azurite、供应商或目标机部署通过。真实样本只读分段验证也不等于财务数据可用性或出稿验收。本机 Docker daemon 未运行，未把镜像级测试记为通过；目标机镜像探针/run 证据待 #35 回填。
+
+## 部署与验收交接
+
+1. #326/0056 已随 develop `30fdbe5` 合入，覆盖项公共契约补丁 #337 也已合并（`f8d6a9e`）；本分支包含最终 develop 基线，PR 差异不再带入二者的修改。#330 membership 已合并；#19 的 test-only taxonomy、独立测试审核 ref/pin 与实际 runtime 注入仍需完成。不能用空 uncoveredItems、任意 manifest SHA 或假生产 release 代替。[测试字典决定](../../knowledge/exchange-bonds/drafts/sse-private/TEST-TAXONOMY-DECISION-20260927.md)明确适用范围和审核/输入/执行授权的先后顺序。
+2. 预发按准确合并 SHA 构建镜像；执行资产探针，应用新增迁移，核对健康检查、备份和回滚点。未取得目标机证据前不得称已部署。
+3. 仅在预发开启既有测试通道。运维给指定测试账号/项目/不可变输入创建有期限 grant；原版年度/当期材料依 #19 最小清单逐份校验。
+4. 跑真实历史稿任务，保留阶段、输入/规则/模板 pin、prompt、真实模型用量、失败原因和 Word hash。每个模型意图和恢复继续验证身份/授权。检查 `test_completed`、`test_only`、不结算及 Word 首页/页眉/待核清单。
+5. 从真实浏览器覆盖上传后保存材料版本、目标确认、提交、同页进度、关闭重开和下载。#18 页面与 #76 校正版本单独验收。
+
+本切片不解除存疑财务候选/历史稿结构支持的真实限制；局部缺口继续标待人工确认。有历史稿不等待#77。#334已合入31条[固定业务决定](../../knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)；真实生成稿的规则/章节结果移至#332，Word/WPS兼容性归#146，均不阻断#20关闭。#330样本DB loader、#326通道/迁移和#337覆盖项契约已合并；#19实际runtime接入尚待最终联调，#329保持draft。不能把前端恢复显示或组合组件测试称为通道已开放。

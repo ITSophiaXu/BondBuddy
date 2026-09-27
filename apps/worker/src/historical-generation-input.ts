@@ -13,6 +13,8 @@ import type { StageContext } from './run-pipeline.js';
 import type { ProductionRulePackPin } from '@bondbuddy/rule-pack-registry';
 import { loadHistoricalRuleGuidance, type HistoricalRuleGuidance, type HistoricalRuleResolver } from './historical-rule-context.js';
 import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistoricalFactMaterial, projectHistoricalFact } from './historical-fact-policy.js';
+import type { HistoricalCandidateRuleGuidance } from './historical-candidate-rule-context.js';
+import { loadAuthorizedHistoricalTestRuleGuidance } from './historical-test-rule-authorization.js';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
 const detailsValidator = new Ajv({ strict: false }).compile(UpdateDetailsSchema);
@@ -27,7 +29,7 @@ export interface HistoricalGenerationInput {
   decisions: HistoricalUpdateDecisionSnapshot[];
   planReaders: HistoricalUpdateReaders;
   details: UpdateDetails; issuerName: string; preparationHash: string;
-  ruleGuidance: HistoricalRuleGuidance;
+  ruleGuidance: HistoricalRuleGuidance | HistoricalCandidateRuleGuidance;
 }
 interface PreparationPin {
   version: 'historical-generation-input-v1'; input_hash: string;
@@ -50,7 +52,7 @@ export interface GenerationInputReaders {
 /** Freeze derived parse/profile/candidate references before the first provider intent, then reread exact IDs on recovery. */
 export async function loadHistoricalGenerationInput(ctx: StageContext, readers: Partial<GenerationInputReaders> = {}): Promise<HistoricalGenerationInput> {
   const { pool, run } = ctx;
-  const input = (await pool.query(`SELECT i.input_hash,i.manifest,i.rule_pack_version,i.material_versions FROM bb_input_revisions i
+  const input = (await pool.query(`SELECT i.input_hash,i.draft_revision,i.manifest,i.rule_pack_version,i.template_version,i.material_versions FROM bb_input_revisions i
     JOIN bb_projects p ON p.id=i.project_id AND p.owner_user_id=i.owner_user_id AND p.deleted_at IS NULL
     WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision])).rows[0];
   if (!input || String(input.input_hash).trim() !== run.input_hash.trim()) throw new Error('UPDATE_INPUT_LOCK_MISMATCH');
@@ -61,10 +63,19 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   if (manifest.market !== 'sse' || manifest.offering !== 'private') unavailable('historical_update_scope_not_installed');
   if (!details.reporting_cutoff || !Number.isFinite(Date.parse(details.reporting_cutoff)) ||
     new Date(details.reporting_cutoff).toISOString().slice(0,10) !== details.reporting_cutoff) unavailable('historical_target_period_required');
-  const rule = manifest.rule_pack_pin as ProductionRulePackPin | undefined;
-  // Revalidate the exact API-shaped release again before loading facts or invoking the model.
-  if (!rule || typeof rule.packId !== 'string' || !rule.packId || rule.version !== input.rule_pack_version || !hash(rule.contentHash)) unavailable('rule_pack_pin_missing');
-  const ruleGuidance = await loadHistoricalRuleGuidance(pool, rule, manifest.rule_pack_context, readers.rules);
+  let rule: { packId: string; version: string; contentHash: string };
+  let ruleGuidance: HistoricalGenerationInput['ruleGuidance'];
+  if (run.channel === 'non_production_test') {
+    ruleGuidance = await loadAuthorizedHistoricalTestRuleGuidance(ctx, input);
+    rule = { packId: ruleGuidance.pack_id, version: ruleGuidance.pack_version, contentHash: ruleGuidance.pack_hash };
+  } else {
+    const productionRule = manifest.rule_pack_pin as ProductionRulePackPin | undefined;
+    // Production retains the exact release revalidator; no fallback to a local candidate.
+    if (!productionRule || typeof productionRule.packId !== 'string' || !productionRule.packId ||
+        productionRule.version !== input.rule_pack_version || !hash(productionRule.contentHash)) unavailable('rule_pack_pin_missing');
+    ruleGuidance = await loadHistoricalRuleGuidance(pool, productionRule, manifest.rule_pack_context, readers.rules);
+    rule = productionRule;
+  }
   if (typeof manifest.issuer_name !== 'string' || !manifest.issuer_name.trim()) unavailable('historical_issuer_required');
   const materials: LockedHistoricalUpdate['materials'] = Array.isArray(manifest.materials) ? manifest.materials.map((m: Record<string, unknown>) => ({
     materialId: m.material_id, materialVersion: m.material_version, contentHash: m.sha256, role: m.role,

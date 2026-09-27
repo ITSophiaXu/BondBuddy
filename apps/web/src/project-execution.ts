@@ -146,7 +146,8 @@ export class ProjectExecution {
       <ul>${[...new Set([...check.missing_inputs, ...check.uncertainty].map(readinessMessage))].map(m => `<li>${esc(m)}</li>`).join('')}</ul>
       <p>${check.status === 'blocked' ? '提交后任务可能暂停等待，不代表条件已满足或已生成成果。' : '待核内容会保留明确标记；本次为平台承担成本的试用。'}</p></div>` : '';
     const run = this.run;
-    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="execution-summary"><h3>任务状态：${esc(states[run.state] ?? '等待处理')}</h3><p>使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<p>${esc(stages[run.stage])}</p>` : ''}${this.reason ? `<p>${esc(readinessMessage(this.reason))}</p>` : ''}<p class="muted">关闭页面不会取消任务，重新登录后可继续查看。</p>${run.state === 'succeeded' && run.artifact_id ? `<a class="button primary" href="#/artifacts/${encodeURIComponent(run.artifact_id)}">查看成果与下载</a>` : ''}</div>` : ''}
+    const testCompleted = run?.state === 'test_completed' && run.channel === 'non_production_test';
+    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="execution-summary"><h3>任务状态：${esc(states[run.state] ?? '等待处理')}</h3><p>使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<p>${esc(stages[run.stage])}</p>` : ''}${this.reason ? `<p>${esc(readinessMessage(this.reason))}</p>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}<p class="muted">关闭页面不会取消任务，重新登录后可继续查看。</p>${(run.state === 'succeeded' || testCompleted) && run.artifact_id ? `<a class="button primary" href="#/artifacts/${encodeURIComponent(run.artifact_id)}">${testCompleted ? '查看测试工作稿' : '查看成果与下载'}</a>` : ''}</div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
   }
   private async action(work: () => Promise<void>) {
@@ -285,7 +286,7 @@ export class ProjectExecution {
       if (this.active) this.progressMessage = `任务状态暂未更新。${friendlyError(error)}`;
     } finally {
       this.polling = false; this.render();
-      if (this.active && this.run && !['succeeded', 'failed', 'cancelled', 'rejected'].includes(this.run.state))
+      if (this.active && this.run && !['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'].includes(this.run.state))
         this.timer = setTimeout(() => { void this.poll(); }, 5000);
     }
   }

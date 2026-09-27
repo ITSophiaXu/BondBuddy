@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   rulePackContentHash,
   validateRulePackCompanions,
   type CoverageManifest,
+  type ChapterTemplate,
   type RulePack,
 } from '@bondbuddy/domain';
 import { SSE_PRIVATE_APPLICABILITY_DICTIONARY, SSE_PRIVATE_APPLICABILITY_TAXONOMY_VERSION } from '@bondbuddy/domain/sse-private-applicability';
@@ -13,6 +15,8 @@ const ASSET_DIRECTORY = 'knowledge/exchange-bonds/drafts/sse-private';
 const RULE_PACK_FILE = 'rule-pack.json';
 const CHAPTER_TEMPLATE_FILE = 'chapter-template.json';
 const COVERAGE_FILE = 'coverage.json';
+/** Stable for compiled /app/apps/worker/dist; independent of process.cwd(). */
+export const SSE_PRIVATE_CANDIDATE_RUNTIME_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 /**
  * Immutable repository pin for the #20 SSE private draft.6 candidate only.
@@ -232,7 +236,7 @@ export function verifySsePrivateCandidateAssetBytes(input: {
 }
 
 /** Load only from an explicitly supplied repository/runtime root. */
-export async function loadSsePrivateCandidateBundle(repositoryRoot: string): Promise<SsePrivateCandidateBundle> {
+export async function loadSsePrivateCandidateAssets(repositoryRoot: string) {
   const assetDirectory = join(repositoryRoot, ASSET_DIRECTORY);
   let rulePackBytes: Buffer;
   let chapterTemplateBytes: Buffer;
@@ -249,5 +253,13 @@ export async function loadSsePrivateCandidateBundle(repositoryRoot: string): Pro
     }
     throw error;
   }
-  return verifySsePrivateCandidateAssetBytes({ rulePackBytes, chapterTemplateBytes, coverageBytes });
+  const bundle = verifySsePrivateCandidateAssetBytes({ rulePackBytes, chapterTemplateBytes, coverageBytes });
+  // Parse the SAME verified buffers; never reread files after checking their hashes.
+  return { bundle, pack: parseJsonAsset(rulePackBytes, RULE_PACK_FILE) as RulePack,
+    template: parseJsonAsset(chapterTemplateBytes, CHAPTER_TEMPLATE_FILE) as ChapterTemplate,
+    coverage: parseJsonAsset(coverageBytes, COVERAGE_FILE) as CoverageManifest };
+}
+
+export async function loadSsePrivateCandidateBundle(repositoryRoot: string): Promise<SsePrivateCandidateBundle> {
+  return (await loadSsePrivateCandidateAssets(repositoryRoot)).bundle;
 }

@@ -476,3 +476,9 @@ The internal [v4 input example](../packages/domain/examples/sse-private-check-in
 `@bondbuddy/domain/issuance-arrangement`新增内部严格提案schema及纯函数`reviewIssuanceArrangement`，消费已锁定用户输入及有精确原文跨度的语义提案，校验多档精确额/上限、共用条款适用范围、回拨与机构角色，输出问题和八类章节检查清单。公共Money/单位、市场/方式/文书用途与既有难度算法复用，不复制公开枚举；结果始终user_asserted、eligibleForManuscript=false。DFI覆盖工具不自动变成已发行档次，结构变化不增加财务期数。
 
 context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结果；输入克隆，定位验证不替代身份授权、语义确认或审计。没有公开DTO、迁移、worker阶段、前台字段或生产开关改动。自然语言提取与版本化消息、规则/目录、原文锚点和Word消费仍待#18/#19/#31/#34/#35接线，见[开发交接](ISSUANCE-ARRANGEMENT.md)。
+
+### 2026-09-27 #20 内部测试规则模型消费者
+
+[部署与接入记录](acceptance/issue-20-test-rule-runtime-2026-09-27.md)定义 #325→#326→历史稿模型的接线：三份精确 JSON 打包并在构建时验 hash；非生产消费者重验输入、身份、有效 grant 和 #19 selector，保留研究规则/完整引用/覆盖项，不写 production release。测试 prompt 使用独立模板及绑定；按完整规则/事实后的剩余 UTF-8 字节分段。此实现不替代 #19 授权样本 membership/runtime 注入、#326 公共覆盖项修订及 #35 目标机真实运行。
+
+#331项目执行页兼容测试终态恢复：只有test_completed且non_production_test显示内部测试稿入口与未核用途提示，终态停止轮询；普通execute仍不携带测试授权。此处复用#326 DTO，不新增通道或权限；实际成果读取/下载仍由API门禁及成果页复核。#330 DB membership和#334固定业务记录已合入，不等于runtime注入或正式发布已完成。
