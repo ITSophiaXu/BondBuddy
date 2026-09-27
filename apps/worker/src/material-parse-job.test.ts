@@ -44,7 +44,7 @@ function syntheticParse(request: DocumentParseRequest): DocumentParseResponse {
       literal_quote: quote!, context: context!, extraction_method: 'native_text' as const, extractor_version: DEFAULT_DOCUMENT_PARSER_VERSION,
       confidence: 1, uncertainty: [], formatting: {},
     })),
-    warnings: [], document: request.material.media_type === DOCX ? { page_count: null, revision_summary: { insertions: 0, deletions: 0 } } : { page_count: null, encoding: 'utf-8' }, error: null,
+    warnings: [], document: request.material.media_type === DOCX ? { page_count: null, revision_summary: { insertions: 0, deletions: 0 }, auxiliary_targets: [] } : { page_count: null, encoding: 'utf-8' }, error: null,
   };
 }
 
