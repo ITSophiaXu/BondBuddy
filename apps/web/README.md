@@ -94,7 +94,9 @@ BB_TEST_DATABASE_URL=... BB_TEST_AZURITE_CONNECTION_STRING=... node --test apps/
 BB_E2E_LIVE=1 BB_E2E_REAL_API=1 BB_E2E_BASE_URL=https://127.0.0.1:5173 BB_E2E_TERMS_VERSION=synthetic-web-test-v1 npm test -w @bondbuddy/web
 ```
 
-`tests/project-execution.integration.spec.ts` 是保存精确材料版本与目标、预检、明确提交、关闭整个浏览器上下文、重新登录并恢复同一 run 的真实 API 浏览器回归。它仅使用 `deploy/local/compose.yaml` 的临时 PostgreSQL 16/Azurite、API 的 `createServer({ enableRunStaging: true, enableRunRuntime: false })` 测试 seam，以及 `upload-safety.samples.ts` 中的合成 PDF。运行时断言输入材料版本/目标快照、数据库中的同一幂等键/run、唯一暂停事件及 `capability_not_ready` 原因；它不启动 worker、模型或 Word 生成，也不构成用户更新任务链路验收。`enableRunStaging` 是测试进程内设置，不是生产环境开关。未启用真实 runtime 的服务端 execute 仍按设计返回 `501 CAPABILITY_NOT_READY`；具备真实 queue/runtime 的测试环境必须隔离并有相应非生产授权，不能复用本测试的 staging 结论。
+`tests/project-execution.integration.spec.ts` 按当前项目流程选财务截止年份/季度末（不会据此确认完整报告期），创建项目并上传合成 PDF；材料页的“开始更新”自动保存草稿、锁定材料版本并预检。预检存在待处理条件时，页面保留一次明确的继续提交确认，然后测试提交并关闭整个浏览器上下文、重新登录以恢复同一 run。测试仅使用隔离 PostgreSQL 16、Azurite、API 的 `createServer({ enableRunStaging: true, enableRunRuntime: false })` seam，以及 `upload-safety.samples.ts` 中的合成 PDF。断言覆盖财务截止日与未确认报告期快照、输入材料版本、数据库中的同一幂等键/run、唯一暂停事件及 `capability_not_ready` 原因；它不启动 worker、模型或 Word 生成，也不构成用户更新任务链路验收。`enableRunStaging` 是测试进程内设置，不是生产环境开关。未启用真实 runtime 的服务端 execute 仍按设计返回 `501 CAPABILITY_NOT_READY`；具备真实 queue/runtime 的测试环境必须隔离并有相应非生产授权，不能复用本测试的 staging 结论。
+
+复用共享 Azurite 时，这个用例会向 `bondbuddy-private` 写入随机账号/项目路径下的合成 PDF；它不会清空容器或删除其他对象。需要完全自动清理时使用下方独立临时栈，且不要对共享 Azurite 执行 `down` 或清空操作。
 
 先在空闲的本机端口启动专用临时栈，并应用当前迁移；不要设置预发/生产连接串：
 

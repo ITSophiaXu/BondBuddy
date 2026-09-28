@@ -22,14 +22,17 @@ function requireIsolatedLocalInputs(webOrigin = origin) {
     throw new Error('Set BB_TEST_DATABASE_URL, BB_TEST_AZURITE_CONNECTION_STRING and BB_E2E_TERMS_VERSION for the isolated live test.');
   }
   const database = new URL(databaseUrl);
-  if (!['localhost', '127.0.0.1', '::1'].includes(database.hostname) || database.port !== '55433' ||
-      database.pathname !== '/bondbuddy_local') {
+  const databaseHost = database.hostname.replace(/^\[|\]$/g, '');
+  if (!['localhost', '127.0.0.1', '::1'].includes(databaseHost) || database.port !== '55433' ||
+      database.pathname !== '/bondbuddy_local' || database.search || database.hash) {
     throw new Error('This browser integration requires the isolated deploy/local PostgreSQL database at loopback port 55433.');
   }
   if (azurite !== 'UseDevelopmentStorage=true') {
     throw new Error('This browser integration requires the local Azurite connection string UseDevelopmentStorage=true.');
   }
-  return { databaseUrl, azurite, termsVersion, origin: requireLoopbackHttpsOrigin(webOrigin) };
+  return { database: { host: databaseHost, port: Number(database.port), database: database.pathname.slice(1),
+    user: decodeURIComponent(database.username), password: decodeURIComponent(database.password) },
+    azurite, termsVersion, origin: requireLoopbackHttpsOrigin(webOrigin) };
 }
 
 async function bridgeApi(page: Page, target: string) {
@@ -50,17 +53,17 @@ test('execution live-test guard rejects remote web origins before sending synthe
   expect(requireLoopbackHttpsOrigin('https://127.0.0.1:5173')).toBe('https://127.0.0.1:5173');
 });
 
-test('real local API saves exact material and intent, then recovers the same staged run after a new login', async ({ page, browser }) => {
+test('real local API saves the selected material and cutoff, then recovers the same staged run after a new login', async ({ page, browser }) => {
   test.skip(process.env.BB_E2E_REAL_API !== '1' || process.env.BB_E2E_EXECUTION_STAGING !== '1',
     'requires the explicitly enabled local real-API/PG16/Azurite staged-execution test');
   test.setTimeout(120_000);
-  const { databaseUrl, azurite, termsVersion, origin: localOrigin } = requireIsolatedLocalInputs();
+  const { database, azurite, termsVersion, origin: localOrigin } = requireIsolatedLocalInputs();
 
   const { Pool } = await import('pg');
   const { createServer } = await import('../../api/dist/server.js');
   const { azureBlobs } = await import('../../api/dist/data.js');
   const { PDF, pdfSample } = await import('../../api/dist/upload-safety.samples.js');
-  const pool = new Pool({ connectionString: databaseUrl });
+  const pool = new Pool(database);
   const app = createServer({ pool, blobs: azureBlobs(azurite), allowedOrigin: localOrigin,
     auth: { termsVersion }, enableRunStaging: true, enableSyntheticQueue: false, enableRunRuntime: false });
   const username = `bb${randomUUID().replaceAll('-', '').slice(0, 16)}`;
@@ -81,21 +84,18 @@ test('real local API saves exact material and intent, then recovers the same sta
     await page.getByLabel('用户名').fill(username);
     await page.getByLabel('密码').fill(password);
     await page.getByRole('button', { name: '登录', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
 
-    await page.goto('/#/new');
+    await page.getByRole('link', { name: '更新募集书', exact: true }).click();
     const projectName = `合成执行恢复 ${username}`;
     await page.locator('#name').fill(projectName);
     await page.locator('#issuer').fill('合成发行人有限公司');
     await page.locator('#market').selectOption('sse');
     await page.locator('#offering').selectOption('private');
     await page.locator('input[name="has_historical"][value="yes"]').check();
-    await page.getByRole('button', { name: '＋ 添加目标报告期间' }).click();
-    await page.locator('#target_period_start_0').fill('2025-01-01');
-    await page.locator('#target_period_end_0').fill('2025-12-31');
-    await page.locator('#target_period_kind_0').selectOption('annual');
-    await page.locator('#target_period_scope_0').selectOption('consolidated');
-    await page.getByRole('button', { name: '创建并保存项目' }).click();
+    await page.locator('#reporting-year').selectOption('2025');
+    await page.locator('input[name="reporting_quarter"][value="12-31"]').check();
+    await page.getByRole('button', { name: '创建项目，继续提供材料', exact: true }).click();
     await expect(page).toHaveURL(/#\/projects\//);
     const projectId = new URL(page.url()).hash.split('/').at(-1)!;
     await expect(page.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
@@ -110,36 +110,34 @@ test('real local API saves exact material and intent, then recovers the same sta
     const material = await uploadResponse.json() as { material_id: string; material_version: number };
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-audit.pdf' })).toContainText('服务器已确认保存 · 材料版本 1');
 
-    await page.getByLabel('本次文书用途', { exact: true }).selectOption('issuance');
-    await page.getByLabel('本次法规适用日', { exact: true }).fill('2026-09-27');
-    await page.getByLabel('确认以上目标为本次拟定安排', { exact: false }).check();
     const savingInput = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/input-revisions`) &&
       response.request().method() === 'POST');
-    await page.getByRole('button', { name: '保存材料版本', exact: true }).click();
+    const checkingReadiness = page.waitForResponse(response => response.url().endsWith(`/projects/${projectId}/preflight`) &&
+      response.request().method() === 'POST');
+    await expect(page.locator('#execute-input')).toBeEnabled();
+    await page.getByRole('button', { name: '开始更新', exact: false }).click();
     const inputResponse = await savingInput;
     expect(inputResponse.status()).toBe(201);
     const input = await inputResponse.json() as {
       project_id: string; input_revision: number; input_hash: string;
       material_versions: { material_id: string; material_version: number }[];
-      target_confirmation: { market: string; offering: string; document_purpose: string; as_of: string;
-        target_reporting_periods: { start: string; end: string; period_kind: string; scope: string }[] };
+      target_confirmation: { status: string; market: string | null; offering: string | null;
+        document_purpose: string | null; as_of: string | null; target_reporting_periods: unknown[] };
     };
     expect(input.material_versions).toEqual([{ material_id: material.material_id, material_version: 1 }]);
-    expect(input.target_confirmation).toMatchObject({ market: 'sse', offering: 'private', document_purpose: 'issuance', as_of: '2026-09-27',
-      target_reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated' }] });
-    await expect(page.getByRole('button', { name: '检查已保存版本', exact: true })).toBeEnabled();
+    expect(input.target_confirmation).toMatchObject({ status: 'unconfirmed', market: null, offering: null,
+      document_purpose: null, as_of: null, target_reporting_periods: [] });
 
-    const preflight = page.waitForResponse(response => response.url().endsWith(`/projects/${projectId}/preflight`) &&
-      response.request().method() === 'POST');
-    await page.getByRole('button', { name: '检查已保存版本', exact: true }).click();
-    const preflightResponse = await preflight;
+    const preflightResponse = await checkingReadiness;
     expect(preflightResponse.status()).toBe(200);
-    const readiness = await preflightResponse.json() as { status: string; missing_inputs: string[] };
+    const readiness = await preflightResponse.json() as { status: string; missing_inputs: string[]; uncertainty: string[] };
     expect(['blocked', 'needs_confirmation']).toContain(readiness.status);
-    await expect(page.locator('#execute-input')).toBeEnabled();
+    expect(readiness.missing_inputs.length + readiness.uncertainty.length).toBeGreaterThan(0);
+    const continueLabel = readiness.status === 'blocked' ? '继续提交并等待处理' : '保留待确认项并开始更新';
+    await expect(page.getByRole('button', { name: continueLabel, exact: true })).toBeEnabled();
 
     const executing = page.waitForResponse(response => response.url().endsWith('/runs/execute') && response.request().method() === 'POST');
-    await page.locator('#execute-input').click();
+    await page.getByRole('button', { name: continueLabel, exact: true }).click();
     const executeResponse = await executing;
     expect(executeResponse.status()).toBe(202);
     const run = await executeResponse.json() as { run_id: string; execution_request_id: string; state: string;
@@ -150,7 +148,7 @@ test('real local API saves exact material and intent, then recovers the same sta
     await expect(page.locator('#execution-progress')).toContainText('所需处理能力尚未就绪');
 
     const pinned = await pool.query(`SELECT r.id AS run_id,r.execution_request_id,r.state,r.input_revision,r.input_hash,
-        i.manifest->'target_confirmation' AS target_confirmation,i.material_versions,
+        i.manifest->'target_confirmation' AS target_confirmation,i.manifest->'update_details' AS update_details,i.material_versions,
         e.type AS event_type,e.state AS event_state,e.payload
       FROM bb_runs r JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
       JOIN bb_run_events e ON e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.seq=1
@@ -159,6 +157,7 @@ test('real local API saves exact material and intent, then recovers the same sta
     expect(pinned.rows[0]).toMatchObject({ run_id: run.run_id, execution_request_id: run.execution_request_id,
       state: 'paused', input_revision: input.input_revision, input_hash: input.input_hash, event_type: 'run.state_changed',
       event_state: 'paused', payload: { reason: 'capability_not_ready' }, material_versions: [{ material_id: material.material_id, material_version: 1 }] });
+    expect(pinned.rows[0].update_details).toMatchObject({ reporting_cutoff: '2025-12-31' });
     expect(pinned.rows[0].target_confirmation).toMatchObject(input.target_confirmation);
 
     await page.context().close();
@@ -169,15 +168,18 @@ test('real local API saves exact material and intent, then recovers the same sta
     await reopened.getByLabel('用户名').fill(username);
     await reopened.getByLabel('密码').fill(password);
     await reopened.getByRole('button', { name: '登录', exact: true }).click();
-    await expect(reopened.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+    await expect(reopened.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+    await reopened.getByRole('link', { name: '全部项目', exact: true }).first().click();
+    await expect(reopened.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
     const recoveredRunResponse = reopened.waitForResponse(response => response.url().endsWith(`/runs/${run.run_id}`) &&
       response.request().method() === 'GET');
-    await reopened.goto(`/#/projects/${encodeURIComponent(projectId)}`);
+    await reopened.getByRole('link', { name: projectName, exact: true }).click();
     expect((await recoveredRunResponse).status()).toBe(200);
     await expect(reopened.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
-    await expect(reopened.locator('#execution-snapshot')).toContainText('已保存材料版本 1');
-    await expect(reopened.locator('#execution-snapshot')).toContainText('synthetic-audit.pdf · 版本 1');
-    await expect(reopened.locator('#execution-snapshot')).toContainText('本期发行文件');
+    await expect(reopened.locator('#execution-progress')).toContainText(`使用材料版本 ${input.input_revision}`);
+    const recoveredMaterial = reopened.locator('.material-file-row').filter({ hasText: 'synthetic-audit.pdf' });
+    await expect(recoveredMaterial).toContainText('服务器已确认保存');
+    await expect(recoveredMaterial).toContainText('版本 1');
     await expect(reopened.locator('#execution-progress')).toContainText('任务已暂停');
     await expect(reopened.locator('#execution-progress')).toContainText('所需处理能力尚未就绪');
 
