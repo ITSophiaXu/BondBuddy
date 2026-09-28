@@ -236,6 +236,24 @@ test('explicit provider request rejection is a failed attempt with unknown usage
   } finally { await cleanup(); }
 });
 
+test('provider status metadata classifies balance, authentication and rate failures without zero usage or raw diagnostics', async () => {
+  const { config, cleanup } = await setup();
+  try {
+    for (const [scenario, code] of [
+      ['balance_402', 'MODEL_PROVIDER_BALANCE_EXHAUSTED'],
+      ['auth_401', 'MODEL_PROVIDER_AUTH_FAILED'],
+      ['rate_429', 'MODEL_PROVIDER_RATE_LIMITED'],
+      ['stderr_402', 'MODEL_PROVIDER_BALANCE_EXHAUSTED'],
+    ]) {
+      const result = await runContainedModelCall(call(`SCENARIO:${scenario}`), new MemoryCodexJournal(), config);
+      assert.equal(result.error_code, code);
+      assert.equal(result.attempts[0].usage.status, 'unknown');
+      assert.equal(result.attempts[0].usage.total_tokens, null);
+      assert.ok(!JSON.stringify(result).includes('synthetic private diagnostic'));
+    }
+  } finally { await cleanup(); }
+});
+
 test('cancellation during a turn is recorded as pending, and a missing binary is confirmed not sent', async () => {
   const { config, cleanup } = await setup();
   try {

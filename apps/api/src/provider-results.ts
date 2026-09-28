@@ -1,6 +1,8 @@
 import { Pool, type PoolClient } from 'pg';
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs, run as getRun } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { errorDiagnostic } from './error-diagnostics.js';
+import type { ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { Lease } from './queue.js';
 export type { PrivateBlobs } from './data.js';
 
@@ -281,6 +283,8 @@ export async function recordProviderCallObservation(
     // generated result to reconcile. Keep usage unknown; all other unmeasured failures
     // still require reconciliation because the request may have consumed tokens.
     const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0;
+    const providerBlocked = observation.outcome === 'failed' && observation.usage.status === 'unknown' && candidateCount === 0 &&
+      ['MODEL_PROVIDER_BALANCE_EXHAUSTED', 'MODEL_PROVIDER_AUTH_FAILED', 'MODEL_PROVIDER_RATE_LIMITED'].includes(observation.error_code ?? '');
     const failed=observation.outcome==='failed' && (measuredWithoutConflict || rejected);
     const notSent=observation.outcome==='confirmed_not_sent';
     const nextAttemptStatus=complete?'completed':failed?'failed':notSent?'confirmed_not_sent':'pending_reconcile';
@@ -292,6 +296,22 @@ export async function recordProviderCallObservation(
       await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1',[job.id,checkpoint]);
       await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_result_reconciled');
       await appendCallFinished(client,observation,'succeeded');
+    } else if (providerBlocked) {
+      const reason = observation.error_code === 'MODEL_PROVIDER_BALANCE_EXHAUSTED' ? 'provider_balance_exhausted' :
+        observation.error_code === 'MODEL_PROVIDER_AUTH_FAILED' ? 'provider_auth_failed' : 'provider_rate_limited';
+      const code = observation.error_code as ModelAdapterErrorCode;
+      const diagnostic = errorDiagnostic({ code, category: 'model_provider', stage: 'provider_reconcile', providerErrorType: reason });
+      const errorId = uid();
+      await client.query(`INSERT INTO bb_observability_errors
+        (id,owner_user_id,project_id,job_id,attempt_id,trace_id,code,category,stage,retry_count,recovery_status,
+         provider_error_type,fingerprint,safe_message)
+        VALUES($1,$2,$3,$4,$5,$6,$7,'model_provider','provider_reconcile',$8,'not_retried',$9,$10,$11)`,
+        [errorId,r.owner_user_id,r.project_id,job.id,a.id,r.id,code,observation.attempt_no-1,reason,diagnostic.fingerprint,diagnostic.safeMessage]);
+      await emitInternal(client,internalEvent({kind:'error.recorded',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.id,
+        traceId:r.id,stage:'provider_reconcile',error:{error_id:errorId,code,category:'model_provider',retryable:false}}));
+      await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
+      await appendRunEvent(client,r,'paused','provider_reconcile',reason,'run.state_changed');
+      await appendCallFinished(client,observation,'paused');
     } else if (failed && options.retryable && options.lease) {
       // A settled, measured failure (for example schema-invalid output) may be re-asked
       // as the next attempt number under the same lease; the job keeps running.
