@@ -147,6 +147,19 @@ release or capability activation. The endpoint and calendar questions recorded
 in `knowledge/nafmii/APPLICABILITY.md` remain unresolved, and CP remains draft
 until its real authorized sample and reviewer gates are met.
 
+`cp-funds-use-change-evidence.ts` is the paired internal evidence-shape check
+for an actual CP change to the use of proceeds. It pins the confirmed clause
+chain CP guide (NA028) 第四条 → proceeds-use management procedure (NA004)
+第六条 → 2023 disclosure rules (OF002) 第二十七条, which requires disclosure at
+least five working days before the changed funds are used. Every cited event
+must be attributed to that chain: disclosure to 第二十七条 and the use change to
+a rule-basis clause. A citation to 第二十六条 (change of the credit enhancement
+institution), an unattributed clause, a same-day date, a planned/future event,
+a date mismatch, missing evidence or a date after the change all stay in
+`needs_review`. The checker does not convert working days to calendar days and
+does not decide whether the five-working-day lead time is met. It is
+research-only and has no production consumer, so it cannot activate capability.
+
 ## SCP engineering draft (#29)
 
 `nafmiiScpDraftRulePack` is scoped to standard public SCP only. It pins the official 2021 product guide, enforces the 270-day-inclusive boundary and the working-capital-only/no-long-term-investment use boundary, and overlays MC.4-1 through MC.4-4 on the shared M-table chapters. Omission of M-5/M-6/M-7 is evidence-dependent and is rejected for first public registration or when effective public issuer information is unavailable. Specialist products, 2026 transition interpretation and authorized real samples remain explicit release blockers.

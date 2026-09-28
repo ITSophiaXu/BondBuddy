@@ -80,6 +80,31 @@ test('the exact calendar anniversary remains unresolved', () => {
   assert.ok(result.reasons.includes('one_year_anniversary_boundary_unresolved'));
 });
 
+test('a 365-day span is never substituted for the one-year endpoint or a holiday convention', () => {
+  const endOfYear = checkCpTenorEvidence(input({
+    interestStartDate: evidenced('2025-01-01'),
+    maturityDate: evidenced('2025-12-31'),
+  }));
+  assert.equal(endOfYear.decision, 'needs_review');
+  assert.ok(endOfYear.reasons.includes('month_day_adjustment_or_date_mismatch_unresolved'));
+
+  const statedTwelveMonths = checkCpTenorEvidence(input({
+    statedTenorMonths: evidenced(12),
+    interestStartDate: evidenced('2025-01-01'),
+    maturityDate: evidenced('2025-12-31'),
+  }));
+  assert.equal(statedTwelveMonths.decision, 'needs_review');
+  assert.ok(statedTwelveMonths.reasons.includes('month_day_adjustment_or_date_mismatch_unresolved'));
+
+  const holidayPostponed = checkCpTenorEvidence(input({
+    interestStartDate: evidenced('2025-01-01'),
+    maturityDate: evidenced('2025-12-01'),
+    dateAdjustment: evidenced('applied'),
+  }));
+  assert.equal(holidayPostponed.decision, 'needs_review');
+  assert.ok(holidayPostponed.reasons.includes('date_adjustment_unresolved'));
+});
+
 test('a stated twelve-month tenor remains unresolved even when dates disagree', () => {
   const result = checkCpTenorEvidence(input({
     statedTenorMonths: evidenced(12),
