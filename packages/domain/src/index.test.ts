@@ -146,6 +146,20 @@ test('undated interpretation and internal method stay pending instead of becomin
     'a caller-supplied method window is not a signed production attestation');
 });
 
+test('legal effective date is independent of publication date unless publication commencement is the stated basis',async()=>{
+  const explicit=await validProductionDraft();
+  assert.notEqual(explicit.sources[0]!.effective_from,explicit.sources[0]!.published_on);
+  assert.equal(validateRulePack(explicit).ok,true,'an explicitly cited legal effective date need not equal webpage publication date');
+
+  const derived=await validProductionDraft();
+  derived.sources[0]!.legal_effective_date_basis='publication_commencement';
+  const invalid=validateRulePack(derived);
+  assert.equal(invalid.ok,false);
+  assert(invalid.ok===false && invalid.problems.some(item=>item.code==='SOURCE_PUBLICATION_DATE_DERIVATION_INVALID'));
+  derived.sources[0]!.effective_from=derived.sources[0]!.published_on;
+  assert.equal(validateRulePack(derived).ok,true,'publication commencement may derive the effective date from the cited official publication date');
+});
+
 test('draft, test release, expired and withdrawn packs cannot advertise capability',async()=>{
   const draft=await validProductionDraft();
   assert.equal(evaluateRulePackCapability(draft,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-24'}).decision,'capability_not_ready');

@@ -395,7 +395,8 @@ async function resolveProductionRulePack(
               AND s.legal_effective_date_basis IS NOT DISTINCT FROM NULLIF(src->>'legal_effective_date_basis','')
               AND s.effective_date_derivation_evidence IS NOT DISTINCT FROM COALESCE(src->'effective_date_derivation_evidence','[]'::jsonb)
               AND jsonb_array_length(s.effective_date_derivation_evidence) > 0
-              AND s.official_publication_date IS NOT DISTINCT FROM NULLIF(src->>'published_on','')::date
+              AND (COALESCE(src->>'legal_effective_date_basis','') <> 'publication_commencement'
+                OR s.official_publication_date IS NOT DISTINCT FROM NULLIF(src->>'published_on','')::date)
               AND s.effective_to IS NOT DISTINCT FROM NULLIF(src->>'effective_to','')::date
               AND s.checked_at <= ($7::date + interval '1 day') AND s.effective_from <= $7::date
               AND s.checked_at<=($8::jsonb->'release'->>'released_at')::timestamptz

@@ -342,6 +342,15 @@ test('live PostgreSQL 16 migration creates empty production registry and rejects
     assert.equal(nullDate.rows[0]!.legal_effective_date_basis, 'unknown');
     assert.equal(nullDate.rows[0]!.applicability_basis, null, 'pending evidence is retained without implying current applicability');
     await assert.rejects(pool.query(insertSource, [`date-conflict-${suffix}`, 'c'.repeat(64), `conflict-source-${suffix}`, 'd'.repeat(64), null, 'explicit_text', reviewer, grant]), /bb_rule_pack_source_legal_date_basis_guard/);
+    await assert.rejects(pool.query(`INSERT INTO bb_rule_pack_production_source_checks
+      (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
+       clause_locator,exact_quote,checked_at,effective_from,legal_effective_date_basis,effective_date_derivation_evidence,
+       official_publication_date,verifier_user_id,verifier_grant_id)
+      VALUES($1,'synthetic-date-pack','1',$2,$3,'Synthetic authority','https://example.invalid/source','synthetic-v1',
+       'sse','public_all',$4,'synthetic locator','Synthetic only',now(),'2026-01-01','publication_commencement',
+       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2025-12-31',$5,$6)`,
+    [`publication-date-conflict-${suffix}`, 'e'.repeat(64), `publication-conflict-source-${suffix}`, 'f'.repeat(64), reviewer, grant]),
+    /bb_rule_pack_source_publication_derivation_guard/);
     await assert.rejects(pool.query(`INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,market,offering,instruments,document_stages,
        effective_from,pack_snapshot,operator_user_id,operator_grant_id,reason,occurred_at)
@@ -418,7 +427,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
        clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,effective_date_derivation_evidence,
        official_publication_date,verifier_user_id,verifier_grant_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,'explicit_text',
-       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2025-01-01',$13,$14)`,
+       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2024-12-31',$13,$14)`,
     [sourceCheckId, packId, pack.version, contentHash, sourceId, source.authority, source.official_url, source.source_version,
       source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
 
