@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import {
   evaluateRulePackCapability,
@@ -8,6 +7,20 @@ import {
 } from '@bondbuddy/domain';
 import type { ChapterTemplate, CoverageManifest } from '@bondbuddy/domain';
 import { PRODUCTION_SAMPLE_POLARITIES, validProductionReviewManifestContent, type Market, type Offering } from '@bondbuddy/contracts';
+import { productionSnapshotHash } from './canonical-snapshot.js';
+
+export { productionSnapshotHash } from './canonical-snapshot.js';
+export {
+  readProductionComponentSnapshots,
+  registerProductionComponentSnapshots,
+} from './component-snapshot-registry.js';
+export type {
+  ProductionComponentKind,
+  ProductionComponentRef,
+  ProductionComponentRefs,
+  ProductionComponentSnapshots,
+  ProductionComponentTransaction,
+} from './component-snapshot-registry.js';
 
 export type ProductionRulePackRequest = {
   readonly market: Market;
@@ -108,16 +121,8 @@ function parseJson(value: unknown): unknown {
   try { return JSON.parse(value) as unknown; } catch { return null; }
 }
 
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
-}
-
-function snapshotHash(value: unknown): string {
-  return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
-}
+/** Canonical SHA-256 used for immutable registry snapshots other than rule-pack content. */
+const snapshotHash = productionSnapshotHash;
 
 /** V1 review hash uses the registry's existing canonical JSON algorithm. The
  * domain/version labels live inside content; manifest identity, reviewer
