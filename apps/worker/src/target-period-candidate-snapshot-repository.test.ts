@@ -101,6 +101,9 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
     const replay = await save('store-request-1', snapshot);
     assert.equal(replay.replayed, true);
     assert.equal(replay.id, first.id);
+    await assert.rejects(appendTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: project,
+      requestId: 'store-request-1', selectedFinancialMaterials: [{ materialId: material, materialVersion: 2 }], snapshot }),
+    /IDEMPOTENCY_CONFLICT/, 'same request ID cannot replay with a different selected material version');
     assert.equal((await connection.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_id=$1 AND event_type='project.target_period_candidates_snapshotted'`, [first.id])).rows[0]!.n, 1);
     const changedRequestBody = { ...snapshot, candidate_set_id: `candidate-set-other-${suffix}` };
     await assert.rejects(save('store-request-1', changedRequestBody), /IDEMPOTENCY_CONFLICT/);

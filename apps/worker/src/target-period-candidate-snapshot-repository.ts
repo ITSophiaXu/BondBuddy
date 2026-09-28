@@ -71,8 +71,11 @@ function canonical(value: unknown): string {
 function sha256(value: string): string { return createHash('sha256').update(value, 'utf8').digest('hex'); }
 function same(left: unknown, right: unknown): boolean { return canonical(left) === canonical(right); }
 
-function requestHash(requestId: string, snapshot: TargetPeriodCandidateSnapshot): string {
-  return sha256(canonical({ request_id: requestId, snapshot }));
+function requestHash(request: AppendTargetPeriodCandidateSnapshotRequest): string {
+  const selectedFinancialMaterials = [...request.selectedFinancialMaterials]
+    .sort((a, b) => a.materialId.localeCompare(b.materialId) || a.materialVersion - b.materialVersion);
+  return sha256(canonical({ request_id: request.requestId, selected_financial_materials: selectedFinancialMaterials,
+    snapshot: request.snapshot }));
 }
 
 function text(row: Record<string, unknown>, key: string): string {
@@ -239,7 +242,7 @@ export async function appendTargetPeriodCandidateSnapshot(
     // The project row remains locked while exact request replay is checked; historical retries
     // remain readable after the draft advances, while new writes must match its current state.
     const project = await lockProject(client, request);
-    const reqHash = requestHash(request.requestId, request.snapshot);
+    const reqHash = requestHash(request);
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       [`target-period-candidate-request:${request.ownerUserId}:${request.projectId}:${request.requestId}`]);
     const prior = await client.query(
