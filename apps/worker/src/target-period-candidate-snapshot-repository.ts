@@ -379,6 +379,16 @@ export async function appendTargetPeriodCandidateSnapshot(
 
     verifyCurrentProject(project, request);
 
+    // The project FOR UPDATE lock above conflicts with the KEY SHARE lock required by
+    // the submission table's project FK. A concurrent registration therefore either
+    // committed before this query (and is visible) or waits until after this snapshot.
+    // Do not take the submission advisory lock here: registration takes it before its FK
+    // insert, which would invert the project/advisory lock order and allow a deadlock.
+    const messages = await client.query(`SELECT 1 FROM bb_user_submission_versions
+      WHERE owner_user_id=$1 AND project_id=$2 AND submission_kind='project_message' LIMIT 1`,
+    [request.ownerUserId, request.projectId]);
+    if (messages.rows.length) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       [`target-period-candidate:${request.ownerUserId}:${request.projectId}:${request.snapshot.candidate_set_id}`]);
     await verifyCurrentMaterials(client, request);

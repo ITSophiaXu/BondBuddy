@@ -90,6 +90,12 @@ async function loadCurrentProject(pool: Pool, request: ProduceTargetPeriodCandid
     throw fail('TARGET_PERIOD_CANDIDATE_DRAFT_STALE');
   }
   assertNoUnboundProjectRequirements(row.update_details);
+  // #397 stores project_message metadata separately from the project's update_details.
+  // Do not inspect or fetch its private Blob body; its presence means [] is not truthful.
+  const messages = await pool.query(`SELECT 1 FROM bb_user_submission_versions
+    WHERE owner_user_id=$1 AND project_id=$2 AND submission_kind='project_message' LIMIT 1`,
+  [request.ownerUserId, request.projectId]);
+  if (messages.rowCount) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
 }
 
 function validateRequest(request: ProduceTargetPeriodCandidateSnapshotRequest): void {
