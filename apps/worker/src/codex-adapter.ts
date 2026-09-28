@@ -301,7 +301,7 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   return { outcome: 'completed', error_code: null, finish_reason: 'stop', usage, value: parsed.value };
 }
 
-export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean };
+export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean };
 export interface CodexJournal extends ProbeJournal {
   recordObservation(observation: ProviderCallObservation, options?: { retryable?: boolean }): Promise<void>;
   recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void>;
@@ -366,7 +366,9 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
     }
     attemptNo = prior.attempt_no + 1;
   }
-  const maxAttempts = 1 + (input.output.kind === 'json' ? c.max_schema_reasks : 0);
+  // An explicit disposition permits exactly one further send beyond the normal re-ask budget.
+  const maxAttempts = (prior?.operator_retry && prior.status === 'failed' ? attemptNo : 1) +
+    (input.output.kind === 'json' ? c.max_schema_reasks : 0);
   if (attemptNo > maxAttempts) return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: null, codex_home: null };
 
   await mkdir(c.work_root, { recursive: true, mode: 0o700 });

@@ -248,6 +248,8 @@ export async function recordProviderCallObservation(
       const usage=(await client.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[a.id])).rows[0];
       return {attempt_status:a.status,usage_status:usage?.usage_status??'unknown',idempotent:true};
     }
+    if (job.checkpoint?.operator_reconciliations?.[a.id])
+      throw new Problem(409,'IDEMPOTENCY_CONFLICT','Operator-disposed attempt cannot change the run outcome');
 
     let result:any=null;
     const existingResults=(await client.query('SELECT * FROM bb_provider_result_refs WHERE attempt_id=$1 FOR UPDATE',[a.id])).rows;
@@ -427,11 +429,12 @@ export async function latestProviderAttempt(pool: Pool, lease: Lease, logicalCal
   const active=await pool.query("SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[lease.owner,lease.jobId,lease.runId,lease.token]);
   if (!active.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider attempt lookup requires the active worker lease');
   const q=await pool.query(`SELECT a.id,a.attempt_no,a.status,a.usage_status,
+      COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id AS operator_retry,
       EXISTS(SELECT 1 FROM bb_provider_call_observations o WHERE o.attempt_id=a.id) AS observed
     FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id
     WHERE a.owner_user_id=$1 AND a.job_id=$2 AND j.run_id=$3 AND a.logical_call_id=$4
     ORDER BY a.attempt_no DESC LIMIT 1`,[lease.owner,lease.jobId,lease.runId,logicalCallId]);
   const row=q.rows[0];
   if (!row) return null;
-  return {call_id:row.id as string,attempt_no:Number(row.attempt_no),status:row.status as 'pending_reconcile'|'confirmed_not_sent'|'completed'|'failed',usage_status:row.usage_status as string,observed:row.observed===true};
+  return {call_id:row.id as string,attempt_no:Number(row.attempt_no),status:row.status as 'pending_reconcile'|'confirmed_not_sent'|'completed'|'failed',usage_status:row.usage_status as string,observed:row.observed===true,operator_retry:row.operator_retry===true};
 }
