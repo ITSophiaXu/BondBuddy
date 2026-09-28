@@ -206,11 +206,13 @@ test('locked input assembler derives source, financial materials and user assert
   const unconfirmedClient = new TxMock();
   unconfirmedClient.currentInputRevision = 2;
   unconfirmedClient.lockedInput = { ...client.lockedInput, manifest: { ...manifest,
-    target_confirmation: { ...targetConfirmation, status: 'unconfirmed' } } };
+    target_confirmation: { status: 'unconfirmed', market: null, offering: null, document_purpose: null,
+      as_of: null, target_reporting_periods: [], confirmed_by: null, confirmed_at: null } } };
   unconfirmedClient.lockedMaterials = client.lockedMaterials;
-  await assert.rejects(loadLockedUpdateDifficultyInput(dependencies(unconfirmedClient), {
+  const pendingTarget = await loadLockedUpdateDifficultyInput(dependencies(unconfirmedClient), {
     ownerUserId: owner, projectId: project, inputRevision: 2, inputHash: hash, requestId: 'unconfirmed-locked-request',
-  }), /TARGET_CONFIRMATION_REQUIRED/);
+  });
+  assert.equal(pendingTarget.targetConfirmation, undefined, 'preflight may retain a locked but unattested target');
 
   const missingRowClient = new TxMock();
   missingRowClient.currentInputRevision = 2;

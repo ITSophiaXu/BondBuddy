@@ -285,12 +285,23 @@ function isMarket(value: unknown): value is Market { return typeof value === 'st
 function isOffering(value: unknown): value is Offering { return typeof value === 'string' && OFFERINGS.some(offering => offering === value); }
 
 function sameTargetConfirmation(manifest: Record<string, unknown>, persisted: TargetConfirmation | null,
-  periods: readonly TargetReportingPeriod[], project: Record<string, unknown>): TargetConfirmation {
+  periods: readonly TargetReportingPeriod[], project: Record<string, unknown>): TargetConfirmation | undefined {
   const asserted = manifest.target_confirmation;
-  if (!isRecord(asserted) || asserted.status !== 'confirmed') {
-    if (isRecord(asserted) && asserted.status === 'unconfirmed') throw fail('TARGET_CONFIRMATION_REQUIRED');
-    throw fail('TARGET_CONFIRMATION_INVALID');
+  if (!isRecord(asserted)) throw fail('TARGET_CONFIRMATION_INVALID');
+  if (asserted.status === 'unconfirmed') {
+    // The project's user-entered target is sufficient for a conservative
+    // preflight estimate. It is not an attestation of periods or rule scope.
+    if (!isMarket(project.market) || !isOffering(project.offering) ||
+        !isMarketOffering(project.market, project.offering)) throw fail('TARGET_CONFIRMATION_REQUIRED');
+    if (persisted !== null ||
+        manifest.market !== project.market || manifest.offering !== project.offering ||
+        asserted.market !== null || asserted.offering !== null || asserted.document_purpose !== null ||
+        asserted.as_of !== null || !Array.isArray(asserted.target_reporting_periods) ||
+        asserted.target_reporting_periods.length !== 0 || asserted.confirmed_by !== null ||
+        asserted.confirmed_at !== null) throw fail('TARGET_CONFIRMATION_INVALID');
+    return undefined;
   }
+  if (asserted.status !== 'confirmed') throw fail('TARGET_CONFIRMATION_INVALID');
   if (persisted === null) throw fail('TARGET_CONFIRMATION_INVALID');
   const assertedAt = normalizedTimestamp(asserted.confirmed_at);
   const persistedAt = normalizedTimestamp(persisted.confirmed_at);

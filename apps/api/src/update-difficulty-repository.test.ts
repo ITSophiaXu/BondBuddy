@@ -103,7 +103,8 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
     materials, update_details: { target_reporting_periods: [] }, target_confirmation: confirmation,
     ...(schema === undefined ? {} : { manifest_schema: schema }) });
   const run = async (manifest: Record<string, unknown>, storedHash: string, persisted: Record<string, unknown> | null = confirmation,
-    projectTarget = { market: 'sse', offering: 'private' }, decisionRow?: Record<string, unknown>) => {
+    projectTarget: { market: string | null; offering: string | null } = { market: 'sse', offering: 'private' },
+    decisionRow?: Record<string, unknown>) => {
     let materialQueryCount = 0;
     const refs = materials.map(({ material_id, material_version }) => ({ material_id, material_version }));
     const client: UpdateDifficultyClient = {
@@ -179,7 +180,15 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
 
   const unconfirmed = { ...manifestFor(), target_confirmation: { status: 'unconfirmed', market: null, offering: null,
     document_purpose: null, as_of: null, target_reporting_periods: [], confirmed_by: null, confirmed_at: null } };
-  await assert.rejects(run(unconfirmed, 'e'.repeat(64)), /TARGET_CONFIRMATION_REQUIRED/);
+  const pending = await run(unconfirmed, 'e'.repeat(64), null);
+  assert.equal(pending.loaded.targetConfirmation, undefined, 'a locked draft target is not promoted to user-confirmed intent');
+  assert.equal(pending.loaded.targetReportingPeriods.length, 0);
+  await assert.rejects(run(unconfirmed, 'e'.repeat(64)), /TARGET_CONFIRMATION_INVALID/,
+    'an unconfirmed manifest cannot coexist with a persisted confirmation');
+  await assert.rejects(run(unconfirmed, 'e'.repeat(64), null, { market: null, offering: null }), /TARGET_CONFIRMATION_REQUIRED/,
+    'the preflight cannot infer a missing target type from the historical draft');
+  await assert.rejects(run({ ...unconfirmed, market: 'szse' }, 'e'.repeat(64), null), /TARGET_CONFIRMATION_INVALID/,
+    'a locked draft target must still match the owner-scoped project');
   await assert.rejects(run(manifestFor(), 'e'.repeat(64), null), /TARGET_CONFIRMATION_INVALID/, 'a confirmed manifest without its exact DB row fails closed');
   const alteredRow = { ...confirmation, market: 'szse' };
   await assert.rejects(run(manifestFor(), 'e'.repeat(64), alteredRow), /TARGET_CONFIRMATION_INVALID/, 'a row for a different target cannot confirm this lock');
@@ -331,8 +340,12 @@ test('ensure-current is idempotent under concurrent PG16 calls and refreshes onl
     assert.equal(snapshot4.inputHash, inputHash4, 'valid v1 manifests load when their canonical hash matches the input lock');
 
     const unconfirmedHash = await addInputLock(seed, 4, 4, finance2, 2026, undefined, false);
-    await assert.rejects(runEnsure(seed, 4, unconfirmedHash), /TARGET_CONFIRMATION_REQUIRED/,
-      'the PG16 loader does not treat absent 0053 confirmation rows as confirmed intent');
+    const pendingSnapshot = await runEnsure(seed, 4, unconfirmedHash);
+    assert.equal(pendingSnapshot.estimate.status, 'needs_confirmation');
+    assert.equal(pendingSnapshot.estimate.estimatedN, null);
+    assert.ok(pendingSnapshot.estimate.confirmationReasons.includes('target_intent_needs_confirmation'));
+    assert.equal(pendingSnapshot.comparisonInput.targetConfirmation, undefined,
+      'an absent 0053 confirmation row remains unconfirmed in the immutable PG16 snapshot');
 
     await assert.rejects(ensureCurrentUpdateDifficultySnapshotWithClient(makeClient(seed), {
       ownerUserId: `foreign-owner-${suffix}`, projectId: project, inputRevision: 4, inputHash: unconfirmedHash,
