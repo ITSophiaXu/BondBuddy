@@ -20,6 +20,7 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
   const suffix = randomUUID();
   const owner = `producer-owner-${suffix}`, project = `producer-project-${suffix}`;
   const otherOwner = `producer-other-owner-${suffix}`, otherProject = `producer-other-project-${suffix}`;
+  const notesProject = `producer-notes-project-${suffix}`, otherInformationProject = `producer-other-information-project-${suffix}`;
   const nativeId = `producer-native-${suffix}`, ocrId = `producer-ocr-${suffix}`;
   const noEvidenceId = `producer-no-evidence-${suffix}`, nonfinancialId = `producer-nonfinancial-${suffix}`;
   const nativeBytes = Buffer.from(`synthetic native source ${suffix}`), ocrBytes = Buffer.from(`synthetic OCR source ${suffix}`);
@@ -37,8 +38,11 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
 
   try {
     await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,update_details)
-      VALUES($1,$2,'synthetic producer test','update',$3::jsonb),($4,$5,'synthetic foreign project','update',$3::jsonb)`,
-    [project, owner, JSON.stringify({ reporting_cutoff: '2025-06-30' }), otherProject, otherOwner]);
+      VALUES($1,$2,'synthetic producer test','update',$3::jsonb),($4,$5,'synthetic foreign project','update',$3::jsonb),
+        ($6,$2,'synthetic notes project','update',$7::jsonb),($8,$2,'synthetic other-information project','update',$9::jsonb)`,
+    [project, owner, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: null, other_information: '   ' }),
+      otherProject, otherOwner, notesProject, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: '要求采用其他口径', other_information: null }),
+      otherInformationProject, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: null, other_information: '请补充某事项' })]);
     await addMaterial(nativeId, `producer-upload-native-${suffix}`,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', nativeHash);
     await addMaterial(ocrId, `producer-upload-ocr-${suffix}`, 'application/pdf', ocrHash);
@@ -119,6 +123,10 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       /TARGET_PERIOD_CANDIDATE_DRAFT_STALE/);
     await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request,
       selectedFinancialMaterials: [{ materialId: nonfinancialId, materialVersion: 1 }] }), /TARGET_PERIOD_CANDIDATE_LOCK_INVALID/);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request, projectId: notesProject }),
+      /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request, projectId: otherInformationProject }),
+      /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/);
 
     const noEvidenceRequest = { ...request, selectedFinancialMaterials: [{ materialId: noEvidenceId, materialVersion: 1 }] };
     const noEvidenceRef = await produceTargetPeriodCandidateSnapshot(dependencies, noEvidenceRequest);
@@ -143,6 +151,8 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       VALUES($1,2,$2,$3,$4,'financial','replacement.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',16,$5,$6,'parsed')`,
     [nativeId, owner, project, `producer-upload-native-v2-${suffix}`, hash('replacement source'), `synthetic-material/${nativeId}/2`]);
     await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, request), /TARGET_PERIOD_CANDIDATE_MATERIAL_STALE/);
+    await pool.query(`UPDATE bb_projects SET draft_revision=draft_revision+1 WHERE owner_user_id=$1 AND id=$2`, [owner, project]);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, request), /TARGET_PERIOD_CANDIDATE_DRAFT_STALE/);
   } finally {
     await pool.end();
   }

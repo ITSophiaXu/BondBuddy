@@ -67,6 +67,20 @@ function projectCutoff(value: unknown): string | null {
   return details.reporting_cutoff;
 }
 
+function assertNoUnboundProjectRequirements(value: unknown): void {
+  const details = parseJson(value);
+  if (!record(details)) throw fail('TARGET_PERIOD_CANDIDATE_PROJECT_DETAILS_INVALID');
+  // These two open-ended fields can carry user instructions/context but have no immutable
+  // requirement-message reference in the current producer contract. Do not silently bind []
+  // while dropping their content. Missing/null/whitespace is equivalent to empty.
+  for (const key of ['supplementary_notes', 'other_information']) {
+    const content = details[key];
+    if (content === undefined || content === null) continue;
+    if (typeof content !== 'string') throw fail('TARGET_PERIOD_CANDIDATE_PROJECT_DETAILS_INVALID');
+    if (content.trim().length > 0) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  }
+}
+
 async function loadCurrentProject(pool: Pool, request: ProduceTargetPeriodCandidateSnapshotRequest): Promise<void> {
   const result = await pool.query(`SELECT draft_revision,update_details FROM bb_projects
     WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL`, [request.ownerUserId, request.projectId]);
@@ -75,6 +89,7 @@ async function loadCurrentProject(pool: Pool, request: ProduceTargetPeriodCandid
   if (Number(row.draft_revision) !== request.projectDraftRevision || projectCutoff(row.update_details) !== request.reportingCutoff) {
     throw fail('TARGET_PERIOD_CANDIDATE_DRAFT_STALE');
   }
+  assertNoUnboundProjectRequirements(row.update_details);
 }
 
 function validateRequest(request: ProduceTargetPeriodCandidateSnapshotRequest): void {
