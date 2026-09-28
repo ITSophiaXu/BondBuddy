@@ -124,7 +124,8 @@ export function checkMtnQuarterlyUpdateEvidence(
 
   for (const [name, field] of requiredFields) {
     if (!usable(field)) review.push(`${name}_missing_uncited_or_uncertain`);
-    if (field.conflictingAssertions?.some(assertion => !jsonEvidenceValuesEqual(assertion.value, field.value) &&
+    if (hasCitations(field) && field.conflictingAssertions?.some(assertion =>
+        !jsonEvidenceValuesEqual(assertion.value, field.value) &&
         hasValidCitations(assertion.citations))) {
       conflicts.push(`${name}_cited_assertions_conflict`);
     }
@@ -134,6 +135,9 @@ export function checkMtnQuarterlyUpdateEvidence(
   }
 
   if (input.actualInstrument.value !== 'mtn') review.push('actual_mtn_instrument_not_confirmed');
+  if (input.issuerEntityId.value === null || !input.issuerEntityId.value.trim()) {
+    review.push('issuer_entity_id_empty');
+  }
   if (input.issuerTier.value === 'unknown' || input.registrationArrangement.value === 'unknown') {
     review.push('issuer_tier_or_registration_arrangement_unresolved');
   }

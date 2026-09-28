@@ -67,6 +67,12 @@ test('unknown registration or market history and missing citations remain needs_
   assert.ok(uncited.reasons.includes('quarterly_report_publication_date_missing_uncited_or_uncertain'));
 });
 
+test('blank or whitespace issuer identity remains needs_review despite a citation', () => {
+  const result = checkMtnQuarterlyUpdateEvidence(input({ issuerEntityId: ev('   ') }));
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(result.reasons.includes('issuer_entity_id_empty'));
+});
+
 test('a report published after an issuance cannot establish that it was then available', () => {
   const result = checkMtnQuarterlyUpdateEvidence(input({
     quarterlyReportPublicationDate: ev('2026-06-16'),
@@ -135,6 +141,18 @@ test('an unanchored opposing assertion cannot be elevated to evidence_conflict',
   const result = checkMtnQuarterlyUpdateEvidence(input({ firstMarketIssuance: firstMarket }));
   assert.equal(result.decision, 'needs_review');
   assert.ok(result.reasons.includes('first_market_issuance_status_conflict_assertion_uncited_or_unanchored'));
+});
+
+test('a cited opposing assertion without a cited primary assertion remains needs_review', () => {
+  const firstMarket = ev<'first_market_issuance' | 'prior_market_issuance_exists' | 'unknown'>('first_market_issuance');
+  firstMarket.citations = [];
+  firstMarket.conflictingAssertions = [{
+    value: 'prior_market_issuance_exists',
+    citations: [{ ...citation, quote: 'Synthetic cited opposing assertion only.' }],
+  }];
+  const result = checkMtnQuarterlyUpdateEvidence(input({ firstMarketIssuance: firstMarket }));
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(!result.reasons.includes('first_market_issuance_status_cited_assertions_conflict'));
 });
 
 test('invalid dates, ranges, and source hashes remain needs_review', () => {
