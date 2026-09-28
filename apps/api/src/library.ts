@@ -9,6 +9,8 @@ import {
 import { date, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { LIBRARY_V11_PRODUCTION_LOCK_ENABLED, readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
+export { assessLibraryRevenueRankProof, libraryProfileContentHash, persistLibraryRevenueRankProof, readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
 
 // #78 backend reference library store. Platform data owned by LIBRARY_SYSTEM_OWNER; no function here
 // accepts a user material id, so a personal upload has no path into the library.
@@ -740,7 +742,12 @@ export async function lockReferenceSelection(pool: Pool, input: SelectionLockInp
           throw new Problem(409, 'ALREADY_TERMINAL', 'Run already has a different immutable reference selection');
         }
         if (existing.query_schema_version === LIBRARY_QUERY_SCHEMA_VERSION_V1_1) {
-          throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'A v1.1 reference lock cannot be replayed without persisted full-revenue-universe and third-place-tie proof');
+          const proof = await readLibraryRevenueRankProofDecision(client, existing.profile_id);
+          if (!proof.sufficient) throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', `Revenue rank proof insufficient: ${proof.reasons.join(',')}`);
+          if (!LIBRARY_V11_PRODUCTION_LOCK_ENABLED) throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'v1.1 reference selection awaits authorized data and business acceptance');
+          return { lock_id: existing.id, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION_V1_1, document_version_id: existing.document_version_id,
+            profile_id: existing.profile_id, profile_version: existing.profile_version, taxonomy_version: existing.taxonomy_version,
+            index_release_id: existing.index_release_id, chapter_mapping_version_id: existing.chapter_mapping_version_id, locked_at: date(existing.locked_at) };
         }
         return { lock_id: existing.id, query_schema_version: LIBRARY_QUERY_SCHEMA_VERSION, document_version_id: existing.document_version_id,
           profile_id: existing.profile_id, taxonomy_version: existing.taxonomy_version, index_release_id: existing.index_release_id, locked_at: date(existing.locked_at) };
@@ -799,10 +806,10 @@ export async function lockReferenceSelection(pool: Pool, input: SelectionLockInp
         }
         mappingVersionId = mapping.id;
       }
-      // v1.1 comparability attests only the stored top-three profile fields. There is no persisted,
-      // version-pinned review of the full same-basis revenue universe or third-place tie resolution yet.
-      // Never turn that missing evidence into a durable selection, even if all current row checks pass.
-      throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'A v1.1 reference lock requires persisted full-revenue-universe and third-place-tie proof');
+      const proof = await readLibraryRevenueRankProofDecision(client, input.profileId);
+      if (!proof.sufficient) throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', `Revenue rank proof insufficient: ${proof.reasons.join(',')}`);
+      // A sufficient synthetic proof is not a release decision. #77 must provide licensed real data and sign-off.
+      if (!LIBRARY_V11_PRODUCTION_LOCK_ENABLED) throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'v1.1 reference selection awaits authorized data and business acceptance');
     }
     const id = uid();
     const row = (await client.query(`INSERT INTO bb_library_selection_locks(id,owner_user_id,project_id,run_id,query_schema_version,document_version_id,profile_id,taxonomy_version,index_release_id,chapter_mapping_version_id)

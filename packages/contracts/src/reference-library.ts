@@ -93,6 +93,32 @@ export const LibraryComparabilitySchema = obj({
   attestation: obj({ review_id: id, reviewed_by: Type.String({ minLength: 1, maxLength: 128 }), reviewed_at: utc, profile_id: id, profile_version: Type.Integer({ minimum: 1 }) }),
 });
 
+/** Internal, immutable evidence for one reviewed profile version. Amounts are decimal strings in the stated unit. */
+export const LibraryRevenueRankProofSchema = obj({
+  profile_id: id,
+  profile_version: Type.Integer({ minimum: 1 }),
+  profile_hash: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+  document_version_id: id,
+  fiscal_year: Type.Integer({ minimum: 1900, maximum: 9999 }),
+  accounting_scope: Type.Literal('consolidated'),
+  revenue_basis: Type.Literal('main_business_revenue'),
+  currency,
+  unit: enumOf(LIBRARY_AMOUNT_UNITS),
+  denominator: Type.String({ pattern: '^(?:0|[1-9]\\d*)(?:\\.\\d+)?$' }),
+  denominator_evidence: Type.Array(obj({ document_version_id: id, page: Type.Integer({ minimum: 1 }), quote: Type.String({ minLength: 1, maxLength: 1000 }) }), { minItems: 1 }),
+  rows: Type.Array(obj({
+    code: taxonomyCode, label: Type.String({ minLength: 1, maxLength: 100 }),
+    amount: Type.String({ pattern: '^(?:0|[1-9]\\d*)(?:\\.\\d+)?$' }),
+    currency, unit: enumOf(LIBRARY_AMOUNT_UNITS),
+    evidence: Type.Array(obj({ document_version_id: id, page: Type.Integer({ minimum: 1 }), quote: Type.String({ minLength: 1, maxLength: 1000 }) }), { minItems: 1 }),
+  }), { minItems: 3 }),
+  ranking: obj({ top3_codes: Type.Array(taxonomyCode, { minItems: 3, maxItems: 3, uniqueItems: true }), third_place_tied_codes: Type.Array(taxonomyCode, { uniqueItems: true }),
+    tie_decision: nullable(obj({ selected_code: taxonomyCode, excluded_codes: Type.Array(taxonomyCode, { minItems: 1 }), reason: Type.String({ minLength: 1, maxLength: 1000 }) })) }),
+  classification_review: obj({ reviewer: id, reviewed_at: utc, taxonomy_version: version,
+    profile_id: id, profile_version: Type.Integer({ minimum: 1 }), profile_hash: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+    decision: Type.Literal('approved'), evidence_complete: Type.Literal(true) }),
+});
+
 /** v1.1: an accepted chapter-mapping version whose source scope is the candidate and whose target scope is the request. */
 export const LibraryChapterMappingSchema = obj({
   mapping_version_id: id,
@@ -199,6 +225,7 @@ export const referenceLibrarySchemas = {
   LibraryCandidate: LibraryCandidateSchema,
   LibraryCandidateV1_1: LibraryCandidateV1_1Schema,
   LibraryComparability: LibraryComparabilitySchema,
+  LibraryRevenueRankProof: LibraryRevenueRankProofSchema,
   LibraryChapterMapping: LibraryChapterMappingSchema,
   LibraryChapterMappingCreateRequest: LibraryChapterMappingCreateRequestSchema,
   LibrarySelectionLock: LibrarySelectionLockSchema,
@@ -213,6 +240,7 @@ export type LibraryQueryResponse = Static<typeof LibraryQueryResponseSchema>;
 export type LibraryCandidate = Static<typeof LibraryCandidateSchema>;
 export type LibraryCandidateV1_1 = Static<typeof LibraryCandidateV1_1Schema>;
 export type LibraryComparability = Static<typeof LibraryComparabilitySchema>;
+export type LibraryRevenueRankProof = Static<typeof LibraryRevenueRankProofSchema>;
 export type LibraryChapterMapping = Static<typeof LibraryChapterMappingSchema>;
 export type LibraryChapterMappingCreateRequest = Static<typeof LibraryChapterMappingCreateRequestSchema>;
 export type LibraryQueryResponseV1 = Static<typeof LibraryQueryResponseV1Schema>;
