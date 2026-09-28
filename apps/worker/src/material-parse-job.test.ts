@@ -277,6 +277,22 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.deepEqual((await pool.query('SELECT outcome FROM bb_error_recovery_events WHERE job_id=$1', [timeoutJob.id])).rows.map(r => r.outcome),
       ['recovered'], 'later parse success resolves the earlier timeout');
 
+    // Simulate a future reconciliation requeue without changing the production terminal-state guard.
+    // The transaction restores the guard and job state when it rolls back.
+    const reconciliation = await pool.connect();
+    try {
+      await reconciliation.query('BEGIN');
+      await reconciliation.query('ALTER TABLE bb_jobs DISABLE TRIGGER bb_material_parse_job_guard');
+      await reconciliation.query("UPDATE bb_jobs SET state='queued' WHERE id=$1", [timeoutJob.id]);
+      const repeatedTerminal = await reconciliation.query("UPDATE bb_jobs SET state='succeeded' WHERE id=$1 RETURNING state", [timeoutJob.id]);
+      assert.equal(repeatedTerminal.rows[0].state, 'succeeded');
+      assert.equal((await reconciliation.query('SELECT count(*)::int AS count FROM bb_error_recovery_events WHERE job_id=$1', [timeoutJob.id])).rows[0].count,
+        1, 'a repeated terminal transition retains one recovery event per error');
+    } finally {
+      await reconciliation.query('ROLLBACK');
+      reconciliation.release();
+    }
+
     const cancelledBytes = Buffer.from('Synthetic cancelled parse\n', 'utf8');
     const cancelledId = (await complete(projectId, await startUpload(projectId, cancelledBytes, 'text/plain', 'audit', 'cancelled.txt'), cancelledBytes)).json().material_id as string;
     parser = async () => { throw new Error('DOCUMENT_PARSER_TIMEOUT'); };

@@ -29,7 +29,8 @@ BEGIN
           WHEN NEW.state='cancelled' THEN 'user_cancelled'
           ELSE 'retried_failed' END
    FROM bb_observability_errors e
-   WHERE e.job_id=NEW.id AND e.recovery_status='retry_scheduled';
+   WHERE e.job_id=NEW.id AND e.recovery_status='retry_scheduled'
+   ON CONFLICT (error_id) DO NOTHING;
  END IF;
  RETURN NEW;
 END $$;
