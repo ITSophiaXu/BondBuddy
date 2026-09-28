@@ -22,6 +22,8 @@ export type CpFundsUseChangeEvidenceValue = {
 };
 
 export type CpFundsUseChangeEvidenceInput = {
+  /** Trusted evaluation date supplied by the caller, never read from the quote. */
+  checkedOn: string;
   disclosureDate: CpFundsUseChangeEvidenceValue;
   changedUseEffectiveDate: CpFundsUseChangeEvidenceValue;
 };
@@ -69,10 +71,43 @@ function hasConflict(field: CpFundsUseChangeEvidenceValue): boolean {
   );
 }
 
+function quoteContainsDate(quote: string, value: string): boolean {
+  const target = DATE_PATTERN.exec(value);
+  if (!target) return false;
+  const [year, month, day] = target.slice(1).map(Number);
+  const dateMentions = quote.matchAll(/(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})(?:日)?/g);
+  for (const mention of dateMentions) {
+    if (Number(mention[1]) === year && Number(mention[2]) === month && Number(mention[3]) === day) return true;
+  }
+  return false;
+}
+
+function quoteDescribesCompletedEvent(quote: string, event: 'disclosure' | 'use_change'): boolean {
+  // Modal/prospective language means the quote may describe a plan, not an
+  // event that has occurred. Ambiguous wording intentionally fails closed.
+  if (/(?:拟|计划|预计|将于|将要|尚未|待披露|待实施|待生效|拟变更|计划变更)/.test(quote)) return false;
+  if (event === 'disclosure') {
+    return /(?:已|已经).{0,40}(?:对外)?(?:公开)?(?:披露|公告|发布)|(?:披露|公告|发布)(?:日期|时间)(?:为|是|于)/.test(quote);
+  }
+  return /用途.{0,40}(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效|开始使用|开始实施|开始执行|生效)|(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效).{0,40}用途/.test(quote);
+}
+
+function citationsBindActualEvent(
+  field: CpFundsUseChangeEvidenceValue,
+  event: 'disclosure' | 'use_change',
+): boolean {
+  return field.citations.length > 0 && field.citations.every(citation =>
+    citationIsComplete(citation) &&
+    quoteContainsDate(citation.quote, field.value) &&
+    quoteDescribesCompletedEvent(citation.quote, event),
+  );
+}
+
 /**
  * A date strictly earlier than the effective date is consistent with prior
- * disclosure. Same-day dates cannot establish intraday ordering and stay in
- * review. No calendar-day or business-day adjustment is inferred.
+ * disclosure only when each source quote anchors the exact date and describes
+ * a completed event. Prospective, future, same-day, or ambiguous evidence stays
+ * in review. No calendar-day or business-day adjustment is inferred.
  */
 export function checkCpFundsUseChangeEvidence(
   input: CpFundsUseChangeEvidenceInput,
@@ -80,10 +115,19 @@ export function checkCpFundsUseChangeEvidence(
   const reasons: string[] = [];
   const fields = [input.disclosureDate, input.changedUseEffectiveDate];
 
+  if (!isCalendarDate(input.checkedOn)) reasons.push('checked_on_date_invalid');
   if (fields.some(field => !hasEvidence(field))) reasons.push('evidence_missing_or_unlocated');
   if (fields.some(field => field.uncertainty !== 'clear')) reasons.push('evidence_uncertain');
   if (fields.some(hasConflict)) reasons.push('conflicting_source_assertions');
   if (fields.some(field => !isCalendarDate(field.value))) reasons.push('invalid_or_missing_calendar_date');
+  if (fields.some(field => field.citations.some(citation => citationIsComplete(citation) && !quoteContainsDate(citation.quote, field.value)))) {
+    reasons.push('date_not_bound_to_citation_quote');
+  }
+  if (!citationsBindActualEvent(input.disclosureDate, 'disclosure')) reasons.push('actual_disclosure_event_not_proven');
+  if (!citationsBindActualEvent(input.changedUseEffectiveDate, 'use_change')) reasons.push('actual_use_change_event_not_proven');
+  if (isCalendarDate(input.checkedOn) && fields.some(field => isCalendarDate(field.value) && field.value > input.checkedOn)) {
+    reasons.push('future_event_date_unresolved');
+  }
 
   if (reasons.length) return { decision: 'needs_review', reasons, evidence: input };
 
