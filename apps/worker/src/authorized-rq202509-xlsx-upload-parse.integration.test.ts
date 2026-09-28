@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
@@ -19,6 +20,7 @@ import { runMaterialParseOnce } from './material-parse-job.js';
 import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
 import { listFactCandidates } from './fact-repository.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { produceTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-producer.js';
 
 type ManifestEvidence = { readonly locator: string; readonly quote: string };
 type ManifestFile = {
@@ -39,7 +41,9 @@ const localPython = join(repoRoot, '.venv', process.platform === 'win32' ? 'Scri
 const pythonExecutable = process.env.BB_PYTHON?.trim() || (existsSync(localPython)
   ? localPython : process.platform === 'win32' ? 'python' : 'python3');
 const optedIn = process.env.BB_RUN_AUTHORIZED_RQ202509_XLSX_UPLOAD_PARSE === '1';
-const databaseUrl = optedIn ? await isolatedTestDatabase('AUTHORIZED_RQ202509_XLSX_UPLOAD_PARSE_TEST_DATABASE_URL') : undefined;
+const producerOptedIn = process.env.BB_RUN_ISSUE76_RQ202509_CANDIDATE_PG === '1';
+const databaseUrl = optedIn || producerOptedIn
+  ? await isolatedTestDatabase('AUTHORIZED_RQ202509_XLSX_UPLOAD_PARSE_TEST_DATABASE_URL') : undefined;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -63,8 +67,8 @@ finally:
     book.close()
 `;
 
-test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable PG16 parse and source-anchor checks', {
-  skip: !optedIn ? 'set BB_RUN_AUTHORIZED_RQ202509_XLSX_UPLOAD_PARSE=1 to run the authorized XLSX upload/parser integration'
+test('authorized rq-202509-02 XLSX crosses public upload and durable PG16 parse (optional Issue #76 producer)', {
+  skip: !optedIn && !producerOptedIn ? 'set BB_RUN_AUTHORIZED_RQ202509_XLSX_UPLOAD_PARSE=1 to run the authorized XLSX upload/parser integration'
     : !databaseUrl ? 'set AUTHORIZED_RQ202509_XLSX_UPLOAD_PARSE_TEST_DATABASE_URL or BB_TEST_DATABASE_URL to a disposable migrated PostgreSQL 16 template'
       : !blobConnection ? 'set BB_TEST_AZURITE_CONNECTION_STRING for a disposable Azurite instance' : false,
 }, async () => {
@@ -96,10 +100,10 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
   const containerName = `bb-rq509-xlsx-${suffix}`;
   const blobs = azureBlobs(blobConnection, containerName);
   const app = createServer({ pool, blobs, allowedOrigin: origin,
-    principal: async () => ({ userId: activeOwner, csrfVerified: true }) });
-  const send = (method: string, url: string, payload?: unknown) => app.inject({
+    principal: async () => ({ userId: activeOwner, csrfVerified: true }), enableUserSubmissionSeam: producerOptedIn });
+  const send = (method: string, url: string, payload?: unknown, extraHeaders: Record<string, string> = {}) => app.inject({
     method: method as never, url, payload: payload as never,
-    headers: { origin, ...(Buffer.isBuffer(payload) ? { 'content-type': 'application/octet-stream' } : {}) },
+    headers: { origin, ...(Buffer.isBuffer(payload) ? { 'content-type': 'application/octet-stream' } : {}), ...extraHeaders },
   });
   try {
     const version = await pool.query<{ server_version_num: string }>('SHOW server_version_num');
@@ -112,9 +116,11 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
 
     const created = await send('POST', '/api/v1/projects', {
       name: 'Authorized interim XLSX upload regression', kind: 'update', issuer_name: null, market: null, offering: null,
+      ...(producerOptedIn ? { update_details: { ...emptyUpdateDetails(), reporting_cutoff: '2025-09-30' } } : {}),
     });
     assert.equal(created.statusCode, 201, 'authenticated owner creates a project');
     const projectId = created.json().project_id as string;
+    const projectDraftRevision = created.json().draft_revision as number;
     const declaration = { byte_size: EXPECTED_BYTES, sha256: EXPECTED_SHA256 };
     const started = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
       ...declaration, filename: registered.original_filename, role: registered.upload_role, media_type: XLSX,
@@ -167,8 +173,8 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
     assert.equal(finished.rows[0]!.parser_version, documentParserVersion());
     const snapshotId = finished.rows[0]!.checkpoint.stages.parse_evidence.snapshot_id as string;
     assert.ok(snapshotId);
-    const snapshot = await pool.query<{ content_sha256: string; response_status: string; response_meta: Record<string, any>; record_count: number }>(
-      `SELECT content_sha256,response_status,response_meta,record_count FROM bb_parse_snapshots
+    const snapshot = await pool.query<{ content_sha256: string; response_status: string; response_meta: Record<string, any>; record_count: number; response_sha256: string }>(
+      `SELECT content_sha256,response_status,response_meta,record_count,response_sha256 FROM bb_parse_snapshots
         WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND material_id=$4 AND parser_version=$5`,
       [snapshotId, owner, projectId, materialId, documentParserVersion()]);
     assert.equal(snapshot.rowCount, 1);
@@ -197,6 +203,55 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
       'every cached formula result stays explicitly unverified');
     assert.equal(Number(stats.missing_cache_formula_records), document.missing_formula_results,
       'truly missing formula caches remain separately represented');
+
+    const candidateRequest = { ownerUserId: owner, projectId,
+      selectedFinancialMaterials: [{ materialId, materialVersion: 1 }],
+      projectDraftRevision, reportingCutoff: '2025-09-30' };
+    if (producerOptedIn) {
+      // Exercise the real trusted producer against the just-persisted, authorized Python parse.
+      // The manifest-confirmed target is used only as cutoff intent; no confirmation decision is written.
+      const candidateRef = await produceTargetPeriodCandidateSnapshot({ pool, blobs }, candidateRequest);
+      const candidateReplay = await produceTargetPeriodCandidateSnapshot({ pool, blobs }, candidateRequest);
+      assert.deepEqual(candidateReplay, candidateRef, 'exact source/draft replay returns the same pending reference');
+      const candidateRow = await pool.query<{ id: string; content_sha256: string; content: Record<string, any> }>(
+        `SELECT id,content_sha256,content FROM bb_target_period_candidate_snapshots
+        WHERE owner_user_id=$1 AND project_id=$2 AND candidate_set_id=$3 AND candidate_set_version=$4`,
+        [owner, projectId, candidateRef.candidate_set_id, candidateRef.candidate_set_version]);
+      assert.equal(candidateRow.rowCount, 1);
+      const candidateContent = candidateRow.rows[0]!.content;
+      assert.equal(candidateRow.rows[0]!.content_sha256.trim(), candidateRef.content_sha256);
+      assert.equal(candidateContent.status, 'needs_confirmation');
+      assert.equal(candidateContent.completeness, 'not_determined');
+      assert.ok(candidateContent.candidates.length > 0, 'the real visible financial headers produce candidate periods');
+      assert.ok(candidateContent.candidates.every((candidate: { status: string }) => candidate.status === 'needs_confirmation'),
+        'real-source candidate periods remain pending');
+      assert.equal(candidateContent.candidates.some((candidate: { end: string | null }) => candidate.end === '2025-09-30'), true,
+        'the cutoff-related candidate is present only as a proposal');
+      assert.equal(candidateContent.source_snapshots.length, 1);
+      const sourcePin = candidateContent.source_snapshots[0]!;
+      assert.deepEqual([sourcePin.evidence_method, sourcePin.snapshot_id, sourcePin.material_id, sourcePin.material_version,
+        sourcePin.material_sha256, sourcePin.response_sha256, sourcePin.record_pins.length],
+      ['native_text', snapshotId, materialId, 1, EXPECTED_SHA256, parsed.response_sha256.trim(), EXPECTED_RECORDS]);
+      assert.equal(new Set(sourcePin.record_pins.map((pin: { record_id: string }) => pin.record_id)).size, EXPECTED_RECORDS,
+        'the candidate snapshot pins every unique parser record, not only cited anchors');
+      assert.ok(sourcePin.record_pins.every((pin: { record_id: string; record_sha256: string }) =>
+        pin.record_id.length > 0 && /^[a-f0-9]{64}$/.test(pin.record_sha256)));
+      const pinnedRecords = await pool.query<{ record_id: string; record_sha256: string }>(
+        `SELECT record_id,lower(btrim(record_sha256::text)) AS record_sha256 FROM bb_parse_evidence
+        WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1 AND snapshot_id=$4
+        ORDER BY record_id`, [owner, projectId, materialId, snapshotId]);
+      assert.equal(pinnedRecords.rowCount, EXPECTED_RECORDS);
+      assert.deepEqual(sourcePin.record_pins, pinnedRecords.rows,
+        'the immutable candidate inventory equals all current PostgreSQL evidence record IDs and hashes');
+      const candidateOutbox = await pool.query<{ count: string }>(`SELECT count(*)::text AS count
+      FROM bb_outbox WHERE owner_user_id=$1 AND aggregate_id=$2 AND event_type='project.target_period_candidates_snapshotted'`,
+      [owner, candidateRow.rows[0]!.id]);
+      assert.equal(Number(candidateOutbox.rows[0]!.count), 1, 'exact replay creates only one candidate snapshot and outbox event');
+      await assert.rejects(produceTargetPeriodCandidateSnapshot({ pool, blobs }, { ...candidateRequest, ownerUserId: foreignOwner }),
+        /TARGET_PERIOD_CANDIDATE_PROJECT_NOT_FOUND/, 'foreign owner cannot produce from this project');
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1`,
+        [foreignOwner])).rows[0]!.n, 0, 'foreign owner cannot read or create a candidate snapshot');
+    }
 
     const anchor = await pool.query<{ locator: Record<string, unknown>; literal_quote: string }>(
       `SELECT locator,literal_quote FROM bb_parse_evidence WHERE snapshot_id=$1 AND locator_type='xlsx_cell'
@@ -317,6 +372,38 @@ test('authorized rq-202509-02 XLSX crosses public upload, private Blob, durable 
     assert.equal(readable.statusCode, 200);
     assert.equal(readable.json().parser_version, documentParserVersion());
     assert.equal(readable.json().material_id, materialId);
+
+    if (producerOptedIn) {
+      const replacementUploadId = `rq509-xlsx-replacement-${suffix}`;
+      await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'replacement.xlsx',$4,$5,$6,'interimFinancial',$7,now()+interval '1 hour','completed')`,
+      [replacementUploadId, owner, projectId, XLSX, EXPECTED_BYTES, EXPECTED_SHA256, `synthetic-replacement-upload/${suffix}`]);
+      await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,2,$2,$3,$4,'interimFinancial','replacement.xlsx',$5,$6,$7,$8,'parsed')`,
+      [materialId, owner, projectId, replacementUploadId, XLSX, EXPECTED_BYTES, EXPECTED_SHA256,
+        `synthetic-replacement-material/${suffix}`]);
+      await assert.rejects(produceTargetPeriodCandidateSnapshot({ pool, blobs }, candidateRequest),
+        /TARGET_PERIOD_CANDIDATE_MATERIAL_STALE/, 'a replacement material revision invalidates new candidate production from v1');
+      const changedDraft = await send('PATCH', `/api/v1/projects/${projectId}`, {
+        update_details: { ...emptyUpdateDetails(), reporting_cutoff: '2025-06-30' },
+      }, { 'if-match': String(projectDraftRevision) });
+      assert.equal(changedDraft.statusCode, 200);
+      await assert.rejects(produceTargetPeriodCandidateSnapshot({ pool, blobs }, candidateRequest),
+        /TARGET_PERIOD_CANDIDATE_DRAFT_STALE/, 'a changed draft revision/cutoff invalidates the old producer request');
+
+    // Persist a synthetic project message through the existing private submission seam. The test
+    // does not fetch or log its private Blob body; the producer must block based on scoped metadata.
+      const savedMessage = await send('POST', `/api/v1/internal/projects/${projectId}/submissions`, {
+        message_id: `message-${suffix}`, submission_request_id: `message-request-${suffix}`,
+        body: 'Synthetic authorized-test requirement; not customer content.', material_versions: [],
+      });
+      assert.equal(savedMessage.statusCode, 201);
+      const currentDraft = changedDraft.json().draft_revision as number;
+      await assert.rejects(produceTargetPeriodCandidateSnapshot({ pool, blobs }, {
+        ...candidateRequest, projectDraftRevision: currentDraft, reportingCutoff: '2025-06-30',
+      }), /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
+      'owner/project-scoped project-message metadata blocks a candidate with an empty requirement pin');
+    }
   } finally {
     activeOwner = owner;
     await app.close();

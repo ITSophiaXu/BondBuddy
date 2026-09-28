@@ -332,9 +332,9 @@ async function verifySources(client: TargetPeriodCandidateSnapshotClient, blobs:
 
 /**
  * Persists a builder-produced envelope after validating its complete contract and re-reading
- * all native source pins from owner/project scoped immutable rows. No HTTP route calls this.
- * OCR stays fail closed until a Blob-backed source loader exists; non-empty requirements stay
- * fail closed until #18 provides immutable content/version hashes.
+ * native/OCR source pins from owner/project-scoped immutable rows and private objects. No HTTP
+ * route calls this. Non-empty requirements stay fail closed until #18 provides immutable
+ * content/version hashes and a corresponding locked consumer.
  */
 export async function appendTargetPeriodCandidateSnapshot(
   dependencies: TargetPeriodCandidateSnapshotDependencies,
@@ -378,6 +378,17 @@ export async function appendTargetPeriodCandidateSnapshot(
     }
 
     verifyCurrentProject(project, request);
+
+    // The project FOR UPDATE lock above conflicts with the KEY SHARE lock required by
+    // project FKs on the submission registration's snapshot and submission rows. It therefore either
+    // committed before this query (and is visible) or waits until after this snapshot.
+    // Any later input-lock consumer must revalidate message metadata before use.
+    // Do not take the submission advisory lock here: registration takes it before its FK
+    // insert, which would invert the project/advisory lock order and allow a deadlock.
+    const messages = await client.query(`SELECT 1 FROM bb_user_submission_versions
+      WHERE owner_user_id=$1 AND project_id=$2 AND submission_kind='project_message' LIMIT 1`,
+    [request.ownerUserId, request.projectId]);
+    if (messages.rows.length) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
 
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       [`target-period-candidate:${request.ownerUserId}:${request.projectId}:${request.snapshot.candidate_set_id}`]);
