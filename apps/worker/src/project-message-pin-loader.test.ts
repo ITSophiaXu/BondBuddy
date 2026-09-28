@@ -51,6 +51,9 @@ test('malformed scope, kind, identifiers, versions, hashes and message-version g
   assert.throws(() => selectLatestProjectMessagePins([
     valid, row('submission-a2', 'message-a', 3, 3, 'submission-a1', sha('b')),
   ], { ownerUserId: owner, projectId: project }), /PROJECT_MESSAGE_SET_INVALID/);
+  assert.throws(() => selectLatestProjectMessagePins([
+    valid, row('submission-a2', 'message-a', 2, 1, 'submission-a1', sha('b')),
+  ], { ownerUserId: owner, projectId: project }), /PROJECT_MESSAGE_SET_INVALID/);
 });
 
 test('duplicate submission IDs, project versions or message versions fail closed', () => {

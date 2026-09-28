@@ -85,7 +85,7 @@ export function selectLatestProjectMessagePins(
     for (let index = 1; index < versions.length; index += 1) {
       const current = versions[index]!;
       const prior = versions[index - 1]!;
-      if (current.message_version !== prior.message_version + 1) throw fail();
+      if (current.message_version !== prior.message_version + 1 || current.version <= prior.version) throw fail();
     }
     const latest = versions[versions.length - 1]!;
     selected.push({ message_id: latest.message_id, submission_id: latest.submission_id,
