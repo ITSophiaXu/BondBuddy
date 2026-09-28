@@ -104,8 +104,9 @@ services:
       # #17: stage materials on disk; the /tmp tmpfs is charged to the worker memory limit and a
       # 100 MiB DOCX staged there OOM-killed the parser on the 320M production profile.
       BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
-      # #17 WorkerRuntime (apps/worker/src/runtime.ts): bounded slots over run and parse jobs.
+      # #17 WorkerRuntime: general slots claim run/parse; dedicated slots claim parse only.
       BB_WORKER_CONCURRENCY: ${BB_WORKER_CONCURRENCY:-2}
+      BB_WORKER_PARSE_SLOTS: ${BB_WORKER_PARSE_SLOTS:-1}
       BB_WORKER_DRAIN_MS: ${BB_WORKER_DRAIN_MS:-20000}
       BB_PARSE_CACHE_OCR_VERSION: ${BB_PARSE_CACHE_OCR_VERSION:?set in .env; see .env.example}
       BB_PARSE_CACHE_BASIS_VERSION: ${BB_PARSE_CACHE_BASIS_VERSION:?set in .env; see .env.example}
