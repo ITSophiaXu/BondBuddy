@@ -159,12 +159,12 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   expect(fixture.materials.size).toBe(3);
 
   await page.reload();
-  await expect(page.getByText('已从服务器恢复 3 份当前账号可访问的材料记录。')).toBeVisible();
+  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, 'owner_a');
-  await expect(page.getByText('已从服务器恢复 3 份当前账号可访问的材料记录。')).toBeVisible();
+  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
@@ -251,7 +251,7 @@ test('a late material refresh cannot restore a row removed by a newer refresh', 
   await expect.poll(() => held).toBe(true);
   current.materials.clear();
   await page.getByRole('button', { name: '刷新已保存材料' }).click();
-  await expect(page.getByText('材料事件中没有可恢复记录；重新选择本地文件不会代替服务器保存记录。')).toBeVisible();
+  await expect(page.getByText('尚未添加材料。')).toBeVisible();
   release();
   await expect(page.locator('.persisted-material')).toHaveCount(0);
 });
@@ -455,7 +455,7 @@ test('material recovery keeps the live file picker attached until its change eve
   const current = state(); await installApi(page, current); await login(page, 'owner_a');
   const picker = await page.getByLabel('为本企业历史募集书选择文件').elementHandle();
   await page.getByRole('button', { name: '刷新已保存材料' }).click();
-  await expect(page.locator('#material-recovery-status')).toContainText('材料事件中没有可恢复记录');
+  await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
   expect(await picker!.evaluate(input => input.isConnected)).toBe(true);
   await picker!.setInputFiles({ name: 'picker-survives.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic selected before recovery') });
   await expect(page.locator('.material-file-row')).toContainText('服务器已确认保存');

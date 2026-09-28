@@ -30,14 +30,15 @@ async function install(page: Page, calls: string[], options: { blockProject?: bo
   await page.context().addCookies([{ name: 'bb_csrf', value: 'synthetic-csrf', url: origin }]);
 }
 
-test('upload area and policy page render retention numbers from the API and never claim browser-only storage', async ({ page }) => {
+test('upload only links to policy; independent page keeps accurate retention and processing details', async ({ page }) => {
   const calls: string[] = []; await install(page, calls);
   await page.goto(`/#/projects/${projectId}`);
   const note = page.locator('#upload-policy-note');
-  await expect(note).toContainText('传到 BondBuddy 平台');
-  await expect(note).toContainText('模型服务商');
-  await expect(note).toContainText('17 天内');
-  await note.getByRole('link', { name: '查看数据保存与删除说明' }).click();
+  await expect(note).toHaveText('数据保存与删除说明');
+  expect(calls).not.toContain('policy');
+  await expect(page.locator('main')).not.toContainText('自动清理时限尚未配置');
+  await expect(note).not.toContainText('模型服务商');
+  await note.getByRole('link', { name: '数据保存与删除说明' }).click();
   await expect(page.getByRole('heading', { name: '数据保存与删除说明' })).toBeVisible();
   for (const text of ['6 小时', '180 天', '21 天', '删除项目', '浏览器中的文件不是唯一副本']) await expect(page.locator('main')).toContainText(text);
   await expect(page.locator('body')).not.toContainText('只保存在本机');

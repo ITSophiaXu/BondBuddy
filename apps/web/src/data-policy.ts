@@ -11,10 +11,8 @@ function policy(api: ApiClient) {
 }
 const unavailable = '暂时无法读取数据保存与删除说明，请稍后刷新。上传的文件会保存在平台服务器并在服务端处理。';
 
-export async function renderUploadPolicyNote(api: ApiClient, target: HTMLElement | null) {
-  if (!target) return;
-  try { target.innerHTML = `${esc(dataPolicyCopy(await policy(api)).upload)} <a href="#/data-policy">查看数据保存与删除说明</a>`; }
-  catch { target.textContent = unavailable; }
+export function renderUploadPolicyNote(_api: ApiClient, target: HTMLElement | null) {
+  if (target) target.innerHTML = '<a href="#/data-policy">数据保存与删除说明</a>';
 }
 
 export async function renderDataPolicyPage(api: ApiClient, shell: (content: string, section: string) => void, current: () => boolean) {
