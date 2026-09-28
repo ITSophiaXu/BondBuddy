@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import { MARKETS, OFFERINGS, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
+import { MARKETS, OFFERINGS, PRODUCTION_SAMPLE_POLARITIES, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 
 export * from './sse-private-applicability-taxonomy.js';
 export * from './cp-tenor-evidence.js';
@@ -103,7 +103,7 @@ export const RuleDefinitionSchema = strict({
 
 export const SampleCaseSchema = strict({
   case_id:safeId,
-  polarity:enumOf(['positive','negative','boundary'] as const),
+  polarity:enumOf(PRODUCTION_SAMPLE_POLARITIES),
   evidence_ref:nonEmpty,
   result:enumOf(['passed','failed'] as const),
   reviewed_by:safeId,
@@ -353,7 +353,7 @@ export function publishRulePack(draft:RulePack,input:{channel:'test'|'production
     || (source.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))))
     throw new Error('RULE_SOURCE_APPLICABILITY_NOT_APPROVED');
   if(valid.sample_suite.cases.some(testCase=>testCase.result!=='passed'))throw new Error('RULE_PACK_SAMPLE_FAILURE');
-  for(const polarity of ['positive','negative','boundary'] as const)if(!valid.sample_suite.cases.some(testCase=>testCase.polarity===polarity))throw new Error(`RULE_PACK_SAMPLE_${polarity.toUpperCase()}_MISSING`);
+  for(const polarity of PRODUCTION_SAMPLE_POLARITIES)if(!valid.sample_suite.cases.some(testCase=>testCase.polarity===polarity))throw new Error(`RULE_PACK_SAMPLE_${polarity.toUpperCase()}_MISSING`);
   const industryReview=reviewRole(input.reviews,'industry_reviewer'),technicalReview=reviewRole(input.reviews,'technical_reviewer');
   if(!industryReview || !technicalReview)throw new Error('RULE_PACK_REVIEWS_INCOMPLETE');
   if(industryReview.reviewer_id===technicalReview.reviewer_id)throw new Error('RULE_PACK_REVIEWERS_NOT_SEPARATE');

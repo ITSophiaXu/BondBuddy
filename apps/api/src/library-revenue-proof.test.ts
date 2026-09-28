@@ -36,6 +36,16 @@ test('synthetic full-line proof rejects mismatched denominator, missing page, st
   assert.ok(assessLibraryRevenueRankProof(base, { ...profile, state: 'withdrawn' }).reasons.includes('profile_not_published'));
 });
 
+test('proof-hash mismatch returns a schema-safe needs-review decision without an untrusted profile hash', async () => {
+  const proof = fixture();
+  const row = { ...profile, proof, proof_hash: '0'.repeat(64) };
+  const fakePool = { async query() { return { rows: [row] }; } } as unknown as Pool;
+  assert.deepEqual(await readLibraryRevenueRankProofDecision(fakePool, profile.id), {
+    sufficient: false, reasons: ['proof_hash_mismatch'], profile_id: profile.id, profile_version: profile.profile_version,
+    profile_hash: null, proof_hash: null,
+  });
+});
+
 test('third-place tie requires a complete reviewed selection and exact excluded roster', () => {
   const proof = fixture(); proof.rows[3]!.amount = '100'; proof.denominator = '700';
   assert.ok(assessLibraryRevenueRankProof(proof, profile).reasons.includes('third_place_tie_unreviewed'));
@@ -72,7 +82,11 @@ test('proof snapshot is persisted, immutable, version-bound and withdrawn profil
     Object.assign(proof.classification_review, { profile_id: saved.id, profile_version: saved.profile_version, profile_hash: proof.profile_hash });
     const inserted = await persistLibraryRevenueRankProof(pool, proof);
     assert.equal((await persistLibraryRevenueRankProof(pool, proof)).id, inserted.id);
-    assert.deepEqual(await readLibraryRevenueRankProofDecision(pool, saved.id), { sufficient: true, reasons: [] });
+    const decision = await readLibraryRevenueRankProofDecision(pool, saved.id);
+    assert.equal(decision.sufficient, true);
+    assert.deepEqual(decision.reasons, []);
+    assert.equal(decision.proof_hash, inserted.proof_hash);
+    assert.equal(decision.profile_id, saved.id);
     await assert.rejects(pool.query('UPDATE bb_library_revenue_rank_proofs SET proof_hash=$1 WHERE id=$2', ['0'.repeat(64), inserted.id]), /immutable/);
     await assert.rejects(pool.query('DELETE FROM bb_library_revenue_rank_proofs WHERE id=$1', [inserted.id]), /immutable/);
     await reviewLibraryVersion(pool, doc.versionId, { action: 'withdraw', reason: 'synthetic_withdrawal' }, 'reviewer-1');

@@ -10,8 +10,9 @@ import { date, digest, missing, Problem, transaction, uid, type PrivateBlobs } f
 import { raiseAlert } from './evidence-gate.js';
 import { emitInternal, internalEvent } from './observability.js';
 import { errorDiagnostic } from './error-diagnostics.js';
-import { LIBRARY_V11_PRODUCTION_LOCK_ENABLED, readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
-export { assessLibraryRevenueRankProof, libraryProfileContentHash, persistLibraryRevenueRankProof, readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
+import { assessLibraryRevenueRankProof, LIBRARY_V11_PRODUCTION_LOCK_ENABLED, libraryProfileContentHash, libraryRevenueRankProofHash,
+  readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
+export { assessLibraryRevenueRankProof, libraryProfileContentHash, libraryRevenueRankProofHash, persistLibraryRevenueRankProof, readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
 
 // #78 backend reference library store. Platform data owned by LIBRARY_SYSTEM_OWNER; no function here
 // accepts a user material id, so a personal upload has no path into the library.
@@ -567,7 +568,9 @@ export async function queryReferenceLibrary(pool: Pool, request: LibraryQueryReq
   if (!project.rowCount) throw missing();
   let head: any;
   try { head = (await pool.query(`SELECT r.id, r.release_no, (SELECT coalesce(max(updated_at),'epoch') FROM bb_library_sources) AS rights_stamp,
-      (SELECT coalesce(max(state_changed_at),'epoch') FROM bb_library_chapter_mapping_versions) AS mapping_stamp FROM bb_library_index_releases r WHERE r.active`)).rows[0]; }
+      (SELECT coalesce(max(state_changed_at),'epoch') FROM bb_library_chapter_mapping_versions) AS mapping_stamp,
+      (SELECT coalesce(max(created_at),'epoch') FROM bb_library_revenue_rank_proofs) AS proof_stamp,
+      (SELECT count(*) FROM bb_library_revenue_rank_proofs) AS proof_count FROM bb_library_index_releases r WHERE r.active`)).rows[0]; }
   catch { return { schema_version: request.schema_version, status: 'unavailable', index_release: null, candidates: [], reason: 'library_unavailable' }; }
   const release = { release_id: head.id as string, release_no: Number(head.release_no) };
   if (request.index_release && request.index_release !== release.release_id) {
@@ -576,7 +579,8 @@ export async function queryReferenceLibrary(pool: Pool, request: LibraryQueryReq
   const setKey = librarySetKey(request.target.top3_codes);
   const v11 = request.schema_version === LIBRARY_QUERY_SCHEMA_VERSION_V1_1;
   const t = request.target;
-  const cacheKey = JSON.stringify([request.schema_version, release.release_id, new Date(head.rights_stamp).toISOString(), new Date(head.mapping_stamp).toISOString(), setKey,
+  const cacheKey = JSON.stringify([request.schema_version, release.release_id, new Date(head.rights_stamp).toISOString(), new Date(head.mapping_stamp).toISOString(),
+    new Date(head.proof_stamp).toISOString(), Number(head.proof_count), setKey,
     t.taxonomy_version, t.instrument, t.document_stage, ...(v11 ? [t.market, t.offering, t.rule_version] : [])]);
   const cached = queryCache.get(cacheKey);
   let response: LibraryQueryResponse;
@@ -625,10 +629,25 @@ async function withComparability(pool: Pool, rows: any[], candidates: LibraryCan
   const mappings = candidates.length ? (await pool.query(`SELECT * FROM bb_library_chapter_mapping_versions WHERE state='accepted'
     AND target_market=$1 AND target_offering=$2 AND target_instrument=$3 AND document_stage=$4 AND rule_version=$5 ORDER BY mapping_key, version`,
   [target.market, target.offering, target.instrument, target.document_stage, target.rule_version])).rows : [];
+  const proofRows = candidates.length ? (await pool.query(`SELECT p.id AS profile_id, p.profile_version, p.document_version_id, p.fiscal_year,
+      p.taxonomy_version, p.accounting_scope, p.revenue_basis, p.currency, p.unit, p.top3, p.state,
+      r.proof, r.proof_hash FROM bb_library_profiles p LEFT JOIN bb_library_revenue_rank_proofs r
+      ON r.profile_id=p.id AND r.profile_version=p.profile_version WHERE p.id=ANY($1::text[])`, [candidates.map(c => c.profile_id)])).rows : [];
+  const proofByProfile = new Map(proofRows.map(row => [row.profile_id as string, row]));
   return candidates.map((c, i) => {
     const r = rows[i];
     const comparable = r.revenue_basis && r.currency && r.unit && r.reviewed_review_id;
     const scoped = mappings.filter(m => m.source_market === c.market && m.source_offering === c.offering && m.source_instrument === c.instrument).map(mappingOf);
+    const proofRow = proofByProfile.get(c.profile_id);
+    const proof = proofRow?.proof as import('@bondbuddy/contracts').LibraryRevenueRankProof | null | undefined;
+    const profile = proofRow ? { ...proofRow, id: proofRow.profile_id } : null;
+    const assessment = proof && profile ? assessLibraryRevenueRankProof(proof, profile) : { sufficient: false, reasons: ['proof_missing'] };
+    const proofHashMatches = Boolean(proof && proofRow?.proof_hash && libraryRevenueRankProofHash(proof) === proofRow.proof_hash);
+    const revenueRankProof = { profile_id: c.profile_id, profile_version: c.profile_version,
+      profile_hash: proof && proofHashMatches ? proof.profile_hash : null,
+      proof_hash: proofHashMatches && assessment.sufficient ? proofRow!.proof_hash as string : null,
+      sufficient: Boolean(proofHashMatches && assessment.sufficient),
+      reasons: proofHashMatches ? assessment.reasons : [proof ? 'proof_hash_mismatch' : 'proof_missing'] };
     return {
       ...c,
       chapter_mapping_versions: scoped.map(m => m.mapping_version_id),
@@ -636,6 +655,7 @@ async function withComparability(pool: Pool, rows: any[], candidates: LibraryCan
         accounting_scope: r.accounting_scope, revenue_basis: r.revenue_basis, currency: r.currency, unit: r.unit, fiscal_year: r.fiscal_year,
         attestation: { review_id: r.reviewed_review_id, reviewed_by: r.reviewed_by, reviewed_at: date(r.reviewed_at), profile_id: c.profile_id, profile_version: c.profile_version },
       } : null,
+      revenue_rank_proof: revenueRankProof,
       chapter_mappings: scoped,
     };
   });
