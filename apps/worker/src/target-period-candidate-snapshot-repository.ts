@@ -5,6 +5,8 @@ import {
   validTargetPeriodCandidateSnapshot,
   type TargetPeriodCandidateSnapshot,
 } from '@bondbuddy/contracts';
+import type { PrivateBlobs } from '@bondbuddy/api/data';
+import { validateOcrResponse } from '@bondbuddy/api/ocr';
 
 export interface TargetPeriodCandidateSnapshotClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -18,6 +20,7 @@ export interface TargetPeriodCandidateSnapshotPool {
 
 export interface TargetPeriodCandidateSnapshotDependencies {
   readonly pool: TargetPeriodCandidateSnapshotPool;
+  readonly blobs: PrivateBlobs;
   readonly newId?: () => string;
 }
 
@@ -208,8 +211,121 @@ async function verifyNativeSource(client: TargetPeriodCandidateSnapshotClient,
   }
 }
 
-async function verifySources(client: TargetPeriodCandidateSnapshotClient, snapshot: TargetPeriodCandidateSnapshot): Promise<void> {
-  for (const source of snapshot.content.source_snapshots) await verifyNativeSource(client, snapshot, source);
+type StoredOcrResult = {
+  response: import('@bondbuddy/contracts').OcrEngineResponse;
+  page_objects: Record<string, { key: string; sha256: string }>;
+};
+
+async function verifyOcrSource(client: TargetPeriodCandidateSnapshotClient, blobs: PrivateBlobs,
+  snapshot: TargetPeriodCandidateSnapshot, source: TargetPeriodCandidateSnapshot['content']['source_snapshots'][number]): Promise<void> {
+  const materialPin = snapshot.content.financial_materials.find(item => item.material_id === source.material_id);
+  const sourceRow = await client.query(
+    `SELECT s.id, s.owner_user_id, s.project_id, s.material_id, s.material_version, s.request_id,
+            s.result_hash, s.result_key, s.purpose, s.run_id, m.sha256 AS material_sha256, m.role,
+            m.media_type, m.deleted_at
+       FROM bb_ocr_snapshots s
+       JOIN bb_material_versions m ON m.owner_user_id=s.owner_user_id AND m.project_id=s.project_id
+        AND m.id=s.material_id AND m.version=s.material_version
+      WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.id=$3 AND s.material_id=$4 AND s.material_version=$5
+        AND m.deleted_at IS NULL
+      FOR SHARE OF s,m`,
+    [snapshot.content.owner_user_id, snapshot.content.project_id, source.snapshot_id, source.material_id, source.material_version],
+  );
+  if (sourceRow.rows.length !== 1) throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_NOT_FOUND');
+  const row = sourceRow.rows[0]!;
+  const resultHash = text(row, 'result_hash').trim();
+  const resultKey = text(row, 'result_key');
+  const materialHash = text(row, 'material_sha256').trim();
+  const purpose = text(row, 'purpose');
+  if (text(row, 'owner_user_id') !== snapshot.content.owner_user_id || text(row, 'project_id') !== snapshot.content.project_id ||
+      text(row, 'material_id') !== source.material_id || Number(row.material_version) !== source.material_version ||
+      materialHash !== source.material_sha256 || materialHash !== materialPin?.material_sha256 ||
+      text(row, 'role') !== materialPin?.role || !digest.test(resultHash) || resultHash !== source.response_sha256 ||
+      purpose !== 'source_preflight' || row.run_id !== null && row.run_id !== undefined ||
+      source.parser_version.trim() === '' || !FINANCIAL_ROLES.has(text(row, 'role'))) {
+    throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_STALE');
+  }
+  const latestMaterial = await client.query(
+    `SELECT version, lower(btrim(sha256::text)) AS sha256 FROM bb_material_versions
+      WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL
+      ORDER BY version DESC LIMIT 1 FOR SHARE`,
+    [snapshot.content.owner_user_id, snapshot.content.project_id, source.material_id],
+  );
+  if (latestMaterial.rows.length !== 1 || Number(latestMaterial.rows[0]!.version) !== source.material_version ||
+      text(latestMaterial.rows[0]!, 'sha256').trim() !== source.material_sha256) throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_STALE');
+
+  const latest = await client.query(
+    `SELECT id FROM bb_ocr_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+      ORDER BY created_at DESC,id DESC LIMIT 1 FOR SHARE`,
+    [snapshot.content.owner_user_id, snapshot.content.project_id, source.material_id, source.material_version],
+  );
+  if (latest.rows.length !== 1 || latest.rows[0]!.id !== source.snapshot_id) throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_STALE');
+
+  const expectedKey = `users/${snapshot.content.owner_user_id}/projects/${snapshot.content.project_id}/ocr/results/${resultHash}.json`;
+  if (resultKey !== expectedKey) throw fail('TARGET_PERIOD_CANDIDATE_OCR_RESULT_KEY_INVALID');
+  const bytes = await blobs.getIfExistsBounded(resultKey, 32 * 1024 * 1024);
+  if (!bytes || sha256Bytes(bytes) !== resultHash) throw fail('TARGET_PERIOD_CANDIDATE_OCR_RESULT_INTEGRITY_FAILED');
+  let stored: StoredOcrResult;
+  try { stored = JSON.parse(bytes.toString('utf8')) as StoredOcrResult; }
+  catch { throw fail('TARGET_PERIOD_CANDIDATE_OCR_RESULT_INVALID'); }
+  let response: StoredOcrResult['response'];
+  try {
+    response = validateOcrResponse(stored?.response, { materialId: source.material_id, version: source.material_version,
+      sha256: source.material_sha256, mediaType: text(row, 'media_type'), requestId: text(row, 'request_id'), purpose }, false);
+  } catch {
+    throw fail('TARGET_PERIOD_CANDIDATE_OCR_RESULT_INVALID');
+  }
+  if (!isObject(stored.page_objects) || response.processor_version !== source.parser_version ||
+      response.status !== 'needs_confirmation' || response.error !== null || response.pages.some(page => page.image_base64 !== '')) {
+    throw fail('TARGET_PERIOD_CANDIDATE_OCR_RESULT_INVALID');
+  }
+  const expectedPageKeys = response.pages.map(page => String(page.page)).sort();
+  if (!same(Object.keys(stored.page_objects).sort(), expectedPageKeys)) throw fail('TARGET_PERIOD_CANDIDATE_OCR_PAGE_INVENTORY_MISMATCH');
+  for (const page of response.pages) {
+    const object = stored.page_objects[String(page.page)];
+    const key = `users/${snapshot.content.owner_user_id}/projects/${snapshot.content.project_id}/ocr/${source.material_id}/${source.material_version}/${page.image_sha256}.png`;
+    if (!object || object.key !== key || object.sha256 !== page.image_sha256) throw fail('TARGET_PERIOD_CANDIDATE_OCR_PAGE_PIN_MISMATCH');
+    const image = await blobs.getIfExistsBounded(object.key, 32 * 1024 * 1024);
+    if (!image || sha256Bytes(image) !== page.image_sha256 || image.length < 24 ||
+        image.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a' ||
+        image.readUInt32BE(16) !== page.width || image.readUInt32BE(20) !== page.height) {
+      throw fail('TARGET_PERIOD_CANDIDATE_OCR_PAGE_INTEGRITY_FAILED');
+    }
+  }
+  const responseRecords = response.records;
+  const ids = responseRecords.map(record => record.record_id).sort();
+  if (new Set(ids).size !== ids.length || responseRecords.some(record => !record.uncertainty.length ||
+      !response.pages.some(page => page.page === record.page))) throw fail('TARGET_PERIOD_CANDIDATE_OCR_RECORD_INVENTORY_INVALID');
+  const expectedRecordPins = responseRecords.map(record => ({ record_id: record.record_id, record_sha256: sha256(canonical(record)) }))
+    .sort((a, b) => a.record_id.localeCompare(b.record_id));
+  const expectedPagePins = response.pages.map(page => ({ page: page.page, image_sha256: page.image_sha256 }))
+    .sort((a, b) => a.page - b.page);
+  const expectedState = response.coverage === 'complete' ? 'needs_confirmation' : 'partial_coverage';
+  if (source.source_state !== expectedState || !same(source.record_pins, expectedRecordPins) ||
+      !same(source.page_image_pins, expectedPagePins)) throw fail('TARGET_PERIOD_CANDIDATE_OCR_PIN_MISMATCH');
+
+  const recordsById = new Map(responseRecords.map(record => [record.record_id, record]));
+  const pagesById = new Map(response.pages.map(page => [page.page, page]));
+  for (const evidence of snapshot.content.evidence_records.filter(item => item.snapshot_id === source.snapshot_id)) {
+    const record = recordsById.get(evidence.record_id);
+    if (!record) throw fail('TARGET_PERIOD_CANDIDATE_EVIDENCE_MISMATCH');
+    const page = pagesById.get(record.page);
+    if (!page || evidence.record_sha256 !== sha256(canonical(record))) throw fail('TARGET_PERIOD_CANDIDATE_EVIDENCE_HASH_MISMATCH');
+    const expected = { snapshot_id: source.snapshot_id, record_id: record.record_id, record_sha256: sha256(canonical(record)),
+      quote: record.text, context: '', locator: { page: record.page, bbox: record.bbox }, uncertainty: record.uncertainty,
+      page: record.page, page_image_sha256: page.image_sha256 };
+    if (!same(evidence, expected)) throw fail('TARGET_PERIOD_CANDIDATE_EVIDENCE_TEXT_MISMATCH');
+  }
+}
+
+function sha256Bytes(value: Buffer): string { return createHash('sha256').update(value).digest('hex'); }
+
+async function verifySources(client: TargetPeriodCandidateSnapshotClient, blobs: PrivateBlobs,
+  snapshot: TargetPeriodCandidateSnapshot): Promise<void> {
+  for (const source of snapshot.content.source_snapshots) {
+    if (source.evidence_method === 'native_text') await verifyNativeSource(client, snapshot, source);
+    else await verifyOcrSource(client, blobs, snapshot, source);
+  }
 }
 
 /**
@@ -264,7 +380,7 @@ export async function appendTargetPeriodCandidateSnapshot(
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       [`target-period-candidate:${request.ownerUserId}:${request.projectId}:${request.snapshot.candidate_set_id}`]);
     await verifyCurrentMaterials(client, request);
-    await verifySources(client, request.snapshot);
+    await verifySources(client, dependencies.blobs, request.snapshot);
 
     const latestVersion = await client.query(
       `SELECT COALESCE(max(candidate_set_version),0)::int AS version FROM bb_target_period_candidate_snapshots
