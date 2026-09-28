@@ -22,7 +22,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER bb_rule_pack_production_grant_scope_guard BEFORE UPDATE OR DELETE
+CREATE TRIGGER bb_rule_pack_production_grant_scope_guard BEFORE INSERT OR UPDATE OR DELETE
   ON bb_rule_pack_production_grant_scopes FOR EACH ROW EXECUTE FUNCTION bb_rule_pack_production_grant_scope_guard();
 CREATE FUNCTION bb_rule_pack_production_grant_requires_scope() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
