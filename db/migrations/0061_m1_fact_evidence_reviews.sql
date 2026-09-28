@@ -127,8 +127,30 @@ BEGIN
   IF ctx.id IS NULL OR candidate.id IS NULL OR ctx.evidence_set_sha256<>NEW.evidence_set_sha256 OR
     ctx.input_revision<>NEW.input_revision OR ctx.input_hash<>NEW.input_hash OR ctx.material_id<>NEW.material_id OR
     ctx.material_version<>NEW.material_version OR ctx.snapshot_id<>NEW.snapshot_id OR ctx.parser_version<>NEW.parser_version OR
-    ctx.parse_response_sha256<>NEW.parse_response_sha256 OR NEW.candidate_identity_sha256<>candidate.fact_key_hash OR
+    ctx.parse_response_sha256<>NEW.parse_response_sha256 OR
+    ctx.manifest->>'owner_user_id' IS DISTINCT FROM ctx.owner_user_id OR ctx.manifest->>'project_id' IS DISTINCT FROM ctx.project_id OR
+    ctx.manifest->>'candidate_id' IS DISTINCT FROM ctx.candidate_id OR
+    (ctx.manifest->>'input_revision')::integer IS DISTINCT FROM ctx.input_revision OR ctx.manifest->>'input_hash' IS DISTINCT FROM ctx.input_hash OR
+    ctx.manifest->>'material_id' IS DISTINCT FROM ctx.material_id OR
+    (ctx.manifest->>'material_version')::integer IS DISTINCT FROM ctx.material_version OR
+    ctx.manifest->>'material_sha256' IS DISTINCT FROM btrim(ctx.content_sha256::text) OR
+    candidate.material_id IS DISTINCT FROM ctx.material_id OR candidate.material_version IS DISTINCT FROM ctx.material_version OR
+    ctx.manifest->>'snapshot_id' IS DISTINCT FROM ctx.snapshot_id OR ctx.manifest->>'parser_version' IS DISTINCT FROM ctx.parser_version OR
+    ctx.manifest->>'parse_response_sha256' IS DISTINCT FROM btrim(ctx.parse_response_sha256::text) OR
+    NOT EXISTS(SELECT 1 FROM bb_parse_snapshots s WHERE s.owner_user_id=ctx.owner_user_id AND s.project_id=ctx.project_id
+      AND s.id=ctx.snapshot_id AND s.material_id=ctx.material_id AND s.material_version=ctx.material_version
+      AND s.parser_version=ctx.parser_version AND s.response_sha256=ctx.parse_response_sha256
+      AND ctx.manifest->>'parse_request_hash'=s.request_hash AND ctx.manifest->>'parse_status'=s.response_status) OR
+    NEW.candidate_identity_sha256<>candidate.fact_key_hash OR
     NEW.source_kind<>candidate.source_kind OR ctx.manifest->>'candidate_identity_sha256' IS DISTINCT FROM btrim(candidate.fact_key_hash::text) OR
+    ctx.manifest->'fact_identity' IS DISTINCT FROM candidate.fact_key OR
+    ctx.manifest->>'candidate_status' IS DISTINCT FROM candidate.status OR
+    ctx.manifest->'candidate_uncertainty' IS DISTINCT FROM candidate.uncertainty OR
+    jsonb_typeof(ctx.manifest->'candidate_confidence') IS DISTINCT FROM 'number' OR
+    jsonb_typeof(candidate.evidence) IS DISTINCT FROM 'array' OR jsonb_array_length(candidate.evidence)=0 OR
+    EXISTS(SELECT 1 FROM jsonb_array_elements(candidate.evidence) AS item(value)
+      WHERE jsonb_typeof(item.value->'candidate_confidence') IS DISTINCT FROM 'number' OR
+        item.value->'candidate_confidence' IS DISTINCT FROM ctx.manifest->'candidate_confidence') OR
     ctx.manifest->>'source_kind' IS DISTINCT FROM candidate.source_kind OR
     ctx.manifest->'candidate_value' IS DISTINCT FROM jsonb_build_object('value_kind',candidate.value_kind,
       'value_decimal',bb_fact_evidence_normalized_decimal(candidate.value_decimal),'value_text',candidate.value_text) OR

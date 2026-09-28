@@ -38,6 +38,19 @@ function candidateValue(row: Row): Record<string, unknown> {
   }
   return value;
 }
+function candidateConfidence(row: Row): number {
+  const evidence = json(row.evidence);
+  if (!Array.isArray(evidence) || evidence.length === 0) throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
+  const values = evidence.map(item => object(item) ? item.candidate_confidence : undefined);
+  if (values.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) ||
+    new Set(values).size !== 1) throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
+  return values[0] as number;
+}
+function candidateUncertainty(row: Row): string[] {
+  const value = json(row.uncertainty);
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
+  return value as string[];
+}
 function iso(value: unknown): string { const date = value instanceof Date ? value : new Date(String(value)); if (!Number.isFinite(date.getTime())) throw fail('FACT_EVIDENCE_REVIEW_DATA_INVALID'); return date.toISOString(); }
 function validate(principal: Principal, projectId: string, input: FactEvidenceReviewRequest): void {
   if (!principal || !ID.test(principal.userId) || !ID.test(projectId) || !input || !ID.test(input.request_id) ||
@@ -113,7 +126,7 @@ export async function appendFactEvidenceReview(db: Db, principal: Principal, pro
     }
     const source = await client.query(`SELECT x.*,c.id AS c_id,c.fact_key_hash,c.fact_key,c.value_kind,c.value_decimal,c.value_text,c.source_kind,
         c.source_ref,c.status AS candidate_status,c.material_id AS candidate_material_id,c.material_version AS candidate_material_version,
-        c.evidence,c.uncertainty,c.created_at AS candidate_created_at,c.entity_id
+        c.evidence,c.uncertainty,c.created_at AS candidate_created_at,c.entity_id,s.request_hash AS parse_request_hash,s.response_status AS parse_status
       FROM bb_fact_evidence_context_sets x JOIN bb_fact_candidates c ON c.owner_user_id=x.owner_user_id AND c.project_id=x.project_id AND c.id=x.candidate_id
       JOIN bb_projects p ON p.owner_user_id=x.owner_user_id AND p.id=x.project_id AND p.deleted_at IS NULL
       JOIN bb_input_revisions i ON i.owner_user_id=x.owner_user_id AND i.project_id=x.project_id AND i.revision=x.input_revision AND i.input_hash=x.input_hash
@@ -129,10 +142,18 @@ export async function appendFactEvidenceReview(db: Db, principal: Principal, pro
       FOR SHARE OF x,c,p,i,m,s`, [scopeOwner, projectId, input.evidence_context_set_id, input.candidate_id, input.evidence_set_sha256]);
     if (source.rows.length !== 1) throw fail('FACT_EVIDENCE_CONTEXT_NOT_CURRENT');
     const row = source.rows[0]!, manifest = json(row.manifest) as Record<string, unknown>;
-    if (!object(manifest) || manifest.candidate_id !== input.candidate_id || String(row.fact_key_hash).trim() !== String(manifest.candidate_identity_sha256) ||
-      row.source_kind !== manifest.source_kind || Number(row.material_version) !== Number(manifest.material_version) ||
-      !object(manifest.candidate_value) || canonical(manifest.candidate_value) !== canonical(candidateValue(row)) ||
-      String(row.content_sha256).trim() !== String(manifest.material_sha256) || String(row.response_sha256 ?? row.parse_response_sha256).trim() !== String(manifest.parse_response_sha256))
+    if (!object(manifest) || manifest.owner_user_id !== scopeOwner || manifest.project_id !== projectId || manifest.candidate_id !== input.candidate_id ||
+      Number(row.input_revision) !== Number(manifest.input_revision) || String(row.input_hash).trim() !== String(manifest.input_hash) ||
+      String(row.fact_key_hash).trim() !== String(manifest.candidate_identity_sha256) || !object(manifest.fact_identity) ||
+      canonical(json(row.fact_key)) !== canonical(manifest.fact_identity) || row.source_kind !== manifest.source_kind ||
+      row.candidate_status !== manifest.candidate_status || canonical(candidateUncertainty(row)) !== canonical(manifest.candidate_uncertainty) ||
+      candidateConfidence(row) !== manifest.candidate_confidence || Number(row.material_version) !== Number(manifest.material_version) ||
+      String(row.material_id).trim() !== String(manifest.material_id) || String(row.content_sha256).trim() !== String(manifest.material_sha256) ||
+      String(row.candidate_material_id) !== String(manifest.material_id) || Number(row.candidate_material_version) !== Number(manifest.material_version) ||
+      String(row.snapshot_id) !== String(manifest.snapshot_id) || String(row.parser_version) !== String(manifest.parser_version) ||
+      String(row.parse_request_hash).trim() !== String(manifest.parse_request_hash) || String(row.parse_status) !== String(manifest.parse_status) ||
+      String(row.response_sha256 ?? row.parse_response_sha256).trim() !== String(manifest.parse_response_sha256) ||
+      !object(manifest.candidate_value) || canonical(manifest.candidate_value) !== canonical(candidateValue(row)))
       throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
     exactAssessments(manifest, input.assessments);
     const candidate = { ...row, id: row.c_id, status: row.candidate_status, material_id: row.candidate_material_id,
