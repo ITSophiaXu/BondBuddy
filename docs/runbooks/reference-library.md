@@ -1,6 +1,6 @@
 # 后台募集书参考库运营手册（#78 / M1-33）
 
-适用范围：`db/migrations/0023_m1_reference_library.sql`、`apps/api/src/library.ts`、`apps/api/src/library-admin-routes.ts`、`apps/worker/src/library-pipeline.ts`、`apps/worker/src/library-sources.ts`、`apps/worker/src/library-sync-cli.ts`。参考库是平台数据，只供受信任务服务和获授权运营使用；普通用户接口不提供库清单、候选或匹配分数。
+适用范围：`db/migrations/0023_m1_reference_library.sql`、`db/migrations/0032_m1_library_scheduled_sync.sql`、`apps/api/src/library.ts`、`apps/api/src/library-admin-routes.ts`、`apps/worker/src/library-pipeline.ts`、`apps/worker/src/library-sources.ts`、`apps/worker/src/library-sync-cli.ts`、`apps/worker/src/library-scheduler.ts`。参考库是平台数据，只供受信任务服务和获授权运营使用；普通用户接口不提供库清单、候选或匹配分数。
 
 ## 1. 组成与数据流
 
@@ -55,7 +55,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
   - `library_sync_failed`（critical，scope=来源 id，按小时去重）：同步最终失败，或部分条目失败（`partial`）时触发。`consecutive_failures` 加 1；只有全部条目成功才清零。
   - `library_source_stale`（warning，scope=来源 id，每个 `sync_interval_seconds` 周期最多一条）：距上次成功（从未成功则从登记时间算起）超过 `BB_LIBRARY_STALE_FACTOR × sync_interval_seconds`。
 - `evaluation_only` 来源照常同步和审核，用于评估，但查询时按使用权过滤，任何版本都不会成为任务候选；有测试覆盖。
-- 资源：解析在 ops 容器内运行 Python 子进程。现行 `deploy/m1/compose.yaml` 给 `ops` 384M 内存、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 内存上限为 768M，未设置 `NODE_OPTIONS`。开启同步前按实际 PDF 峰值评估并调高 ops 限额，确认出口代理允许 `query.sse.com.cn`、`static.sse.com.cn`。
+- 资源：解析在 ops 容器内运行 Python 子进程。`deploy/m1/compose.yaml` 的 `ops` 为 384M、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 为 768M。叠加 `deploy/m1/compose.prod.yaml` 后 `ops` 仍为 384M，`worker` 改为 512M、`NODE_OPTIONS=--max-old-space-size=160`。开启同步前按实际 PDF 峰值评估 ops 限额。`BB_EGRESS_ALLOW` 的 Compose 默认值只有 `api.deepseek.com`；如果 SSE 流量经出口代理，必须允许 `query.sse.com.cn` 和 `static.sse.com.cn`，并保留 Blob 存储域名。还需验证来源适配器的 Node `fetch` 实际经过该代理，不能仅凭设置 `HTTPS_PROXY` 推断已受白名单约束。
 - 增量游标：`{"publish_date": "<最高已见 PUBLISH_DATE>"}`，下一次从同一日期起重扫（重叠一天），重复条目记为 `unchanged`。失败条目以 `retry_items` 写入游标，直到成功为止，不会因游标前进而丢失。
 - 只有全部条目成功时才更新 `last_success_at`；部分失败记 `partial` 并设置 `last_error_code`。
 - 限速：请求间隔 ≥700 ms，单文件下载超时 180 s，单文件上限 150 MiB，按条最多 3 次尝试（退避 5 s × 次数）。
@@ -108,12 +108,22 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 
 以下每一步都有对应自动化测试（`apps/worker/src/library.test.ts`、`library-scheduler.test.ts`，合成数据），可在预发环境按同样步骤手动演练：
 
-1. **来源不可达**：让适配器返回错误（或断网）→ 任务 `retry_scheduled` 后达到上限 `failed`，`error_code=LIBRARY_SOURCE_UNREACHABLE`，#79 错误记录依次为 `retry_scheduled`、`terminal`，`/alerts` 出现 `source_sync_failed`。恢复连通后 `POST /sources/:id/sync`。
+1. **来源不可达**：发现阶段无法访问时，任务写 `LIBRARY_SOURCE_UNREACHABLE`，在领取次数上限内记 `retry_scheduled`，到上限后记 `failed`。单条文件下载失败则在该条内退避重试，耗尽后本轮记 `partial` 和 `LIBRARY_FETCH_FAILED`，写入 `retry_items`；两者都应核对 `library_sync_failed` 告警。恢复连通后等待下一调度周期，或通过 `POST /sources/:id/sync` 提前补跑。
 2. **同步中途崩溃**：在第 1 条完成后杀掉 worker（测试中使租约过期）→ 下一次运行接管同一 job，从第 2 条继续，第 1 条不重新下载，版本不重复。
 3. **单条下载失败**：瞬时失败在同一条内重试（sync item `attempts` 记录次数）；持续失败记 `failed`，该条写入游标 `retry_items`，下次同步自动重试。
 4. **解析失败**：版本 `failed`，`/alerts` 出现 `items_failed`；修复原因后 `POST /versions/:id/rerun`，版本回到 `pending_review`。同一文档的新修订会自动退役失败的旧修订。
 5. **错误发布回滚**：`POST /releases/<上一个发布>/rollback` → 生成新发布；被回滚的版本为 `rolled_back`，恢复的版本为 `published`，查询结果随之变化；已锁定任务保持原锁定版本。
 6. **授权撤回**：`POST /sources/:id/rights {"usage_rights":"revoked"}` → 新任务立即无候选；已锁定任务读取正文返回 `denied/source_rights_not_current`。
+
+### 2026-09-28 非生产调度演练
+
+详见 [脱敏证据](evidence/reference-library-scheduler-rehearsal-2026-09-28.json)。使用独立、空白且已迁移的 PostgreSQL 16 数据库和带 `--skipApiVersionCheck` 的 Azurite，按现有 Node ops 调度入口及参考库流水线运行；Python 解析依赖从 `python/requirements.txt` 安装。SSE 来源始终为 `evaluation_only`，调度间隔设为 300 秒。为限制外部请求，本次每周期仅采样同一项目发现结果中的首份募集书；该采样不能替代完整批次容量或覆盖验收。
+
+演练从数据库读取 `bb_ops_schedule` 的开始/完成时间与租约、`bb_library_sources` 的下次到期/增量游标、`bb_jobs` 的阶段/检查点/领取次数、`bb_library_sync_runs/items` 的终态/计数/重试及 `bb_ops_alerts` 的告警种类。下载失败演练只对文件请求注入网络错误，保留真实 SSE 发现请求；进程恢复演练在首条检查点落盘后以 `SIGKILL` 结束进程，再等任务租约过期。并发演练同时启动两个独立进程，核对仅一个来源租约持有者和新增任务数。所有演练对象都留在独立临时环境，结束后删除。
+
+实际 3 轮分别在 13:26、13:31、13:36 UTC 触发并成功结束：首轮 `new_document=1`，后两轮各 `unchanged=1`，游标保持同一披露日；1 份版本留在 `pending_review`，没有审核发布。第 3 轮曾出现两次 `DATA_UNAVAILABLE/retry_scheduled`，同一调度执行继续领取后成功。注入下载失败的单条文件重试 3 次后本轮为 `partial`，产生 `library_sync_failed`；恢复后下一次同步成功并清零连续失败。中断后的任务从 `next_index=1` 接管，领取次数为 2，版本数保持 1，未发现待解析版本或未引用的来源 Blob。两个独立进程并发只新增 1 个来源任务。Node 与解析子进程的 200 毫秒采样峰值 RSS 合计 236.5 MiB，低于现行 ops 384 MiB 限额，但不是容器峰值，也不足以推断其他文件或全量批次的内存安全。
+
+这些结果只证明有限采样的定时执行、错误记录和恢复机制。来源为 `evaluation_only`，不代表 #77 审核发布稿或商用批次验收；未发布版本不进入任务候选。出口核对还须单独完成：Compose 的 `BB_EGRESS_ALLOW` 默认缺少两个 SSE 域名；本机 Node 22 在仅设置不可用 `HTTPS_PROXY` 时仍直接取得来源响应，启用 `NODE_USE_ENV_PROXY=1` 后才按该代理失败。适配器收到响应头后就清除超时计时器，正文读取不受所配超时覆盖；这两处代码问题需另行修复和复验，不应直接打开现有部署的定时同步。
 
 ## 7. 任务侧契约（内部 v1）
 
@@ -136,7 +146,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 ## 8. 已知缺口
 
 - 默认分类器不自动抽取前三大业务；自动抽取属于 Xuefeng 的抽取工作，业务词典与品种取值（`corporate_bond`、`renewable_corporate_bond` 等）尚待 Maxy 确认后进入公共枚举。
-- Python 解析桥已允许子进程在 stderr 输出警告时返回有效解析结果（#169）；stderr 只生成有界、脱敏诊断，不再单凭 pypdf 的 “Ignoring wrong pointing object” 警告判失败。非零退出、超时、无效响应等仍按对应错误处理；排查时查看诊断代码，不记录原始 stderr 或本地文件路径。
+- 2026-09-25 的历史同步证据曾把 pypdf stderr 警告列为解析失败原因；该记录反映修复前状态。#169 已修复解析桥：stderr 警告只生成有界、脱敏诊断，不再单凭 “Ignoring wrong pointing object” 判失败。非零退出、超时、无效响应等仍按对应错误处理；排查时查看诊断代码，不记录原始 stderr 或本地文件路径。
 - SSE 来源在书面许可前为 `evaluation_only`，真实文件不会进入任务候选；首批“真实已审核参考稿”仍依赖 #77 的授权与业务审核。
 - 定时同步已接入 ops 调度器，但默认关闭；开启前需按解析峰值复核 ops 内存、配置出口允许列表，并完成真实 SSE 首次和增量同步证据。#79 告警表已接入，外部告警推送须单独验证；参考库授权仍使用独立授权表。
 - 周期目前只能通过 SQL 修改，还没有管理接口。
