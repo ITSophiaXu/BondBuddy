@@ -1,5 +1,7 @@
 # BondBuddy
 
+真实 Web 界面按本目录原型迁移到 `apps/web/`，#361 的页面来源、UX-01—09 对照、截图与剩余接口依赖见 [原型迁移记录](../apps/web/PROTOTYPE-MIGRATION.md)。本目录的演示认证/积分/任务服务不是生产 API；M1 页面使用现有 `/api/v1`。
+
 产品与研发完整规格见 [产品说明书](product-specs/README.md)：包含 19 个功能模块、首发范围（含 DFI 储架发行）、接口、积分规则和验收要求。
 
 开发按 **Web 注册/登录与更新 → 积分付费 → 付费复核 → 材料生成与 QA → Windows app** 五个里程碑推进。团队可从 [开发任务清单](product-specs/delivery-plan/README.md) 查看 74 个子任务的范围、依赖和验收，或在 [GitHub Issues](https://github.com/ITSophiaXu/BondBuddy/issues) 认领。M1 首个用户更新任务开放前必须具备完整 prompt/job/token/结果及错误日志；当前需求同时包含历史原文修订、后台募集书库与三业务索引、持续扩库及无历史稿自动编制，普通用户没有库入口。下文版本记录描述原型现状，不代表五阶段能力已上线。

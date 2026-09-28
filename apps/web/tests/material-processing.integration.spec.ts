@@ -41,7 +41,7 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
     await page.getByRole('radio', { name: '有', exact: true }).check();
     await page.getByLabel('发行市场', { exact: true }).selectOption('nafmii');
     await page.getByLabel('发行方式', { exact: true }).selectOption('mtn');
-    await page.getByRole('button', { name: '创建并保存项目' }).click();
+    await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
     await expect(page.getByRole('heading', { name: '合成上传识别联调', exact: true })).toBeVisible();
     projectId = decodeURIComponent(new URL(page.url()).hash.split('/').at(-1)!);
     const savedResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');

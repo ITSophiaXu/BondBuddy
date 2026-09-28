@@ -17,7 +17,7 @@ test('actual Chinese OCR -> source crop -> versioned user correction -> reload -
   const me=await (await page.request.get('/api/v1/me')).json();
   await page.getByRole('link',{name:'新建更新项目',exact:true}).first().click();
   await page.getByLabel('项目名称 必填',{exact:true}).fill('合成 OCR 原页核对');
-  await page.getByRole('button',{name:'创建并保存项目'}).click();
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
   await expect(page.getByRole('heading',{name:'合成 OCR 原页核对',exact:true})).toBeVisible();
   const projectId=new URL(page.url()).hash.split('/').at(-1)!;
   const root=resolve('../..'),fixture=join(tmpdir(),'bondbuddy-ocr-synthetic.png');

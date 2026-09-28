@@ -34,7 +34,7 @@ export class ProjectBrowser {
       const value = saved.get(key);
       if (value && (values as readonly string[]).includes(value)) Object.assign(this.filters,{[key]:value});
     }
-    this.shell(`<div class="page-heading"><div><p class="eyebrow">从上次停下的地方继续</p><h1>我的项目</h1><p class="muted">查找已保存的资料，继续准备下一次更新。</p></div><a class="button primary" href="#/new">新建更新项目</a></div>
+    this.shell(`<div class="page-heading"><div><p class="eyebrow">ALL PROJECTS</p><h1>全部项目</h1><p class="muted">查找已保存的资料，继续准备下一次更新。</p></div><a class="button primary" href="#/new">新建更新项目</a></div>
       <section class="panel" aria-labelledby="projects-title"><div class="panel-heading"><h2 id="projects-title">项目列表</h2><button class="text-button" id="refresh-projects">刷新列表</button></div>
       <form id="project-filters" class="project-filters"><div class="search-field"><label for="project-search">搜索项目名称或发行人</label><input id="project-search" name="q" type="search" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(this.filters.q ?? '')}" placeholder="输入名称或发行人" autocomplete="off"/></div>
       <div><label for="project-kind">项目类型</label><select id="project-kind" name="kind"><option value="">全部类型</option>${options(TASK_KINDS,kinds,this.filters.kind)}</select></div>
@@ -44,7 +44,7 @@ export class ProjectBrowser {
       <div class="project-list-meta"><p class="muted" id="list-count" role="status">正在加载…</p><span class="muted">按最近活动排序</span></div>
       <p id="page-error" class="form-message" role="alert" hidden></p><p id="project-action-status" class="project-action-status" role="status"></p>
       <div id="project-list" aria-live="polite" aria-busy="true"></div><div class="list-footer"><button class="button secondary" id="load-more" hidden>加载更多项目</button></div></section>
-      <p class="page-footnote">可保存项目、上传材料并查看解析状态。全文更新将在完成验证后开放。</p>`, 'projects');
+      <p class="page-footnote">可保存项目、上传材料并查看解析状态。已启动任务会在后台继续，返回项目可查看进度与成果。</p>`, 'projects');
     const form = document.querySelector<HTMLFormElement>('#project-filters')!;
     const search = form.elements.namedItem('q') as HTMLInputElement;
     const change = () => {
@@ -101,11 +101,11 @@ export class ProjectBrowser {
     const filtered=!!(this.filters.q?.trim() || this.filters.kind || this.filters.status || this.filters.archive==='archived');
     document.querySelector('#list-count')!.textContent=`已加载 ${this.items.length} 个项目${this.cursor?'，可继续加载':''}`;
     const list=document.querySelector<HTMLElement>('#project-list')!;
-    list.innerHTML=this.items.length?`<ul class="project-list">${this.items.map(item=>`<li class="managed-project" data-project-id="${esc(item.project_id)}">
-      <a class="project-row" href="#/projects/${encodeURIComponent(item.project_id)}"><span class="project-icon">${folder}</span><div class="project-info"><h3>${esc(item.name)}</h3><p>${esc(item.issuer_name || '发行人待填写')} · ${item.kind?kinds[item.kind]:'项目资料已保存'}</p><span class="project-state">${item.status?states[item.status]:'已保存'}</span>${item.archived_at?'<span class="project-state">已归档</span>':''}</div><time datetime="${esc(item.updated_at)}">${esc(date(item.updated_at))}</time><span class="row-arrow" aria-hidden="true">↗</span></a>
-      <div class="project-row-actions">${item.latest_artifact?`<span>最近成果 v${item.latest_artifact.version} · ${esc(date(item.latest_artifact.created_at))}</span><a class="text-button" href="#/artifacts/${encodeURIComponent(item.latest_artifact.artifact_id)}">查看成果与下载</a><button class="text-button" data-download="${esc(item.project_id)}">下载最近成果</button>`:'<span>尚无成功成果</span>'}
-      <button class="text-button" data-archive="${esc(item.project_id)}" aria-label="${item.archived_at?'恢复':'归档'} ${esc(item.name)}">${item.archived_at?'恢复项目':'归档'}</button></div></li>`).join('')}</ul>`:
-      `<div class="empty-state"><div class="empty-icon">${folder}</div><h3>${filtered?'没有找到匹配的项目':'还没有项目'}</h3><p>${filtered?'试试其他名称或发行人，或调整筛选条件。':'创建第一个更新项目，先把基本资料保存下来。'}</p>${filtered?'<button class="button secondary" id="reset-project-filters">清除筛选</button>':'<a class="button secondary" href="#/new">新建更新项目</a>'}</div>`;
+    list.innerHTML=this.items.length?`<div class="table-wrap"><table class="project-list"><thead><tr><th>项目名称</th><th>状态</th><th>最近更新</th><th>成果与操作</th></tr></thead><tbody>${this.items.map(item=>`<tr class="managed-project" data-project-id="${esc(item.project_id)}">
+      <td><a class="project-row task-title" href="#/projects/${encodeURIComponent(item.project_id)}"><h3>${esc(item.name)}</h3></a><span class="sub">${esc(item.issuer_name || '发行人待填写')} · ${item.kind?kinds[item.kind]:'项目资料已保存'}</span></td><td><span class="project-state badge">${item.status?states[item.status]:'已保存'}</span>${item.archived_at?'<span class="project-state">已归档</span>':''}</td><td><time class="muted" datetime="${esc(item.updated_at)}">${esc(date(item.updated_at))}</time></td>
+      <td><div class="project-row-actions">${item.latest_artifact?`<span>最近成果 v${item.latest_artifact.version}</span><a class="text-button" href="#/artifacts/${encodeURIComponent(item.latest_artifact.artifact_id)}">查看成果与下载</a><button class="text-button" data-download="${esc(item.project_id)}">下载最近成果</button>`:'<span>尚无成功成果</span>'}
+      <button class="text-button" data-archive="${esc(item.project_id)}" aria-label="${item.archived_at?'恢复':'归档'} ${esc(item.name)}">${item.archived_at?'恢复项目':'归档'}</button></div></td></tr>`).join('')}</tbody></table></div>`:
+      `<div class="empty-state"><div class="empty-icon">${folder}</div><h3>${filtered?'没有找到匹配的项目':'还没有项目'}</h3><p>${filtered?'试试其他名称或发行人，或调整筛选条件。':'创建第一个更新项目，先把基本资料保存下来。'}</p>${filtered?'<button class="button secondary" id="reset-project-filters">清除筛选</button>':'<a class="button secondary" href="#update">新建更新项目</a>'}</div>`;
     list.querySelector('#reset-project-filters')?.addEventListener('click',()=>{
       const form=document.querySelector<HTMLFormElement>('#project-filters')!;
       for(const name of ['q','kind','status']) (form.elements.namedItem(name) as HTMLInputElement).value='';

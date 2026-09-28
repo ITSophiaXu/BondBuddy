@@ -1,3 +1,5 @@
+import { ArtifactPage } from './artifact-page';
+import { prototypeIcon as icon } from './prototype-design';
 import { DOCUMENT_PURPOSES, MARKET_LABELS, OFFERING_LABELS, type RunState } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
@@ -56,6 +58,12 @@ export class ProjectExecution {
   private controller = new AbortController();
   private host!: HTMLElement;
   private input?: Input;
+  private starting = false;
+  private nextRequested = false;
+  private materialRun?: string;
+  private delivery?: ArtifactPage;
+  private deliveryId?: string;
+  private events: Dto<'RunEvent'>[] = [];
   private selected = false;
   private savedCurrent = false;
   private preflight?: Dto<'PreflightResponse'>;
@@ -80,18 +88,19 @@ export class ProjectExecution {
   private get id() { return this.draft.project.project_id; }
   mount(host: HTMLElement) {
     this.host = host;
-    host.innerHTML = `<section class="panel execution-panel" aria-labelledby="execution-title"><h2 id="execution-title">保存版本与全文更新</h2>
-      <p class="muted">保存版本会固定本次表单和所选材料。只有明确提交任务才开始全文处理；修改草稿、补材料不会覆盖旧任务或成果。</p>
-      <div id="execution-target"></div><div id="execution-materials"></div>
-      <form id="execution-form"><div class="execution-fields"><div><label for="execution-purpose">本次文书用途</label><select id="execution-purpose" name="document_purpose"><option value="">尚未确定</option>${DOCUMENT_PURPOSES.map(p => `<option value="${p}">${purposes[p]}</option>`).join('')}</select></div>
+    host.innerHTML = `<section class="panel execution-panel" aria-labelledby="execution-title"><div id="execution-progress" aria-live="polite"></div>
+      <div id="execution-setup"><div class="eyebrow">材料与要求</div><h2 id="execution-title">准备好，开始更新</h2>
+      <p class="muted">项目与材料会随本次更新一同保存。你也可以在右侧继续补充要求。</p>
+      <form id="execution-form"><div id="execution-target" class="execution-summary"></div><div class="execution-fields"><div><label for="execution-purpose">本次文书用途</label><select id="execution-purpose" name="document_purpose"><option value="">尚未确定</option>${DOCUMENT_PURPOSES.map(p => `<option value="${p}">${purposes[p]}</option>`).join('')}</select></div>
       <div><label for="execution-date">本次法规适用日</label><input id="execution-date" name="as_of" type="date" aria-describedby="execution-date-help"/></div></div>
       <p id="execution-date-help" class="muted">按本次申报或发行意图填写，未确定可留空；财务报告截止日不会自动代入。</p>
+      <details class="execution-options"><summary>本次使用的材料</summary><div id="execution-materials"></div></details>
       <label class="execution-confirm"><input name="confirm_target" type="checkbox"/>确认以上目标为本次拟定安排；材料中的事实仍需核对</label>
-      <button class="button secondary" type="submit" id="save-input">保存材料版本</button></form>
-      <p id="execution-message" role="status"></p><div id="execution-snapshot"></div><div id="execution-preflight"></div>
-      <div class="form-actions"><button class="button secondary" type="button" id="check-input" disabled>检查已保存版本</button><button class="button primary" type="button" id="execute-input" disabled>开始全文更新</button></div>
-      <div id="execution-progress" aria-live="polite"></div><button class="text-button" type="button" id="refresh-execution">刷新版本与任务状态</button></section>`;
-    this.host.querySelector('form')!.addEventListener('submit', event => { event.preventDefault(); void this.save(); });
+      <div id="execution-preflight"></div><div class="execution-main-action"><small>平台承担本次试用成本</small><button class="button primary" type="submit" id="execute-input">开始更新 ${icon('arrow')}</button></div></form></div>
+      <p id="execution-message" role="status"></p>
+      <details class="execution-options" id="execution-records"><summary>已保存的执行记录</summary><div id="execution-snapshot"></div></details>
+      <button class="text-button" type="button" id="refresh-execution">刷新任务状态</button></section><div id="execution-delivery" class="embedded-artifact"></div>`;
+    this.host.querySelector('form')!.addEventListener('submit', event => { event.preventDefault(); void this.start(); });
     this.host.querySelector('form')!.addEventListener('input', () => this.invalidate());
     this.host.querySelector('#execution-materials')!.addEventListener('change', event => {
       const box = event.target as HTMLInputElement;
@@ -99,8 +108,6 @@ export class ProjectExecution {
       box.checked ? this.omitted.delete(box.dataset.material) : this.omitted.add(box.dataset.material);
       this.invalidate();
     });
-    this.host.querySelector('#check-input')!.addEventListener('click', () => { void this.check(); });
-    this.host.querySelector('#execute-input')!.addEventListener('click', () => { void this.execute(); });
     this.host.querySelector('#refresh-execution')!.addEventListener('click', () => { void this.restore(); });
     this.sync([], false);
     void this.restore();
@@ -127,29 +134,75 @@ export class ProjectExecution {
   private render() {
     if (!this.active) return;
     const editable = !this.busy && this.draft.state === 'saved' && !this.draft.dirty;
-    this.button('save-input').disabled = this.busy || this.savedCurrent || this.inputReadUncertain || !this.materialReady || !this.materials.length;
-    this.button('check-input').disabled = !editable || !this.input || !this.selected;
-    this.button('execute-input').disabled = !editable || !this.selected || !this.preflight;
-    this.button('execute-input').textContent = this.preflight?.status === 'blocked' ? '提交任务并等待条件齐备' : '开始全文更新';
-    this.button('refresh-execution').disabled = this.busy;
+    const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
+    this.button('execute-input').disabled = this.busy || this.starting || this.inputReadUncertain || !this.materialReady || !this.materials.length || Boolean(activeRun);
+    this.button('execute-input').textContent = this.busy || this.starting ? '正在准备更新…' : this.preflight?.status === 'blocked' ? '确认提交，等待条件齐备' : this.preflight?.status === 'needs_confirmation' ? '保留待确认项并开始更新' : this.run ? '生成新版' : '开始更新';
+    this.button('refresh-execution').disabled = this.busy || this.starting;
+    this.host.querySelector<HTMLElement>('#execution-setup')!.hidden = Boolean(this.run && !this.nextRequested) || Boolean(activeRun);
     this.host.querySelector('#execution-message')!.textContent = this.message;
     const input = this.input;
     this.host.querySelector('#execution-snapshot')!.innerHTML = input ? `<div class="execution-summary"><h3>已保存材料版本 ${input.input_revision}</h3><p>${esc(targetSummary(input.target_confirmation))}</p><p>固定 ${input.material_versions.length} 份材料 · ${esc(date(input.created_at))}</p><ul>${input.material_versions.map(ref => `<li>${esc(this.materials.find(m => m.material_id === ref.material_id)?.filename ?? '先前保存的材料')} · 版本 ${ref.material_version}</li>`).join('')}</ul>
-      ${input.credit_facility_supplements?.length ? `<p>固定 ${input.credit_facility_supplements.length} 条授信补充版本（用户提供，仍需核对）；保存新版将沿用这些精确版本。</p>` : ''}<p class="muted">执行只使用此版本。上方后续修改不在其中；要采用新内容，请保存新版本。</p>${!this.selected ? '<button class="text-button" type="button" id="select-saved-input">使用这个已保存版本</button>' : ''}</div>` : '<p>尚未保存可执行的材料版本。</p>';
+      ${input.credit_facility_supplements?.length ? `<p>固定 ${input.credit_facility_supplements.length} 条授信补充版本（用户提供，仍需核对）；保存新版将沿用这些精确版本。</p>` : ''}<p class="muted">本轮输入已固定。后续修改将在下一轮开始时保存为新版本。</p>${!this.selected ? '<button class="text-button" type="button" id="select-saved-input">使用这个已保存版本</button>' : ''}</div>` : '<p>尚未保存可执行的材料版本。</p>';
     const use = this.host.querySelector<HTMLButtonElement>('#select-saved-input');
     if (use) {
       use.disabled = !editable || this.inputReadUncertain;
-      use.addEventListener('click', () => { this.selected = true; this.message = '已选用上面显示的固定版本；请先检查，再明确提交任务。'; this.render(); });
+      use.addEventListener('click', () => { this.selected = true; this.message = '已选用上面显示的固定版本；点击开始更新将核对并提交同一版本。'; this.render(); });
     }
     const check = this.preflight;
     this.host.querySelector('#execution-preflight')!.innerHTML = check ? `<div class="execution-summary"><h3>${check.status === 'blocked' ? '预检：仍有阻塞条件' : check.status === 'needs_confirmation' ? '预检：有待确认内容' : '预检：可提交'}</h3>
       <ul>${[...new Set([...check.missing_inputs, ...check.uncertainty].map(readinessMessage))].map(m => `<li>${esc(m)}</li>`).join('')}</ul>
       <p>${check.status === 'blocked' ? '提交后任务可能暂停等待，不代表条件已满足或已生成成果。' : '待核内容会保留明确标记；本次为平台承担成本的试用。'}</p></div>` : '';
     const run = this.run;
+    const progressHost = document.querySelector('#workspace-progress');
+    if (run && progressHost && this.host.parentElement !== progressHost) progressHost.append(this.host);
+    if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = false; } this.materialRun = run.run_id; }
     const testCompleted = run?.state === 'test_completed' && run.channel === 'non_production_test';
-    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="execution-summary"><h3>任务状态：${esc(states[run.state] ?? '等待处理')}</h3><p>使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<p>${esc(stages[run.stage])}</p>` : ''}${this.reason ? `<p>${esc(readinessMessage(this.reason))}</p>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}<p class="muted">关闭页面不会取消任务，重新登录后可继续查看。</p>${(run.state === 'succeeded' || testCompleted) && run.artifact_id ? `<a class="button primary" href="#/artifacts/${encodeURIComponent(run.artifact_id)}">${testCompleted ? '查看测试工作稿' : '查看成果与下载'}</a>` : ''}</div>` : ''}
+    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${this.reason ? `<div class="execution-summary">${esc(readinessMessage(this.reason))}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}
+      ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
+      <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
+      <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
+    for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume']] as const) {
+      const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
+      if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
+    }
+    this.host.querySelector('#prepare-next-version')?.addEventListener('click', () => { this.nextRequested = true; this.invalidate(); this.host.querySelector('#execution-setup')?.scrollIntoView({block:'start'}); });
+    this.host.querySelector('#show-project-materials')?.addEventListener('click', () => { const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#materials-title')?.scrollIntoView({block:'start'}); });
+    const artifactId = (run?.state === 'succeeded' || testCompleted) ? run?.artifact_id : undefined;
+    if (artifactId && artifactId !== this.deliveryId) {
+      this.delivery?.dispose(); this.deliveryId = artifactId;
+      const host = this.host.querySelector<HTMLElement>('#execution-delivery')!;
+      this.delivery = new ArtifactPage(this.api, html => { host.innerHTML = html; }, () => this.active && this.deliveryId === artifactId);
+      void this.delivery.render(artifactId);
+    } else if (!artifactId && this.deliveryId) { this.delivery?.dispose(); this.deliveryId = undefined; this.host.querySelector('#execution-delivery')!.innerHTML = ''; }
   }
+  private async start() {
+    if (this.busy || this.starting || !this.active) return;
+    this.starting = true; this.render();
+    try {
+      if (!this.selected) await this.save();
+      if (!this.active || !this.selected || !this.input) return;
+      const hadPreflight = Boolean(this.preflight);
+      if (!this.preflight) await this.check();
+      if (!this.active || !this.selected || !this.preflight) return;
+      // Only actual gaps introduce a confirmation; a ready snapshot executes in one action.
+      if (!hadPreflight && this.preflight.status !== 'ready') {
+        this.message = '请核对以上处理条件，再决定是否继续。已提供的材料无需重新上传。'; return;
+      }
+      await this.execute();
+    } finally { this.starting = false; this.render(); }
+  }
+  private async changeRun(action: 'cancel' | 'resume') {
+    if (!this.run) return;
+    const runId = this.run.run_id;
+    await this.action(async () => {
+      const run = await this.api.runAction(runId, action, this.controller.signal);
+      if (!this.active) return;
+      if (run.run_id !== runId || run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      this.acceptRun(run); void this.poll();
+    });
+  }
+
   private async action(work: () => Promise<void>) {
     if (this.busy || !this.active) return;
     this.busy = true; this.message = ''; this.render();
@@ -185,7 +238,7 @@ export class ProjectExecution {
         // This POST has no idempotency key. Never blindly replay after a lost response.
         if (!(error instanceof ApiError) || error.status >= 500) {
           this.inputReadUncertain = true;
-          this.message = '保存结果尚未确认。请先刷新版本与任务状态，核对服务器记录后再继续。';
+          this.message = '保存结果尚未确认。请先刷新任务状态，核对已保存的执行记录后再继续。';
           return;
         }
         throw error;
@@ -195,7 +248,7 @@ export class ProjectExecution {
       this.input = result;
       this.selected = generation === this.generation;
       this.savedCurrent = this.selected;
-      this.message = this.selected ? '材料版本已保存；尚未提交任务。请检查已保存版本。' : '版本已保存，但期间输入有变化；请核对固定版本或保存新版。';
+      this.message = this.selected ? '材料版本已保存；尚未提交任务。正在核对处理条件。' : '版本已保存，但期间输入有变化；请核对固定版本或保存新版。';
     });
   }
   private async check() {
@@ -223,18 +276,20 @@ export class ProjectExecution {
     });
   }
   private acceptRun(run: Dto<'RunResponse'>) {
-    if (this.run?.run_id !== run.run_id) { this.eventCursor = 0; this.reason = undefined; }
-    this.run = run;
+    if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
+    if (this.run?.run_id !== run.run_id) { this.eventCursor = 0; this.reason = undefined; this.events = []; }
+    this.run = run; this.nextRequested = false;
   }
   private async restore() {
     await this.action(async () => {
+      this.inputReadUncertain = true;
       this.selected = false; this.preflight = undefined;
       const project = await this.api.project(this.id, this.controller.signal);
       const input = project.input_revision ? await this.api.inputRevision(this.id, project.input_revision, this.controller.signal) : undefined;
       if (!this.active) return;
       if (input && (input.project_id !== this.id || input.input_revision !== project.input_revision || input.input_hash !== project.input_hash)) throw new ApiError(0, 'DATA_UNAVAILABLE');
-      this.input = input; this.inputReadUncertain = false;
-      this.message = input ? '已读取服务器保存版本；可选用该版本，或保存本次表单与材料的新版本。' : '';
+      this.input = input;
+      this.message = input ? '已恢复此前的执行记录。使用旧输入时请在记录中选用；新的要求将另存版本。' : '';
       let cursor: string | undefined;
       const seen = new Set<string>();
       do {
@@ -255,6 +310,7 @@ export class ProjectExecution {
         if (cursor && seen.has(cursor)) throw new ApiError(0, 'DATA_UNAVAILABLE');
         if (cursor) seen.add(cursor);
       } while (cursor);
+      this.inputReadUncertain = false;
     });
   }
   private async poll() {
@@ -276,6 +332,7 @@ export class ProjectExecution {
         for (const event of page.items) {
           if (event.run_id !== id || event.seq <= this.eventCursor) continue;
           this.eventCursor = event.seq;
+          this.events.push(event); this.events = this.events.slice(-12);
           this.reason = event.state === run.state ? event.payload.reason : undefined;
         }
         if (page.next_cursor === null || page.next_cursor <= cursor) break;
@@ -290,5 +347,5 @@ export class ProjectExecution {
         this.timer = setTimeout(() => { void this.poll(); }, 5000);
     }
   }
-  dispose() { this.controller.abort(); clearTimeout(this.timer); }
+  dispose() { this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
 }

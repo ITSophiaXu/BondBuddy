@@ -1,5 +1,9 @@
 # M1 统一技术栈与四人协作基线
 
+## #361 原型体验恢复（2026-09-28）
+
+`apps/web` 直接导入 `product-prototype/public/styles.css` 与 `project-workspace.css`，按 app.js/project-workspace.js 和 #85 连续工作区组织工作台、独立项目表、创建→材料阶段、固定材料分区、持续右侧补充及同页进度/成果。新增 TypeScript dashboard 与少量控件适配 CSS；没有导入旧原型服务或模拟数据。保存/预检/execute 由主操作顺序编排，实际待确认条件就地展示，输入版本/幂等/归属/日志语义仍由原 API 掌握。细材料角色从公共契约映射到四类产品分区，保持原值与版本。#18 真正多轮接口、全量历史成果和受控测试授权发现仍是剩余依赖；M2–M4 入口明确未开放。来源、截图和验收边界见 [原型迁移记录](../apps/web/PROTOTYPE-MIGRATION.md)。
+
 2026-09-28 #31 内部测试历史基线修复见[证据与接续](acceptance/issue-31-localized-baseline-2026-09-28.md)：授权后服务端选择独立工作稿策略，保留 parser 1.0.7 的完整辅助对象/作用范围、原 warning 和校正画像未核状态；仅已知可定位辅助对象及带干净正文锚点的正式用户校正不再全局阻断。未知/损坏/截断、证据冲突仍拒绝。`historical_generation_input` 绑定策略版本，测试模板升至 v2，不能静默复用旧模型绑定；生产路径不变。Word 批注和摘要消费完整待核清单，无公共 DTO 或迁移变化。
 
 状态：供 M1 团队评审的技术方案。产品范围和验收以 `product-prototype/product-specs/`、GitHub M1 issue 为准；本文件固定实现方向和跨模块接口。若需改变选型或公共契约，先在同一个 PR 更新本文件及受影响的接口契约，再合并实现。

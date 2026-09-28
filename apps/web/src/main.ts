@@ -1,3 +1,5 @@
+import { Dashboard } from './dashboard';
+import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
@@ -19,6 +21,9 @@ import './fact-review.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, isMarketOffering, type Market, type Offering } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
+import '../../../product-prototype/public/styles.css';
+import '../../../product-prototype/public/project-workspace.css';
+import './prototype-adapter.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
@@ -31,6 +36,7 @@ let draft: Draft | undefined;
 let newDirty = false;
 let creating = false;
 let projectBrowser: ProjectBrowser | undefined;
+let dashboard: Dashboard | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
@@ -62,6 +68,7 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   disposeOcrReview();
@@ -167,6 +174,7 @@ function bindLogin() {
       if (token !== epoch) return;
       (form.elements.namedItem('password') as HTMLInputElement).value = '';
       identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
+      history.replaceState(null, '', `${location.pathname}${location.search}#dashboard`);
       await renderRoute();
     } catch (error) {
       if (token !== epoch) return;
@@ -205,7 +213,7 @@ function bindRegister() {
       const result = await api.register({ username: input.username, password: input.password, accepted_terms_version: termsVersion });
       if (submit !== epoch) return;
       identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
-      history.replaceState(null, '', `${location.pathname}${location.search}#/`);
+      history.replaceState(null, '', `${location.pathname}${location.search}#dashboard`);
       await renderRoute();
     } catch (error) {
       if (submit !== epoch) return;
@@ -216,14 +224,17 @@ function bindRegister() {
 }
 
 function shell(content: string, section: string) {
-  root.innerHTML = `<aside class="sidebar"><a class="brand" href="#/"><img src="/favicon.svg" alt=""/>BondBuddy</a>
-    <div class="workspace-tag"><span class="workspace-symbol">B</span><div><strong>我的工作区</strong><small>募集书项目管理</small></div></div>
-    <p class="nav-label">工作空间</p><nav aria-label="主导航"><a class="nav-item ${section === 'projects' ? 'active' : ''}" href="#/" ${section === 'projects' ? 'aria-current="page"' : ''}>${folder}我的项目</a>
-    <a class="nav-item ${section === 'new' ? 'active' : ''}" href="#/new" ${section === 'new' ? 'aria-current="page"' : ''}>${plus}新建更新项目</a></nav>
-    <div class="sidebar-bottom"><p class="sidebar-note">从项目出发，<br/>让准备工作井然有序。</p><nav aria-label="账号"><a class="nav-item ${section === 'account' ? 'active' : ''}" href="#/account" ${section === 'account' ? 'aria-current="page"' : ''}>${person}账号设置</a><a class="nav-item ${section === 'policy' ? 'active' : ''}" href="#/data-policy" ${section === 'policy' ? 'aria-current="page"' : ''}>数据保存与删除</a></nav><div class="account"><span class="avatar">我</span><div><strong>个人工作区</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><span>工作空间 <span class="divider">/</span> ${section === 'new' ? '新建项目' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : '我的项目'}</span><span class="trial">受控试用</span></header>
-    <main id="main" tabindex="-1">${content}</main></div>`;
+  const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
+  root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#dashboard"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
+    <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
+    <nav aria-label="主导航">${nav('dashboard','grid','工作台',section === 'dashboard')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review',true)}${nav('generate','spark','材料生成',section === 'generate',true)}${nav('qa','chat','项目问答',section === 'qa',true)}<div class="nav-label">工作空间</div>${nav('tasks','folder','全部项目',section === 'projects')}${nav('billing','shield','积分与充值',section === 'billing',true)}</nav>
+    <div class="sidebar-bottom"><nav aria-label="账号">${nav('/account','settings','账号设置',section === 'account')}<a class="nav-item" href="#/data-policy">${prototypeIcon('lock')}数据保存与删除</a></nav><div class="user account"><span class="avatar">我</span><div><strong>我的工作空间</strong><small>已登录</small></div><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'dashboard' ? '工作台' : section === 'new' || section === 'workspace' ? '更新募集书' : section === 'account' ? '账号设置' : section === 'policy' ? '数据说明' : '全部项目'}</span></div><div class="top-actions"><span class="trial">受控试用 · 平台承担成本</span><a href="#/data-policy">${prototypeIcon('help')}使用说明</a></div></header>
+    <main id="main" tabindex="-1">${content}</main></div></div>`;
   document.querySelector('#logout')!.addEventListener('click', () => { void logout(); });
+  const menu = document.querySelector<HTMLButtonElement>('#toggle-menu')!;
+  document.querySelector('#close-menu')!.addEventListener('click', () => { document.querySelector('#sidebar')!.classList.remove('mobile-open'); menu.setAttribute('aria-expanded','false'); menu.setAttribute('aria-label','打开菜单'); menu.focus(); });
+  menu.addEventListener('click', () => { const open = document.querySelector('#sidebar')!.classList.toggle('mobile-open'); menu.setAttribute('aria-expanded', String(open)); menu.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单'); });
 }
 
 function showError(error: unknown) {
@@ -252,7 +263,8 @@ async function logout() {
 
 async function renderRoute() {
   if (!identity) return;
-  const requested = location.hash.slice(1) || '/';
+  const raw = location.hash.slice(1);
+  const requested = !raw || raw === 'dashboard' ? '/dashboard' : raw === 'update' ? '/new' : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
   if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？'))) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
@@ -268,12 +280,18 @@ async function renderRoute() {
   }
   draft?.dispose(); draft = undefined;
   projectBrowser?.dispose(); projectBrowser = undefined;
+  dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   factReview?.dispose(); factReview = undefined;
-  currentRoute = requested;
+  currentRoute = requested.replace(/\?step=(details|materials)$/, '');
+  if (requested === '/dashboard') { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
+  if (['review','generate','qa','billing'].includes(requested)) {
+    const labels: Record<string,string> = { review:'复核募集书',generate:'材料生成',qa:'项目问答',billing:'积分与充值' };
+    shell(`<div class="page-head"><div class="eyebrow">BOND WORKSPACE</div><h1>${labels[requested]}</h1></div><section class="panel unavailable-panel"><h2>这项功能尚未开放</h2><p>你可以先创建募集书更新项目，准备材料和发行安排。</p><a class="btn primary" href="#update">更新募集书</a><a class="btn secondary" href="#dashboard">返回工作台</a></section>`, requested); return;
+  }
   if (requested === '/new') { renderNew(); return; }
   if (requested === '/account') { await renderAccount(accountPage); return; }
   if (requested === '/data-policy') { await renderDataPolicyPage(api, shell, () => token === epoch); return; }
@@ -282,13 +300,13 @@ async function renderRoute() {
   if (artifactMatch) { artifactPage = new ArtifactPage(api, shell, () => token === epoch); await artifactPage.render(decodeURIComponent(artifactMatch[1])); return; }
   const ocrMatch = requested.match(/^\/projects\/([^/]+)\/materials\/([^/]+)\/ocr$/);
   if (ocrMatch) { await renderOcrReview({api,shell,epoch:()=>epoch},decodeURIComponent(ocrMatch[1]),decodeURIComponent(ocrMatch[2])); return; }
-  const match = requested.match(/^\/projects\/([^/]+)$/);
+  const match = requested.match(/^\/projects\/([^/?]+)(?:\?step=(details|materials))?$/);
   if (!match) { location.hash = '/'; return; }
   shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', 'projects');
   try {
     const project = await api.project(decodeURIComponent(match[1]));
     if (token !== epoch) return;
-    renderProject(project);
+    renderProject(project, match[2] === 'details' ? 'details' : 'materials');
   } catch (error) {
     if (token !== epoch) return;
     shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, 'projects');
@@ -298,9 +316,9 @@ async function renderRoute() {
 
 function renderNew() {
   const value = blankDraft();
-  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">募集书更新</p><h1>新建项目</h1><p class="muted">先填写已知信息，未确定的内容可以保存后再补充。</p></div></div>
-    <form id="create-form" class="update-form"><div class="detail-layout"><section class="panel form-panel">${updateFormFields(value)}
-    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建并保存项目</button><a class="button secondary" href="#/">取消</a></div></section>${supplementaryPanel(value)}</div></form>`, 'new');
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}
+    <form id="create-form" class="update-form"><div class="workspace-layout"><section class="panel form-panel form-card">${updateFormFields(value)}
+    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section>${supplementaryPanel(value)}</div></form>`, 'new');
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
   bindUpdateForm(form, () => { newDirty = true; });
   form.addEventListener('submit', async event => {
@@ -319,22 +337,41 @@ function renderNew() {
       if (token !== epoch) return;
       newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
-    finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建并保存项目'; }
+    finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
   });
 }
 
-function renderProject(project: Dto<'ProjectResponse'>) {
+function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'materials' = 'materials') {
   draft = new Draft(project, api, updateSaveState);
   materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id), { market: project.market, offering: project.offering });
   materialProcessing.setVisible(document.visibilityState === 'visible');
   const value = { ...draft.fields, kind: 'update' as const, issuer_name: draft.fields.issuer_name || null };
-  shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="page-heading"><div><p class="eyebrow">项目工作区</p><h1 id="project-heading">${esc(project.name)}</h1><p class="muted">填写本次更新的目标，已保存的资料可以随时回来继续。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
-    <form id="draft-form" class="update-form"><div class="detail-layout"><section class="panel form-panel"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
+    <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
-    <div class="form-actions"><button id="save-draft" class="button primary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section>${supplementaryPanel(value)}</div></form>
-    <section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
+    <div class="workspace-layout"><div class="workspace-main">
+      <form id="draft-form" class="update-form" ${step === 'materials' ? 'hidden' : ''}><section class="panel form-card"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
+      <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
+      <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}>
+        <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
+        <div id="workspace-progress"></div>
+    <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span>随时查看与补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section><div id="execution-root"></div><div id="fact-review-root"></div>`, 'projects');
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section></details>
+        <div id="execution-root"></div><details class="workspace-evidence"><summary>核对材料事实与来源冲突</summary><div id="fact-review-root"></div></details>
+        <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><span>已保存的材料与处理进度会保留</span></div>
+      </div></div>${supplementaryPanel(value, 'draft-form')}</div>`, 'workspace');
+  const setStep = async (next: 'details' | 'materials') => {
+    if (next === 'materials' && !await draft?.save()) return;
+    if (!document.querySelector('#draft-form')) return;
+    document.querySelector<HTMLElement>('#draft-form')!.hidden = next !== 'details';
+    document.querySelector<HTMLElement>('#workspace-materials')!.hidden = next !== 'materials';
+    document.querySelector('#workspace-steps')!.innerHTML = workspaceSteps(next === 'details' ? 1 : 2);
+    history.replaceState(null, '', `${location.pathname}${location.search}#/projects/${encodeURIComponent(project.project_id)}?step=${next}`);
+    document.querySelector('#workspace-steps')!.scrollIntoView({ block: 'start' });
+  };
+  document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
+  for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
   if (project.kind === 'update') {
     projectExecution = new ProjectExecution(api, draft);
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!);
@@ -361,6 +398,7 @@ function renderProject(project: Dto<'ProjectResponse'>) {
 function updateSaveState() {
   if (!draft) return;
   syncProjectExecution(draft.project.project_id);
+  const context = document.querySelector('#cowork-issuer'); if (context) context.textContent = draft.fields.issuer_name || '待填写发行人';
   const labels = { saved: '已保存', dirty: '尚未保存', saving: '正在保存…', conflict: '有版本冲突', error: '保存未确认' };
   const badge = document.querySelector<HTMLElement>('#save-state');
   if (!badge) return;
@@ -499,7 +537,14 @@ function renderMaterialPartitions(projectId: string) {
   const materials = recoveredMaterials.get(projectId) ?? [];
   const history = draft?.fields.update_details.has_historical;
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
-  const groups = M1_MATERIAL_PARTITIONS.map((partition, index) => `<section class="material-partition" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3><ul class="material-role-list">${partition.roles.filter(role => {
+  // Product partitions from project-workspace.js; detailed role values still come from contracts.
+  const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: UploadRole }[] = [
+    {label:'本发行人历史募集书 / 相似募集书',roles:M1_MATERIAL_PARTITIONS[0].roles,primary:history === false ? 'reference' : 'historical'},
+    {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:'audit'},
+    {label:'募投项目与权证材料',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:'fundUse'},
+    {label:'其他项目材料',roles:M1_MATERIAL_PARTITIONS.slice(3).flatMap(p => [...p.roles]),primary:'other'}
+  ];
+  const groups = partitions.map((partition, index) => `<section class="material-partition" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => (role.code === partition.primary) === primary).filter(role => {
     const relevant = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     return relevant || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code);
   }).map(role => {
@@ -510,15 +555,16 @@ function renderMaterialPartitions(projectId: string) {
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
     const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}<a class="text-button" href="#/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/ocr">核对识别内容</a><button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
-    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">选择文件<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
+    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
-  }).join('')}</ul></section>`).join('');
+  }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
   return groups;
 }
 
 function syncProjectExecution(projectId: string) {
   if (currentRoute !== `/projects/${projectId}`) return;
   const unsettled = (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
+  const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${confirmedMaterials(projectId).length} 份已保存材料`;
   projectExecution?.sync(confirmedMaterials(projectId), recoveryStates.get(projectId)?.state === 'ready' && !unsettled);
 }
 
@@ -551,6 +597,9 @@ function updateMaterialWorkspace(projectId: string) {
         previous = role;
       }
       existing.forEach(role => role.remove());
+      const details = group.closest<HTMLDetailsElement>('.material-subtypes');
+      const visibleFiles = [...group.querySelectorAll('.material-file-main strong')].map(el => el.textContent).join('\n');
+      if (details && visibleFiles && details.dataset.shownFiles !== visibleFiles) { details.open = true; details.dataset.shownFiles = visibleFiles; }
     });
   }
   const status = document.querySelector<HTMLElement>('#material-recovery-status');
@@ -771,6 +820,12 @@ function bindMaterialWorkspace(projectId: string) {
       return;
     }
     void materialProcessing?.correct(form.dataset.sourceCorrection!, patch);
+  });
+  host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });
+  host.addEventListener('drop', event => {
+    const picker = (event.target as HTMLElement).closest('.material-picker'); if (!picker) return;
+    event.preventDefault(); const role = picker.querySelector<HTMLInputElement>('[data-upload-role]')?.dataset.uploadRole as UploadRole;
+    if (role) for (const file of Array.from(event.dataTransfer?.files ?? [])) addUpload(projectId, role, file);
   });
   host.addEventListener('change', event => {
     const input = event.target;
