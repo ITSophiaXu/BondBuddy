@@ -65,9 +65,6 @@
 .material-subtypes .material-role-list { padding-top:12px; }
 .material-subtypes:not(:has(.material-role)) { display:none; }
 .prototype-app .material-file-row { border-color: var(--line); }
-.workspace-evidence { margin-top: 20px; border: 1px solid var(--line); border-radius: 9px; background: white; }
-.workspace-evidence>summary { padding: 17px 24px; font-size: 12px; cursor: pointer; }
-.workspace-evidence .fact-review { margin-top: 0; border: 0; }
 .prototype-app .execution-panel { padding: 24px; margin: 0 0 20px; }
 .prototype-app .execution-panel h2 { font-size: 18px; }
 .prototype-app .execution-panel .muted { font-size: 11px; }

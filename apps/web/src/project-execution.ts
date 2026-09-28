@@ -47,8 +47,8 @@ export function readinessMessage(reason: string): string {
   if (reason.startsWith('material_parse_failed:')) return '有材料解析失败，请查看材料区。';
   if (reason.startsWith('material_parse_cancelled:')) return '有材料解析已取消，请查看材料区。';
   if (reason.startsWith('material_parse_')) return '等待材料解析完成。';
-  if (reason.startsWith('ocr_')) return '等待文字识别或存疑数字核对。';
-  if (reason.startsWith('source_profile_')) return '历史稿识别信息仍需确认。';
+  if (reason.startsWith('ocr_')) return '文件处理尚未完成，请稍后重试。';
+  if (reason.startsWith('source_profile_')) return '历史稿处理暂未就绪，请稍后重试；持续未恢复时请联系支持。';
   if (reason.startsWith('material_needs_confirmation:')) return '材料存在待确认内容；不会作为已核实事实。';
   if (reason.startsWith('credit_facility_')) return '授信补充仍属用户提供，需核对日期、单位、口径或冲突。';
   if (reason.startsWith('update_difficulty_')) return '报告期与更新难度仍需核对。';
@@ -149,7 +149,7 @@ export class ProjectExecution {
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked);
-    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.preflight?.status === 'blocked' ? '继续提交并等待处理' : this.preflight?.status === 'needs_confirmation' ? '保留待确认项并开始更新' : this.nextRequested ? '生成新版' : '开始更新';
+    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.preflight?.status === 'blocked' ? '继续提交并等待处理' : this.nextRequested ? '生成新版' : '开始更新';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -157,8 +157,8 @@ export class ProjectExecution {
     this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain;
     this.button('select-saved-input').disabled = Boolean(blocked);
     const check = this.preflight;
-    this.node('#execution-preflight').hidden = !check || check.status === 'ready' || Boolean(activeRun);
-    this.node('#execution-preflight').innerHTML = check && check.status !== 'ready' ? `<ul>${[...new Set([...check.missing_inputs, ...check.uncertainty].map(readinessMessage))].map(message => `<li>${esc(message)}</li>`).join('')}</ul>` : '';
+    this.node('#execution-preflight').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
+    this.node('#execution-preflight').innerHTML = check && check.status === 'blocked' ? `<ul>${[...new Set(check.missing_inputs.map(readinessMessage))].map(message => `<li>${esc(message)}</li>`).join('')}</ul>` : '';
     const run = this.run;
     this.node('#run-panel').hidden = !run;
     const progressHost = document.querySelector('#workspace-progress');
@@ -198,8 +198,9 @@ export class ProjectExecution {
       const hadPreflight = Boolean(this.preflight);
       if (!this.preflight) await this.check();
       if (!this.active || !this.selected || !this.preflight) return;
-      // Only actual gaps introduce a confirmation; a ready snapshot executes in one action.
-      if (!hadPreflight && this.preflight.status !== 'ready') {
+      // Content uncertainty is retained by the server and handled during execution.
+      // Only an actual blocked response pauses this submission; no upload review acknowledgment.
+      if (!hadPreflight && this.preflight.status === 'blocked') {
         this.message = '仍有上述待处理事项，可继续提交等待处理。'; return;
       }
       await this.execute();

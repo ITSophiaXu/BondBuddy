@@ -1,8 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import type { MaterialParseJob, Recognition, RecognitionPatchRequest } from '@bondbuddy/contracts';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import type { MaterialParseJob, Recognition } from '@bondbuddy/contracts';
 
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
 const now = '2026-09-24T12:00:00Z';
@@ -283,129 +281,39 @@ async function installProcessing(page: Page, current: FixtureState, response: (m
   return reads;
 }
 
-test('upload saved -> queued -> recognizing -> source results, target unchanged and refresh/relogin recovery', async ({ page }) => {
+test('upload processing stays compact with pending evidence, unchanged targets and refresh/relogin recovery', async ({ page }) => {
   test.setTimeout(60000);
   const current = state(); await installApi(page, current);
   let stage: MaterialParseJob['state'] = 'queued';
-  await installProcessing(page, current, material => parseJob(material, stage));
+  await installProcessing(page, current, material => ({ ...parseJob(material, stage),
+    ...(stage === 'succeeded' ? { outcome: 'needs_confirmation', parse_status: 'needs_confirmation' } : {}) }));
   await page.route(`**/api/v1/projects/${projectId}`, route => json(route, 200, { ...project, market: 'sse', offering: 'public_all' }));
-  const mutations: string[] = [];
-  page.on('request', request => { if (request.url().includes('/api/v1/') && request.method() !== 'GET') mutations.push(new URL(request.url()).pathname); });
+  const mutations: string[] = [], profileRequests: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/source-profile')) profileRequests.push(request.method());
+    if (request.url().includes('/api/v1/') && request.method() !== 'GET') mutations.push(new URL(request.url()).pathname);
+  });
+  const noReview = async () => {
+    await expect(page.locator('.source-profile, [data-source-correction], a[href$="/ocr"]')).toHaveCount(0);
+    await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|核对识别内容|原文：|有待确认项|历史稿信息/);
+  };
   await login(page, 'owner_a');
   await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: 'synthetic-history.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic recognition') });
   const row = page.locator('.material-file-row').filter({ hasText: 'synthetic-history.pdf' });
-  await expect(row).toContainText('服务器已确认保存'); await expect(row).toContainText('等待解析');
-  await expect(row.locator('.source-profile')).toHaveCount(0); await expect(row.getByRole('progressbar')).toHaveCount(0);
-  stage = 'running'; await expect(row).toContainText('正在识别历史稿信息', { timeout: 15000 });
-  stage = 'succeeded'; await expect(row).toContainText('原发行市场', { timeout: 15000 });
-  await expect(row).toContainText('解析完成', { timeout: 15000 });
-  for (const text of ['交易商协会', 'DFI · 储架发行', '2024-01-01 至 2024-12-31', '2025-06-30', '合并口径', '中期', '报表口径待确认', '报表口径需要核对']) await expect(row).toContainText(text);
-  await expect(row.locator('.source-profile img')).toHaveCount(0);
+  await expect(row).toContainText('服务器已确认保存'); await expect(row).toContainText('等待处理');
+  await noReview(); await expect(row.getByRole('progressbar')).toHaveCount(0);
+  stage = 'running'; await expect(row).toContainText('处理中', { timeout: 15000 }); await noReview();
+  stage = 'succeeded'; await expect(row).toContainText('处理完成', { timeout: 15000 }); await noReview();
   await expect(page.getByLabel('发行市场', { exact: true })).toHaveValue('sse');
   await expect(page.getByLabel('发行方式', { exact: true })).toHaveValue('public_all');
-  await page.reload(); await expect(page.locator('.source-profile')).toContainText('DFI · 储架发行');
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.locator('.material-partition').first().screenshot({ path: join(tmpdir(), 'bondbuddy-recognition-desktop.png') });
+  await page.reload(); await expect(row).toContainText('处理完成'); await noReview();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('.material-role').filter({ hasText: 'synthetic-history.pdf' }).screenshot({ path: join(tmpdir(), 'bondbuddy-recognition-mobile.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click(); await login(page, 'owner_a');
-  await expect(page.locator('.source-profile')).toContainText('DFI · 储架发行');
+  await expect(row).toContainText('处理完成'); await noReview();
+  expect(profileRequests).toEqual([]);
   expect(mutations.filter(path => !/\/auth\/(login|logout|refresh)$|\/materials\/uploads(?:\/[^/]+\/(?:bytes|complete))?$/.test(path))).toEqual([]);
-});
-
-test('source correction edits the complete period set, survives polling, and reloads on 409', async ({ page }) => {
-  test.setTimeout(60000);
-  const current = state(); await installApi(page, current);
-  let jobState: MaterialParseJob['state'] = 'running';
-  await installProcessing(page, current, material => parseJob(material, jobState));
-  await page.route(`**/api/v1/projects/${projectId}`, route => json(route, 200, { ...project, market: 'sse', offering: 'public_all' }));
-
-  let latestProfile: Recognition | undefined;
-  const patches: { headers: Record<string, string>; body: RecognitionPatchRequest }[] = [];
-  await page.route('**/materials/*/source-profile', async route => {
-    const request = route.request();
-    const material = [...current.materials.values()][0];
-    if (!material || current.owner !== 'user-owner_a') return json(route, 404, { code: 'NOT_FOUND' });
-    if (request.method() === 'GET') return json(route, 200, latestProfile ?? recognition(material));
-
-    const body = request.postDataJSON() as RecognitionPatchRequest;
-    patches.push({ headers: request.headers(), body });
-    if (patches.length === 1) {
-      const periods = body.reporting_periods ?? [];
-      const latestEnd = periods.map(period => period.end).filter((value): value is string => value !== null).sort().at(-1) ?? null;
-      const base = recognition(material);
-      const provenance = base.latest_reporting_cutoff.provenance;
-      latestProfile = {
-        ...base, profile_version: 2, state: 'needs_confirmation',
-        latest_reporting_cutoff: { value: latestEnd, raw_value: null, provenance: { ...provenance, method: 'user_correction' }, status: 'user_asserted', uncertainty: ['用户校正期间推导的截止日，待人工确认'] },
-        reporting_periods: periods.map(period => ({ ...period, raw_value: null, provenance: { ...provenance, method: 'user_correction' }, status: 'user_asserted', uncertainty: ['用户校正的报告期尚待人工确认'] }))
-      };
-      return json(route, 200, latestProfile);
-    }
-
-    latestProfile = { ...latestProfile!, profile_version: 3, source_offering: { ...latestProfile!.source_offering, value: 'mtn', status: 'recognized', uncertainty: [] } };
-    return json(route, 409, { code: 'HISTORICAL_PROFILE_VERSION_CONFLICT' });
-  });
-
-  await login(page, 'owner_a');
-  await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: 'synthetic-correction.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic source correction') });
-  const row = page.locator('.material-file-row').filter({ hasText: 'synthetic-correction.pdf' });
-  await expect(row.locator('.source-profile')).toContainText('原发行市场', { timeout: 15000 });
-  const correctionDetails = row.locator('details.source-correction');
-  await correctionDetails.locator('summary').click();
-  const editor = correctionDetails.locator('form[data-source-correction]');
-  await editor.getByRole('checkbox', { name: '校正完整原报告期列表及最新截止日' }).check();
-
-  let periodRows = editor.locator('[data-period-row]');
-  await expect(periodRows).toHaveCount(2);
-  // Simulate a false extra year and remove it from the replacement set.
-  await periodRows.nth(0).getByRole('button', { name: '移除报告期 1' }).click();
-  await editor.getByRole('button', { name: '添加报告期' }).click();
-  periodRows = editor.locator('[data-period-row]');
-  await expect(periodRows).toHaveCount(2);
-  // The recognized set missed 2023; add it and finish the existing 2025 period's scope.
-  await periodRows.nth(0).locator('[data-period-scope]').selectOption('consolidated');
-  await periodRows.nth(1).locator('[data-period-start]').fill('2023-01-01');
-  await periodRows.nth(1).locator('[data-period-end]').fill('2023-12-31');
-  await periodRows.nth(1).locator('[data-period-kind]').selectOption('annual');
-  await periodRows.nth(1).locator('[data-period-scope]').selectOption('consolidated');
-  await editor.getByLabel('校正原因').fill('合成样例：补漏 2023 年并移除误识别期间');
-
-  // A running -> succeeded job poll rerenders the material row while the user is editing.
-  jobState = 'succeeded';
-  await expect(row).toContainText('解析完成', { timeout: 15000 });
-  await expect(editor.locator('[data-period-row]')).toHaveCount(2);
-  await expect(editor.getByLabel('校正原因')).toHaveValue('合成样例：补漏 2023 年并移除误识别期间');
-  await expect(editor.locator('[data-period-row]').nth(1).locator('[data-period-start]')).toHaveValue('2023-01-01');
-  await editor.locator('input[name="evidence_ref"]').check();
-  await editor.getByRole('button', { name: '保存校正' }).click();
-
-  await expect(row).toContainText('用户提供 · 尚非核验事实', { timeout: 10000 });
-  expect(patches).toHaveLength(1);
-  expect(patches[0]!.headers['if-match']).toBe('1');
-  expect(patches[0]!.body.profile_version).toBe(1);
-  expect(patches[0]!.body.reason).toContain('补漏 2023');
-  expect(patches[0]!.body.reporting_periods?.map(period => period.end).sort()).toEqual(['2023-12-31', '2025-06-30']);
-  expect(patches[0]!.body.reporting_periods?.some(period => period.end === '2024-12-31')).toBe(false);
-  expect(Object.hasOwn(patches[0]!.body, 'latest_reporting_cutoff')).toBe(false);
-  await expect(row.locator('.source-profile')).toContainText('2025-06-30'); // Mock API derives the latest cutoff from the submitted full list.
-
-  await editor.getByRole('checkbox', { name: '校正原发行方式' }).check();
-  await editor.locator('select[name="source_offering"]').selectOption('mtn');
-  await editor.getByLabel('校正原因').fill('这份草稿必须随画像版本变化清除');
-  await editor.getByRole('button', { name: '保存校正' }).click();
-
-  await expect(row).toContainText('识别版本或引用证据已更新', { timeout: 10000 });
-  const refreshedEditor = row.locator('[data-source-correction]');
-  await expect(refreshedEditor.locator('[name="profile_version"]')).toHaveValue('3');
-  await expect(refreshedEditor.getByLabel('校正原因')).toHaveValue('');
-  await expect(refreshedEditor.getByRole('checkbox', { name: '校正原发行方式' })).not.toBeChecked();
-  await expect(row.locator('.source-profile')).toContainText('MTN · 中期票据');
-  expect(patches).toHaveLength(2);
-  expect(patches[1]!.headers['if-match']).toBe('2');
-  expect(patches[1]!.body.profile_version).toBe(2);
 });
 
 test('OCR pending, parse failure, legacy absent job and read failure each have honest recovery states', async ({ page }) => {
@@ -422,25 +330,25 @@ test('OCR pending, parse failure, legacy absent job and read failure each have h
       : id === 'bad' ? { ...parseJob(material, 'failed'), error_code: 'MATERIAL_UNREADABLE' } : parseJob(material));
   });
   await login(page, 'owner_a');
-  for (const [name, message] of [['scan', '等待文字识别（OCR）'], ['bad', '文件无法解析'], ['legacy', '未找到当前版本的解析记录'], ['network', '文件保存不受影响']]) await expect(page.locator('.material-file-row').filter({ hasText: `${name}.pdf` })).toContainText(message);
+  for (const [name, message] of [['scan', '处理暂缓'], ['bad', '暂时无法读取此文件'], ['legacy', '暂未取得处理状态'], ['network', '文件保存不受影响']]) await expect(page.locator('.material-file-row').filter({ hasText: `${name}.pdf` })).toContainText(message);
   const networkRow = page.locator('.material-file-row').filter({ hasText: 'network.pdf' });
-  networkOk = true; await networkRow.getByRole('button', { name: '重新读取状态' }).click(); await expect(networkRow).toContainText('解析完成');
+  networkOk = true; await networkRow.getByRole('button', { name: '刷新状态' }).click(); await expect(networkRow).toContainText('处理完成');
   await expect(page.locator('.source-profile')).toHaveCount(0);
 });
 
-test('duplicate uploads join one status read, and late profile cannot leak after leaving or changing accounts', async ({ page }) => {
+test('duplicate uploads join one status read, and late processing responses cannot cross projects or accounts', async ({ page }) => {
   const current = state(); await installApi(page, current);
   const reads = await installProcessing(page, current, material => parseJob(material));
   let release!: () => void; let pending = 0;
-  await page.route('**/materials/*/source-profile', async route => {
+  await page.route('**/materials/*/parse-job', async route => {
     const material = [...current.materials.values()][0]!; pending++;
-    await new Promise<void>(resolve => { release = resolve; }); await json(route, 200, recognition(material)).catch(() => {});
+    await new Promise<void>(resolve => { release = resolve; }); await json(route, 200, parseJob(material)).catch(() => {});
   });
   await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic reused parse');
   await page.getByLabel('为本企业历史募集书选择文件').setInputFiles([{ name: 'one.pdf', mimeType: 'application/pdf', buffer }, { name: 'two.pdf', mimeType: 'application/pdf', buffer }]);
   await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
-  await expect.poll(() => pending).toBe(1); expect(reads.length).toBe(1);
+  await expect.poll(() => pending).toBe(1); expect(reads.length).toBe(0); // The held route supersedes the normal status reader.
   if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('link', { name: '全部项目', exact: true }).first().click(); release();
   await expect(page.locator('.source-profile')).toHaveCount(0);

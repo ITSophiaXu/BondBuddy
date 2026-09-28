@@ -69,7 +69,30 @@ async function installApi(page: Page, state: { requests: any[]; fail: number; cu
   });
 }
 
-test('project fact review loads all pages, keeps a retry ID, and never labels a choice verified', async ({ page }) => {
+// The retained component is exercised only by this test harness; #384 removes it from
+// the ordinary upload workspace. This creates no product route, panel or navigation.
+async function mountIsolatedReview(page: Page) {
+  await expect(page.getByRole('heading', { name: '合成事实审核项目' })).toBeVisible();
+  await expect(page.locator('.workspace-evidence, .fact-review')).toHaveCount(0);
+  await page.evaluate(async projectId => {
+    const componentPath = '/src/fact-review.ts', apiPath = '/src/api.ts', cssPath = '/src/fact-review.css';
+    const { FactReview } = await import(componentPath), { ApiClient } = await import(apiPath);
+    await import(cssPath);
+    const host = document.createElement('div'); document.querySelector('.workspace-main')!.append(host);
+    new FactReview(new ApiClient(() => {}), projectId).mount(host);
+  }, projectId);
+}
+
+test('ordinary upload workspace never offers or fetches a content fact review', async ({ page }) => {
+  const state = { requests: [] as any[], fail: 0, cursors: [] as string[] };
+  await installApi(page, state); await page.goto(`/#/projects/${projectId}`);
+  await expect(page.getByRole('heading', { name: '合成事实审核项目' })).toBeVisible();
+  await expect(page.locator('.workspace-evidence, .fact-review, #fact-review-root')).toHaveCount(0);
+  await expect(page.getByText('核对材料事实与来源冲突')).toHaveCount(0);
+  expect(state.requests).toEqual([]); expect(state.cursors).toEqual([]);
+});
+
+test('isolated fact review component loads all pages, keeps a retry ID, and never labels a choice verified', async ({ page }) => {
   const state = { requests: [] as any[], fail: 503, cursors: [] as string[] };
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -77,8 +100,7 @@ test('project fact review loads all pages, keeps a retry ID, and never labels a 
   await installApi(page, state);
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByRole('heading', { name: '合成事实审核项目' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '事实候选与冲突决定', includeHidden: true })).toHaveCount(1);
-  await page.locator('.workspace-evidence > summary').click();
+  await mountIsolatedReview(page);
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('.fact-candidate')).toHaveCount(2);
   expect(state.cursors).toEqual(['', 'page-2']);
@@ -115,7 +137,7 @@ test('409 keeps input, disables stale submission, and allows deliberate refresh'
   const state = { requests: [] as any[], fail: 409, cursors: [] as string[] };
   await installApi(page, state);
   await page.goto(`/#/projects/${projectId}`);
-  await page.locator('.workspace-evidence > summary').click();
+  await mountIsolatedReview(page);
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('.fact-candidate')).toHaveCount(2);
   await page.locator('input[value="unresolved"]').check();
@@ -146,7 +168,7 @@ test('incomplete candidate pagination never opens the decision form', async ({ p
     return json(route, 404, { code: 'NOT_FOUND' });
   });
   await page.goto(`/#/projects/${projectId}`);
-  await page.locator('.workspace-evidence > summary').click();
+  await mountIsolatedReview(page);
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('[data-fact-load-status]')).toContainText('候选集合未完整读取');
   await expect(page.locator('[data-fact-form]')).toHaveCount(0);

@@ -3,7 +3,8 @@ import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 // Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
@@ -30,7 +31,7 @@ function fixture() {
     runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required' };
 }
-async function setup(page: Page, state = fixture()) {
+async function setup(page: Page, state = fixture(), canStart = true) {
   await page.context().route('**/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/v1', '');
     const method = request.method();
@@ -49,6 +50,7 @@ async function setup(page: Page, state = fixture()) {
         latest_artifact: { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now } }], page: { next_cursor: skip ? 'page-two' : null, has_more: skip } });
     }
     if (path === `/projects/${id}/events`) return json(route, 200, { items: state.materials.map((m, i) => ({ event_id: `event-${i}`, schema_version: 1, project_id: id, trace_id: 'trace', seq: i + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: m.material_id } })), next_cursor: null });
+    if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
     if (path.endsWith('/parse-job')) return json(route, 404, { code: 'NOT_FOUND' });
     const material = state.materials.find(m => path === `/projects/${id}/materials/${m.material_id}`);
     if (material) return json(route, 200, material);
@@ -110,7 +112,8 @@ async function setup(page: Page, state = fixture()) {
   });
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  else await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeDisabled();
   return state;
 }
 async function prepare(page: Page) {
@@ -356,3 +359,84 @@ test('operator denial remains a failed task without automatic-recovery guidance'
   await expect(page.locator('#resume-run')).toHaveCount(0);
   expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
 });
+
+
+for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+  test(`material workflow ${label}: upload, retry, pending evidence, one-click execution and reopen`, async ({ page, context }) => {
+    const state = fixture(); state.materials = []; state.checkStatus = 'needs_confirmation';
+    state.runState = 'running'; state.runStage = 'model_generation'; state.runReason = '';
+    const uploads = new Map<string, { filename: string; role: string; media_type: Dto<'MaterialResponse'>['media_type'] }>();
+    const unexpected: string[] = []; let failAudit = true, completed = false;
+    let releaseSave: (() => void) | undefined;
+    await page.setViewportSize({ width, height });
+    await context.route('**/api/v1/**/materials/**', async route => {
+      const request = route.request(), path = new URL(request.url()).pathname;
+      if (path.endsWith('/source-profile') || path.endsWith('/ocr')) { unexpected.push(path); return json(route, 500, { code: 'UNEXPECTED_REVIEW_REQUEST' }); }
+      if (path.endsWith('/materials/uploads')) {
+        const uploadId = `synthetic-upload-${uploads.size + 1}`;
+        uploads.set(uploadId, request.postDataJSON());
+        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
+      }
+      if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
+      if (path.endsWith('/complete')) {
+        const uploadId = path.split('/').at(-2)!, upload = uploads.get(uploadId)!;
+        if (upload.role === 'audit' && failAudit) { failAudit = false; return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' }); }
+        if (upload.role === 'historical' && !releaseSave) await new Promise<void>(resolve => { releaseSave = resolve; });
+        const body = request.postDataJSON();
+        const material: Dto<'MaterialResponse'> = { material_id: `material-${uploadId}`, material_version: 1, upload_id: uploadId,
+          role: upload.role as Dto<'MaterialResponse'>['role'], filename: upload.filename, media_type: upload.media_type,
+          byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
+        state.materials.push(material); return json(route, 200, material);
+      }
+      if (path.endsWith('/parse-job')) {
+        const material = state.materials.find(m => m.material_id === path.split('/').at(-2))!;
+        return json(route, 200, { job_id: `job-${material.material_id}`, job_type: 'parse', subtype: 'material_parse', project_id: id,
+          material_id: material.material_id, material_version: 1, material_sha256: material.sha256, parser_version: 'synthetic-v1',
+          state: completed ? 'succeeded' : 'running', stage: completed ? 'succeeded' : 'historical_profile',
+          completed_stages: ['parse_evidence'], attempts: 1, max_attempts: 3, error_code: null,
+          outcome: completed ? 'needs_confirmation' : null, parse_status: completed ? 'needs_confirmation' : null,
+          profile_version: completed && material.role === 'historical' ? 1 : null, pending_capabilities: [], updated_at: now });
+      }
+      return route.fallback();
+    });
+    // setup's catch-all was registered last; it must fall back to the material fixture above.
+    await setup(page, state, false);
+    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
+    const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
+    await expect(history).toContainText('正在保存和核验');
+    expect(releaseSave).toBeDefined(); releaseSave!();
+    await expect(history).toContainText('处理中');
+    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
+    const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
+    await expect(financial.getByRole('button', { name: '重试此文件' })).toBeVisible();
+    await expect(history).toContainText('服务器已确认保存');
+    await financial.getByRole('button', { name: '重试此文件' }).click();
+    await expect(financial).toContainText('服务器已确认保存');
+    completed = true;
+    await page.getByRole('button', { name: '刷新已保存材料' }).click();
+    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
+    await expect(page.locator('.source-profile, [data-source-correction], a[href$="/ocr"], .workspace-evidence, .fact-review')).toHaveCount(0);
+    await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|历史稿信息|核对识别内容|待确认项/);
+    expect(state.materials).toHaveLength(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    if (process.env.BB_UX_EVIDENCE_DIR) {
+      const output = resolve(process.env.BB_UX_EVIDENCE_DIR); await mkdir(output, { recursive: true });
+      await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
+      await page.screenshot({ path: join(output, `materials-${label}.png`), fullPage: true });
+    }
+    await page.getByRole('button', { name: '开始更新', exact: true }).click();
+    await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
+    await expect(page.locator('#execution-preflight')).toBeHidden();
+    await expect(page.getByRole('button', { name: '保留待确认项并开始更新' })).toHaveCount(0);
+    expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
+    expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
+    expect(state.inputs[0].material_versions).toEqual(state.materials.map(m => ({ material_id: m.material_id, material_version: 1 })));
+    const locked = structuredClone(state.executes[0]);
+    await page.reload(); await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
+    const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
+    await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
+    await page.getByRole('button', { name: '查看与补充材料' }).click();
+    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
+    expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
+  });
+}

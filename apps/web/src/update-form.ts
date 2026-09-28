@@ -20,7 +20,7 @@ export function updateFormFields(value: ProjectCreate) {
   const d = value.update_details!;
   const cutoff = cutoffSelection(d.reporting_cutoff);
   return `<section class="update-section"><h2>是否有本发行人的历史募集书？</h2><div class="history-answer">${[['yes', '有', true], ['no', '没有', false]].map(([key, label, state]) => `<label class="history-choice"><input type="radio" name="has_historical" value="${key}"${d.has_historical === state ? ' checked' : ''}>${label}</label>`).join('')}</div></section>
-  <section class="update-section"><h2>项目基本信息</h2><p class="field-hint">填写本次拟更新的目标；历史稿信息将在提供材料后单独核对。尚未确定的信息可留空保存。</p><div class="update-grid">
+  <section class="update-section"><h2>项目基本信息</h2><p class="field-hint">填写本次拟更新的目标。尚未确定的信息可留空保存。</p><div class="update-grid">
     <div class="update-field"><label for="name">项目名称 <span class="required">必填</span></label><input id="name" name="name" required maxlength="${PROJECT_FIELD_LIMITS.name}" value="${esc(value.name)}" placeholder="例如：发行人 2026 年募集书更新"></div>
     <div class="update-field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(value.issuer_name)}" placeholder="填写发行人法定全称"></div>
     <div class="update-field"><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${MARKETS.map(m => option(m, MARKET_LABELS[m], value.market)).join('')}</select></div>
