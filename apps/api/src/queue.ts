@@ -1,11 +1,12 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
-import { emitInternal, internalEvent } from './observability.js';
+import { emitInternal, internalEvent, recordOperation } from './observability.js';
 import { ERROR_CODES, RUN_PAUSE_STAGES, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 import { assertTestGrant } from './non-production-test.js';
+import { errorDiagnostic } from './error-diagnostics.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -158,7 +159,7 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
   });
 }
 
-export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume') {
+export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume',requestId?:string) {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
@@ -171,6 +172,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');
+    if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:kind==='cancel'?'run_cancel':'run_resume',status:'submitted'});
     return runDto({...r,updated_at:new Date()});
   });
 }
@@ -430,8 +432,9 @@ async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:s
   const attempts=(await client.query('SELECT attempts FROM bb_jobs WHERE id=$1',[jobId])).rows[0]?.attempts??0;
   await client.query('UPDATE bb_jobs SET error_code=$2 WHERE id=$1',[jobId,code]);
   const id=uid();
-  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'terminal')`,[id,r.owner_user_id,r.project_id,jobId,r.id,code,category,safeStage,attempts]);
+  const diagnostic=errorDiagnostic({code,category,stage:safeStage,recoveryStatus:'terminal'});
+  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status,fingerprint,safe_message)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'terminal',$10,$11)`,[id,r.owner_user_id,r.project_id,jobId,r.id,code,category,safeStage,attempts,diagnostic.fingerprint,diagnostic.safeMessage]);
   await emitInternal(client,internalEvent({kind:'error.recorded',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId,traceId:r.id,stage:safeStage,error:{error_id:id,code,category,retryable:false}}));
 }
 

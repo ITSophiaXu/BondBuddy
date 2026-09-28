@@ -59,6 +59,8 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     const third=await claim(pool,30);assert.ok(third);assert.equal(third.runId,id);
     const cancel=await send('POST',`/api/v1/runs/${id}/cancel`,{reason:'synthetic'});assert.equal(cancel.statusCode,200,cancel.body);
     assert.equal(cancel.json().state,'cancelled');
+    const actions=(await pool.query("SELECT operation_kind FROM bb_operations WHERE owner_user_id=$1 AND run_id=$2 AND operation_kind IN ('run_resume','run_cancel')",[owner,id])).rows.map((row:any)=>row.operation_kind);
+    assert.ok(actions.includes('run_resume')&&actions.includes('run_cancel'),'committed run actions are searchable');
     await assert.rejects(finish(pool,restarted,'failed'),/Lease is no longer active/);
     assert.equal((await send('POST',`/api/v1/runs/${id}/resume`,{reason:'synthetic'})).json().code,'ALREADY_TERMINAL');
     const fresh=createServer(settings);
@@ -136,6 +138,8 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     }finally{await deliveryApp.close();}
     assert.equal(boundedArtifactReads,2,'metadata and download use evidence-sized Blob reads');
     assert.deepEqual(download.rawPayload,wordCandidate,'owned artifact download returns the hash-verified Word bytes');
+    const deliveryKinds=(await pool.query("SELECT operation_kind FROM bb_operations WHERE owner_user_id=$1 AND run_id=$2 AND operation_kind IN ('artifact_download_grant','artifact_download')",[owner,wordRun.json().run_id])).rows.map((row:any)=>row.operation_kind);
+    assert.ok(deliveryKinds.includes('artifact_download_grant')&&deliveryKinds.includes('artifact_download'),'grant and verified download are searchable');
     owner='synthetic-queue-b';assert.equal((await send('GET',`/api/v1/artifacts/${firstPromotion.artifactId}`)).statusCode,404);assert.equal((await send('GET',meta.json().download_url)).statusCode,404);
     owner='synthetic-queue-a';
 

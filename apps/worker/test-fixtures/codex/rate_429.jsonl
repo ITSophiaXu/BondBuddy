@@ -1,0 +1,2 @@
+{"type":"turn.failed","error":{"status_code":429,"message":"synthetic private diagnostic"}}
+{"fake":"exit","code":1}

@@ -152,16 +152,23 @@ services:
       DATABASE_URL: *db-url
       AZURE_STORAGE_CONNECTION_STRING: *blob
       NODE_OPTIONS: --max-old-space-size=256
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      BB_OPS_PROVIDER_BALANCE: ${BB_OPS_PROVIDER_BALANCE:-on}
+      BB_OPS_PROVIDER_BALANCE_SECONDS: ${BB_OPS_PROVIDER_BALANCE_SECONDS:-300}
+      BB_PROVIDER_BALANCE_THRESHOLD_USD: ${BB_PROVIDER_BALANCE_THRESHOLD_USD:-1}
       BB_LOG_SINK_FILE: ${BB_LOG_SINK_FILE:-/var/lib/bb-logs/observability.ndjson}
       BB_LOG_SINK_MAX_BYTES: ${BB_LOG_SINK_MAX_BYTES:-67108864}
       BB_LOG_ARCHIVE_ENABLED: ${BB_LOG_ARCHIVE_ENABLED:-0}
       BB_LOG_ARCHIVE_LOCAL_MAX_BYTES: ${BB_LOG_ARCHIVE_LOCAL_MAX_BYTES:-268435456}
       BB_LOG_ARCHIVE_CONTAINER: ${BB_LOG_ARCHIVE_CONTAINER:-bondbuddy-private}
+      BB_LOG_ARCHIVE_RETENTION_DAYS: ${BB_LOG_ARCHIVE_RETENTION_DAYS:-180}
       BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
       BB_BACKUP_CONTAINER: ${BB_BACKUP_CONTAINER:-bb-backups}
       BB_OPS_PARSE_BACKFILL: ${BB_OPS_PARSE_BACKFILL:-off}
       # #78 scheduled library sync (off by default; raise this service's memory limit before enabling).
       BB_OPS_LIBRARY_SYNC: ${BB_OPS_LIBRARY_SYNC:-off}
+      # Node 22 fetch reads HTTPS_PROXY/NO_PROXY only when environment proxy support is enabled.
+      NODE_USE_ENV_PROXY: '1'
       # Production Blob is reached through the allow-list proxy, like the worker.
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128

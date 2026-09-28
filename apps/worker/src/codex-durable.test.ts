@@ -15,6 +15,7 @@ import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { claim, jobSnapshot } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
+import { runReconcileCommand } from './reconcile-run.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const testDatabaseUrl = await isolatedTestDatabase('BB_TEST_CODEX_DATABASE_URL');
@@ -93,6 +94,29 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     assert.deepEqual([rejectedRow.status, rejectedRow.usage_status, rejectedRow.outcome, rejectedRow.error_code, rejectedRow.input_tokens], ['failed', 'unknown', 'failed', 'MODEL_PROVIDER_REQUEST_REJECTED', null]);
     assert.equal((await jobSnapshot(pool, owner, rejected.runId)).state, 'failed');
     assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [rejected.runId])).rows[0].state, 'failed');
+
+    // A synthetic HTTP 402 is visible as a specific paused reason. No supplier result
+    // or usage measurement exists, so an operator must authorize retry.
+    const depleted = await fixture('balance');
+    const depletedCall = await runContainedModelCall(callFor(depleted, 'SCENARIO:balance_402'), journalFor(depleted), config);
+    assert.equal(depletedCall.error_code, 'MODEL_PROVIDER_BALANCE_EXHAUSTED');
+    const balanceState = (await pool.query(`SELECT r.state,r.stage,a.status,a.usage_status,u.input_tokens,u.output_tokens,
+      (SELECT payload->>'reason' FROM bb_run_events WHERE run_id=r.id ORDER BY seq DESC LIMIT 1) reason
+      FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id JOIN bb_model_call_attempts a ON a.job_id=j.id
+      LEFT JOIN bb_call_usage u ON u.attempt_id=a.id WHERE r.id=$1`,[depleted.runId])).rows[0];
+    assert.deepEqual(balanceState,{state:'paused',stage:'provider_reconcile',status:'pending_reconcile',usage_status:'unknown',input_tokens:null,output_tokens:null,reason:'provider_balance_exhausted'});
+    const diagnosis = (await pool.query('SELECT code,category,provider_error_type,provider_status,safe_message FROM bb_observability_errors WHERE job_id=$1',[depleted.lease.jobId])).rows;
+    assert.deepEqual(diagnosis,[{code:'MODEL_PROVIDER_BALANCE_EXHAUSTED',category:'model_provider',provider_error_type:'provider_balance_exhausted',provider_status:null,safe_message:'Error MODEL_PROVIDER_BALANCE_EXHAUSTED'}]);
+    const depletedAttempt = (await pool.query('SELECT id FROM bb_model_call_attempts WHERE job_id=$1',[depleted.lease.jobId])).rows[0].id;
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[depleted.lease.jobId])).rows[0].n,1,
+      'a paused balance attempt has not been resent');
+    await runReconcileCommand(pool,['resolve',depleted.runId,depletedAttempt,'retry_unknown_usage','balance_restored'],'synthetic-operator');
+    const resumedLease = await claim(pool,30);
+    assert.ok(resumedLease); assert.equal(resumedLease.runId,depleted.runId);
+    const resumedFixture = { ...depleted, lease: resumedLease };
+    const resumedCall = await runContainedModelCall(callFor(resumedFixture,'SCENARIO:structured'),journalFor(resumedFixture),config);
+    assert.equal(resumedCall.status,'completed');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[depleted.lease.jobId])).rows[0].n,2);
 
     // Crash after intent, before any observation: the next lease must not resend.
     const crash = await fixture('crash');

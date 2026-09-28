@@ -12,7 +12,7 @@ const reask = prompt.includes('[bb-reask]');
 const pick = (re) => prompt.match(re)?.[1];
 // A fixed-prompt caller (the platform probe) selects the scenario with a leading --fake-scenario=<name> argument.
 const forced = argv.find(a => a.startsWith('--fake-scenario='))?.slice('--fake-scenario='.length);
-const name = forced || (reask && pick(/REASK_SCENARIO:([a-z_]+)/)) || pick(/SCENARIO:([a-z_]+)/) || 'plain';
+const name = forced || (reask && pick(/REASK_SCENARIO:([a-z_0-9]+)/)) || pick(/SCENARIO:([a-z_0-9]+)/) || 'plain';
 const sentinel = pick(/SENTINEL:(\S+)/);
 const out = (v) => process.stdout.write(JSON.stringify(v) + '\n');
 const cwd = process.cwd();
@@ -26,6 +26,7 @@ for (const line of lines) {
   if (ev.fake === 'hang') { process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); await new Promise(() => {}); }
   if (ev.fake === 'exit') process.exit(ev.code);
   if (ev.fake === 'raw') { process.stdout.write(ev.text); continue; }
+  if (ev.fake === 'stderr') { process.stderr.write(ev.text); continue; }
   if (ev.fake === 'side_effect') { await sleep(300); if (sentinel) writeFileSync(sentinel, 'tool executed'); continue; }
   if (ev.type === 'thread.started' && resumeAt >= 0) ev.thread_id = argv[resumeAt + 1];
   out(ev);

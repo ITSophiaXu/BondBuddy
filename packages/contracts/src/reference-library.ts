@@ -7,7 +7,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 export const LIBRARY_QUERY_SCHEMA_VERSION = 'reference-library-query-v1' as const;
 /**
  * v1.1 is additive: a caller that sends `reference-library-query-v1.1` receives the v1 candidate plus the
- * reviewed profile's `comparability` facts and the scoped `chapter_mappings`. A v1 caller keeps the exact v1 shape.
+ * reviewed profile's comparability facts, full-revenue proof decision pin and scoped chapter mappings. A v1 caller keeps the exact v1 shape.
  */
 export const LIBRARY_QUERY_SCHEMA_VERSION_V1_1 = 'reference-library-query-v1.1' as const;
 export const LIBRARY_QUERY_SCHEMA_VERSIONS = [LIBRARY_QUERY_SCHEMA_VERSION, LIBRARY_QUERY_SCHEMA_VERSION_V1_1] as const;
@@ -93,6 +93,16 @@ export const LibraryComparabilitySchema = obj({
   attestation: obj({ review_id: id, reviewed_by: Type.String({ minLength: 1, maxLength: 128 }), reviewed_at: utc, profile_id: id, profile_version: Type.Integer({ minimum: 1 }) }),
 });
 
+/** Internal query attestation that the full, profile-bound revenue proof passed #389 checks. */
+export const LibraryRevenueRankProofDecisionSchema = obj({
+  profile_id: id,
+  profile_version: Type.Integer({ minimum: 1 }),
+  profile_hash: nullable(Type.String({ pattern: '^[a-f0-9]{64}$' })),
+  proof_hash: nullable(Type.String({ pattern: '^[a-f0-9]{64}$' })),
+  sufficient: Type.Boolean(),
+  reasons: Type.Array(Type.String({ minLength: 1, maxLength: 128 }), { maxItems: 16 }),
+});
+
 /** Internal, immutable evidence for one reviewed profile version. Amounts are decimal strings in the stated unit. */
 export const LibraryRevenueRankProofSchema = obj({
   profile_id: id,
@@ -134,6 +144,7 @@ export const LibraryChapterMappingSchema = obj({
 export const LibraryCandidateV1_1Schema = Type.Object({
   ...LibraryCandidateSchema.properties,
   comparability: nullable(LibraryComparabilitySchema),
+  revenue_rank_proof: Type.Optional(LibraryRevenueRankProofDecisionSchema),
   chapter_mappings: Type.Array(LibraryChapterMappingSchema),
 }, { additionalProperties: false });
 
@@ -225,6 +236,7 @@ export const referenceLibrarySchemas = {
   LibraryCandidate: LibraryCandidateSchema,
   LibraryCandidateV1_1: LibraryCandidateV1_1Schema,
   LibraryComparability: LibraryComparabilitySchema,
+  LibraryRevenueRankProofDecision: LibraryRevenueRankProofDecisionSchema,
   LibraryRevenueRankProof: LibraryRevenueRankProofSchema,
   LibraryChapterMapping: LibraryChapterMappingSchema,
   LibraryChapterMappingCreateRequest: LibraryChapterMappingCreateRequestSchema,
@@ -240,6 +252,7 @@ export type LibraryQueryResponse = Static<typeof LibraryQueryResponseSchema>;
 export type LibraryCandidate = Static<typeof LibraryCandidateSchema>;
 export type LibraryCandidateV1_1 = Static<typeof LibraryCandidateV1_1Schema>;
 export type LibraryComparability = Static<typeof LibraryComparabilitySchema>;
+export type LibraryRevenueRankProofDecision = Static<typeof LibraryRevenueRankProofDecisionSchema>;
 export type LibraryRevenueRankProof = Static<typeof LibraryRevenueRankProofSchema>;
 export type LibraryChapterMapping = Static<typeof LibraryChapterMappingSchema>;
 export type LibraryChapterMappingCreateRequest = Static<typeof LibraryChapterMappingCreateRequestSchema>;

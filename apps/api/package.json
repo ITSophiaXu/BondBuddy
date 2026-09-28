@@ -40,6 +40,10 @@
       "types": "./dist/log-ops.d.ts",
       "default": "./dist/log-ops.js"
     },
+    "./log-archive-lifecycle": {
+      "types": "./dist/log-archive-lifecycle.d.ts",
+      "default": "./dist/log-archive-lifecycle.js"
+    },
     "./evidence-gate": {
       "types": "./dist/evidence-gate.d.ts",
       "default": "./dist/evidence-gate.js"
@@ -106,6 +110,8 @@
     "trial:health": "node dist/trial-guard.js health",
     "deletion:lifecycle": "node dist/deletion-lifecycle.js",
     "rule-applicability:grants": "node dist/rule-applicability-reviewer-grants.js",
+    "production-components:import": "node dist/production-component-import-cli.js",
+    "production-review:grants": "node dist/production-review-grants-cli.js",
     "target-period:grants": "node dist/target-period-evidence-decisions.js",
     "fact-evidence:grants": "node dist/fact-evidence-reviews.js"
   },

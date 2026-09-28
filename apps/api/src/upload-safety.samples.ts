@@ -80,6 +80,47 @@ export function pdfSample(options: { encrypted?: boolean; javascript?: boolean; 
   return options.corrupt ? Buffer.from('%PDF-1.4\ncorrupt structure\n%%EOF\n', 'ascii') : bytes;
 }
 
+/** Structurally valid synthetic AcroForm Widget PDFs for upload rejection regressions.
+ * The placeholder /Contents bytes are not CMS data and make no signature-validity claim.
+ */
+export function pdfWidgetSample(options: {
+  fieldType?: 'Sig' | 'Tx';
+  populated?: boolean;
+} = {}): Buffer {
+  const fieldType = options.fieldType ?? 'Sig';
+  const populated = options.populated ?? true;
+  const fieldValue = fieldType === 'Sig' && populated
+    ? ' /V << /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0000000000 0000000000 0000000000] /Contents <01> >>'
+    : fieldType === 'Tx' && populated ? ' /V (Synthetic text)' : '';
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R] /SigFlags 3 >> >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> /Contents 4 0 R /Annots [5 0 R] >>\nendobj\n',
+    '4 0 obj\n<< /Length 0 >>\nstream\n\nendstream\nendobj\n',
+    `5 0 obj\n<< /Type /Annot /Subtype /Widget /FT /${fieldType} /T (syntheticField) /Rect [0 0 1 1] /P 3 0 R /F 4${fieldValue} /AP << /N 6 0 R >> >>\nendobj\n`,
+    '6 0 obj\n<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >> /Length 0 >>\nstream\n\nendstream\nendobj\n'
+  ];
+
+  let document = '%PDF-1.4\n% synthetic Widget negative fixture\n';
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(document, 'ascii'));
+    document += object;
+  }
+  const xrefOffset = Buffer.byteLength(document, 'ascii');
+  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) document += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  if (fieldType === 'Sig' && populated) {
+    const contentsStart = document.indexOf('<01>');
+    const contentsEnd = contentsStart + '<01>'.length;
+    const byteRange = [0, contentsStart, contentsEnd, document.length - contentsEnd]
+      .map(value => String(value).padStart(10, '0'));
+    document = document.replace('0000000000 0000000000 0000000000', byteRange.slice(1).join(' '));
+  }
+  return Buffer.from(document, 'ascii');
+}
+
 type ZipPart = { name: string; contents: Buffer; compress?: boolean };
 
 async function createZip(parts: readonly ZipPart[], zeroParts: readonly { name: string; size: number }[] = []): Promise<Buffer> {

@@ -25,6 +25,7 @@ export interface LibrarySelectionSnapshot {
     profile_version: number;
     taxonomy_version: string;
     chapter_mapping_version: string | null;
+    revenue_rank_proof_hash: string;
     lock: LibrarySelectionLock;
   };
   reasons: readonly string[];
@@ -106,7 +107,7 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
   }
   const candidate = matched.selected;
   const candidateV11 = 'comparability' in candidate ? candidate as LibraryCandidateV1_1 : null;
-  if (response.schema_version !== 'reference-library-query-v1.1' || !candidateV11?.comparability) {
+  if (response.schema_version !== 'reference-library-query-v1.1' || !candidateV11?.comparability || !candidateV11.revenue_rank_proof) {
     const result = snapshotBase({ status: 'needs_review', target: matched.targetValidation.snapshot,
       index_release: response.index_release, candidate_decisions: matched.decisions, selected: null,
       reasons: ['v1_1_reviewed_lock_facts_missing'] });
@@ -126,12 +127,13 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
   } catch (error) {
     if (!(error instanceof Problem)) throw error;
     if (error.code === 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED') {
+      const reason = 'candidate_proof_revalidation_or_production_acceptance_pending';
       const result = snapshotBase({ status: 'needs_review', target: matched.targetValidation.snapshot,
         index_release: response.index_release,
         candidate_decisions: matched.decisions.map(decision => decision.referenceId === candidate.reference_id
           && decision.documentVersion === String(candidate.document_version)
-          ? { ...decision, disposition: 'excluded' as const, reason: 'candidate_full_revenue_universe_or_tie_proof_missing' }
-          : decision), selected: null, reasons: ['candidate_full_revenue_universe_or_tie_proof_missing'] });
+          ? { ...decision, disposition: 'excluded' as const, reason }
+          : decision), selected: null, reasons: [reason] });
       await adapters.persist(result);
       return result;
     }
@@ -149,7 +151,8 @@ export async function selectNoHistoryLibraryReference(input: NoHistoryLibrarySel
     candidate_decisions: matched.decisions, selected: { reference_id: candidate.reference_id,
       document_version_id: candidate.document_version_id, document_version: candidate.document_version,
       profile_id: candidate.profile_id, profile_version: candidate.profile_version, taxonomy_version: candidate.taxonomy_version,
-      chapter_mapping_version: matched.selectedChapterMapping?.mapping_version_id ?? null, lock }, reasons: matched.reasons });
+      chapter_mapping_version: matched.selectedChapterMapping?.mapping_version_id ?? null,
+      revenue_rank_proof_hash: candidateV11.revenue_rank_proof.proof_hash!, lock }, reasons: matched.reasons });
   await adapters.persist(result);
   return result;
 }

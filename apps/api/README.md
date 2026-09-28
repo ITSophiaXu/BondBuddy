@@ -75,6 +75,8 @@ Legacy phone identities have no password, so none of these routes offers them a 
 
 Use Node 22. `deploy/local/compose.yaml` binds PostgreSQL 16 to localhost port 55433 and Azurite Blob to localhost port 10000. It uses an ephemeral database and emulator storage, and is not a production configuration.
 
+The operator reference-library `POST /api/v1/admin/library/imports` accepts 1–50 PDF/DOCX items, at most 100 MiB per item and 200 MiB decoded per batch. It checks every item with the ordinary upload content inspector before staging or enqueueing. A rejected batch returns 422 with indexed `field_errors` containing the external key and reason code; correct the source file or split an oversized batch and retry the complete batch. See [the reference-library runbook](../../docs/runbooks/reference-library.md).
+
 ```bash
 docker compose -f deploy/local/compose.yaml -p bondbuddy_m1_04 up -d --wait
 export DATABASE_URL=postgresql://bondbuddy_local@127.0.0.1:55433/bondbuddy_local

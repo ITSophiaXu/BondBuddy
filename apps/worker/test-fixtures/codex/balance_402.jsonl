@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"0199a1f0-0000-7000-8000-00000000c0de"}
+{"type":"error","error":{"type":"invalid_request_error","message":"synthetic generic error"}}
+{"type":"turn.failed","error":{"message":"{\"error\":{\"type\":\"insufficient_balance\",\"message\":\"synthetic private diagnostic\"},\"status\":402}"}}
+{"fake":"exit","code":1}

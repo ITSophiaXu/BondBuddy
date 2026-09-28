@@ -43,8 +43,15 @@ function fixturePack(packId = `ledger-pack-${++packCounter}`, version = 'test.1'
       clause_locator: 'synthetic fixture only',
       exact_quote: 'Synthetic text used only by automated tests.',
       published_on: null,
-      effective_from: '2020-01-01',
+      effective_from: null,
       effective_to: null,
+      legal_effective_date_basis: 'not_legal_effectivity',
+      approved_method_window: {
+        enabled_from: '2020-01-01',
+        enabled_until: null,
+        approval_evidence_id: 'synthetic-method-approval',
+        approval_evidence_sha256: 'b'.repeat(64),
+      },
       verified_by: 'synthetic-fixture-author',
       verified_at: '2026-09-25T11:00:00Z',
     }],
@@ -152,6 +159,8 @@ test('persists test-only release snapshots and transactionally emits an outbox e
   const client = new MemoryClient();
   const deps = dependencies(client);
   const input = releaseInput(fixturePack());
+  assert.equal(input.draft.sources[0]?.effective_from, null);
+  assert.equal(input.draft.sources[0]?.approved_method_window?.enabled_from, '2020-01-01');
   const first = await appendTestRulePackRelease(deps, input);
   assert.equal(first.action, 'test_release');
   assert.equal(first.pack.status, 'published');

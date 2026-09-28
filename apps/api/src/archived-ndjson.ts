@@ -161,6 +161,9 @@ async function archive(pool: Pool, container: ContainerClient, sink: string, seg
   await unlink(segment.path);
   fault('after_unlink');
   await syncDirectory(segment.path);
+  await pool.query(`INSERT INTO bb_log_archive_lifecycle(segment_id,object_key,byte_length,sha256,record_count)
+    SELECT segment_id,object_key,byte_length,sha256,record_count FROM bb_log_archive_receipts WHERE segment_id=$1
+    ON CONFLICT (segment_id) DO NOTHING`, [segment.id]);
   return true;
 }
 
@@ -221,6 +224,12 @@ export async function writeArchivedNdjson(path: string, sink: string, records: L
     for (const row of historical.rows) {
       if (!localIds.has(row.id)) throw new Error('Missing local segment without archive receipt');
     }
+    // Older receipts, and a crash after unlink but before the lifecycle row, are reconciled here.
+    await pool.query(`INSERT INTO bb_log_archive_lifecycle(segment_id,object_key,byte_length,sha256,record_count)
+      SELECT r.segment_id,r.object_key,r.byte_length,r.sha256,r.record_count
+      FROM bb_log_archive_receipts r JOIN bb_log_segments s ON s.id=r.segment_id
+      WHERE s.sink=$1 AND NOT (r.segment_id=ANY($2::uuid[]))
+      ON CONFLICT (segment_id) DO NOTHING`, [sink, [...localIds]]);
     let currentExists = true;
     try { await stat(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') currentExists = false; else throw error; }
     let id = currentExists && oldId ? oldId : randomUUID();

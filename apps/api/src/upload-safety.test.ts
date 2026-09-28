@@ -14,7 +14,7 @@ import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
   macroDefaultDocxSample, macroDocxSample, neutralExtensionDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
-  XLSX, xlsxSample, xlsxPartNameSample, xlsxRelationshipTargetSample, xlsxDeflatedDirectorySample
+  XLSX, xlsxSample, xlsxPartNameSample, xlsxRelationshipTargetSample, xlsxDeflatedDirectorySample, pdfWidgetSample
 } from './upload-safety.samples.js';
 
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -377,6 +377,51 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   await expectInspectionFailure(badPng, PNG, 422, 'MATERIAL_UNREADABLE');
   await expectInspectionFailure(badJpeg, JPEG, 422, 'MATERIAL_UNREADABLE');
   await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH', 'content_mismatch');
+});
+
+test('PDF upload rejects populated signature, blank signature, and non-Sig Widgets', async () => {
+  // Keep the Sig-only negative case fail-closed until Felix's independent #8 security decision
+  // defines and reviews a restricted acceptance policy. /Contents is a synthetic placeholder,
+  // not CMS data; this fixture does not claim signature validity or verify signing semantics.
+  const populatedSigOnly = pdfWidgetSample({ fieldType: 'Sig', populated: true });
+  const blankSig = pdfWidgetSample({ fieldType: 'Sig', populated: false });
+  const populatedTextWidget = pdfWidgetSample({ fieldType: 'Tx', populated: true });
+  const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as {
+    AnnotationType: { WIDGET: number };
+    getDocument(source: Record<string, unknown>): {
+      promise: Promise<{
+        getPage(pageNumber: number): Promise<{
+          getAnnotations(options: { intent: string }): Promise<Array<{ annotationType?: number; fieldType?: string; fieldValue?: unknown }>>;
+        }>;
+      }>;
+      destroy(): Promise<void>;
+    };
+  };
+
+  for (const [name, bytes, expectedFieldType, expectedFieldValue] of [
+    ['populated Sig-only Widget', populatedSigOnly, 'Sig', null],
+    ['blank Sig Widget', blankSig, 'Sig', null],
+    ['non-Sig text Widget', populatedTextWidget, 'Tx', 'Synthetic text'],
+  ] as const) {
+    const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0, stopAtErrors: true });
+    try {
+      const document = await loading.promise;
+      const annotations = await (await document.getPage(1)).getAnnotations({ intent: 'display' });
+      const widget = annotations.find(annotation => annotation.annotationType === pdfjs.AnnotationType.WIDGET);
+      assert.ok(widget, `${name} must be parsed by PDF.js as a Widget annotation`);
+      assert.equal(widget.fieldType, expectedFieldType, `${name} retains its PDF field type`);
+      assert.equal(widget.fieldValue, expectedFieldValue, `${name} retains the PDF.js-exposed field value`);
+    } finally {
+      await loading.destroy();
+    }
+    await expectInspectionFailure(bytes, PDF, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+    await assert.rejects(verifiedMedia(bytes, PDF), (error: unknown) => {
+      const failure = error as { status?: number; code?: string };
+      return failure.status === 415 && failure.code === 'MATERIAL_FORMAT_UNSUPPORTED';
+    }, `${name} must never be accepted by upload inspection`);
+  }
+  assert.match(populatedSigOnly.toString('ascii'), /\/V << \/Type \/Sig /,
+    'the populated Sig fixture has a value dictionary, without claiming its CMS validity');
 });
 
 test('inspection infrastructure and size rejections expose fixed internal reasons', async () => {

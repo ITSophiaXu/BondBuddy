@@ -316,6 +316,7 @@ function libraryCandidateV11(overrides: Partial<LibraryCandidateV1_1> = {}): Lib
     top3_set_key: '["chemicals","equipment","logistics"]',
     comparability: { accounting_scope: 'consolidated', revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
       attestation: { review_id: 'review-v2', reviewed_by: 'operator-synthetic', reviewed_at: '2026-09-25T00:00:00Z', profile_id: 'library-profile-v2', profile_version: 2 } },
+    revenue_rank_proof: { profile_id: 'library-profile-v2', profile_version: 2, profile_hash: 'a'.repeat(64), proof_hash: 'b'.repeat(64), sufficient: true, reasons: [] },
     chapter_mappings: [],
     ...overrides,
   };
@@ -326,13 +327,12 @@ function libraryResponseV11(candidates: LibraryCandidateV1_1[]): LibraryQueryRes
     index_release: { release_id: 'library-index-v5', release_no: 5 }, candidates, reason: null };
 }
 
-test('v1.1 requires exact comparability and profile-bound review attestation, then still requires source completeness proof', () => {
+test('v1.1 requires exact comparability, audit attestation, and a version-bound full-ranking proof', () => {
   const targetProfile = profile('issuer-123', { unit: 'ten_thousand_yuan' });
   const validCandidate = libraryCandidateV11();
   const matched = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([validCandidate]) });
-  assert.equal(matched.status, 'needs_review');
-  assert.equal(matched.selected, null);
-  assert.equal(matched.decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
+  assert.equal(matched.status, 'exact');
+  assert.equal(matched.selected, validCandidate);
 
   for (const candidateWithBadFacts of [
     libraryCandidateV11({ comparability: null }),
@@ -344,11 +344,13 @@ test('v1.1 requires exact comparability and profile-bound review attestation, th
     libraryCandidateV11({ comparability: { ...validCandidate.comparability!, attestation: {
       ...validCandidate.comparability!.attestation, profile_version: 1,
     } } }),
+    libraryCandidateV11({ revenue_rank_proof: { ...validCandidate.revenue_rank_proof!, sufficient: false, proof_hash: null, reasons: ['third_place_tie_unreviewed'] } }),
+    libraryCandidateV11({ revenue_rank_proof: { ...validCandidate.revenue_rank_proof!, profile_version: 1 } }),
   ]) {
     const result = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([candidateWithBadFacts]) });
     assert.equal(result.status, 'needs_review');
     assert.equal(result.selected, null);
-    assert.notEqual(result.decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
+    assert.notEqual(result.decisions[0]?.reason, 'exact_business_set_and_target_scope_selected');
   }
 });
 
@@ -359,8 +361,8 @@ test('v1.1 cross-scope chapter mapping must exactly bind source and target; v1 r
       source: { market: 'szse', offering: 'private', instrument: 'corporate_bond' },
       target: { market: 'sse', offering: 'private', instrument: 'corporate_bond' }, document_stage: 'issuance', rule_version: 'rules-v4' }] });
   const accepted = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([crossScope]) });
-  assert.equal(accepted.status, 'needs_review');
-  assert.equal(accepted.decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
+  assert.equal(accepted.status, 'exact');
+  assert.equal(accepted.selected, crossScope);
   const wrongSource = libraryCandidateV11({ market: 'szse', chapter_mapping_versions: ['map-version-3'],
     chapter_mappings: [{ ...crossScope.chapter_mappings[0]!, source: { market: 'sse', offering: 'private', instrument: 'corporate_bond' } }] });
   const rejected = matchLibraryQuery({ targetProfile, target: input().target, ruleVersion: 'rules-v4', response: libraryResponseV11([wrongSource]) });

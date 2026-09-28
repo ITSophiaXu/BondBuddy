@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, validProductionReviewManifestContent, validProductionReviewAttestationBinding, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProductionReviewManifest, type ProductionReviewAttestationRequest } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -14,6 +14,12 @@ data.cases.push(...updateExamples.cases);
 const targetPeriodEvidenceExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/target-period-evidence.json', import.meta.url)), 'utf8')) as { synthetic:boolean;cases:Example[] };
 assert.equal(targetPeriodEvidenceExamples.synthetic,true);
 data.cases.push(...targetPeriodEvidenceExamples.cases);
+const productionReviewManifestExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/production-review-manifest.json', import.meta.url)), 'utf8')) as { synthetic:boolean;cases:Example[] };
+assert.equal(productionReviewManifestExamples.synthetic,true);
+data.cases.push(...productionReviewManifestExamples.cases);
+const productionReviewAttestationExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/production-review-attestation.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(productionReviewAttestationExamples.synthetic, true);
+data.cases.push(...productionReviewAttestationExamples.cases);
 const adminExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-logs.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(adminExamples.synthetic, true);
 data.cases.push(...adminExamples.cases);
@@ -132,9 +138,143 @@ for (const example of data.cases) {
   const validate = ajv.compile(schemas[example.schema]);
   const schemaValid = validate(example.value);
   const result=example.schema==='TargetPeriodEvidenceDecisionRequest'&&schemaValid
-    ?validTargetPeriodEvidenceDecision(example.value as unknown as TargetPeriodEvidenceDecisionRequest):schemaValid;
+    ?validTargetPeriodEvidenceDecision(example.value as unknown as TargetPeriodEvidenceDecisionRequest)
+    :example.schema==='ProductionReviewManifest'&&schemaValid
+      ?validProductionReviewManifestContent(example.value as unknown as ProductionReviewManifest):schemaValid;
   assert.equal(result, example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
 }
+const manifestBaseline = byName.get('production-review-manifest-content-only-valid-synthetic');
+assert.ok(manifestBaseline, 'synthetic production manifest baseline exists');
+const unsortedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+unsortedManifest.content.source_date_evidence.reverse();
+assert.equal(ajv.validate(schemas.ProductionReviewManifest, unsortedManifest), true, 'schema accepts source row order');
+assert.equal(validProductionReviewManifestContent(unsortedManifest), false, 'hash input rejects noncanonical source row order');
+const duplicatedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+const duplicateCodes = duplicatedManifest.content.applicability_scope.industry_codes;
+if (duplicateCodes.mode === 'explicit_codes') duplicateCodes.codes.push(duplicateCodes.codes[0]!);
+assert.equal(validProductionReviewManifestContent(duplicatedManifest), false, 'hash input rejects duplicate set-like references');
+const undatedBindingRule = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+undatedBindingRule.content.source_date_evidence[0]!.legal_effective_date = null;
+undatedBindingRule.content.source_date_evidence[0]!.legal_effective_date_basis = 'unknown';
+undatedBindingRule.content.source_date_evidence[0]!.effective_date_derivation_evidence = [];
+assert.equal(validProductionReviewManifestContent(undatedBindingRule), false, 'reviewed applicability basis cannot make an undated binding rule approvable');
+const undatedGuidance = structuredClone(undatedBindingRule);
+undatedGuidance.content.source_date_evidence[0]!.source_kind = 'interpretive_guidance';
+assert.equal(validProductionReviewManifestContent(undatedGuidance), true, 'undated guidance may carry a reviewed applicability basis without inventing legal effectivity');
+const noDateNoBasis = structuredClone(undatedBindingRule) as any;
+delete noDateNoBasis.content.source_date_evidence[0].applicability_basis;
+assert.equal(validProductionReviewManifestContent(noDateNoBasis), false, 'undated source without an applicability basis is rejected');
+const scopeBasisDrift = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+scopeBasisDrift.content.source_date_evidence[0]!.applicability_basis.applicability_scope.instruments = ['scp'];
+assert.equal(validProductionReviewManifestContent(scopeBasisDrift), false, 'source basis must pin the exact manifest scope');
+const emptyUnknownDimension = structuredClone(manifestBaseline.value) as any;
+emptyUnknownDimension.content.applicability_scope.industry_codes = { mode: 'explicit_codes', codes: [], dictionary_version: 'industry-v1' };
+assert.equal(ajv.validate(schemas.ProductionReviewManifest, emptyUnknownDimension), false, 'empty explicit codes cannot encode unknown or unrestricted');
+const inventedAllCode = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+inventedAllCode.content.applicability_scope.industry_codes = { mode: 'explicit_codes', codes: ['all'], dictionary_version: 'industry-v1' };
+assert.equal(validProductionReviewManifestContent(inventedAllCode), false, 'invented all code cannot encode reviewed unrestricted');
+const genericFeatureRule = (manifestBaseline.value as unknown as ProductionReviewManifest).content.applicability_scope.special_feature_scope;
+assert.equal(genericFeatureRule.mode, 'reviewed_unrestricted', 'generic rule-level feature scope is an explicit no-extra-restriction review');
+assert.equal(Object.hasOwn(genericFeatureRule, 'project_verified_absence'), false, 'rule scope does not assert project feature absence');
+// Current withdrawal is a selector/runtime gate; a content-only helper cannot prove it.
+const technicalSubmission = byName.get('production-attestation-technical-self-submission-valid-synthetic');
+assert.ok(technicalSubmission, 'synthetic technical self-submission exists');
+const spoofedRoleSubmission = { ...structuredClone(technicalSubmission.value), reviewer_role: 'industry' };
+assert.equal(ajv.validate(schemas.ProductionTechnicalAttestationRequest, spoofedRoleSubmission), false, 'request cannot assert its reviewer role');
+assert.equal(ajv.validate(schemas.ProductionReviewAttestationRequest, spoofedRoleSubmission), false, 'generic request cannot assert its reviewer role');
+const industrySubmission = byName.get('production-attestation-industry-self-submission-valid-synthetic');
+assert.ok(industrySubmission, 'synthetic industry self-submission exists');
+const pinnedManifest = manifestBaseline.value as unknown as ProductionReviewManifest;
+const industryRequest = industrySubmission.value as unknown as ProductionReviewAttestationRequest;
+assert.equal(validProductionReviewAttestationBinding(industryRequest, emptyUnknownDimension), false, 'industry approve cannot bind a manifest with unknown applicability');
+const pendingDimensionManifest = structuredClone(pinnedManifest);
+pendingDimensionManifest.content.applicability_scope.industry_codes = {
+  mode: 'needs_review', reason_code: 'industry_mapping_pending', reason: 'Synthetic pending evidence review.',
+};
+for (const source of pendingDimensionManifest.content.source_date_evidence) {
+  source.applicability_basis.applicability_scope = structuredClone(pendingDimensionManifest.content.applicability_scope);
+}
+assert.equal(ajv.validate(schemas.ProductionReviewManifest, pendingDimensionManifest), true, 'pending dimension is representable in a content snapshot');
+assert.equal(validProductionReviewManifestContent(pendingDimensionManifest), true, 'needs_review is a valid pending state, not an unrestricted state');
+const pendingDimensionRequest = structuredClone(industryRequest);
+pendingDimensionRequest.decision = 'request_more_evidence';
+assert.equal(validProductionReviewAttestationBinding(pendingDimensionRequest, pendingDimensionManifest), true, 'pending dimension may be retained while requesting more evidence');
+assert.equal(validProductionReviewAttestationBinding(industryRequest, pendingDimensionManifest), false, 'industry approve is forbidden while any applicability dimension needs review');
+assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, industryRequest), true, 'semantic baseline is schema-valid');
+assert.equal(validProductionReviewAttestationBinding(industryRequest, pinnedManifest), true, 'industry approval binds complete synthetic manifest');
+const pendingMethodManifest = structuredClone(pinnedManifest);
+const internalMethod = pendingMethodManifest.content.source_date_evidence.find(source => source.source_kind === 'internal_method');
+assert.ok(internalMethod, 'synthetic baseline includes an internal method with an approved window');
+internalMethod.approved_method_window = null;
+assert.equal(validProductionReviewManifestContent(pendingMethodManifest), true, 'unapproved method may remain in a pending manifest');
+const pendingMethodRequest = structuredClone(industryRequest);
+pendingMethodRequest.decision = 'request_more_evidence';
+assert.equal(validProductionReviewAttestationBinding(pendingMethodRequest, pendingMethodManifest), true, 'missing method approval may request more evidence');
+assert.equal(validProductionReviewAttestationBinding(industryRequest, pendingMethodManifest), false, 'industry approval rejects a missing internal-method approval window');
+const missingPolarityManifest = structuredClone(pinnedManifest);
+missingPolarityManifest.content.authorized_real_sample_evidence = missingPolarityManifest.content.authorized_real_sample_evidence
+  .filter(sample => sample.polarity === 'positive');
+// This pure contract check deliberately does not recompute the changed content hash;
+// the registry hash check is a separate mandatory writer precondition.
+assert.equal(validProductionReviewManifestContent(missingPolarityManifest), true, 'an incomplete polarity set may be stored as a pending review manifest');
+const pendingSampleRequest = structuredClone(industryRequest);
+pendingSampleRequest.decision = 'request_more_evidence';
+pendingSampleRequest.content_sha256 = missingPolarityManifest.content_sha256;
+const pendingSampleEvidence = pendingSampleRequest.evidence as { sample_conclusions: Array<{ sample_evidence_id: string }> };
+pendingSampleEvidence.sample_conclusions = pendingSampleEvidence.sample_conclusions
+  .filter(sample => sample.sample_evidence_id === missingPolarityManifest.content.authorized_real_sample_evidence[0]!.sample_evidence_id);
+assert.equal(validProductionReviewAttestationBinding(pendingSampleRequest, missingPolarityManifest), true, 'incomplete sample polarities remain requestable, not approvable');
+assert.equal(validProductionReviewAttestationBinding({ ...pendingSampleRequest, decision: 'approve' }, missingPolarityManifest), false, 'industry approve requires positive, negative and boundary sample evidence');
+const duplicateSampleCase = structuredClone(pinnedManifest);
+duplicateSampleCase.content.authorized_real_sample_evidence[1]!.sample_case_id = duplicateSampleCase.content.authorized_real_sample_evidence[0]!.sample_case_id;
+assert.equal(validProductionReviewManifestContent(duplicateSampleCase), false, 'manifest sample case IDs must be unique');
+const polarityDrift = structuredClone(pinnedManifest);
+polarityDrift.content.authorized_real_sample_evidence[0]!.polarity = 'positive';
+assert.equal(validProductionReviewAttestationBinding(industryRequest, polarityDrift), false, 'changing boundary to positive leaves the required category absent');
+assert.equal(validProductionReviewAttestationBinding({ ...industryRequest, content_sha256: polarityDrift.content_sha256 }, polarityDrift), false, 'repinning cannot approve a manifest without a boundary sample');
+const withIndustry = (change: (value: any) => void, decision = 'approve') => {
+  const changed = structuredClone(industryRequest) as any;
+  changed.decision = decision;
+  change(changed);
+  return changed as ProductionReviewAttestationRequest;
+};
+const assertBindingFalse = (name: string, request: ProductionReviewAttestationRequest) => {
+  assert.equal(validProductionReviewAttestationBinding(request, pinnedManifest), false, name);
+};
+assertBindingFalse('manifest content hash pin drift rejected', { ...industryRequest, content_sha256: '0'.repeat(64) });
+assertBindingFalse('manifest ID pin drift rejected', { ...industryRequest, manifest_id: 'other-manifest' });
+assertBindingFalse('missing pinned source blocks approval', withIndustry(value => value.evidence.source_effectivity_applicability.pop()));
+assertBindingFalse('invented source reference rejected', withIndustry(value => { value.evidence.source_effectivity_applicability[0].source_evidence_id = 'invented-source'; }));
+assertBindingFalse('source check hash drift rejected', withIndustry(value => { value.evidence.source_effectivity_applicability[0].source_check_sha256 = '0'.repeat(64); }));
+assertBindingFalse('duplicate source reference rejected', withIndustry(value => value.evidence.source_effectivity_applicability.push(structuredClone(value.evidence.source_effectivity_applicability[0]))));
+assertBindingFalse('invented uncovered code rejected', withIndustry(value => { value.evidence.exceptions_and_uncovered[0].item_code = 'invented-item'; }));
+assertBindingFalse('missing pinned uncovered item blocks approval', withIndustry(value => value.evidence.exceptions_and_uncovered.pop()));
+assertBindingFalse('duplicate uncovered reference rejected', withIndustry(value => value.evidence.exceptions_and_uncovered.push(structuredClone(value.evidence.exceptions_and_uncovered[0]))));
+assertBindingFalse('needs-evidence source cannot be approved', withIndustry(value => { value.evidence.source_effectivity_applicability[0].conclusion = 'needs_evidence'; }));
+assertBindingFalse('not-applicable pinned source cannot be approved', withIndustry(value => { value.evidence.source_effectivity_applicability[0].conclusion = 'not_applicable'; }));
+assertBindingFalse('needs-evidence item cannot be approved', withIndustry(value => { value.evidence.exceptions_and_uncovered[0].disposition = 'needs_evidence'; }));
+assertBindingFalse('rejected sample cannot be approved', withIndustry(value => { value.evidence.sample_conclusions[0].conclusion = 'reject'; }));
+assertBindingFalse('sample needing more evidence cannot be approved', withIndustry(value => { value.evidence.sample_conclusions[0].conclusion = 'request_more_evidence'; }));
+assertBindingFalse('sample case drift rejected', withIndustry(value => { value.evidence.sample_conclusions[0].sample_case_id = 'invented-case'; }));
+assertBindingFalse('sample evidence drift rejected', withIndustry(value => { value.evidence.sample_conclusions[0].sample_evidence_id = 'invented-sample'; }));
+assertBindingFalse('duplicate sample reference rejected', withIndustry(value => value.evidence.sample_conclusions.push(structuredClone(value.evidence.sample_conclusions[0]))));
+const collidingItemManifest = structuredClone(pinnedManifest);
+collidingItemManifest.content.applicability_scope.exceptions.push({ code: 'special-products', description: 'Synthetic different-kind collision', evidence_ids: ['a-source-synthetic'] });
+assert.equal(validProductionReviewAttestationBinding(industryRequest, collidingItemManifest), false, 'exception and uncovered sharing a code are still two required decisions');
+const partialIndustry = withIndustry(value => value.evidence.source_effectivity_applicability.pop(), 'request_more_evidence');
+assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, partialIndustry), true, 'partial follow-up remains schema-valid');
+assert.equal(validProductionReviewAttestationBinding(partialIndustry, pinnedManifest), true, 'request-more-evidence may review a genuine subset');
+const technicalRequest = byName.get('production-attestation-technical-self-submission-valid-synthetic')!.value as unknown as ProductionReviewAttestationRequest;
+assert.equal(validProductionReviewAttestationBinding(technicalRequest, pinnedManifest), true, 'technical follow-up binds exact template and coverage hashes');
+const driftedTechnical = structuredClone(technicalRequest) as any;
+driftedTechnical.evidence.template_coverage_consistency.chapter_template_sha256 = '0'.repeat(64);
+assertBindingFalse('template hash drift rejected', driftedTechnical);
+const approvedTechnical = structuredClone(technicalRequest) as any;
+approvedTechnical.decision = 'approve';
+assertBindingFalse('technical approval requires consistent template/coverage', approvedTechnical);
+const noExceptionSubmission = structuredClone(industrySubmission.value) as { evidence: { exceptions_and_uncovered: unknown[] } };
+noExceptionSubmission.evidence.exceptions_and_uncovered = [];
+assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, noExceptionSubmission), true, 'no exceptions or uncovered items needs no invented attestation row');
 const value = (name: string) => {
   const example = byName.get(name);
   assert.ok(example, name);
