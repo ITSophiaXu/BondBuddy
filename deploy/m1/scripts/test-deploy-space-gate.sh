@@ -56,6 +56,11 @@ case " $* " in
     printf '%s\n' "$*" >> "$TEST_CALLS"
     printf 'bondbuddy-m1-api:aaaaaaaaaaaa\n'
     ;;
+  *' compose '*' exec -T postgres psql '*)
+    printf 'inflight-query\n' >> "$TEST_CALLS"
+    [ "${TEST_INFLIGHT:-0}" = fail ] && { echo 'connection refused' >&2; exit 1; }
+    printf '%s\n' "${TEST_INFLIGHT:-0}"
+    ;;
   *' compose '*' ps --status running --services '*)
     printf '%s\n' "$*" >> "$TEST_CALLS"
     printf 'postgres\n'
@@ -146,3 +151,31 @@ rg -q 'requires 4294967296 bytes.*api image missing' "$test_dir/error"
 export TEST_IMAGES=vanish-egress
 run_case 'preloaded egress disappears before build' reject_after_archive
 rg -q 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"
+
+# Pre-switch in-flight gate: checked after images exist, before backup, migration or container switch.
+export TEST_IMAGES=all TEST_FREE_BYTES=4294967296
+gate_case() {
+  local label="$1" gate="$2" inflight="$3" expected_rc="$4" result=0
+  : > "$TEST_CALLS"
+  printf 'old-release\n' > "$test_dir/state/current"
+  BB_DEPLOY_INFLIGHT_GATE="$gate" TEST_INFLIGHT="$inflight" "$test_dir/deploy/m1/scripts/deploy.sh" \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa > "$test_dir/output" 2> "$test_dir/error" || result=$?
+  [ "$result" -eq "$expected_rc" ] || { echo "$label: exit $result, expected $expected_rc" >&2; cat "$test_dir/error" >&2; exit 1; }
+  if [ "$expected_rc" -ne 0 ]; then
+    [ "$(cat "$test_dir/state/current")" = old-release ] || { echo "$label: release state changed" >&2; exit 1; }
+    if rg -q 'backup|run --rm migrate|up -d|image rm|smoke' "$TEST_CALLS"; then
+      echo "$label: switched or backed up before gate" >&2; exit 1
+    fi
+    rg -q '^inflight-query$' "$TEST_CALLS"
+  fi
+  echo "PASS $label"
+}
+gate_case 'gate defers when a run is in flight' 1 2 76
+rg -q '2 non-parse runs in flight' "$test_dir/error"
+gate_case 'gate reports unavailable run count' 1 fail 77
+gate_case 'gate rejects malformed run count' 1 'ERROR: x' 77
+gate_case 'gate passes with no run in flight' 1 0 0
+rg -q '^inflight-query$' "$TEST_CALLS"
+rg -q 'up -d --remove-orphans --wait' "$TEST_CALLS"
+gate_case 'gate is off by default' 0 2 0
+if rg -q '^inflight-query$' "$TEST_CALLS"; then echo 'gate queried while disabled' >&2; exit 1; fi
