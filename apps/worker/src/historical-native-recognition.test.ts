@@ -379,6 +379,26 @@ test('a year in financial-section context without a reporting-period/table ancho
   assert.equal(value.latest_reporting_cutoff.value, null);
 });
 
+test('financial-context period opt-in is PDF-only; historical recognition keeps the legacy boundary', () => {
+  const annual = record('bare-annual', '2024年度', '财务报表');
+  const ordinary = response([annual]);
+  assert.deepEqual(recognizeHistoricalNativeText(ordinary, { profileVersion: 1 }).reporting_periods, []);
+  assert.deepEqual(recognizeHistoricalNativeText(ordinary, {
+    profileVersion: 1, allowPdfFinancialContextPeriods: true,
+  }).reporting_periods, []);
+
+  const pdf = {
+    ...ordinary,
+    material: { ...ordinary.material!, media_type: 'application/pdf' as const },
+  };
+  const targetOnly = recognizeHistoricalNativeText(pdf, {
+    profileVersion: 1, allowPdfFinancialContextPeriods: true,
+  });
+  assert.equal(targetOnly.reporting_periods.length, 1);
+  assert.equal(targetOnly.reporting_periods[0]?.end, '2024-12-31');
+  assert.equal(targetOnly.reporting_periods[0]?.status, 'needs_confirmation');
+});
+
 test('a single period record mixing consolidated and parent scopes stays unconfirmed', () => {
   const value = recognizeHistoricalNativeText(response([
     record('mixed-scope', '合并及母公司财务报表报告期：2024年度。', '财务会计信息'),
