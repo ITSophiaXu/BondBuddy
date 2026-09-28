@@ -86,7 +86,7 @@ function fixture(): { pack: RulePack; template: typeof nafmiiMtnChapterTemplate;
   draft.version = 'synthetic.1';
   draft.scope = { market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], document_stages: ['registration'], issuer_scopes: ['synthetic_issuer'] };
   draft.validity = { published_on: null, effective_from: '2026-01-01', effective_to: null, transition_terms: [] };
-  draft.sources = [{ ...draft.sources[0]!, source_id: 'synthetic-source', kind: 'formal_rule', official_url: 'https://example.invalid/source', document_hash: 'a'.repeat(64), published_on: '2025-01-01', effective_from: '2026-01-01', effective_to: null, verified_by: 'synthetic-reviewer', verified_at: '2026-09-24T00:00:00Z' }];
+  draft.sources = [{ ...draft.sources[0]!, source_id: 'synthetic-source', kind: 'formal_rule', official_url: 'https://example.invalid/source', document_hash: 'a'.repeat(64), published_on: '2025-01-01', effective_from: '2026-01-01', effective_to: null, legal_effective_date_basis: 'explicit_text', effective_date_derivation_evidence: [{ kind: 'synthetic_clause', value: 'clause 1' }], verified_by: 'synthetic-reviewer', verified_at: '2026-09-24T00:00:00Z' }];
   draft.rules = [{ ...draft.rules[0]!, rule_id: 'synthetic-rule', source_ref_ids: ['synthetic-source'],
     applicability: { ...draft.rules[0]!.applicability, issuer_scopes: ['synthetic_issuer'], investor_scopes: ['synthetic-investor'], industries: ['synthetic-industry'], special_features: [] },
     enabled: true, enforcement: 'hard_block', outputs: { when_met: 'pass', when_not_met: 'issue', severity: 'blocking' } }];
@@ -221,6 +221,28 @@ test('selector refuses snapshots that bypass publishRulePack business gates', as
   }
 });
 
+test('production selector blocks unknown or conflicting source dates even with a self-consistent content hash', async () => {
+  const undated = registryRow();
+  const undatedPack = undated.pack_snapshot as RulePack;
+  undatedPack.sources[0] = { ...undatedPack.sources[0]!, kind: 'official_interpretation', effective_from: null,
+    effective_to: null, legal_effective_date_basis: 'unknown' };
+  resignMutatedPack(undated);
+  const undatedResult = await selectProductionRulePack({ query: async () => ({ rows: [undated] }) } as never, request);
+  assert.deepEqual(undatedResult, { status: 'blocked', reasons: ['production_rule_pack_snapshot_invalid'] },
+    'missing signed applicability evidence cannot make a null date current or perpetual');
+
+  const conflict = registryRow();
+  const conflictPack = conflict.pack_snapshot as RulePack;
+  conflictPack.sources[0]!.legal_effective_date_basis = 'unknown';
+  resignMutatedPack(conflict);
+  const conflictResult = await selectProductionRulePack({ query: async () => ({ rows: [conflict] }) } as never, request);
+  assert.deepEqual(conflictResult, { status: 'blocked', reasons: ['production_rule_pack_snapshot_invalid'] },
+    'a populated date cannot be relabeled unknown to evade date review');
+
+  const withdrawn = await selectProductionRulePack({ query: async () => ({ rows: [registryRow('production_withdrawal')] }) } as never, request);
+  assert.deepEqual(withdrawn, { status: 'blocked', reasons: ['production_rule_pack_withdrawn'] });
+});
+
 test('selector delegates applicability and blocks when investor, industry, or feature evidence is absent', async () => {
   let call = 0;
   const result = await selectProductionRulePack({ query: async () => (++call === 1
@@ -294,8 +316,32 @@ test('live PostgreSQL 16 migration creates empty production registry and rejects
     assert.ok(tables.rows[0]!.samples);
     assert.ok(tables.rows[0]!.authorizations);
     assert.ok(tables.rows[0]!.test_ledger, 'test ledger remains separate');
+    const dateColumns = await pool.query(`SELECT column_name,is_nullable FROM information_schema.columns
+      WHERE table_schema=current_schema() AND table_name='bb_rule_pack_production_source_checks'
+        AND column_name IN ('effective_from','applicability_basis','approved_method_window')`);
+    assert.deepEqual(Object.fromEntries(dateColumns.rows.map((row) => [row.column_name, row.is_nullable])), {
+      effective_from: 'YES', applicability_basis: 'YES', approved_method_window: 'YES',
+    });
     const result = await selectProductionRulePack(pool, request);
     assert.deepEqual(result, { status: 'blocked', reasons: ['production_rule_pack_registry_empty'] });
+    const suffix = randomUUID().slice(0, 8);
+    const admin = `date_admin_${suffix}`;
+    const reviewer = `date_reviewer_${suffix}`;
+    const grant = `date_grant_${suffix}`;
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$1),($2,$2)', [admin, reviewer]);
+    await pool.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
+      VALUES($1,$2,'rule_pack_industry_reviewer','sse','public_all',$3,'synthetic_test')`, [grant, reviewer, admin]);
+    const insertSource = `INSERT INTO bb_rule_pack_production_source_checks
+      (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,verifier_user_id,verifier_grant_id)
+      VALUES($1,'synthetic-date-pack','1',$2,$3,'Synthetic authority','https://example.invalid/source','synthetic-v1',
+       'sse','public_all',$4,'synthetic locator','Synthetic only',now(),$5,NULL,$6,$7,$8)`;
+    await pool.query(insertSource, [`null-date-${suffix}`, 'a'.repeat(64), `null-source-${suffix}`, 'b'.repeat(64), null, 'unknown', reviewer, grant]);
+    const nullDate = await pool.query('SELECT effective_from,legal_effective_date_basis,applicability_basis FROM bb_rule_pack_production_source_checks WHERE id=$1', [`null-date-${suffix}`]);
+    assert.equal(nullDate.rows[0]!.effective_from, null);
+    assert.equal(nullDate.rows[0]!.legal_effective_date_basis, 'unknown');
+    assert.equal(nullDate.rows[0]!.applicability_basis, null, 'pending evidence is retained without implying current applicability');
+    await assert.rejects(pool.query(insertSource, [`date-conflict-${suffix}`, 'c'.repeat(64), `conflict-source-${suffix}`, 'd'.repeat(64), null, 'explicit_text', reviewer, grant]), /bb_rule_pack_source_legal_date_basis_guard/);
     await assert.rejects(pool.query(`INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,market,offering,instruments,document_stages,
        effective_from,pack_snapshot,operator_user_id,operator_grant_id,reason,occurred_at)
@@ -344,7 +390,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     const source = { ...draft.sources[0]!, source_id: sourceId, kind: 'formal_rule' as const,
       official_url: 'https://example.invalid/synthetic-rule', document_hash: 'a'.repeat(64), source_version: 'synthetic-v1',
       clause_locator: 'synthetic clause 1', exact_quote: 'Synthetic test-only official source evidence.',
-      published_on: '2025-01-01', effective_from: '2026-01-01', effective_to: null,
+      published_on: '2025-01-01', effective_from: '2026-01-01', effective_to: null, legal_effective_date_basis: 'explicit_text', effective_date_derivation_evidence: [{ kind: 'synthetic_clause', value: 'clause 1' }],
       verified_by: industry, verified_at: now.toISOString() };
     draft.sources = [source];
     const firstRule = draft.rules[0]!;
@@ -369,8 +415,10 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     const contentHash = rulePackContentHash(pack);
     await client.query(`INSERT INTO bb_rule_pack_production_source_checks
       (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
-       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,$13,$14)`,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,effective_date_derivation_evidence,
+       official_publication_date,verifier_user_id,verifier_grant_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,'explicit_text',
+       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2025-01-01',$13,$14)`,
     [sourceCheckId, packId, pack.version, contentHash, sourceId, source.authority, source.official_url, source.source_version,
       source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
 
@@ -421,8 +469,10 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     const misboundSourceId = `misbound-source-check-${suffix}`;
     await client.query(`INSERT INTO bb_rule_pack_production_source_checks
       (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
-       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,$13,$14)`,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,effective_date_derivation_evidence,
+       official_publication_date,verifier_user_id,verifier_grant_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,'explicit_text',
+       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2025-01-01',$13,$14)`,
     [misboundSourceId, packId, misboundPack.version, misboundHash, sourceId, source.authority, source.official_url,
       source.source_version, source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
     const misboundEvidenceIds: string[] = [];
@@ -452,8 +502,10 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     await client.query('SAVEPOINT wrong_source_reviewer');
     await client.query(`INSERT INTO bb_rule_pack_production_source_checks
       (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
-       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,$13,$14)`,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,effective_date_derivation_evidence,
+       official_publication_date,verifier_user_id,verifier_grant_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,'explicit_text',
+       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2025-01-01',$13,$14)`,
     [wrongSourceCheckId, packId, wrongSourcePack.version, wrongSourceHash, sourceId, source.authority, source.official_url,
       source.source_version, source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
     await assert.rejects(client.query(releaseInsert, [
@@ -771,7 +823,7 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
       const snapshot: Record<string, any> = {
         ...rowSnapshot,
         validity: { published_on: occurredAt.slice(0, 10), effective_from: '2026-01-01', effective_to: null },
-        sources: [{ source_id: 'source-1', kind: 'formal_rule', published_on: '2025-01-01', effective_from: '2025-01-01',
+        sources: [{ source_id: 'source-1', kind: 'formal_rule', published_on: '2025-01-01', effective_from: '2025-01-01', legal_effective_date_basis: 'explicit_text', effective_date_derivation_evidence: [{ kind: 'synthetic_clause', value: 'clause 1' }],
           effective_to: null, verified_by: 'synthetic-reviewer', verified_at: '2026-09-24T00:00:00Z' }],
         rules: [{ enabled: true, enforcement: 'soft_check' }],
         sample_suite: { data_classification: 'authorized_real', cases: [

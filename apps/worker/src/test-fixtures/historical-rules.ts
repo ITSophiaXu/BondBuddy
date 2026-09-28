@@ -9,7 +9,7 @@ export function syntheticHistoricalRules(mutate?: (draft: RulePack) => void): Ex
   draft.pack_id = 'synthetic-rules'; draft.version = '1';
   draft.scope = { market: 'sse', offering: 'private', instruments: ['ordinary-company-bond'], document_stages: ['issuance'], issuer_scopes: ['domestic-company'] };
   draft.sources[0] = { ...draft.sources[0]!, kind: 'formal_rule', official_url: 'https://example.invalid/synthetic',
-    document_hash: 'a'.repeat(64), published_on: '2026-01-01', effective_from: '2026-01-01',
+    document_hash: 'a'.repeat(64), published_on: '2026-01-01', effective_from: '2026-01-01', legal_effective_date_basis: 'explicit_text', effective_date_derivation_evidence: [{ kind: 'synthetic_clause', value: 'clause 1' }],
     verified_by: 'synthetic-industry', verified_at: '2026-09-24T00:30:00Z' };
   draft.rules[0] = { ...draft.rules[0]!, enabled: true, enforcement: 'soft_check',
     applicability: { ...draft.rules[0]!.applicability, document_stages: ['issuance'] },
