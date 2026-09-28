@@ -382,6 +382,7 @@ export async function appendTargetPeriodCandidateSnapshot(
     // The project FOR UPDATE lock above conflicts with the KEY SHARE lock required by
     // the submission table's project FK. A concurrent registration therefore either
     // committed before this query (and is visible) or waits until after this snapshot.
+    // Any later input-lock consumer must revalidate message metadata before use.
     // Do not take the submission advisory lock here: registration takes it before its FK
     // insert, which would invert the project/advisory lock order and allow a deadlock.
     const messages = await client.query(`SELECT 1 FROM bb_user_submission_versions
