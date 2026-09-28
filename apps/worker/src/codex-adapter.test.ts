@@ -265,6 +265,15 @@ test('restart: an intent without an observation is reconciled, never resent; com
     retry.prior = { call_id: 'call-bad', attempt_no: 1, status: 'failed', observed: true };
     const next = await runContainedModelCall(call('SCENARIO:structured'), retry, config);
     assert.equal(next.status, 'completed'); assert.equal(retry.intents[0].attempt_no, 2, 'continues the durable attempt sequence');
+    const textCall = call('SCENARIO:plain', { output: {kind:'text'} });
+    const held = new MemoryCodexJournal();
+    held.prior = {call_id:'call-unknown',attempt_no:1,status:'failed',observed:true};
+    const blocked = await runContainedModelCall(textCall,held,{...config,max_schema_reasks:0});
+    assert.equal(blocked.status,'failed');assert.equal(held.intents.length,0);
+    const approved = new MemoryCodexJournal();
+    approved.prior = {...held.prior,operator_retry:true};
+    const resumed = await runContainedModelCall(textCall,approved,{...config,max_schema_reasks:0});
+    assert.equal(resumed.status,'completed');assert.equal(approved.intents[0].attempt_no,2);
   } finally { await cleanup(); }
 });
 
