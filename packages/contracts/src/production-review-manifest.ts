@@ -149,19 +149,19 @@ export function validProductionReviewManifestContent(value: unknown): value is P
     if ((source.transition_from_date || source.transition_until_date) && source.transition_evidence.length === 0) return false;
     if (source.legal_expiry_date && source.legal_effective_date && source.legal_expiry_date < source.legal_effective_date) return false;
     if (source.legal_effective_date_basis === 'publication_commencement') {
-      if (source.source_kind !== 'binding_rule' || !source.official_publication_date ||
+      if (!['binding_rule', 'interpretive_guidance'].includes(source.source_kind) || !source.official_publication_date ||
           source.legal_effective_date !== source.official_publication_date || source.effective_date_derivation_evidence.length === 0) return false;
     }
     if (source.legal_effective_date_basis === 'explicit_text') {
-      if (source.source_kind !== 'binding_rule' || !source.legal_effective_date || source.effective_date_derivation_evidence.length === 0) return false;
+      if (!['binding_rule', 'interpretive_guidance'].includes(source.source_kind) || !source.legal_effective_date || source.effective_date_derivation_evidence.length === 0) return false;
     }
     if (source.legal_effective_date_basis === 'unknown' || source.legal_effective_date_basis === 'not_legal_effectivity') {
       if (source.legal_effective_date !== null) return false;
     }
-    if (source.source_kind !== 'binding_rule' && source.legal_effective_date !== null) return false;
+    if (['template', 'internal_method'].includes(source.source_kind) && source.legal_effective_date !== null) return false;
     if (source.source_kind === 'internal_method') {
-      if (source.legal_effective_date_basis !== 'not_legal_effectivity' || source.approved_method_window === null) return false;
-      if (source.approved_method_window.enabled_until && source.approved_method_window.enabled_until < source.approved_method_window.enabled_from) return false;
+      if (source.legal_effective_date_basis !== 'not_legal_effectivity') return false;
+      if (source.approved_method_window?.enabled_until && source.approved_method_window.enabled_until < source.approved_method_window.enabled_from) return false;
     } else if (source.approved_method_window !== null) return false;
   }
   return true;

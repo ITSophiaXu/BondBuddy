@@ -72,3 +72,18 @@ test('review hash rejects noncanonical references and invented legal dates', () 
   reversedMethodWindow.content.source_date_evidence[1].approved_method_window.enabled_until = '2026-09-19';
   assert.equal(productionReviewContentHashMatches(reversedMethodWindow), false);
 });
+
+test('date contract can represent explicit guidance effectivity and pending method approval', () => {
+  const explicitGuidance = copy();
+  explicitGuidance.content.source_date_evidence[0].source_kind = 'interpretive_guidance';
+  assert.match(productionReviewContentHash(explicitGuidance), /^[a-f0-9]{64}$/);
+
+  const pendingMethod = copy();
+  pendingMethod.content.source_date_evidence[1].approved_method_window = null;
+  assert.match(productionReviewContentHash(pendingMethod), /^[a-f0-9]{64}$/);
+  assert.notEqual(productionReviewContentHash(pendingMethod), productionReviewContentHash(copy()));
+
+  const fakeTemplateDate = copy();
+  fakeTemplateDate.content.source_date_evidence[0].source_kind = 'template';
+  assert.equal(productionReviewContentHashMatches(fakeTemplateDate), false);
+});
