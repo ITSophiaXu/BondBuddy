@@ -40,6 +40,10 @@
       "types": "./dist/log-ops.d.ts",
       "default": "./dist/log-ops.js"
     },
+    "./log-archive-lifecycle": {
+      "types": "./dist/log-archive-lifecycle.d.ts",
+      "default": "./dist/log-archive-lifecycle.js"
+    },
     "./evidence-gate": {
       "types": "./dist/evidence-gate.d.ts",
       "default": "./dist/evidence-gate.js"
