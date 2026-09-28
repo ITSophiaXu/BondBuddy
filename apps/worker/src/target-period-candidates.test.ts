@@ -101,6 +101,8 @@ test('deduplicated equivalent period tokens retain per-record exact end anchors'
   assert.deepEqual(candidate.evidence.map(item => item.record_id), ['q2-month-token', 'q2-quarter-token']);
   assert.deepEqual(candidate.anchors.filter(anchor => anchor.kind === 'period_end').map(anchor => anchor.evidence.record_id).sort(),
     ['q2-month-token', 'q2-quarter-token']);
+  assert.ok(candidate.anchors.filter(anchor => anchor.kind === 'period_end')
+    .every(anchor => anchor.evidence.quote.includes(anchor.raw_period_token)), 'each period-end token belongs to its own evidence record');
   assert.ok(!candidate.anchors.some(anchor => anchor.kind === 'period_end' && anchor.evidence.record_id === 'q1-wrong-quarter'),
     'same-year Q1 evidence cannot anchor the deduplicated Q2 period');
   const q1 = equivalent.candidates.find(item => item.end === '2025-03-31');

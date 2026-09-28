@@ -207,7 +207,7 @@ export function validTargetPeriodCandidateSnapshot(value: unknown): value is Tar
       const sourceEvidence = evidence.get(evidenceKey(anchor))!;
       if (anchor.kind === 'period_end') {
         const candidateTokens = item.raw_value?.split('；') ?? [];
-        if (item.end === null || !candidateTokens.includes(anchor.raw_period_token) ||
+        if (item.end === null || !(candidateTokens.includes(anchor.raw_period_token) || anchor.raw_period_token === item.end) ||
             !sourceEvidence.quote.includes(anchor.raw_period_token)) return false;
       } else if ('raw_period_token' in anchor) return false;
     }

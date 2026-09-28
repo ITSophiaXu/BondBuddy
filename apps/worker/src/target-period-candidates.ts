@@ -60,10 +60,9 @@ export type TargetPeriodEvidenceRef = {
   readonly uncertainty: readonly string[];
 };
 
-export type TargetPeriodAnchor = {
-  readonly kind: 'table_header' | 'entity' | 'scope' | 'period_end';
-  readonly evidence: TargetPeriodEvidenceRef;
-};
+export type TargetPeriodAnchor =
+  | { readonly kind: 'table_header' | 'entity' | 'scope'; readonly evidence: TargetPeriodEvidenceRef }
+  | { readonly kind: 'period_end'; readonly evidence: TargetPeriodEvidenceRef; readonly raw_period_token: string };
 
 export type ProposedTargetPeriod = {
   readonly start: string | null;
@@ -318,12 +317,17 @@ function makeCandidate(source: PeriodSource, cutoff: string): ProposedTargetPeri
         recordIsFinancialHeader({ quote: item.quote, context: item.context, locator: item.locator })) anchors.push({ kind: 'table_header', evidence: item });
     if (recordMentionsEntity({ quote: item.quote, context: item.context })) anchors.push({ kind: 'entity', evidence: item });
     if (/合并|母公司|公司本部/.test(text)) anchors.push({ kind: 'scope', evidence: item });
-    const exactPeriodTokenMatchesQuote = sourceRawValue !== null && sourceRawValue.split('；')
-      .some(rawToken => rawToken.length > 0 && item.quote.includes(rawToken));
-    if (period.end !== null && (exactPeriodTokenMatchesQuote || item.quote.includes(period.end)))
-      anchors.push({ kind: 'period_end', evidence: item });
+    const matchedRawToken = sourceRawValue?.split('；').find(rawToken => rawToken.length > 0 && item.quote.includes(rawToken));
+    const periodEndToken = matchedRawToken ?? (period.end !== null && item.quote.includes(period.end) ? period.end : null);
+    if (period.end !== null && periodEndToken !== null)
+      anchors.push({ kind: 'period_end', evidence: item, raw_period_token: periodEndToken });
   }
-  const anchorKinds = new Set(anchors.map(anchor => anchor.kind));
+  const uniqueAnchors = [...new Map(anchors.sort((a, b) =>
+    a.kind.localeCompare(b.kind) || a.evidence.snapshot_id.localeCompare(b.evidence.snapshot_id) ||
+    a.evidence.record_id.localeCompare(b.evidence.record_id) ||
+    (a.kind === 'period_end' ? a.raw_period_token : '').localeCompare(b.kind === 'period_end' ? b.raw_period_token : ''))
+    .map(anchor => [`${anchor.kind}\0${anchor.evidence.snapshot_id}\0${anchor.evidence.record_id}`, anchor])).values()];
+  const anchorKinds = new Set(uniqueAnchors.map(anchor => anchor.kind));
   const reasons = new Set<string>();
   reasons.add('candidate_requires_reviewer_decision');
   for (const reason of period.uncertainty) reasons.add(reason);
@@ -340,7 +344,7 @@ function makeCandidate(source: PeriodSource, cutoff: string): ProposedTargetPeri
     start: period.start, end: period.end, period_kind: period.period_kind, scope: period.scope, raw_value: period.raw_value,
     status: 'needs_confirmation',
     cutoff_relation: period.end === null || !validDate(period.end) ? 'unknown' : period.end <= cutoff ? 'on_or_before' : 'after',
-    evidence, anchors: anchors.sort((a, b) => a.kind.localeCompare(b.kind) || a.evidence.record_id.localeCompare(b.evidence.record_id)),
+    evidence, anchors: uniqueAnchors,
     pending_reasons: [...reasons].sort(),
   };
 }
