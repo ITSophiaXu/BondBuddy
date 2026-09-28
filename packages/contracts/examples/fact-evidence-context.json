@@ -1,0 +1,58 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "fact-evidence-context-value-pinned",
+      "schema": "FactEvidenceContextResponse",
+      "valid": true,
+      "value": {
+        "evidence_context_set_id": "fact-evidence-context-synthetic-v1",
+        "owner_user_id": "owner-synthetic",
+        "project_id": "project-synthetic",
+        "candidate_id": "candidate-synthetic",
+        "evidence_set_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "completeness_status": "complete",
+        "reviewable": true,
+        "manifest": {
+          "schema_version": "fact-evidence-context-v1",
+          "owner_user_id": "owner-synthetic",
+          "project_id": "project-synthetic",
+          "candidate_id": "candidate-synthetic",
+          "input_revision": 1,
+          "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "candidate_identity_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "fact_identity": { "entity_id": "synthetic-issuer", "metric": "assets" },
+          "candidate_value": { "value_kind": "decimal", "value_decimal": "1200.5", "value_text": null },
+          "source_kind": "audited",
+          "candidate_status": "extracted",
+          "candidate_uncertainty": [],
+          "candidate_confidence": 0.97,
+          "material_id": "material-synthetic",
+          "material_version": 1,
+          "material_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "snapshot_id": "snapshot-synthetic",
+          "parser_version": "parser-synthetic-v1",
+          "parse_request_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "parse_response_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "parse_status": "parsed",
+          "original_warnings": [],
+          "selected_body": [
+            {
+              "record_id": "body-anchor-synthetic",
+              "content_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+              "locator_type": "docx_block",
+              "locator": { "stable_ref": "docx:p0001" },
+              "confidence": 0.97,
+              "uncertainty": []
+            }
+          ],
+          "auxiliary_targets": [],
+          "completeness_status": "complete",
+          "completeness_reasons": [],
+          "reviewable": true,
+          "evidence_set_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    }
+  ]
+}

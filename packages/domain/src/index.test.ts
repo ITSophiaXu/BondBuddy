@@ -113,7 +113,7 @@ test('impossible as-of calendar dates remain needs-evidence',async()=>{
   assert.deepEqual(result.reason_codes,['as_of_date_invalid']);
 });
 
-test('undated interpretation and internal method stay pending instead of becoming perpetual',async()=>{
+test('undated sources stay pending and internal methods require their approved window',async()=>{
   const draft=await validProductionDraft();
   draft.sources[0]={...draft.sources[0]!,kind:'official_interpretation',effective_from:null,effective_to:null,
     legal_effective_date_basis:'unknown'};
@@ -139,11 +139,19 @@ test('undated interpretation and internal method stay pending instead of becomin
   method.rules[0]!.enforcement='soft_check';
   method.rules[0]!.outputs.severity='warning';
   assert.equal(validateRulePack(method).ok,true,`business activation is stored separately from legal effectivity: ${JSON.stringify(validateRulePack(method))}`);
-  const methodPublished=publishRulePack(method,{channel:'test',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic pending-method evaluator fixture'});
-  methodPublished.release!.channel='production';
-  methodPublished.release!.content_hash=rulePackContentHash(methodPublished);
-  assert.equal(evaluateRulePackCapability(methodPublished,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-25'}).decision,'needs_evidence',
-    'a caller-supplied method window is not a signed production attestation');
+  let methodPublished=publishRulePack(method,{channel:'production',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic approved method window fixture'});
+  assert.equal(evaluateRulePackCapability(methodPublished,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-25'}).decision,'eligible_for_evaluation',
+    'domain evaluation checks the approved window; the PG writer separately verifies frozen manifest, evidence and authenticated attestations');
+  method.sources[0]!.approved_method_window!.enabled_until='2026-09-24';
+  methodPublished=publishRulePack(method,{channel:'production',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic approved method window fixture'});
+  assert.equal(evaluateRulePackCapability(methodPublished,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-25'}).decision,'capability_not_ready',
+    'an internal method is not selected after its approved window ends');
+
+  const missingFormal=await validProductionDraft();
+  missingFormal.sources[0]={...missingFormal.sources[0]!,kind:'formal_rule',effective_from:null,legal_effective_date_basis:'unknown',
+    effective_date_derivation_evidence:[]};
+  assert.throws(()=>publishRulePack(missingFormal,{channel:'production',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic formal-rule missing-date rejection'}),
+    /SOURCE_LEGAL_EFFECTIVE_DATE_MISSING|RULE_SOURCE_APPLICABILITY_NOT_APPROVED/);
 });
 
 test('legal effective date is independent of publication date unless publication commencement is the stated basis',async()=>{

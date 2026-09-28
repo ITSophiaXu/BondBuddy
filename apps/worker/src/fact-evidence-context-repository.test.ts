@@ -31,6 +31,7 @@ const binding = {
   ownerUserId: 'owner-1', projectId: 'project-1', candidateId: 'candidate-1', identityHash: 'd'.repeat(64),
   inputRevision: 7, inputHash: '8'.repeat(64),
   factIdentity: { entityId: 'entity:synthetic', metric: 'synthetic_metric', scope: 'consolidated' },
+  candidateValue: { value_kind: 'decimal' as const, value_decimal: '1200.5', value_text: null },
   candidateStatus: 'needs_confirmation' as const, candidateUncertainty: ['SYNTHETIC_REVIEW'], candidateConfidence: 0.42,
   sourceKind: 'external' as const, materialId: 'material-1', materialVersion: 1, sourceSha256: 'a'.repeat(64),
 };
@@ -66,6 +67,7 @@ test('a text-only snapshot with an exact body ref has a stable complete evidence
   assert.equal(manifest.candidate_status, 'needs_confirmation');
   assert.deepEqual(manifest.candidate_uncertainty, ['SYNTHETIC_REVIEW']);
   assert.equal(manifest.candidate_confidence, 0.42);
+  assert.deepEqual(manifest.candidate_value, { value_kind: 'decimal', value_decimal: '1200.5', value_text: null });
   assert.deepEqual(manifest.original_warnings, []);
   assert.equal(manifest.evidence_set_sha256.length, 64);
   assert.equal('decision' in manifest, false);
@@ -77,6 +79,14 @@ test('a text-only snapshot with an exact body ref has a stable complete evidence
     snapshot: { ...current, snapshotId: 'snapshot-v2-material', materialVersion: 2, contentSha256: '6'.repeat(64),
       responseSha256: '7'.repeat(64) }, selectedRecords: [body], auxiliaryTargets: [], docx: false });
   assert.notEqual(materialChanged.evidence_set_sha256, manifest.evidence_set_sha256);
+  const valueChanged = deriveFactEvidenceContextManifest({ ...binding,
+    candidateValue: { value_kind: 'decimal', value_decimal: '1200.6', value_text: null },
+    snapshot: current, selectedRecords: [body], auxiliaryTargets: [], docx: false });
+  assert.notEqual(valueChanged.evidence_set_sha256, manifest.evidence_set_sha256, 'candidate value is part of the evidence set identity');
+  const equivalentDecimal = deriveFactEvidenceContextManifest({ ...binding,
+    candidateValue: { value_kind: 'decimal', value_decimal: '1200.5000', value_text: null },
+    snapshot: current, selectedRecords: [body], auxiliaryTargets: [], docx: false });
+  assert.equal(equivalentDecimal.evidence_set_sha256, manifest.evidence_set_sha256, 'insignificant decimal zeros normalize before hashing');
 });
 
 test('an apparently resolved header relation remains unknown relative to selected body evidence', () => {

@@ -27,6 +27,7 @@ import { installPlatformProbeRoutes } from './platform-probe.js';
 import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, materialParseJobDto, readMaterialParseJob } from './material-jobs.js';
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
+import { installFactEvidenceReviewRoutes } from './fact-evidence-reviews.js';
 import { installCreditFacilitySupplementRoutes } from './credit-facility-supplements.js';
 import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-repository.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
@@ -244,6 +245,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/openapi.json', async () => openApiDocument());
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   installFactReviewRoutes(app,{db,owner});
+  installFactEvidenceReviewRoutes(app,{db,principal:async request=>({userId:await owner(request)})});
   installCreditFacilitySupplementRoutes(app,{db,owner});
   installIssuerAnnualProfileReviewRoutes(app,{db,owner});
   installProductionReviewLedgerRoutes(app,{db,actor:owner});

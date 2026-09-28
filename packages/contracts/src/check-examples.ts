@@ -44,6 +44,8 @@ const issuerReviewExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../e
 assert.equal(issuerReviewExamples.synthetic,true); data.cases.push(...issuerReviewExamples.cases);
 const issuerAnnualReviewExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/issuer-annual-profile-review.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(issuerAnnualReviewExamples.synthetic,true); data.cases.push(...issuerAnnualReviewExamples.cases);
+const factEvidenceContextExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/fact-evidence-context.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(factEvidenceContextExamples.synthetic,true); data.cases.push(...factEvidenceContextExamples.cases);
 const userReferenceReview = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/user-reference-review.json', import.meta.url)), 'utf8')) as {
   synthetic: boolean; snapshot: Parameters<typeof userReferenceParseReviewAccepted>[0];
   review: { confirmed_warning_codes: string[]; outline: unknown; signed_outline_sha256: string };
@@ -278,6 +280,14 @@ const value = (name: string) => {
   assert.ok(example, name);
   return example.value;
 };
+const valuePinnedContext = structuredClone(value('fact-evidence-context-value-pinned')) as Record<string, unknown>;
+const valuePinnedManifest = valuePinnedContext.manifest as Record<string, unknown>;
+const candidateValuePin = valuePinnedManifest.candidate_value as Record<string, unknown>;
+assert.equal(candidateValuePin.value_decimal, '1200.5');
+assert.equal(candidateValuePin.value_text, null);
+delete valuePinnedManifest.candidate_value;
+const validateFactEvidenceContext = ajv.compile(schemas.FactEvidenceContextResponse);
+assert.equal(validateFactEvidenceContext(valuePinnedContext), false, 'legacy evidence contexts without a candidate value pin are invalid DTOs');
 const before = value('run-before-tab-close');
 const after = value('run-after-relogin');
 assert.equal(before.run_id, after.run_id, 'new session must find same run');
