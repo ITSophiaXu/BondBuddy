@@ -50,6 +50,7 @@
 - Chris 负责浏览器 UI 和 API client；Felix 负责 API、任务基础设施、数据库迁移、部署和可观测性；Maxy 负责债券业务规则、市场/品种适用性与参考库验收；Xuefeng 负责抽取、OCR、事实处理、匹配和生成算法。详细边界见架构文档。
 - 所有 PR 都不需要 Felix review，不要在 PR 中请求或等待 Felix review。下文的“受影响负责人 review”只指 Chris、Maxy、Xuefeng 中受影响的人；只涉及 Felix 负责模块的 PR 无需额外 review。
 - 修改 `packages/contracts/`、`db/migrations/`、run 状态机或公共市场/规则枚举时，请受影响负责人 review。迁移只能新增，不能修改已部署的迁移。
+- 2026-09-29 用户决定（当前 M1 冲刺期间有效）：PR 自测通过即可**自行合并到 `develop`，无需等待他人 review**。该决定临时覆盖上一条关于受影响负责人 review 的要求。主 agent 与子 agent 同样适用。仍必须：合并前 `git fetch` 并 rebase 到最新 `develop`；测试（build / contracts / 相关测试，flock 相关用 Linux 容器）通过；不改变业务规则或公共枚举语义；迁移只新增；公共契约仍在 `packages/contracts/` 唯一定义。
 - 跨模块联调使用稳定 schema 样例和已获授权的样本材料，并标明合成数据。模拟模型响应或演示流程不能冒充真实供应商联调或专业验收。
 - 不向本业务仓库提交凭证、客户材料、本地运行目录或生成成果。部署密钥留在目标环境；下文指定的 `openclaw-vm` SSH 私钥另按私有 `muhualing/agent-config` 的人工恢复清单备份，不进入本仓库；可以复制到团队自有的开发与部署主机使用。
 
