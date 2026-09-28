@@ -112,7 +112,8 @@
     "rule-applicability:grants": "node dist/rule-applicability-reviewer-grants.js",
     "production-components:import": "node dist/production-component-import-cli.js",
     "production-review:grants": "node dist/production-review-grants-cli.js",
-    "target-period:grants": "node dist/target-period-evidence-decisions.js"
+    "target-period:grants": "node dist/target-period-evidence-decisions.js",
+    "fact-evidence:grants": "node dist/fact-evidence-reviews.js"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",
