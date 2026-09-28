@@ -88,6 +88,35 @@ test('cutoff only classifies extracted dates and never creates a reporting perio
   assert.ok(!wrongQuarter.candidates.some(item => item.end === cutoff), 'same year cannot make Q1 evidence support a June cutoff');
 });
 
+test('recognizes bounded visible XLSX financial header month ranges and excludes hidden-sheet periods', () => {
+  const xlsxCell = (id: string, sheet: string, cell: string, quote: string, sheetState = 'visible') => ({
+    ...nativeRecord(id, quote, `Worksheet ${sheet}`, { locator: { sheet, cell, stable_ref: `xlsx:${sheet}:${cell}` } }),
+    formatting: { sheet_state: sheetState },
+  });
+  const snapshot = nativeSnapshot([
+    xlsxCell('visible-current', '02合并利润表', 'B3', '2025年1-9月'),
+    xlsxCell('visible-comparison', '02合并利润表', 'E4', '2024年1-9月'),
+    xlsxCell('ordinary-date', '02合并利润表', 'A2', '2025年9月30日'),
+    xlsxCell('hidden-half-year', 'Sheet4', 'B3', '2022年1-6月财务报表报告期', 'hidden'),
+    xlsxCell('very-hidden-annual', 'Sheet3', 'B3', '2022年度财务报表报告期', 'veryHidden'),
+  ]);
+
+  const result = extract([snapshot], '2025-09-30');
+  assert.equal(result.status, 'needs_confirmation');
+  assert.equal(result.completeness, 'not_determined');
+  assert.deepEqual(result.candidates.map(item => [item.start, item.end, item.period_kind, item.scope]), [
+    ['2024-01-01', '2024-09-30', 'interim', 'consolidated'],
+    ['2025-01-01', '2025-09-30', 'interim', 'consolidated'],
+  ]);
+  assert.ok(result.candidates.every(item => item.status === 'needs_confirmation'));
+  const current = result.candidates.find(item => item.end === '2025-09-30');
+  assert.ok(current?.anchors.some(anchor => anchor.kind === 'period_end' && anchor.evidence.record_id === 'visible-current' &&
+    anchor.raw_period_token === '2025年1-9月'));
+  assert.ok(current?.anchors.some(anchor => anchor.kind === 'table_header' && anchor.evidence.record_id === 'visible-current'));
+  assert.ok(result.candidates.every(item => item.evidence.every(ref => ref.record_id !== 'hidden-half-year' &&
+    ref.record_id !== 'very-hidden-annual' && ref.record_id !== 'ordinary-date')));
+});
+
 test('deduplicated equivalent period tokens retain per-record exact end anchors', () => {
   const equivalent = extract([nativeSnapshot([
     nativeRecord('q2-quarter-token', '2025年第二季度', '财务报表报告期 合并口径'),

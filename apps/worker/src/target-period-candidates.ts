@@ -243,6 +243,10 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
     throw fail('TARGET_PERIOD_CANDIDATE_EVIDENCE_NOT_LOCKED');
   }
   if (snapshot.status === 'failed') return [];
+  const isXlsx = snapshot.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const recognitionRecords = isXlsx
+    ? snapshot.records.filter(item => item.formatting.sheet_state !== 'hidden' && item.formatting.sheet_state !== 'veryHidden')
+    : snapshot.records;
   const response: DocumentParseResponse = {
     schema_version: 'document-parse-response-v1', request_id: null, parser_version: snapshot.parser_version,
     // The recognition helper copies response-level warnings onto every period.
@@ -251,11 +255,11 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
     status: 'parsed',
     material: { material_id: snapshot.material_id, material_version: snapshot.material_version,
       media_type: snapshot.media_type, sha256: snapshot.material_sha256 },
-    records: snapshot.records.map(({ record_sha256: _hash, ...item }) => item),
+    records: recognitionRecords.map(({ record_sha256: _hash, ...item }) => item),
     warnings: snapshot.warnings.map(warning => ({ code: warning.code, message: warning.message })),
     document: { page_count: null }, error: null,
   };
-  const recognition = recognizeHistoricalNativeText(response, { profileVersion: 1 });
+  const recognition = recognizeHistoricalNativeText(response, { profileVersion: 1, allowXlsxFinancialMonthRanges: isXlsx });
   const recordsById = new Map(snapshot.records.map(item => [item.record_id, item]));
   return recognition.reporting_periods.map(period => {
     const evidence = period.provenance.evidence_refs.flatMap(id => {
