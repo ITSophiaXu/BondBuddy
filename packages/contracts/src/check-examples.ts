@@ -200,6 +200,15 @@ assert.equal(validProductionReviewAttestationBinding(pendingDimensionRequest, pe
 assert.equal(validProductionReviewAttestationBinding(industryRequest, pendingDimensionManifest), false, 'industry approve is forbidden while any applicability dimension needs review');
 assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, industryRequest), true, 'semantic baseline is schema-valid');
 assert.equal(validProductionReviewAttestationBinding(industryRequest, pinnedManifest), true, 'industry approval binds complete synthetic manifest');
+const pendingMethodManifest = structuredClone(pinnedManifest);
+const internalMethod = pendingMethodManifest.content.source_date_evidence.find(source => source.source_kind === 'internal_method');
+assert.ok(internalMethod, 'synthetic baseline includes an internal method with an approved window');
+internalMethod.approved_method_window = null;
+assert.equal(validProductionReviewManifestContent(pendingMethodManifest), true, 'unapproved method may remain in a pending manifest');
+const pendingMethodRequest = structuredClone(industryRequest);
+pendingMethodRequest.decision = 'request_more_evidence';
+assert.equal(validProductionReviewAttestationBinding(pendingMethodRequest, pendingMethodManifest), true, 'missing method approval may request more evidence');
+assert.equal(validProductionReviewAttestationBinding(industryRequest, pendingMethodManifest), false, 'industry approval rejects a missing internal-method approval window');
 const missingPolarityManifest = structuredClone(pinnedManifest);
 missingPolarityManifest.content.authorized_real_sample_evidence = missingPolarityManifest.content.authorized_real_sample_evidence
   .filter(sample => sample.polarity === 'positive');

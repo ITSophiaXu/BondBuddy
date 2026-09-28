@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { validProductionReviewAttestationBinding } from '@bondbuddy/contracts';
 import { productionReviewContentHash, productionReviewContentHashMatches } from './index.js';
 
 const examples = JSON.parse(readFileSync(new URL('../../contracts/examples/production-review-manifest.json', import.meta.url), 'utf8')) as {
@@ -10,10 +11,37 @@ const examples = JSON.parse(readFileSync(new URL('../../contracts/examples/produ
 assert.equal(examples.synthetic, true);
 const base = examples.cases.find(example => example.name === 'production-review-manifest-content-only-valid-synthetic')?.value;
 if (!base) throw new Error('missing synthetic review manifest fixture');
+const attestationExamples = JSON.parse(readFileSync(new URL('../../contracts/examples/production-review-attestation.json', import.meta.url), 'utf8')) as {
+  synthetic: boolean;
+  cases: Array<{ name: string; value: Record<string, any> }>;
+};
+assert.equal(attestationExamples.synthetic, true);
+const industryBase = attestationExamples.cases.find(example => example.name === 'production-attestation-industry-self-submission-valid-synthetic')?.value;
+if (!industryBase) throw new Error('missing synthetic industry attestation fixture');
 
 function copy(): Record<string, any> {
   return structuredClone(base!);
 }
+
+test('repinned pending internal method cannot be industry-approved', () => {
+  const approved = copy();
+  const approvedRequest = structuredClone(industryBase!);
+  assert.equal(productionReviewContentHashMatches(approved), true);
+  assert.equal(validProductionReviewAttestationBinding(approvedRequest as any, approved as any), true);
+
+  const pending = copy();
+  const method = pending.content.source_date_evidence.find((source: any) => source.source_kind === 'internal_method');
+  assert.ok(method);
+  method.approved_method_window = null;
+  pending.content_sha256 = productionReviewContentHash(pending);
+  const request = structuredClone(approvedRequest);
+  request.content_sha256 = pending.content_sha256;
+  assert.equal(productionReviewContentHashMatches(pending), true);
+  request.decision = 'request_more_evidence';
+  assert.equal(validProductionReviewAttestationBinding(request as any, pending as any), true);
+  request.decision = 'approve';
+  assert.equal(validProductionReviewAttestationBinding(request as any, pending as any), false);
+});
 
 test('review hash covers frozen content but not manifest or release identity', () => {
   const manifest = copy();
