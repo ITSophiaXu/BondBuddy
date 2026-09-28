@@ -460,14 +460,19 @@ function comparabilityReason(candidate: LibraryCandidateV1_1, targetProfile: Ann
     || facts.currency !== targetProfile.currency || facts.unit !== targetProfile.unit) {
     return 'candidate_comparability_mismatch';
   }
+  const proof = candidate.revenue_rank_proof;
+  if (!proof || proof.profile_id !== candidate.profile_id || proof.profile_version !== candidate.profile_version) {
+    return 'candidate_revenue_rank_proof_profile_mismatch';
+  }
+  if (!proof.sufficient || !proof.proof_hash || !proof.profile_hash) return 'candidate_revenue_rank_proof_missing_or_insufficient';
   return null;
 }
 
 /**
  * Applies the domain gates to the reduced internal library response. v1 remains fail-closed because
- * it omits comparability facts and mapping scopes. v1.1 validates those facts and scopes, but its
- * current attestation does not establish that the source profile covered every comparable revenue
- * line or resolved a third-place tie; that proof is required before an exact result can be locked.
+ * it omits comparability facts and mapping scopes. v1.1 validates those facts, the API's
+ * profile/version-bound full-revenue proof decision and exact mapping scopes. The lock transaction
+ * independently rechecks persisted proof sufficiency before it can create a lock.
  */
 export function matchLibraryQuery(input: {
   targetProfile: AnnualBusinessProfile;
@@ -511,6 +516,7 @@ export function matchLibraryQuery(input: {
     let reason: string | null = null;
     if (candidate.availability !== 'published' || !candidate.readable || !candidate.use_authorized || candidate.source_validity !== 'valid') {
       reason = 'reference_not_currently_published_and_authorized';
+      pendingComparison = true;
     } else if (candidate.top3_set_key !== targetSetKey) {
       reason = 'top_three_business_set_mismatch';
     } else if (candidate.taxonomy_version !== input.targetProfile.taxonomyVersion) {
@@ -539,12 +545,6 @@ export function matchLibraryQuery(input: {
       } else {
         reason = comparabilityReason(v11Candidate, input.targetProfile);
         if (reason) pendingComparison = true;
-        else {
-          // The current v1.1 review attestation binds comparability fields to a profile version but
-          // does not attest full-universe/top-three completeness or third-place tie resolution.
-          reason = 'candidate_business_profile_completeness_or_tie_proof_missing';
-          pendingComparison = true;
-        }
       }
     }
     if (reason) {
