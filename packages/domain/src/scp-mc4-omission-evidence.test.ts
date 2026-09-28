@@ -414,6 +414,60 @@ test('transition scheme cannot be established by user assertion or by quoting on
   assert.ok(unrelatedDisclosure.reasons.includes('funds_management_controls_transition_scheme_citation_not_relevant'));
 });
 
+test('transition scheme citation binds the missing item to its own affirmative disclosure clause', () => {
+  const cases = [
+    {
+      subject: 'funds_management_controls' as const,
+      quote: '本公司尚未提供资金运营内控制度过渡方案，已披露年度预算。',
+    },
+    {
+      subject: 'funds_management_controls' as const,
+      quote: '已披露内控评价报告，过渡方案尚未提供。',
+    },
+    {
+      subject: 'funds_management_controls' as const,
+      quote: '已披露短期资金调度应急预案过渡方案：过渡期间采取临时调度措施。',
+    },
+    {
+      subject: 'short_term_liquidity_plan' as const,
+      quote: '本公司尚未提供短期资金调度应急预案过渡方案，已披露年度预算。',
+    },
+    {
+      subject: 'short_term_liquidity_plan' as const,
+      quote: '已披露短期资金调度报告，过渡方案尚未提供。',
+    },
+    {
+      subject: 'funds_management_controls' as const,
+      quote: '已披露资金运营内控制度，过渡方案为临时审批控制。',
+    },
+  ];
+
+  for (const entry of cases) {
+    const controlsMissing = entry.subject === 'funds_management_controls';
+    const result = checkScpMc4OmissionEvidence(input({
+      fundsManagementControls: cited(controlsMissing ? 'missing' : 'included'),
+      shortTermLiquidityPlan: cited(controlsMissing ? 'included' : 'missing'),
+      fundsManagementControlsTransitionScheme: controlsMissing
+        ? transitionSchemeCited(entry.subject, 'public_market_record', entry.quote)
+        : transitionSchemeCited('funds_management_controls'),
+      shortTermLiquidityPlanTransitionScheme: controlsMissing
+        ? transitionSchemeCited('short_term_liquidity_plan')
+        : transitionSchemeCited(entry.subject, 'public_market_record', entry.quote),
+    }));
+    assert.equal(result.decision, 'needs_review', entry.quote);
+    const reason = controlsMissing
+      ? 'funds_management_controls_transition_scheme_citation_not_relevant'
+      : 'short_term_liquidity_plan_transition_scheme_citation_not_relevant';
+    assert.ok(result.reasons.includes(reason), entry.quote);
+  }
+
+  const positive = checkScpMc4OmissionEvidence(input({
+    fundsManagementControls: cited('missing'),
+    fundsManagementControlsTransitionScheme: transitionSchemeCited('funds_management_controls'),
+  }));
+  assert.equal(positive.decision, 'omission_candidate_needs_professional_review');
+});
+
 test('malformed transition-scheme evidence fails closed for the missing item only', () => {
   const evidence = input({
     fundsManagementControls: cited('missing'),
