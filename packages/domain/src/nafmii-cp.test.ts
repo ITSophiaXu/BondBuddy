@@ -41,6 +41,18 @@ test('CP product cases keep the one-year boundary distinct from SCP',()=>{
   assert.equal(nafmiiCpCoverageManifest.items.find(item=>item.item_id==='mtn-ppn-scp-dfi')?.disposition,'not_applicable');
 });
 
+test('CP proceeds-use change timing remains research-only and requires evidence of actual chronology',()=>{
+  const rule=nafmiiCpDraftRulePack.rules.find(item=>item.rule_id==='cp-funds-use-and-ongoing-disclosure');
+  assert.ok(rule);
+  assert.equal(rule.enabled,false);
+  assert.equal(rule.enforcement,'research_only');
+  assert.match(rule.exceptions.join(''),/无变更的项目不要求伪造事件日期/);
+  assert.match(rule.evidence_requirements.join(''),/如已发生用途变更/);
+  assert.match(rule.boundaries.join(''),/NA028第四条/);
+  assert.equal(nafmiiCpDraftRulePack.reviews.length,0);
+  assert.equal(nafmiiCpDraftRulePack.release,null);
+});
+
 test('CP draft cannot advertise capability or bypass unresolved coverage',()=>{
   const capability=evaluateRulePackCapability(nafmiiCpDraftRulePack,{market:'nafmii',offering:'cp',document_stage:'issuance',issuer_scope:'domestic-nonfinancial-enterprise-public',instrument:'standard-cp',investor_scope:'interbank-institutional',special_features:[],as_of:'2026-09-24'});
   assert.equal(capability.decision,'capability_not_ready');
