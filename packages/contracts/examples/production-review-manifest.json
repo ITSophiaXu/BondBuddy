@@ -7,7 +7,7 @@
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
-        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "content_sha256": "bc3abc428856dcbc6c5242cf9f7fc2f3c8f725e1adc68fcafce0d3b6a47d29b5",
         "content": {
           "contract_version": "production-review-content-v1",
           "hash_domain": "bondbuddy:production-review-content:v1",
@@ -24,7 +24,7 @@
           },
           "source_date_evidence": [
             {
-              "source_evidence_id": "a-source-synthetic", "source_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "source_evidence_id": "a-source-synthetic", "source_check_sha256": "6666666666666666666666666666666666666666666666666666666666666666", "source_document_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
               "source_kind": "binding_rule", "document_revision_date": null, "signed_date": null,
               "official_publication_date": "2026-03-23", "acquired_date": "2026-09-28", "legal_effective_date": "2026-03-23",
               "legal_expiry_date": null, "legal_effective_date_basis": "publication_commencement",
@@ -33,7 +33,7 @@
               "locators": [{ "kind": "official_url_and_article", "value": "https://example.invalid/synthetic#article-8" }]
             },
             {
-              "source_evidence_id": "z-method-synthetic", "source_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "source_evidence_id": "z-method-synthetic", "source_check_sha256": "7777777777777777777777777777777777777777777777777777777777777777", "source_document_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
               "source_kind": "internal_method", "document_revision_date": "2026-09-20", "signed_date": null,
               "official_publication_date": null, "acquired_date": "2026-09-28", "legal_effective_date": null, "legal_expiry_date": null,
               "legal_effective_date_basis": "not_legal_effectivity", "effective_date_derivation_evidence": [],
@@ -65,7 +65,7 @@
           "coverage_manifest": { "id": "coverage-synthetic", "version": "1", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
           "applicability_scope": { "market": "sse", "offering": "private", "instruments": ["bond"], "document_stages": ["issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": ["company"], "investor_scopes": ["professional"], "industry_codes": ["industry"], "special_feature_codes": [], "exceptions": [], "uncovered_items": [] },
           "source_date_evidence": [{
-            "source_evidence_id": "guidance-source", "source_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "source_evidence_id": "guidance-source", "source_check_sha256": "6666666666666666666666666666666666666666666666666666666666666666", "source_document_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "source_kind": "interpretive_guidance", "document_revision_date": "2026-01-01", "signed_date": null,
             "official_publication_date": "2026-01-02", "acquired_date": "2026-09-28", "legal_effective_date": "2026-01-02",
             "legal_expiry_date": null, "legal_effective_date_basis": "unknown", "effective_date_derivation_evidence": [],

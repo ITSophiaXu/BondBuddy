@@ -7,7 +7,7 @@ import {
   type RulePack,
 } from '@bondbuddy/domain';
 import type { ChapterTemplate, CoverageManifest } from '@bondbuddy/domain';
-import type { Market, Offering } from '@bondbuddy/contracts';
+import { validProductionReviewManifestContent, type Market, type Offering } from '@bondbuddy/contracts';
 
 export type ProductionRulePackRequest = {
   readonly market: Market;
@@ -117,6 +117,19 @@ function canonical(value: unknown): string {
 
 function snapshotHash(value: unknown): string {
   return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
+}
+
+/** V1 review hash uses the registry's existing canonical JSON algorithm. The
+ * domain/version labels live inside content; manifest identity, reviewer
+ * decisions and release events must not be part of this hash. */
+export function productionReviewContentHash(manifest: unknown): string {
+  if (!validProductionReviewManifestContent(manifest)) throw new Error('INVALID_PRODUCTION_REVIEW_MANIFEST');
+  return snapshotHash(manifest.content);
+}
+
+export function productionReviewContentHashMatches(manifest: unknown): boolean {
+  return validProductionReviewManifestContent(manifest)
+    && snapshotHash(manifest.content) === manifest.content_sha256;
 }
 
 function dateText(value: string | Date | null): string | null {

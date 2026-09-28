@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
 import { DOCUMENT_PURPOSES, MARKETS, MARKET_OFFERINGS, OFFERINGS } from './public-enums.js';
 
 const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
@@ -18,7 +19,8 @@ const sourceLocator = Type.Object({ kind: nonEmptyCode, value: Type.String({ min
 
 const sourceDateEvidence = Type.Object({
   source_evidence_id: id,
-  source_sha256: hash,
+  source_check_sha256: Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Hash of the immutable source-verification record, including the reviewed date semantics.' }),
+  source_document_sha256: Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Hash of the exact official source bytes or captured web snapshot; distinct from the verification record.' }),
   source_kind: Type.Union([
     Type.Literal('binding_rule'), Type.Literal('interpretive_guidance'),
     Type.Literal('template'), Type.Literal('internal_method'),
@@ -119,29 +121,32 @@ function validCalendarDate(value: string | null): boolean {
 
 /** Semantic checks that JSON Schema alone cannot express. Set-like reference arrays
  * must be strictly sorted and unique before hashing; locator arrays preserve source order. */
-export function validProductionReviewManifestContent(value: ProductionReviewManifest): boolean {
-  const scope = value.content.applicability_scope;
+export function validProductionReviewManifestContent(value: unknown): value is ProductionReviewManifest {
+  if (!Value.Check(ProductionReviewManifestSchema, value)) return false;
+  const manifest = value as ProductionReviewManifest;
+  const scope = manifest.content.applicability_scope;
   const offerings = MARKET_OFFERINGS[scope.market] as readonly string[];
   if (!offerings.includes(scope.offering)) return false;
   if (![scope.instruments, scope.issuer_scopes, scope.investor_scopes, scope.industry_codes, scope.special_feature_codes].every(sortedUnique)) return false;
   if (!scope.exceptions.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.exceptions[index - 1]!.code < item.code))) return false;
   if (!scope.uncovered_items.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.uncovered_items[index - 1]!.code < item.code))) return false;
-  if (!value.content.source_date_evidence.every((item, index) => index === 0 || value.content.source_date_evidence[index - 1]!.source_evidence_id < item.source_evidence_id)) return false;
-  if (!value.content.authorized_real_sample_evidence.every((item, index) => index === 0 || value.content.authorized_real_sample_evidence[index - 1]!.sample_evidence_id < item.sample_evidence_id)) return false;
-  const sourceIds = value.content.source_date_evidence.map(source => source.source_evidence_id);
-  const sampleIds = value.content.authorized_real_sample_evidence.map(sample => sample.sample_evidence_id);
+  if (!manifest.content.source_date_evidence.every((item, index) => index === 0 || manifest.content.source_date_evidence[index - 1]!.source_evidence_id < item.source_evidence_id)) return false;
+  if (!manifest.content.authorized_real_sample_evidence.every((item, index) => index === 0 || manifest.content.authorized_real_sample_evidence[index - 1]!.sample_evidence_id < item.sample_evidence_id)) return false;
+  const sourceIds = manifest.content.source_date_evidence.map(source => source.source_evidence_id);
+  const sampleIds = manifest.content.authorized_real_sample_evidence.map(sample => sample.sample_evidence_id);
   const knownEvidence = new Set([...sourceIds, ...sampleIds]);
   if (scope.exceptions.some(item => item.evidence_ids.some(id => !knownEvidence.has(id))) ||
       scope.uncovered_items.some(item => item.evidence_ids.some(id => !knownEvidence.has(id)))) return false;
-  const dates = [scope.applicable_from, scope.applicable_until, ...value.content.source_date_evidence.flatMap(source => [
+  const dates = [scope.applicable_from, scope.applicable_until, ...manifest.content.source_date_evidence.flatMap(source => [
     source.document_revision_date, source.signed_date, source.official_publication_date, source.acquired_date,
     source.legal_effective_date, source.legal_expiry_date, source.transition_from_date, source.transition_until_date,
     source.approved_method_window?.enabled_from ?? null, source.approved_method_window?.enabled_until ?? null,
   ])];
   if (dates.some(dateValue => !validCalendarDate(dateValue))) return false;
   if (scope.applicable_from && scope.applicable_until && scope.applicable_from > scope.applicable_until) return false;
-  for (const source of value.content.source_date_evidence) {
+  for (const source of manifest.content.source_date_evidence) {
     if (source.transition_from_date && source.transition_until_date && source.transition_from_date > source.transition_until_date) return false;
+    if ((source.transition_from_date || source.transition_until_date) && source.transition_evidence.length === 0) return false;
     if (source.legal_expiry_date && source.legal_effective_date && source.legal_expiry_date < source.legal_effective_date) return false;
     if (source.legal_effective_date_basis === 'publication_commencement') {
       if (source.source_kind !== 'binding_rule' || !source.official_publication_date ||
@@ -156,6 +161,7 @@ export function validProductionReviewManifestContent(value: ProductionReviewMani
     if (source.source_kind !== 'binding_rule' && source.legal_effective_date !== null) return false;
     if (source.source_kind === 'internal_method') {
       if (source.legal_effective_date_basis !== 'not_legal_effectivity' || source.approved_method_window === null) return false;
+      if (source.approved_method_window.enabled_until && source.approved_method_window.enabled_until < source.approved_method_window.enabled_from) return false;
     } else if (source.approved_method_window !== null) return false;
   }
   return true;
