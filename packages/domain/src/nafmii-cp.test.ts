@@ -48,9 +48,25 @@ test('CP proceeds-use change timing remains research-only and requires evidence 
   assert.equal(rule.enforcement,'research_only');
   assert.match(rule.exceptions.join(''),/无变更的项目不要求伪造事件日期/);
   assert.match(rule.evidence_requirements.join(''),/如已发生用途变更/);
-  assert.match(rule.boundaries.join(''),/NA028第四条/);
+  assert.deepEqual(rule.source_ref_ids,['nafmii-cp-guide-2021','nafmii-funds-use-procedure-2022','nafmii-public-forms-2020','nafmii-disclosure-rules-2023','nafmii-basic-tier-notice-2026']);
+  assert.match(rule.boundaries.join(''),/CP指引第四条/);
+  assert.match(rule.boundaries.join(''),/NA004第六条/);
+  assert.match(rule.boundaries.join(''),/第二十七条/);
+  assert.match(rule.boundaries.join(''),/第二十六条/);
+  assert.match(rule.boundaries.join(''),/至少于资金使用前5个工作日/);
   assert.equal(nafmiiCpDraftRulePack.reviews.length,0);
   assert.equal(nafmiiCpDraftRulePack.release,null);
+});
+
+test('CP funds-use procedure source is pinned and the misattribution counterexample is recorded',()=>{
+  const source=nafmiiCpDraftRulePack.sources.find(item=>item.source_id==='nafmii-funds-use-procedure-2022');
+  assert.ok(source);
+  assert.equal(source.document_hash,'c456615379afad6ccce41b5b5e1c338185e74572023d245da332c2e788dbfa0f');
+  assert.equal(source.effective_from,'2022-12-01');
+  const negative=nafmiiCpDraftRulePack.rules.find(item=>item.rule_id==='cp-funds-use-and-ongoing-disclosure')?.negative_examples.find(example=>example.example_id==='cp-funds-clause-negative');
+  assert.ok(negative);
+  assert.match(negative.summary,/第二十六条/);
+  assert.equal(negative.evidence_ref,'synthetic:cp-funds-clause-misattribution');
 });
 
 test('CP draft cannot advertise capability or bypass unresolved coverage',()=>{
