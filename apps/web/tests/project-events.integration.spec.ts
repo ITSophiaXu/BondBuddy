@@ -52,7 +52,7 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   await expect(reopened.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
     await reopened.goto(`/#/projects/${encodeURIComponent(projectId)}`);
     await expect(reopened.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
-    await expect(reopened.getByText('已从服务器恢复 1 份当前账号可访问的材料记录。')).toBeVisible();
+    await expect(reopened.getByText('已恢复 1 份材料。')).toBeVisible();
     await expect(reopened.locator('.persisted-material')).toContainText('real-api-recovery.pdf');
 
     const deletedStatus = await reopened.evaluate(async ({ projectId: id, materialId: mid }) => {
@@ -62,7 +62,7 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
     }, { projectId, materialId });
     expect(deletedStatus).toBe(204);
     await reopened.getByRole('button', { name: '刷新已保存材料' }).click();
-    await expect(reopened.getByText('材料事件中没有可恢复记录；重新选择本地文件不会代替服务器保存记录。')).toBeVisible();
+    await expect(reopened.getByText('尚未添加材料。')).toBeVisible();
     await expect(reopened.locator('.persisted-material')).toHaveCount(0);
   } finally {
     await reopenedContext.close();

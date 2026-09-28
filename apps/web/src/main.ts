@@ -24,6 +24,7 @@ import './update-form.css';
 import '../../../product-prototype/public/styles.css';
 import '../../../product-prototype/public/project-workspace.css';
 import './prototype-adapter.css';
+import './quarter-controls.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
@@ -320,7 +321,7 @@ function renderNew() {
     <form id="create-form" class="update-form"><div class="workspace-layout"><section class="panel form-panel form-card">${updateFormFields(value)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section>${supplementaryPanel(value)}</div></form>`, 'new');
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
-  bindUpdateForm(form, () => { newDirty = true; });
+  bindUpdateForm(form, () => { newDirty = true; }, value.update_details);
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     const value = readUpdateForm(form); value.name = value.name.trim();
@@ -357,9 +358,9 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         <div id="workspace-progress"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span>随时查看与补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">传输到 100% 后，仍需等待保存和校验。上传不会启动全文更新或扣除积分。文件可读取不代表页数齐全或财务数据准确；发现缺页、缺少附注或存疑数字时仍需补充确认。</p></section></details>
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section></details>
         <div id="execution-root"></div><details class="workspace-evidence"><summary>核对材料事实与来源冲突</summary><div id="fact-review-root"></div></details>
-        <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><span>已保存的材料与处理进度会保留</span></div>
+        <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
       </div></div>${supplementaryPanel(value, 'draft-form')}</div>`, 'workspace');
   const setStep = async (next: 'details' | 'materials') => {
     if (next === 'materials' && !await draft?.save()) return;
@@ -374,12 +375,12 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
   if (project.kind === 'update') {
     projectExecution = new ProjectExecution(api, draft);
-    projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!);
+    projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
   factReview = new FactReview(api, project.project_id);
   factReview.mount(document.querySelector<HTMLElement>('#fact-review-root')!);
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
-  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); materialProcessing?.setTarget({ market: value.market, offering: value.offering }); updateMaterialWorkspace(project.project_id); });
+  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); materialProcessing?.setTarget({ market: value.market, offering: value.offering }); updateMaterialWorkspace(project.project_id); }, value.update_details);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的输入，是否继续？')) return;
@@ -565,7 +566,12 @@ function syncProjectExecution(projectId: string) {
   if (currentRoute !== `/projects/${projectId}`) return;
   const unsettled = (localUploads.get(projectId) ?? []).some(upload => upload.phase !== 'persisted');
   const count = document.querySelector('#workspace-material-count'); if (count) count.textContent = `${confirmedMaterials(projectId).length} 份已保存材料`;
-  projectExecution?.sync(confirmedMaterials(projectId), recoveryStates.get(projectId)?.state === 'ready' && !unsettled);
+  const recovery = recoveryStates.get(projectId);
+  const pending = (localUploads.get(projectId) ?? []).find(upload => upload.phase !== 'persisted');
+  const message = recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
+    : pending ? `${pending.file.name}：${uploadStatus(pending)}`
+    : recovery?.state !== 'ready' ? '正在读取已保存材料…' : '';
+  projectExecution?.sync(confirmedMaterials(projectId), recovery?.state === 'ready' && !unsettled, message);
 }
 
 function updateMaterialWorkspace(projectId: string) {
@@ -605,17 +611,17 @@ function updateMaterialWorkspace(projectId: string) {
   const status = document.querySelector<HTMLElement>('#material-recovery-status');
   if (!status || currentRoute !== `/projects/${projectId}`) return;
   const state = recoveryStates.get(projectId);
-  if (state?.state === 'loading') status.textContent = '正在从服务器读取此项目已保存的材料记录…';
-  else if (state?.state === 'unavailable') status.textContent = state.message ?? '暂时无法恢复已保存材料；当前页面不会把本地文件选择当作服务器保存记录。';
+  if (state?.state === 'loading') status.textContent = '正在读取已保存材料…';
+  else if (state?.state === 'unavailable') status.textContent = state.message ?? '材料记录读取失败，请刷新重试。';
   else {
     const savedIds = new Set((recoveredMaterials.get(projectId) ?? []).map(material => material.material_id));
     const count = savedIds.size;
     const sessionCount = new Set((localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.material && !savedIds.has(upload.material.material_id)).map(upload => upload.material!.material_id)).size;
     status.textContent = count
-      ? `已从服务器恢复 ${count} 份当前账号可访问的材料记录。${sessionCount ? `本次会话另有 ${sessionCount} 份材料已获服务端保存确认。` : ''}`
+      ? `已恢复 ${count} 份材料。${sessionCount ? `本次会话另有 ${sessionCount} 份材料已获服务端保存确认。` : ''}`
       : sessionCount
-        ? `本次会话中 ${sessionCount} 份材料已获服务端保存确认；材料事件暂未列出其他可恢复记录。`
-        : '材料事件中没有可恢复记录；重新选择本地文件不会代替服务器保存记录。';
+        ? `已保存 ${sessionCount} 份材料。`
+        : '尚未添加材料。';
     const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.session && upload.material?.upload_id !== upload.session.upload_id).length;
     if (reused) status.textContent += ` 本次 ${reused} 份重复上传已复用原材料版本。`;
   }

@@ -1,0 +1,136 @@
+import { expect, test, type Page } from '@playwright/test';
+import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
+import { Value } from '@sinclair/typebox/value';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import type { Dto } from '../src/api';
+
+// Synthetic HTTP boundary; no model, database, OCR or document acceptance.
+const now='2026-09-28T03:00:00Z', id='synthetic-quarter-project';
+const periods: NonNullable<Dto<'ProjectResponse'>['update_details']>['target_reporting_periods'] = [
+  {start:'2024-01-01',end:'2024-12-31',period_kind:'annual',scope:'consolidated',status:'user_asserted',evidence_refs:[]},
+  {start:null,end:'2025-06-30',period_kind:'interim',scope:null,status:'needs_confirmation',evidence_refs:[]}
+];
+function fixture() {
+  return {
+    project: {project_id:id,name:'合成设计验收 · 募集书更新',issuer_name:'合成发行人有限公司',kind:'update',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:now,
+      update_details:{...emptyUpdateDetails(),reporting_cutoff:'2024-12-31',has_historical:true,target_reporting_periods:structuredClone(periods)}} as Dto<'ProjectResponse'>,
+    materials: [] as Dto<'MaterialResponse'>[], snapshot: undefined as Dto<'InputRevisionResponse'> | undefined, run: undefined as Dto<'RunResponse'> | undefined,
+    calls: [] as {path:string;method:string;body?:any}[], holdSave:false, releaseSave:undefined as (()=>void)|undefined, materialReadFails:false, preflightOff:false
+  };
+}
+async function install(page:Page,state=fixture()) {
+  let upload: Dto<'UploadCreateRequest'>;
+  await page.route('**/api/v1/**',async route=>{
+    const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1',''),method=request.method();
+    const body=method==='POST'||method==='PATCH'?request.postDataJSON():undefined;
+    state.calls.push({path,method,body});
+    let result:unknown={},status=200;
+    if(path==='/me')result={user_id:'synthetic-owner',session_status:'active'};
+    else if(path==='/projects') {
+      if(method==='POST'){expect(Value.Check(schemas.ProjectCreateRequest,body)).toBe(true);state.project={...state.project,...body};status=201;result=state.project;}
+      else result={items:[{...state.project,latest_run:state.run?{run_id:state.run.run_id,state:state.run.state,updated_at:now}:null}],page:{next_cursor:null,has_more:false}};
+    } else if(path===`/projects/${id}`) {
+      if(method==='PATCH'){expect(Value.Check(schemas.ProjectPatchRequest,body)).toBe(true);state.project={...state.project,...body,draft_revision:state.project.draft_revision+1};}
+      result=state.project;
+    } else if(path===`/projects/${id}/events`) {
+      if(state.materialReadFails){status=503;result={code:'DATA_UNAVAILABLE'};}
+      else result={items:state.materials.map((m,i)=>({event_id:`event-${i}`,schema_version:1,trace_id:'trace',project_id:id,seq:i+1,occurred_at:now,type:'material.upload_progress',payload:{material_id:m.material_id}})),next_cursor:null};
+    } else if(path===`/projects/${id}/materials/uploads`) {
+      upload=body;result={upload_id:'upload-1',state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/upload-1/bytes`,expires_at:now,max_bytes:100*1024*1024};status=201;
+    } else if(path.endsWith('/bytes')){await route.fulfill({status:204});return;}
+    else if(path.endsWith('/complete')) {
+      if(state.holdSave)await new Promise<void>(resolve=>{state.releaseSave=resolve;});
+      const material:Dto<'MaterialResponse'>={material_id:'material-1',material_version:1,upload_id:'upload-1',role:upload.role,filename:upload.filename,media_type:upload.media_type,byte_size:upload.byte_size,sha256:upload.sha256,state:'persisted',persisted_at:now,error:null};
+      state.materials=[material];result=material;
+    } else if(path===`/projects/${id}/materials/material-1`)result=state.materials[0];
+    else if(path===`/projects/${id}/input-revisions`) {
+      expect(Value.Check(schemas.InputRevisionCreateRequest,body)).toBe(true);
+      const revision=(state.project.input_revision??0)+1,hash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
+      state.snapshot={project_id:id,input_revision:revision,input_hash:hash,material_versions:body.material_versions,target_confirmation:{status:'unconfirmed',market:null,offering:null,document_purpose:null,as_of:null,target_reporting_periods:[],confirmed_by:null,confirmed_at:null},rule_pack_version:null,template_version:null,reference_release:null,created_at:now};
+      state.project.input_revision=revision;state.project.input_hash=hash;result=state.snapshot;status=201;
+    } else if(path.includes('/input-revisions/'))result=state.snapshot;
+    else if(path.endsWith('/preflight')){status=state.preflightOff?501:200;result=state.preflightOff?{code:'CAPABILITY_NOT_READY'}:{project_id:id,...body,status:'ready',missing_inputs:[],uncertainty:[],billing_mode:'platform_trial'};}
+    else if(path==='/runs/execute') {
+      state.run={run_id:'run-1',execution_request_id:body.execution_request_id,project_id:id,input_revision:body.input_revision,input_hash:body.input_hash,state:'queued',stage:'queued',event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:null,prompt_snapshot_ref:null,channel:'production',test_grant_id:null,uncovered_items:[],updated_at:now};result=state.run;status=202;
+    } else if(path==='/runs/run-1')result=state.run;
+    else if(path==='/runs/run-1/events')result={items:[],next_cursor:null};
+    else {status=404;result={code:'NOT_FOUND'};}
+    await route.fulfill({status,contentType:'application/json',body:JSON.stringify(result)});
+  });
+  return state;
+}
+async function capture(page:Page,name:string) {
+  await page.evaluate(()=>{document.activeElement instanceof HTMLElement&&document.activeElement.blur();scrollTo(0,0);});
+  await page.screenshot({path:join(tmpdir(),`bb370-${name}.png`),fullPage:true});
+}
+async function addFile(page:Page){await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'synthetic-audit.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic UI fixture')});}
+
+test('quarter selection -> create -> upload -> original footer action -> refresh recovery',async({page})=>{
+  const state=await install(page); await page.goto('/#update');
+  await page.setViewportSize({width:1440,height:960});
+  await expect(page.locator('#create-form input[type=date]')).toHaveCount(0);
+  await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');await page.getByLabel('发行人全称').fill('合成发行人有限公司');
+  await page.getByRole('radio',{name:'有',exact:true}).check();await page.getByLabel('发行市场',{exact:true}).selectOption('sse');await page.getByLabel('发行方式',{exact:true}).selectOption('private');
+  await page.getByLabel('财务截止年份').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();
+  await capture(page,'create-desktop');
+  await page.setViewportSize({width:390,height:844});await capture(page,'create-mobile');
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+  await expect(page.locator('#start-disabled-reason')).toContainText('请先添加');
+  expect(state.project.update_details!.reporting_cutoff).toBe('2026-06-30');
+  expect(state.project.update_details!.target_reporting_periods??[]).toEqual([]);
+  await expect(page.locator('#execution-setup, #target-reporting-period-rows')).toHaveCount(0);
+  await expect(page.getByText('准备好，开始更新',{exact:true})).toHaveCount(0);
+  await expect(page.locator('#execution-actions input, #execution-actions select')).toHaveCount(0);
+  await expect(page.locator('#upload-policy-note')).toHaveText('数据保存与删除说明');
+  await addFile(page);await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
+  await page.setViewportSize({width:1440,height:960});await capture(page,'materials-desktop');
+  await page.setViewportSize({width:390,height:844});await capture(page,'materials-mobile');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+  const button=page.locator('#execute-input');expect(await button.evaluate(el=>Boolean(el.closest('.form-footer')))).toBe(true);
+  await button.click();await expect(page.locator('#execution-progress')).toContainText('排队中');
+  expect(state.calls.filter(c=>c.path==='/runs/execute')).toHaveLength(1);
+  expect(state.calls.find(c=>c.path.endsWith('/input-revisions')&&c.method==='POST')!.body).not.toHaveProperty('target_confirmation');
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('排队中');
+  await expect(page.locator('#start-disabled-reason')).toContainText('已有任务');
+  await page.getByRole('button',{name:'编辑项目信息'}).click();
+  await expect(page.getByLabel('财务截止年份')).toHaveValue('2026');await expect(page.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
+  expect(state.calls.filter(c=>c.path==='/runs/execute')).toHaveLength(1);
+});
+
+test('all quarter ends and year changes preserve existing periods, uncertainty and old non-quarter dates',async({page})=>{
+  const state=fixture();state.project.update_details!.reporting_cutoff='2024-04-20';await install(page,state);await page.goto(`/#/projects/${id}?step=details`);
+  await expect(page.locator('#legacy-cutoff')).toContainText('2024-04-20');await expect(page.locator('[name=reporting_quarter]:checked')).toHaveCount(0);
+  await page.getByLabel('补充说明与写作要求').fill('补充说明，不修改旧日期或期间。');
+  await expect(page.locator('#save-state')).toHaveText('已保存');expect(state.project.update_details!.reporting_cutoff).toBe('2024-04-20');
+  await page.getByLabel('财务截止年份').selectOption('2025');
+  for(const [label,date] of [['3月末','03-31'],['6月末','06-30'],['9月末','09-30'],['年末','12-31']]) {
+    await page.getByRole('radio',{name:label,exact:true}).check();await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe(`2025-${date}`);
+    expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
+  }
+  await page.getByLabel('财务截止年份').selectOption('2026');await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe('2026-12-31');
+  await page.reload();await expect(page.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
+  await expect(page.locator('#target-reporting-period-rows, [data-remove-target-period]')).toHaveCount(0);
+  expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
+  for(const call of state.calls.filter(c=>c.method==='PATCH'))expect(call.body.update_details.target_reporting_periods).toEqual(periods);
+});
+
+test('disabled reason follows actual upload/save state; capability-off only appears after API rejection',async({page})=>{
+  const state=await install(page);state.preflightOff=true;await page.goto(`/#/projects/${id}`);
+  await expect(page.locator('#start-disabled-reason')).toContainText('请先添加');await expect(page.locator('#execute-input')).toBeDisabled();
+  await expect(page.locator('#execution-message')).toBeEmpty();expect(state.calls.some(c=>c.path.endsWith('/preflight'))).toBe(false);
+  state.holdSave=true;await addFile(page);await expect.poll(()=>Boolean(state.releaseSave)).toBe(true);
+  await expect(page.locator('#start-disabled-reason')).toContainText('synthetic-audit.pdf');await expect(page.locator('#start-disabled-reason')).toContainText('保存');
+  await expect(page.locator('#execute-input')).toBeDisabled();state.releaseSave!();
+  await expect(page.locator('#execute-input')).toBeEnabled();await expect(page.locator('#start-disabled-reason')).toBeEmpty();
+  await page.locator('#execute-input').click();await expect(page.locator('#execution-message')).toContainText('当前环境尚未开放全文更新');
+  expect(state.calls.some(c=>c.path==='/runs/execute')).toBe(false);
+});
+
+test('failed material reads give a retry reason that clears on successful recovery',async({page})=>{
+  const state=fixture();state.materialReadFails=true;await install(page,state);await page.goto(`/#/projects/${id}`);
+  await expect(page.locator('#start-disabled-reason')).toContainText('材料记录读取失败');await expect(page.locator('#execute-input')).toBeDisabled();
+  state.materialReadFails=false;await page.getByRole('button',{name:'刷新已保存材料',exact:true}).click();
+  await expect(page.locator('#start-disabled-reason')).toContainText('请先添加');await expect(page.locator('#start-disabled-reason')).not.toContainText('读取失败');
+});
