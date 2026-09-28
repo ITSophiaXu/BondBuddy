@@ -118,6 +118,34 @@ test('recognizes bounded visible XLSX financial header month ranges and excludes
     ref.record_id !== 'very-hidden-annual' && ref.record_id !== 'unknown-visibility' && ref.record_id !== 'ordinary-date')));
 });
 
+test('recognizes visible XLSX year-end period headers and rejects incidental, hidden, or unknown dates', () => {
+  const xlsxCell = (id: string, sheet: string, cell: string, quote: string, sheetState = 'visible') => ({
+    ...nativeRecord(id, quote, `Worksheet ${sheet}`, { locator: { sheet, cell, stable_ref: `xlsx:${sheet}:${cell}` } }),
+    locator_type: 'xlsx_cell' as const,
+    formatting: { sheet_state: sheetState },
+  });
+  const result = extract([nativeSnapshot([
+    xlsxCell('visible-balance-periods', '合并资产负债表', 'C2', '期间：2023年12月31日、2022年12月31日'),
+    xlsxCell('visible-income-periods', '合并利润表', 'C2', '期间：2023年度、2022年度'),
+    xlsxCell('incidental-date', '合并资产负债表', 'A10', '截止日期：2021年12月31日'),
+    xlsxCell('hidden-periods', '合并利润表', 'C2', '期间：2021年12月31日', 'hidden'),
+    xlsxCell('unknown-periods', '合并现金流量表', 'C2', '期间：2020年12月31日', 'unknown'),
+    xlsxCell('non-statement-date', '附表', 'C2', '期间：2019年12月31日'),
+  ])], '2023-12-31');
+
+  assert.deepEqual(result.candidates.map(item => [item.start, item.end, item.period_kind, item.scope]), [
+    ['2022-01-01', '2022-12-31', 'annual', 'consolidated'],
+    ['2023-01-01', '2023-12-31', 'annual', 'consolidated'],
+  ]);
+  assert.ok(result.candidates.every(item => item.status === 'needs_confirmation'));
+  const yearEnd = result.candidates.find(item => item.end === '2023-12-31');
+  assert.ok(yearEnd?.anchors.some(anchor => anchor.kind === 'period_end' && anchor.evidence.record_id === 'visible-balance-periods' &&
+    anchor.evidence.quote === '期间：2023年12月31日、2022年12月31日' && anchor.raw_period_token === '2023年12月31日'));
+  assert.ok(result.candidates.every(item => item.evidence.every(ref => ![
+    'incidental-date', 'hidden-periods', 'unknown-periods', 'non-statement-date',
+  ].includes(ref.record_id))));
+});
+
 test('deduplicated equivalent period tokens retain per-record exact end anchors', () => {
   const equivalent = extract([nativeSnapshot([
     nativeRecord('q2-quarter-token', '2025年第二季度', '财务报表报告期 合并口径'),

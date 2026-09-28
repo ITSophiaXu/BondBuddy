@@ -190,7 +190,16 @@ function reportingPeriodMatches(record: DocumentParseRecord, options: { allowXls
     typeof record.locator.sheet === 'string' && /(?:资产负债表|利润表|现金流量表)/.test(record.locator.sheet) &&
     typeof record.locator.cell === 'string' && Number(/[1-9][0-9]*$/.exec(record.locator.cell)?.[0] ?? Number.NaN) <= 6 &&
     /20\d{2}\s*年\s*\d{1,2}\s*[-—–至到]\s*\d{1,2}\s*月/.test(text);
-  if (hasSigningOrIssueDate || (!explicitPeriod && !annualHeaderInContext && !halfYearLabelInFinancialSection && !xlsxFinancialHeaderMonthRange)) return [];
+  // Some workbooks use explicit year-end dates in their top financial statement
+  // period row instead of “年度”. Keep this narrow to visible statement headers;
+  // a cutoff date or an incidental date elsewhere in a workbook is not a period.
+  const xlsxFinancialHeaderAnnualDates = options.allowXlsxFinancialMonthRanges === true &&
+    record.locator_type === 'xlsx_cell' && record.formatting.sheet_state === 'visible' &&
+    typeof record.locator.sheet === 'string' && /(?:资产负债表|利润表|现金流量表)/.test(record.locator.sheet) &&
+    typeof record.locator.cell === 'string' && Number(/[1-9][0-9]*$/.exec(record.locator.cell)?.[0] ?? Number.NaN) <= 6 &&
+    /期间\s*[:：]/.test(text) && /20\d{2}\s*年\s*(?:12\s*月\s*31\s*日|度)/.test(text);
+  if (hasSigningOrIssueDate || (!explicitPeriod && !annualHeaderInContext && !halfYearLabelInFinancialSection &&
+      !xlsxFinancialHeaderMonthRange && !xlsxFinancialHeaderAnnualDates)) return [];
   const periodRecords: ReportingPeriod[] = [];
   const scopeText = normalize(allText(record));
   const hasParentScope = /母公司|公司本部/.test(scopeText);
@@ -263,7 +272,18 @@ function reportingPeriodMatches(record: DocumentParseRecord, options: { allowXls
   // Financial table headers often list one annual column per record instead
   // of spelling a range. Require an annual/report-period marker, so a cover
   // year or an ordinary date is not treated as a reporting period.
-  if (/年度|年报|报告期/.test(compact) || annualHeaderInContext) {
+  if (/年度|年报|报告期/.test(compact) || annualHeaderInContext || xlsxFinancialHeaderAnnualDates) {
+    if (xlsxFinancialHeaderAnnualDates) {
+      for (const match of text.matchAll(/(20\d{2})\s*年\s*12\s*月\s*31\s*日/g)) {
+        const year = Number(match[1]);
+        if (periodRecords.some(period => period.start === `${year}-01-01` && period.end === `${year}-12-31`)) continue;
+        periodRecords.push({
+          start: `${year}-01-01`, end: `${year}-12-31`, period_kind: 'annual', scope,
+          raw_value: match[0], provenance, uncertainty: [...uncertainty],
+          status: uncertainty.length || scope === null ? 'needs_confirmation' : 'recognized',
+        });
+      }
+    }
     for (const match of text.matchAll(/(20\d{2})\s*年(?:度)?/g)) {
       const year = Number(match[1]);
       const atYear = text.slice(match.index);
