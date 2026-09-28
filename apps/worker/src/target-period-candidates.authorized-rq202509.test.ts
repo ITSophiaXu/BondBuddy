@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { canonicalTargetPeriodCandidateSnapshotContent, validTargetPeriodCandidateSnapshot } from '@bondbuddy/contracts';
@@ -47,9 +47,8 @@ const sha256 = (value: string | Uint8Array) => createHash('sha256').update(value
 test('authorized rq-202509 interim XLSX yields only traceable pending target-period candidates', {
   skip: optedIn ? false : 'set BB_RUN_AUTHORIZED_RQ202509_TARGET_PERIOD_CANDIDATES=1 to parse the authorized XLSX locally',
 }, async () => {
-  // Known red regression: native recognition currently misses the visible 2025 statement headers
-  // and lets old hidden-sheet periods enter the proposal set. Keep this authorized-sample check
-  // opt-in; do not turn those hidden candidates into expected behavior or synthesize period rows.
+  // Guard visible financial headers and exclusion of hidden auxiliary periods.
+  // Keep this authorized-sample check opt-in; never synthesize rows to satisfy it.
   const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as Manifest;
   const registered = manifest.cases.find(item => item.case_id === 'rq-202509')?.files.find(item => item.file_id === FILE_ID);
   assert.ok(registered, 'the test source must be registered in the authorized sample manifest');
@@ -59,7 +58,10 @@ test('authorized rq-202509 interim XLSX yields only traceable pending target-per
     'the registered workbook contains hidden auxiliary worksheets');
 
   const sourcePath = resolve(sampleRoot, registered.path);
-  assert.ok(sourcePath.startsWith(`${resolve(sampleRoot)}/`), 'manifest source path stays inside the authorized sample directory');
+  const relativeSource = relative(resolve(sampleRoot), sourcePath);
+  assert.ok(relativeSource.length > 0 && relativeSource !== '..' &&
+    !relativeSource.startsWith(`..${sep}`) && !isAbsolute(relativeSource),
+  'manifest source path stays inside the authorized sample directory on Windows and POSIX');
   const sourceBytes = await readFile(sourcePath);
   assert.deepEqual([sourceBytes.byteLength, sha256(sourceBytes)], [EXPECTED_BYTES, EXPECTED_SHA256],
     'source bytes match the registered size and SHA-256 before parsing');
