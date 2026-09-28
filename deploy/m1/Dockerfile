@@ -16,6 +16,8 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY apps apps
+# apps/web/src/main.ts imports the prototype stylesheets as the layout baseline (#361).
+COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
 COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
 RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
