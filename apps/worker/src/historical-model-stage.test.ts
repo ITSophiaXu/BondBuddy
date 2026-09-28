@@ -193,6 +193,66 @@ test('authorized pending baseline reaches planning, freezes exact policy/profile
   }
 });
 
+test('authorized pending native source candidate reaches a non-production draft without profile promotion', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    const s = fixture(true);
+    s.profile.recognition.state = 'needs_confirmation';
+    s.profile.recognition.source_market.status = 'needs_confirmation';
+    s.profile.recognition.source_market.uncertainty = ['原文候选待确认'];
+    const sourceProfile = structuredClone(s.profile.recognition);
+    const outcome = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(outcome.kind, 'done'); if (outcome.kind !== 'done') return;
+    const plan = outcome.value as HistoricalGenerationPlan;
+    assert.equal(plan.replacements.length, 3);
+    assert.deepEqual(plan.sourceProfile, sourceProfile, 'the machine candidate remains needs_confirmation');
+    const pending = plan.findings.find(f => f.code === 'UPDATE_PROFILE_CANDIDATE_PENDING');
+    assert.ok(pending?.recordIds.includes('p1'));
+    assert.ok(plan.reviewNotes.some(note => note.recordId === 'p1' && /待确认机器候选/.test(note.message)));
+    assert.equal(plan.status, 'needs_confirmation');
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
+
+test('pending candidate conflicts, mixed provenance and source/target mismatch remain non-production global blockers', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    for (const change of ['conflict', 'english_conflict', 'scope_conflict', 'mixed_provenance', 'structure'] as const) {
+      const s = fixture(true); let calls = 0;
+      s.profile.recognition.state = 'needs_confirmation';
+      s.profile.recognition.source_market.status = 'needs_confirmation';
+      s.profile.recognition.source_market.uncertainty = [change === 'conflict' ? '多个相互冲突的明确候选，需人工确认' :
+        change === 'english_conflict' ? 'ambiguous market candidates' : '原文候选待确认'];
+      if (change === 'scope_conflict') s.profile.recognition.reporting_periods[0]!.uncertainty = ['同一期间出现不同报表口径'];
+      if (change === 'scope_conflict') s.profile.recognition.reporting_periods[0]!.status = 'needs_confirmation';
+      if (change === 'mixed_provenance') s.profile.recognition.source_offering.provenance.method = 'user_correction';
+      if (change === 'structure') s.profile.recognition.source_market.value = 'szse';
+      s.options.model = () => { calls++; throw new Error('blocked source profile must not reach model'); };
+      assert.notEqual((await historicalModelGenerationStage(s.options).run(s.ctx)).kind, 'done', change);
+      assert.equal(calls, 0, change);
+    }
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
+
+test('production run does not inherit the authorized pending-candidate draft exception', async () => {
+  const s = fixture(false); let calls = 0;
+  s.profile.recognition.state = 'needs_confirmation';
+  s.profile.recognition.source_market.status = 'needs_confirmation';
+  s.profile.recognition.source_market.uncertainty = ['原文候选待确认'];
+  s.options.model = () => { calls++; throw new Error('production pending profile must not reach model'); };
+  assert.equal((await historicalModelGenerationStage(s.options).run(s.ctx)).kind, 'pause');
+  assert.equal(calls, 0);
+});
+
 test('production, unsafe or incomplete auxiliary evidence and corrected parser mismatch never reach the provider', async () => {
   const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
   process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';

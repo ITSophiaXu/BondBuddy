@@ -769,6 +769,8 @@ export function logArchiveOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): 
     return undefined;
   }
   const localBudget = Number(env.BB_LOG_ARCHIVE_LOCAL_MAX_BYTES ?? 256 * 1024 * 1024);
+  // The lifecycle verifier bounds one segment in memory while checking mixed-user rows.
+  if (ndjsonSizeCapFromEnv(env) > 64 * 1024 * 1024) throw new Error('Archive segment cap must be at most 64 MiB');
   if (!Number.isSafeInteger(localBudget) || localBudget < ndjsonSizeCapFromEnv(env) * 2 || localBudget > 4 * 1024 ** 3 ||
     !env.DATABASE_URL || !env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Invalid log archive configuration');
   return { localBudget };
@@ -936,7 +938,11 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
       await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: 'orphan_prompt_snapshot' } });
     }
   }
-  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed };
+  const { purgeBrowserErrorContent } = await import('./browser-errors.js');
+  let browserPurged = 0;
+  for (const owner of policy.ownerScope ?? [undefined])
+    browserPurged += await purgeBrowserErrorContent(pool, policy.contentRetentionDays, now, owner);
+  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed, browserPurged };
 }
 
 // ---------------------------------------------------------------- operator access
@@ -953,7 +959,7 @@ export async function grantOperator(pool: Pool, input: { userId: string; role: O
 export async function revokeOperator(pool: Pool, userId: string, role: OperatorRole) {
   await pool.query('UPDATE bb_operator_grants SET revoked_at=now() WHERE user_id=$1 AND role=$2 AND revoked_at IS NULL', [userId, role]);
 }
-async function audit(client: PoolClient, input: { actorId: string; role: OperatorRole; owner?: string | null; purpose: string; filter: unknown; target?: string; reason?: string }) {
+export async function audit(client: PoolClient, input: { actorId: string; role: OperatorRole; owner?: string | null; purpose: string; filter: unknown; target?: string; reason?: string }) {
   const id = uid();
   await client.query('INSERT INTO bb_log_access_audit(id,actor_id,owner_user_id,purpose,filter_hash,actor_role,target_ref,reason_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [id, input.actorId, input.owner ?? '*', input.purpose, digest(JSON.stringify(input.filter)), input.role, input.target ?? null, input.reason ?? null]);
   return id;
@@ -990,7 +996,7 @@ export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilt
         AND ($11::boolean OR e.channel IS DISTINCT FROM 'non_production_test')
       ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1, testChannelEnabled()]);
     const rows = q.rows.slice(0, filter.limit);
-    return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
+    return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, error_id: r.event.error?.error_id ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
   });
 }
 
@@ -1015,10 +1021,14 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
     assertTestChannelReadable(job.run_channel ?? job.channel);
     const prompts = (await client.query(`SELECT s.*,t.id tombstone FROM bb_snapshot_refs s LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
       WHERE s.owner_user_id=$1 AND ((s.run_id IS NOT NULL AND s.run_id=$2) OR s.id IN (SELECT prompt_snapshot_id FROM bb_model_call_attempts WHERE job_id=$3)) ORDER BY s.created_at,s.id`, [job.owner_user_id, job.run_id, job.id])).rows;
+    const submissions = job.effective_project_id ? (await client.query(`SELECT v.*,t.id tombstone FROM bb_user_submission_versions v
+      LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=v.snapshot_id
+      WHERE v.owner_user_id=$1 AND v.project_id=$2 AND v.run_id=$3
+      ORDER BY v.version`, [job.owner_user_id,job.effective_project_id,job.run_id])).rows : [];
     const stages = job.run_id
       ? (await client.query('SELECT seq,type,state,stage,payload,occurred_at FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY seq', [job.owner_user_id, job.run_id])).rows.map(r => ({ seq: r.seq, type: r.type, state: r.state, stage: r.stage, reason: r.payload?.reason ?? null, occurred_at: iso(r.occurred_at)! }))
       : (await client.query("SELECT kind,event,created_at FROM bb_observability_events WHERE owner_user_id=$1 AND job_id=$2 AND kind IN ('operation.submitted','operation.rejected','job.state_changed') ORDER BY created_at,CASE WHEN kind LIKE 'operation.%' THEN 0 ELSE 1 END,id", [job.owner_user_id, job.id])).rows.map((r, i) => ({ seq: i + 1, type: r.kind, state: r.event.status ?? 'unknown', stage: r.event.stage ?? null, reason: r.event.error?.code?.toLowerCase() ?? null, occurred_at: iso(r.created_at)! }));
-    const attemptRows = (await client.query(`SELECT a.id,a.logical_call_id,a.attempt_no,a.channel,a.status,a.model_id,a.provider_request_id,a.prompt_snapshot_id,a.created_at,
+    const attemptRows = (await client.query(`SELECT a.id,a.logical_call_id,a.attempt_no,a.channel,a.status,a.model_id,a.provider_request_id,a.prompt_snapshot_id,a.user_submission_id,a.created_at,
         u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens,u.correction_id,rt.duration_ms,
         COALESCE(rt.error_code,(SELECT o.error_code FROM bb_provider_call_observations o WHERE o.attempt_id=a.id ORDER BY o.observed_at DESC,o.id DESC LIMIT 1)) error_code
       FROM bb_model_call_attempts a JOIN bb_call_usage_effective u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id
@@ -1031,8 +1041,9 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
     return {
       job: { job_id: job.id, user_id: job.owner_user_id, project_id: job.effective_project_id ?? null, run_id: job.run_id ?? null, channel: job.channel ?? 'production', operation_id: job.operation_id ?? null, request_id: job.request_id ?? null, execution_request_id: job.execution_request_id ?? null, execution_request_key_hash: job.execution_request_key_hash?.trim() ?? null, trace_id: job.trace_id ?? job.run_id ?? null, input_revision: job.input_revision ?? null, input_hash: job.input_hash?.trim() ?? null, job_type: job.job_type, subtype: job.subtype, state: job.state, stage: job.stage ?? null, attempts: job.attempts, error_code: job.error_code ?? null, created_at: created.toISOString(), updated_at: updated.toISOString(), duration_ms: terminal.includes(job.state) ? Math.max(0, updated.getTime() - created.getTime()) : null },
       prompts: prompts.map(s => ({ snapshot_id: s.id, kind: s.snapshot_kind, version: s.version, content_sha256: s.content_sha256.trim(), redaction_version: s.redaction_version, input_revision: s.input_revision, template_version: s.template_version, rule_pack_version: s.rule_pack_version, model_parameters_version: s.model_parameters_version, content_state: s.tombstone ? 'purged' : 'available', created_at: iso(s.created_at)! })),
+      user_submissions: submissions.map(s => ({ submission_id:s.id,snapshot_id:s.snapshot_id,kind:s.submission_kind,message_id:s.message_id,message_version:s.message_version,version:s.version,previous_submission_id:s.previous_submission_id,content_sha256:s.content_sha256.trim(),input_revision:s.input_revision,input_hash:s.input_hash?.trim()??null,material_versions:s.material_versions,content_state:s.tombstone?'purged':'available',created_at:iso(s.created_at)! })),
       stages,
-      attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, channel: a.channel ?? 'production', status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)! })),
+      attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, channel: a.channel ?? 'production', status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, user_submission_id: a.user_submission_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)! })),
       errors: errors.map(e => ({ error_id: e.id, code: e.code, category: e.category, stage: e.stage, attempt_id: e.attempt_id, retry_count: e.retry_count, fingerprint: e.fingerprint?.trim() ?? null, recovery_status: e.recovery_status, created_at: iso(e.created_at)! })),
       artifact: artifact ? { artifact_id: artifact.id, version: artifact.version, sha256: artifact.sha256.trim(), quality_status: artifact.quality_status, delivery_status: artifact.delivery_status, created_at: iso(artifact.created_at)! } : null,
       outcome: { state, error_code: job.error_code ?? errors.at(-1)?.code ?? null, artifact_available: !!artifact && artifact.quality_status === 'passed' && ['available','test_only'].includes(artifact.delivery_status) },

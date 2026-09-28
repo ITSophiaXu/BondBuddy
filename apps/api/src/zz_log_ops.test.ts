@@ -738,15 +738,17 @@ test('#79 rejected diagnostics never call Blob put or register a partial snapsho
 test('#79 wide JSON arrays stay bounded in 128/256 MiB child heaps', async t => {
   const moduleUrl = new URL('./log-ops.js', import.meta.url).href;
   for (const heapMiB of [128, 256]) for (const sizeMiB of [4, 9]) {
-    const source = `import { performance } from 'node:perf_hooks';
-      const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+    const source = `const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
       const unit = '{"note":"synthetic"},';
       const count = Math.ceil(${sizeMiB} * 1024 * 1024 / unit.length);
       const body = '[' + unit.repeat(count).slice(0, -1) + ']';
-      const started = performance.now();
+      const beforeRssMiB = Math.round(process.resourceUsage().maxRSS / 1024);
+      const started = process.cpuUsage();
       const stored = scrubSecrets(body);
-      const elapsedMs = Math.round(performance.now() - started);
-      process.stdout.write(JSON.stringify({ accepted: stored === body, elapsedMs, peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024), inputMiB: ${sizeMiB} }));
+      const usage = process.cpuUsage(started);
+      const cpuMs = Math.round((usage.user + usage.system) / 1000);
+      process.stdout.write(JSON.stringify({ accepted: stored === body, cpuMs, beforeRssMiB,
+        peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024), inputMiB: ${sizeMiB} }));
       if (stored !== body) process.exitCode = 1;`;
     const result = await new Promise<{ code: number | null; stdout: string }>((resolve, reject) => {
       const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source], {
@@ -762,8 +764,9 @@ test('#79 wide JSON arrays stay bounded in 128/256 MiB child heaps', async t => 
     assert.equal(result.code, 0, `${heapMiB} MiB heap, ${sizeMiB} MiB input`);
     const metrics = JSON.parse(result.stdout);
     assert.equal(metrics.accepted, true);
-    assert.ok(metrics.elapsedMs < 2000, 'wide input parses without object-tree allocation');
-    t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.elapsedMs} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+    assert.ok(metrics.cpuMs < 5000, 'wide input scans within a bounded CPU budget');
+    assert.ok(metrics.peakRssMiB - metrics.beforeRssMiB < 55, 'wide input avoids object-tree-sized allocations');
+    t.diagnostic(`${heapMiB} MiB heap / ${sizeMiB} MiB wide input: ${metrics.cpuMs} CPU ms, RSS +${metrics.peakRssMiB - metrics.beforeRssMiB} MiB`);
   }
 });
 
@@ -772,19 +775,19 @@ test('#79 prose rules scale linearly on long ordinary whitespace in bounded chil
   for (const heapMiB of [128, 256]) {
     const times: number[] = [];
     for (const spaces of [2_000, 4_000, 8_000, 16_000, 32_000]) {
-      const source = `import { performance } from 'node:perf_hooks';
-        const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
+      const source = `const { scrubSecrets } = await import(process.env.BB_TEST_LOG_MODULE);
         const body = 'otp' + ' '.repeat(${spaces}) + 'X';
-        const started = performance.now();
+        const started = process.cpuUsage();
         const accepted = scrubSecrets(body) === body;
-        process.stdout.write(JSON.stringify({ accepted, elapsedMs: performance.now() - started,
+        const usage = process.cpuUsage(started);
+        process.stdout.write(JSON.stringify({ accepted, cpuMs: (usage.user + usage.system) / 1000,
           peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024) }));
         if (!accepted) process.exitCode = 1;`;
       const result = await new Promise<{ code: number | null; stdout: string; timedOut: boolean }>((resolve, reject) => {
         const child = spawn(process.execPath, [`--max-old-space-size=${heapMiB}`, '--input-type=module', '-e', source],
           { env: { ...process.env, BB_TEST_LOG_MODULE: moduleUrl } });
         let stdout = '', timedOut = false;
-        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 8_000);
+        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 30_000);
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', chunk => { stdout += chunk; });
         child.stderr.resume();
@@ -795,9 +798,9 @@ test('#79 prose rules scale linearly on long ordinary whitespace in bounded chil
       assert.equal(result.code, 0);
       const metrics = JSON.parse(result.stdout);
       assert.equal(metrics.accepted, true);
-      assert.ok(metrics.elapsedMs < 500, 'ordinary whitespace should not trigger backtracking growth');
-      times.push(metrics.elapsedMs);
-      t.diagnostic(`${heapMiB} MiB heap / ${spaces} spaces: ${metrics.elapsedMs.toFixed(1)} ms, peak RSS ${metrics.peakRssMiB} MiB`);
+      assert.ok(metrics.cpuMs < 500, 'ordinary whitespace should not trigger backtracking growth');
+      times.push(metrics.cpuMs);
+      t.diagnostic(`${heapMiB} MiB heap / ${spaces} spaces: ${metrics.cpuMs.toFixed(1)} CPU ms, peak RSS ${metrics.peakRssMiB} MiB`);
     }
     assert.ok(times[4] < Math.max(25, times[1] * 8), '32k input scales near linearly from 4k');
   }

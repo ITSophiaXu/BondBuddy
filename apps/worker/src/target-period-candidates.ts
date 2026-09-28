@@ -8,6 +8,7 @@ const FINANCIAL_ROLE_CODES: ReadonlySet<string> = new Set(M1_MATERIAL_PARTITIONS
 const FINANCIAL_CONTEXT = /财务会计信息|财务报表|审计报告|资产负债表|利润表|现金流量表|主要财务数据|报告期|合并口径|母公司口径/;
 const ENTITY_LABEL = /发行人(?:全称|名称)?|企业名称|公司名称|单位名称/;
 const VALID_SHA = /^[a-f0-9]{64}$/;
+const PDF_HEADER_NEARBY_LIMIT = 60;
 
 export type LockedFinancialMaterialRef = {
   readonly material_id: string;
@@ -144,7 +145,32 @@ function recordIsFinancialHeader(source: { quote: string; context: string; locat
 }
 function recordMentionsEntity(source: { quote: string; context: string }): boolean {
   const text = `${source.quote}\n${source.context}`;
-  return ENTITY_LABEL.test(text) && /[:：]\s*[^\s:：]{2,}/.test(text);
+  if (ENTITY_LABEL.test(text) && /[:：]\s*[^\s:：]{2,}/.test(text)) return true;
+  return /^[\s\u3000\p{Script=Han}A-Za-z0-9（）()·&＆\-]{4,100}(?:有限责任公司|股份有限公司|有限公司|企业集团)$/u
+    .test(source.quote.trim());
+}
+function pdfPeriodToken(record: DocumentParseRecord): boolean {
+  const text = record.literal_quote;
+  if (/签署|签字|发行|报告编号|审计报告|批准报出/.test(text)) return false;
+  return /20\d{2}\s*年\s*(?:度|半年度|上半年|\d{1,2}\s*[-—–至到]\s*\d{1,2}\s*月)/.test(text);
+}
+function pdfFinancialTableHeader(record: DocumentParseRecord): boolean {
+  return /财务报表附注|财务报表|资产负债表|利润表|现金流量表|所有者权益变动表/.test(record.literal_quote)
+    && !/审计报告|审计意见/.test(record.literal_quote);
+}
+function pdfEntityAnchor(record: DocumentParseRecord): boolean {
+  return recordMentionsEntity({ quote: record.literal_quote, context: record.context });
+}
+function pdfTop(record: DocumentParseRecord): number | null {
+  if (record.locator_type !== 'pdf_bbox') return null;
+  const locator = record.locator;
+  const bbox = locator.bbox;
+  if (typeof bbox !== 'object' || bbox === null || !('x0' in bbox) || !('top' in bbox) ||
+      !('x1' in bbox) || !('bottom' in bbox)) return null;
+  const { x0, top, x1, bottom } = bbox;
+  if (typeof x0 !== 'number' || typeof top !== 'number' || typeof x1 !== 'number' || typeof bottom !== 'number' ||
+      ![x0, top, x1, bottom].every(Number.isFinite) || x1 <= x0 || bottom <= top) return null;
+  return top;
 }
 function hasFormulaOrOcrUncertainty(items: readonly string[]): boolean {
   return items.some(item => /formula|cache|external|外链|公式|缓存|OCR|ocr|识别存疑|数字存疑/i.test(item));
@@ -244,9 +270,64 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
   }
   if (snapshot.status === 'failed') return [];
   const isXlsx = snapshot.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-  const recognitionRecords = isXlsx
+  const visibleRecords = isXlsx
     ? snapshot.records.filter(item => item.formatting.sheet_state === 'visible')
     : snapshot.records;
+  // PDF parser bbox.top values share one page-local coordinate system. Bind a period token only to a nearby,
+  // explicit financial table title and at most the closest entity/scope lines.
+  // Missing page/bbox or a distant title leaves the period without a candidate;
+  // there is no whole-page-text fallback. Pin only rows that explain the proposal.
+  const periodAnchorRowsById = new Map<string, (DocumentParseRecord & { readonly record_sha256: string })[]>();
+  const recognitionRecords: (DocumentParseRecord & { readonly record_sha256?: string })[] = [];
+  if (snapshot.media_type === 'application/pdf') {
+    const grouped = new Map<number, (DocumentParseRecord & { readonly record_sha256: string })[]>();
+    for (const item of visibleRecords) {
+      const page = item.locator.page;
+      if (!Number.isSafeInteger(page) || Number(page) < 1) continue;
+      const pageRecords = grouped.get(Number(page)) ?? [];
+      pageRecords.push(item);
+      grouped.set(Number(page), pageRecords);
+    }
+    for (const [page, pageRecords] of grouped) {
+      const pageText = pageRecords.map(item => item.literal_quote).join('\n');
+      if (/审计报告/.test(pageText) && /审计意见|我们审计了/.test(pageText)) {
+        continue;
+      }
+      const headers = pageRecords.filter(pdfFinancialTableHeader).flatMap(record => {
+        const top = pdfTop(record);
+        return top === null ? [] : [{ record, top }];
+      });
+      const entityRows = pageRecords.filter(pdfEntityAnchor).flatMap(record => {
+        const top = pdfTop(record);
+        return top === null ? [] : [{ record, top }];
+      });
+      const scopeRows = pageRecords.filter(record => /合并|母公司|公司本部/.test(record.literal_quote)).flatMap(record => {
+        const top = pdfTop(record);
+        return top === null ? [] : [{ record, top }];
+      });
+      for (const token of pageRecords.filter(pdfPeriodToken)) {
+        const tokenTop = pdfTop(token);
+        if (tokenTop === null) continue;
+        const nearestHeader = headers
+          .filter(item => item.top <= tokenTop && tokenTop - item.top <= PDF_HEADER_NEARBY_LIMIT)
+          .sort((a, b) => (tokenTop - a.top) - (tokenTop - b.top))[0];
+        if (!nearestHeader) continue;
+        const nearest = (rows: typeof entityRows) => rows
+          .filter(item => Math.abs(item.top - tokenTop) <= PDF_HEADER_NEARBY_LIMIT)
+          .sort((a, b) => Math.abs(a.top - tokenTop) - Math.abs(b.top - tokenTop))[0]?.record;
+        const entity = nearest(entityRows);
+        const scope = nearest(scopeRows);
+        const anchors = [...new Map([token, nearestHeader.record, entity, scope]
+          .filter((item): item is DocumentParseRecord & { readonly record_sha256: string } => item !== undefined)
+          .map(item => [item.record_id, item])).values()];
+        const context = anchors.filter(item => item.record_id !== token.record_id).map(item => item.literal_quote).join('\n');
+        recognitionRecords.push({ ...token, context: `${token.context}\n${context}` });
+        periodAnchorRowsById.set(token.record_id, anchors);
+      }
+    }
+  } else {
+    recognitionRecords.push(...visibleRecords);
+  }
   const response: DocumentParseResponse = {
     schema_version: 'document-parse-response-v1', request_id: null, parser_version: snapshot.parser_version,
     // The recognition helper copies response-level warnings onto every period.
@@ -259,17 +340,22 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
     warnings: snapshot.warnings.map(warning => ({ code: warning.code, message: warning.message })),
     document: { page_count: null }, error: null,
   };
-  const recognition = recognizeHistoricalNativeText(response, { profileVersion: 1, allowXlsxFinancialMonthRanges: isXlsx });
+  const recognition = recognizeHistoricalNativeText(response, {
+    profileVersion: 1,
+    allowXlsxFinancialMonthRanges: isXlsx,
+    allowPdfFinancialContextPeriods: snapshot.media_type === 'application/pdf',
+  });
   const recordsById = new Map(snapshot.records.map(item => [item.record_id, item]));
   return recognition.reporting_periods.map(period => {
     const evidence = period.provenance.evidence_refs.flatMap(id => {
       const row = recordsById.get(id);
       if (!row) return [];
-      return [{ evidence_method: 'native_text' as const, material_id: snapshot.material_id,
+      const sourceRows = snapshot.media_type === 'application/pdf' ? periodAnchorRowsById.get(id) ?? [row] : [row];
+      return sourceRows.map(sourceRow => ({ evidence_method: 'native_text' as const, material_id: snapshot.material_id,
         material_version: snapshot.material_version, material_sha256: snapshot.material_sha256, snapshot_id: snapshot.snapshot_id,
-        parser_version: snapshot.parser_version, response_sha256: snapshot.response_sha256, record_id: row.record_id,
-        record_sha256: row.record_sha256, quote: row.literal_quote, context: row.context, locator: row.locator,
-        uncertainty: [...row.uncertainty] }];
+        parser_version: snapshot.parser_version, response_sha256: snapshot.response_sha256, record_id: sourceRow.record_id,
+        record_sha256: sourceRow.record_sha256, quote: sourceRow.literal_quote, context: sourceRow.context, locator: sourceRow.locator,
+        uncertainty: [...sourceRow.uncertainty] }));
     });
     return { period, evidence: evidence.map(ref => ({ ref, raw_value: period.raw_value })) };
   });

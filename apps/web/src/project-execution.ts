@@ -1,6 +1,6 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
-import { type RunState } from '@bondbuddy/contracts';
+import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { date, esc } from './ui';
@@ -17,8 +17,29 @@ const stages: Record<string, string> = { input_lock: '核对输入与规则', ma
   model_generation: '生成全文内容', word_delivery: '生成并检查 Word', capability_not_ready: '等待处理条件',
   queued: '等待处理', completed: '处理完成' };
 
+type PauseStage = (typeof RUN_PAUSE_STAGES)[number];
+type RuntimeReason = (typeof RUN_RUNTIME_REASONS)[number];
+const automaticPauseMessages: Partial<Record<PauseStage, string>> = {
+  trial_limit: '当前更新暂受试用限制，限制解除后自动继续。'
+};
+const runtimeMessages: Partial<Record<RuntimeReason, string>> = {
+  model_tokens_per_user_per_day: '今日试用额度已用完，额度恢复后自动继续。',
+  kill_switch: '更新服务暂时停用，服务恢复后自动继续。',
+  trial_limit_cleared: '试用限制已解除，任务继续处理。'
+};
+
+function automaticPauseMessage(run: Dto<'RunResponse'> | undefined) {
+  return run?.state === 'paused' && run.stage && Object.hasOwn(automaticPauseMessages, run.stage)
+    ? automaticPauseMessages[run.stage as PauseStage] : undefined;
+}
+function runtimeMessage(reason: string | undefined) {
+  return reason && Object.hasOwn(runtimeMessages, reason) ? runtimeMessages[reason as RuntimeReason] : undefined;
+}
+
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function readinessMessage(reason: string): string {
+  if (runtimeMessage(reason)) return runtimeMessage(reason)!;
+  if (reason === 'TRIAL_ACCESS_DENIED') return '当前账号的试用权限已停用，请联系支持。';
   if (reason.includes('rule_applicability_overall_review_required')) return '等待规则适用性审核。';
   if (reason.startsWith('rule_pack:') || reason.startsWith('rule_applicability_')) return '等待适用规则核对或发布。';
   if (reason.startsWith('issuer_identity_') || reason.startsWith('issuer_material_')) return '发行人身份与历史材料的绑定尚需核对。';
@@ -144,10 +165,15 @@ export class ProjectExecution {
     if (run && progressHost && this.host.parentElement !== progressHost) progressHost.append(this.host);
     if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = false; } this.materialRun = run.run_id; }
     const testCompleted = run?.state === 'test_completed' && run.channel === 'non_production_test';
-    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${this.reason ? `<div class="execution-summary">${esc(readinessMessage(this.reason))}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}
+    const automaticPause = automaticPauseMessage(run);
+    // The current run stage is authoritative even when event history is late or unavailable.
+    const summary = automaticPause
+      ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
+      : this.reason ? readinessMessage(this.reason) : undefined;
+    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
-      <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
+      <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' && !automaticPause ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume']] as const) {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
@@ -180,7 +206,7 @@ export class ProjectExecution {
     } finally { this.starting = false; this.render(); }
   }
   private async changeRun(action: 'cancel' | 'resume') {
-    if (!this.run) return;
+    if (!this.run || action === 'resume' && automaticPauseMessage(this.run)) return;
     const runId = this.run.run_id;
     await this.action(async () => {
       const run = await this.api.runAction(runId, action, this.controller.signal);
@@ -258,6 +284,7 @@ export class ProjectExecution {
   }
   private acceptRun(run: Dto<'RunResponse'>) {
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
+    if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
     if (this.run?.run_id !== run.run_id) { this.eventCursor = 0; this.reason = undefined; this.events = []; }
     this.run = run; this.nextRequested = false;
   }
@@ -307,7 +334,7 @@ export class ProjectExecution {
       const run = await this.api.run(id, this.controller.signal);
       if (!this.active || this.run?.run_id !== id) return;
       if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
-      if (this.run.state !== run.state) this.reason = undefined;
+      if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       this.run = run;
       // Read all new pages: a reconnect must not lose the actual pause/error reason.
       let cursor = this.eventCursor;
@@ -318,7 +345,8 @@ export class ProjectExecution {
           if (event.run_id !== id || event.seq <= this.eventCursor) continue;
           this.eventCursor = event.seq;
           this.events.push(event); this.events = this.events.slice(-12);
-          this.reason = event.state === run.state ? event.payload.reason : undefined;
+          this.reason = event.state === run.state && event.stage === run.stage
+            ? event.payload.reason ?? event.payload.error_code : undefined;
         }
         if (page.next_cursor === null || page.next_cursor <= cursor) break;
         cursor = page.next_cursor;

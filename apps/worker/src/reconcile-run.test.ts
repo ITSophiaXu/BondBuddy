@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, uid } from '@bondbuddy/api/data';
-import { claim, pauseRun, recordPotentialCall } from '@bondbuddy/api/queue';
+import { claim, pauseRun, recordPotentialCall, resumePausedRun } from '@bondbuddy/api/queue';
 import { latestProviderAttempt } from '@bondbuddy/api/provider-results';
 import { runReconcileCommand } from './reconcile-run.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -85,6 +85,67 @@ test('private reconciliation lists, retries and fails exact owned attempts with 
       assert.equal(prior?.status,'failed');
       await recordPotentialCall(pool,resumed,'synthetic-call',2);
       await pauseRun(pool,resumed,'provider_reconcile','provider_result_pending');
+
+      // A settled failed attempt can precede an unknown attempt in the same run.
+      const mixedRun=await fixture('measured-failure-then-unknown');
+      const mixedLease=await claim(pool,30);assert.ok(mixedLease);assert.equal(mixedLease.runId,mixedRun);
+      const measuredAttempt=await recordPotentialCall(pool,mixedLease,'measured-failure',1);
+      const snapshot=uid();
+      await pool.query(`INSERT INTO bb_snapshot_refs
+        (id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version)
+        SELECT $2,r.owner_user_id,r.project_id,r.id,'model_request',1,
+          'users/'||r.owner_user_id||'/projects/'||r.project_id||'/snapshots/'||$2,
+          repeat('a',64),'synthetic-v1' FROM bb_runs r WHERE r.id=$1`,[mixedRun,snapshot]);
+      await pool.query("UPDATE bb_model_call_attempts SET status='failed',usage_status='measured',model_id='synthetic-model',prompt_snapshot_id=$2 WHERE id=$1",[measuredAttempt,snapshot]);
+      await pool.query(`INSERT INTO bb_provider_call_observations
+        (id,owner_user_id,project_id,job_id,run_id,attempt_id,logical_call_id,attempt_no,call_id,trace_id,
+         model_id,model_config_version,prompt_snapshot_ref,outcome,usage_status,input_tokens,output_tokens,total_tokens,error_code,observation_hash)
+        SELECT $2,r.owner_user_id,r.project_id,j.id,r.id,a.id,a.logical_call_id,a.attempt_no,a.id,r.id,
+          'synthetic-model','synthetic-v1',$3,'failed','measured',10,2,12,'MODEL_OUTPUT_SCHEMA_INVALID',repeat('b',64)
+        FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id JOIN bb_model_call_attempts a ON a.job_id=j.id
+        WHERE r.id=$1 AND a.id=$4`,[mixedRun,uid(),snapshot,measuredAttempt]);
+      await pool.query(`INSERT INTO bb_usage_observations
+        (id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens)
+        VALUES($1,$2,$3,'provider',$4,'measured',10,2)`,[uid(),owner,measuredAttempt,uid()]);
+      const unknownAttempt=await recordPotentialCall(pool,mixedLease,'unknown-after-failure',1);
+      await pauseRun(pool,mixedLease,'provider_reconcile','provider_result_pending');
+      const mixedList=await runReconcileCommand(pool,['list'],actor) as any[];
+      assert.deepEqual(mixedList.filter(row=>row.run_id===mixedRun).map(row=>row.attempt_id),[unknownAttempt],
+        'measured failed calls with a failed observation do not need operator action');
+      await resolve(mixedRun,unknownAttempt,'retry_unknown_usage');
+      const mixedResumed=await claim(pool,30);assert.ok(mixedResumed);assert.equal(mixedResumed.runId,mixedRun);
+      assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[unknownAttempt])).rows[0].usage_status,'unknown');
+      await pauseRun(pool,mixedResumed,'provider_reconcile','provider_result_pending');
+
+      const unknownFailed=await pending('failed-with-unknown-usage');
+      await pool.query("UPDATE bb_model_call_attempts SET status='failed' WHERE id=$1",[unknownFailed.attemptId]);
+      const unknownList=await runReconcileCommand(pool,['list'],actor) as any[];
+      assert.equal(unknownList.find(row=>row.attempt_id===unknownFailed.attemptId)?.attempt_status,'failed');
+      assert.equal(await resumePausedRun(pool,owner,unknownFailed.runId,'provider_reconciled'),false,
+        'a failed attempt with unknown usage still blocks resume');
+      await resolve(unknownFailed.runId,unknownFailed.attemptId,'retry_unknown_usage');
+      const unknownResumed=await claim(pool,30);assert.ok(unknownResumed);assert.equal(unknownResumed.runId,unknownFailed.runId);
+      await pauseRun(pool,unknownResumed,'provider_reconcile','provider_result_pending');
+
+      const incompleteCompleted=await pending('completed-without-result');
+      await pool.query("UPDATE bb_model_call_attempts SET status='completed' WHERE id=$1",[incompleteCompleted.attemptId]);
+      const incompleteList=await runReconcileCommand(pool,['list'],actor) as any[];
+      assert.equal(incompleteList.find(row=>row.attempt_id===incompleteCompleted.attemptId)?.attempt_status,'completed');
+      await assert.rejects(resolve(incompleteCompleted.runId,incompleteCompleted.attemptId,'retry_unknown_usage'),
+        /Completed result requires provider reconciliation/);
+      await resolve(incompleteCompleted.runId,incompleteCompleted.attemptId,'fail_run');
+
+      const unobservedFailure=await pending('failed-measured-without-observation');
+      await pool.query("UPDATE bb_model_call_attempts SET status='failed',usage_status='measured' WHERE id=$1",[unobservedFailure.attemptId]);
+      await pool.query(`INSERT INTO bb_usage_observations
+        (id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens)
+        VALUES($1,$2,$3,'framework',$4,'measured',10,2)`,[uid(),owner,unobservedFailure.attemptId,uid()]);
+      const unobservedList=await runReconcileCommand(pool,['list'],actor) as any[];
+      assert.equal(unobservedList.find(row=>row.attempt_id===unobservedFailure.attemptId)?.attempt_status,'failed',
+        'measured usage alone cannot settle a failure without a provider observation');
+      await assert.rejects(resolve(unobservedFailure.runId,unobservedFailure.attemptId,'retry_unknown_usage'),
+        /Existing result or non-unknown usage/);
+      await resolve(unobservedFailure.runId,unobservedFailure.attemptId,'fail_run');
 
       const pendingUsage=await pending('usage-pending');
       await pool.query(`INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status)

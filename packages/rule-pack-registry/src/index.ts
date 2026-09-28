@@ -149,6 +149,13 @@ function isPublishableProductionPack(pack: RulePack): boolean {
   const releaseDate = releaseAt.slice(0, 10);
   if (pack.validity.effective_to !== null && pack.validity.effective_to < releaseDate) return false;
   if (pack.sources.some((source) => source.kind === 'unverified_lead'
+    || source.effective_from === null
+    || (source.kind === 'formal_rule' && !source.legal_effective_date_basis)
+    || (source.kind === 'formal_rule' && (source.effective_date_derivation_evidence?.length ?? 0) === 0)
+    || (source.kind === 'internal_method' && source.effective_from !== null)
+    || (source.kind === 'official_interpretation' && !source.legal_effective_date_basis)
+    || (source.kind === 'official_interpretation' && (source.effective_date_derivation_evidence?.length ?? 0) === 0)
+    || (source.legal_effective_date_basis !== undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))
     || (source.effective_to !== null && source.effective_to < releaseDate)
     || (source.verified_at !== null && Date.parse(source.verified_at) > Date.parse(releaseAt)))) return false;
   if (pack.rules.some((rule) => !rule.enabled || rule.enforcement === 'research_only')) return false;
@@ -381,6 +388,8 @@ async function resolveProductionRulePack(
             AND s.checked_at<=($8::jsonb->'release'->>'released_at')::timestamptz
             AND s.created_at<=($8::jsonb->'release'->>'released_at')::timestamptz
             AND s.effective_from <= $7::date AND (s.effective_to IS NULL OR s.effective_to >= $7::date)
+            AND s.legal_effective_date_basis IN ('explicit_text','publication_commencement')
+            AND jsonb_array_length(s.effective_date_derivation_evidence) > 0
             AND g.granted_at<=($8::jsonb->'release'->>'released_at')::timestamptz
             AND g.role='rule_pack_industry_reviewer' AND g.revoked_at IS NULL
         )
@@ -394,7 +403,13 @@ async function resolveProductionRulePack(
               AND s.authority=src->>'authority' AND s.official_url=src->>'official_url'
               AND s.source_version=src->>'source_version' AND s.document_hash IS NOT DISTINCT FROM NULLIF(src->>'document_hash','')::char(64)
               AND s.clause_locator=src->>'clause_locator' AND s.exact_quote=src->>'exact_quote'
+            AND src->>'effective_from' IS NOT NULL
               AND s.effective_from IS NOT DISTINCT FROM NULLIF(src->>'effective_from','')::date
+              AND s.legal_effective_date_basis IS NOT DISTINCT FROM NULLIF(src->>'legal_effective_date_basis','')
+              AND s.effective_date_derivation_evidence IS NOT DISTINCT FROM COALESCE(src->'effective_date_derivation_evidence','[]'::jsonb)
+              AND jsonb_array_length(s.effective_date_derivation_evidence) > 0
+              AND (COALESCE(src->>'legal_effective_date_basis','') <> 'publication_commencement'
+                OR s.official_publication_date IS NOT DISTINCT FROM NULLIF(src->>'published_on','')::date)
               AND s.effective_to IS NOT DISTINCT FROM NULLIF(src->>'effective_to','')::date
               AND s.checked_at <= ($7::date + interval '1 day') AND s.effective_from <= $7::date
               AND s.checked_at<=($8::jsonb->'release'->>'released_at')::timestamptz

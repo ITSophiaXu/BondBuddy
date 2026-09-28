@@ -4,6 +4,7 @@ import { schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { missing, Problem, unavailable, type PrivateBlobs } from './data.js';
 import { gateState, resumeEvidenceGate } from './evidence-gate.js';
 import { adminAlerts, adminEvents, adminJobTimeline, adminMetrics, adminPromptView, correctUsage, operatorRoles, parseAdminFilter } from './log-ops.js';
+import { adminUserSubmissionVersions } from './user-submissions.js';
 
 type Deps = { db: () => Pool; blobs: () => PrivateBlobs; owner: (request: FastifyRequest) => Promise<string>; promptViewDeadlineMs?: number };
 const DEFAULT_PROMPT_VIEW_DEADLINE_MS = 60_000;
@@ -27,6 +28,13 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
   });
   app.get('/api/v1/admin/jobs/:job_id/timeline', { schema: { response: { 200: schemas.AdminJobTimelineResponse } } }, async request =>
     adminJobTimeline(deps.db(), await operator(request, 'log_reader'), param(request, 'job_id')));
+  app.get('/api/v1/admin/jobs/:job_id/user-submissions', { schema: { response: { 200: schemas.AdminUserSubmissionListResponse } } }, async (request,reply) => {
+    const actor=await operator(request,'prompt_viewer');
+    const query=request.query as Record<string,unknown>;
+    if(Object.keys(query).some(key=>key!=='reason_code')||typeof query.reason_code!=='string')throw new Problem(422,'VALIDATION_FAILED','reason_code is required');
+    reply.header('cache-control','no-store');
+    return adminUserSubmissionVersions(deps.db(),actor,param(request,'job_id'),query.reason_code);
+  });
   const promptFinishes = new WeakMap<FastifyRequest, () => Promise<void>>();
   app.get('/api/v1/admin/prompts/:snapshot_id', { schema: { response: { 200: schemas.AdminPromptView } },
     onResponse: async request => { await promptFinishes.get(request)?.(); }

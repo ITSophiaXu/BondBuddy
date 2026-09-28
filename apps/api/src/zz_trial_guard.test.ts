@@ -211,6 +211,68 @@ test('token quota counts unknown usage conservatively at submit and before every
   } finally { configureTrialGuard(null); await pool.end(); }
 });
 
+test('platform cost is attributed once per supplier attempt using exact verified rates', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const config = base({ active_runs_per_user: 10, runs_per_user_per_day: 10, model_tokens_per_user_per_day: 10_000_000 });
+  configureTrialGuard(config);
+  try {
+    await openGate(pool);
+    const h = harness(pool, config);
+    const owner = await user(pool, 'cost-owner'), reader = await user(pool, 'cost-reader');
+    await grantOperator(pool, { userId: reader, role: 'log_reader', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+    const { projectId, inputHash } = await h.ready(owner);
+    const runId = (await h.submit(owner, projectId, inputHash)).json().run_id as string;
+    const lease = await h.leaseFor(owner, runId);
+    const rateRef = `synthetic-${uid()}`, pricedModel = `priced-${uid()}`;
+    await pool.query(`INSERT INTO bb_model_cost_rates(rate_ref,provider,model_id,effective_from,currency,input_per_million,cached_input_per_million,output_per_million,reasoning_output_per_million,verified_source_ref,recorded_by,recorded_reason)
+      VALUES($1,'synthetic',$2,now()-interval '1 day','USD',1.5,0.5,2,3,'synthetic_source', 'synthetic_test','test_only')`, [rateRef, pricedModel]);
+    await pool.query(`INSERT INTO bb_model_cost_rates(rate_ref,provider,model_id,effective_from,currency,input_per_million,cached_input_per_million,output_per_million,reasoning_output_per_million,verified_source_ref,recorded_by,recorded_reason)
+      VALUES($1,'synthetic',$2,now()+interval '1 day','USD',2,1,3,4,'synthetic_future_source','synthetic_test','test_only')`, [`future-${uid()}`, pricedModel]);
+    const add = async (logicalCallId: string, attemptNo: number, modelId: string, status: 'failed' | 'completed' | 'pending_reconcile') => {
+      const attemptId = await recordPotentialCall(pool, lease, logicalCallId, attemptNo, { modelId });
+      await pool.query('UPDATE bb_model_call_attempts SET status=$2 WHERE id=$1', [attemptId, status]);
+      await pool.query(`INSERT INTO bb_model_call_attempt_runtime(id,owner_user_id,project_id,job_id,run_id,trace_id,attempt_id,logical_call_id,attempt_no,adapter,adapter_version,model_provider,model_config_version,provider_request_id_status,started_at,duration_ms,tool_attempts,pricing_status)
+        VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8,'codex_exec','synthetic_v1','synthetic','synthetic_v1','unknown',now(),1,0,'unknown')`,
+      [uid(), owner, projectId, lease.jobId, runId, attemptId, logicalCallId, attemptNo]);
+      return attemptId;
+    };
+    const failed = await add('supplier-retry', 1, pricedModel, 'failed');
+    const succeeded = await add('supplier-retry', 2, pricedModel, 'completed');
+    for (const [attemptId, source] of [[failed, 'provider'], [succeeded, 'gateway'], [succeeded, 'framework']] as const) {
+      await observeUsage(pool, { owner, attemptId, source, sourceEventId: `usage-${uid()}`, status: 'measured', inputTokens: 1000000, cachedInputTokens: 200000, outputTokens: 500000, reasoningTokens: 100000 });
+    }
+    const missing = await add('unrated', 1, 'other-model', 'completed');
+    await observeUsage(pool, { owner, attemptId: missing, source: 'provider', sourceEventId: `usage-${uid()}`, status: 'measured', inputTokens: 10, outputTokens: 20 });
+    const pending = await add('pending-usage', 1, pricedModel, 'pending_reconcile');
+    await observeUsage(pool, { owner, attemptId: pending, source: 'provider', sourceEventId: `usage-${uid()}`, status: 'pending' });
+    const unknown = await add('unknown-usage', 1, pricedModel, 'pending_reconcile');
+    const response = await h.as(reader)('GET', `/api/v1/admin/trial/cost-ledger?user_id=${owner}`);
+    assert.equal(response.statusCode, 200, response.body);
+    assert.ok(Value.Check(schemas.AdminCostLedgerResponse, response.json()));
+    const items = response.json().items as any[];
+    assert.equal(items.length, 5, 'retry rows remain separate');
+    for (const id of [failed, succeeded]) {
+      const row = items.find(item => item.attempt_id === id);
+      assert.equal(row.pricing_status, 'priced');
+      assert.equal(row.cost_amount, '2.4000000000');
+      assert.equal(row.currency, 'USD');
+      assert.equal(row.rate_ref, rateRef);
+      assert.equal(row.billable, true);
+      assert.equal(row.cost_bearer, 'platform');
+    }
+    assert.equal(items.find(item => item.attempt_id === missing).pricing_status, 'rate_missing');
+    for (const id of [pending, unknown]) {
+      const row = items.find(item => item.attempt_id === id);
+      assert.equal(row.pricing_status, 'unknown');
+      assert.equal(row.cost_amount, null);
+    }
+    assert.equal(response.json().pricing_status, 'unknown', 'legacy top-level field remains compatible');
+    const total = items.reduce((sum, item) => sum + Number(item.cost_amount ?? 0), 0);
+    assert.equal(total, 4.8, 'the duplicate gateway/framework observation is counted once');
+    await assert.rejects(pool.query('DELETE FROM bb_model_cost_rates WHERE rate_ref=$1', [rateRef]));
+  } finally { configureTrialGuard(null); await pool.end(); }
+});
+
 test('kill switch stops new runs and new model calls; operator-only and append-only', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const config = base({ active_runs_per_user: 10 });

@@ -324,9 +324,24 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
     [profile.source_market, profile.source_offering].every(field => correctionPending(field, '锚点存在但不证明所校正值，需人工核对原文语义')) &&
     correctionPending(profile.latest_reporting_cutoff, '最新截止日由用户校正期间推导，尚未人工核验') &&
     profile.reporting_periods.every(field => correctionPending(field, '用户校正的报告期间尚未人工核验')) && !profileShapeInvalid;
-  if (profileShapeInvalid || (!reviewedProfile && !assertedDraftProfile)) flag('UPDATE_PROFILE_UNCONFIRMED');
+  // An authorized non-production draft may use a complete, source-anchored native
+  // recognition candidate for supported same-structure edits. Its uncertainty stays
+  // visible in the plan and Word notes; it never becomes a reviewed profile or input
+  // to production difficulty/pricing. Conflicts, missing values/anchors, non-native
+  // provenance, and source/target structure changes remain global blockers.
+  const candidatePendingProfile = testDraft && profile.state === 'needs_confirmation' &&
+    !profileShapeInvalid && sourceFields.some(field => field.status === 'needs_confirmation' && field.uncertainty.length > 0) && sourceFields.every(field =>
+      field.provenance.method === 'native_text' &&
+      field.provenance.extractor_version?.endsWith(`/${baseline.parserVersion}`) &&
+      (field.status === 'recognized' && field.uncertainty.length === 0 ||
+        field.status === 'needs_confirmation' && field.uncertainty.length > 0 &&
+        !field.uncertainty.some(reason => /冲突|矛盾|多个候选|不一致|同一证据同时|不同报表口径|conflict|ambiguous|contradict|multiple candidates/i.test(reason))));
+  if (profileShapeInvalid || (!reviewedProfile && !assertedDraftProfile && !candidatePendingProfile)) flag('UPDATE_PROFILE_UNCONFIRMED');
   if (profile.source_market.value !== context.targetMarket || profile.source_offering.value !== context.targetOffering) flag('UPDATE_STRUCTURE_MAPPING_REQUIRED');
-  const globalBlocked = findings.length > 0;
+  if (candidatePendingProfile && !reviewedProfile) findings.push({ code: 'UPDATE_PROFILE_CANDIDATE_PENDING',
+    recordIds: [...new Set(sourceFields.flatMap(field => field.provenance.evidence_refs))], bindingIds: [],
+    message: '历史稿类型或报告期包含有原文定位的待确认机器候选；本次仅在已锁定材料及明确目标范围内编制非生产工作稿，未确认为已核画像，也不能用于确定难度、计价或合规结论。' });
+  const globalBlocked = findings.some(finding => finding.code !== 'UPDATE_PROFILE_CANDIDATE_PENDING');
   if (warningsLocalized) for (const item of localizedWarnings) findings.push({
     code: 'UPDATE_BASELINE_AUXILIARY_PENDING', recordIds: item.recordIds, bindingIds: [],
     message: item.message, auxiliaryTargets: item.targets,
@@ -353,7 +368,7 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const reviews = new Map(coverage.map(item => [item.recordId, item]));
   if (reviews.size !== coverage.length || coverage.some(item => !blockById.has(item.recordId) || !item.reason.trim() || !['retain', 'update', 'needs_evidence'].includes(item.disposition))) throw new Error('UPDATE_INVALID_COVERAGE');
   const pendingRecords = new Set<string>();
-  for (const finding of findings) if (['UPDATE_BASELINE_AUXILIARY_PENDING', 'UPDATE_PROFILE_USER_ASSERTED_PENDING'].includes(finding.code))
+  for (const finding of findings) if (['UPDATE_BASELINE_AUXILIARY_PENDING', 'UPDATE_PROFILE_USER_ASSERTED_PENDING', 'UPDATE_PROFILE_CANDIDATE_PENDING'].includes(finding.code))
     finding.recordIds.forEach(id => pendingRecords.add(id));
   for (const recordId of localizedUncertainRecordIds) pendingRecords.add(recordId);
   for (const block of baseline.blocks) {
