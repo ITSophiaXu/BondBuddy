@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { runDocumentParser, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
@@ -51,7 +51,10 @@ function manifestLocator(record: DocumentParseResponse['records'][number]): stri
 
 async function parse(file: ManifestFile, requestId: string): Promise<{ response: DocumentParseResponse; snapshot: NativePeriodEvidenceSnapshot }> {
   const sourcePath = resolve(sampleRoot, file.path);
-  assert.ok(sourcePath.startsWith(`${resolve(sampleRoot)}/`), 'manifest source path stays inside the authorized sample directory');
+  const relativeSource = relative(resolve(sampleRoot), sourcePath);
+  assert.ok(relativeSource.length > 0 && relativeSource !== '..' &&
+    !relativeSource.startsWith(`..${sep}`) && !isAbsolute(relativeSource),
+  'manifest source path stays inside the authorized sample directory on Windows and POSIX');
   const sourceBytes = await readFile(sourcePath);
   assert.deepEqual([sourceBytes.byteLength, sha256(sourceBytes)], [file.bytes, file.sha256],
     'source bytes match the registered size and SHA-256 before parsing');
