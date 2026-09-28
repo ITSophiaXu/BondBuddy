@@ -173,11 +173,15 @@ function inFinancialContext(record: DocumentParseRecord): boolean {
   return /财务会计信息|财务报表|审计报告|资产负债表|利润表|现金流量表|主要财务数据|报告期|合并口径|母公司口径/.test(text);
 }
 
-function reportingPeriodMatches(record: DocumentParseRecord, options: { allowXlsxFinancialMonthRanges?: boolean } = {}): ReportingPeriod[] {
+function reportingPeriodMatches(record: DocumentParseRecord, options: {
+  allowXlsxFinancialMonthRanges?: boolean;
+  allowPdfFinancialContextPeriods?: boolean;
+} = {}): ReportingPeriod[] {
   const text = record.literal_quote;
   const compact = normalize(text);
   const hasSigningOrIssueDate = /签署日|签署日期|发行日|发行日期|签署于|发行于/.test(compact);
-  const explicitPeriod = /报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(compact);
+  const explicitPeriod = /报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(compact)
+    || options.allowPdfFinancialContextPeriods === true && inFinancialContext(record);
   const periodTableHeader = Array.isArray(record.locator.path) && record.locator.path.some(part => typeof part === 'object' && part !== null && 'table' in part);
   const annualHeaderInContext = periodTableHeader && inFinancialContext(record);
   const halfYearLabel = /20\d{2}\s*年\s*(?:半年度|上半年)/.test(text);
@@ -303,7 +307,10 @@ function reportingPeriodMatches(record: DocumentParseRecord, options: { allowXls
   return periodRecords;
 }
 
-function recognitionPeriod(records: readonly DocumentParseRecord[], options: { allowXlsxFinancialMonthRanges?: boolean } = {}): ReportingPeriod[] {
+function recognitionPeriod(records: readonly DocumentParseRecord[], options: {
+  allowXlsxFinancialMonthRanges?: boolean;
+  allowPdfFinancialContextPeriods?: boolean;
+} = {}): ReportingPeriod[] {
   const byPeriod = new Map<string, ReportingPeriod[]>();
   for (const record of records) {
     if (!inFinancialContext(record)) continue;
@@ -338,6 +345,8 @@ export function recognizeHistoricalNativeText(response: DocumentParseResponse, o
   profileVersion: number;
   /** Bounded XLSX-only financial-header case used by target-period proposals, not historical prospectus recognition. */
   allowXlsxFinancialMonthRanges?: boolean;
+  /** Target-period-only case; callers must pass pre-bounded PDF records with same-page bbox/header anchors. */
+  allowPdfFinancialContextPeriods?: boolean;
 }): Recognition {
   if (!Number.isSafeInteger(options.profileVersion) || options.profileVersion < 1) throw new Error('INVALID_PROFILE_VERSION');
   if (!response.material) throw new Error('HISTORICAL_RECOGNITION_MATERIAL_REQUIRED');
@@ -386,7 +395,10 @@ export function recognizeHistoricalNativeText(response: DocumentParseResponse, o
     status: failed ? 'unknown' : response.status === 'needs_confirmation' || ambiguousDfiReferences.length > 0 ? 'needs_confirmation' : undefined,
   });
 
-  const reportingPeriods = failed ? [] : recognitionPeriod(records, options).map(period => response.status === 'needs_confirmation'
+  const reportingPeriods = failed ? [] : recognitionPeriod(records, {
+    ...options,
+    allowPdfFinancialContextPeriods: options.allowPdfFinancialContextPeriods === true && material.media_type === 'application/pdf',
+  }).map(period => response.status === 'needs_confirmation'
     ? { ...period, status: 'needs_confirmation' as const, uncertainty: [...period.uncertainty, ...response.warnings.map(warning => warning.message), '解析器标记材料仍需确认，native_text 子集不覆盖全部识别要求'] }
     : period);
   const validEnds = reportingPeriods.filter(period => period.end !== null && period.status === 'recognized').map(period => period.end!);

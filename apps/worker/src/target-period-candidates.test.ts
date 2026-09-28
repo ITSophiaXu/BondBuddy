@@ -72,6 +72,72 @@ test('proposes annual and interim periods from exact native evidence and keeps e
   assert.ok(result.pending_reasons.includes('issuer_identity_not_established_by_candidate_evidence'));
 });
 
+test('PDF periods require a nearby table heading and cite only the bounded page evidence cluster', () => {
+  const pdfRecord = (id: string, quote: string, top: number, line: number) => ({
+    ...nativeRecord(id, quote, 'PDF page 1'), locator_type: 'pdf_bbox' as const,
+    locator: { page: 1, line, bbox: { x0: 10, top, x1: 300, bottom: top + 10 }, stable_ref: `pdf:p0001:l${String(line).padStart(4, '0')}` },
+  });
+  const records = [
+    pdfRecord('pdf-header', '合并资产负债表', 30, 1),
+    pdfRecord('pdf-entity', '杞县豫资城乡发展建设有限公司', 40, 2),
+    pdfRecord('pdf-period', '2024年度', 50, 3),
+    pdfRecord('pdf-signing-year', '签署日期：2025年度', 55, 4),
+    pdfRecord('pdf-report-number', '审计报告编号：2026年', 60, 5),
+    pdfRecord('pdf-distant-period', '2023年度', 300, 6),
+    pdfRecord('pdf-distant-issue-date', '发行日期：2025年12月31日', 320, 7),
+  ].map(record => ({ ...record, record_sha256: createHash('sha256').update(record.record_id).digest('hex') }));
+  const snapshot: NativePeriodEvidenceSnapshot = {
+    ...nativeSnapshot(records), media_type: 'application/pdf',
+  };
+  const result = extract([snapshot]);
+  assert.deepEqual(result.candidates.map(candidate => candidate.end), ['2024-12-31']);
+  const candidate = result.candidates[0]!;
+  assert.equal(candidate.status, 'needs_confirmation');
+  assert.deepEqual(candidate.evidence.map(item => item.record_id).sort(), ['pdf-entity', 'pdf-header', 'pdf-period']);
+  assert.ok(candidate.anchors.some(anchor => anchor.kind === 'table_header' && anchor.evidence.record_id === 'pdf-header'));
+  assert.ok(candidate.anchors.some(anchor => anchor.kind === 'entity' && anchor.evidence.record_id === 'pdf-entity'));
+  assert.ok(candidate.anchors.some(anchor => anchor.kind === 'period_end' && anchor.evidence.record_id === 'pdf-period'));
+});
+
+test('multiple PDF periods on one page keep separate local evidence clusters', () => {
+  const pdfRecord = (id: string, quote: string, top: number, line: number) => ({
+    ...nativeRecord(id, quote, 'PDF page 1'), locator_type: 'pdf_bbox' as const,
+    locator: { page: 1, line, bbox: { x0: 10, top, x1: 300, bottom: top + 10 }, stable_ref: `pdf:p0001:l${String(line).padStart(4, '0')}` },
+  });
+  const records = [
+    pdfRecord('cluster-a-header', '合并资产负债表', 30, 1),
+    pdfRecord('cluster-a-entity', '甲方建设有限公司', 40, 2),
+    pdfRecord('cluster-a-period', '2024年度', 50, 3),
+    pdfRecord('cluster-b-header', '合并利润表', 130, 4),
+    pdfRecord('cluster-b-entity', '乙方发展有限公司', 140, 5),
+    pdfRecord('cluster-b-period', '2025年1-6月', 150, 6),
+    pdfRecord('unrelated-period', '2022年度', 500, 7),
+  ].map(record => ({ ...record, record_sha256: createHash('sha256').update(record.record_id).digest('hex') }));
+  const snapshot: NativePeriodEvidenceSnapshot = { ...nativeSnapshot(records), media_type: 'application/pdf' };
+  const result = extract([snapshot]);
+  assert.deepEqual(result.candidates.map(candidate => [candidate.end, candidate.period_kind]), [
+    ['2024-12-31', 'annual'], ['2025-06-30', 'interim'],
+  ]);
+  const annual = result.candidates.find(candidate => candidate.end === '2024-12-31')!;
+  const interim = result.candidates.find(candidate => candidate.end === '2025-06-30')!;
+  assert.deepEqual(annual.evidence.map(item => item.record_id).sort(), ['cluster-a-entity', 'cluster-a-header', 'cluster-a-period']);
+  assert.deepEqual(interim.evidence.map(item => item.record_id).sort(), ['cluster-b-entity', 'cluster-b-header', 'cluster-b-period']);
+  assert.ok(result.candidates.every(candidate => candidate.status === 'needs_confirmation'));
+});
+
+test('PDF records without a valid same-page bbox have no period candidate or whole-page fallback', () => {
+  const records = [
+    { ...nativeRecord('pdf-header', '合并资产负债表', 'PDF page 1'), locator_type: 'pdf_bbox' as const,
+      locator: { page: 1, line: 1, bbox: { x0: 10, top: 30, x1: 300, bottom: 40 }, stable_ref: 'pdf:p0001:l0001' } },
+    { ...nativeRecord('pdf-period-no-bbox', '2024年度', 'PDF page 1'), locator_type: 'pdf_bbox' as const,
+      locator: { page: 1, line: 2, bbox: { x0: 10, top: 0, x1: 300, bottom: 0 }, stable_ref: 'pdf:p0001:l0002' } },
+    { ...nativeRecord('pdf-period-other-page', '2025年度', 'PDF page 2'), locator_type: 'pdf_bbox' as const,
+      locator: { page: 2, line: 1, bbox: { x0: 10, top: 50, x1: 300, bottom: 60 }, stable_ref: 'pdf:p0002:l0001' } },
+  ].map(record => ({ ...record, record_sha256: createHash('sha256').update(record.record_id).digest('hex') }));
+  const snapshot: NativePeriodEvidenceSnapshot = { ...nativeSnapshot(records), media_type: 'application/pdf' };
+  assert.deepEqual(extract([snapshot]).candidates, []);
+});
+
 test('cutoff only classifies extracted dates and never creates a reporting period', () => {
   const afterCutoff = nativeSnapshot([nativeRecord('annual-2025', '2025年度', '财务报表报告期 合并')]);
   const result = extract([afterCutoff]);
