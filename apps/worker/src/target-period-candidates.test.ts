@@ -88,6 +88,25 @@ test('cutoff only classifies extracted dates and never creates a reporting perio
   assert.ok(!wrongQuarter.candidates.some(item => item.end === cutoff), 'same year cannot make Q1 evidence support a June cutoff');
 });
 
+test('deduplicated equivalent period tokens retain per-record exact end anchors', () => {
+  const equivalent = extract([nativeSnapshot([
+    nativeRecord('q2-quarter-token', '2025年第二季度', '财务报表报告期 合并口径'),
+    nativeRecord('q2-month-token', '2025年4-6月', '财务报表报告期 合并口径'),
+    nativeRecord('q1-wrong-quarter', '2025年1-3月', '财务报表报告期 合并口径'),
+  ])]);
+  const candidate = equivalent.candidates.find(item => item.end === cutoff);
+  assert.ok(candidate, 'equivalent exact period representations deduplicate to one period');
+  assert.ok(candidate.raw_value?.includes('2025年第二季度'));
+  assert.ok(candidate.raw_value?.includes('2025年4-6月'));
+  assert.deepEqual(candidate.evidence.map(item => item.record_id), ['q2-month-token', 'q2-quarter-token']);
+  assert.deepEqual(candidate.anchors.filter(anchor => anchor.kind === 'period_end').map(anchor => anchor.evidence.record_id).sort(),
+    ['q2-month-token', 'q2-quarter-token']);
+  assert.ok(!candidate.anchors.some(anchor => anchor.kind === 'period_end' && anchor.evidence.record_id === 'q1-wrong-quarter'),
+    'same-year Q1 evidence cannot anchor the deduplicated Q2 period');
+  const q1 = equivalent.candidates.find(item => item.end === '2025-03-31');
+  assert.ok(q1?.anchors.some(anchor => anchor.kind === 'period_end' && anchor.evidence.record_id === 'q1-wrong-quarter'));
+});
+
 test('preserves distinct consolidated and parent scopes and leaves mixed scope pending', () => {
   const result = extract([nativeSnapshot([
     nativeRecord('consolidated', '2024年度', '财务报表 合并口径'),

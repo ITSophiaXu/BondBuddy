@@ -113,7 +113,8 @@ type CandidateOptions = {
 
 type PeriodSource = {
   readonly period: ReportingPeriod;
-  readonly evidence: readonly TargetPeriodEvidenceRef[];
+  /** Preserve which original recognized period token linked each immutable evidence record. */
+  readonly evidence: readonly { readonly ref: TargetPeriodEvidenceRef; readonly raw_value: string | null }[];
 };
 
 function fail(code: string): Error { return new Error(code); }
@@ -267,7 +268,7 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
         record_sha256: row.record_sha256, quote: row.literal_quote, context: row.context, locator: row.locator,
         uncertainty: [...row.uncertainty] }];
     });
-    return { period, evidence };
+    return { period, evidence: evidence.map(ref => ({ ref, raw_value: period.raw_value })) };
   });
 }
 
@@ -296,23 +297,30 @@ function ocrSources(snapshot: OcrPeriodEvidenceSnapshot, locked: Map<string, Loc
         record_sha256: snapshot.record_sha256_by_id[row.record_id]!, page: row.page, page_image_sha256: pageImageSha256,
         quote: row.text, context: '', locator: { page: row.page, bbox: row.bbox }, uncertainty: [...row.uncertainty] }];
     });
-    return { period, evidence };
+    return { period, evidence: evidence.map(ref => ({ ref, raw_value: period.raw_value })) };
   });
 }
 
 function makeCandidate(source: PeriodSource, cutoff: string): ProposedTargetPeriod {
   const period = source.period;
-  const evidence = [...new Map(source.evidence.map(item => [`${item.snapshot_id}\0${item.record_id}`, item])).values()]
+  const evidenceLinks = [...new Map(source.evidence.map(link =>
+    [`${link.ref.snapshot_id}\0${link.ref.record_id}\0${link.raw_value ?? ''}`, link])).values()]
+    .sort((a, b) => a.ref.material_id.localeCompare(b.ref.material_id) || a.ref.material_version - b.ref.material_version ||
+      a.ref.snapshot_id.localeCompare(b.ref.snapshot_id) || a.ref.record_id.localeCompare(b.ref.record_id) ||
+      String(a.raw_value ?? '').localeCompare(String(b.raw_value ?? '')));
+  const evidence = [...new Map(evidenceLinks.map(link => [`${link.ref.snapshot_id}\0${link.ref.record_id}`, link.ref])).values()]
     .sort((a, b) => a.material_id.localeCompare(b.material_id) || a.material_version - b.material_version ||
       a.snapshot_id.localeCompare(b.snapshot_id) || a.record_id.localeCompare(b.record_id));
   const anchors: TargetPeriodAnchor[] = [];
-  for (const item of evidence) {
+  for (const { ref: item, raw_value: sourceRawValue } of evidenceLinks) {
     const text = `${item.quote}\n${item.context}`;
     if (/报告期|财务报表|财务数据|财务会计信息|审计报告|资产负债表|利润表|现金流量表/.test(text) ||
         recordIsFinancialHeader({ quote: item.quote, context: item.context, locator: item.locator })) anchors.push({ kind: 'table_header', evidence: item });
     if (recordMentionsEntity({ quote: item.quote, context: item.context })) anchors.push({ kind: 'entity', evidence: item });
     if (/合并|母公司|公司本部/.test(text)) anchors.push({ kind: 'scope', evidence: item });
-    if (period.end !== null && ((period.raw_value !== null && item.quote.includes(period.raw_value)) || item.quote.includes(period.end)))
+    const exactPeriodTokenMatchesQuote = sourceRawValue !== null && sourceRawValue.split('；')
+      .some(rawToken => rawToken.length > 0 && item.quote.includes(rawToken));
+    if (period.end !== null && (exactPeriodTokenMatchesQuote || item.quote.includes(period.end)))
       anchors.push({ kind: 'period_end', evidence: item });
   }
   const anchorKinds = new Set(anchors.map(anchor => anchor.kind));
