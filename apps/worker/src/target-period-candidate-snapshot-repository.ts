@@ -107,7 +107,7 @@ async function lockProject(client: TargetPeriodCandidateSnapshotClient, request:
     `SELECT draft_revision, update_details
        FROM bb_projects
       WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL
-      FOR SHARE`,
+      FOR UPDATE`,
     [request.ownerUserId, request.projectId],
   );
   if (result.rows.length !== 1) throw fail('TARGET_PERIOD_CANDIDATE_PROJECT_NOT_FOUND');
@@ -145,16 +145,27 @@ async function verifyCurrentMaterials(client: TargetPeriodCandidateSnapshotClien
   const live = result.rows.map(row => ({ material_id: text(row, 'material_id'), material_version: Number(row.material_version),
     material_sha256: text(row, 'material_sha256'), role: text(row, 'role') }));
   if (!same(live, expected) || live.some(item => !FINANCIAL_ROLES.has(item.role))) throw fail('TARGET_PERIOD_CANDIDATE_MATERIAL_STALE');
+  // The project FOR UPDATE lock serializes this new write with the API upload/
+  // replacement path (and the material FK's KEY SHARE lock). Lock latest active
+  // rows in material-ID order as well; an older version can be replayed for
+  // audit, but cannot become a new candidate snapshot after replacement.
+  for (const item of selected) {
+    const latest = await client.query(
+      `SELECT version, lower(btrim(sha256::text)) AS sha256 FROM bb_material_versions
+        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL
+        ORDER BY version DESC LIMIT 1 FOR SHARE`,
+      [request.ownerUserId, request.projectId, item.materialId],
+    );
+    if (latest.rows.length !== 1 || Number(latest.rows[0]!.version) !== item.materialVersion ||
+        text(latest.rows[0]!, 'sha256').trim() !== expected.find(pin => pin.material_id === item.materialId)?.material_sha256) {
+      throw fail('TARGET_PERIOD_CANDIDATE_MATERIAL_STALE');
+    }
+  }
 }
 
 async function verifyNativeSource(client: TargetPeriodCandidateSnapshotClient,
   snapshot: TargetPeriodCandidateSnapshot, source: TargetPeriodCandidateSnapshot['content']['source_snapshots'][number]): Promise<void> {
-  if (source.evidence_method !== 'native_text') {
-    // TODO(#14): add the private Blob-backed OCR source loader. The current OCR snapshot row
-    // stores only a result hash/key; accepting caller supplied OCR records/page pins here would
-    // bypass the byte verification that the future loader must perform.
-    throw fail('TARGET_PERIOD_CANDIDATE_OCR_SOURCE_LOADER_REQUIRED');
-  }
+  if (source.evidence_method !== 'native_text') throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_METHOD_INVALID');
   const sourceRow = await client.query(
     `SELECT s.id, s.owner_user_id, s.project_id, s.material_id, s.material_version, s.content_sha256,
             s.parser_version, s.response_status, s.response_sha256, s.record_count, m.role
@@ -245,15 +256,6 @@ async function verifyOcrSource(client: TargetPeriodCandidateSnapshotClient, blob
       source.parser_version.trim() === '' || !FINANCIAL_ROLES.has(text(row, 'role'))) {
     throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_STALE');
   }
-  const latestMaterial = await client.query(
-    `SELECT version, lower(btrim(sha256::text)) AS sha256 FROM bb_material_versions
-      WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL
-      ORDER BY version DESC LIMIT 1 FOR SHARE`,
-    [snapshot.content.owner_user_id, snapshot.content.project_id, source.material_id],
-  );
-  if (latestMaterial.rows.length !== 1 || Number(latestMaterial.rows[0]!.version) !== source.material_version ||
-      text(latestMaterial.rows[0]!, 'sha256').trim() !== source.material_sha256) throw fail('TARGET_PERIOD_CANDIDATE_SOURCE_STALE');
-
   const latest = await client.query(
     `SELECT id FROM bb_ocr_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
       ORDER BY created_at DESC,id DESC LIMIT 1 FOR SHARE`,

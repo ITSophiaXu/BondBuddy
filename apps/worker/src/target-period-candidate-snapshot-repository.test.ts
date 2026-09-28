@@ -18,24 +18,24 @@ const canonicalTest = (value: unknown): string => Array.isArray(value) ? `[${val
 function fixture(owner: string, project: string, material: string, snapshotId: string, cutoff: string, draftRevision: number,
   requirements: TargetPeriodCandidateSnapshot['content']['supplemental_requirements'] = {
     version: 1, content_sha256: digest('empty-requirements'), message_ids: [],
-  }): TargetPeriodCandidateSnapshot {
+  }, materialVersion = 1, candidateVersion = 1): TargetPeriodCandidateSnapshot {
   const materialHash = 'a'.repeat(64);
   const record: DocumentParseRecord & { record_sha256: string } = {
-    record_id: 'annual-header', material_id: material, material_version: 1, content_hash: materialHash,
+    record_id: 'annual-header', material_id: material, material_version: materialVersion, content_hash: materialHash,
     locator_type: 'xlsx_cell', locator: { path: [{ sheet: '合并利润表', table: 1, row: 1, column: 2 }] },
     literal_quote: '2024年度', context: '财务会计信息 / 合并财务报表报告期', extraction_method: 'native_text',
     extractor_version: 'synthetic-parser-1', confidence: 1, uncertainty: [], formatting: { sheet_state: 'visible' }, record_sha256: 'b'.repeat(64),
   };
   const source: NativePeriodEvidenceSnapshot = {
     method: 'native_text', snapshot_id: snapshotId, response_sha256: 'c'.repeat(64), material_id: material,
-    material_version: 1, material_sha256: materialHash, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    material_version: materialVersion, material_sha256: materialHash, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     parser_version: 'synthetic-parser-1', status: 'parsed', warnings: [], records: [record],
   };
   const candidateSet = proposeTargetReportingPeriods({ reporting_cutoff: cutoff,
-    locked_materials: [{ material_id: material, material_version: 1, material_sha256: materialHash, role: 'financial' }], snapshots: [source] });
+    locked_materials: [{ material_id: material, material_version: materialVersion, material_sha256: materialHash, role: 'financial' }], snapshots: [source] });
   return buildTargetPeriodCandidateSnapshot({ candidate_set: candidateSet, candidate_set_id: `candidate-set-${project}`,
-    candidate_set_version: 1, owner_user_id: owner, project_id: project, project_draft_revision: draftRevision,
-    reporting_cutoff: cutoff, locked_materials: [{ material_id: material, material_version: 1, material_sha256: materialHash, role: 'financial' }],
+    candidate_set_version: candidateVersion, owner_user_id: owner, project_id: project, project_draft_revision: draftRevision,
+    reporting_cutoff: cutoff, locked_materials: [{ material_id: material, material_version: materialVersion, material_sha256: materialHash, role: 'financial' }],
     supplemental_requirements: requirements });
 }
 
@@ -68,7 +68,7 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
     newId: () => `candidate-row-${suffix}-${++ids}` };
   const save = (requestId: string, snapshot: TargetPeriodCandidateSnapshot) => appendTargetPeriodCandidateSnapshot(dependencies, {
     ownerUserId: owner, projectId: project, requestId,
-    selectedFinancialMaterials: [{ materialId: material, materialVersion: 1 }], snapshot,
+    selectedFinancialMaterials: [{ materialId: material, materialVersion: snapshot.content.financial_materials[0]!.material_version }], snapshot,
   });
   try {
     await connection.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,update_details) VALUES($1,$2,'synthetic candidate test','update',$3::jsonb)`,
@@ -143,17 +143,47 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
     assert.equal((await connection.query(`SELECT count(*)::int AS n FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1`, [owner])).rows[0]!.n, 1);
     assert.equal((await connection.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE owner_user_id=$1 AND event_type='project.target_period_candidates_snapshotted'`, [owner])).rows[0]!.n, 1);
 
+    // A replacement keeps historical v1 rows for audit, but a new candidate
+    // request must use the current material version even if the old parse row
+    // and project cutoff remain valid. Exact old-request replay still works.
+    const uploadV2 = `candidate-upload-v2-${suffix}`, parseV2 = `candidate-parse-v2-${suffix}`;
+    await connection.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'financial-v2.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',10,$4,'financial',$5,now()+interval '1 hour','completed')`,
+    [uploadV2, owner, project, hash, `synthetic-v2/${suffix}`]);
+    await connection.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,2,$2,$3,$4,'financial','financial-v2.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',10,$5,$6,'parsed')`,
+    [material, owner, project, uploadV2, hash, `synthetic-material-v2/${suffix}`]);
+    await connection.query(`INSERT INTO bb_parse_snapshots
+      (id,owner_user_id,project_id,material_id,material_version,content_sha256,parser_version,request_hash,request_options,response_status,response_schema_version,response_sha256,record_count,response_meta)
+      VALUES($1,$2,$3,$4,2,$5,'synthetic-parser-1',$6,'{}'::jsonb,'parsed','document-parse-response-v1',$7,1,$8::jsonb)`,
+    [parseV2, owner, project, material, hash, digest('parse-request-v2'), responseHash, JSON.stringify({ schema_version: 'document-parse-response-v1',
+      request_id: `parse-request-v2-${suffix}`, parser_version: 'synthetic-parser-1', status: 'parsed',
+      material: { material_id: material, material_version: 2, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', sha256: hash },
+      warnings: [], document: { page_count: null }, error: null })]);
+    await connection.query(`INSERT INTO bb_parse_evidence
+      (owner_user_id,project_id,material_id,material_version,snapshot_id,record_id,content_sha256,locator_type,locator,literal_quote,context,
+       extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
+      VALUES($1,$2,$3,2,$4,'annual-header',$5,'xlsx_cell',$6::jsonb,'2024年度','财务会计信息 / 合并财务报表报告期','native_text','synthetic-parser-1',1,'[]'::jsonb,'{"sheet_state":"visible"}'::jsonb,$7,0)`,
+    [owner, project, material, parseV2, hash, JSON.stringify({ path: [{ sheet: '合并利润表', table: 1, row: 1, column: 2 }] }), recordHash]);
+    const staleV1 = fixture(owner, project, material, parseId, '2025-06-30', 2, undefined, 1, 2);
+    await assert.rejects(save('store-new-request-after-v2', staleV1), /MATERIAL_STALE/);
+    assert.equal((await save('store-request-1', snapshot)).id, first.id, 'old request still replays its exact historical v1 envelope');
+    const currentV2 = fixture(owner, project, material, parseV2, '2025-06-30', 2, undefined, 2, 2);
+    const acceptedV2 = await save('store-current-v2', currentV2);
+    assert.equal(acceptedV2.snapshot.content.financial_materials[0]!.material_version, 2);
+    assert.equal(acceptedV2.replayed, false);
+
     const ocrSnapshotId = `candidate-ocr-${suffix}`;
     const pageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jU1sAAAAASUVORK5CYII=', 'base64');
     const pageHash = digest(pageBytes);
-    const pageKey = `users/${owner}/projects/${project}/ocr/${material}/1/${pageHash}.png`;
+    const pageKey = `users/${owner}/projects/${project}/ocr/${material}/2/${pageHash}.png`;
     const ocrRecord = { record_id: 'ocr-annual-header', page: 1, bbox: [0, 0, 1, 1] as [number, number, number, number],
       text: '合并财务报表报告期 2024年度 发行人名称：示例公司', confidence: 0.8,
       numeric: { kind: 'unparsed' as const, decimal: null, unit: null }, cell: null, uncertainty: ['OCR存疑数字'], eligible_for_manuscript: false as const };
     const ocrResponse = { schema_version: 'ocr-response-v1' as const, request_id: `ocr-request-${suffix}`, processor_version: 'synthetic-ocr-1',
       engine_version: 'synthetic-engine-1', language_data_sha256: { chi_sim: 'c'.repeat(64) }, language: 'chi_sim',
       purpose: 'source_preflight' as const, status: 'needs_confirmation' as const,
-      material: { material_id: material, material_version: 1, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', sha256: hash }, page_count: 1,
+      material: { material_id: material, material_version: 2, media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', sha256: hash }, page_count: 1,
       coverage: 'complete' as const, pages: [{ page: 1, width: 1, height: 1, rotation_clockwise: 0 as const,
         coordinate_system: 'rendered_pixels_top_left' as const, image_sha256: pageHash, image_base64: '', warnings: [] }],
       records: [ocrRecord], warnings: [], error: null, eligible_for_manuscript: false as const };
@@ -163,13 +193,13 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
     blobObjects.set(pageKey, pageBytes);
     blobObjects.set(`${resultKey}${resultHash}.json`, storedOcrBytes);
     await connection.query(`INSERT INTO bb_ocr_snapshots(id,owner_user_id,project_id,material_id,material_version,request_id,request_hash,result_hash,result_key,purpose,run_id)
-      VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,'source_preflight',NULL)`,
+      VALUES($1,$2,$3,$4,2,$5,$6,$7,$8,'source_preflight',NULL)`,
     [ocrSnapshotId, owner, project, material, `ocr-request-${suffix}`, digest('synthetic-ocr-request'), resultHash, `${resultKey}${resultHash}.json`]);
-    const ocrReview: OcrReview = { snapshot_id: ocrSnapshotId, result_sha256: resultHash, material_id: material, material_version: 1,
+    const ocrReview: OcrReview = { snapshot_id: ocrSnapshotId, result_sha256: resultHash, material_id: material, material_version: 2,
       purpose: 'source_preflight', coverage: 'complete', page_count: 1,
       pages: [{ page: 1, width: 1, height: 1, rotation_clockwise: 0, coordinate_system: 'rendered_pixels_top_left',
         image_sha256: pageHash, warnings: [], image_url: '/synthetic/ocr-page' }], records: [ocrRecord], corrections: [], warnings: [], eligible_for_manuscript: false };
-    const ocrMaterials = [{ material_id: material, material_version: 1, material_sha256: hash, role: 'financial' }];
+    const ocrMaterials = [{ material_id: material, material_version: 2, material_sha256: hash, role: 'financial' }];
     const ocrCandidates = proposeTargetReportingPeriods({ reporting_cutoff: '2025-06-30', locked_materials: ocrMaterials,
       snapshots: [{ method: 'ocr', review: ocrReview, processor_version: ocrResponse.processor_version, material_sha256: hash,
         record_sha256_by_id: { [ocrRecord.record_id]: digest(canonicalTest(ocrRecord)) } }] });
@@ -178,7 +208,7 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
       locked_materials: ocrMaterials, supplemental_requirements: { version: 1, content_sha256: digest('empty-requirements'), message_ids: [] } });
     const persistedOcr = await save('store-ocr-candidate', ocrEnvelope);
     assert.deepEqual(persistedOcr.snapshot, ocrEnvelope);
-    assert.equal((await connection.query(`SELECT count(*)::int AS n FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1`, [owner])).rows[0]!.n, 2);
+    assert.equal((await connection.query(`SELECT count(*)::int AS n FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1`, [owner])).rows[0]!.n, 3);
   } finally {
     await connection.query('ROLLBACK');
     connection.release();
@@ -283,7 +313,7 @@ test('OCR candidate snapshots are accepted only from current hash-verified owner
   await run('ocr-page-missing', (_snapshot, state) => { state.pageBytes = null; }, /OCR_PAGE_INTEGRITY_FAILED/);
   await run('ocr-page-tampered', (_snapshot, state) => { state.pageBytes = Buffer.from('tampered'); }, /OCR_PAGE_INTEGRITY_FAILED/);
   await run('ocr-snapshot-stale', (_snapshot, state) => { state.latestSnapshotId = 'newer-ocr'; }, /SOURCE_STALE/);
-  await run('ocr-material-stale', (_snapshot, state) => { state.latestMaterialVersion = 2; }, /SOURCE_STALE/);
+  await run('ocr-material-stale', (_snapshot, state) => { state.latestMaterialVersion = 2; }, /MATERIAL_STALE/);
   await run('ocr-foreign-owner', (_snapshot, state) => { state.sourceOwner = 'different-owner'; }, /SOURCE_NOT_FOUND/);
   await run('ocr-purpose-forged', (_snapshot, state) => { state.purpose = 'full_ocr'; }, /SOURCE_STALE/);
   await run('ocr-forged-evidence-text', snapshot => { snapshot.content.evidence_records[0]!.context = 'caller forged this'; }, /EVIDENCE_TEXT_MISMATCH/);
