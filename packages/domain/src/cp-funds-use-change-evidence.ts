@@ -87,9 +87,9 @@ function quoteDescribesCompletedEvent(quote: string, event: 'disclosure' | 'use_
   // event that has occurred. Ambiguous wording intentionally fails closed.
   if (/(?:拟|计划|预计|将于|将要|尚未|待披露|待实施|待生效|拟变更|计划变更)/.test(quote)) return false;
   if (event === 'disclosure') {
-    return /(?:已|已经).{0,40}(?:对外)?(?:公开)?(?:披露|公告|发布)|(?:披露|公告|发布)(?:日期|时间)(?:为|是|于)/.test(quote);
+    return /(?:已|已经).{0,40}(?:对外)?(?:公开)?(?:披露|公告|发布)/.test(quote);
   }
-  return /用途.{0,40}(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效|开始使用|开始实施|开始执行|生效)|(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效).{0,40}用途/.test(quote);
+  return /用途.{0,40}(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效)|(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效).{0,40}用途/.test(quote);
 }
 
 function citationsBindActualEvent(

@@ -89,6 +89,16 @@ test('planned dates do not prove completed disclosure or completed use change', 
   assert.ok(result.reasons.includes('actual_use_change_event_not_proven'));
 });
 
+test('a scheduled disclosure date and a stated effective date are not completed events', () => {
+  const result = checkCpFundsUseChangeEvidence(input({
+    disclosureDate: evidenced('2025-04-01', '披露日期为2025-04-01。'),
+    changedUseEffectiveDate: evidenced('2025-04-02', '变更后的募集资金用途自2025-04-02生效。'),
+  }));
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(result.reasons.includes('actual_disclosure_event_not_proven'));
+  assert.ok(result.reasons.includes('actual_use_change_event_not_proven'));
+});
+
 test('future event dates stay in review even when the quote uses completed-event wording', () => {
   const result = checkCpFundsUseChangeEvidence(input({
     checkedOn: '2025-03-31',
@@ -110,9 +120,9 @@ test('an exact Chinese date representation is accepted when its quote proves the
 test('source citations retain exact versions, locators, and event quotes', () => {
   const source = {
     ...citation,
-    sourceRefId: 'NA028',
+    sourceRefId: 'synthetic:issuer-announcement',
     materialVersion: 'docx-sha256:synthetic',
-    locator: 'P00008',
+    locator: 'synthetic page 1',
     quote: '公司已于2025-04-01对外披露募集资金用途变更。',
   };
   const evidence = input({ disclosureDate: evidenced('2025-04-01', source.quote, { citations: [source] }) });
