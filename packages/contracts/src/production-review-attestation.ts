@@ -61,6 +61,21 @@ const manifestPin = {
   content_sha256: hash,
 };
 
+/** Creation request leaves identity, version and digest to the registry. */
+export const ProductionReviewManifestCreateRequestSchema = Type.Object({
+  request_id: id,
+  content: ProductionReviewManifestSchema.properties.content,
+}, { additionalProperties: false });
+
+/** Route body selects the evidence branch; reviewer identity and grant come from session/database. */
+export const ProductionReviewAttestationSubmitRequestSchema = Type.Union([
+  Type.Object({ request_id: id, manifest_content_hash: hash, attestation_kind: Type.Literal('industry'), decision, reason,
+    evidence: ProductionIndustryAttestationEvidenceSchema }, { additionalProperties: false }),
+  Type.Object({ request_id: id, manifest_content_hash: hash, attestation_kind: Type.Literal('technical'), decision, reason,
+    evidence: ProductionTechnicalAttestationEvidenceSchema }, { additionalProperties: false }),
+], { description: 'Session-derived reviewer self-submission. attestation_kind selects the evidence schema and is independently checked against an active grant.' });
+export const ProductionReviewWithdrawalCreateRequestSchema = Type.Object({ request_id: id, reason }, { additionalProperties: false });
+
 /** Authenticated reviewer input. Actor, grant and time are intentionally absent. */
 export const ProductionIndustryAttestationRequestSchema = Type.Object({
   ...manifestPin,
@@ -127,6 +142,9 @@ export const ProductionReviewAttestationWithdrawalEventSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const productionReviewAttestationSchemas = {
+  ProductionReviewManifestCreateRequest: ProductionReviewManifestCreateRequestSchema,
+  ProductionReviewAttestationSubmitRequest: ProductionReviewAttestationSubmitRequestSchema,
+  ProductionReviewWithdrawalCreateRequest: ProductionReviewWithdrawalCreateRequestSchema,
   ProductionIndustryAttestationRequest: ProductionIndustryAttestationRequestSchema,
   ProductionTechnicalAttestationRequest: ProductionTechnicalAttestationRequestSchema,
   ProductionReviewAttestationRequest: ProductionReviewAttestationRequestSchema,
@@ -136,6 +154,9 @@ export const productionReviewAttestationSchemas = {
 } as const;
 
 export type ProductionReviewAttestationRequest = Static<typeof ProductionReviewAttestationRequestSchema>;
+export type ProductionReviewManifestCreateRequest = Static<typeof ProductionReviewManifestCreateRequestSchema>;
+export type ProductionReviewAttestationSubmitRequest = Static<typeof ProductionReviewAttestationSubmitRequestSchema>;
+export type ProductionReviewWithdrawalCreateRequest = Static<typeof ProductionReviewWithdrawalCreateRequestSchema>;
 export type ProductionIndustryAttestationRequest = Static<typeof ProductionIndustryAttestationRequestSchema>;
 export type ProductionTechnicalAttestationRequest = Static<typeof ProductionTechnicalAttestationRequestSchema>;
 export type ProductionReviewAttestationEvent = Static<typeof ProductionReviewAttestationEventSchema>;
