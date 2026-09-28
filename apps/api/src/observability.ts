@@ -29,7 +29,10 @@ export async function recordOperation(client:PoolClient,input:{owner:string;proj
   if(input.errorCode&&!ERROR_CODES.includes(input.errorCode as typeof ERROR_CODES[number]))throw new Error('Invalid error code');
   let channel=input.channel??'production';
   if(input.runId){const r=await client.query('SELECT channel FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3',[input.runId,input.owner,input.projectId]);if(!r.rowCount)throw missing();channel=r.rows[0].channel;}
-  if(input.jobId){const j=await client.query('SELECT channel FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3',[input.jobId,input.owner,input.projectId]);if(!j.rowCount)throw missing();channel=j.rows[0].channel;}
+  if(input.jobId){const j=await client.query(`SELECT j.channel FROM bb_jobs j
+    LEFT JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
+    WHERE j.id=$1 AND j.owner_user_id=$2 AND COALESCE(j.project_id,r.project_id) IS NOT DISTINCT FROM $3`,
+    [input.jobId,input.owner,input.projectId??null]);if(!j.rowCount)throw missing();channel=j.rows[0].channel;}
   const id=uid();
   await client.query('INSERT INTO bb_operations(id,owner_user_id,project_id,run_id,request_id,trace_id,operation_kind,status,error_code,input_revision,input_hash,channel) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[id,input.owner,input.projectId??null,input.runId??null,input.requestId,input.traceId,input.kind,input.status,input.errorCode??null,input.inputRevision??null,input.inputHash??null,channel]);
   if(input.emitEvent!==false)await emitInternal(client,internalEvent({kind:input.status==='rejected'?'operation.rejected':'operation.submitted',owner:input.owner,actorType:'user',projectId:input.projectId,runId:input.runId,jobId:input.jobId,traceId:input.traceId,operationId:id,requestId:input.requestId,status:input.status==='rejected'?'rejected':'created',error:input.errorCode?{error_id:input.errorId??uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false,...(input.errorReason?{reason:input.errorReason}:{}),...(input.errorDetail?{detail:input.errorDetail}:{})}:undefined}));

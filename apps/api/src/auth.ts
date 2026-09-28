@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { AGREEMENT_SUMMARY_PATH, AGREEMENT_TITLE, CLOSURE_RETAINED_RECORDS, RUN_STATES, schemas } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, transaction, uid, unavailable } from './data.js';
+import { recordOperation } from './observability.js';
 
 export type AuthConfig = { pool: Pool; allowedOrigin?: string; termsVersion?: string; supportContact?: string };
 export const passwordOptions = { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 };
@@ -130,7 +131,9 @@ export function installAuth(app: FastifyInstance, config: AuthConfig) {
       await client.query('INSERT INTO bb_registration_events(user_id,event_id) VALUES($1,$2)',[userId,eventId]);
       await client.query('INSERT INTO bb_agreement_acceptances(user_id,terms_version,registration_event_id) VALUES($1,$2,$3)',[userId,b.accepted_terms_version,eventId]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[eventId,userId,'user',userId,'user.registered',{user_id:userId,registration_event_id:eventId}]);
-      return newSession(client,userId);
+      const created=await newSession(client,userId);
+      await recordOperation(client,{owner:userId,requestId:request.id,traceId:request.id,kind:'auth_register',status:'submitted'});
+      return created;
     });
     issueCookies(reply,result.access,result.refresh,result.csrfToken,result.refreshExpiry);
     return reply.code(201).send({user_id:result.userId,expires_at:result.accessExpiry.toISOString(),session_status:'active'});
@@ -143,7 +146,10 @@ export function installAuth(app: FastifyInstance, config: AuthConfig) {
     const source=request.ip; // Fastify's trusted remote address; never trust an arbitrary forwarded header.
     const result=await transaction(db,async client=>{
       const userId=await checkPassword(client,name,b.password,source);
-      return userId ? newSession(client,userId) : null;
+      if(!userId)return null;
+      const logged=await newSession(client,userId);
+      await recordOperation(client,{owner:userId,requestId:request.id,traceId:request.id,kind:'auth_login',status:'submitted'});
+      return logged;
     });
     if(!result)throw loginError();
     issueCookies(reply,result.access,result.refresh,result.csrfToken,result.refreshExpiry);
@@ -166,9 +172,10 @@ export function installAuth(app: FastifyInstance, config: AuthConfig) {
     origin(request,config.allowedOrigin);
     const c=cookies(request),token=c.bb_refresh;if(!token)throw new Problem(401,'UNAUTHENTICATED','Session required');
     await transaction(db,async client=>{
-      const q=await client.query('SELECT id,csrf_hash FROM bb_auth_sessions WHERE refresh_hash=$1 AND revoked_at IS NULL FOR UPDATE',[digest(token)]);
+      const q=await client.query('SELECT id,user_id,csrf_hash FROM bb_auth_sessions WHERE refresh_hash=$1 AND revoked_at IS NULL FOR UPDATE',[digest(token)]);
       if(!q.rows[0])throw new Problem(401,'UNAUTHENTICATED','Session required');csrf(request,q.rows[0].csrf_hash);
       await client.query("UPDATE bb_auth_sessions SET revoked_at=now(),revoked_reason='logout' WHERE id=$1",[q.rows[0].id]);
+      await recordOperation(client,{owner:q.rows[0].user_id,requestId:request.id,traceId:request.id,kind:'auth_logout',status:'submitted'});
     });
     return reply.code(204).header('set-cookie',clearCookies()).header('cache-control','no-store').send();
   });

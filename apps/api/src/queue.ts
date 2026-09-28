@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
-import { emitInternal, internalEvent } from './observability.js';
+import { emitInternal, internalEvent, recordOperation } from './observability.js';
 import { ERROR_CODES, RUN_PAUSE_STAGES, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
@@ -158,7 +158,7 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
   });
 }
 
-export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume') {
+export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume',requestId?:string) {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
@@ -171,6 +171,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');
+    if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:kind==='cancel'?'run_cancel':'run_resume',status:'submitted'});
     return runDto({...r,updated_at:new Date()});
   });
 }
