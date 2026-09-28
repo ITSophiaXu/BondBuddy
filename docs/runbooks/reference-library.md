@@ -76,7 +76,9 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 | POST | `/releases/:id/rollback` | operator | 以新发布恢复旧索引；撤回或授权失效的条目不会恢复 |
 | POST | `/sources/:id/sync` | operator | 立即入队一次同步（有进行中的同步则返回它） |
 | POST | `/sources/:id/rights` | operator | 更改使用权 |
-| POST | `/imports` | operator | 运营批量补录（1–50 条，PDF/DOCX，base64），与公开来源共用流水线 |
+| POST | `/imports` | operator | 运营批量补录（1–50 条，PDF/DOCX，base64；每条至多 100 MiB，解码后整批至多 200 MiB），与公开来源共用流水线 |
+
+批量补录在任何 staging Blob 或同步任务写入前，按顺序对每条执行与普通材料上传相同的内容检查：声明类型必须匹配字节，PDF 加密或脚本、DOCX 外部关系或损坏结构等均会拒绝。任一条不合格则整批返回 422，不会留下本批 staging 对象或同步任务。响应的 `field_errors` 含 `items[index].content_base64`、`external_key` 及内容检查的原因码；运营人员按该索引核对原件、声明类型和来源，移除或更正问题条目后重新提交完整批次。超过总量上限时拆成多个不超过 200 MiB 的批次；不要通过改文件扩展名或 MIME 声明绕过检查。同步读取已暂存对象时还会复核 SHA-256，不一致的条目记为 `LIBRARY_BYTES_INVALID`，不得继续解析。
 
 审核规则：`approve` 要求版本和最新画像都处于待审、画像为合并口径且三项业务各有证据、市场/方式/品种/阶段均已分类。默认分类器**不会猜测**前三大业务：它只从标题推出市场、方式、品种和阶段，画像保持 `incomplete`。运营须用 `correct` 提交最近完整年度、词典版本及逐项证据（页码/记录 ID），生成新的画像版本后再批准。第三业务排名变化或任何画像内容变化都会追加新画像版本，旧的待审画像变为 superseded。
 

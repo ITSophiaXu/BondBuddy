@@ -938,7 +938,11 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
       await raiseAlert(pool, { kind: 'retention_purge_failed', severity: 'warning', scope: 'blob', detail: { content_kind: 'orphan_prompt_snapshot' } });
     }
   }
-  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed };
+  const { purgeBrowserErrorContent } = await import('./browser-errors.js');
+  let browserPurged = 0;
+  for (const owner of policy.ownerScope ?? [undefined])
+    browserPurged += await purgeBrowserErrorContent(pool, policy.contentRetentionDays, now, owner);
+  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed, browserPurged };
 }
 
 // ---------------------------------------------------------------- operator access
@@ -992,7 +996,7 @@ export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilt
         AND ($11::boolean OR e.channel IS DISTINCT FROM 'non_production_test')
       ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1, testChannelEnabled()]);
     const rows = q.rows.slice(0, filter.limit);
-    return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
+    return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, error_id: r.event.error?.error_id ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
   });
 }
 

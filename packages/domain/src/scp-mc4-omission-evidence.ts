@@ -66,6 +66,9 @@ export type ScpMc4OmissionEvidenceInput = {
   /** M-5/M-6/M-7 content retained independently of any omission candidate. */
   fundsManagementControls: ScpMc4Assertion<'included' | 'missing'>;
   shortTermLiquidityPlan: ScpMc4Assertion<'included' | 'missing'>;
+  /** OF007 note 1: keep evidence for each transition scheme separate. */
+  fundsManagementControlsTransitionScheme: ScpMc4Assertion<'included' | 'missing'>;
+  shortTermLiquidityPlanTransitionScheme: ScpMc4Assertion<'included' | 'missing'>;
 };
 
 export type ScpMc4OmissionDecision =
@@ -109,6 +112,35 @@ function hasTrustworthyCitation(citation: unknown): citation is ScpMc4EvidenceCi
     typeof candidate.sourceVersion === 'string' && candidate.sourceVersion.trim().length > 0 &&
     typeof candidate.locator === 'string' && candidate.locator.trim().length > 0 &&
     typeof candidate.quote === 'string' && candidate.quote.trim().length > 0;
+}
+
+function hasRelevantTransitionCitation(assertion: unknown, subject: 'funds_management_controls' | 'short_term_liquidity_plan'): boolean {
+  if (!isRecord(assertion) || assertion.status !== 'cited' || !Array.isArray(assertion.citations)) return false;
+  const subjectScheme = subject === 'funds_management_controls'
+    ? '资金运营内控制度.{0,8}过渡方案'
+    : '短期资金调度应急预案.{0,8}过渡方案';
+  const affirmativeEvidence = (clause: string): boolean => {
+    const providedBeforeObject = new RegExp(`已(?:经)?(?:提供|披露|提交)\\s*${subjectScheme}`).test(clause);
+    const providedAfterObject = new RegExp(`${subjectScheme}\\s*已(?:经)?(?:提供|披露|提交)`).test(clause);
+    const schemeDescribed = new RegExp(`${subjectScheme}(?:为|包括|内容为|[:：]过渡期间(?:采取|由))`).test(clause);
+    return providedBeforeObject || providedAfterObject || schemeDescribed;
+  };
+  return assertion.citations.some((citation: unknown) => {
+    if (!hasTrustworthyCitation(citation)) return false;
+    // The regulation proves the obligation, not that this issuer supplied a scheme. Require
+    // a public-market record describing an actual issuer disclosure/arrangement.
+    if (citation.sourceKind !== 'public_market_record') return false;
+    const clauses = citation.quote.split(/[，,；;。！？!?、\n\r]+/).map(clause => clause.trim()).filter(Boolean);
+    // Keep a negative assertion about a transition scheme from being outweighed by an
+    // unrelated disclosure or affirmative phrase elsewhere in the same citation.
+    if (clauses.some(clause => /(?:尚未|未|没有|未能)\s*(?:提供|披露|提交|形成)?/.test(clause) && /(?:资金运营内控制度|短期资金调度应急预案|过渡方案)/.test(clause))) return false;
+
+    // Require the subject's named scheme and its positive disclosure/description in one
+    // punctuation-delimited clause. A general control report, another item's scheme, or
+    // an affirmative statement in a neighboring clause cannot establish this item.
+    const matchingClauses = clauses.filter(clause => new RegExp(subjectScheme).test(clause) && affirmativeEvidence(clause));
+    return matchingClauses.length === 1;
+  });
 }
 
 function assertionStatus(assertion: unknown): 'valid' | 'uncertain' | 'conflict' {
@@ -256,10 +288,45 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
     }
   }
 
-  const controlsValid = assertionStatus(input.fundsManagementControls) === 'valid' && input.fundsManagementControls.status === 'cited' && input.fundsManagementControls.value === 'included';
-  const liquidityValid = assertionStatus(input.shortTermLiquidityPlan) === 'valid' && input.shortTermLiquidityPlan.status === 'cited' && input.shortTermLiquidityPlan.value === 'included';
-  if (!controlsValid) reasons.push('funds_management_controls_must_remain_disclosed');
-  if (!liquidityValid) reasons.push('short_term_liquidity_plan_must_remain_disclosed');
+  const controlsStatus = assertionStatus(input.fundsManagementControls);
+  const controlsKnown = controlsStatus === 'valid' && input.fundsManagementControls.status === 'cited' &&
+    (input.fundsManagementControls.value === 'included' || input.fundsManagementControls.value === 'missing');
+  const liquidityStatus = assertionStatus(input.shortTermLiquidityPlan);
+  const liquidityKnown = liquidityStatus === 'valid' && input.shortTermLiquidityPlan.status === 'cited' &&
+    (input.shortTermLiquidityPlan.value === 'included' || input.shortTermLiquidityPlan.value === 'missing');
+  if (!controlsKnown) reasons.push('funds_management_controls_status_not_source_confirmed');
+  if (!liquidityKnown) reasons.push('short_term_liquidity_plan_status_not_source_confirmed');
+
+  // Official OF007 note 1 names a transition scheme for each control/plan. Check the matching
+  // evidence independently; a citation for one cannot satisfy the other. This remains a
+  // professional-review candidate only and is not a waiver.
+  const transitionRequirements = [
+    {
+      contentMissing: controlsKnown && input.fundsManagementControls.status === 'cited' && input.fundsManagementControls.value === 'missing',
+      assertion: input.fundsManagementControlsTransitionScheme,
+      subject: 'funds_management_controls' as const,
+      pendingReason: 'funds_management_controls_transition_scheme_not_source_confirmed',
+      missingReason: 'funds_management_controls_transition_scheme_missing',
+      relevanceReason: 'funds_management_controls_transition_scheme_citation_not_relevant',
+    },
+    {
+      contentMissing: liquidityKnown && input.shortTermLiquidityPlan.status === 'cited' && input.shortTermLiquidityPlan.value === 'missing',
+      assertion: input.shortTermLiquidityPlanTransitionScheme,
+      subject: 'short_term_liquidity_plan' as const,
+      pendingReason: 'short_term_liquidity_plan_transition_scheme_not_source_confirmed',
+      missingReason: 'short_term_liquidity_plan_transition_scheme_missing',
+      relevanceReason: 'short_term_liquidity_plan_transition_scheme_citation_not_relevant',
+    },
+  ];
+  for (const requirement of transitionRequirements) {
+    if (!requirement.contentMissing) continue;
+    const transitionStatus = assertionStatus(requirement.assertion);
+    const transitionKnown = transitionStatus === 'valid' && requirement.assertion.status === 'cited' &&
+      (requirement.assertion.value === 'included' || requirement.assertion.value === 'missing');
+    if (!transitionKnown) reasons.push(requirement.pendingReason);
+    else if (requirement.assertion.status !== 'cited' || requirement.assertion.value !== 'included') reasons.push(requirement.missingReason);
+    else if (!hasRelevantTransitionCitation(requirement.assertion, requirement.subject)) reasons.push(requirement.relevanceReason);
+  }
 
   if (reasons.length > 0) return { decision: 'needs_review', reasons, evidence: input };
   return {

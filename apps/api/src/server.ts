@@ -43,9 +43,10 @@ import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-
 import { runEventPayloadDto } from './run-event-dto.js';
 import { prepareUserSubmission, verifiedMaterialVersions } from './user-submissions.js';
 import { scrubSecrets } from './log-ops.js';
+import { installBrowserErrorRoutes } from './browser-errors.js';
 import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 
-export type Principal = { userId: string; csrfVerified: boolean };
+export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
@@ -102,6 +103,8 @@ export function createServer(settings: Settings = {}) {
   app.addContentTypeParser('application/octet-stream', (_request, payload, done) => done(null, payload));
   app.setErrorHandler(async (error, request, reply) => {
     if (error instanceof Problem) return reply.code(error.status).send({ code: error.code, message: error.message, retryable: error.status === 503, field_errors: [], correlation_id: request.id });
+    if (request.routeOptions.url === '/api/v1/browser-errors' && error instanceof Error && 'code' in error && error.code === 'FST_ERR_CTP_BODY_TOO_LARGE')
+      return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Browser diagnostic exceeds limit', retryable: false, field_errors: [], correlation_id: request.id });
     if (error instanceof Error && 'validation' in error && error.validation) {
       let disposition:{status:number;code:string}={status:422,code:'VALIDATION_FAILED'};
       if ('validationContext' in error && error.validationContext==='body' && request.routeOptions.url===
@@ -219,6 +222,11 @@ export function createServer(settings: Settings = {}) {
     return bytes;
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
+  installBrowserErrorRoutes(app,{db,owner,sessionId:async request=>{
+    const principal=await (settings.principal ? settings.principal(request) : sessionPrincipal(request,auth));
+    if(!principal?.sessionId)throw new Problem(401,'UNAUTHENTICATED','Session required');
+    return principal.sessionId;
+  }});
   installEventStreams(app,{db,owner},settings.stream);
   const trial=settings.trial ?? trialConfigFromEnv();
   installTrialRoutes(app,{db,blobs,owner,config:trial});
@@ -238,7 +246,7 @@ export function createServer(settings: Settings = {}) {
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
-    archiveProject(db(),await owner(request),param(request,'project_id'),body<{archived:boolean}>(request).archived));
+    archiveProject(db(),await owner(request),param(request,'project_id'),body<{archived:boolean}>(request).archived,request.id));
   app.post('/api/v1/projects',{schema:{body:schemas.ProjectCreateRequest}},async (request,reply) => {
     const user=await owner(request), b=body<{name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);
@@ -248,6 +256,7 @@ export function createServer(settings: Settings = {}) {
       await admitProjectCreate(client,trial,user,sourceHash(request.ip));
       const row=await client.query('INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,user,b.name,b.kind,b.issuer_name,b.market,b.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.created',{project_id:id}]);
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_create',status:'submitted'});
       return projectDto(row.rows[0]);
     }).catch(async error=>{await trialRejected(error,user,'project_create',null,request.id);throw error;});
     return reply.code(201).send(value);
@@ -330,6 +339,7 @@ export function createServer(settings: Settings = {}) {
       const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
       const result=await client.query('UPDATE bb_projects SET name=$3,issuer_name=$4,market=$5,offering=$6,update_details=$7,draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING *',[user,id,next.name,next.issuer_name,next.market,next.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.draft_updated',{project_id:id,draft_revision:result.rows[0].draft_revision}]);
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_edit',status:'submitted'});
       return projectDto(result.rows[0]);
     });
   });
@@ -353,6 +363,7 @@ export function createServer(settings: Settings = {}) {
       for(const a of artifacts.rows)await client.query('DELETE FROM bb_artifact_download_grants WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[user,a.id,a.version]);
       await client.query('UPDATE bb_projects SET deleted_at=now(),updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id]);
       await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'project.deleted',$4)",[uid(),user,id,{material_versions_deleted:materials.rowCount??0,artifacts_revoked:artifacts.rowCount??0}]);
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_delete',status:'submitted'});
     });
     return reply.code(204).send();
   });
@@ -595,6 +606,7 @@ export function createServer(settings: Settings = {}) {
       await admitUploadCreate(client,trial,user,sourceHash(request.ip),b.byte_size);
       await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.created',{project_id:id}]);
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_start',status:'submitted'});
     }).catch(async error=>{await trialRejected(error,user,'upload_create',id,request.id);throw error;});
     return reply.code(201).send({upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:expires.toISOString(),max_bytes:MAX_BYTES});
   });
@@ -637,6 +649,7 @@ export function createServer(settings: Settings = {}) {
         const updated=await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,bytes.sha256,bytes.byteSize]);
         if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
         await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.byteSize}]);
+        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_bytes',status:'submitted'});
       });
     }catch(error){
       if(error instanceof Problem&&error.uploadReason){
@@ -727,6 +740,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.get('/api/v1/projects/:project_id/materials/:material_id/download',async (request,reply)=>{
     const m=await material(db(),await owner(request),param(request,'project_id'),param(request,'material_id'));
+    await transaction(db(),client=>recordOperation(client,{owner:m.owner_user_id,projectId:m.project_id,requestId:request.id,traceId:request.id,kind:'material_download',status:'submitted'}));
     return sendMaterial(reply,db(),blob(),m);
   });
   app.delete('/api/v1/projects/:project_id/materials/:material_id',async (request,reply)=>{
@@ -740,6 +754,7 @@ export function createServer(settings: Settings = {}) {
       if(!live.length)return; // Owned repeat deletion is idempotent and emits no duplicate side effects.
       const deleted=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL RETURNING *',[user,id,materialId]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.deleted',{project_id:id,versions:deleted.rows.length}]);
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_delete',status:'submitted'});
     });
     return reply.code(204).send();
   });
@@ -873,11 +888,11 @@ export function createServer(settings: Settings = {}) {
   for(const kind of ['cancel','resume'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
     const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
     if(!queueEnabled)throw unavailable();
-    return queueAction(db(),user,id,kind);
+    return queueAction(db(),user,id,kind,request.id);
   });
   app.get('/api/v1/artifacts/:artifact_id',async request=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
@@ -896,12 +911,15 @@ export function createServer(settings: Settings = {}) {
       replacements:pair!.replacements,columns:pair!.columns,pending_review_count:pair!.pending,
       pending_review:pair!.pending_review} : undefined;
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
-    await db().query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
+    await transaction(db(),async client=>{
+      await client.query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
+      await recordOperation(client,{owner:user,projectId:a.project_id,runId:a.run_id,requestId:request.id,traceId:a.run_id,kind:'artifact_download_grant',status:'submitted'});
+    });
     return {artifact_id:a.id,run_id:a.run_id,version:a.version,media_type:a.media_type,sha256:a.sha256.trim(),quality_status:a.quality_status,delivery_status:a.delivery_status,download_url:`/api/v1/artifacts/${id}/download?grant=${grant}`,expires_at:expires.toISOString(),...(wordDelivery?{word_delivery:wordDelivery}:{})};
   });
   app.get('/api/v1/artifacts/:artifact_id/download',async (request,reply)=>{
     const user=await owner(request),id=param(request,'artifact_id');
-    const q=await db().query(`SELECT a.*,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
+    const q=await db().query(`SELECT a.*,r.project_id,e.byte_size AS delivery_evidence_byte_size FROM bb_artifact_versions a
       JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
       LEFT JOIN bb_non_production_test_grants tg ON tg.grant_id=r.test_grant_id AND tg.user_id=a.owner_user_id
       LEFT JOIN bb_word_delivery_evidence e ON e.owner_user_id=a.owner_user_id AND e.run_id=a.run_id AND e.id=a.word_delivery_evidence_id
@@ -912,6 +930,7 @@ export function createServer(settings: Settings = {}) {
     if(!q.rows[0])throw missing();const a=q.rows[0],grant=(request.query as {grant?:string}).grant;
     if(!grant)throw missing();const g=await db().query('SELECT 1 FROM bb_artifact_download_grants WHERE token_hash=$1 AND owner_user_id=$2 AND artifact_id=$3 AND artifact_version=$4 AND expires_at>now()',[digest(grant),user,id,a.version]);if(!g.rows[0])throw missing();
     const bytes=await verifiedArtifactBytes(a);
+    await transaction(db(),client=>recordOperation(client,{owner:user,projectId:(a.project_id as string),runId:a.run_id,requestId:request.id,traceId:a.run_id,kind:'artifact_download',status:'submitted'}));
     return reply.header('content-type',a.media_type).header('cache-control','private, no-store').send(bytes);
   });
   const ocrPath='/api/v1/projects/:project_id/materials/:material_id/ocr';

@@ -29,7 +29,7 @@ async function validProductionDraft(version='1'):Promise<RulePack>{
   const pack=await loadSynthetic();
   pack.version=version;
   pack.supersedes_version=version==='1'?null:'1';
-  pack.sources[0]={...pack.sources[0]!,source_id:'synthetic-formal-source',kind:'formal_rule',official_url:'https://example.invalid/synthetic-rule',document_hash:'a'.repeat(64),published_on:'2025-12-01',effective_from:'2026-01-01',verified_by:'synthetic-industry-reviewer',verified_at:'2026-09-24T00:30:00Z'};
+  pack.sources[0]={...pack.sources[0]!,source_id:'synthetic-formal-source',kind:'formal_rule',official_url:'https://example.invalid/synthetic-rule',document_hash:'a'.repeat(64),published_on:'2025-12-01',effective_from:'2026-01-01',legal_effective_date_basis:'explicit_text',effective_date_derivation_evidence:[{kind:'synthetic_clause',value:'clause 1'}],verified_by:'synthetic-industry-reviewer',verified_at:'2026-09-24T00:30:00Z'};
   pack.rules[0]={...pack.rules[0]!,version,enabled:true,enforcement:'hard_block',source_ref_ids:['synthetic-formal-source'],outputs:{when_met:'pass',when_not_met:'issue',severity:'blocking'}};
   pack.sample_suite.data_classification='authorized_real';
   pack.sample_suite.cases=pack.sample_suite.cases.map(item=>({...item,evidence_ref:`authorized-fixture-${item.polarity}`}));
@@ -111,6 +111,53 @@ test('impossible as-of calendar dates remain needs-evidence',async()=>{
   const result=evaluateRulePackCapability(pack,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-02-30'});
   assert.equal(result.decision,'needs_evidence');
   assert.deepEqual(result.reason_codes,['as_of_date_invalid']);
+});
+
+test('undated interpretation and internal method stay pending instead of becoming perpetual',async()=>{
+  const draft=await validProductionDraft();
+  draft.sources[0]={...draft.sources[0]!,kind:'official_interpretation',effective_from:null,effective_to:null,
+    legal_effective_date_basis:'unknown'};
+  draft.rules[0]!.enforcement='soft_check';
+  draft.rules[0]!.outputs.severity='warning';
+  const checked=validateRulePack(draft);
+  assert.equal(checked.ok,true,'an unknown legal date can be retained as a pending source fact');
+  const uncheckedPublished=publishRulePack(draft,{channel:'test',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic pending-date evaluator fixture'});
+  uncheckedPublished.release!.channel='production';
+  uncheckedPublished.release!.content_hash=rulePackContentHash(uncheckedPublished);
+  const decision=evaluateRulePackCapability(uncheckedPublished,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-25'});
+  assert.equal(decision.decision,'needs_evidence');
+  assert.deepEqual(decision.reason_codes,['rule_source_effectivity_unknown']);
+  assert.throws(()=>publishRulePack(draft,{channel:'production',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic null-date rejection'}),/RULE_SOURCE_APPLICABILITY_NOT_APPROVED/);
+
+  const conflict=await validProductionDraft();
+  conflict.sources[0]!.legal_effective_date_basis='unknown';
+  assert.equal(validateRulePack(conflict).ok,false,'a populated legal date cannot claim an unknown date basis');
+
+  const method=await validProductionDraft();
+  method.sources[0]={...method.sources[0]!,kind:'internal_method',effective_from:null,legal_effective_date_basis:'not_legal_effectivity',
+    approved_method_window:{enabled_from:'2026-01-01',enabled_until:null,approval_evidence_id:'synthetic-method-approval',approval_evidence_sha256:'b'.repeat(64)}};
+  method.rules[0]!.enforcement='soft_check';
+  method.rules[0]!.outputs.severity='warning';
+  assert.equal(validateRulePack(method).ok,true,`business activation is stored separately from legal effectivity: ${JSON.stringify(validateRulePack(method))}`);
+  const methodPublished=publishRulePack(method,{channel:'test',reviews,released_by:'synthetic-release-operator',released_at:'2026-09-24T02:00:00Z',reason:'Synthetic pending-method evaluator fixture'});
+  methodPublished.release!.channel='production';
+  methodPublished.release!.content_hash=rulePackContentHash(methodPublished);
+  assert.equal(evaluateRulePackCapability(methodPublished,{market:'sse',offering:'public_all',document_stage:'registration',issuer_scope:'synthetic_issuer',as_of:'2026-09-25'}).decision,'needs_evidence',
+    'a caller-supplied method window is not a signed production attestation');
+});
+
+test('legal effective date is independent of publication date unless publication commencement is the stated basis',async()=>{
+  const explicit=await validProductionDraft();
+  assert.notEqual(explicit.sources[0]!.effective_from,explicit.sources[0]!.published_on);
+  assert.equal(validateRulePack(explicit).ok,true,'an explicitly cited legal effective date need not equal webpage publication date');
+
+  const derived=await validProductionDraft();
+  derived.sources[0]!.legal_effective_date_basis='publication_commencement';
+  const invalid=validateRulePack(derived);
+  assert.equal(invalid.ok,false);
+  assert(invalid.ok===false && invalid.problems.some(item=>item.code==='SOURCE_PUBLICATION_DATE_DERIVATION_INVALID'));
+  derived.sources[0]!.effective_from=derived.sources[0]!.published_on;
+  assert.equal(validateRulePack(derived).ok,true,'publication commencement may derive the effective date from the cited official publication date');
 });
 
 test('draft, test release, expired and withdrawn packs cannot advertise capability',async()=>{

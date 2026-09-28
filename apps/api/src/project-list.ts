@@ -2,6 +2,7 @@ import type { Static } from '@sinclair/typebox';
 import type { schemas } from '@bondbuddy/contracts';
 import type { Pool } from 'pg';
 import { date, Problem, project, projectDto, transaction, uid } from './data.js';
+import { recordOperation } from './observability.js';
 
 type Query = Static<typeof schemas.ProjectListQuery>;
 const invalidCursor = () => new Problem(422, 'VALIDATION_FAILED', 'Invalid project cursor; refresh the list');
@@ -60,13 +61,14 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
   };
 }
 
-export async function archiveProject(pool: Pool, owner: string, id: string, archived: boolean) {
+export async function archiveProject(pool: Pool, owner: string, id: string, archived: boolean, requestId: string) {
   return transaction(pool,async client => {
     const prior = await project(client,owner,id,true);
     if (Boolean(prior.archived_at) === archived) return projectDto(prior);
     await client.query('UPDATE bb_projects SET archived_at=CASE WHEN $3 THEN now() ELSE NULL END,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id,archived]);
     await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,\'project\',$3,$4,$5)',
       [uid(),owner,id,archived ? 'project.archived' : 'project.restored',{project_id:id}]);
+    await recordOperation(client,{owner,projectId:id,requestId,traceId:requestId,kind:archived?'project_archive':'project_restore',status:'submitted'});
     return projectDto(await project(client,owner,id));
   });
 }

@@ -9,6 +9,7 @@ export * from './cp-funds-use-change-evidence.js';
 export * from './scp-mc4-omission-evidence.js';
 export * from './mtn-registration-evidence.js';
 export * from './mtn-funds-use-evidence.js';
+export * from './mtn-quarterly-update-evidence.js';
 
 export const RULE_PACK_SCHEMA_VERSION = 'rule-pack-v1' as const;
 export const RULE_SOURCE_KINDS = ['formal_rule','official_interpretation','internal_method','unverified_lead'] as const;
@@ -29,6 +30,7 @@ const hash = Type.String({pattern:'^[a-f0-9]{64}$'});
 const nonEmpty = Type.String({minLength:1,maxLength:12000});
 const stringList = Type.Array(Type.String({minLength:1,maxLength:256}),{uniqueItems:true});
 const nullable = <T extends TSchema>(schema:T)=>Type.Union([schema,Type.Null()]);
+const sourceLocator = strict({kind:nonEmpty,value:Type.String({minLength:1,maxLength:1024})});
 
 export const RuleSourceSchema = strict({
   source_id:safeId,
@@ -43,6 +45,17 @@ export const RuleSourceSchema = strict({
   published_on:nullable(date),
   effective_from:nullable(date),
   effective_to:nullable(date),
+  legal_effective_date_basis:Type.Optional(enumOf(['explicit_text','publication_commencement','unknown','not_legal_effectivity'] as const)),
+  effective_date_derivation_evidence:Type.Optional(Type.Array(sourceLocator,{maxItems:20})),
+  transition_from_date:Type.Optional(nullable(date)),
+  transition_until_date:Type.Optional(nullable(date)),
+  transition_evidence:Type.Optional(Type.Array(sourceLocator,{maxItems:20})),
+  approved_method_window:Type.Optional(Type.Union([Type.Null(),strict({
+    enabled_from:date,
+    enabled_until:nullable(date),
+    approval_evidence_id:safeId,
+    approval_evidence_sha256:hash,
+  })])),
   verified_by:nullable(safeId),
   verified_at:nullable(utc),
 });
@@ -242,7 +255,23 @@ export function validateRulePack(value:unknown):{ok:true;value:RulePack}|{ok:fal
     if(source.kind==='unverified_lead' && verified)problems.push(problem(`/sources/${index}`,'UNVERIFIED_SOURCE_MARKED_VERIFIED','Unverified leads cannot carry verified status'));
     if(source.kind!=='unverified_lead' && !verified)problems.push(problem(`/sources/${index}`,'SOURCE_VERIFICATION_INCOMPLETE','Verified source kind requires verifier and time'));
     if(source.kind!=='unverified_lead' && source.official_url===null && source.document_hash===null)problems.push(problem(`/sources/${index}`,'SOURCE_ORIGINAL_MISSING','Verified source requires an official URL or immutable document hash'));
-    if(['formal_rule','official_interpretation'].includes(source.kind) && (source.published_on===null || source.effective_from===null))problems.push(problem(`/sources/${index}`,'SOURCE_EFFECTIVITY_INCOMPLETE','Official rule source requires publication and effective dates'));
+    if(source.kind==='formal_rule' && source.effective_from===null)problems.push(problem(`/sources/${index}/effective_from`,'SOURCE_LEGAL_EFFECTIVE_DATE_MISSING','Binding rules require an explicitly supported legal effective date'));
+    if(source.kind==='formal_rule' && source.legal_effective_date_basis!==undefined
+      && !['explicit_text','publication_commencement'].includes(source.legal_effective_date_basis))problems.push(problem(`/sources/${index}/legal_effective_date_basis`,'SOURCE_LEGAL_DATE_BASIS_INVALID','Binding rules require an explicit or text-derived legal effective date'));
+    if(source.kind==='formal_rule' && source.effective_from!==null && source.legal_effective_date_basis!==undefined
+      && (source.effective_date_derivation_evidence?.length??0)===0)problems.push(problem(`/sources/${index}/effective_date_derivation_evidence`,'SOURCE_LEGAL_DATE_EVIDENCE_MISSING','A legal effective date needs an exact source locator'));
+    if(source.legal_effective_date_basis==='publication_commencement'
+      && (source.effective_from===null || source.effective_from!==source.published_on || (source.effective_date_derivation_evidence?.length??0)===0))problems.push(problem(`/sources/${index}/legal_effective_date_basis`,'SOURCE_PUBLICATION_DATE_DERIVATION_INVALID','Publication commencement needs matching official publication date and source text evidence'));
+    if(source.kind==='internal_method' && source.effective_from!==null)problems.push(problem(`/sources/${index}/effective_from`,'INTERNAL_METHOD_HAS_LEGAL_DATE','Internal methods use a separate approved enablement window, not a legal effective date'));
+    if(source.kind==='internal_method' && source.approved_method_window && source.approved_method_window.enabled_until
+      && source.approved_method_window.enabled_until<source.approved_method_window.enabled_from)problems.push(problem(`/sources/${index}/approved_method_window`,'METHOD_WINDOW_INVALID','Approved method window ends before it starts'));
+    if(source.kind!=='internal_method' && source.approved_method_window)problems.push(problem(`/sources/${index}/approved_method_window`,'METHOD_WINDOW_KIND_INVALID','Only internal methods can carry an approved method window'));
+    if(source.kind==='official_interpretation' && source.effective_from===null && source.legal_effective_date_basis!==undefined
+      && !['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))problems.push(problem(`/sources/${index}/legal_effective_date_basis`,'SOURCE_LEGAL_DATE_CONFLICT','A null legal effective date cannot claim a known legal-date basis'));
+    if(source.kind==='official_interpretation' && source.effective_from!==null
+      && source.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))problems.push(problem(`/sources/${index}/legal_effective_date_basis`,'SOURCE_LEGAL_DATE_CONFLICT','A known legal effective date conflicts with its date basis'));
+    if(source.transition_from_date && source.transition_until_date && source.transition_until_date<source.transition_from_date)problems.push(problem(`/sources/${index}/transition_until_date`,'SOURCE_TRANSITION_RANGE_INVALID','Transition period ends before it starts'));
+    if((source.transition_from_date || source.transition_until_date) && (source.transition_evidence?.length??0)===0)problems.push(problem(`/sources/${index}/transition_evidence`,'SOURCE_TRANSITION_EVIDENCE_MISSING','Transition dates require exact source locators'));
     if(source.effective_from && source.effective_to && source.effective_to<source.effective_from)problems.push(problem(`/sources/${index}/effective_to`,'SOURCE_VALIDITY_RANGE_INVALID','Source effective_to precedes effective_from'));
   });
   const ruleIds=new Set<string>();
@@ -316,6 +345,13 @@ export function publishRulePack(draft:RulePack,input:{channel:'test'|'production
   if(valid.sources.some(source=>source.effective_to!==null && source.effective_to<releaseDate))throw new Error('RULE_SOURCE_EXPIRED_BEFORE_RELEASE');
   if(input.reviews.some(review=>review.reviewed_at>input.released_at) || valid.sample_suite.cases.some(testCase=>testCase.reviewed_at>input.released_at))throw new Error('RULE_PACK_EVIDENCE_AFTER_RELEASE');
   if(valid.sources.some(source=>source.kind==='unverified_lead') || valid.rules.some(rule=>!rule.enabled || rule.enforcement==='research_only'))throw new Error('RULE_PACK_HAS_UNPUBLISHABLE_RULES');
+  if(input.channel==='production' && valid.sources.some(source=>source.effective_from===null
+    || (source.kind==='formal_rule' && (!source.legal_effective_date_basis || (source.effective_date_derivation_evidence?.length??0)===0))
+    || (source.kind==='internal_method' && source.effective_from!==null)
+    || (source.kind==='official_interpretation' && !source.legal_effective_date_basis)
+    || (source.kind==='official_interpretation' && (source.effective_date_derivation_evidence?.length??0)===0)
+    || (source.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))))
+    throw new Error('RULE_SOURCE_APPLICABILITY_NOT_APPROVED');
   if(valid.sample_suite.cases.some(testCase=>testCase.result!=='passed'))throw new Error('RULE_PACK_SAMPLE_FAILURE');
   for(const polarity of ['positive','negative','boundary'] as const)if(!valid.sample_suite.cases.some(testCase=>testCase.polarity===polarity))throw new Error(`RULE_PACK_SAMPLE_${polarity.toUpperCase()}_MISSING`);
   const industryReview=reviewRole(input.reviews,'industry_reviewer'),technicalReview=reviewRole(input.reviews,'technical_reviewer');
@@ -361,6 +397,15 @@ export function evaluateRulePackCapability(pack:RulePack,context:RuleContext):Ca
     if(!valid.scope.instruments.includes(instrument))return {...base,decision:'not_applicable',reason_codes:['instrument_mismatch']};
   }
   const sourceById=new Map(valid.sources.map(source=>[source.source_id,source]));
+  const unknownApplicability=valid.rules.some(rule=>rule.enabled && rule.source_ref_ids.some(id=>{
+    const source=sourceById.get(id);
+    return source?.effective_from===null
+      || (source?.kind==='formal_rule' && (!source.legal_effective_date_basis || (source.effective_date_derivation_evidence?.length??0)===0))
+      || (source?.kind==='official_interpretation' && !source.legal_effective_date_basis)
+      || (source?.kind==='official_interpretation' && (source.effective_date_derivation_evidence?.length??0)===0)
+      || (source?.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis));
+  }));
+  if(unknownApplicability)return {...base,decision:'needs_evidence',reason_codes:['rule_source_effectivity_unknown']};
   const inactiveSource=valid.rules.some(rule=>rule.enabled && rule.source_ref_ids.some(id=>{
     const source=sourceById.get(id);
     return !source || (source.effective_from!==null && context.as_of<source.effective_from) || (source.effective_to!==null && context.as_of>source.effective_to);
