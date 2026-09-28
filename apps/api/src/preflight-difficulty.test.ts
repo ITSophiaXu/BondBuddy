@@ -43,19 +43,22 @@ test('HTTP update preflight returns conservative, owner-scoped immutable difficu
       VALUES($1,1,$2,$3,$4,$5,$6,$7,10,$8,$9,'parsed')`,
     [id, owner, project, `${id}-upload`, role, `${id}.bin`, mediaType, digest, `users/${owner}/projects/${project}/${id}`]);
   };
-  const addLock = async (revision: number, draftRevision: number, periods: ReturnType<typeof period>[], includeFinance = true, invalid = false) => {
+  const addLock = async (revision: number, draftRevision: number, periods: ReturnType<typeof period>[], includeFinance = true,
+    invalid = false, confirmed = true) => {
     const materials = [{ material_id: history, material_version: 1, role: 'historical', sha256: digest },
       ...(includeFinance ? [{ material_id: finance, material_version: 1, role: 'financial', sha256: digest }] : [])];
     const targetConfirmation = { status: 'confirmed', market: 'sse', offering: 'private', document_purpose: null, as_of: null,
       target_reporting_periods: periods, confirmed_by: owner, confirmed_at: '2026-09-27T06:00:00.000Z' };
     const manifest = { kind: 'update', draft_revision: draftRevision, market: 'sse', offering: 'private', materials,
-      update_details: invalid ? null : { target_reporting_periods: periods }, target_confirmation: targetConfirmation };
+      update_details: invalid ? null : { target_reporting_periods: periods }, target_confirmation: confirmed ? targetConfirmation : {
+        status: 'unconfirmed', market: null, offering: null, document_purpose: null, as_of: null,
+        target_reporting_periods: [], confirmed_by: null, confirmed_at: null } };
     const inputHash = hash({ revision, manifest });
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'[]'::jsonb)`,
     [project, revision, owner, draftRevision, inputHash, JSON.stringify(manifest),
       JSON.stringify(materials.map(({ material_id, material_version }) => ({ material_id, material_version })))]);
-    await pool.query(`INSERT INTO bb_input_revision_target_confirmations(owner_user_id,project_id,input_revision,market,offering,
+    if (confirmed) await pool.query(`INSERT INTO bb_input_revision_target_confirmations(owner_user_id,project_id,input_revision,market,offering,
       document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`,
     [owner, project, revision, targetConfirmation.market, targetConfirmation.offering, targetConfirmation.document_purpose,
@@ -118,6 +121,14 @@ test('HTTP update preflight returns conservative, owner-scoped immutable difficu
     const corrupt = await send(4, invalidHash);
     assert.equal(corrupt.statusCode, 503, corrupt.body);
     assert.equal(corrupt.json().code, 'DATA_UNAVAILABLE', 'persisted manifest corruption is not reported as an ordinary missing input');
+
+    const unconfirmedHash = await addLock(5, 5, [period(2029)], true, false, false);
+    const unconfirmed = await send(5, unconfirmedHash);
+    assert.equal(unconfirmed.statusCode, 200, unconfirmed.body);
+    assert.equal(unconfirmed.json().update_difficulty.status, 'needs_confirmation');
+    assert.equal(unconfirmed.json().update_difficulty.estimated_n, null,
+      'an ordinary project target can be estimated conservatively without forging an intent confirmation');
+    assert.ok(unconfirmed.json().uncertainty.includes('update_difficulty_needs_confirmation'));
 
     activeOwner = `foreign-owner-${suffix}`;
     const foreign = await send(2, changedTargetHash);
