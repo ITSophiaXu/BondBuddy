@@ -13,6 +13,7 @@ export * from './test-coverage.js';
 import { UpdateDetailsSchema, TargetReportingPeriodSchema, PROJECT_FIELD_LIMITS } from './update-project.js';
 import { targetPeriodEvidenceSchemas, validTargetPeriodEvidenceDecision } from './target-period-evidence.js';
 export { validTargetPeriodEvidenceDecision } from './target-period-evidence.js';
+export * from './target-period-candidate-snapshot.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';

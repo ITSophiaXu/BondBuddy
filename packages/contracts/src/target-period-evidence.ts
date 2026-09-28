@@ -4,14 +4,16 @@ const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
 const revision = Type.Integer({ minimum: 1 });
 const nullableDate = Type.Union([Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' }), Type.Null()]);
+export const TARGET_PERIOD_EVIDENCE_METHODS = ['native_text', 'ocr'] as const;
+export const TARGET_PERIOD_EVIDENCE_ANCHOR_KINDS = ['table_header', 'entity', 'scope', 'period_end'] as const;
 const evidenceRef = Type.Object({
-  evidence_method: Type.Union([Type.Literal('native_text'),Type.Literal('ocr')]),
+  evidence_method: Type.Union(TARGET_PERIOD_EVIDENCE_METHODS.map(value => Type.Literal(value))),
   material_id: id, material_version: revision, material_sha256: hash,
   parse_snapshot_id: id, parser_version: Type.String({ minLength: 1, maxLength: 128 }), response_sha256: hash,
   record_id: id, record_sha256: hash,
   page: Type.Optional(revision), page_image_sha256: Type.Optional(hash),
   ocr_uncertainty: Type.Optional(Type.Array(Type.String({minLength:1,maxLength:512}),{maxItems:20})),
-  anchor_kind: Type.Union([Type.Literal('table_header'), Type.Literal('entity'), Type.Literal('scope'), Type.Literal('period_end')]),
+  anchor_kind: Type.Union(TARGET_PERIOD_EVIDENCE_ANCHOR_KINDS.map(value => Type.Literal(value))),
 }, { additionalProperties: false });
 const periodDecision = Type.Object({
   start: nullableDate, end: nullableDate,

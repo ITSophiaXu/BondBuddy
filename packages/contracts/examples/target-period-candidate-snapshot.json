@@ -1,0 +1,81 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "target-period-candidate-snapshot-valid-synthetic",
+      "valid": true,
+      "value": {
+        "candidate_set_id": "candidate-set-synthetic-01",
+        "candidate_set_version": 1,
+        "content_sha256": "6fdac59e652b2d6cea708a100c26b9b4fd692a96462ef3b5ffec0b227b49252e",
+        "content": {
+          "schema_version": "target-period-candidate-snapshot-v1",
+          "hash_domain": "bondbuddy:target-period-candidate-snapshot:v1",
+          "canonicalization": "utf8-json-sorted-object-keys-preserve-declared-array-order-v1",
+          "owner_user_id": "owner-synthetic",
+          "project_id": "project-synthetic",
+          "project_draft_revision": 7,
+          "reporting_cutoff": "2025-06-30",
+          "supplemental_requirements": {
+            "version": 1,
+            "content_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "message_ids": []
+          },
+          "financial_materials": [
+            { "material_id": "financial-1", "material_version": 2, "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "role": "financial" }
+          ],
+          "source_snapshots": [
+            {
+              "evidence_method": "native_text",
+              "snapshot_id": "parse-snapshot-1",
+              "material_id": "financial-1",
+              "material_version": 2,
+              "material_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "parser_version": "parser-1",
+              "response_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "source_state": "needs_confirmation",
+              "record_pins": [
+                { "record_id": "annual-row", "record_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+              ],
+              "page_image_pins": []
+            }
+          ],
+          "evidence_records": [
+            {
+              "snapshot_id": "parse-snapshot-1",
+              "record_id": "annual-row",
+              "record_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "quote": "2024年度",
+              "context": "某公司名称 / 财务报表报告期 / 合并口径",
+              "locator": { "path": [{ "sheet": "合并利润表", "table": 1, "row": 1, "column": 2 }] },
+              "uncertainty": []
+            }
+          ],
+          "status": "needs_confirmation",
+          "completeness": "not_determined",
+          "candidates": [
+            {
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "period_kind": "annual",
+              "scope": "consolidated",
+              "raw_value": "2024年度",
+              "status": "needs_confirmation",
+              "cutoff_relation": "on_or_before",
+              "evidence_refs": [{ "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" }],
+              "anchors": [
+                { "kind": "entity", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" },
+                { "kind": "period_end", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" },
+                { "kind": "scope", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" },
+                { "kind": "table_header", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" }
+              ],
+              "pending_reasons": ["candidate_requires_reviewer_decision"]
+            }
+          ],
+          "source_warnings": [],
+          "pending_reasons": ["one_or_more_periods_need_review"]
+        }
+      }
+    }
+  ]
+}
