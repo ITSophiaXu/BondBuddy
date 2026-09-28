@@ -24,6 +24,10 @@ function fixture() {
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
+    runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
+    eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
+    runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required' };
 }
 async function setup(page: Page, state = fixture()) {
@@ -77,7 +81,7 @@ async function setup(page: Page, state = fixture()) {
       let run = state.runs.get(body.execution_request_id);
       if (!run) {
         run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
-          input_revision: body.input_revision, input_hash: body.input_hash, state: 'paused', stage: 'capability_not_ready', event_cursor: 2,
+          input_revision: body.input_revision, input_hash: body.input_hash, state: state.runState, stage: state.runStage, event_cursor: state.eventSeq,
           channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: 'platform_trial',
           reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
         state.runs.set(body.execution_request_id, run);
@@ -89,14 +93,15 @@ async function setup(page: Page, state = fixture()) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
-      if (method === 'POST' && (path.endsWith('/cancel') || path.endsWith('/resume'))) { run.state = path.endsWith('/cancel') ? 'cancelled' : 'running'; return json(route,200,run); }
+      if (method === 'POST' && (path.endsWith('/cancel') || path.endsWith('/resume'))) { state.runActions.push(path); run.state = path.endsWith('/cancel') ? 'cancelled' : 'running'; return json(route,200,run); }
       if (path.endsWith('/events')) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
         const more = state.paginate && cursor === '0';
-        const seq = more ? 1 : 2;
-        return json(route, 200, { items: Number(cursor) >= 2 ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
-          occurred_at: now, stage: run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
-          payload: more ? {} : { reason: 'rule_applicability_overall_review_required' } }], next_cursor: more ? 1 : null });
+        if (state.failEvents) return json(route, 503, { code: 'DATA_UNAVAILABLE' });
+        const seq = more ? 1 : state.eventSeq;
+        return json(route, 200, { items: Number(cursor) >= state.eventSeq ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
+          occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
+          payload: more ? {} : { ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
       }
       return json(route, 200, run);
     }
@@ -288,4 +293,66 @@ test('continuing after completion creates a new input and retains the preceding 
   expect(state.runs.size).toBe(2);
   expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
   expect(state.executes[0].execution_request_id).not.toBe(state.executes[1].execution_request_id);
+});
+
+
+for (const [reason, message] of [
+  ['model_tokens_per_user_per_day', '今日试用额度已用完，额度恢复后自动继续。'],
+  ['kill_switch', '更新服务暂时停用，服务恢复后自动继续。']]) {
+  test(`trial pause ${reason}: reload and automatic recovery preserve one run`, async ({ page }) => {
+    const state = fixture(); state.checkStatus = 'ready'; state.runStage = 'trial_limit'; state.runReason = reason;
+    await setup(page, state); await page.locator('#execute-input').click();
+    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.getByRole('button', { name: '继续更新', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '查看与补充材料', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: '查看此前成功成果' })).toBeVisible();
+    if (reason === 'model_tokens_per_user_per_day' && process.env.BB_TRIAL_UX_DIR) {
+      for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+        await page.setViewportSize({ width, height });
+        await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
+        await page.screenshot({ path: join(process.env.BB_TRIAL_UX_DIR, `trial-${label}.png`), fullPage: true });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+    await page.reload();
+    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.locator('#resume-run')).toHaveCount(0);
+    const run = [...state.runs.values()][0];
+    const originalInput = run.input_hash;
+    run.state = 'queued'; state.runReason = 'trial_limit_cleared'; state.eventSeq++;
+    await expect(page.locator('.execution-summary')).toHaveText('试用限制已解除，任务继续处理。', { timeout: 10000 });
+    await expect(page.locator('#execution-progress')).toContainText('任务状态：排队中');
+    await expect(page.locator('#cancel-run')).toBeVisible();
+    expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
+    expect(state.inputs).toHaveLength(1); expect(run.input_hash).toBe(originalInput);
+  });
+}
+
+test('trial stage stays honest without events; a different paused stage discards the old limit reason', async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runStage = 'trial_limit'; state.failEvents = true;
+  await setup(page, state); await page.locator('#execute-input').click();
+  await expect(page.locator('.execution-summary')).toHaveText('当前更新暂受试用限制，限制解除后自动继续。');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  state.failEvents = false; state.runReason = 'model_tokens_per_user_per_day';
+  await expect(page.locator('.execution-summary')).toContainText('今日试用额度已用完', { timeout: 10000 });
+  const run = [...state.runs.values()][0];
+  run.stage = 'capability_not_ready'; state.eventSeq++; state.eventStage = 'trial_limit';
+  // A delayed event for the previous paused stage must not describe the new pause.
+  await expect(page.locator('#resume-run')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('.execution-summary')).toHaveCount(0);
+  await page.locator('#resume-run').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务状态：处理中');
+  expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
+  expect(state.executes).toHaveLength(1);
+});
+
+test('operator denial remains a failed task without automatic-recovery guidance', async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runState = 'failed'; state.runStage = 'model_generation';
+  state.runReason = ''; state.eventError = 'TRIAL_ACCESS_DENIED';
+  await setup(page, state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务状态：任务失败');
+  await expect(page.locator('.execution-summary')).toHaveText('当前账号的试用权限已停用，请联系支持。');
+  await expect(page.locator('#execution-progress')).not.toContainText('自动继续');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
 });

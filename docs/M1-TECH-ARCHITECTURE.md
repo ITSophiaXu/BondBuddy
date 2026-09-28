@@ -1,5 +1,9 @@
 # M1 统一技术栈与四人协作基线
 
+## #18 试用限制暂停的浏览器消费（2026-09-28）
+
+浏览器复用 `packages/contracts` 的 `RUN_PAUSE_STAGES` / `RUN_RUNTIME_REASONS` 类型，为 `trial_limit` 在既有同页进度区显示额度或服务停用原因及自动恢复提示，等待后台解除限制，不主动调用 resume。run.state/stage 优先于迟到事件；阶段变化清除旧原因，事件读取失败仍保留真实暂停。运营拒绝按 failed/TRIAL_ACCESS_DENIED 展示。无新 DTO、迁移、输入或配额策略变化；合成浏览器证据见 [#18](../apps/web/ux-evidence/issue-18-trial/README.md)，不替代 #35 真实配额/模型验收。
+
 ## #370 原型控件与启动入口更正（2026-09-28）
 
 按用户在 #370 的明确确认，财务截止日恢复年份与四季度末，删除目标期间编辑器及额外启动卡片/字段/材料重选/确认框；上传流程仅留政策页链接。`readUpdateForm` 保留初次读取的不可见字段，因此旧 `target_reporting_periods` 及其状态不会随其他编辑清空；不从一个截止日推导并确认整套期间。页脚主操作仍串行保存草稿/不可变输入/预检/execute，新输入省略可选 `target_confirmation`，服务器沿用 unconfirmed；#76/#17 的 cutoff＋材料证据→期间/目标消费接缝已在 Issue 交接，前端不伪造法规日、用途或批准。按钮置灰旁显示实际原因，执行未开放仅在 API 返回相应错误后显示。无公共 DTO 或迁移变化。原型版本、截图和边界见 [#370 验收记录](../apps/web/ux-evidence/issue-370/README.md)；此前 #361/#18 段落涉及额外输入区域的实现记录由本段覆盖。
