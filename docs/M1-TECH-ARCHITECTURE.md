@@ -45,6 +45,8 @@ worker 将 #31 锁定的 `historical-update-plan-v1` 交给 Python OOXML writer�
 | 后台执行 | 独立 Node.js worker 进程 + PostgreSQL 任务表/租约 | API 在事务中创建任务及事件；worker 用 `FOR UPDATE SKIP LOCKED` 领取，定期续租，崩溃后按检查点恢复。M1 不另引入 Redis/BullMQ。 |
 | 文档处理 | Python 3.11+；`python-docx`、`pdfplumber`/`pypdf`、`openpyxl`、`pypdfium2`、Tesseract | 复用 `product-prototype/python/` 与 `backend/` 中可验证的解析、OCR 和 Word 逻辑，通过受控子进程传入文件引用/结构化清单，输出版本化 JSON；不让 Python 直接改业务数据库。 |
 | AI 接入 | 隔离的 Codex 执行进程、DeepSeek 适配器 | 以 #16 的真实协议联调结果确定 Codex CLI / app-server 接口和准确模型 ID。适配器统一记录请求、重试、usage 与结构化输出；凭证只在服务端。联调未通过不启用真实更新。 |
+
+供应商 HTTP 402、401、429 由服务端解析为稳定模型错误码；余额、认证或限流拒绝在用量证据不足时保留 `unknown`，run 暂停于 `provider_reconcile` 并通过公共事件给出安全原因码。余额恢复后的重试只经现有运维对账命令和外部调用门执行。定时余额探针经出站代理访问供应商余额端点，仅记录可用性和余额区间，告警写入现有运营告警表；见 `docs/runbooks/log-alert-recovery.md`。
 | 部署 | Docker Compose、Nginx + TLS、Azure VM | 基于现有 `deploy/vm/` 演进为 web/api/worker/PostgreSQL/Azurite(仅开发) 的独立进程。生产 Blob 使用 Azure 服务；密钥由部署环境注入。先保持单区域部署，后续再按负载拆分。 |
 
 版本号为兼容基线；具体补丁版本由 lockfile、容器镜像 digest 和部署清单锁定。DeepSeek 实际模型 ID、存储地域与保留期限必须在真实接入时记录，不在代码中猜测。

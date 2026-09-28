@@ -14,6 +14,7 @@ import { registerLibrarySource } from '@bondbuddy/api/library';
 import { backfillParseJobs } from './backfill-parse-jobs.js';
 import { backupContainer, pruneOffhostBackups } from './backup-retention.js';
 import { runLibrarySyncPass } from './library-scheduler.js';
+import { probeProviderBalance } from './provider-balance-probe.js';
 import { OPERATOR_IMPORT_SOURCE, OperatorImportAdapter, SSE_BOND_SOURCE, SseBondProjectAdapter, type LibrarySourceAdapter } from './library-sources.js';
 
 // #79/#35 ops scheduler: one small process that runs the periodic operations jobs which used to be
@@ -113,6 +114,15 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
   libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
+  if (!off(env.BB_OPS_PROVIDER_BALANCE) && env.DEEPSEEK_API_KEY) {
+    const threshold = Number(env.BB_PROVIDER_BALANCE_THRESHOLD_USD ?? '1');
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1000000) throw new Error('Invalid BB_PROVIDER_BALANCE_THRESHOLD_USD');
+    tasks.push({ name: 'provider_balance', intervalMs: seconds('BB_OPS_PROVIDER_BALANCE_SECONDS', 300), leaseMs: 30000,
+      run: async () => {
+        const result = await probeProviderBalance(pool, { key: env.DEEPSEEK_API_KEY!, threshold });
+        return { ok: true, detail: { status: result.status, is_available: String(result.is_available), balance_band: result.balance_band } };
+      } });
+  }
   const sinkFile = env.BB_LOG_SINK_FILE;
   if (sinkFile && !off(env.BB_OPS_LOG_FORWARD)) {
     const maxBytes = ndjsonSizeCapFromEnv(env);
