@@ -143,6 +143,28 @@ test('changed use requires cited procedure, dates, and the source-stated busines
   }));
   assert.equal(afterUse.decision, 'evidence_conflict');
   assert.ok(afterUse.reasons.includes('changed_use_disclosure_after_intended_use_date'));
+
+  const sameDay = checkMtnFundsUseEvidence(input({
+    changeProcedure: {
+      changeStatus: ev('changed_or_outside_registration_scope'),
+      procedureStatus: ev('documented'),
+      procedureDescription: ev('Synthetic disclosure timing claim.'),
+      disclosureDate: ev('2026-05-01'), intendedUseDate: ev('2026-05-01'), statedLeadTimeBusinessDays: ev(5),
+    },
+  }));
+  assert.equal(sameDay.decision, 'evidence_conflict');
+  assert.ok(sameDay.reasons.includes('changed_use_positive_lead_time_same_day_conflict'));
+
+  const invalidDate = checkMtnFundsUseEvidence(input({
+    changeProcedure: {
+      changeStatus: ev('changed_or_outside_registration_scope'),
+      procedureStatus: ev('documented'),
+      procedureDescription: ev('Synthetic disclosure timing claim.'),
+      disclosureDate: ev('2026-02-30'), intendedUseDate: ev('2026-05-01'), statedLeadTimeBusinessDays: ev(5),
+    },
+  }));
+  assert.equal(invalidDate.decision, 'needs_review');
+  assert.ok(invalidDate.reasons.includes('changed_use_disclosure_or_use_date_missing_or_invalid'));
 });
 
 test('missing or conflicted line evidence never becomes a confirmed amount or policy fact', () => {

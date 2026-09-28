@@ -72,6 +72,14 @@ function validMoney(value: MtnFundsUseMoney): boolean {
   return /^\d+(?:\.\d+)?$/.test(value.amount) && value.currency.trim().length > 0 && value.unit.trim().length > 0;
 }
 
+function validDate(value: string | null): value is string {
+  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day || month > 12) return false;
+  const actual = new Date(Date.UTC(year, month - 1, day));
+  return actual.getUTCFullYear() === year && actual.getUTCMonth() === month - 1 && actual.getUTCDate() === day;
+}
+
 function amountInSourceUnits(amount: string): { scale: number; integer: bigint } | null {
   if (!/^\d+(?:\.\d+)?$/.test(amount)) return null;
   const [whole, fraction = ''] = amount.split('.');
@@ -179,11 +187,15 @@ export function checkMtnFundsUseEvidence(input: MtnFundsUseEvidenceInput): MtnFu
       !change.procedureDescription.value?.trim()) {
       review.push('changed_use_procedure_evidence_missing');
     }
-    if (!usable(change.disclosureDate) || !change.disclosureDate.value ||
-      !usable(change.intendedUseDate) || !change.intendedUseDate.value) {
-      review.push('changed_use_disclosure_or_use_date_missing');
-    } else if (change.disclosureDate.value > change.intendedUseDate.value) {
+    const disclosureDate = usable(change.disclosureDate) ? change.disclosureDate.value : null;
+    const intendedUseDate = usable(change.intendedUseDate) ? change.intendedUseDate.value : null;
+    if (!validDate(disclosureDate) || !validDate(intendedUseDate)) {
+      review.push('changed_use_disclosure_or_use_date_missing_or_invalid');
+    } else if (disclosureDate > intendedUseDate) {
       conflicts.push('changed_use_disclosure_after_intended_use_date');
+    } else if (disclosureDate === intendedUseDate && usable(change.statedLeadTimeBusinessDays) &&
+      change.statedLeadTimeBusinessDays.value !== null && change.statedLeadTimeBusinessDays.value > 0) {
+      conflicts.push('changed_use_positive_lead_time_same_day_conflict');
     }
     if (!usable(change.statedLeadTimeBusinessDays) || change.statedLeadTimeBusinessDays.value === null ||
       !Number.isInteger(change.statedLeadTimeBusinessDays.value) || change.statedLeadTimeBusinessDays.value < 0) {
