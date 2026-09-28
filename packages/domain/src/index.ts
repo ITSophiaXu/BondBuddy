@@ -232,7 +232,7 @@ function canonical(value:unknown):string {
 export function rulePackContentHash(pack:RulePack):string {
   const content={
     schema_version:pack.schema_version,pack_id:pack.pack_id,version:pack.version,supersedes_version:pack.supersedes_version,
-    scope:pack.scope,validity:pack.validity,sources:pack.sources,rules:pack.rules,sample_suite:pack.sample_suite,
+    scope:pack.scope,validity:{...pack.validity,published_on:null},sources:pack.sources,rules:pack.rules,sample_suite:pack.sample_suite,
   };
   return createHash('sha256').update(canonical(content)).digest('hex');
 }
