@@ -1,8 +1,9 @@
 import { Ajv } from 'ajv';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, type SchemaName, type TargetPeriodEvidenceDecisionRequest } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -70,6 +71,57 @@ for (const example of processingCostExamples.cases) {
   assert.equal(validate(example.value), example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
 }
 assert.ok(!JSON.stringify(openApiDocument()).includes('PlatformProcessingCost'), 'internal processing cost schemas are not public OpenAPI');
+const targetPeriodCandidateExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/target-period-candidate-snapshot.json', import.meta.url)), 'utf8')) as {
+  synthetic: boolean; cases: Array<{ name: string; valid: boolean; value: unknown }>;
+};
+assert.equal(targetPeriodCandidateExamples.synthetic, true);
+const candidateAjv = new Ajv({ allErrors: true, strict: true });
+const candidateBaseline = targetPeriodCandidateExamples.cases.find(example => example.name === 'target-period-candidate-snapshot-valid-synthetic');
+assert.ok(candidateBaseline, 'synthetic candidate snapshot exists');
+for (const example of targetPeriodCandidateExamples.cases) {
+  const schemaValid = candidateAjv.validate(targetPeriodCandidateSchemas.TargetPeriodCandidateSnapshot, example.value);
+  const semanticValid = schemaValid && validTargetPeriodCandidateSnapshot(example.value);
+  assert.equal(semanticValid, example.valid, `${example.name}: ${candidateAjv.errorsText(candidateAjv.errors)}`);
+}
+const candidateManifest = candidateBaseline.value as TargetPeriodCandidateSnapshot;
+assert.equal(candidateManifest.content_sha256,
+  createHash('sha256').update(canonicalTargetPeriodCandidateSnapshotContent(candidateManifest), 'utf8').digest('hex'),
+  'candidate fixture content hash matches the declared canonical content');
+const emptyCandidateSet = structuredClone(candidateManifest);
+emptyCandidateSet.content.candidates = [];
+emptyCandidateSet.content.pending_reasons = ['no_evidenced_reporting_period_candidates'];
+emptyCandidateSet.content_sha256 = createHash('sha256').update(canonicalTargetPeriodCandidateSnapshotContent(emptyCandidateSet), 'utf8').digest('hex');
+assert.equal(validTargetPeriodCandidateSnapshot(emptyCandidateSet), true, 'an empty candidate set is explicit and pending, never inferred from cutoff');
+const staleMaterialCandidate = structuredClone(candidateManifest);
+staleMaterialCandidate.content.source_snapshots[0]!.material_sha256 = '0'.repeat(64);
+assert.equal(validTargetPeriodCandidateSnapshot(staleMaterialCandidate), false, 'source parse pin must match exact locked material bytes');
+const nonFinancialMaterialRole = structuredClone(candidateManifest);
+nonFinancialMaterialRole.content.financial_materials[0]!.role = 'historical' as any;
+assert.equal(candidateAjv.validate(targetPeriodCandidateSchemas.TargetPeriodCandidateSnapshot, nonFinancialMaterialRole), false, 'candidate snapshot accepts only canonical financial material roles');
+const wrongCutoffRelation = structuredClone(candidateManifest);
+wrongCutoffRelation.content.candidates[0]!.cutoff_relation = 'after';
+assert.equal(validTargetPeriodCandidateSnapshot(wrongCutoffRelation), false, 'known period end cutoff relation must be computed from end and reporting cutoff');
+const unknownEndCandidate = structuredClone(candidateManifest);
+unknownEndCandidate.content.candidates[0]!.end = null;
+unknownEndCandidate.content.candidates[0]!.cutoff_relation = 'unknown';
+unknownEndCandidate.content.candidates[0]!.anchors = unknownEndCandidate.content.candidates[0]!.anchors.filter(anchor => anchor.kind !== 'period_end');
+assert.equal(validTargetPeriodCandidateSnapshot(unknownEndCandidate), true, 'an unknown period end has unknown cutoff relation');
+unknownEndCandidate.content.candidates[0]!.cutoff_relation = 'on_or_before';
+assert.equal(validTargetPeriodCandidateSnapshot(unknownEndCandidate), false, 'an unknown period end cannot claim a computed cutoff relation');
+const wrongQuarterAnchor = structuredClone(candidateManifest);
+wrongQuarterAnchor.content.evidence_records[0]!.quote = '2024年一季度';
+assert.equal(validTargetPeriodCandidateSnapshot(wrongQuarterAnchor), false, 'same-year wrong-quarter text cannot anchor the proposed period end');
+const borrowedPeriodTokenAnchor = structuredClone(candidateManifest);
+borrowedPeriodTokenAnchor.content.candidates[0]!.raw_value = '2024年度；2025年一季度';
+borrowedPeriodTokenAnchor.content.candidates[0]!.anchors.find(anchor => anchor.kind === 'period_end')!.raw_period_token = '2025年一季度';
+assert.equal(validTargetPeriodCandidateSnapshot(borrowedPeriodTokenAnchor), false, 'period-end token must occur in the exact record cited by that anchor, not merely in merged candidate tokens');
+const recognizedCandidate = structuredClone(candidateManifest) as any;
+recognizedCandidate.content.candidates[0].status = 'recognized';
+assert.equal(candidateAjv.validate(targetPeriodCandidateSchemas.TargetPeriodCandidateSnapshot, recognizedCandidate), false, 'candidate contract has no recognized/confirmed status');
+const pollutedTargetIntent = structuredClone(candidateManifest) as any;
+pollutedTargetIntent.content.target_reporting_periods = [];
+assert.equal(candidateAjv.validate(targetPeriodCandidateSchemas.TargetPeriodCandidateSnapshot, pollutedTargetIntent), false, 'candidate snapshot cannot replace user target intent');
+assert.ok(!JSON.stringify(openApiDocument()).includes('TargetPeriodCandidateSnapshot'), 'pre-lock candidate handoff is not an HTTP endpoint contract yet');
 const byName = new Map<string, Example>();
 for (const example of data.cases) {
   assert.ok(!byName.has(example.name), `duplicate example ${example.name}`);
