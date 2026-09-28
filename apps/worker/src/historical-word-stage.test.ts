@@ -93,7 +93,7 @@ test('actual Python writer accepts a locked synthetic source through the worker 
   try {
     const repo = fileURLToPath(new URL('../../../', import.meta.url));
     const sourcePath = join(directory, 'source.docx');
-    const code = `import json,sys\nfrom pathlib import Path\nfrom docx import Document\nfrom bondbuddy_document_parser.parser import _parse_docx\np=Path(sys.argv[1]); d=Document(); d.add_paragraph('截至2024年末净资产100万元。'); d.add_paragraph('风险说明保持原文。'); d.save(p); print(json.dumps(_parse_docx(p,{})[0],ensure_ascii=False))`;
+    const code = `import json,sys,io,base64\nfrom pathlib import Path\nfrom docx import Document\nfrom bondbuddy_document_parser.parser import _parse_docx\np=Path(sys.argv[1]); d=Document(); d.add_paragraph('截至2024年末净资产100万元。'); d.add_paragraph('风险说明保持原文。'); d.sections[0].header.paragraphs[0].text='合成页眉待核'; d.sections[0].footer.paragraphs[0].text='合成页脚待核'; d.add_picture(io.BytesIO(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGZkAAAAASUVORK5CYII='))); d.save(p); print(json.dumps(_parse_docx(p,{})[0],ensure_ascii=False))`;
     const generated = spawnSync(process.env.BONDBUDDY_TEST_PYTHON!, ['-c', code, sourcePath], {
       cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python') }, encoding: 'utf8', timeout: 30_000,
     });
@@ -104,7 +104,7 @@ test('actual Python writer accepts a locked synthetic source through the worker 
     const first = rows[0]!, second = rows[1]!;
     const before = first.literal_quote;
     const start = before.indexOf('100');
-    const completeNote = `待人工确认：${'缺少材料😀'.repeat(200)}；未作为审计来源核验`;
+    const completeNote = `待人工确认：原稿辅助对象word/header1.xml、word/footer1.xml和图片保留待核；${'缺少材料😀'.repeat(200)}；未作为审计来源核验`;
     const reviewNotes = splitHistoricalReviewNotes([{ recordId: second.record_id, message: completeNote }]);
     const content = { schemaVersion: 'historical-update-plan-v1', deliverable: false, baselineHash: 'b'.repeat(64),
       context: { ownerUserId: 'owner-1', projectId: 'project-1', inputRevision: 2, inputHash: 'a'.repeat(64) },
@@ -141,6 +141,12 @@ test('actual Python writer accepts a locked synthetic source through the worker 
       { input: outcome.bytes, env: { ...process.env, PYTHONIOENCODING: 'utf-8' }, encoding: 'utf8', timeout: 30_000 });
       assert.equal(comments.status, 0, comments.stderr);
       assert.deepEqual(JSON.parse(comments.stdout), reviewNotes.map(note => note.message));
+      for (const bytes of [outcome.bytes, outcome.cleanBytes!]) {
+        const parts = spawnSync(process.env.BONDBUDDY_TEST_PYTHON!, ['-c',
+          "import io,sys,zipfile;from lxml import etree;s=zipfile.ZipFile(sys.argv[1]);z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read()));names=[n for n in s.namelist() if n.startswith(('word/header','word/footer','word/media/'))];assert len(names)>=3,'missing source parts';normalize=lambda n,b:etree.tostring(etree.fromstring(b),method='c14n') if n.endswith('.xml') else b;assert all(normalize(n,s.read(n))==normalize(n,z.read(n)) for n in names),'changed auxiliary content';ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'};root=etree.fromstring(z.read('word/document.xml'));assert root.findall('.//w:drawing',ns),'missing drawing';assert b'word/header1.xml' in z.read('word/comments.xml'),'missing auxiliary note';print(len(names))", sourcePath],
+        { input: bytes, env: { ...process.env, PYTHONIOENCODING: 'utf-8' }, encoding: 'utf8', timeout: 30_000 });
+        assert.equal(parts.status, 0, parts.stderr);
+      }
       assert.equal(reviewNotes.map(note => note.message.replace(/^待人工确认（\d+\/\d+）：/, '')).join(''), completeNote);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }

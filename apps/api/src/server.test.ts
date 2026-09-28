@@ -125,6 +125,13 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
     const unavailableObject=await pool.query('SELECT object_key FROM bb_material_versions WHERE owner_user_id=$1 AND id=$2',[active,secondMaterial]);await blobs.delete(unavailableObject.rows[0].object_key);
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${secondMaterial}`)).statusCode,404,'missing private object cannot be resolved as a current saved material');
     assert.equal((await send('GET',`/api/v1/projects/${project}/input-revisions/${input.input_revision}`)).json().input_hash,input.input_hash);
+    assert.equal((await send('POST',`/api/v1/projects/${project}/archive`,{archived:true})).statusCode,200);
+    assert.equal((await send('POST',`/api/v1/projects/${project}/archive`,{archived:false})).statusCode,200);
+    const submittedKinds=(await pool.query("SELECT operation_kind FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND status='submitted'",[active,project])).rows.map((row:any)=>row.operation_kind);
+    for(const kind of ['project_create','project_edit','project_archive','project_restore','material_upload_start','material_upload_bytes','material_complete','material_delete','execute'])
+      assert.ok(submittedKinds.includes(kind),`committed ${kind} is searchable`);
+    const corresponding=(await pool.query("SELECT count(*)::int n FROM bb_observability_events WHERE owner_user_id=$1 AND project_id=$2 AND kind='operation.submitted'",[active,project])).rows[0].n;
+    assert.ok(corresponding>=submittedKinds.length,'each submitted operation has an event');
   }finally{await pool.query('DROP TRIGGER IF EXISTS bb_fail_test_project_event ON bb_project_events');await pool.query('DROP FUNCTION IF EXISTS bb_fail_test_project_event()');await app.close();await pool.end();}
 });
 

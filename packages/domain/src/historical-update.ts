@@ -26,6 +26,8 @@ export interface HistoricalBaseline {
   format: 'docx_effective' | 'pdf_requires_reconstruction';
   parseStatus: 'parsed' | 'needs_confirmation' | 'failed';
   warnings: readonly string[];
+  /** Trusted parser projection: retains exact objects and marks them pending, never verified. */
+  localizedWarnings?: readonly { code: string; recordIds: string[]; message: string; targets: readonly Record<string, unknown>[] }[];
   priorRevisions: { insertions: number; deletions: number };
   blocks: readonly BaselineBlock[];
   profile: Recognition;
@@ -34,6 +36,8 @@ export interface UpdateContext {
   ownerUserId: string; projectId: string; issuerEntityId: string;
   inputRevision: number; inputHash: string;
   targetMarket: Market; targetOffering: Offering;
+  /** Server selected only after non-production execution authorization. Never a public input. */
+  baselineUse?: 'non_production_working_draft';
   /** A versioned reference, not an assertion that a rule pack has passed production review. */
   ruleSnapshot: { packId: string; version: string; contentHash: string };
 }
@@ -87,7 +91,7 @@ export interface PlannedColumn {
   /** The exporter must additionally verify the physical grid/merges against the original DOCX. */
   requiresPhysicalGridValidation: true;
 }
-export interface UpdateFinding { code: string; recordIds: string[]; bindingIds: string[] }
+export interface UpdateFinding { code: string; recordIds: string[]; bindingIds: string[]; message?: string; auxiliaryTargets?: readonly Record<string, unknown>[] }
 export interface HistoricalUpdatePlan {
   schemaVersion: typeof HISTORICAL_UPDATE_VERSION; planHash: string; baselineHash: string;
   planningInputHash: string; context: UpdateContext;
@@ -282,28 +286,70 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   if (profile.material_id !== baseline.materialId || profile.material_version !== baseline.materialVersion) throw new Error('UPDATE_PROFILE_BASELINE_MISMATCH');
   if (baseline.format !== 'docx_effective') flag('UPDATE_PDF_RECONSTRUCTION_REQUIRED');
   const uncertainBlocks = baseline.blocks.filter(block => block.uncertainty.length > 0);
-  // The parser contract permits needs_confirmation with no document warnings when
-  // uncertainty is attached to individual records. Keep every document warning,
-  // failed parse, or inconsistent status/record combination as a global gate.
-  const localizedUncertainty = baseline.parseStatus === 'needs_confirmation' && baseline.warnings.length === 0 && uncertainBlocks.length > 0;
-  if (baseline.parseStatus === 'failed' || baseline.warnings.length > 0 ||
+  const testDraft = context.baselineUse === 'non_production_working_draft';
+  const localizedWarnings = baseline.localizedWarnings ?? [];
+  const localizedCodes = new Set(localizedWarnings.map(item => item.code));
+  const warningsLocalized = testDraft && baseline.warnings.length > 0 && localizedWarnings.length > 0 &&
+    baseline.warnings.every(code => ['DOCX_DRAWINGS', 'DOCX_AUXILIARY_PARTS'].includes(code) && localizedCodes.has(code)) &&
+    localizedWarnings.every(item => baseline.warnings.includes(item.code) && item.message.trim() && item.targets.length > 0 &&
+      item.recordIds.length > 0 && item.recordIds.every(id => baseline.blocks.some(block => block.recordId === id)));
+  const localizedUncertainty = baseline.parseStatus === 'needs_confirmation' &&
+    (baseline.warnings.length === 0 || warningsLocalized) && (uncertainBlocks.length > 0 || warningsLocalized);
+  if (baseline.parseStatus === 'failed' || (baseline.warnings.length > 0 && !warningsLocalized) ||
     (baseline.parseStatus === 'parsed' && uncertainBlocks.length > 0) ||
-    (baseline.parseStatus === 'needs_confirmation' && uncertainBlocks.length === 0)) flag('UPDATE_BASELINE_UNCERTAIN');
+    (baseline.parseStatus === 'parsed' && baseline.warnings.length > 0) ||
+    (baseline.parseStatus === 'needs_confirmation' && uncertainBlocks.length === 0 && !warningsLocalized)) flag('UPDATE_BASELINE_UNCERTAIN');
   const localizedUncertainRecordIds = new Set<string>();
   const sourceFields = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
   const recordIds = new Set(baseline.blocks.map(block => block.recordId));
   const uncertainBlockIds = new Set(uncertainBlocks.map(block => block.recordId));
-  if (profile.state !== 'ready' || !profile.reporting_periods.length ||
+  const profileShapeInvalid = !profile.reporting_periods.length ||
     !profile.source_market.value || !profile.source_offering.value || !isMarketOffering(profile.source_market.value, profile.source_offering.value) ||
     !profile.latest_reporting_cutoff.value || !date(profile.latest_reporting_cutoff.value) ||
     profile.latest_reporting_cutoff.value !== profile.reporting_periods.map(period => period.end).filter((end): end is string => end !== null).sort().at(-1) ||
     profile.reporting_periods.some(period => !period.start || !period.end || !date(period.start) || !date(period.end) ||
       period.start > period.end || !period.period_kind || !period.scope) ||
-    sourceFields.some(field => field.status !== 'recognized' || field.uncertainty.length ||
+    sourceFields.some(field =>
       field.provenance.material_id !== baseline.materialId || field.provenance.material_version !== baseline.materialVersion ||
-      !field.provenance.evidence_refs.length || field.provenance.evidence_refs.some(id => !recordIds.has(id) || uncertainBlockIds.has(id)))) flag('UPDATE_PROFILE_UNCONFIRMED');
+      !field.provenance.evidence_refs.length || field.provenance.evidence_refs.some(id => !recordIds.has(id) || uncertainBlockIds.has(id)));
+  const reviewedProfile = profile.state === 'ready' && sourceFields.every(field => field.status === 'recognized' && field.uncertainty.length === 0);
+  // Only the correction API's explicit pending-review annotations are usable as
+  // assertions. Unknown uncertainty, missing anchors and conflicting text stay blocked.
+  const correctionPending = (field: typeof sourceFields[number], message: string) =>
+    field.status === 'recognized' ? field.uncertainty.length === 0 :
+      field.status === 'user_asserted' && field.provenance.method === 'user_correction' &&
+      field.uncertainty.length === 1 && field.uncertainty[0] === message;
+  const assertedDraftProfile = testDraft && ['ready', 'needs_confirmation'].includes(profile.state) &&
+    sourceFields.some(field => field.status === 'user_asserted') &&
+    [profile.source_market, profile.source_offering].every(field => correctionPending(field, '锚点存在但不证明所校正值，需人工核对原文语义')) &&
+    correctionPending(profile.latest_reporting_cutoff, '最新截止日由用户校正期间推导，尚未人工核验') &&
+    profile.reporting_periods.every(field => correctionPending(field, '用户校正的报告期间尚未人工核验')) && !profileShapeInvalid;
+  // An authorized non-production draft may use a complete, source-anchored native
+  // recognition candidate for supported same-structure edits. Its uncertainty stays
+  // visible in the plan and Word notes; it never becomes a reviewed profile or input
+  // to production difficulty/pricing. Conflicts, missing values/anchors, non-native
+  // provenance, and source/target structure changes remain global blockers.
+  const candidatePendingProfile = testDraft && profile.state === 'needs_confirmation' &&
+    !profileShapeInvalid && sourceFields.some(field => field.status === 'needs_confirmation' && field.uncertainty.length > 0) && sourceFields.every(field =>
+      field.provenance.method === 'native_text' &&
+      field.provenance.extractor_version?.endsWith(`/${baseline.parserVersion}`) &&
+      (field.status === 'recognized' && field.uncertainty.length === 0 ||
+        field.status === 'needs_confirmation' && field.uncertainty.length > 0 &&
+        !field.uncertainty.some(reason => /冲突|矛盾|多个候选|不一致|同一证据同时|不同报表口径|conflict|ambiguous|contradict|multiple candidates/i.test(reason))));
+  if (profileShapeInvalid || (!reviewedProfile && !assertedDraftProfile && !candidatePendingProfile)) flag('UPDATE_PROFILE_UNCONFIRMED');
   if (profile.source_market.value !== context.targetMarket || profile.source_offering.value !== context.targetOffering) flag('UPDATE_STRUCTURE_MAPPING_REQUIRED');
-  const globalBlocked = findings.length > 0;
+  if (candidatePendingProfile && !reviewedProfile) findings.push({ code: 'UPDATE_PROFILE_CANDIDATE_PENDING',
+    recordIds: [...new Set(sourceFields.flatMap(field => field.provenance.evidence_refs))], bindingIds: [],
+    message: '历史稿类型或报告期包含有原文定位的待确认机器候选；本次仅在已锁定材料及明确目标范围内编制非生产工作稿，未确认为已核画像，也不能用于确定难度、计价或合规结论。' });
+  const globalBlocked = findings.some(finding => finding.code !== 'UPDATE_PROFILE_CANDIDATE_PENDING');
+  if (warningsLocalized) for (const item of localizedWarnings) findings.push({
+    code: 'UPDATE_BASELINE_AUXILIARY_PENDING', recordIds: item.recordIds, bindingIds: [],
+    message: item.message, auxiliaryTargets: item.targets,
+  });
+  if (assertedDraftProfile && !reviewedProfile) findings.push({ code: 'UPDATE_PROFILE_USER_ASSERTED_PENDING',
+    recordIds: [...new Set(sourceFields.flatMap(field => field.provenance.evidence_refs))], bindingIds: [],
+    message: '原稿市场、发行方式及报告期含用户校正或尚待审核的信息；本次仅据已锁定版本及原文依据编制内部工作稿，未确认为已核画像。请核对原稿信息，不将其作为已确定难度、扣费或合规结论。',
+  });
   if (localizedUncertainty) for (const block of uncertainBlocks) {
     localizedUncertainRecordIds.add(block.recordId);
     flag('UPDATE_BASELINE_BLOCK_UNCERTAIN', [block.recordId]);
@@ -322,6 +368,8 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const reviews = new Map(coverage.map(item => [item.recordId, item]));
   if (reviews.size !== coverage.length || coverage.some(item => !blockById.has(item.recordId) || !item.reason.trim() || !['retain', 'update', 'needs_evidence'].includes(item.disposition))) throw new Error('UPDATE_INVALID_COVERAGE');
   const pendingRecords = new Set<string>();
+  for (const finding of findings) if (['UPDATE_BASELINE_AUXILIARY_PENDING', 'UPDATE_PROFILE_USER_ASSERTED_PENDING', 'UPDATE_PROFILE_CANDIDATE_PENDING'].includes(finding.code))
+    finding.recordIds.forEach(id => pendingRecords.add(id));
   for (const recordId of localizedUncertainRecordIds) pendingRecords.add(recordId);
   for (const block of baseline.blocks) {
     const review = reviews.get(block.recordId);

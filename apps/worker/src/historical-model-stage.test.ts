@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
@@ -24,6 +25,9 @@ import { syntheticHistoricalRules } from './test-fixtures/historical-rules.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { SSE_PRIVATE_CANDIDATE_ASSET_PIN as candidatePin } from './sse-private-candidate-assets.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
+import { applyHistoricalProfileCorrection } from '@bondbuddy/domain/historical-profile-correction';
+import { localizedHistoricalWarnings } from './historical-baseline-warnings.js';
+import { DOCX_AUXILIARY_TARGETS_PARSER_VERSION, type DocxAuxiliaryTarget } from './document-parser.js';
 
 // Synthetic component evidence. No real model, billing, cloud storage or industry acceptance is claimed.
 function fixture(testChannel = false) {
@@ -105,7 +109,7 @@ test('test-channel input reaches the historical planner with exact research guid
     s.readers.rules = async () => { throw new Error('Must not call production registry for test input'); };
     const model = s.options.model!;
     s.options.model = options => {
-      assert.equal(options.templateVersion, 'historical-sse-private-test-v1'); calls++;
+      assert.equal(options.templateVersion, 'historical-sse-private-test-v2'); calls++;
       return model(options);
     };
     const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
@@ -120,6 +124,155 @@ test('test-channel input reaches the historical planner with exact research guid
     assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),
       { kind: 'pause', stage: 'capability_not_ready', reason: 'test_grant_revoked' });
     assert.equal(calls, originalCalls);
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
+
+function pendingBaselineFixture(testChannel = true) {
+  const s = fixture(testChannel);
+  const relationshipHash = createHash('sha256').update('rId1').digest('hex');
+  const target: DocxAuxiliaryTarget = { target_id: `aux-${'d'.repeat(64)}`, kind: 'header', part_name: 'word/header1.xml',
+    locator: { part_name: 'word/header1.xml', paragraph_index: 1 }, part_sha256: 'e'.repeat(64), target_sha256: 'f'.repeat(64),
+    locator_resolved: true, parseable: true, parse_status: 'parsed', text_summary: { sha256: 'a'.repeat(64), character_count: 6, has_text: true },
+    scope: { kind: 'section_reference', status: 'partially_resolved', relationship_part_sha256: 'b'.repeat(64),
+      relationships: [{ relationship_id: 'rId1', relationship_id_sha256: relationshipHash, relationship_type: 'header', mode: 'internal', target_part: 'word/header1.xml', status: 'resolved' }],
+      section_references: [{ section_index: 1, reference_type: 'default', relationship_id: 'rId1', relationship_id_sha256: relationshipHash, section_stable_ref: null }],
+      unknown_sections: [2], body_references: [], reason: 'section_inheritance_or_missing_reference_unknown', truncated: false } };
+  s.snapshot.parserVersion = DOCX_AUXILIARY_TARGETS_PARSER_VERSION;
+  s.snapshot.response.parser_version = s.snapshot.parserVersion;
+  s.snapshot.response.records.forEach(r => r.extractor_version = s.snapshot.parserVersion);
+  s.snapshot.response.document.auxiliary_targets = [target];
+  s.snapshot.response.status = 'needs_confirmation';
+  s.snapshot.response.warnings = [{ code: 'DOCX_AUXILIARY_PARTS', message: 'Synthetic header not included in body' }];
+  const refreshHash = () => { const { request_id: _, ...stable } = s.snapshot.response; s.snapshot.responseSha256 = updateContentHash(stable); };
+  refreshHash();
+  for (const field of [s.profile.recognition.source_market, s.profile.recognition.source_offering,
+    s.profile.recognition.latest_reporting_cutoff, ...s.profile.recognition.reporting_periods]) field.provenance.extractor_version = `historical-native-recognition-v2/${s.snapshot.parserVersion}`;
+  const prior = s.profile.recognition;
+  s.profile.recognition = applyHistoricalProfileCorrection(prior, { profile_version: prior.profile_version, source_market: 'sse', source_offering: 'private', reason: 'Synthetic pending profile', evidence_refs: ['p1'],
+    reporting_periods: prior.reporting_periods.map(p => ({ start: p.start!, end: p.end!, period_kind: p.period_kind!, scope: p.scope!, evidence_refs: ['p1'] })),
+  }, { materialId: prior.material_id, materialVersion: 1, profileVersion: 2 });
+  s.profile.profileVersion = 2;
+  return { ...s, target, refreshHash };
+}
+
+test('authorized pending baseline reaches planning, freezes exact policy/profile and retains Word review notes', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    const s = pendingBaselineFixture(); const original = structuredClone(s.snapshot.response);
+    const sourceProfile = structuredClone(s.profile.recognition);
+    const outcome = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(outcome.kind, 'done'); if (outcome.kind !== 'done') return;
+    const plan = outcome.value as HistoricalGenerationPlan;
+    assert.equal(plan.replacements.length, 3); assert.equal(plan.status, 'needs_confirmation');
+    assert.deepEqual(plan.sourceProfile, sourceProfile); assert.deepEqual(s.snapshot.response, original);
+    assert.deepEqual(plan.findings.find(f => f.code === 'UPDATE_BASELINE_AUXILIARY_PENDING')!.auxiliaryTargets, [s.target]);
+    const notes = plan.reviewNotes.map(n => n.message).join('');
+    assert.match(notes, /word\/header1.xml/); assert.match(notes, /待核节号2/); assert.match(notes, /原稿市场/);
+    assert.ok(plan.reviewNotes.every(n => n.message.length <= 512));
+    s.ctx.values.set('model_generation', plan);
+    const delivery = await historicalWordDeliveryStage({ writer: async () => ({
+      revision: Buffer.from('synthetic-revision'), clean: Buffer.from('synthetic-clean'), baseline: Buffer.from('synthetic-baseline'),
+      summary: { pending: plan.reviewNotes.length } as never,
+    }) }).run(s.ctx);
+    assert.equal(delivery.kind, 'deliver');
+    if (delivery.kind === 'deliver') assert.deepEqual(delivery.wordSummary?.pending_review, plan.reviewNotes.map(n => ({ record_id: n.recordId, message: n.message })));
+    assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]!.baseline_policy, 'localized-auxiliary-user-asserted-v1');
+    const replay = await historicalModelGenerationStage(s.options).run(s.ctx); assert.deepEqual(replay, outcome);
+    delete s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]!.baseline_policy;
+    assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx), { kind: 'fail', code: 'DATA_UNAVAILABLE' });
+    assert.equal(s.ctx.checkpoint.historical_generation_error!.code, 'UPDATE_BASELINE_POLICY_CHANGED');
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
+
+test('authorized pending native source candidate reaches a non-production draft without profile promotion', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    const s = fixture(true);
+    s.profile.recognition.state = 'needs_confirmation';
+    s.profile.recognition.source_market.status = 'needs_confirmation';
+    s.profile.recognition.source_market.uncertainty = ['原文候选待确认'];
+    const sourceProfile = structuredClone(s.profile.recognition);
+    const outcome = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(outcome.kind, 'done'); if (outcome.kind !== 'done') return;
+    const plan = outcome.value as HistoricalGenerationPlan;
+    assert.equal(plan.replacements.length, 3);
+    assert.deepEqual(plan.sourceProfile, sourceProfile, 'the machine candidate remains needs_confirmation');
+    const pending = plan.findings.find(f => f.code === 'UPDATE_PROFILE_CANDIDATE_PENDING');
+    assert.ok(pending?.recordIds.includes('p1'));
+    assert.ok(plan.reviewNotes.some(note => note.recordId === 'p1' && /待确认机器候选/.test(note.message)));
+    assert.equal(plan.status, 'needs_confirmation');
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
+
+test('pending candidate conflicts, mixed provenance and source/target mismatch remain non-production global blockers', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    for (const change of ['conflict', 'english_conflict', 'scope_conflict', 'mixed_provenance', 'structure'] as const) {
+      const s = fixture(true); let calls = 0;
+      s.profile.recognition.state = 'needs_confirmation';
+      s.profile.recognition.source_market.status = 'needs_confirmation';
+      s.profile.recognition.source_market.uncertainty = [change === 'conflict' ? '多个相互冲突的明确候选，需人工确认' :
+        change === 'english_conflict' ? 'ambiguous market candidates' : '原文候选待确认'];
+      if (change === 'scope_conflict') s.profile.recognition.reporting_periods[0]!.uncertainty = ['同一期间出现不同报表口径'];
+      if (change === 'scope_conflict') s.profile.recognition.reporting_periods[0]!.status = 'needs_confirmation';
+      if (change === 'mixed_provenance') s.profile.recognition.source_offering.provenance.method = 'user_correction';
+      if (change === 'structure') s.profile.recognition.source_market.value = 'szse';
+      s.options.model = () => { calls++; throw new Error('blocked source profile must not reach model'); };
+      assert.notEqual((await historicalModelGenerationStage(s.options).run(s.ctx)).kind, 'done', change);
+      assert.equal(calls, 0, change);
+    }
+  } finally {
+    for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
+    }
+  }
+});
+
+test('production run does not inherit the authorized pending-candidate draft exception', async () => {
+  const s = fixture(false); let calls = 0;
+  s.profile.recognition.state = 'needs_confirmation';
+  s.profile.recognition.source_market.status = 'needs_confirmation';
+  s.profile.recognition.source_market.uncertainty = ['原文候选待确认'];
+  s.options.model = () => { calls++; throw new Error('production pending profile must not reach model'); };
+  assert.equal((await historicalModelGenerationStage(s.options).run(s.ctx)).kind, 'pause');
+  assert.equal(calls, 0);
+});
+
+test('production, unsafe or incomplete auxiliary evidence and corrected parser mismatch never reach the provider', async () => {
+  const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try {
+    for (const scenario of ['production', 'truncated', 'unknown', 'external', 'missing_hash', 'empty_inventory', 'extra_warning', 'old_parser', 'corrected_parser'] as const) {
+      const s = pendingBaselineFixture(scenario !== 'production');
+      s.options.model = () => { throw new Error(`Provider must not run for ${scenario}`); };
+      if (scenario === 'truncated') s.target.scope.truncated = true;
+      if (scenario === 'unknown') s.target.scope.reason = 'relationship_part_invalid';
+      if (scenario === 'external') { s.target.scope.relationships[0]!.mode = 'external'; s.target.scope.relationships[0]!.status = 'external'; }
+      if (scenario === 'missing_hash') s.target.part_sha256 = null;
+      if (scenario === 'empty_inventory') s.snapshot.response.document.auxiliary_targets = [];
+      if (scenario === 'extra_warning') s.snapshot.response.warnings.push({ code: 'DOCX_UNSUPPORTED_REVISION_MARKERS', message: 'synthetic' });
+      if (scenario === 'old_parser') { s.snapshot.parserVersion = 'old-parser'; s.snapshot.response.parser_version = 'old-parser'; s.snapshot.response.records.forEach(r => r.extractor_version = 'old-parser'); }
+      if (scenario === 'corrected_parser') s.profile.recognition.source_market.provenance.extractor_version = 'historical-native-recognition-v2/stale';
+      s.refreshHash();
+      // Invalid parser records fail validation; valid but unsupported states pause.
+      try { const result = await historicalModelGenerationStage(s.options).run(s.ctx); assert.notEqual(result.kind, 'done', scenario); }
+      catch (error) { assert.match(String(error), /INVALID_PARSE_RESPONSE/, scenario); }
+    }
   } finally {
     for (const [i, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
       if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i];
@@ -501,6 +654,10 @@ test('authorized Renqiu September DOCX parses into complete bounded model chunks
   const response=validateDocumentParseResponse(raw,{schema_version:'document-parse-request-v1',request_id:raw.request_id,
     material:{...raw.material,authorized_local_path:'/validated-local-sample'},options:{}});
   assert.notEqual(response.status,'failed');assert.ok(response.records.length>100);
+  const pending = localizedHistoricalWarnings(response)!;
+  assert.equal(pending.flatMap(item => item.targets).length, response.document.auxiliary_targets!.length);
+  assert.ok(pending.length > 0); assert.ok(pending.every(item => item.recordIds.length > 0));
+  assert.ok(pending.every(item => response.warnings.some(w => w.code === item.code)));
   const { loadHistoricalCandidateRuleGuidance } = await import('./historical-candidate-rule-context.js');
   const guidance = await loadHistoricalCandidateRuleGuidance({ market: 'sse', offering: 'private', documentStage: 'issuance', asOf: '2026-09-27' },
     { taxonomyHash: candidatePin.taxonomy.contentSha256, rulePackHash: candidatePin.rulePack.contentSha256 });

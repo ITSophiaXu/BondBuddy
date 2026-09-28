@@ -334,12 +334,14 @@ export async function costLedger(pool: Pool, config: TrialConfig, actorId: strin
         AND ($4::timestamptz IS NULL OR (created_at,attempt_id)>($4,$5::text))
       ORDER BY created_at,attempt_id LIMIT $6`, [user ?? null, from ?? null, to ?? null, after?.[0] ?? null, after?.[1] ?? null, limit + 1]);
     const page = q.rows.slice(0, limit);
-    const items = page.map(r => ({ attempt_id: r.attempt_id, user_id: r.owner_user_id, job_id: r.job_id, run_id: r.run_id ?? null, logical_call_id: r.logical_call_id, attempt_no: r.attempt_no, model_id: r.model_id ?? null,
+    const items = page.map(r => ({ attempt_id: r.attempt_id, user_id: r.owner_user_id, job_id: r.job_id, run_id: r.run_id ?? null, logical_call_id: r.logical_call_id, attempt_no: r.attempt_no, model_id: r.model_id ?? null, model_provider: r.model_provider ?? null,
       call_status: r.call_status, usage_status: r.usage_status, input_tokens: r.input_tokens, output_tokens: r.output_tokens, cached_input_tokens: r.cached_input_tokens, reasoning_tokens: r.reasoning_tokens,
       conservative_tokens: r.call_status === 'confirmed_not_sent' ? 0 : r.usage_status === 'measured' ? r.input_tokens + r.output_tokens : config.unknown_usage_tokens_per_attempt,
-      duration_ms: r.duration_ms ?? null, pricing_status: 'unknown' as const, cost_amount: null, created_at: iso(r.created_at)! }));
+      duration_ms: r.duration_ms ?? null, billable: r.billable, cost_bearer: r.cost_bearer, rate_ref: r.rate_ref ?? null,
+      pricing_status: r.pricing_status, cost_amount: r.cost_amount ?? null, currency: r.pricing_status === 'priced' ? r.currency : null, created_at: iso(r.created_at)! }));
     const last = page.at(-1);
-    return { pricing_status: 'unknown' as const, items, next_cursor: q.rows.length > limit && last ? Buffer.from(`${last.cursor_at}|${last.attempt_id}`).toString('base64url') : null };
+    return { pricing_status: 'unknown' as const, items,
+      next_cursor: q.rows.length > limit && last ? Buffer.from(`${last.cursor_at}|${last.attempt_id}`).toString('base64url') : null };
   });
 }
 

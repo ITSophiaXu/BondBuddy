@@ -77,7 +77,8 @@ test('project fact review loads all pages, keeps a retry ID, and never labels a 
   await installApi(page, state);
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByRole('heading', { name: '合成事实审核项目' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '事实候选与冲突决定' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '事实候选与冲突决定', includeHidden: true })).toHaveCount(1);
+  await page.locator('.workspace-evidence > summary').click();
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('.fact-candidate')).toHaveCount(2);
   expect(state.cursors).toEqual(['', 'page-2']);
@@ -114,6 +115,7 @@ test('409 keeps input, disables stale submission, and allows deliberate refresh'
   const state = { requests: [] as any[], fail: 409, cursors: [] as string[] };
   await installApi(page, state);
   await page.goto(`/#/projects/${projectId}`);
+  await page.locator('.workspace-evidence > summary').click();
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('.fact-candidate')).toHaveCount(2);
   await page.locator('input[value="unresolved"]').check();
@@ -144,6 +146,7 @@ test('incomplete candidate pagination never opens the decision form', async ({ p
     return json(route, 404, { code: 'NOT_FOUND' });
   });
   await page.goto(`/#/projects/${projectId}`);
+  await page.locator('.workspace-evidence > summary').click();
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('[data-fact-load-status]')).toContainText('候选集合未完整读取');
   await expect(page.locator('[data-fact-form]')).toHaveCount(0);

@@ -24,6 +24,10 @@ function fixture() {
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
+    runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
+    eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
+    runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required' };
 }
 async function setup(page: Page, state = fixture()) {
@@ -55,7 +59,7 @@ async function setup(page: Page, state = fixture()) {
       if (state.conflictSave) return json(route, 409, { code: 'INPUT_REVISION_CONFLICT' });
       const revision = state.snapshots.size + 1;
       const snapshot: Dto<'InputRevisionResponse'> = { project_id: id, input_revision: revision, input_hash: hash(JSON.stringify(body)),
-        material_versions: body.material_versions, ...(body.credit_facility_supplements ? { credit_facility_supplements: body.credit_facility_supplements } : {}), target_confirmation: { ...body.target_confirmation, status: 'confirmed', confirmed_at: now, confirmed_by: 'synthetic-owner' },
+        material_versions: body.material_versions, ...(body.credit_facility_supplements ? { credit_facility_supplements: body.credit_facility_supplements } : {}), target_confirmation: {status:'unconfirmed',market:null,offering:null,as_of:null,document_purpose:null,target_reporting_periods:[],confirmed_at:null,confirmed_by:null},
         rule_pack_version: null, template_version: null, reference_release: null, created_at: now };
       state.snapshots.set(revision, snapshot); state.project.input_revision = revision; state.project.input_hash = snapshot.input_hash;
       if (state.dropSave) { state.dropSave = false; return route.abort('connectionreset'); }
@@ -77,7 +81,7 @@ async function setup(page: Page, state = fixture()) {
       let run = state.runs.get(body.execution_request_id);
       if (!run) {
         run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
-          input_revision: body.input_revision, input_hash: body.input_hash, state: 'paused', stage: 'capability_not_ready', event_cursor: 2,
+          input_revision: body.input_revision, input_hash: body.input_hash, state: state.runState, stage: state.runStage, event_cursor: state.eventSeq,
           channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: 'platform_trial',
           reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
         state.runs.set(body.execution_request_id, run);
@@ -89,13 +93,15 @@ async function setup(page: Page, state = fixture()) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
+      if (method === 'POST' && (path.endsWith('/cancel') || path.endsWith('/resume'))) { state.runActions.push(path); run.state = path.endsWith('/cancel') ? 'cancelled' : 'running'; return json(route,200,run); }
       if (path.endsWith('/events')) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
         const more = state.paginate && cursor === '0';
-        const seq = more ? 1 : 2;
-        return json(route, 200, { items: Number(cursor) >= 2 ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
-          occurred_at: now, stage: run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
-          payload: more ? {} : { reason: 'rule_applicability_overall_review_required' } }], next_cursor: more ? 1 : null });
+        if (state.failEvents) return json(route, 503, { code: 'DATA_UNAVAILABLE' });
+        const seq = more ? 1 : state.eventSeq;
+        return json(route, 200, { items: Number(cursor) >= state.eventSeq ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
+          occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
+          payload: more ? {} : { ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
       }
       return json(route, 200, run);
     }
@@ -104,217 +110,249 @@ async function setup(page: Page, state = fixture()) {
   });
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '保存材料版本', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
   return state;
 }
-async function save(page: Page) {
-  await page.getByLabel('本次文书用途', { exact: true }).selectOption('issuance');
-  await page.getByLabel('本次法规适用日', { exact: true }).fill('2026-09-27');
-  await page.getByLabel('确认以上目标为本次拟定安排', { exact: false }).check();
-  await page.getByRole('button', { name: '保存材料版本', exact: true }).click();
-  await expect(page.getByRole('button', { name: '检查已保存版本', exact: true })).toBeEnabled();
-}
-async function check(page: Page) {
-  await page.getByRole('button', { name: '检查已保存版本', exact: true }).click();
-  await expect(page.locator('#execute-input')).toBeEnabled();
+async function prepare(page: Page) {
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-preflight')).not.toBeEmpty();
 }
 
-test('saved material versions and target intent lead to a paused task; refresh recovers without generating again', async ({ page }) => {
-  const state = await setup(page);
-  await expect(page.getByLabel('本次法规适用日', { exact: true })).toHaveValue('');
-  await save(page);
-  expect(state.inputs[0].target_confirmation).toEqual({ market: 'sse', offering: 'private', document_purpose: 'issuance', as_of: '2026-09-27', target_reporting_periods: periods });
-  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m => ({ material_id: m.material_id, material_version: 1 })));
-  expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#save-input')).toBeDisabled();
-  await check(page);
-  await expect(page.getByText('预检：仍有阻塞条件')).toBeVisible();
-  await expect(page.locator('#execution-preflight')).toContainText('等待规则适用性审核');
-  expect(state.executes).toHaveLength(0);
+test('ready input saves, preflights and executes through one explicit action', async ({ page }) => {
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state);
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  await expect(page.locator('#execution-progress')).toContainText('等待规则适用性审核');
-  await expect(page.getByRole('link', { name: '查看此前成功成果' })).toHaveAttribute('href', '#/artifacts/synthetic-old-artifact');
-  await page.reload();
-  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  await expect(page.locator('#execution-snapshot')).toContainText('已保存材料版本 1');
-  expect(state.executes).toHaveLength(1);
-  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.inputs).toHaveLength(1); expect(state.preflights).toHaveLength(1); expect(state.executes).toHaveLength(1);
+  expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
+  expect(state.project.update_details!.target_reporting_periods).toEqual(periods);
+  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
+  await expect(page.getByRole('button',{name:'保存材料版本'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'检查已保存版本'})).toHaveCount(0);
 });
 
-test('lost execute response and browser reload retain the same idempotency key', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page);
-  state.dropExecute = true;
+test('actual preflight gaps are shown once before submission, then refresh recovers without a new task', async ({ page }) => {
+  const state=await setup(page); await prepare(page);
+  expect(state.executes).toHaveLength(0);
+  await expect(page.locator('#execution-preflight')).toContainText('等待规则适用性审核');
+  await page.getByRole('button',{name:'继续提交并等待处理'}).click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  await expect(page.getByRole('link',{name:'查看此前成功成果'})).toBeVisible();
+  await page.reload(); await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.executes).toHaveLength(1); await expect(page.locator('.project-cowork')).toBeVisible();
+  expect(state.snapshots.size).toBe(1);
+});
+
+test('lost execute response retries the same key; reload restores the actual task', async ({ page }) => {
+  const state=await setup(page); await prepare(page); state.dropExecute=true;
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('连接中断');
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   expect(state.executes).toHaveLength(2); expect(state.executes[0]).toEqual(state.executes[1]); expect(state.runs.size).toBe(1);
-  await page.reload();
-  await page.getByRole('button', { name: '使用这个已保存版本' }).click(); await check(page);
-  await page.locator('#execute-input').click();
-  await expect.poll(() => state.executes.length).toBe(3);
-  expect(state.executes[2]).toEqual(state.executes[0]); expect(state.runs.size).toBe(1);
+  await page.reload(); await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(2);
 });
 
-for (const channel of ['non_production_test', 'production'] as const) {
-  test(`restored test completion stops polling and only links an authorized test channel (${channel})`, async ({ page }) => {
-    const state = await setup(page); await save(page); await check(page);
-    await page.locator('#execute-input').click();
-    await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-    const run = [...state.runs.values()][0]!;
-    Object.assign(run, { state: 'test_completed', stage: 'completed', channel,
-      test_grant_id: channel === 'non_production_test' ? 'synthetic-grant' : null,
-      artifact_id: 'synthetic-test-artifact' });
-    await page.reload();
-    await expect(page.locator('#execution-progress')).toContainText('内部测试工作稿');
-    const link = page.getByRole('link', { name: '查看测试工作稿', exact: true });
-    if (channel === 'non_production_test') {
-      await expect(link).toHaveAttribute('href', '#/artifacts/synthetic-test-artifact');
-      await expect(page.locator('#execution-progress')).toContainText('不可用于正式申报');
-    } else {
-      await expect(link).toHaveCount(0);
-    }
-    await expect(page.getByRole('link', { name: '查看成果与下载', exact: true })).toHaveCount(0);
-    await page.clock.install();
-    const eventReads = state.eventPages.length;
-    await page.clock.fastForward(15_000);
-    expect(state.eventPages.length).toBe(eventReads);
-    expect(state.executes).toHaveLength(1);
-  });
-}
-
-test('lost snapshot response requires server reconciliation before a new create', async ({ page }) => {
-  const state = await setup(page); state.dropSave = true;
-  await page.getByLabel('确认以上目标为本次拟定安排', { exact: false }).check();
-  await page.getByRole('button', { name: '保存材料版本', exact: true }).click();
+test('lost snapshot response requires readback and explicit selection, without another snapshot POST', async ({ page }) => {
+  const state=await setup(page); state.dropSave=true;
+  await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('保存结果尚未确认');
-  await expect(page.locator('#save-input')).toBeDisabled();
-  expect(state.inputs).toHaveLength(1);
-  await page.getByRole('button', { name: '刷新版本与任务状态' }).click();
-  await expect(page.locator('#execution-snapshot')).toContainText('已保存材料版本 1');
-  await page.getByRole('button', { name: '使用这个已保存版本' }).click(); await check(page);
+  await expect(page.locator('#execute-input')).toBeDisabled(); expect(state.inputs).toHaveLength(1);
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await page.getByRole('button',{name:'继续上次提交'}).click();
+  await expect(page.locator('#execution-preflight')).not.toBeEmpty();
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
 
-test('double click and edits during submission cannot change the immutable execute request', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page); state.holdExecute = true;
-  await page.locator('#execute-input').click();
-  await expect.poll(() => !!state.releaseExecute).toBe(true);
+test('double click and edits during submission preserve the locked request', async ({ page }) => {
+  const state=await setup(page); await prepare(page); state.holdExecute=true;
+  await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
   await expect(page.locator('#execute-input')).toBeDisabled();
-  await page.getByLabel('补充说明', { exact: true }).fill('本轮提交后的新说明');
-  state.releaseExecute!();
+  await page.getByLabel('补充说明与写作要求').fill('下一轮的补充'); state.releaseExecute!();
   await expect(page.locator('#execution-progress')).toContainText('使用材料版本 1');
   expect(state.executes).toHaveLength(1); expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
-  await expect(page.locator('#execute-input')).toBeDisabled();
 });
 
-test('draft changes discard a late preflight and saving a new revision creates a distinct execution', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  state.holdCheck = true;
-  await page.locator('#check-input').click(); await expect.poll(() => !!state.releaseCheck).toBe(true);
-  await page.getByLabel('补充说明', { exact: true }).fill('只供下一版使用');
-  state.releaseCheck!(); state.holdCheck = false;
-  await expect(page.locator('#execute-input')).toBeDisabled();
-  await expect(page.locator('#execution-preflight')).toBeEmpty();
-  await expect(page.locator('#save-state')).toHaveText('已保存');
-  await save(page); await check(page); await page.locator('#execute-input').click();
-  await expect.poll(() => state.runs.size).toBe(2);
-  expect(state.executes[0].execution_request_id).not.toBe(state.executes[1].execution_request_id);
-  expect(state.snapshots.get(1)!.input_hash).toBe(state.executes[0].input_hash);
+test('editing while preflight is pending discards that result; next action locks a new revision', async ({ page }) => {
+  const state=await setup(page); state.holdCheck=true;
+  await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseCheck).toBe(true);
+  await page.getByLabel('补充说明与写作要求').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
+  await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
+  await expect(page.locator('#save-state')).toHaveText('已保存'); await prepare(page);
+  expect(state.inputs).toHaveLength(2); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
 });
 
-test('409 snapshot conflict preserves form input and cannot enable execution', async ({ page }) => {
-  const state = await setup(page); state.conflictSave = true;
-  await page.getByLabel('本次法规适用日', { exact: true }).fill('2026-09-27');
-  await page.getByLabel('确认以上目标为本次拟定安排', { exact: false }).check();
-  await page.locator('#save-input').click();
+test('409 preserves target input and never submits a run', async ({ page }) => {
+  const state=await setup(page); state.conflictSave=true; await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('其他页面修改');
-  await expect(page.getByLabel('本次法规适用日', { exact: true })).toHaveValue('2026-09-27');
-  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.project.update_details!.reporting_cutoff).toBe('2025-12-31');
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
 
-test('target and saved material selection are explicit; empty selection is rejected', async ({ page }) => {
-  const state = await setup(page);
-  await page.locator('#save-input').click();
-  await expect(page.locator('#execution-message')).toContainText('勾选确认');
-  await page.locator('[data-material="synthetic-history"]').uncheck();
-  await page.locator('[data-material="synthetic-audit"]').uncheck();
-  await page.getByLabel('确认以上目标为本次拟定安排', { exact: false }).check(); await page.locator('#save-input').click();
-  await expect(page.locator('#execution-message')).toContainText('至少一份');
-  expect(state.inputs).toHaveLength(0);
-  await page.locator('[data-material="synthetic-history"]').check();
-  await page.getByLabel('确认以上目标为本次拟定安排', { exact: false }).check(); await page.locator('#save-input').click();
-  await expect(page.locator('#check-input')).toBeEnabled();
-  expect(state.inputs[0].material_versions).toEqual([{ material_id: 'synthetic-history', material_version: 1 }]);
-  expect(state.inputs[0].target_confirmation!.as_of).toBeNull();
-  expect(state.inputs[0].target_confirmation!.document_purpose).toBeNull();
+test('current historical choice excludes reference-only materials without a second selection form', async ({ page }) => {
+  const state=fixture(); state.materials.push({...state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx'});
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-preflight')).not.toBeEmpty();
+  expect(state.inputs[0].material_versions).toEqual(state.materials.slice(0,2).map(m=>({material_id:m.material_id,material_version:1})));
+  expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
+  await expect(page.locator('#execution-actions input, #execution-actions select')).toHaveCount(0);
 });
 
-test('paginated project recovery and event history retain the current pause reason', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page); await page.locator('#execute-input').click();
+test('paginated recovery and real task actions keep one run', async ({ page }) => {
+  const state=await setup(page); await prepare(page); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  state.paginate = true; state.eventPages = []; state.listPages = [];
-  await page.reload();
+  state.paginate=true; state.eventPages=[]; state.listPages=[]; await page.reload();
   await expect(page.locator('#execution-progress')).toContainText('等待规则适用性审核');
   expect(state.listPages).toContain('page-two'); expect(state.eventPages).toContain('1');
+  await page.getByRole('button',{name:'继续更新',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  await page.getByRole('button',{name:'停止更新',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('已取消'); expect(state.runs.size).toBe(1);
 });
 
-test('account change during an execute response clears the private panel', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page); state.holdExecute = true;
-  await page.locator('#execute-input').click(); await expect.poll(() => !!state.releaseExecute).toBe(true);
-  await page.evaluate(() => { const channel = new BroadcastChannel('bondbuddy-session'); channel.postMessage('changed'); channel.close(); });
-  await expect(page.getByLabel('用户名', { exact: true })).toBeVisible();
-  state.releaseExecute!();
-  await expect(page.locator('#execution-progress')).toHaveCount(0);
-  await expect(page.getByText('合成任务项目', { exact: true })).toHaveCount(0);
+test('account switch ignores an in-flight execute result', async ({ page }) => {
+  const state=await setup(page); await prepare(page); state.holdExecute=true;
+  await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
+  await page.evaluate(()=>{const channel=new BroadcastChannel('bondbuddy-session');channel.postMessage('changed');channel.close();});
+  await expect(page.getByLabel('用户名',{exact:true})).toBeVisible(); state.releaseExecute!();
+  await expect(page.locator('#execution-progress')).toHaveCount(0); await expect(page.locator('.project-cowork')).toHaveCount(0);
 });
 
-test('foreign execute response is rejected instead of rendered', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page); state.lateRunForeign = true;
-  await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('暂时无法完成');
+test('foreign execute response is rejected', async ({ page }) => {
+  const state=await setup(page); await prepare(page); state.lateRunForeign=true;
+  await page.locator('#execute-input').click(); await expect(page.locator('#execution-message')).not.toBeEmpty();
   await expect(page.locator('#execution-progress')).not.toContainText('任务已暂停');
 });
 
-test('unknown blockers remain blocked and unsafe material names are text at desktop/mobile widths', async ({ page }) => {
-  const state = fixture(); state.materials[0].filename = '<img src=x onerror="window.bad=true">.docx'; state.reason = 'new_unknown_condition';
-  await setup(page, state); await save(page); await check(page);
-  await expect(page.locator('#execution-preflight')).toContainText('仍有阻塞条件');
-  await expect(page.locator('#execution-materials img')).toHaveCount(0);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.locator('#execution-root').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: join(tmpdir(), 'bondbuddy-execution-desktop.png') });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#execution-root').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: join(tmpdir(), 'bondbuddy-execution-mobile.png') });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+test('unknown blockers remain explicit; prototype workspace captures all states without fake progress', async ({ page }) => {
+  const state=fixture(); state.reason='<img src=x onerror=alert(1)>'; await setup(page,state);
+  await page.setViewportSize({width:1440,height:960});
+  await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
+  await page.screenshot({path:join(tmpdir(),'bb361-materials-desktop.png'),fullPage:true});
+  await page.getByRole('button',{name:'编辑项目信息'}).click();
+  await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
+  await page.screenshot({path:join(tmpdir(),'bb361-project-details-desktop.png'),fullPage:true});
+  await page.getByRole('button',{name:'保存并继续'}).click(); await prepare(page);
+  await expect(page.locator('#execution-preflight')).toContainText('待处理条件');
+  await expect(page.locator('#execution-preflight img')).toHaveCount(0);
+  await page.locator('#execute-input').click(); await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
+  await page.screenshot({path:join(tmpdir(),'bb361-paused-desktop.png'),fullPage:true});
+  for (const [status, file] of [['running','running'],['awaiting_input','awaiting'],['failed','failed']] as const) {
+    [...state.runs.values()][0].state=status; await page.getByRole('button',{name:'重新读取',exact:true}).click();
+    await expect(page.locator('#execution-progress')).toContainText(status==='running'?'处理中':status==='awaiting_input'?'待补充信息':'任务失败');
+    await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
+  await page.screenshot({path:join(tmpdir(),`bb361-${file}-desktop.png`),fullPage:true});
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
+  await page.screenshot({path:join(tmpdir(),'bb361-workspace-mobile.png'),fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
+test('restored snapshot retains exact user assertion pins in a new version', async ({ page }) => {
+  const state=await setup(page); await prepare(page);
+  const pin={supplement_id:'00000000-0000-4000-8000-000000000001',version:2,request_hash:'a'.repeat(64)};
+  state.snapshots.get(1)!.credit_facility_supplements=[pin];
+  await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.getByLabel('补充说明与写作要求').fill('下一轮补充'); await expect(page.locator('#save-state')).toHaveText('已保存');
+  await prepare(page); expect(state.inputs[1].credit_facility_supplements).toEqual([pin]);
+});
 
-test('new input preserves exact user assertion pins from the restored input', async ({ page }) => {
-  const state = await setup(page); await save(page);
-  const pins = [{ supplement_id: 'synthetic-supplement', version: 1, request_hash: hash('supplement-v1') }];
-  state.snapshots.get(1)!.credit_facility_supplements = pins;
+test('failed task recovery cannot enable a new snapshot until the server record is read', async ({page})=>{
+  const state=await setup(page);
+  await page.route('**/api/v1/projects?*',route=>json(route,503,{code:'DATA_UNAVAILABLE'}));
   await page.reload();
-  await expect(page.locator('#execution-snapshot')).toContainText('固定 1 条授信补充版本');
-  await page.getByLabel('补充说明', { exact: true }).fill('下一版补充');
-  await expect(page.locator('#save-state')).toHaveText('已保存');
-  await save(page);
-  expect(state.inputs[1].credit_facility_supplements).toEqual(pins);
+  await expect(page.locator('#execution-message')).not.toBeEmpty();
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
+  await page.unroute('**/api/v1/projects?*'); await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
 });
 
-test('changed server material set invalidates preflight and requires a newly selected input', async ({ page }) => {
-  const state = await setup(page); await save(page); await check(page);
-  state.materials.push({ ...state.materials[1], material_id: 'synthetic-added-notes', filename: 'new-notes.docx', role: 'notes' });
-  await page.getByRole('button', { name: '刷新已保存材料' }).click();
-  await expect(page.locator('[data-material="synthetic-added-notes"]')).toBeVisible();
-  await expect(page.locator('#execute-input')).toBeDisabled();
-  await expect(page.locator('#execution-preflight')).toBeEmpty();
-  await save(page);
-  expect(state.inputs[1].material_versions).toHaveLength(3);
-  expect(state.snapshots.get(1)!.material_versions).toHaveLength(2);
-  expect(state.executes).toHaveLength(0);
+test('a test terminal state in the production channel never exposes a deliverable',async({page})=>{
+  const state=await setup(page); await prepare(page); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  const run=[...state.runs.values()][0];run.state='test_completed';run.artifact_id='invalid-artifact';
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-delivery')).toBeEmpty();
+  await expect(page.getByRole('button',{name:'下载修订版',exact:true})).toHaveCount(0);
+});
+
+test('continuing after completion creates a new input and retains the preceding successful artifact without reload',async({page})=>{
+  const state=await setup(page); await prepare(page); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  const first=[...state.runs.values()][0]; first.state='succeeded'; first.artifact_id='first-successful-artifact';
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await prepare(page); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
+  await expect(page.getByRole('link',{name:'查看此前成功成果'})).toHaveAttribute('href','#/artifacts/first-successful-artifact');
+  expect(state.runs.size).toBe(2);
+  expect(state.executes[0].input_hash).toBe(state.snapshots.get(1)!.input_hash);
+  expect(state.executes[0].execution_request_id).not.toBe(state.executes[1].execution_request_id);
+});
+
+
+for (const [reason, message] of [
+  ['model_tokens_per_user_per_day', '今日试用额度已用完，额度恢复后自动继续。'],
+  ['kill_switch', '更新服务暂时停用，服务恢复后自动继续。']]) {
+  test(`trial pause ${reason}: reload and automatic recovery preserve one run`, async ({ page }) => {
+    const state = fixture(); state.checkStatus = 'ready'; state.runStage = 'trial_limit'; state.runReason = reason;
+    await setup(page, state); await page.locator('#execute-input').click();
+    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.getByRole('button', { name: '继续更新', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '查看与补充材料', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: '查看此前成功成果' })).toBeVisible();
+    if (reason === 'model_tokens_per_user_per_day' && process.env.BB_TRIAL_UX_DIR) {
+      for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+        await page.setViewportSize({ width, height });
+        await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
+        await page.screenshot({ path: join(process.env.BB_TRIAL_UX_DIR, `trial-${label}.png`), fullPage: true });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+    await page.reload();
+    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.locator('#resume-run')).toHaveCount(0);
+    const run = [...state.runs.values()][0];
+    const originalInput = run.input_hash;
+    run.state = 'queued'; state.runReason = 'trial_limit_cleared'; state.eventSeq++;
+    await expect(page.locator('.execution-summary')).toHaveText('试用限制已解除，任务继续处理。', { timeout: 10000 });
+    await expect(page.locator('#execution-progress')).toContainText('任务状态：排队中');
+    await expect(page.locator('#cancel-run')).toBeVisible();
+    expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
+    expect(state.inputs).toHaveLength(1); expect(run.input_hash).toBe(originalInput);
+  });
+}
+
+test('trial stage stays honest without events; a different paused stage discards the old limit reason', async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runStage = 'trial_limit'; state.failEvents = true;
+  await setup(page, state); await page.locator('#execute-input').click();
+  await expect(page.locator('.execution-summary')).toHaveText('当前更新暂受试用限制，限制解除后自动继续。');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  state.failEvents = false; state.runReason = 'model_tokens_per_user_per_day';
+  await expect(page.locator('.execution-summary')).toContainText('今日试用额度已用完', { timeout: 10000 });
+  const run = [...state.runs.values()][0];
+  run.stage = 'capability_not_ready'; state.eventSeq++; state.eventStage = 'trial_limit';
+  // A delayed event for the previous paused stage must not describe the new pause.
+  await expect(page.locator('#resume-run')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('.execution-summary')).toHaveCount(0);
+  await page.locator('#resume-run').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务状态：处理中');
+  expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
+  expect(state.executes).toHaveLength(1);
+});
+
+test('operator denial remains a failed task without automatic-recovery guidance', async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready'; state.runState = 'failed'; state.runStage = 'model_generation';
+  state.runReason = ''; state.eventError = 'TRIAL_ACCESS_DENIED';
+  await setup(page, state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务状态：任务失败');
+  await expect(page.locator('.execution-summary')).toHaveText('当前账号的试用权限已停用，请联系支持。');
+  await expect(page.locator('#execution-progress')).not.toContainText('自动继续');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
 });

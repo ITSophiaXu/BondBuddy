@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
-import { emitInternal, internalEvent } from './observability.js';
+import { emitInternal, internalEvent, recordOperation } from './observability.js';
 import { ERROR_CODES, RUN_PAUSE_STAGES, type ERROR_CATEGORIES, type ErrorCode } from '@bondbuddy/contracts';
 import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from './evidence-gate.js';
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
@@ -10,34 +10,45 @@ import { assertTestGrant } from './non-production-test.js';
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
 
-async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed') {
+async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string>={}) {
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
-  const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{})};
+  const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
   await client.query('INSERT INTO bb_run_events(id,owner_user_id,run_id,seq,trace_id,type,state,stage,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,r.owner_user_id,r.id,seq,trace,type,state,stage,payload]);
-  await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:id,seq,state,stage,reason,channel:r.channel??'production',...(errorCode?{error_code:errorCode}:{})}]);
+  await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),r.owner_user_id,'run',r.id,type,{run_id:r.id,event_id:id,seq,state,stage,...payload}]);
   const job=await client.query('SELECT id FROM bb_jobs WHERE run_id=$1',[r.id]);
   await emitInternal(client,internalEvent({kind:'job.state_changed',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId:job.rows[0]?.id,traceId:trace,status:state as any,stage}));
   r.state=state;r.stage=stage;r.event_cursor=seq;
 }
 
+// Used by claim, the operator queue and resolve so no paused attempt is invisible.
+const needsProviderReconciliation = `(
+  a.status='pending_reconcile'
+  OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
+    COALESCE(u.usage_status,'unknown')<>'measured'
+    OR COALESCE(u.conflicting_measurements,0)>0
+    OR EXISTS (SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=a.id)
+    OR NOT EXISTS (SELECT 1 FROM bb_provider_call_observations o
+      WHERE o.attempt_id=a.id AND o.outcome='failed' AND o.usage_status='measured')
+  ))
+  OR (a.status='completed' AND (
+    COALESCE(u.usage_status,'unknown')<>'measured'
+    OR COALESCE(u.conflicting_measurements,0)>0
+    OR (SELECT count(*) FROM bb_provider_result_refs p WHERE p.attempt_id=a.id)<>1
+    OR NOT EXISTS (
+      SELECT 1 FROM bb_provider_call_observations o
+      JOIN bb_provider_result_refs p ON p.id=o.result_id AND p.attempt_id=o.attempt_id
+      WHERE o.attempt_id=a.id AND o.outcome='completed' AND o.usage_status='measured'
+    )
+  ))
+)`;
+
 async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
+    JOIN bb_jobs j ON j.id=a.job_id
     LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
-    WHERE a.job_id=$1 AND (
-      a.status IN ('pending_reconcile','failed')
-      OR (a.status='completed' AND (
-        COALESCE(u.usage_status,'unknown')<>'measured'
-        OR COALESCE(u.conflicting_measurements,0)>0
-        OR (SELECT count(*) FROM bb_provider_result_refs p WHERE p.attempt_id=a.id)<>1
-        OR NOT EXISTS (
-          SELECT 1 FROM bb_provider_call_observations o
-          JOIN bb_provider_result_refs p ON p.id=o.result_id AND p.attempt_id=o.attempt_id
-          WHERE o.attempt_id=a.id AND o.outcome='completed' AND o.usage_status='measured'
-        )
-      ))
-    ) LIMIT 1`,[jobId]);
+    WHERE a.job_id=$1 AND ${needsProviderReconciliation} LIMIT 1`,[jobId]);
   return !!q.rowCount;
 }
 
@@ -147,7 +158,7 @@ export async function reconcilePausedCall(pool:Pool, owner:string, runId:string,
   });
 }
 
-export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume') {
+export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'resume',requestId?:string) {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
@@ -156,9 +167,11 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     if(kind==='resume'){
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs a durable result and verified usage before resume');
+      if(j.stage==='trial_limit')await assertModelCallAllowed(client,trialGuardConfig(),owner);
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');
+    if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:kind==='cancel'?'run_cancel':'run_resume',status:'submitted'});
     return runDto({...r,updated_at:new Date()});
   });
 }
@@ -455,17 +468,18 @@ export async function upgradeStageCheckpoint(pool:Pool,lease:Lease,stage:string,
  * Parks a run that cannot progress yet (a stage is not implemented, pinned materials are still
  * parsing). It keeps its checkpoint and is never reported as success; resume re-queues it.
  */
-export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAGES[number],reason:string) {
+export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAGES[number],reason:string,errorCode?:string) {
   if(!RUN_PAUSE_STAGES.includes(stage)||!/^[a-z][a-z0-9_]{0,63}$/.test(reason))throw new Problem(422,'VALIDATION_FAILED','Invalid pause');
+  if(errorCode && !(ERROR_CODES as readonly string[]).includes(errorCode))throw new Problem(422,'VALIDATION_FAILED','Invalid pause error code');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
     await client.query("UPDATE bb_jobs SET state='paused',stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId,stage]);
-    await event(client,r,'paused',stage,reason);
+    await event(client,r,'paused',stage,reason,errorCode);
   });
 }
 
 /** Trusted runtime resume (never a browser principal): re-queues a paused run whose blocker cleared. */
-export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled') {
+export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared') {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
@@ -481,6 +495,73 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
 export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20) {
   const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND r.state='paused' ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
+}
+
+export type OperatorReconcileDecision = 'retry_unknown_usage' | 'fail_run';
+const operatorField = /^[A-Za-z0-9_.@-]{1,128}$/;
+const operatorReason = /^[a-z][a-z0-9_]{1,63}$/;
+
+/** Private maintenance read; attempt ownership is derived from the run and job, never from CLI input. */
+export async function listOperatorReconciliations(pool:Pool) {
+  const q=await pool.query(`SELECT r.id AS run_id,r.owner_user_id AS owner,r.channel,
+      a.id AS attempt_id,a.logical_call_id,a.attempt_no,a.status AS attempt_status,a.created_at AS started_at,
+      COALESCE(o.error_code,t.error_code) AS failure_code,
+      u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens
+    FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
+    JOIN bb_model_call_attempts a ON a.job_id=j.id AND a.owner_user_id=r.owner_user_id
+    LEFT JOIN LATERAL (SELECT error_code FROM bb_provider_call_observations WHERE attempt_id=a.id ORDER BY observed_at DESC,id DESC LIMIT 1) o ON true
+    LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+    LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
+    WHERE r.state='paused' AND r.stage='provider_reconcile' AND j.state='paused' AND j.stage='provider_reconcile'
+      AND ${needsProviderReconciliation}
+    ORDER BY r.updated_at,a.created_at,a.id`,[]);
+  return q.rows;
+}
+
+/** An explicit operator disposition; the run event is also the durable audit and outbox record. */
+export async function resolveOperatorReconciliation(pool:Pool,input:{runId:string;attemptId:string;decision:OperatorReconcileDecision;reasonCode:string;actor:string}) {
+  if(!operatorField.test(input.runId)||!operatorField.test(input.attemptId)||!operatorField.test(input.actor)||
+    !operatorReason.test(input.reasonCode)||!['retry_unknown_usage','fail_run'].includes(input.decision))
+    throw new Problem(422,'VALIDATION_FAILED','Invalid reconciliation fields');
+  return transaction(pool,async client=>{
+    const q=await client.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[input.runId]);
+    const r=q.rows[0];if(!r)throw missing();
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
+    if(!j)throw missing();
+    const a=(await client.query('SELECT id,status FROM bb_model_call_attempts WHERE id=$1 AND owner_user_id=$2 AND job_id=$3 FOR UPDATE',[input.attemptId,r.owner_user_id,j.id])).rows[0];
+    if(!a)throw missing();
+    const previous=j.checkpoint?.operator_reconciliations?.[a.id];
+    if(previous){
+      if(previous.decision===input.decision && previous.reason_code===input.reasonCode)return {run_id:r.id,attempt_id:a.id,decision:input.decision,idempotent:true};
+      throw new Problem(409,'IDEMPOTENCY_CONFLICT','Attempt already has another operator decision');
+    }
+    const unresolved=(await client.query(`SELECT 1 FROM bb_model_call_attempts a
+      JOIN bb_jobs j ON j.id=a.job_id LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
+      WHERE a.id=$1 AND ${needsProviderReconciliation}`,[a.id])).rowCount;
+    if(r.state!=='paused'||r.stage!=='provider_reconcile'||j.state!=='paused'||j.stage!=='provider_reconcile'||!unresolved)
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not awaiting this provider call');
+    const audit={actor:input.actor,reason_code:input.reasonCode,attempt_id:a.id,decision:input.decision};
+    if(input.decision==='retry_unknown_usage'){
+      if(a.status==='completed')throw new Problem(409,'CAPABILITY_NOT_READY','Completed result requires provider reconciliation or run termination');
+      const evidence=await client.query(`SELECT u.usage_status,
+        EXISTS(SELECT 1 FROM bb_provider_result_refs p WHERE p.attempt_id=$1) AS has_result
+        FROM bb_call_usage u WHERE u.attempt_id=$1`,[a.id]);
+      if(evidence.rows[0]?.has_result || evidence.rows[0]?.usage_status!=='unknown')
+        throw new Problem(409,'CAPABILITY_NOT_READY','Existing result or non-unknown usage requires provider reconciliation');
+      await client.query("UPDATE bb_model_call_attempts SET status='failed',usage_status='unknown',updated_at=now() WHERE id=$1",[a.id]);
+      await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',
+        checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true),updated_at=now() WHERE id=$1`,
+        [j.id,a.id,JSON.stringify({decision:input.decision,reason_code:input.reasonCode,actor:input.actor})]);
+      await event(client,r,'queued','queued','provider_operator_retry_unknown_usage',undefined,'run.state_changed',audit);
+    }else{
+      await client.query("UPDATE bb_jobs SET state='failed',stage='failed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+      await recordRunFailure(client,r,j.id,'DATA_UNAVAILABLE','provider_reconcile');
+      await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true) WHERE id=$1`,
+        [j.id,a.id,JSON.stringify({decision:input.decision,reason_code:input.reasonCode,actor:input.actor})]);
+      await event(client,r,'failed','failed','provider_operator_terminated','DATA_UNAVAILABLE','run.state_changed',audit);
+    }
+    return {run_id:r.id,attempt_id:a.id,decision:input.decision,idempotent:false};
+  });
 }
 
 /** Graceful shutdown: expire our lease now so the next claim resumes from the checkpoint without waiting. */

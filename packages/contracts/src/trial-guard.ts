@@ -3,7 +3,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 // #35 controlled trial: quotas, abuse limits, operator overrides, platform cost ledger,
 // liveness/readiness and trial alerts. Kept in its own module so parallel PRs that append to
 // index.ts do not collide; index.ts only re-exports and spreads these values.
-// M1 does not charge users: there are no credits, prices or payment fields here.
+// M1 does not charge users: supplier rates describe platform expenditure only.
 
 // Public API error codes added to ERROR_CODES.
 // TRIAL_QUOTA_EXCEEDED (429): a per-user, per-source or global trial limit is reached.
@@ -24,8 +24,9 @@ export const TRIAL_KILL_SWITCH_STATES = ['engaged', 'released'] as const;
 export const TRIAL_ALERT_KINDS = ['worker_heartbeat_stale', 'queue_backlog_stale', 'error_rate_spike', 'trial_quota_exhausted'] as const;
 export const READINESS_CHECKS = ['database', 'blob_storage', 'evidence_gate', 'worker_heartbeat'] as const;
 export const READINESS_CHECK_STATES = ['ok', 'failed', 'paused', 'stale', 'missing'] as const;
-// #16 decision: the supplier rate is unconfirmed, so every cost record carries pricing_status=unknown and no amount.
 export const TRIAL_PRICING_STATUS = 'unknown' as const;
+export const MODEL_COST_BEARERS = ['platform'] as const;
+export const MODEL_PRICING_STATUSES = ['unknown', 'rate_missing', 'priced'] as const;
 
 const obj = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
 const enumOf = <T extends readonly string[]>(values: T) => Type.Union(values.map(value => Type.Literal<T[number]>(value)));
@@ -69,9 +70,12 @@ export const trialSchemas = {
     pricing_status: Type.Literal(TRIAL_PRICING_STATUS),
     items: Type.Array(obj({
       attempt_id: id, user_id: id, job_id: id, run_id: nullable(id), logical_call_id: id, attempt_no: Type.Integer({ minimum: 1 }), model_id: nullable(Type.String({ pattern: '^[A-Za-z0-9._-]{1,128}$' })),
+      model_provider: nullable(Type.String({ pattern: '^[a-z0-9_-]{1,64}$' })),
       call_status: safeCode, usage_status: enumOf(['measured', 'pending', 'unknown', 'conflict'] as const), input_tokens: nullable(count), output_tokens: nullable(count),
       cached_input_tokens: nullable(count), reasoning_tokens: nullable(count), conservative_tokens: count, duration_ms: nullable(count),
-      pricing_status: Type.Literal(TRIAL_PRICING_STATUS), cost_amount: Type.Null({ description: 'No price is confirmed for M1 (#16); never 0.' }), created_at: utc
+      billable: Type.Boolean(), cost_bearer: enumOf(MODEL_COST_BEARERS), rate_ref: nullable(Type.String({ pattern: '^[A-Za-z0-9._-]{1,128}$' })),
+      pricing_status: enumOf(MODEL_PRICING_STATUSES), cost_amount: nullable(Type.String({ pattern: '^\\d+\\.\\d{10}$', description: 'Decimal platform cost, present only when priced.' })),
+      currency: nullable(Type.String({ pattern: '^[A-Z]{3}$' })), created_at: utc
     })),
     next_cursor: nullable(Type.String({ minLength: 1 }))
   }),
@@ -87,7 +91,7 @@ export const trialSchemas = {
 export const TRIAL_ADMIN_OPERATIONS = [
   { method: 'get', path: '/admin/trial/status', summary: 'Trial limits, kill switch, active runs, worker heartbeats and queue age (log_reader)', response: 'AdminTrialStatusResponse', status: 200, errors: [404] },
   { method: 'get', path: '/admin/trial/usage', summary: 'Daily tokens, runs, uploads and duration per user and in total; pricing_status=unknown (log_reader)', response: 'AdminTrialUsageResponse', status: 200, errors: [404, 422] },
-  { method: 'get', path: '/admin/trial/cost-ledger', summary: 'Per-attempt platform cost records; pricing_status=unknown, cost_amount=null (log_reader)', response: 'AdminCostLedgerResponse', status: 200, errors: [404, 422] },
+  { method: 'get', path: '/admin/trial/cost-ledger', summary: 'Per-attempt platform cost attribution with verified rate versions (log_reader)', response: 'AdminCostLedgerResponse', status: 200, errors: [404, 422] },
   { method: 'get', path: '/admin/trial/overrides', summary: 'List active trial allow/deny overrides (log_reader)', response: 'TrialOverridesResponse', status: 200, errors: [404] },
   { method: 'post', path: '/admin/trial/overrides', summary: 'Append an allow/deny override for an account (log_operator)', response: 'TrialOverrideResponse', status: 201, request: 'TrialOverrideRequest', errors: [404, 422] },
   { method: 'post', path: '/admin/trial/overrides/{override_id}/revoke', summary: 'Revoke an override once (log_operator)', response: 'TrialOverrideResponse', status: 200, request: 'TrialOverrideRevokeRequest', errors: [404, 409] },

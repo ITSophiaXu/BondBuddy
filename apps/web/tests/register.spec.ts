@@ -64,7 +64,7 @@ test('login page switches to registration, validates locally and lands logged in
   expect(state.registered).toHaveLength(0);
   await page.getByRole('checkbox').check();
   await submit(page);
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
   expect(state.registered).toEqual([{ username: 'Synthetic_New1', password: 'Synthetic-password-123', accepted_terms_version: terms }]);
 });
 

@@ -118,11 +118,13 @@ async function login(page: Page, username: string, expectProject = true) {
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill('Synthetic-password-123');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
+  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${projectId}`);
   if (expectProject) {
     await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '项目材料' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '提供项目材料' })).toBeVisible();
   } else {
     await expect(page.getByText('无法访问这个项目，它可能已移除或不属于当前账号。')).toBeVisible();
   }
@@ -132,7 +134,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
-  for (const partition of ['募集说明书', '财务与审计', '发行安排与资金用途', '工商、信用与评级', '债务、授信与担保', '经营、治理与行业']) {
+  for (const partition of ['本发行人历史募集书 / 相似募集书', '审计报告 / 财务报表及附注', '募投项目与权证材料', '其他项目材料']) {
     await expect(page.getByRole('heading', { name: partition, exact: true })).toBeVisible();
   }
   await expect(page.locator('#material-partitions select')).toHaveCount(0);
@@ -157,12 +159,14 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   expect(fixture.materials.size).toBe(3);
 
   await page.reload();
-  await expect(page.getByText('已从服务器恢复 3 份当前账号可访问的材料记录。')).toBeVisible();
+  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
+  if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, 'owner_a');
-  await expect(page.getByText('已从服务器恢复 3 份当前账号可访问的材料记录。')).toBeVisible();
+  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
+  if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, 'owner_b', false);
   await expect(page.getByText('无法访问这个项目，它可能已移除或不属于当前账号。')).toBeVisible();
@@ -247,7 +251,7 @@ test('a late material refresh cannot restore a row removed by a newer refresh', 
   await expect.poll(() => held).toBe(true);
   current.materials.clear();
   await page.getByRole('button', { name: '刷新已保存材料' }).click();
-  await expect(page.getByText('材料事件中没有可恢复记录；重新选择本地文件不会代替服务器保存记录。')).toBeVisible();
+  await expect(page.getByText('尚未添加材料。')).toBeVisible();
   release();
   await expect(page.locator('.persisted-material')).toHaveCount(0);
 });
@@ -305,6 +309,7 @@ test('upload saved -> queued -> recognizing -> source results, target unchanged 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.material-role').filter({ hasText: 'synthetic-history.pdf' }).screenshot({ path: join(tmpdir(), 'bondbuddy-recognition-mobile.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click(); await login(page, 'owner_a');
   await expect(page.locator('.source-profile')).toContainText('DFI · 储架发行');
   expect(mutations.filter(path => !/\/auth\/(login|logout|refresh)$|\/materials\/uploads(?:\/[^/]+\/(?:bytes|complete))?$/.test(path))).toEqual([]);
@@ -436,9 +441,11 @@ test('duplicate uploads join one status read, and late profile cannot leak after
   await page.getByLabel('为本企业历史募集书选择文件').setInputFiles([{ name: 'one.pdf', mimeType: 'application/pdf', buffer }, { name: 'two.pdf', mimeType: 'application/pdf', buffer }]);
   await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
   await expect.poll(() => pending).toBe(1); expect(reads.length).toBe(1);
-  await page.getByRole('link', { name: '我的项目', exact: true }).click(); release();
+  if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
+  await page.getByRole('link', { name: '全部项目', exact: true }).first().click(); release();
   await expect(page.locator('.source-profile')).toHaveCount(0);
   await page.goto(`/#/projects/${projectId}`); await expect.poll(() => pending).toBe(2);
+  if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click(); release(); await login(page, 'owner_b', false);
   await expect(page.locator('.source-profile')).toHaveCount(0);
   expect(current.materials.size).toBe(1);
@@ -448,7 +455,7 @@ test('material recovery keeps the live file picker attached until its change eve
   const current = state(); await installApi(page, current); await login(page, 'owner_a');
   const picker = await page.getByLabel('为本企业历史募集书选择文件').elementHandle();
   await page.getByRole('button', { name: '刷新已保存材料' }).click();
-  await expect(page.locator('#material-recovery-status')).toContainText('材料事件中没有可恢复记录');
+  await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
   expect(await picker!.evaluate(input => input.isConnected)).toBe(true);
   await picker!.setInputFiles({ name: 'picker-survives.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic selected before recovery') });
   await expect(page.locator('.material-file-row')).toContainText('服务器已确认保存');

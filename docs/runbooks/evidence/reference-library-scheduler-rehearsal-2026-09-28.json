@@ -1,0 +1,324 @@
+{
+  "recorded_on": "2026-09-28",
+  "base_commit": "211efecf4675f2435cdccdc44e77e27dcebe4907",
+  "environment": {
+    "postgres": "16-alpine",
+    "azurite": "3.35.0 --skipApiVersionCheck",
+    "source_id": "sse_bond_project_platform",
+    "usage_rights": "evaluation_only",
+    "source_interval_seconds": 300,
+    "ops_check_interval_seconds": 60,
+    "external_sample": "first prospectus from one current SSE project per cycle"
+  },
+  "scheduled": {
+    "started_at": "2026-09-28T13:26:24.321Z",
+    "finished_at": "2026-09-28T13:36:44.475Z",
+    "completed_runs": 3,
+    "runs": [
+      {
+        "cycle": 1,
+        "kind": "first",
+        "state": "succeeded",
+        "started_at": "2026-09-28T13:26:24.367Z",
+        "finished_at": "2026-09-28T13:27:00.864Z",
+        "outcomes": {
+          "new_document": 1
+        },
+        "retried_items": 0,
+        "job_state": "succeeded",
+        "job_stage": "succeeded",
+        "job_claim_attempts": 1,
+        "checkpoint_next_index": "1",
+        "cursor_before_date": null,
+        "cursor_after_date": "2026-09-28"
+      },
+      {
+        "cycle": 2,
+        "kind": "incremental",
+        "state": "succeeded",
+        "started_at": "2026-09-28T13:31:10.733Z",
+        "finished_at": "2026-09-28T13:31:18.592Z",
+        "outcomes": {
+          "unchanged": 1
+        },
+        "retried_items": 0,
+        "job_state": "succeeded",
+        "job_stage": "succeeded",
+        "job_claim_attempts": 1,
+        "checkpoint_next_index": "1",
+        "cursor_before_date": "2026-09-28",
+        "cursor_after_date": "2026-09-28"
+      },
+      {
+        "cycle": 3,
+        "kind": "incremental",
+        "state": "succeeded",
+        "started_at": "2026-09-28T13:36:25.609Z",
+        "finished_at": "2026-09-28T13:36:36.301Z",
+        "outcomes": {
+          "unchanged": 1
+        },
+        "retried_items": 0,
+        "job_state": "succeeded",
+        "job_stage": "succeeded",
+        "job_claim_attempts": 3,
+        "checkpoint_next_index": "1",
+        "cursor_before_date": "2026-09-28",
+        "cursor_after_date": "2026-09-28"
+      }
+    ],
+    "ops": {
+      "last_started_at": "2026-09-28T13:36:25.596Z",
+      "last_finished_at": "2026-09-28T13:36:36.309Z",
+      "last_status": "succeeded",
+      "task_runs": 10,
+      "task_failures": 0,
+      "lease_released": true
+    },
+    "source": {
+      "next_sync_due_at": "2026-09-28T13:41:28.604Z",
+      "last_attempt_at": "2026-09-28T13:36:26.295Z",
+      "last_success_at": "2026-09-28T13:36:36.301Z",
+      "last_error_code": null,
+      "consecutive_failures": 0,
+      "source_lease_released": true
+    },
+    "versions": [
+      {
+        "sha256": "a2874fef3c97c30fa7cf3c617712185aef30ba52caa6d17217f11253d5048706",
+        "state": "pending_review"
+      }
+    ],
+    "alerts": [],
+    "transient_job_errors": [
+      {
+        "cycle": 3,
+        "code": "DATA_UNAVAILABLE",
+        "recovery_status": "retry_scheduled",
+        "count": 2
+      }
+    ],
+    "sampled_peak_process_tree_rss_mib": 236.5,
+    "rss_method": "200 ms samples of Node process plus direct parser child VmRSS; sampled peak, not cgroup peak",
+    "ops_task_events": [
+      {
+        "at": "2026-09-28T13:27:00.886Z",
+        "status": "succeeded",
+        "duration_ms": 36559,
+        "claimed": 1,
+        "enqueued": 1,
+        "jobs": 1,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:28:03.788Z",
+        "status": "succeeded",
+        "duration_ms": 4,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:29:10.427Z",
+        "status": "succeeded",
+        "duration_ms": 7,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:30:09.747Z",
+        "status": "succeeded",
+        "duration_ms": 6,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:31:18.599Z",
+        "status": "succeeded",
+        "duration_ms": 7903,
+        "claimed": 1,
+        "enqueued": 1,
+        "jobs": 1,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:32:18.760Z",
+        "status": "succeeded",
+        "duration_ms": 4,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:33:14.977Z",
+        "status": "succeeded",
+        "duration_ms": 8,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:34:15.783Z",
+        "status": "succeeded",
+        "duration_ms": 13,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:35:22.977Z",
+        "status": "succeeded",
+        "duration_ms": 3,
+        "claimed": 0,
+        "enqueued": 0,
+        "jobs": 0,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      },
+      {
+        "at": "2026-09-28T13:36:36.311Z",
+        "status": "succeeded",
+        "duration_ms": 10713,
+        "claimed": 1,
+        "enqueued": 1,
+        "jobs": 3,
+        "failed": 0,
+        "partial": 0,
+        "lease_kept": true
+      }
+    ]
+  },
+  "fault_and_recovery": {
+    "network_failure": {
+      "started_at": "2026-09-28T13:26:24.273Z",
+      "run_state": "partial",
+      "fetch_attempts": [
+        3
+      ],
+      "item_outcomes": [
+        "failed"
+      ],
+      "error_codes": [
+        "LIBRARY_FETCH_FAILED"
+      ],
+      "last_error_code": "LIBRARY_FETCH_FAILED",
+      "consecutive_failures": 1,
+      "alerts": [
+        {
+          "kind": "library_sync_failed",
+          "severity": "critical"
+        }
+      ]
+    },
+    "network_recovery": {
+      "last_success_at": "2026-09-28T13:27:15.015Z",
+      "last_error_code": null,
+      "consecutive_failures": 0,
+      "partial": 0
+    },
+    "process_crash": {
+      "signal": "SIGKILL",
+      "job_state_before": "running",
+      "checkpoint_next_index_before": "1",
+      "job_state_after": "succeeded",
+      "checkpoint_next_index_after": "1",
+      "job_claim_attempts_after": 2,
+      "version_count_before": 1,
+      "version_count_after": 1,
+      "pending_parse_versions": 0,
+      "import_staging_blobs": 0,
+      "source_content_blobs": 1,
+      "orphan_source_blobs": 0
+    },
+    "concurrent_processes": {
+      "fixture": "no external file requests; source and job leases use the same production database path",
+      "started_at": "2026-09-28T13:33:08.377Z",
+      "finished_at": "2026-09-28T13:33:08.813Z",
+      "processes": [
+        {
+          "exit_code": 0,
+          "source_claims": 1,
+          "enqueued": 1,
+          "jobs_drained": 0
+        },
+        {
+          "exit_code": 0,
+          "source_claims": 0,
+          "enqueued": 0,
+          "jobs_drained": 1
+        }
+      ],
+      "jobs_before": 0,
+      "jobs_after": 1,
+      "source_lease_released": true
+    }
+  },
+  "resource_and_egress": {
+    "compose_base": {
+      "ops_memory_mib": 384,
+      "ops_node_old_space_mib": 256,
+      "background_runtime_memory_mib": 768
+    },
+    "compose_prod_override": {
+      "ops_memory_mib": 384,
+      "background_runtime_memory_mib": 512,
+      "background_runtime_node_old_space_mib": 160
+    },
+    "sse_domains_required": [
+      "query.sse.com.cn",
+      "static.sse.com.cn"
+    ],
+    "default_allow_list_has_sse_domains": false,
+    "proxy_probe": {
+      "method": "Set HTTPS_PROXY to an unreachable local endpoint, then fetch SSE query host with Node 22.23.2",
+      "without_node_use_env_proxy": "HTTP 200 (direct request bypassed proxy setting)",
+      "with_node_use_env_proxy": "proxy connection refused as expected"
+    }
+  },
+  "limitations": [
+    "Only the first prospectus from one SSE project was sampled per real cycle; this is not a full batch or load test.",
+    "The process crash was injected after one durable item checkpoint, not during an uncommitted Blob write.",
+    "The independent-process concurrency check used an empty discovery fixture; the real SSE first and incremental cycles were separate.",
+    "The source is evaluation_only; no document was approved or published for task selection.",
+    "The local RSS sample does not establish safe memory for every PDF or a deployed container limit."
+  ],
+  "code_findings": [
+    {
+      "file": "apps/worker/src/library-sources.ts",
+      "lines": "53-60,115-121",
+      "finding": "Fetch timeout is cleared after response headers, before JSON/PDF body consumption; one request stayed active longer than the configured 30 seconds.",
+      "suggestion": "Keep the abort timer through bounded body consumption and enforce the byte limit while streaming."
+    },
+    {
+      "file": "apps/worker/src/library-sources.ts",
+      "lines": "53,59",
+      "finding": "Default Node fetch did not honor HTTPS_PROXY in the local Node 22 probe; Compose sets HTTPS_PROXY without NODE_USE_ENV_PROXY.",
+      "suggestion": "Route SSE requests through the configured egress proxy and verify blocked and allowed domains."
+    }
+  ]
+}

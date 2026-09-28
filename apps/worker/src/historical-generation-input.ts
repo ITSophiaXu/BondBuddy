@@ -15,6 +15,7 @@ import { loadHistoricalRuleGuidance, type HistoricalRuleGuidance, type Historica
 import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistoricalFactMaterial, projectHistoricalFact } from './historical-fact-policy.js';
 import type { HistoricalCandidateRuleGuidance } from './historical-candidate-rule-context.js';
 import { loadAuthorizedHistoricalTestRuleGuidance } from './historical-test-rule-authorization.js';
+import { HISTORICAL_TEST_BASELINE_POLICY } from './historical-baseline-warnings.js';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
 const detailsValidator = new Ajv({ strict: false }).compile(UpdateDetailsSchema);
@@ -33,6 +34,7 @@ export interface HistoricalGenerationInput {
 }
 interface PreparationPin {
   version: 'historical-generation-input-v1'; input_hash: string;
+  baseline_policy?: typeof HISTORICAL_TEST_BASELINE_POLICY;
   snapshot_id: string; profile_version: number; profile_hash: string;
   parser_version: string; parse_hash: string; issuer_entity_id: string;
   fact_ids: string[]; facts_hash: string;
@@ -89,6 +91,8 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   const baseline = historical[0]!;
   const scope = { ownerUserId: run.owner_user_id, projectId: run.project_id, materialId: baseline.materialId, materialVersion: baseline.materialVersion };
   const previous = ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as unknown as PreparationPin | undefined;
+  const baselinePolicy = run.channel === 'non_production_test' ? HISTORICAL_TEST_BASELINE_POLICY : undefined;
+  if (previous && previous.baseline_policy !== baselinePolicy) throw new Error('UPDATE_BASELINE_POLICY_CHANGED');
   if (previous && (previous.version !== 'historical-generation-input-v1' || previous.input_hash !== run.input_hash.trim() ||
     !Array.isArray(previous.fact_ids) || new Set(previous.fact_ids).size !== previous.fact_ids.length ||
     !hash(previous.facts_hash) || !hash(previous.profile_hash) || !hash(previous.parse_hash) || !Array.isArray(previous.decisions))) throw new Error('UPDATE_PREPARATION_CHECKPOINT_INVALID');
@@ -145,18 +149,23 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     decisions.push({ identity, decision }); decisionPins.push(current);
   }
   const pin: PreparationPin = previous ?? { version: 'historical-generation-input-v1', input_hash: run.input_hash.trim(),
+    ...(baselinePolicy ? { baseline_policy: baselinePolicy } : {}),
     snapshot_id: snapshot.snapshotId, profile_version: profile.profileVersion, profile_hash: updateContentHash(profile.recognition),
     parser_version: snapshot.parserVersion, parse_hash: snapshot.responseSha256, issuer_entity_id: entity,
     fact_ids: facts.map(f => f.candidate.candidateId).sort(), facts_hash: frozenFactsHash(facts), decisions: decisionPins };
   const locked: HistoricalGenerationInput['locked'] = { context: { ownerUserId: run.owner_user_id, projectId: run.project_id,
     issuerEntityId: entity, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), targetMarket: manifest.market,
+    ...(baselinePolicy ? { baselineUse: 'non_production_working_draft' as const } : {}),
     targetOffering: manifest.offering, ruleSnapshot: { packId: rule.packId, version: rule.version, contentHash: rule.contentHash } },
     materials, baseline: { materialId: baseline.materialId, materialVersion: baseline.materialVersion, snapshotId: snapshot.snapshotId, profileVersion: profile.profileVersion },
     factCandidateIds: [], factsHash: historicalUpdateFactsHash([]) };
   // Reuse the #31 material, effective-baseline, parser and profile integrity gates before any model call.
   const baselineReview = await (readers.prepare ?? prepareHistoricalUpdate)({ pool }, { ...locked, bindings: [], occurrences: [], columns: [], coverage: [] });
-  if (baselineReview.findings.some(f => ['UPDATE_BASELINE_UNCERTAIN', 'UPDATE_PROFILE_UNCONFIRMED',
-    'UPDATE_PDF_RECONSTRUCTION_REQUIRED', 'UPDATE_STRUCTURE_MAPPING_REQUIRED'].includes(f.code))) unavailable('historical_baseline_needs_confirmation');
+  const pendingProfileCandidate = baselineReview.findings.some(f => f.code === 'UPDATE_PROFILE_CANDIDATE_PENDING');
+  if ((pendingProfileCandidate && !baselinePolicy) || baselineReview.findings.some(f => [
+    'UPDATE_BASELINE_UNCERTAIN', 'UPDATE_PROFILE_UNCONFIRMED', 'UPDATE_PDF_RECONSTRUCTION_REQUIRED',
+    'UPDATE_STRUCTURE_MAPPING_REQUIRED',
+  ].includes(f.code))) unavailable('historical_baseline_needs_confirmation');
   if (!previous) {
     if (readers.checkpoint) await readers.checkpoint(ctx, { ...pin });
     else await checkpointStage(pool, ctx.lease, GENERATION_INPUT_CHECKPOINT, { ...pin });

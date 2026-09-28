@@ -68,6 +68,7 @@ test('PostgreSQL/Azurite material download streams verified bytes, keeps owner 4
     assert.equal(ok.headers['cache-control'], 'private, no-store');
     assert.equal(ok.headers['x-content-type-options'], 'nosniff');
     assert.equal(ok.headers['content-length'], String(bytes.length));
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND operation_kind='material_download' AND status='submitted'",[owner,project])).rows[0].n,1);
     assert.match(String(ok.headers['content-disposition']), /^attachment; filename="[^"]*"; filename\*=UTF-8''%E5%90%88/);
 
     active = `download-foreign-${randomUUID()}`;

@@ -102,7 +102,7 @@ test('synthetic platform probe: operator-only enqueue, separate claim, durable #
     assert.equal((await blobs.get(snapshot.object_key)).toString('utf8'), PLATFORM_PROBE_TEMPLATES.bb_probe_json_echo_v1.prompt);
     assert.equal((await pool.query('SELECT registered_at IS NOT NULL AS registered FROM bb_prompt_blob_intents WHERE object_key=$1', [snapshot.object_key])).rows[0].registered, true);
     const ledger = (await pool.query('SELECT owner_user_id,usage_status,input_tokens,pricing_status FROM bb_platform_cost_ledger WHERE job_id=$1', [probe.job_id])).rows;
-    assert.deepEqual(ledger, [{ owner_user_id: principal, usage_status: 'measured', input_tokens: 8418, pricing_status: 'unknown' }]);
+    assert.deepEqual(ledger, [{ owner_user_id: principal, usage_status: 'measured', input_tokens: 8418, pricing_status: 'rate_missing' }]);
     const run = (await pool.query('SELECT state,artifact_id FROM bb_runs WHERE id=$1', [probe.run_id])).rows[0];
     assert.deepEqual(run, { state: 'succeeded', artifact_id: null });
 

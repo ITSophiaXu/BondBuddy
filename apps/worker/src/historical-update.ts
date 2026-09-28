@@ -9,6 +9,7 @@ import { getLatestFactDecision, type StoredFactDecision } from './fact-decision-
 import { validateDocumentParseResponse } from './document-parser.js';
 import { parseHistoricalNativeExtractorVersion } from './historical-native-recognition.js';
 import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistoricalFactMaterial, projectHistoricalFact } from './historical-fact-policy.js';
+import { localizedHistoricalWarnings } from './historical-baseline-warnings.js';
 
 export interface UpdateMaterialLock { materialId: string; materialVersion: number; contentHash: string; role: Material['role'] }
 /** Server-owned execution snapshot and semantic inventory. Never accept these fields directly from a browser/model. */
@@ -119,6 +120,8 @@ export async function prepareHistoricalUpdate(
   const fields = [profile.recognition.source_market, profile.recognition.source_offering, profile.recognition.latest_reporting_cutoff, ...profile.recognition.reporting_periods];
   if (fields.some(field => field.status === 'recognized' && (field.provenance.method !== 'native_text' ||
     parseHistoricalNativeExtractorVersion(field.provenance.extractor_version)?.parserVersion !== snapshot.parserVersion))) fail('UPDATE_PROFILE_PARSER_MISMATCH');
+  if (context.baselineUse === 'non_production_working_draft' && fields.some(field => field.status === 'user_asserted' &&
+    (field.provenance.method !== 'user_correction' || parseHistoricalNativeExtractorVersion(field.provenance.extractor_version)?.parserVersion !== snapshot.parserVersion))) fail('UPDATE_PROFILE_PARSER_MISMATCH');
   const stored: StoredFactCandidate[] = [];
   const identities = factIdentities(locked);
   const selectedIds = new Set(locked.factCandidateIds);
@@ -191,6 +194,7 @@ export async function prepareHistoricalUpdate(
     ...scope, contentHash: historical.contentHash, snapshotId: snapshot.snapshotId, parserVersion: snapshot.parserVersion,
     parseResultHash: snapshot.responseSha256, format: response.material.media_type === docx ? 'docx_effective' : 'pdf_requires_reconstruction',
     parseStatus: response.status, warnings: response.warnings.map(warning => warning.code),
+    ...(context.baselineUse === 'non_production_working_draft' ? { localizedWarnings: localizedHistoricalWarnings(response) } : {}),
     priorRevisions: { insertions: Number(revisionSummary?.insertions ?? 0), deletions: Number(revisionSummary?.deletions ?? 0) },
     blocks, profile: profile.recognition,
   } });

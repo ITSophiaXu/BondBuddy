@@ -3,6 +3,7 @@ import { Value } from '@sinclair/typebox/value';
 import type { Pool } from 'pg';
 import { LibraryChapterMappingCreateRequestSchema, LibraryReviewActionRequestSchema, type LibraryChapterMappingCreateRequest, type LibraryReviewActionRequest } from '@bondbuddy/contracts';
 import { digest, missing, Problem, uid, type PrivateBlobs } from './data.js';
+import { inspectMaterialUpload, UploadSafetyError } from './upload-safety.js';
 import {
   enqueueLibraryRecordRerun, enqueueLibrarySync, libraryAlerts, libraryMissSummary, libraryOperatorRole, libraryOverview, libraryVersionDetail,
   recordChapterMappingVersion, registerLibrarySource, reviewLibraryVersion, withdrawChapterMappingVersion, rollbackLibraryRelease, setLibrarySourceRights, LIBRARY_OWNER, OPERATOR_IMPORT_SOURCE,
@@ -13,6 +14,10 @@ import {
 // Uses its own grant table until the #79 bb_operator_grants model (PR #152) lands.
 type Deps = { db: () => Pool; blobs: () => PrivateBlobs; owner: (request: FastifyRequest) => Promise<string> };
 const safeId = /^[A-Za-z0-9_-]{1,128}$/;
+const MAX_IMPORT_ITEM_BYTES = 100 * 1024 * 1024;
+const MAX_IMPORT_BATCH_BYTES = 200 * 1024 * 1024;
+// Allow a moderately oversized base64 request to receive the decoded-byte 422 response.
+const MAX_IMPORT_BODY_BYTES = 300 * 1024 * 1024;
 const param = (request: FastifyRequest, name: string) => {
   const value = (request.params as Record<string, string>)[name];
   if (!value || !safeId.test(value)) throw missing();
@@ -82,17 +87,48 @@ export function installLibraryAdminRoutes(app: FastifyInstance, deps: Deps) {
     return { source_id: param(request, 'source_id'), usage_rights: body.usage_rights };
   });
   // Operator bulk import: bytes are staged under library/import-staging/ and flow through the same sync pipeline.
-  app.post(`${base}/imports`, async (request, reply) => {
+  app.post(`${base}/imports`, { bodyLimit: MAX_IMPORT_BODY_BYTES }, async (request, reply) => {
     await operator(request, 'library_operator');
     const body = request.body as { items?: unknown } | undefined;
     if (!Array.isArray(body?.items) || body.items.length < 1 || body.items.length > 50) throw new Problem(422, 'VALIDATION_FAILED', '1-50 items required');
-    const staged = [];
-    for (const raw of body.items as Record<string, unknown>[]) {
+    const errors: Array<{ field: string; code: string; message: string }> = [];
+    const candidates: Array<{ raw: Record<string, unknown>; index: number; byteSize: number }> = [];
+    let totalBytes = 0;
+    for (const [index, value] of body.items.entries()) {
+      const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+      const reject = (code: string, reason: string) => errors.push({ field: `items[${index}].content_base64`, code: reason, message: `index=${index} external_key=${typeof raw.external_key === 'string' ? raw.external_key : ''}: ${code} (${reason})` });
       const need = ['external_key', 'issuer_key', 'issuer_name', 'title', 'source_revision', 'media_type', 'content_base64'];
-      if (need.some(k => typeof raw[k] !== 'string' || !(raw[k] as string).length)) throw new Problem(422, 'VALIDATION_FAILED', `Import item requires ${need.join(', ')}`);
-      if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(raw.media_type as string)) throw new Problem(422, 'MATERIAL_FORMAT_UNSUPPORTED', 'PDF or DOCX only');
+      if (need.some(k => typeof raw[k] !== 'string' || !(raw[k] as string).length)) { reject('VALIDATION_FAILED', 'structure_invalid'); continue; }
+      if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(raw.media_type as string)) { reject('MATERIAL_FORMAT_UNSUPPORTED', 'unsupported_content'); continue; }
+      const encoded = raw.content_base64 as string;
+      // Reject before Buffer.from: Node's base64 decoder silently accepts malformed input.
+      if (encoded.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) { reject('MATERIAL_UNREADABLE', 'structure_invalid'); continue; }
+      const byteSize = encoded.length / 4 * 3 - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0);
+      if (byteSize < 1 || byteSize > MAX_IMPORT_ITEM_BYTES) { reject('MATERIAL_UNREADABLE', 'size_limit'); continue; }
+      totalBytes += byteSize;
+      candidates.push({ raw, index, byteSize });
+    }
+    if (totalBytes > MAX_IMPORT_BATCH_BYTES) {
+      errors.push({ field: 'items', code: 'size_limit', message: `Decoded import batch exceeds ${MAX_IMPORT_BATCH_BYTES} bytes` });
+      return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Import batch rejected', retryable: false, field_errors: errors, correlation_id: request.id });
+    }
+
+    // Inspect sequentially before any Blob or job write. Keep at most 200 MiB of accepted bytes.
+    const accepted: Array<{ raw: Record<string, unknown>; bytes: Buffer }> = [];
+    for (const { raw, index, byteSize } of candidates) {
       const bytes = Buffer.from(raw.content_base64 as string, 'base64');
-      if (!bytes.length || bytes.length > 100 * 1024 * 1024) throw new Problem(422, 'VALIDATION_FAILED', 'Invalid import bytes');
+      if (bytes.length !== byteSize) { errors.push({ field: `items[${index}].content_base64`, code: 'structure_invalid', message: `index=${index} external_key=${raw.external_key}: MATERIAL_UNREADABLE (structure_invalid)` }); continue; }
+      try { await inspectMaterialUpload(bytes, raw.media_type as string); }
+      catch (error) {
+        if (!(error instanceof UploadSafetyError)) throw error;
+        errors.push({ field: `items[${index}].content_base64`, code: error.reason, message: `index=${index} external_key=${raw.external_key}: ${error.code} (${error.reason})` });
+        continue;
+      }
+      accepted.push({ raw, bytes });
+    }
+    if (errors.length) return reply.code(422).send({ code: 'VALIDATION_FAILED', message: 'Import batch rejected', retryable: false, field_errors: errors, correlation_id: request.id });
+    const staged = [];
+    for (const { raw, bytes } of accepted) {
       const sha256 = digest(bytes), key = `library/import-staging/${sha256}`;
       if (!(await deps.blobs().exists(key))) await deps.blobs().put(key, bytes, raw.media_type as string);
       staged.push({ external_key: raw.external_key, issuer_key: raw.issuer_key, issuer_name: raw.issuer_name, title: raw.title, source_revision: raw.source_revision,

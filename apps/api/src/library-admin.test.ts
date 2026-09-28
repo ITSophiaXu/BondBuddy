@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { openApiDocument } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { DOCX, PDF, docxSample, externalRelationshipDocxSample, pdfSample } from './upload-safety.samples.js';
+import { UPLOAD_REJECTION_REASONS } from './upload-safety.js';
 import type { PrivateBlobs } from './data.js';
 import { classifyLibraryVersion, ingestLibraryVersion, markLibraryVersionParsed, registerLibrarySource } from './library.js';
 
@@ -11,16 +14,67 @@ import { classifyLibraryVersion, ingestLibraryVersion, markLibraryVersionParsed,
 // user-facing API exposes no library list, candidate or score.
 const connection = process.env.BB_TEST_DATABASE_URL;
 const ORIGIN = 'http://bondbuddy.test';
-function memoryBlobs(): PrivateBlobs {
+function memoryBlobs(): PrivateBlobs & { keys(): string[] } {
   const store = new Map<string, Buffer>();
   return { async put(k, b) { store.set(k, b); }, async get(k) { const v = store.get(k); if (!v) throw new Error('missing'); return v; }, async getIfExists(k) { return store.get(k) ?? null; },
-    async getIfExistsBounded(k, m) { const v = store.get(k); return v && v.length <= m ? v : null; }, async exists(k) { return store.has(k); }, async delete(k) { store.delete(k); } };
+    async getIfExistsBounded(k, m) { const v = store.get(k); return v && v.length <= m ? v : null; }, async exists(k) { return store.has(k); }, async delete(k) { store.delete(k); }, keys: () => [...store.keys()] };
 }
+
+test('operator imports inspect every item before staging or enqueueing', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const blobs = memoryBlobs();
+  const actor = `import_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: actor, csrfVerified: true }) });
+  const item = (key: string, mediaType: string, bytes: Buffer) => ({ external_key: key, issuer_key: 'synthetic', issuer_name: 'Synthetic', title: 'Synthetic filing', source_revision: '1', media_type: mediaType, content_base64: bytes.toString('base64') });
+  const send = (items: unknown[]) => app.inject({ method: 'POST', url: '/api/v1/admin/library/imports', headers: { origin: ORIGIN, 'content-type': 'application/json' }, payload: JSON.stringify({ items }) });
+  try {
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$1)', [actor]);
+    await pool.query("INSERT INTO bb_library_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'library_operator','test','synthetic_grant')", [randomUUID(), actor]);
+    const pdf = pdfSample(), docx = await docxSample();
+    const bad: Array<[string, ReturnType<typeof item>]> = [
+      ['mismatch', item('mismatch', PDF, docx)],
+      ['encrypted', item('encrypted', PDF, pdfSample({ encrypted: true }))],
+      ['javascript', item('javascript', PDF, pdfSample({ javascript: true }))],
+      ['external', item('external', DOCX, await externalRelationshipDocxSample('https://example.test/file', 'attachedTemplate'))],
+      ['zip', item('zip', DOCX, Buffer.from('PK\x03\x04broken'))],
+    ];
+    const jobsBefore = (await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n;
+    for (const [key, invalid] of bad) {
+      const response = await send([invalid]);
+      assert.equal(response.statusCode, 422, `${key}: ${response.body}`);
+      assert.equal(response.json().field_errors[0].field, 'items[0].content_base64');
+      assert.match(response.json().field_errors[0].message, new RegExp(`external_key=${key}: MATERIAL_`));
+      assert.ok(UPLOAD_REJECTION_REASONS.includes(response.json().field_errors[0].code));
+      assert.deepEqual(blobs.keys(), []);
+    }
+    const mixed = await send([item('valid', PDF, pdf), bad[1]![1]]);
+    assert.equal(mixed.statusCode, 422, mixed.body);
+    assert.equal(mixed.json().field_errors[0].field, 'items[1].content_base64');
+    assert.deepEqual(blobs.keys(), []);
+    const malformed = { ...item('malformed', PDF, pdf), content_base64: '%%%' };
+    const multiple = await send([malformed, bad[1]![1]]);
+    assert.equal(multiple.statusCode, 422, multiple.body);
+    assert.deepEqual(multiple.json().field_errors.map((e: { field: string }) => e.field), ['items[0].content_base64', 'items[1].content_base64']);
+    assert.deepEqual(blobs.keys(), []);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n, jobsBefore);
+    const fiveMib = item('over-limit', PDF, Buffer.alloc(5 * 1024 * 1024));
+    const oversized = await send(Array.from({ length: 41 }, (_, index) => ({ ...fiveMib, external_key: `over-${index}` })));
+    assert.equal(oversized.statusCode, 422, oversized.body.slice(0, 500));
+    assert.equal(oversized.json().field_errors[0].code, 'size_limit');
+    assert.deepEqual(blobs.keys(), []);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n, jobsBefore);
+    const valid = await send([item('valid-pdf', PDF, pdf), item('valid-docx', DOCX, docx)]);
+    assert.equal(valid.statusCode, 202, valid.body);
+    assert.equal(valid.json().items, 2);
+    assert.equal(blobs.keys().length, 2);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n, jobsBefore + 1);
+  } finally { await app.close(); await pool.end(); }
+});
 
 test('public contract has no library route, schema or candidate field', () => {
   const doc = JSON.stringify(openApiDocument());
   for (const needle of ['/admin/library', 'LibraryQuery', 'LibraryCandidate', 'top3_set_key', 'review_quality', 'reference-library-query',
-    'LibraryComparability', 'LibraryChapterMapping', 'revenue_basis', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings',
+    'LibraryComparability', 'LibraryChapterMapping', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings',
     // Alert kind names appear in the admin alerts enum; only the per-source sync fields must stay out.
     'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures']) assert.equal(doc.includes(needle), false, needle);
 });
@@ -31,7 +85,7 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
   const plain = `lib_user_${suffix}`, reader = `lib_reader_${suffix}`, operator = `lib_op_${suffix}`;
   let current = plain;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }) });
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true });
   try {
     for (const id of [plain, reader, operator]) await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, id.toLowerCase().slice(0, 32)]);
     await pool.query("INSERT INTO bb_library_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'library_reader','test','synthetic_grant'),($3,$4,'library_operator','test','synthetic_grant')", [randomUUID(), reader, randomUUID(), operator]);
@@ -102,6 +156,63 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
         'revenue_basis', 'reviewed_by', 'ten_thousand_yuan', 'chapter_mappings', 'reference-library-query',
         sourceId, 'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures', 'last_success_at', 'library_source_stale', 'library_sync_failed']) assert.equal(r.body.includes(needle), false, `${url} leaks ${needle}`);
     }
+    // A selection trace may contain private library identifiers and review details. It belongs only
+    // in the durable job checkpoint, never in run polling, SSE, or Word delivery metadata.
+    const projectId = created.json().project_id as string;
+    const input = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers,
+      payload: JSON.stringify({ draft_revision: 1, material_versions: [], requirement_message_ids: [] }) });
+    assert.equal(input.statusCode, 201, input.body);
+    const runRequest = { execution_request_id: `library-output-${suffix}`, project_id: projectId, input_revision: 1,
+      input_hash: input.json().input_hash, task_kind: 'generation', input_manifest_ref: 'synthetic-manifest',
+      storage_origin: 'cloud', workspace_id: 'synthetic-workspace' };
+    const started = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers, payload: JSON.stringify(runRequest) });
+    assert.equal(started.statusCode, 202, started.body);
+    const runId = started.json().run_id as string;
+    const privateValues = [sourceId, ingested.versionId, ingested.documentId, mapped.json().mapping_version_id,
+      'https://source.example/private-filing', 'licence-secret-reference', 'withdrawn-draft-marker',
+      'other-user-project-marker', 'reviewer-private-marker', 'candidate-score-marker'];
+    const trace = { source_url: privateValues[4], credential_ref: privateValues[5], withdrawn_version: privateValues[6],
+      foreign_project: privateValues[7], reviewed_by: privateValues[8], match_score: privateValues[9],
+      source_id: sourceId, document_version_id: ingested.versionId, candidate_decisions: [{ score: privateValues[9] }] };
+    await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_build_object('stages',jsonb_build_object('reference_selection',$2::jsonb)) WHERE run_id=$1",
+      [runId, JSON.stringify(trace)]);
+    const artifactId = `synthetic-word-${suffix}`, wordBytes = makeSyntheticDocxFixture();
+    const wordHash = createHash('sha256').update(wordBytes).digest('hex');
+    const wordKey = `users/${plain}/runs/${runId}/artifacts/${artifactId}/v1.docx`;
+    const evidenceId = randomUUID();
+    await blobs.put(wordKey, wordBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO bb_word_delivery_evidence
+        (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
+         quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
+        VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7)`,
+        [evidenceId, plain, runId, artifactId, wordHash, wordBytes.length,
+          { sha256: wordHash, byte_size: wordBytes.length, validator_version: 'synthetic-validator', quality_status: 'passed' }]);
+      await client.query(`INSERT INTO bb_artifact_versions
+        (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
+        VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','available',$6)`,
+        [artifactId, plain, runId, wordHash, wordKey, evidenceId]);
+      await client.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1", [runId, artifactId]);
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    for (const url of [`/api/v1/runs/${runId}`, `/api/v1/runs/${runId}/events`,
+      `/api/v1/runs/${runId}/stream`, `/api/v1/artifacts/${artifactId}`]) {
+      const response = await app.inject({ method: 'GET', url, headers });
+      assert.equal(response.statusCode, 200, `${url}: ${response.body}`);
+      for (const value of privateValues) assert.equal(response.body.includes(value), false, `${url} leaks ${value}`);
+    }
+    const metadata = await app.inject({ method: 'GET', url: `/api/v1/artifacts/${artifactId}`, headers });
+    const download = await app.inject({ method: 'GET', url: metadata.json().download_url, headers });
+    assert.equal(download.statusCode, 200, download.body);
+    assert.deepEqual(download.rawPayload, wordBytes, 'owned Word bytes are the synthetic fixture, not the private selection trace');
+    current = reader;
+    for (const url of [`/api/v1/runs/${runId}`, `/api/v1/runs/${runId}/events`, `/api/v1/artifacts/${artifactId}`]) {
+      const response = await app.inject({ method: 'GET', url, headers });
+      assert.equal(response.statusCode, 404, `${url} must be owner-scoped`);
+    }
+    current = plain;
     const guess = await app.inject({ method: 'GET', url: `/api/v1/library/versions/${ingested.versionId}`, headers });
     assert.equal(guess.statusCode, 404);
   } finally { await app.close(); await pool.end(); }

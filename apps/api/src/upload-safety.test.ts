@@ -9,11 +9,12 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
 import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js';
 import { createServer } from './server.js';
+import { runInspectionWorker } from './upload-safety.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
   macroDefaultDocxSample, macroDocxSample, neutralExtensionDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
-  XLSX, xlsxSample
+  XLSX, xlsxSample, xlsxPartNameSample, xlsxRelationshipTargetSample, xlsxDeflatedDirectorySample, pdfWidgetSample
 } from './upload-safety.samples.js';
 
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -38,11 +39,24 @@ async function outcome(inspection: Promise<string>): Promise<unknown> {
   catch (error) { const e = error as Error & { status: number; code: string }; return { status: e.status, code: e.code, message: e.message }; }
 }
 
-async function expectInspectionFailure(bytes: Buffer, mediaType: string, status: number, code: string): Promise<void> {
+async function expectInspectionFailure(bytes: Buffer, mediaType: string, status: number, code: string, reason?: string): Promise<void> {
   const memory = await outcome(verifiedMedia(bytes, mediaType));
   assert.equal((memory as { status: number }).status, status);
   assert.equal((memory as { code: string }).code, code);
+  if (reason) {
+    await assert.rejects(verifiedMedia(bytes, mediaType), (error: unknown) => (error as { uploadReason?: string }).uploadReason === reason);
+    await spooled(bytes, path => assert.rejects(verifiedMediaFile(path, bytes.length, mediaType), (error: unknown) => (error as { uploadReason?: string }).uploadReason === reason));
+  }
   assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, mediaType))), memory, `file/memory parity for ${code}`);
+}
+
+async function expectStructureDetail(bytes: Buffer, detail: string): Promise<void> {
+  const matches = (error: unknown) => {
+    const failure = error as { code?: string; uploadReason?: string; uploadDetail?: string };
+    return failure.code === 'MATERIAL_UNREADABLE' && failure.uploadReason === 'structure_invalid' && failure.uploadDetail === detail;
+  };
+  await assert.rejects(verifiedMedia(bytes, XLSX), matches);
+  await spooled(bytes, path => assert.rejects(verifiedMediaFile(path, bytes.length, XLSX), matches));
 }
 
 /** Rewrite the declared expanded size of one stored part in both its local and central headers. */
@@ -94,6 +108,86 @@ test('authorized rq-202509 historical DOCX passes both inspection paths at its r
   assert.equal(await verifiedMedia(bytes, DOCX), DOCX);
 });
 
+test('authorized rq-202509 financial XLSX passes both inspection paths at its recorded hash', async () => {
+  const sampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25');
+  const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as {
+    cases: Array<{ case_id: string; files: Array<{ file_id: string; path: string; bytes: number; sha256: string }> }>;
+  };
+  const entry = manifest.cases.find(item => item.case_id === 'rq-202509')?.files.find(item => item.file_id === 'rq-202509-02');
+  assert.ok(entry, 'authorized financial XLSX is listed in the manifest');
+  const path = join(sampleRoot, entry.path);
+  const bytes = await readFile(path);
+  assert.equal(bytes.length, 424_900);
+  assert.equal(bytes.length, entry.bytes);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+  assert.equal(await verifiedMediaFile(path, bytes.length, XLSX), XLSX);
+  assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+});
+
+test('all four registered XLSX originals retain their recorded hashes and pass inspection', async () => {
+  const sampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25');
+  const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as {
+    cases: Array<{ files: Array<{ path: string; bytes: number; sha256: string }> }>;
+  };
+  const entries = manifest.cases.flatMap(item => item.files).filter(item => item.path.toLowerCase().endsWith('.xlsx'));
+  assert.equal(entries.length, 4);
+  for (const entry of entries) {
+    const path = join(sampleRoot, entry.path);
+    const bytes = await readFile(path);
+    assert.equal(bytes.length, entry.bytes);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await verifiedMediaFile(path, bytes.length, XLSX), XLSX);
+  }
+});
+
+test('externalLink extension lists and markup compatibility branches remain passive', async () => {
+  const prefix = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:x="urn:synthetic">';
+  const book = '<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:metadata><x:item>safe</x:item></x:metadata></ext></extLst></externalBook>';
+  for (const body of [
+    `${book}<extLst><ext uri="urn:synthetic"><x:metadata/></ext></extLst>`,
+    `<mc:AlternateContent><mc:Choice Requires="x">${book}</mc:Choice><mc:Fallback><externalBook r:id="rId1"/></mc:Fallback></mc:AlternateContent>`
+  ]) {
+    const bytes = await externalLinkPartXlsxSample({ linkXml: `${prefix}${body}</externalLink>` });
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+  }
+  const deep = '<x:n>'.repeat(260) + '</x:n>'.repeat(260);
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic">${deep}</ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `<!DOCTYPE externalLink [<!ENTITY boom "unsafe">]>${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:n>&boom;</x:n></ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:script/></ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"/><externalBook r:id="rId1"/></externalLink>` }), 'external_link_invalid');
+});
+
+test('internal relationship targets resolve from package root or source directory without escaping', async () => {
+  for (const [root, sheet] of [
+    ['/xl/workbook.xml', '/xl/worksheets/sheet1.xml'],
+    ['./xl/workbook.xml', './worksheets/sheet1.xml'],
+    ['xl/workbook.xml', '../xl/worksheets/sheet1.xml']
+  ]) {
+    const bytes = await xlsxRelationshipTargetSample(root, sheet);
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+  }
+  await expectStructureDetail(await xlsxRelationshipTargetSample('/../xl/workbook.xml', 'worksheets/sheet1.xml'), 'relationship_invalid');
+  await expectStructureDetail(await xlsxRelationshipTargetSample('xl/workbook.xml', '../../worksheets/sheet1.xml'), 'relationship_invalid');
+});
+
+test('an empty DEFLATE directory is valid only when it expands to no bytes', async () => {
+  const empty = await xlsxDeflatedDirectorySample();
+  assert.equal(await verifiedMedia(empty, XLSX), XLSX);
+  assert.equal(await spooled(empty, path => verifiedMediaFile(path, empty.length, XLSX)), XLSX);
+  await expectStructureDetail(await xlsxDeflatedDirectorySample(Buffer.from('payload')), 'zip_directory_invalid');
+  const badCrc = Buffer.from(empty);
+  const eocd = badCrc.length - 22;
+  const centralOffset = badCrc.readUInt32LE(eocd + 16);
+  const directoryCentral = centralOffset + badCrc.readUInt32LE(eocd + 12) - 46 - Buffer.byteLength('xl/empty/');
+  const directoryLocal = badCrc.readUInt32LE(directoryCentral + 42);
+  badCrc.writeUInt32LE(1, directoryLocal + 14);
+  badCrc.writeUInt32LE(1, directoryCentral + 16);
+  await expectStructureDetail(badCrc, 'zip_crc_mismatch');
+});
+
 test('only bounded, absolute DOCX http/https/mailto hyperlink relationships are passive', async () => {
   for (const target of ['http://example.invalid/a?x=%B2', 'https://example.invalid/path#section', 'mailto:test@example.invalid', 'mailto:synthetic、name@example.invalid']) {
     const bytes = await externalRelationshipDocxSample(target);
@@ -120,6 +214,62 @@ test('passive XLSX workbook links are accepted on both upload inspection paths',
   assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
 });
 
+test('passive externalBook children and TargetMode casing remain accepted', async () => {
+  const linkXml = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"><sheetNames><sheetName val="Source"/></sheetNames><definedNames><definedName name="Total" refersTo="Source!A1"/></definedNames><sheetDataSet><sheetData sheetId="0"><row r="1"><cell r="A1" t="n"><v>42</v></cell></row></sheetData></sheetDataSet></externalBook></externalLink>';
+  const linkRelsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/source.xlsx" TargetMode="external"/></Relationships>';
+  const bytes = await externalLinkPartXlsxSample({ linkXml, linkRelsXml });
+  assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+  assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+});
+
+test('OPC percent-encoded part names are resolved once and unsafe aliases are rejected', async () => {
+  const valid = await xlsxPartNameSample('xl/media/report%20image.png');
+  assert.equal(await verifiedMedia(valid, XLSX), XLSX);
+  assert.equal(await spooled(valid, path => verifiedMediaFile(path, valid.length, XLSX)), XLSX);
+  for (const name of ['xl/media/%2e%2e/attack.png', 'xl/media/%252e%252e/attack.png', 'xl/media/image%2fattack.png', 'xl/media/image%5cattack.png', 'xl/media/image%ZZ.png']) {
+    await expectInspectionFailure(await xlsxPartNameSample(name), XLSX, name.endsWith('%ZZ.png') ? 422 : 415,
+      name.endsWith('%ZZ.png') ? 'MATERIAL_UNREADABLE' : 'MATERIAL_FORMAT_UNSUPPORTED');
+  }
+});
+
+test('a ZIP end-of-central-directory comment does not make a readable XLSX invalid', async () => {
+  const plain = await xlsxSample();
+  const comment = Buffer.from('synthetic package comment');
+  const bytes = Buffer.concat([plain, comment]);
+  assert.equal(plain.readUInt32LE(plain.length - 22), 0x06054b50);
+  bytes.writeUInt16LE(comment.length, plain.length - 2);
+  assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+  assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+});
+
+test('UTF-16 XML with either byte-order mark remains readable', async () => {
+  const xml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>';
+  const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(xml, 'utf16le')]);
+  const beBody = Buffer.from(xml, 'utf16le').swap16();
+  const be = Buffer.concat([Buffer.from([0xfe, 0xff]), beBody]);
+  for (const sheet of [le, be]) {
+    const bytes = await xlsxSample(sheet);
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+  }
+});
+
+test('structural details distinguish ZIP header mismatch, expanded CRC, and XML parse failures', async () => {
+  const localMismatch = Buffer.from(await xlsxSample());
+  assert.equal(localMismatch.readUInt32LE(0), 0x04034b50);
+  localMismatch.writeUInt32LE(0, 14);
+  await expectStructureDetail(localMismatch, 'zip_central_local_mismatch');
+
+  const badCrc = Buffer.from(await xlsxSample());
+  const centralOffset = badCrc.readUInt32LE(badCrc.length - 6);
+  assert.equal(badCrc.readUInt32LE(centralOffset), 0x02014b50);
+  badCrc.writeUInt32LE(0, 14);
+  badCrc.writeUInt32LE(0, centralOffset + 16);
+  await expectStructureDetail(badCrc, 'zip_crc_mismatch');
+
+  await expectStructureDetail(await xlsxSample(Buffer.from('<worksheet>')), 'xml_parse_error');
+});
+
 test('XLSX external links never grant DDE, OLE, macros or malformed XML a path through inspection', async () => {
   const wrapper = (body: string) => `<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${body}</externalLink>`;
   for (const tag of ['ddeLink', 'oleLink']) {
@@ -138,6 +288,7 @@ test('Office XML parts remain capped at 16 MiB despite the authorized large docu
   const bytes = await docxSample([], document);
   const expected = { status: 415, code: 'MATERIAL_FORMAT_UNSUPPORTED', message: 'Office XML part exceeds the inspection limit' };
   assert.deepEqual(await outcome(verifiedMedia(bytes, DOCX)), expected);
+  await assert.rejects(verifiedMedia(bytes, DOCX), (error: unknown) => (error as { uploadReason?: string }).uploadReason === 'xml_part_limit');
   assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, DOCX))), expected);
 });
 
@@ -153,13 +304,13 @@ test('Office containers are inspected from the spooled file entry by entry and z
   // A header that under-declares the expanded size is caught while inflating, before the lie can grow.
   const payload = Buffer.concat([randomBytes(64 * 1024), Buffer.alloc(512 * 1024, 0x41)]);
   const honest = await docxSample([{ name: 'word/media/synthetic.bin', contents: payload }]);
-  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 128 * 1024), DOCX, 422, 'MATERIAL_UNREADABLE');
+  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 128 * 1024), DOCX, 422, 'MATERIAL_UNREADABLE', 'structure_invalid');
   // Per-entry, aggregate and ratio caps come from the central directory, before any part is inflated.
-  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 40 * 1024 * 1024), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 40 * 1024 * 1024), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_expanded_limit');
   const aggregate = await docxSample(Array.from({ length: 5 }, (_, index) => ({ name: `word/media/part-${index}.bin`, contents: Buffer.concat([randomBytes(15 * 1024 * 1024), Buffer.alloc(15 * 1024 * 1024)]) })));
   assert.ok(aggregate.length < 100 * 1024 * 1024, 'aggregate sample stays under the upload limit');
-  await expectInspectionFailure(aggregate, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(aggregate, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_expanded_limit');
+  await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_ratio');
   // Truncated spool files (size mismatch with the central directory) are unreadable.
   await spooled(honest, async path => {
     await assert.rejects(verifiedMediaFile(path, honest.length - 1, DOCX), (error: unknown) => (error as { code: string }).code === 'MATERIAL_UNREADABLE');
@@ -189,7 +340,7 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   const badPng = pngSample.subarray(0, -8);
   const badJpeg = jpegSample.subarray(0, -8);
 
-  await expectInspectionFailure(encryptedPdf, PDF, 422, 'MATERIAL_ENCRYPTED');
+  await expectInspectionFailure(encryptedPdf, PDF, 422, 'MATERIAL_ENCRYPTED', 'encrypted_content');
   await expectInspectionFailure(encryptedOfficeSample(), DOCX, 422, 'MATERIAL_ENCRYPTED');
   await expectInspectionFailure(await encryptedZipSample(), DOCX, 422, 'MATERIAL_ENCRYPTED');
   await expectInspectionFailure(corruptPdf, PDF, 422, 'MATERIAL_UNREADABLE');
@@ -217,15 +368,67 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   await expectInspectionFailure(nestedDocx, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await nestedGzipDocxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(await expandedSizeBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(await entryCountBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(csvFormulaSample, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await expandedSizeBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_expanded_limit');
+  await expectInspectionFailure(await entryCountBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_entry_limit');
+  await expectInspectionFailure(csvFormulaSample, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'unsupported_content');
   await expectInspectionFailure(unicodeWhitespaceFormulaCsv, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(bomFormulaCsv, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(Buffer.from('column,value\nrow,"unterminated', 'utf8'), CSV, 422, 'MATERIAL_UNREADABLE');
   await expectInspectionFailure(badPng, PNG, 422, 'MATERIAL_UNREADABLE');
   await expectInspectionFailure(badJpeg, JPEG, 422, 'MATERIAL_UNREADABLE');
-  await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH');
+  await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH', 'content_mismatch');
+});
+
+test('PDF upload rejects populated signature, blank signature, and non-Sig Widgets', async () => {
+  // Keep the Sig-only negative case fail-closed until Felix's independent #8 security decision
+  // defines and reviews a restricted acceptance policy. /Contents is a synthetic placeholder,
+  // not CMS data; this fixture does not claim signature validity or verify signing semantics.
+  const populatedSigOnly = pdfWidgetSample({ fieldType: 'Sig', populated: true });
+  const blankSig = pdfWidgetSample({ fieldType: 'Sig', populated: false });
+  const populatedTextWidget = pdfWidgetSample({ fieldType: 'Tx', populated: true });
+  const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as {
+    AnnotationType: { WIDGET: number };
+    getDocument(source: Record<string, unknown>): {
+      promise: Promise<{
+        getPage(pageNumber: number): Promise<{
+          getAnnotations(options: { intent: string }): Promise<Array<{ annotationType?: number; fieldType?: string; fieldValue?: unknown }>>;
+        }>;
+      }>;
+      destroy(): Promise<void>;
+    };
+  };
+
+  for (const [name, bytes, expectedFieldType, expectedFieldValue] of [
+    ['populated Sig-only Widget', populatedSigOnly, 'Sig', null],
+    ['blank Sig Widget', blankSig, 'Sig', null],
+    ['non-Sig text Widget', populatedTextWidget, 'Tx', 'Synthetic text'],
+  ] as const) {
+    const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0, stopAtErrors: true });
+    try {
+      const document = await loading.promise;
+      const annotations = await (await document.getPage(1)).getAnnotations({ intent: 'display' });
+      const widget = annotations.find(annotation => annotation.annotationType === pdfjs.AnnotationType.WIDGET);
+      assert.ok(widget, `${name} must be parsed by PDF.js as a Widget annotation`);
+      assert.equal(widget.fieldType, expectedFieldType, `${name} retains its PDF field type`);
+      assert.equal(widget.fieldValue, expectedFieldValue, `${name} retains the PDF.js-exposed field value`);
+    } finally {
+      await loading.destroy();
+    }
+    await expectInspectionFailure(bytes, PDF, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+    await assert.rejects(verifiedMedia(bytes, PDF), (error: unknown) => {
+      const failure = error as { status?: number; code?: string };
+      return failure.status === 415 && failure.code === 'MATERIAL_FORMAT_UNSUPPORTED';
+    }, `${name} must never be accepted by upload inspection`);
+  }
+  assert.match(populatedSigOnly.toString('ascii'), /\/V << \/Type \/Sig /,
+    'the populated Sig fixture has a value dictionary, without claiming its CMS validity');
+});
+
+test('inspection infrastructure and size rejections expose fixed internal reasons', async () => {
+  await assert.rejects(verifiedMedia(Buffer.alloc(0), TEXT), (error: unknown) => (error as { uploadReason?: string }).uploadReason === 'size_limit');
+  await assert.rejects(verifiedMediaFile('/no-such-material-upload', 1, XLSX), (error: unknown) => (error as { uploadReason?: string }).uploadReason === 'inspection_worker_failed');
+  await assert.rejects(runInspectionWorker({ bytes: Uint8Array.from(textSample).buffer, mediaType: TEXT }, [], TEXT, 32, 1),
+    (error: unknown) => (error as { reason?: string }).reason === 'inspection_timeout');
 });
 
 test('upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503', async () => {
@@ -238,6 +441,7 @@ test('upload inspection is single-flight: extra work queues, and a bounded wait 
     await assert.rejects(rejected, (error: unknown) => {
       assert.equal((error as Error & { status: number }).status, 503);
       assert.equal((error as Error & { code: string }).code, 'DATA_UNAVAILABLE');
+      assert.equal((error as Error & { uploadReason: string }).uploadReason, 'inspection_queue_timeout');
       return true;
     });
     assert.equal(await first, TEXT);
@@ -298,6 +502,13 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
     const rejectedPut = await send('PUT', rejectedStart.json().upload_url, bad, 'application/octet-stream');
     assert.equal(rejectedPut.statusCode, 422, rejectedPut.body);
     assert.equal(rejectedPut.json().code, 'MATERIAL_UNREADABLE');
+    assert.equal(rejectedPut.json().reason, undefined);
+    assert.equal(rejectedPut.json().detail, undefined);
+    const rejection = await pool.query("SELECT event FROM bb_observability_events WHERE kind='operation.rejected' AND event->>'request_id'=$1", [rejectedPut.json().correlation_id]);
+    assert.equal(rejection.rowCount, 1);
+    assert.equal(rejection.rows[0].event.error.reason, 'structure_invalid');
+    assert.equal(rejection.rows[0].event.error.detail, 'zip_eocd_missing');
+    assert.equal(rejection.rows[0].event.error.error_id, rejectedPut.json().correlation_id);
     const blobKey = `users/${ownerId}/projects/${projectId}/uploads/${rejectedStart.json().upload_id}`;
     assert.equal(await blobs.getIfExists(blobKey), null, 'rejected bytes never reach private Blob storage');
 

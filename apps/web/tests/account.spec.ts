@@ -97,7 +97,8 @@ async function openSettings(page: Page, state: Fixture) {
   await page.getByLabel('用户名').fill('owner_a');
   await page.getByLabel('密码').fill(state.password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.getByRole('link', { name: '账号设置' }).click();
   await expect(page.getByRole('heading', { name: '账号设置', exact: true })).toBeVisible();
 }
@@ -178,7 +179,8 @@ test('closure lists blockers and retained records, needs confirmation, then leav
   await openSettings(page, state);
   const other = await context.newPage();
   await other.goto('/');
-  await expect(other.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  await other.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await expect(other.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '查看注销影响' }).click();
   const body = page.locator('#closure-body');
@@ -239,8 +241,9 @@ test('closure lists blockers and retained records, needs confirmation, then leav
 test('a session revoked elsewhere returns to login instead of showing account data', async ({ page, context }) => {
   const state = fixture(); await installApi(context, state);
   await openSettings(page, state);
-  await page.getByRole('link', { name: '我的项目', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   state.owner = null;
   await page.getByRole('link', { name: '账号设置' }).click();
   await expect(page.getByRole('heading', { name: '登录工作区' })).toBeVisible();
