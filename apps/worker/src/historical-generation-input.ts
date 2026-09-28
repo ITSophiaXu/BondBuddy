@@ -161,8 +161,11 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     factCandidateIds: [], factsHash: historicalUpdateFactsHash([]) };
   // Reuse the #31 material, effective-baseline, parser and profile integrity gates before any model call.
   const baselineReview = await (readers.prepare ?? prepareHistoricalUpdate)({ pool }, { ...locked, bindings: [], occurrences: [], columns: [], coverage: [] });
-  if (baselineReview.findings.some(f => ['UPDATE_BASELINE_UNCERTAIN', 'UPDATE_PROFILE_UNCONFIRMED',
-    'UPDATE_PDF_RECONSTRUCTION_REQUIRED', 'UPDATE_STRUCTURE_MAPPING_REQUIRED'].includes(f.code))) unavailable('historical_baseline_needs_confirmation');
+  const pendingProfileCandidate = baselineReview.findings.some(f => f.code === 'UPDATE_PROFILE_CANDIDATE_PENDING');
+  if ((pendingProfileCandidate && !baselinePolicy) || baselineReview.findings.some(f => [
+    'UPDATE_BASELINE_UNCERTAIN', 'UPDATE_PROFILE_UNCONFIRMED', 'UPDATE_PDF_RECONSTRUCTION_REQUIRED',
+    'UPDATE_STRUCTURE_MAPPING_REQUIRED',
+  ].includes(f.code))) unavailable('historical_baseline_needs_confirmation');
   if (!previous) {
     if (readers.checkpoint) await readers.checkpoint(ctx, { ...pin });
     else await checkpointStage(pool, ctx.lease, GENERATION_INPUT_CHECKPOINT, { ...pin });
