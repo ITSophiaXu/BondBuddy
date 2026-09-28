@@ -89,15 +89,33 @@ export function normalizeCodexOutputSchema(schema: Record<string, unknown>): Rec
 }
 
 // Inspect provider metadata only; never retain its free-form message, which may echo input.
-function isProviderRequestRejection(eventError: unknown): boolean {
-  if (!eventError || typeof eventError !== 'object') return false;
+function providerErrorCode(eventError: unknown): ModelAdapterErrorCode | null {
+  if (!eventError || typeof eventError !== 'object') return null;
   const outer = eventError as Record<string, unknown>;
-  if (outer.type === 'invalid_request_error') return true;
-  if (typeof outer.message !== 'string') return false;
+  let inner: Record<string, unknown> = outer;
   try {
-    const parsed = JSON.parse(outer.message) as { error?: { type?: unknown } };
-    return parsed?.error?.type === 'invalid_request_error';
-  } catch { return false; }
+    if (typeof outer.message === 'string' && outer.message.length <= 8192) {
+      const parsed = JSON.parse(outer.message) as { error?: unknown; status?: unknown };
+      if (parsed.error && typeof parsed.error === 'object') inner = parsed.error as Record<string, unknown>;
+      if (Number.isInteger(parsed.status)) inner = { ...inner, status: parsed.status };
+    }
+  } catch { /* Only bounded status markers in CLI diagnostics are used below. */ }
+  const status = [inner.status, inner.status_code, outer.status, outer.status_code].find(v => v === 402 || v === 401 || v === 429);
+  const type = inner.type ?? outer.type;
+  const code = inner.code ?? outer.code;
+  if (status === 402 || code === 'insufficient_balance') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
+  if (status === 401 || code === 'invalid_api_key') return 'MODEL_PROVIDER_AUTH_FAILED';
+  if (status === 429 || code === 'rate_limit_exceeded') return 'MODEL_PROVIDER_RATE_LIMITED';
+  const providerMessage = typeof inner.message === 'string' ? inner.message.slice(0, 4096) : '';
+  if (/^Insufficient Balance\.?$/i.test(providerMessage.trim())) return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
+  // Some CLI versions wrap an HTTP error as plain text. Match only an explicit status
+  // marker; never store the surrounding diagnostic, which can contain prompt text.
+  const message = typeof outer.message === 'string' ? outer.message.slice(0, 4096) : '';
+  const http = /(?:\bHTTP\s*|\bstatus(?:\s+code)?\s*[:=]?\s*)(402|401|429)\b/i.exec(message)?.[1];
+  if (http === '402') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
+  if (http === '401') return 'MODEL_PROVIDER_AUTH_FAILED';
+  if (http === '429') return 'MODEL_PROVIDER_RATE_LIMITED';
+  return type === 'invalid_request_error' ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
 }
 
 const safeId = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -201,12 +219,12 @@ export function normalizeCodexUsage(raw: unknown): ProviderUsage {
 export type CodexProcessResult = {
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
-  tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_request_rejected?: boolean;
+  tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_error_code?: ModelAdapterErrorCode | null;
   stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed';
 };
 
-// One codex process. Stdout is parsed incrementally; stderr is drained and discarded because it
-// may echo provider or environment details.
+// One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
+// private buffer for status markers, then discarded. It is never logged or persisted.
 export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
@@ -216,12 +234,12 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const args = buildCodexArgs(c, o);
   const startedAt = new Date();
   const t0 = process.hrtime.bigint();
-  const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_request_rejected: false, stop: null };
+  const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_error_code: null, stop: null };
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
     catch { r.stop = 'spawn_failed'; resolveResult(r); return; }
-    let bytes = 0, buffer = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
+    let bytes = 0, buffer = '', stderrPrefix = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
     const killGroup = (sig: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, sig); } catch { /* already gone */ } };
     const stop = (reason: NonNullable<CodexProcessResult['stop']>, hard: boolean) => {
       if (r.stop) return;
@@ -231,6 +249,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     };
     const timer = setTimeout(() => stop('timeout', false), c.timeout_ms);
     const onAbort = () => stop('cancelled', false);
+    const noteProviderError = (error: unknown) => {
+      const code = providerErrorCode(error);
+      if (code && (!r.provider_error_code || r.provider_error_code === 'MODEL_PROVIDER_REQUEST_REJECTED')) r.provider_error_code = code;
+    };
     o.signal?.addEventListener('abort', onAbort, { once: true });
     if (o.signal?.aborted) onAbort();
     const handle = (line: string) => {
@@ -242,8 +264,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       switch (ev.type) {
         case 'thread.started': if (safeId(ev.thread_id)) r.thread_id = ev.thread_id; break;
         case 'turn.completed': r.turn_completed = true; r.usage = normalizeCodexUsage(ev.usage); break;
-        case 'turn.failed': r.turn_failed = true; if (isProviderRequestRejection(ev.error)) r.provider_request_rejected = true; break;
-        case 'error': r.saw_error = true; if (isProviderRequestRejection(ev.error ?? ev)) r.provider_request_rejected = true; break;
+        case 'turn.failed': r.turn_failed = true; noteProviderError(ev.error); break;
+        case 'error': r.saw_error = true; noteProviderError(ev.error ?? ev); break;
         case 'item.started': case 'item.updated': case 'item.completed': {
           const item = ev.item as Record<string, unknown> | undefined;
           const type = typeof item?.type === 'string' ? item.type : 'unknown';
@@ -262,13 +284,16 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       let nl: number;
       while ((nl = buffer.indexOf('\n')) >= 0) { const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1); handle(line); }
     });
-    child.stderr!.on('data', () => { /* discarded */ });
+    child.stderr!.setEncoding('utf8');
+    child.stderr!.on('data', (chunk: string) => { if (stderrPrefix.length < 4096) stderrPrefix += chunk.slice(0, 4096 - stderrPrefix.length); });
     child.stdin!.on('error', () => { /* child may exit before reading */ });
     child.on('error', () => { if (!r.stop) r.stop = child.pid ? 'broken' : 'spawn_failed'; });
     child.on('close', (code, sig) => {
       if (settled) return;
       settled = true;
       if (buffer.trim()) handle(buffer);
+      if (stderrPrefix) noteProviderError({ message: stderrPrefix });
+      stderrPrefix = '';
       clearTimeout(timer); if (graceTimer) clearTimeout(graceTimer);
       o.signal?.removeEventListener('abort', onAbort);
       killGroup('SIGKILL'); // reap any grandchildren left in the group
@@ -291,8 +316,8 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   if (r.stop === 'timeout') return { outcome: 'pending_reconcile', error_code: 'MODEL_TIMEOUT', finish_reason: 'timeout', usage };
   if (r.stop === 'too_large') return { outcome: 'pending_reconcile', error_code: 'MODEL_OUTPUT_TOO_LARGE', finish_reason: null, usage };
   if (r.stop === 'broken') return { outcome: 'pending_reconcile', error_code: 'MODEL_STREAM_BROKEN', finish_reason: null, usage };
-  if (r.provider_request_rejected && r.turn_failed && !r.turn_completed && usage.status === 'unknown')
-    return { outcome: 'failed', error_code: 'MODEL_PROVIDER_REQUEST_REJECTED', finish_reason: 'turn_failed', usage };
+  if (r.provider_error_code && !r.turn_completed && usage.status === 'unknown' && (r.turn_failed || r.saw_error || r.exit_code !== 0))
+    return { outcome: 'failed', error_code: r.provider_error_code, finish_reason: 'turn_failed', usage };
   if (r.turn_failed || (r.saw_error && !r.turn_completed)) return { outcome: 'failed', error_code: 'MODEL_TURN_FAILED', finish_reason: 'turn_failed', usage };
   if (!r.turn_completed) return { outcome: 'pending_reconcile', error_code: r.exit_code === 0 ? 'MODEL_STREAM_BROKEN' : 'MODEL_PROCESS_EXIT_NONZERO', finish_reason: null, usage: unknown };
   if (r.exit_code !== 0) return { outcome: 'failed', error_code: 'MODEL_PROCESS_EXIT_NONZERO', finish_reason: null, usage };
