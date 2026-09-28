@@ -180,11 +180,16 @@ assertBindingFalse('invented uncovered code rejected', withIndustry(value => { v
 assertBindingFalse('missing pinned uncovered item blocks approval', withIndustry(value => value.evidence.exceptions_and_uncovered.pop()));
 assertBindingFalse('duplicate uncovered reference rejected', withIndustry(value => value.evidence.exceptions_and_uncovered.push(structuredClone(value.evidence.exceptions_and_uncovered[0]))));
 assertBindingFalse('needs-evidence source cannot be approved', withIndustry(value => { value.evidence.source_effectivity_applicability[0].conclusion = 'needs_evidence'; }));
+assertBindingFalse('not-applicable pinned source cannot be approved', withIndustry(value => { value.evidence.source_effectivity_applicability[0].conclusion = 'not_applicable'; }));
 assertBindingFalse('needs-evidence item cannot be approved', withIndustry(value => { value.evidence.exceptions_and_uncovered[0].disposition = 'needs_evidence'; }));
 assertBindingFalse('rejected sample cannot be approved', withIndustry(value => { value.evidence.sample_conclusions[0].conclusion = 'reject'; }));
+assertBindingFalse('sample needing more evidence cannot be approved', withIndustry(value => { value.evidence.sample_conclusions[0].conclusion = 'request_more_evidence'; }));
 assertBindingFalse('sample case drift rejected', withIndustry(value => { value.evidence.sample_conclusions[0].sample_case_id = 'invented-case'; }));
 assertBindingFalse('sample evidence drift rejected', withIndustry(value => { value.evidence.sample_conclusions[0].sample_evidence_id = 'invented-sample'; }));
 assertBindingFalse('duplicate sample reference rejected', withIndustry(value => value.evidence.sample_conclusions.push(structuredClone(value.evidence.sample_conclusions[0]))));
+const collidingItemManifest = structuredClone(pinnedManifest);
+collidingItemManifest.content.applicability_scope.exceptions.push({ code: 'special-products', description: 'Synthetic different-kind collision', evidence_ids: ['a-source-synthetic'] });
+assert.equal(validProductionReviewAttestationBinding(industryRequest, collidingItemManifest), false, 'exception and uncovered sharing a code are still two required decisions');
 const partialIndustry = withIndustry(value => value.evidence.source_effectivity_applicability.pop(), 'request_more_evidence');
 assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, partialIndustry), true, 'partial follow-up remains schema-valid');
 assert.equal(validProductionReviewAttestationBinding(partialIndustry, pinnedManifest), true, 'request-more-evidence may review a genuine subset');

@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
-import type { ProductionReviewManifest } from './production-review-manifest.js';
+import { Value } from '@sinclair/typebox/value';
+import { ProductionReviewManifestSchema, validProductionReviewManifestContent, type ProductionReviewManifest } from './production-review-manifest.js';
 
 const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
@@ -142,10 +143,11 @@ export type ProductionReviewAttestationWithdrawalRequest = Static<typeof Product
 export type ProductionReviewAttestationWithdrawalEvent = Static<typeof ProductionReviewAttestationWithdrawalEventSchema>;
 
 /**
- * Checks that a schema-valid reviewer request refers only to the already-frozen
+ * Checks that a reviewer request refers only to the already-frozen
  * manifest supplied by the caller. The caller is responsible for validating the
- * manifest schema/content and verifying its content hash with the canonical hash
- * implementation; this function deliberately does not calculate a hash.
+ * manifest content hash with the registry's productionReviewContentHashMatches
+ * before calling; this function checks shape and semantic content but deliberately
+ * does not calculate a hash and is not an authorization or release decision.
  *
  * Chapter IDs are checked for duplicates, but cannot be checked for completeness:
  * the manifest pins the chapter-template hash and does not expose its chapter list.
@@ -154,6 +156,9 @@ export function validProductionReviewAttestationBinding(
   request: ProductionReviewAttestationRequest,
   manifest: ProductionReviewManifest,
 ): boolean {
+  if (!Value.Check(ProductionReviewAttestationRequestSchema, request) ||
+      !Value.Check(ProductionReviewManifestSchema, manifest) ||
+      !validProductionReviewManifestContent(manifest)) return false;
   if (request.manifest_id !== manifest.manifest_id ||
       request.manifest_version !== manifest.manifest_version ||
       request.content_sha256 !== manifest.content_sha256) return false;
@@ -180,18 +185,19 @@ export function validProductionReviewAttestationBinding(
       if (!source || source.source_check_sha256 !== row.source_check_sha256 || reviewedSources.has(row.source_evidence_id) ||
           !uniqueEvidenceRefs(row.evidence_refs)) return false;
       reviewedSources.add(row.source_evidence_id);
-      if (request.decision === 'approve' && row.conclusion === 'needs_evidence') return false;
+      if (request.decision === 'approve' && row.conclusion !== 'applicable') return false;
     }
     if (request.decision === 'approve' && reviewedSources.size !== sources.size) return false;
 
-    const items = new Map<string, 'exception' | 'uncovered'>([
-      ...manifest.content.applicability_scope.exceptions.map(item => [item.code, 'exception'] as const),
-      ...manifest.content.applicability_scope.uncovered_items.map(item => [item.code, 'uncovered'] as const),
+    const items = new Set([
+      ...manifest.content.applicability_scope.exceptions.map(item => `exception:${item.code}`),
+      ...manifest.content.applicability_scope.uncovered_items.map(item => `uncovered:${item.code}`),
     ]);
     const reviewedItems = new Set<string>();
     for (const row of evidence.exceptions_and_uncovered) {
-      if (items.get(row.item_code) !== row.item_kind || reviewedItems.has(row.item_code) || !uniqueEvidenceRefs(row.evidence_refs)) return false;
-      reviewedItems.add(row.item_code);
+      const itemKey = `${row.item_kind}:${row.item_code}`;
+      if (!items.has(itemKey) || reviewedItems.has(itemKey) || !uniqueEvidenceRefs(row.evidence_refs)) return false;
+      reviewedItems.add(itemKey);
       if (request.decision === 'approve' && row.disposition === 'needs_evidence') return false;
     }
     if (request.decision === 'approve' && reviewedItems.size !== items.size) return false;
@@ -203,7 +209,7 @@ export function validProductionReviewAttestationBinding(
       if (!sample || sample.sample_case_id !== row.sample_case_id || reviewedSamples.has(row.sample_evidence_id) ||
           !uniqueEvidenceRefs(row.evidence_refs)) return false;
       reviewedSamples.add(row.sample_evidence_id);
-      if (request.decision === 'approve' && row.conclusion === 'reject') return false;
+      if (request.decision === 'approve' && row.conclusion !== 'approve') return false;
     }
     if (request.decision === 'approve' && reviewedSamples.size !== samples.size) return false;
 
