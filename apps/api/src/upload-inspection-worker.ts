@@ -7,10 +7,10 @@ import { fileTypeFromBuffer } from 'file-type';
 import { decode as decodeJpeg } from 'jpeg-js';
 import { SaxesParser } from 'saxes';
 import { M1_UPLOAD_MIME_TYPES, type UploadMediaType } from '@bondbuddy/contracts';
-import type { UploadSafetyCode, UploadWorkerReply } from './upload-safety.js';
+import type { UploadRejectionReason, UploadSafetyCode, UploadWorkerReply } from './upload-safety.js';
 
 type ContentSafetyCode = Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>;
-type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string };
+type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string; reason: UploadRejectionReason };
 type InspectionInput = { bytes: ArrayBuffer; mediaType: string } | { path: string; byteSize: number; mediaType: string };
 type PdfPage = {
   getAnnotations(options: { intent: string }): Promise<Array<Record<string, unknown>>>;
@@ -75,19 +75,19 @@ const UNSAFE_OFFICE_MEDIA_TYPES = new Set([
 ]);
 
 class MaterialInspectionError extends Error {
-  constructor(public readonly status: 415 | 422, public readonly code: ContentSafetyCode, message: string) {
+  constructor(public readonly status: 415 | 422, public readonly code: ContentSafetyCode, message: string, public readonly reason: UploadRejectionReason) {
     super(message);
   }
 }
 
-function reject(status: 415 | 422, code: ContentSafetyCode, message: string): never {
-  throw new MaterialInspectionError(status, code, message);
+function reject(status: 415 | 422, code: ContentSafetyCode, message: string, reason: UploadRejectionReason): never {
+  throw new MaterialInspectionError(status, code, message, reason);
 }
 
-const mismatch = () => reject(422, 'MATERIAL_CONTENT_MISMATCH', 'Declared media type does not match content');
-const unreadable = () => reject(422, 'MATERIAL_UNREADABLE', 'Material is corrupt or structurally unreadable');
-const unsupported = (message = 'Material contains unsupported or unsafe content') => reject(415, 'MATERIAL_FORMAT_UNSUPPORTED', message);
-const encrypted = () => reject(422, 'MATERIAL_ENCRYPTED', 'Encrypted or password-protected material is not supported');
+const mismatch = () => reject(422, 'MATERIAL_CONTENT_MISMATCH', 'Declared media type does not match content', 'content_mismatch');
+const unreadable = () => reject(422, 'MATERIAL_UNREADABLE', 'Material is corrupt or structurally unreadable', 'structure_invalid');
+const unsupported = (message = 'Material contains unsupported or unsafe content', reason: UploadRejectionReason = 'unsupported_content') => reject(415, 'MATERIAL_FORMAT_UNSUPPORTED', message, reason);
+const encrypted = () => reject(422, 'MATERIAL_ENCRYPTED', 'Encrypted or password-protected material is not supported', 'encrypted_content');
 
 function startsWith(bytes: Buffer, signature: readonly number[]): boolean {
   return signature.every((value, index) => bytes[index] === value);
@@ -459,7 +459,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
   const eocdOffset = tailStart + eocd;
   if (disk !== 0 || centralDisk !== 0 || entriesOnDisk !== entryCount) unsupported('Multi-disk ZIP containers are not supported');
   if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) unsupported('ZIP64 Office containers exceed the bounded inspection profile');
-  if (entryCount < 1 || entryCount > MAX_ARCHIVE_ENTRIES) unsupported('Office container has too many entries');
+  if (entryCount < 1 || entryCount > MAX_ARCHIVE_ENTRIES) unsupported('Office container has too many entries', 'archive_entry_limit');
   if (centralOffset + centralSize !== eocdOffset || centralOffset > size || centralSize > size) unreadable();
   if (centralSize > MAX_CENTRAL_DIRECTORY_BYTES) unsupported('Office container directory exceeds the inspection limit');
   const central = source.read(centralOffset, centralSize);
@@ -510,10 +510,10 @@ function parseZip(source: ZipSource): ZipEntry[] {
     if (platform === 3 && (unixMode & 0xf000) === 0xa000) unsupported('Office container contains a symbolic link');
     if (directory && (compressedSize !== 0 || expandedSize !== 0)) unreadable();
     if (expandedSize > MAX_ARCHIVE_ENTRY_BYTES || expandedTotal + expandedSize > MAX_ARCHIVE_EXPANDED_BYTES) {
-      unsupported('Office container exceeds the expanded-size inspection limit');
+      unsupported('Office container exceeds the expanded-size inspection limit', 'archive_expanded_limit');
     }
     if (expandedSize > 1024 && (compressedSize === 0 || expandedSize / compressedSize > MAX_ARCHIVE_RATIO)) {
-      unsupported('Office container exceeds the compression-ratio inspection limit');
+      unsupported('Office container exceeds the compression-ratio inspection limit', 'archive_ratio');
     }
     expandedTotal += expandedSize;
     compressedTotal += compressedSize;
@@ -553,7 +553,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
 
   if (cursor !== centralEnd) unreadable();
   if (expandedTotal > 64 * 1024 && compressedTotal > 0 && expandedTotal / compressedTotal > MAX_ARCHIVE_RATIO) {
-    unsupported('Office container exceeds the aggregate compression-ratio inspection limit');
+    unsupported('Office container exceeds the aggregate compression-ratio inspection limit', 'archive_ratio');
   }
 
   const localRecords = [...entries].sort((a, b) => a.localOffset - b.localOffset);
@@ -763,7 +763,7 @@ function officePayloadHazard(bytes: Buffer, totalLength = bytes.length): 'active
 }
 
 function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void {
-  if (bytes.length > MAX_XML_PART_BYTES) unsupported('Office XML part exceeds the inspection limit');
+  if (bytes.length > MAX_XML_PART_BYTES) unsupported('Office XML part exceeds the inspection limit', 'xml_part_limit');
   const text = xmlText(bytes);
   let root = '';
   let depth = 0;
@@ -1384,8 +1384,8 @@ async function run(): Promise<void> {
     parentPort?.postMessage({ ok: true } satisfies UploadWorkerReply);
   } catch (error) {
     const failure: InspectionFailure = error instanceof MaterialInspectionError
-      ? { status: error.status, code: error.code, message: error.message }
-      : { status: 422, code: 'MATERIAL_UNREADABLE', message: 'Material is corrupt or structurally unreadable' };
+      ? { status: error.status, code: error.code, message: error.message, reason: error.reason }
+      : { status: 422, code: 'MATERIAL_UNREADABLE', message: 'Material is corrupt or structurally unreadable', reason: 'inspection_worker_failed' };
     parentPort?.postMessage({ ok: false, ...failure } satisfies UploadWorkerReply);
   } finally {
     parentPort?.close();

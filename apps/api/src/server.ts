@@ -636,6 +636,13 @@ export function createServer(settings: Settings = {}) {
         if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
         await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.byteSize}]);
       });
+    }catch(error){
+      if(error instanceof Problem&&error.uploadReason){
+        const evidence={event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,project_id:id,upload_id:uploadId};
+        process.stderr.write(`${JSON.stringify(evidence)}\n`);
+        await rejectOperation(db(),{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload',status:'rejected',errorCode:error.code,errorId:request.id,errorReason:error.uploadReason});
+      }
+      throw error;
     }finally{
       await discardSpool(spooled?.path);release();
     }
@@ -700,8 +707,9 @@ export function createServer(settings: Settings = {}) {
       return accepted(inserted.rows[0]);
     }); } catch(error) {
       if(error instanceof Problem){
+        if(error.uploadReason)process.stderr.write(`${JSON.stringify({event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,project_id:id,upload_id:uploadId})}\n`);
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
-        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'material_complete',status:'rejected',errorCode:error.code});
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'material_complete',status:'rejected',errorCode:error.code,errorId:error.uploadReason?request.id:undefined,errorReason:error.uploadReason});
       }
       throw error;
     }

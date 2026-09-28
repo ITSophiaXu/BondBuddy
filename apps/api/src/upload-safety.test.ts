@@ -9,6 +9,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
 import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js';
 import { createServer } from './server.js';
+import { runInspectionWorker } from './upload-safety.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
@@ -38,10 +39,14 @@ async function outcome(inspection: Promise<string>): Promise<unknown> {
   catch (error) { const e = error as Error & { status: number; code: string }; return { status: e.status, code: e.code, message: e.message }; }
 }
 
-async function expectInspectionFailure(bytes: Buffer, mediaType: string, status: number, code: string): Promise<void> {
+async function expectInspectionFailure(bytes: Buffer, mediaType: string, status: number, code: string, reason?: string): Promise<void> {
   const memory = await outcome(verifiedMedia(bytes, mediaType));
   assert.equal((memory as { status: number }).status, status);
   assert.equal((memory as { code: string }).code, code);
+  if (reason) {
+    await assert.rejects(verifiedMedia(bytes, mediaType), (error: unknown) => (error as { uploadReason?: string }).uploadReason === reason);
+    await spooled(bytes, path => assert.rejects(verifiedMediaFile(path, bytes.length, mediaType), (error: unknown) => (error as { uploadReason?: string }).uploadReason === reason));
+  }
   assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, mediaType))), memory, `file/memory parity for ${code}`);
 }
 
@@ -138,6 +143,7 @@ test('Office XML parts remain capped at 16 MiB despite the authorized large docu
   const bytes = await docxSample([], document);
   const expected = { status: 415, code: 'MATERIAL_FORMAT_UNSUPPORTED', message: 'Office XML part exceeds the inspection limit' };
   assert.deepEqual(await outcome(verifiedMedia(bytes, DOCX)), expected);
+  await assert.rejects(verifiedMedia(bytes, DOCX), (error: unknown) => (error as { uploadReason?: string }).uploadReason === 'xml_part_limit');
   assert.deepEqual(await spooled(bytes, path => outcome(verifiedMediaFile(path, bytes.length, DOCX))), expected);
 });
 
@@ -153,13 +159,13 @@ test('Office containers are inspected from the spooled file entry by entry and z
   // A header that under-declares the expanded size is caught while inflating, before the lie can grow.
   const payload = Buffer.concat([randomBytes(64 * 1024), Buffer.alloc(512 * 1024, 0x41)]);
   const honest = await docxSample([{ name: 'word/media/synthetic.bin', contents: payload }]);
-  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 128 * 1024), DOCX, 422, 'MATERIAL_UNREADABLE');
+  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 128 * 1024), DOCX, 422, 'MATERIAL_UNREADABLE', 'structure_invalid');
   // Per-entry, aggregate and ratio caps come from the central directory, before any part is inflated.
-  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 40 * 1024 * 1024), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(lieAboutExpandedSize(honest, 'word/media/synthetic.bin', 40 * 1024 * 1024), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_expanded_limit');
   const aggregate = await docxSample(Array.from({ length: 5 }, (_, index) => ({ name: `word/media/part-${index}.bin`, contents: Buffer.concat([randomBytes(15 * 1024 * 1024), Buffer.alloc(15 * 1024 * 1024)]) })));
   assert.ok(aggregate.length < 100 * 1024 * 1024, 'aggregate sample stays under the upload limit');
-  await expectInspectionFailure(aggregate, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(aggregate, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_expanded_limit');
+  await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_ratio');
   // Truncated spool files (size mismatch with the central directory) are unreadable.
   await spooled(honest, async path => {
     await assert.rejects(verifiedMediaFile(path, honest.length - 1, DOCX), (error: unknown) => (error as { code: string }).code === 'MATERIAL_UNREADABLE');
@@ -189,7 +195,7 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   const badPng = pngSample.subarray(0, -8);
   const badJpeg = jpegSample.subarray(0, -8);
 
-  await expectInspectionFailure(encryptedPdf, PDF, 422, 'MATERIAL_ENCRYPTED');
+  await expectInspectionFailure(encryptedPdf, PDF, 422, 'MATERIAL_ENCRYPTED', 'encrypted_content');
   await expectInspectionFailure(encryptedOfficeSample(), DOCX, 422, 'MATERIAL_ENCRYPTED');
   await expectInspectionFailure(await encryptedZipSample(), DOCX, 422, 'MATERIAL_ENCRYPTED');
   await expectInspectionFailure(corruptPdf, PDF, 422, 'MATERIAL_UNREADABLE');
@@ -217,15 +223,22 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   await expectInspectionFailure(nestedDocx, DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await nestedGzipDocxSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await compressedBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(await expandedSizeBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(await entryCountBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectInspectionFailure(csvFormulaSample, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await expandedSizeBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_expanded_limit');
+  await expectInspectionFailure(await entryCountBombSample(), DOCX, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'archive_entry_limit');
+  await expectInspectionFailure(csvFormulaSample, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED', 'unsupported_content');
   await expectInspectionFailure(unicodeWhitespaceFormulaCsv, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(bomFormulaCsv, CSV, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(Buffer.from('column,value\nrow,"unterminated', 'utf8'), CSV, 422, 'MATERIAL_UNREADABLE');
   await expectInspectionFailure(badPng, PNG, 422, 'MATERIAL_UNREADABLE');
   await expectInspectionFailure(badJpeg, JPEG, 422, 'MATERIAL_UNREADABLE');
-  await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH');
+  await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH', 'content_mismatch');
+});
+
+test('inspection infrastructure and size rejections expose fixed internal reasons', async () => {
+  await assert.rejects(verifiedMedia(Buffer.alloc(0), TEXT), (error: unknown) => (error as { uploadReason?: string }).uploadReason === 'size_limit');
+  await assert.rejects(verifiedMediaFile('/no-such-material-upload', 1, XLSX), (error: unknown) => (error as { uploadReason?: string }).uploadReason === 'inspection_worker_failed');
+  await assert.rejects(runInspectionWorker({ bytes: Uint8Array.from(textSample).buffer, mediaType: TEXT }, [], TEXT, 32, 1),
+    (error: unknown) => (error as { reason?: string }).reason === 'inspection_timeout');
 });
 
 test('upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503', async () => {
@@ -238,6 +251,7 @@ test('upload inspection is single-flight: extra work queues, and a bounded wait 
     await assert.rejects(rejected, (error: unknown) => {
       assert.equal((error as Error & { status: number }).status, 503);
       assert.equal((error as Error & { code: string }).code, 'DATA_UNAVAILABLE');
+      assert.equal((error as Error & { uploadReason: string }).uploadReason, 'inspection_queue_timeout');
       return true;
     });
     assert.equal(await first, TEXT);
@@ -298,6 +312,10 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
     const rejectedPut = await send('PUT', rejectedStart.json().upload_url, bad, 'application/octet-stream');
     assert.equal(rejectedPut.statusCode, 422, rejectedPut.body);
     assert.equal(rejectedPut.json().code, 'MATERIAL_UNREADABLE');
+    const rejection = await pool.query("SELECT event FROM bb_observability_events WHERE kind='operation.rejected' AND event->>'request_id'=$1", [rejectedPut.json().correlation_id]);
+    assert.equal(rejection.rowCount, 1);
+    assert.equal(rejection.rows[0].event.error.reason, 'structure_invalid');
+    assert.equal(rejection.rows[0].event.error.error_id, rejectedPut.json().correlation_id);
     const blobKey = `users/${ownerId}/projects/${projectId}/uploads/${rejectedStart.json().upload_id}`;
     assert.equal(await blobs.getIfExists(blobKey), null, 'rejected bytes never reach private Blob storage');
 

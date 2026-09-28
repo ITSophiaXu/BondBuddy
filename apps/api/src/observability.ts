@@ -3,6 +3,7 @@ import { schemas, ERROR_CODES, ERROR_CATEGORIES, type InternalObservabilityEvent
 import { Pool, type PoolClient } from 'pg';
 import { digest, missing, transaction, uid, type PrivateBlobs } from './data.js';
 import { guardEvidenceWrite } from './evidence-gate.js';
+import type { UploadRejectionReason } from './upload-safety.js';
 
 const safeCode=/^[a-z][a-z0-9_]{0,63}$/;
 const validId=(value:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -23,7 +24,7 @@ export function internalEvent(input:{kind:InternalObservabilityEvent['kind'];own
   if(input.stage&&!safeCode.test(input.stage))throw new Error('Unsafe event stage');
   return {event_id:uid(),schema_version:1,kind:input.kind,occurred_at:new Date().toISOString(),operation_id:input.operationId??input.runId??uid(),request_id:input.requestId??uid(),trace_id:input.traceId,span_id:uid(),parent_span_id:null,actor_type:input.actorType??'system',user_id:input.owner,project_id:input.projectId??null,conversation_id:null,message_id:null,job_id:input.jobId??null,parent_job_id:null,run_id:input.runId??null,work_item_id:null,logical_call_id:input.logicalCallId??null,call_id:null,attempt_no:input.attemptNo??null,job_kind:input.jobKind??null,stage:input.stage??null,status:input.status??null,prompt_snapshot_ref:input.promptSnapshotRef??null,error:input.error??null,usage:input.usage??null};
 }
-export async function recordOperation(client:PoolClient,input:{owner:string;projectId?:string|null;runId?:string|null;jobId?:string|null;requestId:string;traceId:string;kind:string;status:'submitted'|'rejected';errorCode?:string;inputRevision?:number;inputHash?:string;channel?:'production'|'non_production_test';emitEvent?:boolean}) {
+export async function recordOperation(client:PoolClient,input:{owner:string;projectId?:string|null;runId?:string|null;jobId?:string|null;requestId:string;traceId:string;kind:string;status:'submitted'|'rejected';errorCode?:string;errorId?:string;errorReason?:UploadRejectionReason;inputRevision?:number;inputHash?:string;channel?:'production'|'non_production_test';emitEvent?:boolean}) {
   if(!validId(input.requestId)||!validId(input.traceId)||!safeCode.test(input.kind))throw new Error('Invalid operation identifiers');
   if(input.errorCode&&!ERROR_CODES.includes(input.errorCode as typeof ERROR_CODES[number]))throw new Error('Invalid error code');
   let channel=input.channel??'production';
@@ -31,7 +32,7 @@ export async function recordOperation(client:PoolClient,input:{owner:string;proj
   if(input.jobId){const j=await client.query('SELECT channel FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3',[input.jobId,input.owner,input.projectId]);if(!j.rowCount)throw missing();channel=j.rows[0].channel;}
   const id=uid();
   await client.query('INSERT INTO bb_operations(id,owner_user_id,project_id,run_id,request_id,trace_id,operation_kind,status,error_code,input_revision,input_hash,channel) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[id,input.owner,input.projectId??null,input.runId??null,input.requestId,input.traceId,input.kind,input.status,input.errorCode??null,input.inputRevision??null,input.inputHash??null,channel]);
-  if(input.emitEvent!==false)await emitInternal(client,internalEvent({kind:input.status==='rejected'?'operation.rejected':'operation.submitted',owner:input.owner,actorType:'user',projectId:input.projectId,runId:input.runId,jobId:input.jobId,traceId:input.traceId,operationId:id,requestId:input.requestId,status:input.status==='rejected'?'rejected':'created',error:input.errorCode?{error_id:uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false}:undefined}));
+  if(input.emitEvent!==false)await emitInternal(client,internalEvent({kind:input.status==='rejected'?'operation.rejected':'operation.submitted',owner:input.owner,actorType:'user',projectId:input.projectId,runId:input.runId,jobId:input.jobId,traceId:input.traceId,operationId:id,requestId:input.requestId,status:input.status==='rejected'?'rejected':'created',error:input.errorCode?{error_id:input.errorId??uid(),code:input.errorCode as typeof ERROR_CODES[number],category:'validation',retryable:false,...(input.errorReason?{reason:input.errorReason}:{})}:undefined}));
   return id;
 }
 /** A free preflight or an owned pre-run rejection has a terminal job, even without a run. */

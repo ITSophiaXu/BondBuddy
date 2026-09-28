@@ -5,7 +5,7 @@ import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { inspectMaterialUpload, inspectMaterialUploadFile } from './upload-safety.js';
+import { inspectMaterialUpload, inspectMaterialUploadFile, UploadSafetyError, type UploadRejectionReason } from './upload-safety.js';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -23,7 +23,7 @@ export const executionKeyFromStorage=(value:string):string=>{
     ? Buffer.from(hex,'hex').toString('utf16le') : value;
 };
 export class Problem extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+  constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason) { super(message); }
 }
 export const missing = () => new Problem(404, 'NOT_FOUND', 'Resource does not exist');
 export const conflict = (code: string, message: string) => new Problem(409, code, message);
@@ -226,10 +226,10 @@ export async function verifiedMedia(bytes: Buffer, declared: string): Promise<st
   try {
     return await inspectMaterialUpload(bytes, declared);
   } catch (error) {
-    if (error && typeof error === 'object' && 'status' in error && 'code' in error && error instanceof Error) {
-      throw new Problem(error.status as number, String(error.code), error.message);
+    if (error instanceof UploadSafetyError) {
+      throw new Problem(error.status, error.code, error.message, error.reason);
     }
-    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected');
+    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected','inspection_worker_failed');
   }
 }
 /** Inspect a spooled upload file; the parser worker reads it in bounded chunks where the format allows. */
@@ -237,10 +237,10 @@ export async function verifiedMediaFile(path: string, byteSize: number, declared
   try {
     return await inspectMaterialUploadFile(path, byteSize, declared);
   } catch (error) {
-    if (error && typeof error === 'object' && 'status' in error && 'code' in error && error instanceof Error) {
-      throw new Problem(error.status as number, String(error.code), error.message);
+    if (error instanceof UploadSafetyError) {
+      throw new Problem(error.status, error.code, error.message, error.reason);
     }
-    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected');
+    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected','inspection_worker_failed');
   }
 }
 export function checkedPair(market: Market | null, offering: Offering | null) {

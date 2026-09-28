@@ -2,12 +2,18 @@ import { Worker } from 'node:worker_threads';
 import type { ErrorCode, UploadMediaType } from '@bondbuddy/contracts';
 
 export type UploadSafetyCode = Extract<ErrorCode, `MATERIAL_${string}` | 'DATA_UNAVAILABLE'>;
+export const UPLOAD_REJECTION_REASONS = [
+  'size_limit', 'inspection_queue_timeout', 'inspection_timeout', 'inspection_worker_failed',
+  'archive_entry_limit', 'archive_expanded_limit', 'archive_ratio', 'xml_part_limit',
+  'structure_invalid', 'unsupported_content', 'content_mismatch', 'encrypted_content'
+] as const;
+export type UploadRejectionReason = typeof UPLOAD_REJECTION_REASONS[number];
 export type UploadWorkerReply =
   | { ok: true }
-  | { ok: false; status: 415 | 422; code: Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>; message: string };
+  | { ok: false; status: 415 | 422; code: Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>; message: string; reason: UploadRejectionReason };
 
 export class UploadSafetyError extends Error {
-  constructor(public readonly status: 415 | 422 | 503, public readonly code: UploadSafetyCode, message: string) {
+  constructor(public readonly status: 415 | 422 | 503, public readonly code: UploadSafetyCode, message: string, public readonly reason: UploadRejectionReason) {
     super(message);
   }
 }
@@ -38,7 +44,7 @@ async function acquireInspection(): Promise<() => void> {
       const admit = () => { clearTimeout(timer); activeInspections++; resolve(); };
       const timer = setTimeout(() => {
         waiting.splice(waiting.indexOf(admit), 1);
-        reject(new UploadSafetyError(503, 'DATA_UNAVAILABLE', 'Material inspection capacity is temporarily busy'));
+        reject(new UploadSafetyError(503, 'DATA_UNAVAILABLE', 'Material inspection capacity is temporarily busy', 'inspection_queue_timeout'));
       }, positiveEnv('BB_UPLOAD_INSPECTION_QUEUE_MS', 60_000));
       waiting.push(admit);
     });
@@ -54,7 +60,7 @@ async function acquireInspection(): Promise<() => void> {
 
 export async function inspectMaterialUpload(bytes: Buffer, mediaType: string): Promise<UploadMediaType> {
   if (!Number.isInteger(bytes.length) || bytes.length < 1 || bytes.length > MAX_UPLOAD_BYTES) {
-    throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material exceeds the inspection limit');
+    throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material exceeds the inspection limit', 'size_limit');
   }
   const release = await acquireInspection();
   try {
@@ -69,7 +75,7 @@ export async function inspectMaterialUpload(bytes: Buffer, mediaType: string): P
 /** Inspect a spooled upload from disk. Text/CSV are streamed; other formats are read once inside the worker. */
 export async function inspectMaterialUploadFile(path: string, byteSize: number, mediaType: string): Promise<UploadMediaType> {
   if (!Number.isInteger(byteSize) || byteSize < 1 || byteSize > MAX_UPLOAD_BYTES) {
-    throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material exceeds the inspection limit');
+    throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material exceeds the inspection limit', 'size_limit');
   }
   const release = await acquireInspection();
   try {
@@ -79,7 +85,7 @@ export async function inspectMaterialUploadFile(path: string, byteSize: number, 
   }
 }
 
-async function runInspectionWorker(workerData: Record<string, unknown>, transferList: ArrayBuffer[], mediaType: string, heapMb: number): Promise<UploadMediaType> {
+export async function runInspectionWorker(workerData: Record<string, unknown>, transferList: ArrayBuffer[], mediaType: string, heapMb: number, timeoutMs = INSPECTION_TIMEOUT_MS): Promise<UploadMediaType> {
   // Streaming the body/Blob leaves chunk buffers that V8 frees lazily; with --expose-gc (set in the
   // container) reclaim them before a parser isolate is added to a small memory limit.
   (globalThis as { gc?: () => void }).gc?.();
@@ -96,7 +102,7 @@ async function runInspectionWorker(workerData: Record<string, unknown>, transfer
       }
     });
   } catch {
-    throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected');
+    throw new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed');
   }
 
   return await new Promise<UploadMediaType>((resolve, reject) => {
@@ -110,19 +116,20 @@ async function runInspectionWorker(workerData: Record<string, unknown>, transfer
       else resolve(mediaType as UploadMediaType);
     };
     const timer = setTimeout(() => {
-      finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material inspection exceeded its time limit'));
-    }, INSPECTION_TIMEOUT_MS);
+      finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material inspection exceeded its time limit', 'inspection_timeout'));
+    }, timeoutMs);
 
     worker.once('message', (reply: UploadWorkerReply) => {
       if (reply?.ok === true) return finish();
       if (reply?.ok === false && (reply.status === 415 || reply.status === 422)) {
-        return finish(new UploadSafetyError(reply.status, reply.code, reply.message));
+        const reason = UPLOAD_REJECTION_REASONS.find(value => value === reply.reason);
+        if (reason) return finish(new UploadSafetyError(reply.status, reply.code, reply.message, reason));
       }
-      finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected'));
+      finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed'));
     });
-    worker.once('error', () => finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected')));
-    worker.once('exit', code => {
-      if (!settled && code !== 0) finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected'));
+    worker.once('error', () => finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed')));
+    worker.once('exit', () => {
+      if (!settled) finish(new UploadSafetyError(422, 'MATERIAL_UNREADABLE', 'Material could not be safely inspected', 'inspection_worker_failed'));
     });
   });
 }
