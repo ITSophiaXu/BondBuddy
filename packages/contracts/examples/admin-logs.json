@@ -205,6 +205,7 @@
             "status": null,
             "stage": null,
             "error_code": null,
+            "error_id": null,
             "logical_call_id": "draft",
             "attempt_no": 1,
             "prompt_snapshot_ref": "snap_syn_1"
@@ -233,6 +234,7 @@
             "status": null,
             "stage": null,
             "error_code": null,
+            "error_id": null,
             "logical_call_id": "draft",
             "attempt_no": 1,
             "prompt_snapshot_ref": "snap_syn_1",
@@ -277,6 +279,34 @@
         "chosen_observation_id": "obs_syn_1",
         "usage_status": "measured",
         "reason_code": "provider_invoice_match"
+      }
+    },
+    {
+      "name": "browser-error-report-request",
+      "schema": "BrowserErrorReportRequest",
+      "valid": true,
+      "value": {
+        "error_type": "TypeError",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "message": "Redacted diagnostic only",
+        "route_id": "/projects/:project_id",
+        "frontend_version": "m1.20260928",
+        "project_id": "proj_syn_1",
+        "job_id": "job_syn_1",
+        "client_time": "2026-09-28T08:00:00Z"
+      }
+    },
+    {
+      "name": "browser-error-report-unknown-field-rejected",
+      "schema": "BrowserErrorReportRequest",
+      "valid": false,
+      "value": {
+        "error_type": "TypeError",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "route_id": "/projects/:project_id",
+        "frontend_version": "m1.20260928",
+        "client_time": "2026-09-28T08:00:00Z",
+        "cookie": "synthetic secret"
       }
     }
   ]
