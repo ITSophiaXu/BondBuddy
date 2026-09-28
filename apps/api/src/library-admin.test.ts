@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { openApiDocument } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import type { PrivateBlobs } from './data.js';
 import { classifyLibraryVersion, ingestLibraryVersion, markLibraryVersionParsed, registerLibrarySource } from './library.js';
 
@@ -31,7 +32,7 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
   const plain = `lib_user_${suffix}`, reader = `lib_reader_${suffix}`, operator = `lib_op_${suffix}`;
   let current = plain;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }) });
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true });
   try {
     for (const id of [plain, reader, operator]) await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, id.toLowerCase().slice(0, 32)]);
     await pool.query("INSERT INTO bb_library_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'library_reader','test','synthetic_grant'),($3,$4,'library_operator','test','synthetic_grant')", [randomUUID(), reader, randomUUID(), operator]);
@@ -102,6 +103,63 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
         'revenue_basis', 'reviewed_by', 'ten_thousand_yuan', 'chapter_mappings', 'reference-library-query',
         sourceId, 'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures', 'last_success_at', 'library_source_stale', 'library_sync_failed']) assert.equal(r.body.includes(needle), false, `${url} leaks ${needle}`);
     }
+    // A selection trace may contain private library identifiers and review details. It belongs only
+    // in the durable job checkpoint, never in run polling, SSE, or Word delivery metadata.
+    const projectId = created.json().project_id as string;
+    const input = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers,
+      payload: JSON.stringify({ draft_revision: 1, material_versions: [], requirement_message_ids: [] }) });
+    assert.equal(input.statusCode, 201, input.body);
+    const runRequest = { execution_request_id: `library-output-${suffix}`, project_id: projectId, input_revision: 1,
+      input_hash: input.json().input_hash, task_kind: 'generation', input_manifest_ref: 'synthetic-manifest',
+      storage_origin: 'cloud', workspace_id: 'synthetic-workspace' };
+    const started = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers, payload: JSON.stringify(runRequest) });
+    assert.equal(started.statusCode, 202, started.body);
+    const runId = started.json().run_id as string;
+    const privateValues = [sourceId, ingested.versionId, ingested.documentId, mapped.json().mapping_version_id,
+      'https://source.example/private-filing', 'licence-secret-reference', 'withdrawn-draft-marker',
+      'other-user-project-marker', 'reviewer-private-marker', 'candidate-score-marker'];
+    const trace = { source_url: privateValues[4], credential_ref: privateValues[5], withdrawn_version: privateValues[6],
+      foreign_project: privateValues[7], reviewed_by: privateValues[8], match_score: privateValues[9],
+      source_id: sourceId, document_version_id: ingested.versionId, candidate_decisions: [{ score: privateValues[9] }] };
+    await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_build_object('stages',jsonb_build_object('reference_selection',$2::jsonb)) WHERE run_id=$1",
+      [runId, JSON.stringify(trace)]);
+    const artifactId = `synthetic-word-${suffix}`, wordBytes = makeSyntheticDocxFixture();
+    const wordHash = createHash('sha256').update(wordBytes).digest('hex');
+    const wordKey = `users/${plain}/runs/${runId}/artifacts/${artifactId}/v1.docx`;
+    const evidenceId = randomUUID();
+    await blobs.put(wordKey, wordBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO bb_word_delivery_evidence
+        (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
+         quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
+        VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7)`,
+        [evidenceId, plain, runId, artifactId, wordHash, wordBytes.length,
+          { sha256: wordHash, byte_size: wordBytes.length, validator_version: 'synthetic-validator', quality_status: 'passed' }]);
+      await client.query(`INSERT INTO bb_artifact_versions
+        (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
+        VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','available',$6)`,
+        [artifactId, plain, runId, wordHash, wordKey, evidenceId]);
+      await client.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1", [runId, artifactId]);
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    for (const url of [`/api/v1/runs/${runId}`, `/api/v1/runs/${runId}/events`,
+      `/api/v1/runs/${runId}/stream`, `/api/v1/artifacts/${artifactId}`]) {
+      const response = await app.inject({ method: 'GET', url, headers });
+      assert.equal(response.statusCode, 200, `${url}: ${response.body}`);
+      for (const value of privateValues) assert.equal(response.body.includes(value), false, `${url} leaks ${value}`);
+    }
+    const metadata = await app.inject({ method: 'GET', url: `/api/v1/artifacts/${artifactId}`, headers });
+    const download = await app.inject({ method: 'GET', url: metadata.json().download_url, headers });
+    assert.equal(download.statusCode, 200, download.body);
+    assert.deepEqual(download.rawPayload, wordBytes, 'owned Word bytes are the synthetic fixture, not the private selection trace');
+    current = reader;
+    for (const url of [`/api/v1/runs/${runId}`, `/api/v1/runs/${runId}/events`, `/api/v1/artifacts/${artifactId}`]) {
+      const response = await app.inject({ method: 'GET', url, headers });
+      assert.equal(response.statusCode, 404, `${url} must be owner-scoped`);
+    }
+    current = plain;
     const guess = await app.inject({ method: 'GET', url: `/api/v1/library/versions/${ingested.versionId}`, headers });
     assert.equal(guess.statusCode, 404);
   } finally { await app.close(); await pool.end(); }
