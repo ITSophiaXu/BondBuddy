@@ -49,7 +49,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
   - `library_sync_failed`（critical，scope=来源 id，按小时去重）：同步最终失败，或部分条目失败（`partial`）时触发。`consecutive_failures` 加 1；只有全部条目成功才清零。
   - `library_source_stale`（warning，scope=来源 id，每个 `sync_interval_seconds` 周期最多一条）：距上次成功（从未成功则从登记时间算起）超过 `BB_LIBRARY_STALE_FACTOR × sync_interval_seconds`。
 - `evaluation_only` 来源照常同步和审核，用于评估，但查询时按使用权过滤，任何版本都不会成为任务候选；有测试覆盖。
-- 资源：解析在 ops 容器内运行 Python 子进程。现行 `deploy/m1/compose.yaml` 给 `ops` 384M 内存、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 为 768M、`--max-old-space-size=512`。开启同步前按实际 PDF 峰值评估并调高 ops 限额，确认出口代理允许 `query.sse.com.cn`、`static.sse.com.cn`。
+- 资源：解析在 ops 容器内运行 Python 子进程。现行 `deploy/m1/compose.yaml` 给 `ops` 384M 内存、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 内存上限为 768M，未设置 `NODE_OPTIONS`。开启同步前按实际 PDF 峰值评估并调高 ops 限额，确认出口代理允许 `query.sse.com.cn`、`static.sse.com.cn`。
 - 增量游标：`{"publish_date": "<最高已见 PUBLISH_DATE>"}`，下一次从同一日期起重扫（重叠一天），重复条目记为 `unchanged`。失败条目以 `retry_items` 写入游标，直到成功为止，不会因游标前进而丢失。
 - 只有全部条目成功时才更新 `last_success_at`；部分失败记 `partial` 并设置 `last_error_code`。
 - 限速：请求间隔 ≥700 ms，单文件下载超时 180 s，单文件上限 150 MiB，按条最多 3 次尝试（退避 5 s × 次数）。
