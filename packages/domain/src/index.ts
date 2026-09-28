@@ -7,6 +7,7 @@ export * from './sse-private-applicability-taxonomy.js';
 export * from './cp-tenor-evidence.js';
 export * from './cp-funds-use-change-evidence.js';
 export * from './scp-mc4-omission-evidence.js';
+export * from './scp-tenor-evidence.js';
 export * from './mtn-registration-evidence.js';
 export * from './mtn-funds-use-evidence.js';
 export * from './mtn-quarterly-update-evidence.js';

@@ -17,6 +17,8 @@ const citation = {
   quote: 'Synthetic evidence fixture; not an industry sample.',
 };
 
+const ISSUER_REF = 'synthetic:issuer-a';
+
 function cited<T>(value: T, extra: Partial<Extract<ScpMc4Assertion<T>, { status: 'cited' }>> = {}): ScpMc4Assertion<T> {
   return { status: 'cited', value, citations: [citation], ...extra };
 }
@@ -40,6 +42,7 @@ function item(period: ScpMc4Period, overrides: Partial<ScpMc4PublicItem> = {}): 
   return {
     documentRefId: `public-${period.periodId}`,
     version: 'v1',
+    issuerRefId: ISSUER_REF,
     categories: ['operating', 'financial', 'credit'],
     periods: [period],
     entityScope: period.kind === 'annual' ? 'both' : 'consolidated',
@@ -55,6 +58,7 @@ function item(period: ScpMc4Period, overrides: Partial<ScpMc4PublicItem> = {}): 
 function input(overrides: Partial<ScpMc4OmissionEvidenceInput> = {}): ScpMc4OmissionEvidenceInput {
   return {
     actionDate: cited('2025-09-01'),
+    issuerRefId: cited(ISSUER_REF),
     firstPublicRegistration: cited(false),
     issuerTier: cited('tier-2'),
     effectivePublicInformation: cited(true),
@@ -238,6 +242,47 @@ test('malformed publication event history and period entries fail closed without
   assert.ok(periodResult.reasons.includes('public_item_period_invalid'));
 });
 
+test('public items must belong to the same real issuer as the action', () => {
+  const mismatched = checkScpMc4OmissionEvidence(input({
+    publicItems: input().publicItems.map((entry, index) => index === 0 ? { ...entry, issuerRefId: 'synthetic:issuer-b' } : entry),
+  }));
+  assert.equal(mismatched.decision, 'needs_review');
+  assert.ok(mismatched.reasons.includes('public_item_issuer_mismatch'));
+
+  const unnamed = checkScpMc4OmissionEvidence(input({
+    publicItems: input().publicItems.map((entry, index) => index === 0 ? { ...entry, issuerRefId: '   ' } : entry),
+  }));
+  assert.equal(unnamed.decision, 'needs_review');
+  assert.ok(unnamed.reasons.includes('public_item_issuer_identity_missing'));
+});
+
+test('an uncited or conflicting action issuer identity needs review', () => {
+  const uncited = checkScpMc4OmissionEvidence(input({
+    issuerRefId: { status: 'uncertain', value: null, reason: 'issuer not confirmed' },
+  }));
+  assert.equal(uncited.decision, 'needs_review');
+  assert.ok(uncited.reasons.includes('issuer_identity_not_source_confirmed'));
+
+  const conflicting = checkScpMc4OmissionEvidence(input({
+    issuerRefId: cited(ISSUER_REF, { conflicts: [{ value: 'synthetic:issuer-b', citations: [{ ...citation, locator: 'notice 2' }] }] }),
+  }));
+  assert.equal(conflicting.decision, 'needs_review');
+  assert.ok(conflicting.reasons.includes('issuer_identity_conflicting_sources'));
+});
+
+test('an unresolved entity scope cannot satisfy category coverage on its own', () => {
+  const unresolved = checkScpMc4OmissionEvidence(input({
+    publicItems: input().publicItems.map(entry => ({ ...entry, entityScope: 'other' as const })),
+  }));
+  assert.equal(unresolved.decision, 'needs_review');
+  assert.ok(unresolved.reasons.includes('operating_coverage_entity_scope_unresolved'));
+  assert.ok(unresolved.reasons.includes('financial_coverage_entity_scope_unresolved'));
+  assert.ok(unresolved.reasons.includes('credit_coverage_entity_scope_unresolved'));
+
+  const resolvedByBoth = checkScpMc4OmissionEvidence(input());
+  assert.equal(resolvedByBoth.decision, 'omission_candidate_needs_professional_review');
+});
+
 test('entity scope and audit status remain distinct fields on annual and interim evidence', () => {
   const records = input().publicItems;
   assert.equal(records.find(entry => entry.periods[0]?.kind === 'annual')?.entityScope, 'both');
@@ -319,6 +364,7 @@ test('malformed assertion, citation and conflict shapes fail closed without thro
   ];
   const malformedEvidence = [
     ...malformedAssertions.map(actionDate => ({ ...base, actionDate })),
+    ...malformedAssertions.map(issuerRefId => ({ ...base, issuerRefId })),
     ...malformedAssertions.map(firstPublicRegistration => ({ ...base, firstPublicRegistration })),
     ...malformedAssertions.map(effectivePublicInformation => ({ ...base, effectivePublicInformation })),
     ...malformedAssertions.map(issuerTier => ({ ...base, issuerTier })),

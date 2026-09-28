@@ -33,6 +33,8 @@ export type ScpMc4InterimRequirement =
 export type ScpMc4PublicItem = {
   documentRefId: string;
   version: string;
+  /** The issuer this public item belongs to; it must match the action's issuer identity exactly. */
+  issuerRefId: string;
   categories: ScpMc4InformationCategory[];
   /** A single publication/version can evidence several reporting periods and categories. */
   periods: ScpMc4Period[];
@@ -54,6 +56,8 @@ export type ScpMc4PublicItem = {
 export type ScpMc4OmissionEvidenceInput = {
   /** Actual registration/issuance disclosure date being evaluated, not a report period or task date. */
   actionDate: ScpMc4Assertion<string>;
+  /** The issuer the omission candidate concerns; every public item must belong to this same subject. */
+  issuerRefId: ScpMc4Assertion<string>;
   firstPublicRegistration: ScpMc4Assertion<boolean>;
   /** Issuer tier and its source are preserved; applicability is separately resolved for this action. */
   issuerTier: ScpMc4Assertion<string>;
@@ -85,6 +89,8 @@ export type ScpMc4OmissionEvidenceResult = {
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const REQUIRED_CATEGORIES: readonly ScpMc4InformationCategory[] = ['operating', 'financial', 'credit'];
 const ENTITY_SCOPES: readonly string[] = ['consolidated', 'parent', 'both', 'other'];
+/** Consolidated and parent scopes must stay distinguishable; 'other' cannot satisfy coverage on its own. */
+const RESOLVED_ENTITY_SCOPES: readonly string[] = ['consolidated', 'parent', 'both'];
 const AUDIT_STATUSES: readonly string[] = ['audited', 'unaudited', 'not_applicable'];
 
 function isCalendarDate(value: string): boolean {
@@ -244,6 +250,18 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
   const interimRequirementValid = interimRequirementStatus === 'valid' && input.interimRequirement.status === 'cited' && isInterimRequirement(input.interimRequirement.value);
   if (!interimRequirementValid) reasons.push(interimRequirementStatus === 'valid' ? 'interim_applicability_value_invalid' : 'interim_applicability_not_source_confirmed');
 
+  // The candidate is about one real subject. Every public item must be bound to
+  // that same issuer; a different, unnamed or conflicting subject stays in review.
+  const issuerIdentityStatus = assertionStatus(input.issuerRefId);
+  const issuerIdentityValid = issuerIdentityStatus === 'valid' && input.issuerRefId.status === 'cited' &&
+    typeof input.issuerRefId.value === 'string' && input.issuerRefId.value.trim().length > 0;
+  if (!issuerIdentityValid) {
+    reasons.push(issuerIdentityStatus === 'conflict'
+      ? 'issuer_identity_conflicting_sources'
+      : issuerIdentityStatus === 'valid' ? 'issuer_identity_value_invalid' : 'issuer_identity_not_source_confirmed');
+  }
+  const issuerRefId = issuerIdentityValid && input.issuerRefId.status === 'cited' ? input.issuerRefId.value.trim() : '';
+
   const itemIds = new Set<string>();
   for (const rawItem of input.publicItems) {
     if (!isRecord(rawItem)) {
@@ -255,6 +273,9 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
     const version = typeof item.version === 'string' ? item.version : '';
     if (!documentRefId.trim() || !version.trim() || itemIds.has(`${documentRefId}:${version}`)) reasons.push('public_item_identity_missing_or_duplicated');
     itemIds.add(`${documentRefId}:${version}`);
+    const itemIssuerRefId = typeof item.issuerRefId === 'string' ? item.issuerRefId.trim() : '';
+    if (!itemIssuerRefId) reasons.push('public_item_issuer_identity_missing');
+    else if (issuerRefId && itemIssuerRefId !== issuerRefId) reasons.push('public_item_issuer_mismatch');
     if (!Array.isArray(item.citations) || !item.citations.length || !item.citations.every(hasTrustworthyCitation)) reasons.push('public_item_source_or_locator_missing');
     if (!Array.isArray(item.categories) || !item.categories.length || item.categories.some(category => !REQUIRED_CATEGORIES.includes(category))) reasons.push('public_item_category_mapping_missing_or_invalid');
     if (!ENTITY_SCOPES.includes(item.entityScope)) reasons.push('public_item_entity_scope_missing_or_invalid');
@@ -280,7 +301,11 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
   }
 
   for (const category of REQUIRED_CATEGORIES) {
-    if (!input.publicItems.some(item => isRecord(item) && Array.isArray(item.categories) && item.categories.includes(category))) reasons.push(`${category}_information_coverage_missing`);
+    const categoryItems = input.publicItems.filter(item => isRecord(item) && Array.isArray(item.categories) && item.categories.includes(category));
+    if (!categoryItems.length) reasons.push(`${category}_information_coverage_missing`);
+    else if (!categoryItems.some(item => isRecord(item) && RESOLVED_ENTITY_SCOPES.includes(item.entityScope as string))) {
+      reasons.push(`${category}_coverage_entity_scope_unresolved`);
+    }
     if (annualYearsValid && !hasExpectedAnnualPeriods(input, category)) reasons.push(`${category}_candidate_annual_coverage_incomplete`);
     if (interimRequirementValid && input.interimRequirement.status === 'cited' &&
         input.interimRequirement.value.decision === 'required' && !hasRequiredInterim(input, category)) {

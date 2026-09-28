@@ -164,6 +164,10 @@ research-only and has no production consumer, so it cannot activate capability.
 
 `nafmiiScpDraftRulePack` is scoped to standard public SCP only. It pins the official 2021 product guide, enforces the 270-day-inclusive boundary and the working-capital-only/no-long-term-investment use boundary, and overlays MC.4-1 through MC.4-4 on the shared M-table chapters. Omission of M-5/M-6/M-7 is evidence-dependent and is rejected for first public registration or when effective public issuer information is unavailable. Specialist products, 2026 transition interpretation and authorized real samples remain explicit release blockers.
 
+`scp-tenor-evidence.ts` is the paired internal evidence-shape check for the SCP 270-day tenor. It requires cited, certain and non-conflicting instrument, stated-day, start-date, maturity-date and adjustment observations, and computes only the raw calendar-day distance. The exact 270-day endpoint, any interval crossing a February 29, and applied or unknown holiday postponement stay in `needs_review`; a stated-day value that disagrees with the explicit dates, reversed or same dates, a non-SCP instrument and malformed dates also stay in review. Only a span strictly shorter than 270 calendar days with exact agreement passes the bounded shape check. The checker does not infer an inclusive/exclusive endpoint, a leap-day rule, a holiday convention or a working-day conversion, and is not a legality or capability decision.
+
+`scp-mc4-omission-evidence.ts` binds every public item to the same real issuer as the action; a different, unnamed, uncited or conflicting issuer identity stays in `needs_review`. Category coverage must come from consolidated, parent or combined-scope evidence, so an unresolved `other` scope cannot satisfy coverage alone, and the three categories, the period coverage and the historic public-availability date remain separate fields. Shape pass still only yields an omission candidate for professional review and never an approval to omit disclosure.
+
 Run:
 
 ```bash
