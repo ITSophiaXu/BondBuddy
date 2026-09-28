@@ -103,6 +103,32 @@ test('contradictory source-backed assertions are evidence_conflict', () => {
   assert.ok(result.reasons.includes('first_market_issuance_status_cited_assertions_conflict'));
 });
 
+test('identical period assertions with different object references and key order are not conflicts', () => {
+  const evidence = input();
+  evidence.latestQuarterlyReportPeriod.conflictingAssertions = [{
+    value: { endDate: '2026-03-31', periodId: '2026-q1', startDate: '2026-01-01' },
+    citations: [{ ...citation, quote: 'Synthetic duplicate period assertion.' }],
+  }];
+  evidence.documentCoveragePeriod.conflictingAssertions = [{
+    value: { endDate: '2026-03-31', startDate: '2023-01-01', periodId: 'document-coverage-2026-q1' },
+    citations: [{ ...citation, quote: 'Synthetic duplicate coverage assertion.' }],
+  }];
+  const result = checkMtnQuarterlyUpdateEvidence(evidence);
+  assert.equal(result.decision, 'evidence_shape_pass');
+  assert.deepEqual(result.reasons, []);
+});
+
+test('a genuinely different cited period assertion is evidence_conflict', () => {
+  const reportPeriod = ev({ periodId: '2026-q1', startDate: '2026-01-01', endDate: '2026-03-31' });
+  reportPeriod.conflictingAssertions = [{
+    value: { periodId: '2025-q4', startDate: '2025-10-01', endDate: '2025-12-31' },
+    citations: [{ ...citation, quote: 'Synthetic conflicting quarterly period.' }],
+  }];
+  const result = checkMtnQuarterlyUpdateEvidence(input({ latestQuarterlyReportPeriod: reportPeriod }));
+  assert.equal(result.decision, 'evidence_conflict');
+  assert.ok(result.reasons.includes('latest_quarterly_report_period_cited_assertions_conflict'));
+});
+
 test('an unanchored opposing assertion cannot be elevated to evidence_conflict', () => {
   const firstMarket = ev<'first_market_issuance' | 'prior_market_issuance_exists' | 'unknown'>('first_market_issuance');
   firstMarket.conflictingAssertions = [{ value: 'prior_market_issuance_exists', citations: [] }];

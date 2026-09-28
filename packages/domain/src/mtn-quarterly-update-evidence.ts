@@ -66,9 +66,32 @@ function hasCitations(field: MtnEvidenceValue<unknown>): boolean {
   return hasValidCitations(field.citations);
 }
 
+/** Structural equality for evidence values restricted to JSON-compatible data. */
+function jsonEvidenceValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return typeof left !== 'number' || Number.isFinite(left);
+  if (left === null || right === null || typeof left !== typeof right) return false;
+  if (typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+      left.every((value, index) => jsonEvidenceValuesEqual(value, right[index]));
+  }
+  const leftPrototype = Object.getPrototypeOf(left);
+  const rightPrototype = Object.getPrototypeOf(right);
+  if ((leftPrototype !== Object.prototype && leftPrototype !== null) ||
+      (rightPrototype !== Object.prototype && rightPrototype !== null)) return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+    key === rightKeys[index] && jsonEvidenceValuesEqual(leftRecord[key], rightRecord[key]));
+}
+
 function usable(field: MtnEvidenceValue<unknown>): boolean {
   return field.value !== null && field.uncertainty === 'clear' &&
-    !(field.conflictingAssertions?.length) && hasCitations(field);
+    !(field.conflictingAssertions?.some(assertion =>
+      !jsonEvidenceValuesEqual(assertion.value, field.value) || !hasValidCitations(assertion.citations))) &&
+    hasCitations(field);
 }
 
 function periodIsValid(period: MtnQuarterlyPeriod | null): period is MtnQuarterlyPeriod {
@@ -101,7 +124,7 @@ export function checkMtnQuarterlyUpdateEvidence(
 
   for (const [name, field] of requiredFields) {
     if (!usable(field)) review.push(`${name}_missing_uncited_or_uncertain`);
-    if (field.conflictingAssertions?.some(assertion => assertion.value !== field.value &&
+    if (field.conflictingAssertions?.some(assertion => !jsonEvidenceValuesEqual(assertion.value, field.value) &&
         hasValidCitations(assertion.citations))) {
       conflicts.push(`${name}_cited_assertions_conflict`);
     }
