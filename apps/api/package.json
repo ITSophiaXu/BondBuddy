@@ -110,6 +110,7 @@
     "trial:health": "node dist/trial-guard.js health",
     "deletion:lifecycle": "node dist/deletion-lifecycle.js",
     "rule-applicability:grants": "node dist/rule-applicability-reviewer-grants.js",
+    "production-components:import": "node dist/production-component-import-cli.js",
     "target-period:grants": "node dist/target-period-evidence-decisions.js"
   },
   "dependencies": {
