@@ -38,7 +38,7 @@ export const SSE_BOND_SOURCE: LibrarySourceInput = {
 const SSE_QUERY = 'https://query.sse.com.cn/commonSoaQuery.do';
 const SSE_FILES = 'https://static.sse.com.cn/bond';
 const PROSPECTUS_FILE_TYPE = 11; // "1-1 …募集说明书"
-export type FetchLike = (url: string, init?: { headers?: Record<string, string>; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer>; json(): Promise<any> }>;
+export type FetchLike = (url: string, init?: { headers?: Record<string, string>; signal?: AbortSignal }) => Promise<Pick<Response, 'ok' | 'status' | 'json' | 'body'>>;
 
 export type SseOptions = {
   fetch?: FetchLike; maxProjects?: number; maxPages?: number; pageSize?: number; delayMs?: number; timeoutMs?: number;
@@ -52,19 +52,28 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
   private readonly http: FetchLike;
   constructor(private readonly options: SseOptions = {}) { this.http = options.fetch ?? (globalThis.fetch as unknown as FetchLike); }
   private async pause() { if (this.options.delayMs ?? 700) await new Promise(r => setTimeout(r, this.options.delayMs ?? 700)); }
-  private async get(url: string) {
+  private async get<T>(url: string, consume: (response: Awaited<ReturnType<FetchLike>>) => Promise<T>): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 180_000);
     try {
-      return await this.http(url, { headers: { 'User-Agent': 'BondBuddy-reference-library/0.1 (+ops contact in runbook)', Referer: 'https://bond.sse.com.cn/' }, signal: controller.signal });
+      const response = await this.http(url, { headers: { 'User-Agent': 'BondBuddy-reference-library/0.1 (+ops contact in runbook)', Referer: 'https://bond.sse.com.cn/' }, signal: controller.signal });
+      return await consume(response);
+    } catch (error) {
+      if (controller.signal.aborted) throw Object.assign(new Error('SSE request timed out'), { name: 'TimeoutError' });
+      throw error;
     } finally { clearTimeout(timer); }
   }
   private async query(params: Record<string, string>) {
     const url = `${SSE_QUERY}?${new URLSearchParams(params)}`;
-    let response;
-    try { response = await this.get(url); } catch { throw new SourceError('LIBRARY_SOURCE_UNREACHABLE', true); }
-    if (!response.ok) throw new SourceError('LIBRARY_SOURCE_UNREACHABLE', response.status >= 500 || response.status === 429);
-    try { return await response.json(); } catch { throw new SourceError('LIBRARY_SOURCE_UNREACHABLE', true); }
+    try {
+      return await this.get(url, async response => {
+        if (!response.ok) throw new SourceError('LIBRARY_SOURCE_UNREACHABLE', response.status >= 500 || response.status === 429);
+        return response.json();
+      });
+    } catch (error) {
+      if (error instanceof SourceError) throw error;
+      throw new SourceError('LIBRARY_SOURCE_UNREACHABLE', true);
+    }
   }
 
   /**
@@ -114,14 +123,35 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
 
   async fetch(item: DiscoveredItem): Promise<Buffer> {
     if (!item.locator.startsWith(`${SSE_FILES}/`)) throw new SourceError('LIBRARY_FETCH_FAILED', false);
-    let response;
-    try { response = await this.get(item.locator); } catch (error) { throw new SourceError('LIBRARY_FETCH_FAILED', true, error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network'); }
-    if (!response.ok) throw new SourceError('LIBRARY_FETCH_FAILED', response.status >= 500 || response.status === 429 || response.status === 404, `http_${response.status}`);
-    let bytes: Buffer;
-    try { bytes = Buffer.from(await response.arrayBuffer()); } catch { throw new SourceError('LIBRARY_FETCH_FAILED', true, 'body_interrupted'); }
-    if (bytes.length > 150 * 1024 * 1024) throw new SourceError('LIBRARY_BYTES_INVALID', false);
-    if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') throw new SourceError('LIBRARY_BYTES_INVALID', true, 'not_pdf');
-    return bytes;
+    let responseStarted = false;
+    try {
+      return await this.get(item.locator, async response => {
+        responseStarted = true;
+        if (!response.ok) throw new SourceError('LIBRARY_FETCH_FAILED', response.status >= 500 || response.status === 429 || response.status === 404, `http_${response.status}`);
+        if (!response.body) throw new SourceError('LIBRARY_FETCH_FAILED', true, 'body_interrupted');
+        const reader = response.body.getReader();
+        const chunks: Buffer[] = [];
+        let size = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > 150 * 1024 * 1024) {
+              void reader.cancel().catch(() => {});
+              throw new SourceError('LIBRARY_BYTES_INVALID', false);
+            }
+            chunks.push(Buffer.from(value));
+          }
+        } finally { reader.releaseLock(); }
+        const bytes = Buffer.concat(chunks, size);
+        if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') throw new SourceError('LIBRARY_BYTES_INVALID', true, 'not_pdf');
+        return bytes;
+      });
+    } catch (error) {
+      if (error instanceof SourceError) throw error;
+      throw new SourceError('LIBRARY_FETCH_FAILED', true, error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : responseStarted ? 'body_interrupted' : 'network');
+    }
   }
 }
 
