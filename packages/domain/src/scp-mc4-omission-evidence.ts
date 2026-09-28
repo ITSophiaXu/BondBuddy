@@ -66,6 +66,8 @@ export type ScpMc4OmissionEvidenceInput = {
   /** M-5/M-6/M-7 content retained independently of any omission candidate. */
   fundsManagementControls: ScpMc4Assertion<'included' | 'missing'>;
   shortTermLiquidityPlan: ScpMc4Assertion<'included' | 'missing'>;
+  /** OF007 note 1: when controls/plans are not yet established, retain the transition scheme evidence. */
+  shortTermLiquidityTransitionScheme: ScpMc4Assertion<'included' | 'missing'>;
 };
 
 export type ScpMc4OmissionDecision =
@@ -256,10 +258,28 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
     }
   }
 
-  const controlsValid = assertionStatus(input.fundsManagementControls) === 'valid' && input.fundsManagementControls.status === 'cited' && input.fundsManagementControls.value === 'included';
-  const liquidityValid = assertionStatus(input.shortTermLiquidityPlan) === 'valid' && input.shortTermLiquidityPlan.status === 'cited' && input.shortTermLiquidityPlan.value === 'included';
-  if (!controlsValid) reasons.push('funds_management_controls_must_remain_disclosed');
-  if (!liquidityValid) reasons.push('short_term_liquidity_plan_must_remain_disclosed');
+  const controlsStatus = assertionStatus(input.fundsManagementControls);
+  const controlsKnown = controlsStatus === 'valid' && input.fundsManagementControls.status === 'cited' &&
+    (input.fundsManagementControls.value === 'included' || input.fundsManagementControls.value === 'missing');
+  const liquidityStatus = assertionStatus(input.shortTermLiquidityPlan);
+  const liquidityKnown = liquidityStatus === 'valid' && input.shortTermLiquidityPlan.status === 'cited' &&
+    (input.shortTermLiquidityPlan.value === 'included' || input.shortTermLiquidityPlan.value === 'missing');
+  if (!controlsKnown) reasons.push('funds_management_controls_status_not_source_confirmed');
+  if (!liquidityKnown) reasons.push('short_term_liquidity_plan_status_not_source_confirmed');
+
+  // Official OF007 note 1 allows a transition scheme when controls / the short-term liquidity plan
+  // have not yet been established. This remains an evidence-shape candidate only; it is not a waiver.
+  const contentMissing = controlsKnown && input.fundsManagementControls.status === 'cited' && input.fundsManagementControls.value === 'missing' ||
+    liquidityKnown && input.shortTermLiquidityPlan.status === 'cited' && input.shortTermLiquidityPlan.value === 'missing';
+  if (contentMissing) {
+    const transitionStatus = assertionStatus(input.shortTermLiquidityTransitionScheme);
+    const transitionKnown = transitionStatus === 'valid' && input.shortTermLiquidityTransitionScheme.status === 'cited' &&
+      (input.shortTermLiquidityTransitionScheme.value === 'included' || input.shortTermLiquidityTransitionScheme.value === 'missing');
+    if (!transitionKnown) reasons.push('mc4_transition_scheme_status_not_source_confirmed');
+    else if (input.shortTermLiquidityTransitionScheme.status !== 'cited' || input.shortTermLiquidityTransitionScheme.value !== 'included') {
+      reasons.push('mc4_transition_scheme_missing');
+    }
+  }
 
   if (reasons.length > 0) return { decision: 'needs_review', reasons, evidence: input };
   return {

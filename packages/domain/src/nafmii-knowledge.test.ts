@@ -36,7 +36,7 @@ for(const offering of ['ppn','dfi']) {
 
 test('current public drafts share the 2023 disclosure source and retain concrete exception text',()=>{
   for(const pack of [nafmiiMtnDraftRulePack,nafmiiCpDraftRulePack,nafmiiScpDraftRulePack]){
-    assert.equal(pack.version,'2026.09.27-draft.2');
+    assert.equal(pack.version,pack.pack_id==='nafmii-scp'?'2026.09.28-draft.3':'2026.09.27-draft.2');
     assert.ok(!pack.sources.some(s=>s.source_id==='nafmii-disclosure-rules-2021'));
     const source=pack.sources.find(s=>s.source_id==='nafmii-disclosure-rules-2023');
     assert.equal(source?.document_hash,'cca3cfaed55d9c3a81b3b2fa12480bd325b8bf920af1c437148b34e56a2780da');
