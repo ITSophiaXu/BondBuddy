@@ -1,4 +1,5 @@
 import { FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type TargetReportingPeriod, type UpdateDetails } from '@bondbuddy/contracts';
+import { prototypeIcon as icon } from './prototype-design.js';
 import { changeMarket, marketValue, materialHints, type ProjectCreate } from './form-model.js';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -31,7 +32,7 @@ export function updateFormFields(value: ProjectCreate) {
     <div class="update-field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(value.issuer_name)}" placeholder="填写发行人法定全称"></div>
     <div class="update-field"><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${MARKETS.map(m => option(m, MARKET_LABELS[m], value.market)).join('')}</select></div>
     <div class="update-field"><label for="offering">发行方式</label><select id="offering" name="offering"${!value.market ? ' disabled' : ''}>${offeringOptions(value)}</select></div>
-    <div class="update-field"><label for="reporting_cutoff">旧版单一报告截止日</label><input type="date" id="reporting_cutoff" name="reporting_cutoff" value="${esc(d.reporting_cutoff)}"><small>为兼容旧项目保留；不代表完整目标报告期间集合。</small></div></div><p id="market-notice" class="field-hint" role="status"></p></section>
+    <div class="update-field"><label for="reporting_cutoff">本次财务截止日</label><input type="date" id="reporting_cutoff" name="reporting_cutoff" value="${esc(d.reporting_cutoff)}"><small>填写本次拟更新到的时点；需覆盖的完整期间在下方逐项填写。</small></div></div><p id="market-notice" class="field-hint" role="status"></p></section>
   <section class="update-section target-periods-section"><h2>本次目标报告期间 <span class="optional">选填，可添加多期</span></h2><p class="field-hint">这里填写本次更新目标，与历史募集书识别出的原稿期间分开保存。用户填写不代表来源已核对，也不代表审计确认；不确定的日期、类型或口径请保留“仍需人工确认”。</p><div id="target-reporting-period-rows">${targetReportingRows(d.target_reporting_periods ?? [])}</div><button type="button" id="add-target-reporting-period" class="button secondary"${(d.target_reporting_periods?.length ?? 0) >= TARGET_PERIOD_LIMIT ? ' disabled' : ''}>＋ 添加目标报告期间</button><small class="period-limit-note">最多 ${TARGET_PERIOD_LIMIT} 项；完整、部分填写和待确认期间都会保留。</small></section>
   <section class="update-section"><h2>发行规模与债券安排 <span class="optional">选填</span></h2><p class="field-hint">不同品种的期限、含权条款和用途会影响募集书多个章节。如有多个品种，请分别说明。</p><div class="update-grid">${money('registration_amount', '申报 / 注册总额', d.registration_amount)}${money('issuance_amount', '本期发行规模', d.issuance_amount)}${note('bond_terms', '债券安排', d.bond_terms, '例如：本期拟发行不超过10亿元，3年期。如有多个品种，请分别说明金额、期限、利率方式、还本付息、回售 / 赎回 / 调息、增信和用途差异及回拨安排。未确定的内容可注明待定。')}</div></section>
   <section class="update-section"><h2>参与机构 <span class="optional">选填</span></h2><p class="field-hint">仅一家主承销商时填名称即可；多家参与时再说明牵头、联席及其他分工，未定角色可留空。</p>${note('underwriting', '承销安排', d.underwriting, '例如：XX证券担任主承销商。或：XX证券牵头、YY银行联席，XX证券兼任簿记管理人。')}${note('other_agencies', '其他参与机构与分工', d.other_agencies, '如受托管理人、会计师事务所、律师事务所等。')}</section>
@@ -39,9 +40,15 @@ export function updateFormFields(value: ProjectCreate) {
   <section class="update-section"><h2>募集资金用途 <span class="optional">选填</span></h2><p class="field-hint">可添加多种用途，分别填写金额和具体安排；用途未定也能保存。</p><div id="funding-rows">${fundingRows(d)}</div><button type="button" id="add-purpose" class="button secondary">＋ 添加资金用途</button></section>
   <section class="update-section"><h2>其他项目信息 <span class="optional">选填</span></h2>${note('other_information', '其他已知信息', d.other_information, '例如：公司名称变更、银行授信额度及使用情况；相关材料可后续补充。')}</section>`;
 }
-export function supplementaryPanel(value: ProjectCreate) {
-  return `<aside class="context-panel supplement-panel"><h2>补充说明与写作要求</h2><p>可以补充额外项目信息、修改要求和需要关注的事项，无需指定更新范围。这里的内容随项目保存。</p>${note('supplementary_notes', '补充说明', value.update_details!.supplementary_notes, '例如：公司取得新的银行授信，总额度50亿元，其中未使用30亿元；请结合后续提供的证明材料更新相关说明。')}<p class="field-hint">当前可保存补充说明，多轮对话将在后续开放。</p><div class="context-divider"></div><h3>可提前准备的材料</h3><ul id="material-hints">${materialHints(value.update_details!).map(h => `<li>${esc(h)}</li>`).join('')}</ul><p id="dfi-material-hint" class="field-hint"${value.offering === 'dfi' ? '' : ' hidden'}>如已取得，可提供注册通知、注册申报文件、分期发行计划及承销商团安排；未取得的文件可后续补充。</p></aside>`;
+export function supplementaryPanel(value: ProjectCreate, formId?: string) {
+  return `<aside class="panel project-cowork supplement-panel" aria-label="项目协作"><div class="cowork-heading">${icon('chat')}<div><h2>一起完成这个项目</h2><p>额外信息和修改要求，可以在这里补充。</p></div></div>
+    <div class="cowork-context"><span id="cowork-issuer">${esc(value.issuer_name || '待填写发行人')}</span><strong id="cowork-scope">${value.market ? esc(MARKET_LABELS[value.market]) : '发行市场待选择'} · ${value.offering ? esc(OFFERING_LABELS[value.offering]) : '发行方式待选择'}</strong><small>补充与材料保存在同一项目</small></div>
+    <div class="cowork-messages"><p class="cowork-assistant">我们会结合材料更新整份募集书。表单之外的授信情况、业务变化或具体修改要求，可以在这里补充。</p></div>
+    <div class="cowork-prompts">${['授信情况','修改要求','补充信息'].map(label => `<button type="button" data-note-example="${label}">${label}</button>`).join('')}</div><div class="cowork-composer"><label for="supplementary_notes">补充说明与写作要求</label><textarea id="supplementary_notes" name="supplementary_notes" ${formId ? `form="${formId}"` : ''} maxlength="${PROJECT_FIELD_LIMITS.notes}" placeholder="例如：补充授信额度的截至日、使用情况或本次需要关注的业务变化。">${esc(value.update_details!.supplementary_notes)}</textarea>${formId ? `<button class="btn primary cowork-save" type="submit" form="${formId}">保存补充说明 ${icon('send')}</button>` : ''}
+    <p class="cowork-footnote">${formId ? '内容随项目自动保存；运行中的任务保持原版本，新修改用于下一轮。' : '创建项目时一并保存。'}当前可保存说明，助手多轮回复尚未接通。</p></div>
+    <details class="cowork-materials"><summary>可提前准备的材料</summary><ul id="material-hints">${materialHints(value.update_details!).map(h => `<li>${esc(h)}</li>`).join('')}</ul><p id="dfi-material-hint" class="field-hint"${value.offering === 'dfi' ? '' : ' hidden'}>如已取得，可提供注册通知、注册申报文件、分期发行计划及承销商团安排；未取得的文件可后续补充。</p></details></aside>`;
 }
+
 function text(data: FormData, name: string) { return String(data.get(name) ?? '').trim() || null; }
 function readMoney(data: FormData, name: string): Money | null {
   const value = text(data, name);
@@ -72,7 +79,20 @@ export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
   };
 }
 export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCreate) => void) {
-  const emit = () => changed(readUpdateForm(form));
+  const emit = () => {
+    const value = readUpdateForm(form);
+    const issuer = document.querySelector('#cowork-issuer'); if (issuer) issuer.textContent = value.issuer_name || '待填写发行人';
+    const scope = document.querySelector('#cowork-scope'); if (scope) scope.textContent = `${value.market ? MARKET_LABELS[value.market] : '发行市场待选择'} · ${value.offering ? OFFERING_LABELS[value.offering] : '发行方式待选择'}`;
+    changed(value);
+  };
+  document.querySelectorAll<HTMLButtonElement>('[data-note-example]').forEach(button => button.addEventListener('click', () => {
+    const textarea = document.querySelector<HTMLTextAreaElement>('#supplementary_notes')!;
+    const hints: Record<string,string> = { '授信情况':'请补充授信截至日、总额度、已使用和未使用额度，以及金额单位与依据。', '修改要求':'请说明希望调整的内容、原因和可参考的材料。', '补充信息':'可补充本次项目的业务变化、机构安排或其他已知情况。' };
+    textarea.placeholder = hints[button.dataset.noteExample!]; textarea.focus();
+  }));
+  const supplement = document.querySelector<HTMLTextAreaElement>(`textarea[form="${form.id}"]`);
+  supplement?.addEventListener('input', event => { if (!(event as InputEvent).isComposing) emit(); });
+  supplement?.addEventListener('compositionend', emit);
   const enforceIncompletePeriods = () => {
     const details = readUpdateForm(form).update_details!;
     details.target_reporting_periods?.forEach((period, i) => {
@@ -94,8 +114,8 @@ export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCr
     }
     enforceIncompletePeriods();
     const value = readUpdateForm(form);
-    form.querySelector('#material-hints')!.innerHTML = materialHints(value.update_details!).map(h => `<li>${esc(h)}</li>`).join('');
-    form.querySelector<HTMLElement>('#dfi-material-hint')!.hidden = value.offering !== 'dfi';
+    document.querySelector('#material-hints')!.innerHTML = materialHints(value.update_details!).map(h => `<li>${esc(h)}</li>`).join('');
+    document.querySelector<HTMLElement>('#dfi-material-hint')!.hidden = value.offering !== 'dfi';
     if (target.hasAttribute('data-purpose')) form.querySelector(`[data-purpose-hint="${target.dataset.purpose}"]`)!.textContent = purposeHint(target.value as UpdateDetails['funding_uses'][number]['purpose']);
     emit();
   });

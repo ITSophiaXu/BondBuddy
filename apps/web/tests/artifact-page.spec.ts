@@ -71,9 +71,32 @@ async function installApi(page: Page, data: State) {
   });
 }
 
+test('completed project shows checked summary and downloads in the continuous workspace', async ({ page }) => {
+  const data = state(); data.pendingItems = [{record_id:'paragraph-42',message:'待人工确认：请补充授信截至日及证明材料。'}];
+  await installApi(page,data);
+  await page.route('**/api/v1/projects?*', route => json(route,200,{items:[{...project,latest_run:{run_id:runId,state:'succeeded',updated_at:now},latest_artifact:{artifact_id:ids.revision,run_id:runId,version:1,created_at:now}}],page:{next_cursor:null,has_more:false}}));
+  await page.route(`**/api/v1/projects/${projectId}/input-revisions/3`, route => json(route,404,{code:'NOT_FOUND'}));
+  // Existing project fixture has no saved input; run discovery still uses the real list/read API sequence.
+  await page.route(`**/api/v1/projects/${projectId}`, route => json(route,200,{...project,input_revision:null,input_hash:null}));
+  await page.route(`**/api/v1/projects/${projectId}/events?*`, route => json(route,200,{items:[],next_cursor:null}));
+  await page.route(`**/api/v1/runs/${runId}/events?*`, route => json(route,200,{items:[],next_cursor:null}));
+  await page.goto(`/#/projects/${projectId}`);
+  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await expect(page.locator('#execution-delivery')).toContainText('工作稿已生成，含待人工确认事项');
+  await expect(page.locator('.project-cowork')).toBeVisible();
+  await page.setViewportSize({width:1440,height:960}); await page.evaluate(()=>scrollTo(0,0));
+  await page.screenshot({path:join(tmpdir(),'bb361-completed-desktop.png'),fullPage:true});
+  const download=page.waitForEvent('download'); await page.getByRole('button',{name:'下载修订版',exact:true}).click();
+  expect(await (await download).failure()).toBeNull();
+  expect(data.calls.every(call=>call.method==='GET')).toBe(true);
+  await page.setViewportSize({width:390,height:844}); await page.evaluate(()=>scrollTo(0,0));
+  await page.screenshot({path:join(tmpdir(),'bb361-completed-mobile.png'),fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+});
+
 test('latest failed run preserves access to successful Word summary and three variants', async ({ page }) => {
   const data = state(); await installApi(page, data);
-  await page.goto('/');
+  await page.goto('/#tasks');
   await expect(page.locator('.project-state')).toHaveText('失败');
   await page.getByRole('link', { name: '查看成果与下载' }).click();
   await expect(page.getByRole('heading', { name: '工作稿已生成，含待人工确认事项' })).toBeVisible();
@@ -195,7 +218,7 @@ test('navigation cancels an in-flight download and suppresses late completion', 
   await page.getByRole('button', { name: '下载修订版', exact: true }).click(); await requested;
   await expect(page.getByRole('button', { name: '下载修订版', exact: true })).toBeDisabled();
   await page.evaluate(() => { location.hash = '/'; });
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   release();
   await expect(page.locator('.artifact-review')).toHaveCount(0);
   expect(downloads).toBe(0);
@@ -231,7 +254,7 @@ for (const scenario of ['corrupt bytes', 'partial response', 'unavailable bytes'
   test(`project-list download refuses ${scenario} and retries with a fresh grant`, async ({ page }) => {
     const data = state(); await installApi(page, data);
     let downloads = 0; page.on('download', () => downloads++);
-    await page.goto('/');
+    await page.goto('/#tasks');
     if (scenario === 'corrupt bytes') data.downloadBody = Buffer.from('corrupt synthetic document');
     if (scenario === 'partial response') data.downloadStatus = 206;
     if (scenario === 'unavailable bytes') data.downloadStatus = 503;
@@ -248,7 +271,7 @@ for (const scenario of ['corrupt bytes', 'partial response', 'unavailable bytes'
     expect(download.suggestedFilename()).toBe('合成成果项目-v1.docx');
     expect(data.grants).toEqual(['fresh-1', 'fresh-2']);
     expect(data.calls.every(call => call.method === 'GET')).toBe(true);
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/#tasks$/);
   });
 }
 
@@ -257,7 +280,7 @@ for (const scenario of ['changed run', 'unfinished run'] as const) {
     const data = state(); await installApi(page, data);
     if (scenario === 'changed run') data.changedRun = true;
     if (scenario === 'unfinished run') data.runState = 'delivering';
-    await page.goto('/');
+    await page.goto('/#tasks');
     await page.getByRole('button', { name: '下载最近成果' }).click();
     await expect(page.locator('#project-action-status')).toContainText('校验未通过');
     expect(data.grants).toEqual([]);
@@ -284,7 +307,7 @@ for (const action of ['navigate', 'refresh', 'switch account'] as const) {
       await route.fulfill({ status: 200, contentType: mediaType, body: bytes }).catch(() => {});
     });
     let downloads = 0; page.on('download', () => downloads++);
-    await page.goto('/');
+    await page.goto('/#tasks');
     await page.getByRole('button', { name: '下载最近成果' }).click(); await requested;
     await expect(page.getByRole('button', { name: '下载最近成果' })).toBeDisabled();
     if (action === 'navigate') {
@@ -315,7 +338,7 @@ test('project-list pagination keeps a pending download disabled and releases it 
     byteRequests++; started(); await pending;
     await route.fulfill({ status: 200, contentType: mediaType, body: bytes });
   });
-  await page.goto('/');
+  await page.goto('/#tasks');
   const button = page.getByRole('button', { name: '下载最近成果' });
   await button.click(); await requested;
   await page.getByRole('button', { name: '加载更多项目' }).click();

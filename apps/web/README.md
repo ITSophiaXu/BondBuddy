@@ -1,4 +1,6 @@
-# M1 项目工作台（#10 / #11 / #12 集成切片）
+# M1 原型工作台与连续项目工作区
+
+#361 已将 `product-prototype/public/` 的工作台、导航、创建→材料两步、四类材料区及持续右侧协作布局迁移到真实 Vite 页面；直接导入原型 CSS。开始更新由一个主操作编排现有保存/预检/执行 API，实际有待确认条件时就地确认；进度和成果在同一项目查看。完整来源对照、必要差异、运行测试及剩余依赖见 [PROTOTYPE-MIGRATION.md](PROTOTYPE-MIGRATION.md)。下方历史章节记录各服务能力，旧“保存版本→检查→开始”三按钮及登录落入项目列表的交互已由本次替换。
 
 沿用 `product-prototype/public/` 的绿色、纸色与侧栏布局，使用 Vite、原生 ES modules 和 TypeScript，逐页接入 M1 `/api/v1`。#11 在已有页面、API client 和保存流程中扩展完整业务表单；对应契约集中在 `packages/contracts`，数据库新增 `0013_m1_update_project_details.sql`。
 

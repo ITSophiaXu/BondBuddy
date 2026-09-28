@@ -20,11 +20,12 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
   await page.goto('/#/new');
   const projectName = `真实 API 材料恢复 ${username}`;
   await page.getByLabel('项目名称 必填', { exact: true }).fill(projectName);
-  await page.getByRole('button', { name: '创建并保存项目' }).click();
+  await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
   await expect(page).toHaveURL(/#\/projects\//);
   const projectId = new URL(page.url()).hash.split('/').at(-1)!;
   await expect(page.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
@@ -47,7 +48,8 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
     await reopened.getByLabel('用户名').fill(username);
     await reopened.getByLabel('密码').fill(password);
     await reopened.getByRole('button', { name: '登录', exact: true }).click();
-    await expect(reopened.getByRole('heading', { name: '我的项目', exact: true })).toBeVisible();
+    await reopened.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await expect(reopened.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
     await reopened.goto(`/#/projects/${encodeURIComponent(projectId)}`);
     await expect(reopened.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
     await expect(reopened.getByText('已从服务器恢复 1 份当前账号可访问的材料记录。')).toBeVisible();
