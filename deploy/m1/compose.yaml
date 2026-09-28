@@ -120,6 +120,8 @@ services:
       BB_CODEX_BASE_URL: ${BB_CODEX_BASE_URL:-https://api.deepseek.com}
       BB_CODEX_MODEL: ${BB_CODEX_MODEL:-}
       BB_CODEX_WORK_ROOT: /tmp/bb-codex
+      # Per-call wall-clock limit. Long historical-generation segments exceed the 120 s code default.
+      BB_CODEX_TIMEOUT_MS: ${BB_CODEX_TIMEOUT_MS:-600000}
       # #79/#16 operator-only platform probe (POST /api/v1/admin/probes/model). Off by default.
       BB_PLATFORM_PROBE_ENABLED: ${BB_PLATFORM_PROBE_ENABLED:-0}
     volumes: [parsestaging:/var/lib/bondbuddy/parse-staging]
