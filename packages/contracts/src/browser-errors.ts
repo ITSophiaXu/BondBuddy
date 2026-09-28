@@ -5,7 +5,7 @@ const utc = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
 const obj = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
 
-export const BROWSER_ERROR_LIMIT = { bodyBytes: 2048, messageChars: 512, perUser: 20, windowSeconds: 300 } as const;
+export const BROWSER_ERROR_LIMIT = { bodyBytes: 2048, messageChars: 1536, perUser: 20, windowSeconds: 300 } as const;
 export const browserErrorSchemas = {
   BrowserErrorReportRequest: obj({
     error_type: Type.String({ minLength: 1, maxLength: 64, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,63}$' }),

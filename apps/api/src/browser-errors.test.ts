@@ -15,6 +15,31 @@ const report = (fingerprint = 'a'.repeat(64)) => ({ error_type: 'TypeError', fin
   message: 'Cookie: bb_session=private\nBearer syntheticsecret. test@example.com +8613812345678',
   route_id: '/projects/:project_id', frontend_version: 'm1.20260928', client_time: new Date().toISOString() });
 
+test('browser diagnostic messages truncate at UTF-8 boundaries before storage', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const owner = `u${uid()}`;
+  await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, owner.replaceAll('-', '').toLowerCase().slice(0, 32)]);
+  const app = createServer({ pool, allowedOrigin: ORIGIN,
+    principal: async () => ({ userId: owner, csrfVerified: true, sessionId: `${owner}-session` }) });
+  try {
+    const cases = [
+      { input: '€'.repeat(342), expected: '€'.repeat(341) },
+      { input: 'x'.repeat(1023) + '😀', expected: 'x'.repeat(1023) },
+      { input: '€'.repeat(340) + 'é'.repeat(2), expected: '€'.repeat(340) + 'é'.repeat(2) }
+    ];
+    for (const [index, sample] of cases.entries()) {
+      const response = await app.inject({ method: 'POST', url: '/api/v1/browser-errors',
+        headers: { origin: ORIGIN }, payload: { ...report((index + 1).toString(16).padStart(64, '0')), message: sample.input } });
+      assert.equal(response.statusCode, 201, response.body);
+      const row = (await pool.query('SELECT safe_message,octet_length(safe_message) AS byte_length FROM bb_browser_error_reports WHERE id=$1',
+        [response.json().report_id])).rows[0];
+      assert.equal(row.safe_message, sample.expected);
+      assert.ok(row.byte_length <= 1024);
+      assert.ok(!row.safe_message.includes('\uFFFD'));
+    }
+  } finally { await app.close(); await pool.end(); }
+});
+
 test('browser diagnostics are owned, bounded, redacted, deduplicated, audited and expired', { skip: !connection }, async () => {
   const pool = new Pool({ connectionString: connection });
   const ownerA = `a${uid()}`, ownerB = `b${uid()}`;

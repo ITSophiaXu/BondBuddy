@@ -13,7 +13,12 @@ const safeMessage = (value: string | undefined) => {
   const scrubbed = scrubSecrets(value)
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[REDACTED_EMAIL]')
     .replace(/(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)/g, '[REDACTED_PHONE]');
-  return Buffer.from(scrubbed, 'utf8').subarray(0, 1024).toString('utf8');
+  const bytes = Buffer.from(scrubbed, 'utf8');
+  if (bytes.length <= 1024) return scrubbed;
+  let end = 1024;
+  // A byte after the limit can be part of a character that starts before it.
+  while ((bytes[end] & 0xc0) === 0x80) end--;
+  return bytes.subarray(0, end).toString('utf8');
 };
 const view = (row: Record<string, any>) => ({ report_id: row.id, error_type: row.error_type,
   fingerprint: row.fingerprint.trim(), message: row.safe_message, route_id: row.route_id,
