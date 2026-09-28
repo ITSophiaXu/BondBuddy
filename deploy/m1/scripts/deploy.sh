@@ -66,6 +66,22 @@ if ! have "bondbuddy-m1-egress:$tag"; then
 fi
 previous="$(current_tag)"
 export BB_IMAGE_TAG="$tag"
+# Optional pre-switch gate (BB_DEPLOY_INFLIGHT_GATE=1): the build above can take many minutes, so a run
+# may have started since the caller last checked. Stop before backup, migration or any container switch:
+# exit 76 when non-parse runs hold a live lease, 77 when the count is unavailable. Built images are kept,
+# so a retry skips the build.
+if [ "${BB_DEPLOY_INFLIGHT_GATE:-0}" = 1 ] && compose ps --status running --services 2>/dev/null | grep -qx postgres; then
+  in_flight="$(compose exec -T postgres psql -X -A -t -v ON_ERROR_STOP=1 -U bondbuddy -d bondbuddy \
+    -c "select count(*) from bb_jobs where state='running' and job_type<>'parse' and lease_until > now()" 2>&1)" || in_flight=failed
+  if ! [[ "$in_flight" =~ ^[0-9]+$ ]]; then
+    echo "deploy in-flight gate: run count unavailable; nothing switched" >&2
+    exit 77
+  fi
+  if [ "$in_flight" -gt 0 ]; then
+    echo "deploy in-flight gate: $in_flight non-parse runs in flight; images $tag kept, nothing switched" >&2
+    exit 76
+  fi
+fi
 if [ -n "$previous" ] && compose ps --status running --services 2>/dev/null | grep -qx postgres; then
   # Use the new image's backup tooling against the still-running database before switching services.
   BB_BACKUP_SOURCE_TAG="$previous" "$(dirname "$0")/backup.sh" "pre-deploy-$tag"
