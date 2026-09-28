@@ -112,6 +112,10 @@ function scopeHash(row: any): string {
 async function lockPack(client: PoolClient, packId: string) {
   await client.query("SELECT pg_advisory_xact_lock(hashtextextended('rule-pack:'||$1,0))", [packId]);
 }
+async function requireActiveActor(client: PoolClient, actor: string) {
+  const result = await client.query("SELECT id FROM bb_users WHERE id=$1 AND status='active' FOR SHARE", [actor]);
+  if (!result.rowCount) fail('FORBIDDEN');
+}
 async function currentManifest(client: PoolClient, manifestId: string, version: number, mode: 'SHARE'|'UPDATE'='SHARE') {
   const row = await client.query(`SELECT * FROM bb_production_review_manifests WHERE manifest_id=$1 AND manifest_version=$2 FOR ${mode}`,
     [manifestId, version]);
@@ -172,12 +176,13 @@ export function installProductionReviewLedgerRoutes(app: FastifyInstance, deps: 
       const scope = input.content.applicability_scope;
       const latest = await client.query(`SELECT manifest_version FROM bb_production_review_manifests WHERE manifest_id=$1
         ORDER BY manifest_version DESC LIMIT 1 FOR UPDATE`, [packId]);
-      const grant = await scopedGrant(client, actor, 'rule_pack_operator', scope.market, scope.offering, scope);
+      await requireActiveActor(client, actor);
       const replay = await client.query('SELECT * FROM bb_production_review_manifests WHERE manifest_id=$1 AND request_id=$2', [packId, input.request_id]);
       if (replay.rows[0]) {
-        if (replay.rows[0].request_hash.trim() !== requestHash) fail('REQUEST_CONFLICT');
+        if (replay.rows[0].frozen_by_user_id !== actor || replay.rows[0].request_hash.trim() !== requestHash) fail('REQUEST_CONFLICT');
         return manifestDto(replay.rows[0]);
       }
+      const grant = await scopedGrant(client, actor, 'rule_pack_operator', scope.market, scope.offering, scope);
       manifest.manifest_version = Number(latest.rows[0]?.manifest_version ?? 0) + 1;
       manifest.content_sha256 = productionReviewContentHash(manifest);
       await client.query(`INSERT INTO bb_production_review_manifests
@@ -224,6 +229,13 @@ export function installProductionReviewLedgerRoutes(app: FastifyInstance, deps: 
       const row = await currentManifest(client, manifestId, version);
       if (row.content_sha256.trim() !== input.manifest_content_hash) fail('HASH_MISMATCH');
       const scope = row.content.applicability_scope;
+      await requireActiveActor(client, actor);
+      const replay = await client.query(`SELECT * FROM bb_production_review_attestation_events WHERE manifest_id=$1 AND manifest_version=$2
+        AND reviewer_role=$3 AND reviewer_user_id=$4 AND request_id=$5`, [manifestId, version, role, actor, input.request_id]);
+      if (replay.rows[0]) {
+        if (replay.rows[0].request_hash.trim() !== requestHash) fail('REQUEST_CONFLICT');
+        return attestationDto(replay.rows[0]);
+      }
       const grant = await scopedGrant(client, actor, role === 'industry' ? 'rule_pack_industry_reviewer' : 'rule_pack_technical_reviewer',
         scope.market, scope.offering, scope);
       if (row.frozen_by_user_id === actor) fail('SAME_REVIEWER');
@@ -236,12 +248,6 @@ export function installProductionReviewLedgerRoutes(app: FastifyInstance, deps: 
         WHERE e.manifest_id=$1 AND e.manifest_version=$2 AND e.reviewer_role=$3 AND e.reviewer_user_id=$4
         LIMIT 1`, [manifestId, version, opposite, actor]);
       if (otherRole.rowCount) fail('SAME_REVIEWER');
-      const replay = await client.query(`SELECT * FROM bb_production_review_attestation_events WHERE manifest_id=$1 AND manifest_version=$2
-        AND reviewer_role=$3 AND reviewer_user_id=$4 AND request_id=$5`, [manifestId, version, role, actor, input.request_id]);
-      if (replay.rows[0]) {
-        if (replay.rows[0].request_hash.trim() !== requestHash) fail('REQUEST_CONFLICT');
-        return attestationDto(replay.rows[0]);
-      }
       const existingRole = await client.query(`SELECT g.id,g.role,g.market,g.offering,s.instruments,s.document_stages,
           s.issuer_scopes,s.investor_scopes,s.industry_codes,s.special_feature_scope,s.scope_hash,u.status
         FROM bb_production_review_attestation_events e

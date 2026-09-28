@@ -154,6 +154,9 @@ test('synthetic PostgreSQL ledger enforces scoped grants, immutable hash pins an
     const revocationEvent = await send('POST', raceUrl, revocationRequest);
     assert.equal(revocationEvent.statusCode, 200, revocationEvent.body);
     await pool.query('UPDATE bb_rule_pack_production_reviewer_grants SET revoked_at=now() WHERE id=$1', [grants.technical]);
+    const replayAfterRevocation = await send('POST', raceUrl, revocationRequest);
+    assert.equal(replayAfterRevocation.statusCode, 200, 'the same request must replay after grant revocation');
+    assert.equal(replayAfterRevocation.json().attestation_event_id, revocationEvent.json().attestation_event_id);
     const revokedWithdrawal = await send('POST', `${raceUrl}/${revocationEvent.json().attestation_event_id}/withdrawal`,
       { request_id: `after-revoke-${suffix}`, reason: 'Synthetic revoked reviewer.' });
     assert.equal(revokedWithdrawal.statusCode, 200, 'the original active account may withdraw its own event after grant revocation');
