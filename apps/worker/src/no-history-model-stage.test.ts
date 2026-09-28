@@ -208,12 +208,18 @@ test('multiple valid target facts pass validation and continue to reference sele
 });
 
 test('generation prompt contains target issuer evidence and drops any non-allowlisted reference payload', () => {
+  const privateReference = {
+    issuerFacts: 'REFERENCE ISSUER SECRET: Never disclose this',
+    source_url: 'https://source.example/private-filing', credential_ref: 'licence-secret-reference',
+    withdrawn_version: 'withdrawn-draft-marker', foreign_project: 'other-user-project-marker',
+    reviewed_by: 'reviewer-private-marker', match_score: 'candidate-score-marker',
+  };
   const prompt = buildNoHistoryGenerationPrompt({ scope, profile, facts: [{ factId: 'target-fact-1', statement: 'Target has verified revenue.', evidenceRefs: ['target-audit-p1'], status: 'verified' }],
-    rule, chapters: [{ order: 2, heading: 'Business Overview', issuerFacts: 'REFERENCE ISSUER SECRET: Never disclose this' }, { order: 1, heading: 'Summary' }] as never });
+    rule, chapters: [{ order: 2, heading: 'Business Overview', ...privateReference }, { order: 1, heading: 'Summary' }] as never });
   assert.match(prompt, /Target has verified revenue/);
   assert.match(prompt, /target-fact-1/);
   assert.match(prompt, /Summary/);
-  assert.doesNotMatch(prompt, /REFERENCE ISSUER SECRET/);
+  for (const value of Object.values(privateReference)) assert.equal(prompt.includes(value), false, `generation prompt leaks ${value}`);
   assert.doesNotMatch(prompt, /reference issuer profile/i);
 });
 

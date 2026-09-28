@@ -49,14 +49,14 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
   - `library_sync_failed`（critical，scope=来源 id，按小时去重）：同步最终失败，或部分条目失败（`partial`）时触发。`consecutive_failures` 加 1；只有全部条目成功才清零。
   - `library_source_stale`（warning，scope=来源 id，每个 `sync_interval_seconds` 周期最多一条）：距上次成功（从未成功则从登记时间算起）超过 `BB_LIBRARY_STALE_FACTOR × sync_interval_seconds`。
 - `evaluation_only` 来源照常同步和审核，用于评估，但查询时按使用权过滤，任何版本都不会成为任务候选；有测试覆盖。
-- 资源：解析在 ops 容器内运行 Python 子进程。开启前把 `ops` 的内存上限和 `NODE_OPTIONS` 调到与 worker 相当（默认 64M/40M 只够原有轻量任务），并在出口代理的允许列表中加入 `query.sse.com.cn`、`static.sse.com.cn`。
+- 资源：解析在 ops 容器内运行 Python 子进程。现行 `deploy/m1/compose.yaml` 给 `ops` 384M 内存、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 内存上限为 768M，未设置 `NODE_OPTIONS`。开启同步前按实际 PDF 峰值评估并调高 ops 限额，确认出口代理允许 `query.sse.com.cn`、`static.sse.com.cn`。
 - 增量游标：`{"publish_date": "<最高已见 PUBLISH_DATE>"}`，下一次从同一日期起重扫（重叠一天），重复条目记为 `unchanged`。失败条目以 `retry_items` 写入游标，直到成功为止，不会因游标前进而丢失。
 - 只有全部条目成功时才更新 `last_success_at`；部分失败记 `partial` 并设置 `last_error_code`。
 - 限速：请求间隔 ≥700 ms，单文件下载超时 180 s，单文件上限 150 MiB，按条最多 3 次尝试（退避 5 s × 次数）。
 
 ## 4. 运营接口（`/api/v1/admin/library/*`）
 
-默认拒绝：没有 `bb_library_operator_grants` 有效授权的账号，访问任何管理路径都得到与未知路径相同的 404。`library_reader` 只读；`library_operator` 可执行操作。每次访问写 `bb_log_access_audit`（purpose=`library_read`/`library_operate`）。#79 的统一授权表（PR #152）合入后，应把这两个角色并入 `bb_operator_grants`。
+默认拒绝：没有 `bb_library_operator_grants` 有效授权的账号，访问任何管理路径都得到与未知路径相同的 404。`library_reader` 只读；`library_operator` 可执行操作。每次访问写 `bb_log_access_audit`（purpose=`library_read`/`library_operate`）。#79 的 `bb_operator_grants` 已存在，但参考库路由仍查询独立授权表；不能只配置统一授权表就认为已开通参考库权限。合并角色需要单独设计、迁移与验证。
 
 | 方法 | 路径 | 角色 | 说明 |
 |---|---|---|---|
@@ -128,7 +128,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 ## 8. 已知缺口
 
 - 默认分类器不自动抽取前三大业务；自动抽取属于 Xuefeng 的抽取工作，业务词典与品种取值（`corporate_bond`、`renewable_corporate_bond` 等）尚待 Maxy 确认后进入公共枚举。
-- 现有 Python 解析桥在子进程有任何 stderr 输出时判定失败；真实 SSE PDF 会触发 pypdf 的 “Ignoring wrong pointing object” 警告，因此部分真实文件解析失败（见 PR 证据）。需由解析桥负责人决定是否放宽。
+- Python 解析桥已允许子进程在 stderr 输出警告时返回有效解析结果（#169）；stderr 只生成有界、脱敏诊断，不再单凭 pypdf 的 “Ignoring wrong pointing object” 警告判失败。非零退出、超时、无效响应等仍按对应错误处理；排查时查看诊断代码，不记录原始 stderr 或本地文件路径。
 - SSE 来源在书面许可前为 `evaluation_only`，真实文件不会进入任务候选；首批“真实已审核参考稿”仍依赖 #77 的授权与业务审核。
-- 定时同步已接入 ops 调度器，但默认关闭；在生产开启前需要调高 ops 的内存限制、配置出口允许列表，并完成真实 SSE 首次和增量同步的证据（本 PR 只有合成测试）。告警推送与 #79 统一授权依赖 #35 与 PR #152。
+- 定时同步已接入 ops 调度器，但默认关闭；开启前需按解析峰值复核 ops 内存、配置出口允许列表，并完成真实 SSE 首次和增量同步证据。#79 告警表已接入，外部告警推送须单独验证；参考库授权仍使用独立授权表。
 - 周期目前只能通过 SQL 修改，还没有管理接口。
