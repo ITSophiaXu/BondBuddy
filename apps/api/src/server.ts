@@ -45,6 +45,7 @@ import { prepareUserSubmission, verifiedMaterialVersions } from './user-submissi
 import { scrubSecrets } from './log-ops.js';
 import { installBrowserErrorRoutes } from './browser-errors.js';
 import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
+import { installProductionReviewLedgerRoutes } from './production-review-ledger.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -244,6 +245,7 @@ export function createServer(settings: Settings = {}) {
   installFactReviewRoutes(app,{db,owner});
   installCreditFacilitySupplementRoutes(app,{db,owner});
   installIssuerAnnualProfileReviewRoutes(app,{db,owner});
+  installProductionReviewLedgerRoutes(app,{db,actor:owner});
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
   app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
