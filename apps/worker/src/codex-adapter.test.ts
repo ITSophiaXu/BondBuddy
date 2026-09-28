@@ -90,6 +90,9 @@ test('invocation is contained: read-only, tools disabled, no danger-full-access,
     const resume = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: false, resumeThreadId: 'thread-1' });
     assert.deepEqual(resume.slice(-3), ['resume', 'thread-1', '-']);
     assert.ok(!resume.includes('--ephemeral'));
+    const ephemeral = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: 'thread-1' });
+    assert.ok(ephemeral.includes('--ephemeral'));
+    assert.ok(!ephemeral.includes('resume'), 'an ephemeral home cannot resume a prior thread');
   } finally { await cleanup(); }
 });
 
@@ -159,17 +162,37 @@ test('a material cannot forge the data boundary', () => {
 test('invalid structured JSON gets one bounded re-ask as a new attempt; both attempts are recorded', async () => {
   const { config, cleanup } = await setup();
   try {
-    const j = new MemoryCodexJournal();
-    const r = await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:structured'), j, config);
+    const j = new MemoryCodexJournal(); const t = traces();
+    const r = await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:structured', { onEvent: t.onEvent }), j, config);
     assert.equal(r.status, 'completed'); assert.equal(r.attempts.length, 2);
     assert.deepEqual(r.attempts.map(a => [a.attempt_no, a.outcome, a.error_code]), [[1, 'failed', 'MODEL_OUTPUT_SCHEMA_INVALID'], [2, 'completed', null]]);
     assert.deepEqual(j.observations.map(o => o.retryable), [true, false]);
     assert.equal(r.attempts[0].usage.status, 'measured', 'the invalid answer still consumed measured tokens');
     assert.notEqual(r.attempts[0].call_id, r.attempts[1].call_id);
+    assert.equal(t.seen.length, 2);
+    assert.ok(t.seen.every(e => (e as { argv: string[] }).argv.includes('--ephemeral')));
+    assert.ok(t.seen.every(e => !(e as { argv: string[] }).argv.includes('resume')), 're-ask starts a fresh ephemeral thread');
     const j2 = new MemoryCodexJournal();
     const exhausted = await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:invalid_json'), j2, config);
     assert.equal(exhausted.status, 'failed'); assert.equal(exhausted.error_code, 'MODEL_OUTPUT_SCHEMA_INVALID'); assert.equal(exhausted.attempts.length, 2);
     assert.deepEqual(j2.observations.map(o => o.retryable), [true, false]);
+    const uncertain = await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:nonzero_exit'), new MemoryCodexJournal(), config);
+    assert.equal(uncertain.status, 'needs_reconcile', 'an unexplained process exit remains conservative');
+    assert.equal(uncertain.attempts[1].usage.status, 'unknown');
+    assert.equal(uncertain.attempts[1].framework_thread_id, null, 'the second attempt did not start the prior thread');
+  } finally { await cleanup(); }
+});
+
+test('persistent schema re-ask resumes the existing thread', async () => {
+  const { config, cleanup } = await setup();
+  try {
+    const t = traces();
+    const r = await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:structured', { session: { mode: 'start' }, onEvent: t.onEvent }), new MemoryCodexJournal(), config);
+    assert.equal(r.status, 'completed'); assert.equal(r.attempts.length, 2);
+    const argv = (t.seen[1] as { argv: string[] }).argv;
+    assert.deepEqual(argv.slice(argv.indexOf('resume')), ['resume', r.attempts[0].framework_thread_id, '-']);
+    assert.ok(!argv.includes('--ephemeral'));
+    await disposeCodexSession(config, r.codex_home!);
   } finally { await cleanup(); }
 });
 
