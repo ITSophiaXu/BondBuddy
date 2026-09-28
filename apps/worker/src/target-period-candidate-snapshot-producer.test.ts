@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { test } from 'node:test';
+import { prepareUserSubmission } from '../../api/dist/user-submissions.js';
 import type { DocumentParseResponse } from './document-parser.js';
 import { persistParseSnapshot } from './parse-evidence-repository.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -23,31 +24,38 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
   const notesProject = `producer-notes-project-${suffix}`, otherInformationProject = `producer-other-information-project-${suffix}`;
   const nativeId = `producer-native-${suffix}`, ocrId = `producer-ocr-${suffix}`;
   const noEvidenceId = `producer-no-evidence-${suffix}`, nonfinancialId = `producer-nonfinancial-${suffix}`;
+  const messageProject = `producer-message-project-${suffix}`, raceProject = `producer-race-project-${suffix}`;
+  const messageMaterial = `producer-message-material-${suffix}`, raceMaterial = `producer-race-material-${suffix}`;
   const nativeBytes = Buffer.from(`synthetic native source ${suffix}`), ocrBytes = Buffer.from(`synthetic OCR source ${suffix}`);
   const nativeHash = hash(nativeBytes), ocrHash = hash(ocrBytes);
   const blobs = new Map<string, Buffer>();
 
-  const addMaterial = async (materialId: string, uploadId: string, mediaType: string, sha: string, version = 1, role = 'financial') => {
+  const addMaterial = async (materialId: string, uploadId: string, mediaType: string, sha: string,
+    version = 1, role = 'financial', projectId = project) => {
     await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '1 hour','completed')`,
-    [uploadId, owner, project, `${materialId}.source`, mediaType, 16, sha, role, `synthetic-upload/${uploadId}`]);
+    [uploadId, owner, projectId, `${materialId}.source`, mediaType, 16, sha, role, `synthetic-upload/${uploadId}`]);
     await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,16,$9,$10,'parsed')`,
-    [materialId, version, owner, project, uploadId, role, `${materialId}.source`, mediaType, sha, `synthetic-material/${materialId}/${version}`]);
+    [materialId, version, owner, projectId, uploadId, role, `${materialId}.source`, mediaType, sha, `synthetic-material/${materialId}/${version}`]);
   };
 
   try {
     await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,update_details)
       VALUES($1,$2,'synthetic producer test','update',$3::jsonb),($4,$5,'synthetic foreign project','update',$3::jsonb),
-        ($6,$2,'synthetic notes project','update',$7::jsonb),($8,$2,'synthetic other-information project','update',$9::jsonb)`,
+        ($6,$2,'synthetic notes project','update',$7::jsonb),($8,$2,'synthetic other-information project','update',$9::jsonb),
+        ($10,$2,'synthetic prior-message project','update',$3::jsonb),($11,$2,'synthetic lock-race project','update',$3::jsonb)`,
     [project, owner, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: null, other_information: '   ' }),
       otherProject, otherOwner, notesProject, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: '要求采用其他口径', other_information: null }),
-      otherInformationProject, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: null, other_information: '请补充某事项' })]);
+      otherInformationProject, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: null, other_information: '请补充某事项' }),
+      messageProject, raceProject]);
     await addMaterial(nativeId, `producer-upload-native-${suffix}`,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', nativeHash);
     await addMaterial(ocrId, `producer-upload-ocr-${suffix}`, 'application/pdf', ocrHash);
     await addMaterial(noEvidenceId, `producer-upload-no-evidence-${suffix}`, 'application/pdf', hash('no evidence source'));
     await addMaterial(nonfinancialId, `producer-upload-nonfinancial-${suffix}`, 'application/pdf', hash('nonfinancial source'), 1, 'business');
+    await addMaterial(messageMaterial, `producer-upload-message-${suffix}`, 'application/pdf', hash('message project source'), 1, 'financial', messageProject);
+    await addMaterial(raceMaterial, `producer-upload-race-${suffix}`, 'application/pdf', hash('race project source'), 1, 'financial', raceProject);
 
     const parseRequestId = `producer-parse-request-${suffix}`;
     const parseResponse: DocumentParseResponse = {
@@ -153,6 +161,143 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
     await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, request), /TARGET_PERIOD_CANDIDATE_MATERIAL_STALE/);
     await pool.query(`UPDATE bb_projects SET draft_revision=draft_revision+1 WHERE owner_user_id=$1 AND id=$2`, [owner, project]);
     await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, request), /TARGET_PERIOD_CANDIDATE_DRAFT_STALE/);
+
+    const privateObjects = new Map<string, Buffer>();
+    const privateBlobs = {
+      put: async (key: string, value: Buffer) => { privateObjects.set(key, Buffer.from(value)); },
+      get: async (key: string) => {
+        const value = privateObjects.get(key);
+        if (!value) throw new Error('synthetic private object not found');
+        return Buffer.from(value);
+      },
+      delete: async (key: string) => { privateObjects.delete(key); },
+    } as never;
+    const registerMessage = async (targetProject: string, messageId: string) => {
+      const prepared = await prepareUserSubmission(pool, privateBlobs, `synthetic test message ${messageId}`);
+      const handle = await prepared.write(owner, targetProject);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query("SET LOCAL statement_timeout = '5000ms'");
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+          [`${owner}:${targetProject}:user_submission`]);
+        const saved = await handle.register(client, { kind: 'project_message', messageId,
+          submissionRequestId: `submission-${messageId}`, materialVersions: [] });
+        await client.query('COMMIT');
+        await handle.discard();
+        return { handle, submissionId: saved.submissionId };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        await handle.discard().catch(() => undefined);
+        throw error;
+      } finally { client.release(); }
+    };
+
+    const priorMessage = await registerMessage(messageProject, `prior-${suffix}`);
+    assert.ok(priorMessage.submissionId);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: messageProject,
+      selectedFinancialMaterials: [{ materialId: messageMaterial, materialVersion: 1 }],
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30' }),
+    /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
+    'a previously committed project_message prevents creating a new empty-requirements candidate pin');
+
+    // Pause the real producer after it owns the project FOR UPDATE lock, then let the real
+    // #397 registration helper take its advisory lock and reach the FK KEY SHARE boundary.
+    const raceRequest = { ownerUserId: owner, projectId: raceProject,
+      selectedFinancialMaterials: [{ materialId: raceMaterial, materialVersion: 1 }],
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30' };
+    const preparedRaceMessage = await prepareUserSubmission(pool, privateBlobs, `synthetic race message ${suffix}`);
+    const raceMessageHandle = await preparedRaceMessage.write(owner, raceProject);
+
+    let projectLockObserved!: () => void;
+    const projectLocked = new Promise<void>(resolve => { projectLockObserved = resolve; });
+    let producerResume: () => void = () => undefined;
+    const producerResumePromise = new Promise<void>(resolve => { producerResume = () => resolve(); });
+    let pauseOnce = true;
+    const racePool = {
+      query: (sql: string, values?: unknown[]) => pool.query(sql, values as never),
+      connect: async () => {
+        const client = await pool.connect();
+        return {
+          query: async (sql: string, values?: unknown[]) => {
+            const result = await client.query(sql, values as never);
+            if (pauseOnce && sql.includes('FROM bb_projects') && sql.includes('FOR UPDATE')) {
+              pauseOnce = false;
+              projectLockObserved();
+              await producerResumePromise;
+            }
+            return result as never;
+          },
+          release: () => client.release(),
+        };
+      },
+    } as unknown as Pool;
+    const timeout = async <T>(promise: Promise<T>, milliseconds: number, label: string): Promise<T> => {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        return await Promise.race([promise, new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} exceeded ${milliseconds}ms`)), milliseconds);
+        })]);
+      } finally { if (timer) clearTimeout(timer); }
+    };
+    let messageClient: PoolClient | undefined;
+    let registration: ReturnType<typeof raceMessageHandle.register> | undefined;
+    let candidatePromise: ReturnType<typeof produceTargetPeriodCandidateSnapshot> | undefined;
+    try {
+      candidatePromise = produceTargetPeriodCandidateSnapshot({ ...dependencies, pool: racePool }, raceRequest);
+      await timeout(projectLocked, 5000, 'producer project-row lock acquisition');
+
+      messageClient = await pool.connect();
+      await messageClient.query('BEGIN');
+      await messageClient.query("SET LOCAL statement_timeout = '5000ms'");
+      await messageClient.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+        [`${owner}:${raceProject}:user_submission`]);
+      const pid = Number((await messageClient.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid);
+      registration = raceMessageHandle.register(messageClient, { kind: 'project_message', messageId: `race-${suffix}`,
+        submissionRequestId: `submission-race-${suffix}`, materialVersions: [] });
+      const waitDeadline = Date.now() + 3000;
+      let observedFkBlock = false;
+      while (Date.now() < waitDeadline) {
+        const blocked = await pool.query<{ blocked: boolean; query: string }>(
+          'SELECT cardinality(pg_blocking_pids(pid)) > 0 AS blocked, query FROM pg_stat_activity WHERE pid=$1::int', [pid]);
+        if (blocked.rows[0]?.blocked && blocked.rows[0].query.includes('INSERT INTO bb_snapshot_refs')) {
+          observedFkBlock = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      assert.equal(observedFkBlock, true, 'registration must reach and block at its project FK while producer owns FOR UPDATE');
+
+      producerResume();
+      const candidateRef = await timeout(candidatePromise, 5000, 'candidate append while message waits on the project FK');
+      assert.ok(candidateRef.candidate_set_id);
+      const savedRaceMessage = await timeout(registration, 5000, 'project-message registration after candidate commit');
+      await messageClient.query('COMMIT');
+      const messageCount = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM bb_user_submission_versions
+        WHERE owner_user_id=$1 AND project_id=$2 AND submission_kind='project_message'`, [owner, raceProject]);
+      assert.equal(messageCount.rows[0]!.count, 1, 'the registration waiting at FK completes exactly once after candidate commit');
+      assert.ok(savedRaceMessage.submissionId);
+      const raceSnapshot = await pool.query<{ content: Record<string, unknown> }>(`SELECT content FROM bb_target_period_candidate_snapshots
+        WHERE owner_user_id=$1 AND project_id=$2 AND candidate_set_id=$3 AND candidate_set_version=$4`,
+      [owner, raceProject, candidateRef.candidate_set_id, candidateRef.candidate_set_version]);
+      assert.equal(raceSnapshot.rowCount, 1);
+      assert.deepEqual((raceSnapshot.rows[0]!.content as { supplemental_requirements: { message_ids: string[] } })
+        .supplemental_requirements.message_ids, [], 'the candidate was serialized before the waiting message registration');
+      await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, raceRequest),
+        /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
+      'a request after the lock-ordered message registration rechecks metadata before creating an empty pin');
+      // This is intentionally later project-message state than the stored snapshot. The future
+      // input-lock consumer must revalidate metadata; producer idempotency is not that consumer.
+    } finally {
+      producerResume();
+      if (candidatePromise) await timeout(candidatePromise, 5000, 'candidate cleanup').catch(() => undefined);
+      if (messageClient) {
+        await messageClient.query('ROLLBACK').catch(() => undefined);
+        messageClient.release();
+      }
+      if (registration) await registration.catch(() => undefined);
+      await raceMessageHandle.discard().catch(() => undefined);
+    }
   } finally {
     await pool.end();
   }
