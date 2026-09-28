@@ -6,6 +6,7 @@ import {
 import type { PlatformProcessingCostPayload } from '@bondbuddy/contracts';
 import { date, material, missing, Problem, transaction, uid } from './data.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { errorDiagnostic } from './error-diagnostics.js';
 
 // Must equal python/bondbuddy_document_parser PARSER_VERSION; the worker rejects a snapshot from any other parser.
 export const DEFAULT_DOCUMENT_PARSER_VERSION = 'bondbuddy-document-parser-1.0.7';
@@ -51,8 +52,9 @@ async function journal(client: PoolClient, job: any, type: EventType, state: str
 
 async function structuredError(client: PoolClient, job: any, code: ErrorCode, category: Category, stage: string | null, recovery: 'retry_scheduled' | 'terminal') {
   const id = uid();
-  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [id, job.owner_user_id, job.project_id, job.id, job.trace_id, code, category, stage, job.attempts, recovery]);
+  const diagnostic=errorDiagnostic({code,category,stage,recoveryStatus:recovery});
+  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status,fingerprint,safe_message)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [id, job.owner_user_id, job.project_id, job.id, job.trace_id, code, category, stage, job.attempts, recovery, diagnostic.fingerprint, diagnostic.safeMessage]);
   await emitInternal(client, internalEvent({ kind: 'error.recorded', owner: job.owner_user_id, projectId: job.project_id, jobId: job.id,
     traceId: job.trace_id, jobKind: 'parse', stage, error: { error_id: id, code, category, retryable: recovery === 'retry_scheduled' } }));
 }

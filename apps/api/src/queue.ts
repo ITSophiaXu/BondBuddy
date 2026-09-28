@@ -6,6 +6,7 @@ import { assertGateOpen, ensureExternalCallsAllowed, guardEvidenceWrite } from '
 import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from './trial-guard.js';
 import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 import { assertTestGrant } from './non-production-test.js';
+import { errorDiagnostic } from './error-diagnostics.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -431,8 +432,9 @@ async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:s
   const attempts=(await client.query('SELECT attempts FROM bb_jobs WHERE id=$1',[jobId])).rows[0]?.attempts??0;
   await client.query('UPDATE bb_jobs SET error_code=$2 WHERE id=$1',[jobId,code]);
   const id=uid();
-  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'terminal')`,[id,r.owner_user_id,r.project_id,jobId,r.id,code,category,safeStage,attempts]);
+  const diagnostic=errorDiagnostic({code,category,stage:safeStage,recoveryStatus:'terminal'});
+  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,trace_id,code,category,stage,retry_count,recovery_status,fingerprint,safe_message)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'terminal',$10,$11)`,[id,r.owner_user_id,r.project_id,jobId,r.id,code,category,safeStage,attempts,diagnostic.fingerprint,diagnostic.safeMessage]);
   await emitInternal(client,internalEvent({kind:'error.recorded',owner:r.owner_user_id,projectId:r.project_id,runId:r.id,jobId,traceId:r.id,stage:safeStage,error:{error_id:id,code,category,retryable:false}}));
 }
 

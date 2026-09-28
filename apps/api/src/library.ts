@@ -9,6 +9,7 @@ import {
 import { date, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
 import { emitInternal, internalEvent } from './observability.js';
+import { errorDiagnostic } from './error-diagnostics.js';
 import { assessLibraryRevenueRankProof, LIBRARY_V11_PRODUCTION_LOCK_ENABLED, libraryProfileContentHash, libraryRevenueRankProofHash,
   readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
 export { assessLibraryRevenueRankProof, libraryProfileContentHash, libraryRevenueRankProofHash, persistLibraryRevenueRankProof, readLibraryRevenueRankProofDecision } from './library-revenue-proof.js';
@@ -123,8 +124,9 @@ async function jobEvent(client: PoolClient, job: any, type: string, state: strin
 }
 async function jobError(client: PoolClient, job: any, code: LibraryErrorCode, stage: string | null, recovery: 'retry_scheduled' | 'terminal') {
   const id = uid();
-  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,job_id,trace_id,code,category,stage,retry_count,safe_message_code,recovery_status)
-    VALUES($1,$2,$3,$4,$5,'tool',$6,$7,$8,$9)`, [id, LIBRARY_OWNER, job.id, job.trace_id, PUBLIC_CODE[code], stage, job.attempts, code.toLowerCase(), recovery]);
+  const diagnostic=errorDiagnostic({code:PUBLIC_CODE[code],category:'tool',stage,recoveryStatus:recovery});
+  await client.query(`INSERT INTO bb_observability_errors(id,owner_user_id,job_id,trace_id,code,category,stage,retry_count,safe_message_code,recovery_status,fingerprint,safe_message)
+    VALUES($1,$2,$3,$4,$5,'tool',$6,$7,$8,$9,$10,$11)`, [id, LIBRARY_OWNER, job.id, job.trace_id, PUBLIC_CODE[code], stage, job.attempts, code.toLowerCase(), recovery, diagnostic.fingerprint, diagnostic.safeMessage]);
   await emitInternal(client, internalEvent({ kind: 'error.recorded', owner: LIBRARY_OWNER, jobId: job.id, traceId: job.trace_id, jobKind: 'library', stage,
     error: { error_id: id, code: PUBLIC_CODE[code], category: 'tool', retryable: recovery === 'retry_scheduled' } }));
 }

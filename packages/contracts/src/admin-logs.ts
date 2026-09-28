@@ -16,7 +16,8 @@ export const LOG_CONTENT_TOMBSTONE_REASONS = ['retention_expired', 'user_deleted
 export const ADMIN_USAGE_STATUSES = ['measured', 'pending', 'unknown', 'conflict'] as const;
 export const ADMIN_ATTEMPT_STATUSES = ['pending_reconcile', 'confirmed_not_sent', 'completed', 'failed'] as const;
 // Query parameters accepted by GET /admin/logs/events and /admin/metrics. Anything else is 422.
-export const ADMIN_LOG_FILTERS = ['user_id', 'project_id', 'job_id', 'trace_id', 'from', 'to', 'model_id', 'status', 'error_code', 'limit'] as const;
+export const ERROR_RECOVERY_OUTCOMES = ['recovered', 'retried', 'retried_failed', 'not_retried', 'user_cancelled', 'pending_reconcile', 'retry_scheduled', 'terminal'] as const;
+export const ADMIN_LOG_FILTERS = ['user_id', 'project_id', 'job_id', 'trace_id', 'from', 'to', 'model_id', 'status', 'error_code', 'error_category', 'fingerprint', 'limit'] as const;
 export const ADMIN_LOG_PAGE_LIMIT = 500;
 
 const obj = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
@@ -36,12 +37,13 @@ const PromptRef = obj({ snapshot_id: id, kind: enumOf(['user_prompt', 'model_req
 const Attempt = obj({ attempt_id: id, logical_call_id: id, attempt_no: Type.Integer({ minimum: 1 }), channel: enumOf(RUN_CHANNELS), status: enumOf(ADMIN_ATTEMPT_STATUSES), model_id: nullable(Type.String({ maxLength: 128 })), provider_request_id: nullable(Type.String({ maxLength: 256 })), prompt_snapshot_ref: nullable(id), user_submission_id: nullable(id), usage_status: enumOf(ADMIN_USAGE_STATUSES), usage: TokenBreakdown, corrected: Type.Boolean(), duration_ms: nullable(count), error_code: nullable(code), created_at: utc });
 const UserSubmission = obj({ submission_id: id, snapshot_id: id, kind: enumOf(['run_execute','project_message'] as const), message_id: nullable(id), message_version: nullable(Type.Integer({ minimum: 1 })), version: Type.Integer({ minimum: 1 }), previous_submission_id: nullable(id), content_sha256: hash, input_revision: nullable(Type.Integer({ minimum: 1 })), input_hash: nullable(hash), material_versions: Type.Array(obj({ material_id: id, material_version: Type.Integer({ minimum: 1 }) })), content_state: enumOf(LOG_CONTENT_STATES), created_at: utc });
 const Stage = obj({ seq: Type.Integer({ minimum: 1 }), type: Type.String({ maxLength: 64 }), state: safeCode, stage: nullable(safeCode), reason: nullable(safeCode), occurred_at: utc });
-const ErrorRow = obj({ error_id: id, code, category: safeCode, stage: nullable(safeCode), attempt_id: nullable(id), retry_count: count, fingerprint: nullable(hash), recovery_status: nullable(safeCode), created_at: utc });
+const ErrorRow = obj({ error_id: id, code, category: safeCode, stage: nullable(safeCode), attempt_id: nullable(id), provider_status: nullable(Type.Integer({ minimum: 100, maximum: 599 })), provider_error_type: nullable(safeCode), retry_count: count, fingerprint: nullable(hash), safe_message: nullable(Type.String({ maxLength: 1024 })), safe_stack: nullable(Type.String({ maxLength: 2048 })), recovery_status: nullable(enumOf(ERROR_RECOVERY_OUTCOMES)), created_at: utc });
 const Artifact = obj({ artifact_id: id, version: Type.Integer({ minimum: 1 }), sha256: hash, quality_status: enumOf(['pending', 'passed', 'failed'] as const), delivery_status: enumOf(['pending', ...ARTIFACT_DELIVERY_STATUSES, 'revoked'] as const), created_at: utc });
 const Consumption = obj({ attempts: count, measured_attempts: count, unresolved_attempts: count, ...TokenBreakdown.properties });
 
 export const adminSchemas = {
   AdminLogEventsResponse: obj({ items: Type.Array(AdminLogEvent, { maxItems: ADMIN_LOG_PAGE_LIMIT }), truncated: Type.Boolean() }),
+  AdminErrorCountsResponse: obj({ items: Type.Array(obj({ error_code: code, error_category: safeCode, fingerprint: nullable(hash), count })), audit_id: id }),
   AdminUserSubmissionListResponse: obj({ job_id: id, items: Type.Array(UserSubmission), audit_id: id }),
   AdminJobTimelineResponse: obj({
     job: obj({ job_id: id, user_id: id, project_id: nullable(id), run_id: nullable(id), channel: enumOf(RUN_CHANNELS), operation_id: Type.Optional(nullable(id)), request_id: Type.Optional(nullable(id)), execution_request_id: Type.Optional(nullable(id)), execution_request_key_hash: Type.Optional(nullable(hash)), trace_id: nullable(id), input_revision: Type.Optional(nullable(Type.Integer({ minimum: 1 }))), input_hash: Type.Optional(nullable(hash)), job_type: safeCode, subtype: safeCode, state: safeCode, stage: nullable(safeCode), attempts: count, error_code: nullable(code), created_at: utc, updated_at: utc, duration_ms: nullable(count) }),
@@ -62,7 +64,7 @@ export const adminSchemas = {
     attempts: obj({ total: count, completed: count, failed: count, pending_reconcile: count, confirmed_not_sent: count, conflict: count, duration_ms_avg: nullable(Type.Number({ minimum: 0 })) }),
     consumption: obj({ all_attempts: Consumption, completed_attempts: Consumption, retry_attempts: Consumption }),
     by_model: Type.Array(obj({ model_id: nullable(Type.String({ maxLength: 128 })), attempts: count, completed: count, failed: count, ...TokenBreakdown.properties })),
-    errors: Type.Array(obj({ error_code: code, count }))
+    errors: Type.Array(obj({ error_code: code, error_category: safeCode, fingerprint: nullable(hash), count }))
   }),
   AdminPromptView: obj({ snapshot_id: id, user_id: id, project_id: id, kind: enumOf(['user_prompt', 'model_request', 'structured_input'] as const), version: Type.Integer({ minimum: 1 }), content_sha256: hash, redaction_version: safeCode, media_type: Type.Literal('text/plain; charset=utf-8'), body: Type.String({ description: 'Redacted snapshot body; secrets/codes/cookies were scrubbed before storage.' }), audit_id: id }),
   AdminAlertsResponse: obj({ items: Type.Array(obj({ alert_id: id, kind: enumOf(OPS_ALERT_KINDS), severity: enumOf(['warning', 'critical'] as const), detail: Type.Record(Type.String({ pattern: '^[a-z_]{1,64}$' }), Type.Union([Type.String({ maxLength: 128 }), Type.Integer()])), created_at: utc, acked_at: nullable(utc) })) }),

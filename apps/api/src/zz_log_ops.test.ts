@@ -10,7 +10,7 @@ import { Value } from '@sinclair/typebox/value';
 import { schemas } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest, transaction, uid } from './data.js';
-import { emitInternal, internalEvent, observeUsage } from './observability.js';
+import { emitInternal, internalEvent, observeUsage, recordStructuredError } from './observability.js';
 import { action, finish, recordPotentialCall, type Lease } from './queue.js';
 import { gateState, resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { checkLogHealth, forwardLogs, grantOperator, ndjsonFileSink, ndjsonSizeCapFromEnv, purgeLogContent, revokeOperator, savePromptSnapshot, scrubSecrets, type LogRecord, type LogSink } from './log-ops.js';
@@ -1103,6 +1103,13 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'gateway', sourceEventId: 'g2', status: 'measured', inputTokens: 200, outputTokens: 50, cachedInputTokens: 80, reasoningTokens: 20 });
     await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'framework', sourceEventId: 'f2', status: 'measured', inputTokens: 200, outputTokens: 50, cachedInputTokens: 80, reasoningTokens: 20 });
     await observeUsage(pool, { owner: f.ownerA, attemptId: a3, source: 'provider', sourceEventId: 'u3', status: 'pending' });
+    const errorId = await recordStructuredError(pool, { owner: f.ownerA, projectId: project, jobId: lease.jobId, attemptId: a1,
+      traceId: runId, code: 'DELIVERY_FAILED', category: 'delivery', stage: 'word_delivery', providerStatus: 502,
+      providerErrorType: 'upstream_failure', retryCount: 1, recoveryStatus: 'retried',
+      stack: 'Error: private prompt user@example.com\n    at exportJob123 (/private/material.txt:10:2)' });
+    const recordedError = (await pool.query('SELECT fingerprint,safe_message,safe_stack FROM bb_observability_errors WHERE id=$1', [errorId])).rows[0];
+    assert.match(recordedError.fingerprint, /^[a-f0-9]{64}$/);
+    assert.ok(!JSON.stringify(recordedError).includes('user@example.com'));
 
     // Deny by default: non-operators, owners and wrong-role operators all get 404.
     const adminUrls = [`/api/v1/admin/logs/events`, `/api/v1/admin/metrics`, `/api/v1/admin/jobs/${lease.jobId}/timeline`, `/api/v1/admin/alerts`, `/api/v1/admin/evidence-gate`, `/api/v1/admin/prompts/${snapshot}?reason_code=support_case`];
@@ -1116,7 +1123,7 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
 
     const read = f.as(f.reader);
     // Filter validation is the log-injection boundary for operator input.
-    for (const bad of ['?user_id=a%0d%0aforged', '?unknown=1', '?from=yesterday', '?limit=501', '?error_code=bad code', '?status=RUNNING\n'])
+    for (const bad of ['?user_id=a%0d%0aforged', '?unknown=1', '?from=yesterday', '?limit=501', '?error_code=bad code', '?error_category=unknown', '?fingerprint=bad', '?status=RUNNING\n'])
       assert.equal((await read('GET', `/api/v1/admin/logs/events${bad}`)).statusCode, 422, bad);
     const events = await read('GET', `/api/v1/admin/logs/events?user_id=${f.ownerA}&job_id=${lease.jobId}&model_id=synthetic-model-a&limit=500`);
     assert.equal(events.statusCode, 200, events.body);
@@ -1127,6 +1134,10 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.ok(!events.json().items.some((e: any) => e.logical_call_id === 'qa-call'), 'model filter excludes other model attempts');
     const byTrace = await read('GET', `/api/v1/admin/logs/events?trace_id=${other.runId}`);
     assert.ok(byTrace.json().items.length > 0 && byTrace.json().items.every((e: any) => e.user_id === f.ownerB));
+    const byError = await read('GET', `/api/v1/admin/logs/events?error_category=delivery&fingerprint=${recordedError.fingerprint}`);
+    assert.equal(byError.statusCode, 200, byError.body);
+    assert.deepEqual(byError.json().items.map((e: any) => e.error_id), [errorId]);
+    assert.equal((await f.as(f.nobody)('GET', `/api/v1/admin/logs/events?fingerprint=${recordedError.fingerprint}`)).statusCode, 404);
 
     const timeline = await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`);
     assert.equal(timeline.statusCode, 200, timeline.body);
@@ -1137,6 +1148,7 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.equal(t.prompts[0].template_version, 'synthetic_template_1');
     assert.deepEqual(t.attempts.map((a: any) => [a.logical_call_id, a.attempt_no, a.status, a.usage_status]), [['draft-call', 1, 'failed', 'measured'], ['draft-call', 2, 'completed', 'measured'], ['qa-call', 1, 'pending_reconcile', 'pending']]);
     assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });
+    assert.deepEqual([t.errors[0].provider_status, t.errors[0].provider_error_type, t.errors[0].fingerprint], [502, 'upstream_failure', recordedError.fingerprint]);
     assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');
     assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });
     assert.ok(t.stages.length >= 2);
@@ -1153,6 +1165,10 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });
     assert.ok(m.operations.submitted >= 1);
     assert.ok(!metrics.body.includes('PLAINTEXT_MARKER_79'));
+    const errorMetrics = await read('GET', `/api/v1/admin/metrics?error_code=DELIVERY_FAILED&error_category=delivery&fingerprint=${recordedError.fingerprint}`);
+    assert.equal(errorMetrics.statusCode, 200, errorMetrics.body);
+    assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);
+    assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND purpose IN ('admin_events','admin_metrics')", [f.reader])).rows[0].n >= 2);
 
     // Conflicting report for the completed attempt: unresolved, contributes nothing until corrected.
     await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'framework', sourceEventId: 'f2-late', status: 'measured', inputTokens: 999, outputTokens: 50 });
@@ -1169,6 +1185,11 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_usage_corrections WHERE attempt_id=$1', [a2])).rows[0].n, 0, 'denied write appended nothing');
     const op = f.as(f.operatorUser);
     assert.equal((await op('GET', '/api/v1/admin/logs/events')).statusCode, 404, 'log_operator alone has no read surface');
+    assert.equal((await read('GET', '/api/v1/admin/errors')).statusCode, 404, 'log_reader cannot query operator error counts');
+    const errorCounts = await op('GET', `/api/v1/admin/errors?user_id=${f.ownerA}&error_code=DELIVERY_FAILED&error_category=delivery&fingerprint=${recordedError.fingerprint}`);
+    assert.equal(errorCounts.statusCode, 200, errorCounts.body);
+    assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE id=$1 AND actor_id=$2 AND purpose='admin_error_counts' AND actor_role='log_operator'", [errorCounts.json().audit_id, f.operatorUser])).rows[0].n, 1);
     assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: null, usage_status: 'measured', reason_code: 'x' })).statusCode, 422);
     assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1", [a1])).rows[0].id, usage_status: 'measured', reason_code: 'x' })).statusCode, 409, 'observation of another attempt');
     const corrected = await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, validCorrection);

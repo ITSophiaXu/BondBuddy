@@ -4,6 +4,7 @@ import { Pool, type PoolClient } from 'pg';
 import { digest, missing, transaction, uid, type PrivateBlobs } from './data.js';
 import { guardEvidenceWrite } from './evidence-gate.js';
 import type { UploadRejectionReason, UploadStructureDetail } from './upload-safety.js';
+import { errorDiagnostic, type RecoveryOutcome } from './error-diagnostics.js';
 
 const safeCode=/^[a-z][a-z0-9_]{0,63}$/;
 const validId=(value:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -121,15 +122,18 @@ export async function observeUsage(pool:Pool,input:UsageInput) {
     return true;
  }));
 }
-export async function recordStructuredError(pool:Pool,input:{owner:string;projectId?:string;jobId?:string;attemptId?:string;traceId:string;code:typeof ERROR_CODES[number];category:typeof ERROR_CATEGORIES[number];stage?:string;providerStatus?:number;retryCount?:number;fingerprint?:string;safeMessageCode?:string;recoveryStatus?:string}) {
-  if(!ERROR_CODES.includes(input.code)||!ERROR_CATEGORIES.includes(input.category)||!validId(input.traceId)|| (input.fingerprint&&!/^[a-f0-9]{64}$/.test(input.fingerprint))||(input.safeMessageCode&&!safeCode.test(input.safeMessageCode))||(input.stage&&!safeCode.test(input.stage))||(input.recoveryStatus&&!safeCode.test(input.recoveryStatus)))throw new Error('Invalid structured error');
+export async function recordStructuredError(pool:Pool,input:{owner:string;projectId?:string;jobId?:string;attemptId?:string;traceId:string;code:typeof ERROR_CODES[number];category:typeof ERROR_CATEGORIES[number];stage?:string;providerStatus?:number;providerErrorType?:string;retryCount?:number;stack?:string;safeMessageCode?:string;recoveryStatus?:RecoveryOutcome}) {
+  if(!validId(input.traceId)||(input.safeMessageCode&&!safeCode.test(input.safeMessageCode))||
+    (input.providerStatus!==undefined&&(!Number.isInteger(input.providerStatus)||input.providerStatus<100||input.providerStatus>599))||
+    (input.retryCount!==undefined&&(!Number.isInteger(input.retryCount)||input.retryCount<0)))throw new Error('Invalid structured error');
+  const diagnostic=errorDiagnostic({...input,providerErrorType:input.providerErrorType,recoveryStatus:input.recoveryStatus});
   return transaction(pool,async client=>{
     if(input.jobId){
       const job=await client.query('SELECT r.project_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.id=$1 AND j.owner_user_id=$2',[input.jobId,input.owner]);
       if(!job.rowCount|| (input.projectId&&input.projectId!==job.rows[0].project_id))throw missing();
     }
     const id=uid();
-    await client.query('INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,attempt_id,trace_id,code,category,stage,provider_status,retry_count,fingerprint,safe_message_code,recovery_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[id,input.owner,input.projectId??null,input.jobId??null,input.attemptId??null,input.traceId,input.code,input.category,input.stage??null,input.providerStatus??null,input.retryCount??0,input.fingerprint??null,input.safeMessageCode??null,input.recoveryStatus??null]);
+    await client.query('INSERT INTO bb_observability_errors(id,owner_user_id,project_id,job_id,attempt_id,trace_id,code,category,stage,provider_status,retry_count,fingerprint,safe_message_code,recovery_status,provider_error_type,safe_message,safe_stack) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)',[id,input.owner,input.projectId??null,input.jobId??null,input.attemptId??null,input.traceId,input.code,input.category,input.stage??null,input.providerStatus??null,input.retryCount??0,diagnostic.fingerprint,input.safeMessageCode??null,input.recoveryStatus??'not_retried',input.providerErrorType??null,diagnostic.safeMessage,diagnostic.safeStack]);
     await emitInternal(client,internalEvent({kind:'error.recorded',owner:input.owner,projectId:input.projectId,jobId:input.jobId,traceId:input.traceId,error:{error_id:id,code:input.code,category:input.category,retryable:false}}));
     return id;
   });
