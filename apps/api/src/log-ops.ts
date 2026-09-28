@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
 import { Value } from '@sinclair/typebox/value';
 import { Pool, type PoolClient } from 'pg';
-import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, schemas, type OperatorRole } from '@bondbuddy/contracts';
+import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, ERROR_CATEGORIES, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { assertTestChannelReadable, testChannelEnabled } from './non-production-test.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
@@ -965,7 +965,7 @@ export async function audit(client: PoolClient, input: { actorId: string; role: 
   return id;
 }
 
-export type AdminFilter = { user_id?: string; project_id?: string; job_id?: string; trace_id?: string; from?: Date; to?: Date; model_id?: string; status?: string; error_code?: string; limit: number };
+export type AdminFilter = { user_id?: string; project_id?: string; job_id?: string; trace_id?: string; from?: Date; to?: Date; model_id?: string; status?: string; error_code?: string; error_category?: typeof ERROR_CATEGORIES[number]; fingerprint?: string; limit: number };
 const invalid = () => new Problem(422, 'VALIDATION_FAILED', 'Invalid log filter');
 /** Strict allow-list parsing; also the log-injection boundary for operator input. */
 export function parseAdminFilter(query: Record<string, unknown>): AdminFilter {
@@ -977,12 +977,32 @@ export function parseAdminFilter(query: Record<string, unknown>): AdminFilter {
     else if (key === 'model_id') { if (!/^[A-Za-z0-9._-]{1,128}$/.test(raw)) throw invalid(); result.model_id = raw; }
     else if (key === 'status') { if (!safeCode.test(raw)) throw invalid(); result.status = raw; }
     else if (key === 'error_code') { if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(raw)) throw invalid(); result.error_code = raw; }
+    else if (key === 'error_category') { if (!(ERROR_CATEGORIES as readonly string[]).includes(raw)) throw invalid(); result.error_category = raw as typeof ERROR_CATEGORIES[number]; }
+    else if (key === 'fingerprint') { if (!/^[a-f0-9]{64}$/.test(raw)) throw invalid(); result.fingerprint = raw; }
     else if (key === 'limit') { if (!/^[1-9][0-9]{0,2}$/.test(raw) || Number(raw) > ADMIN_LOG_PAGE_LIMIT) throw invalid(); result.limit = Number(raw); }
   }
   if (result.from && result.to && result.from > result.to) throw invalid();
   return result;
 }
-const filterArgs = (f: AdminFilter) => [f.user_id ?? null, f.project_id ?? null, f.job_id ?? null, f.trace_id ?? null, f.from ?? null, f.to ?? null, f.model_id ?? null, f.status ?? null, f.error_code ?? null];
+const filterArgs = (f: AdminFilter) => [f.user_id ?? null, f.project_id ?? null, f.job_id ?? null, f.trace_id ?? null, f.from ?? null, f.to ?? null, f.model_id ?? null, f.status ?? null, f.error_code ?? null, f.error_category ?? null, f.fingerprint ?? null];
+
+export async function adminErrorCounts(pool: Pool, actorId: string, filter: AdminFilter) {
+  return transaction(pool, async client => {
+    const auditId = await audit(client, { actorId, role: 'log_operator', owner: filter.user_id, purpose: 'admin_error_counts', filter });
+    const rows = await client.query(`SELECT e.code error_code,e.category error_category,e.fingerprint,count(*)::int count
+      FROM bb_observability_errors e LEFT JOIN bb_jobs j ON j.id=e.job_id
+      WHERE ($1::text IS NULL OR e.owner_user_id=$1) AND ($2::text IS NULL OR e.project_id=$2)
+        AND ($3::text IS NULL OR e.job_id=$3) AND ($4::text IS NULL OR e.trace_id=$4)
+        AND ($5::timestamptz IS NULL OR e.created_at>=$5) AND ($6::timestamptz IS NULL OR e.created_at<=$6)
+        AND ($7::text IS NULL OR EXISTS (SELECT 1 FROM bb_model_call_attempts a WHERE a.id=e.attempt_id AND a.model_id=$7))
+        AND ($8::text IS NULL OR j.state=$8) AND ($9::text IS NULL OR e.code=$9)
+        AND ($10::text IS NULL OR e.category=$10) AND ($11::text IS NULL OR e.fingerprint=$11)
+        AND ($12::boolean OR j.channel IS DISTINCT FROM 'non_production_test')
+      GROUP BY e.code,e.category,e.fingerprint ORDER BY count DESC,e.code,e.category,e.fingerprint LIMIT $13`,
+      [...filterArgs(filter), testChannelEnabled(), filter.limit]);
+    return { items: rows.rows.map(r => ({ ...r, fingerprint: r.fingerprint?.trim() ?? null })), audit_id: auditId };
+  });
+}
 
 export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilter) {
   return transaction(pool, async client => {
@@ -993,8 +1013,10 @@ export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilt
         AND ($7::text IS NULL OR EXISTS (SELECT 1 FROM bb_model_call_attempts a WHERE a.job_id=e.job_id AND a.model_id=$7
              AND (e.event->>'logical_call_id' IS NULL OR (a.logical_call_id=e.event->>'logical_call_id' AND a.attempt_no=(e.event->>'attempt_no')::int))))
         AND ($8::text IS NULL OR e.event->>'status'=$8) AND ($9::text IS NULL OR e.event->'error'->>'code'=$9)
-        AND ($11::boolean OR e.channel IS DISTINCT FROM 'non_production_test')
-      ORDER BY e.created_at,e.id LIMIT $10`, [...filterArgs(filter), filter.limit + 1, testChannelEnabled()]);
+        AND ($10::text IS NULL OR EXISTS (SELECT 1 FROM bb_observability_errors d WHERE d.id=e.event->'error'->>'error_id' AND d.category=$10))
+        AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM bb_observability_errors d WHERE d.id=e.event->'error'->>'error_id' AND d.fingerprint=$11))
+        AND ($13::boolean OR e.channel IS DISTINCT FROM 'non_production_test')
+      ORDER BY e.created_at,e.id LIMIT $12`, [...filterArgs(filter), filter.limit + 1, testChannelEnabled()]);
     const rows = q.rows.slice(0, filter.limit);
     return { truncated: q.rows.length > filter.limit, items: rows.map(r => ({ event_id: r.id, kind: r.kind, occurred_at: iso(r.created_at)!, user_id: r.owner_user_id, project_id: r.project_id, job_id: r.job_id, run_id: r.run_id, channel: r.channel, trace_id: r.trace_id, actor_type: r.event.actor_type, status: r.event.status ?? null, stage: r.event.stage ?? null, error_code: r.event.error?.code ?? null, error_id: r.event.error?.error_id ?? null, logical_call_id: r.event.logical_call_id ?? null, attempt_no: r.event.attempt_no ?? null, prompt_snapshot_ref: r.event.prompt_snapshot_ref ?? null })) };
   });
@@ -1044,7 +1066,7 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
       user_submissions: submissions.map(s => ({ submission_id:s.id,snapshot_id:s.snapshot_id,kind:s.submission_kind,message_id:s.message_id,message_version:s.message_version,version:s.version,previous_submission_id:s.previous_submission_id,content_sha256:s.content_sha256.trim(),input_revision:s.input_revision,input_hash:s.input_hash?.trim()??null,material_versions:s.material_versions,content_state:s.tombstone?'purged':'available',created_at:iso(s.created_at)! })),
       stages,
       attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, channel: a.channel ?? 'production', status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, user_submission_id: a.user_submission_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)! })),
-      errors: errors.map(e => ({ error_id: e.id, code: e.code, category: e.category, stage: e.stage, attempt_id: e.attempt_id, retry_count: e.retry_count, fingerprint: e.fingerprint?.trim() ?? null, recovery_status: e.recovery_status, created_at: iso(e.created_at)! })),
+      errors: errors.map(e => ({ error_id: e.id, code: e.code, category: e.category, stage: e.stage, attempt_id: e.attempt_id, provider_status: e.provider_status, provider_error_type: e.provider_error_type, retry_count: e.retry_count, fingerprint: e.fingerprint?.trim() ?? null, safe_message: e.safe_message, safe_stack: e.safe_stack, recovery_status: e.recovery_status, created_at: iso(e.created_at)! })),
       artifact: artifact ? { artifact_id: artifact.id, version: artifact.version, sha256: artifact.sha256.trim(), quality_status: artifact.quality_status, delivery_status: artifact.delivery_status, created_at: iso(artifact.created_at)! } : null,
       outcome: { state, error_code: job.error_code ?? errors.at(-1)?.code ?? null, artifact_available: !!artifact && artifact.quality_status === 'passed' && ['available','test_only'].includes(artifact.delivery_status) },
       consumption: { all_attempts: consumption(usageRows), completed_attempts: consumption(usageRows.filter(r => r.call_status === 'completed')) }
@@ -1062,7 +1084,10 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
         AND ($4::text IS NULL OR COALESCE(j.trace_id,j.run_id)=$4) AND ($5::timestamptz IS NULL OR j.created_at>=$5) AND ($6::timestamptz IS NULL OR j.created_at<=$6)
         AND ($7::text IS NULL OR EXISTS (SELECT 1 FROM bb_model_call_attempts a WHERE a.job_id=j.id AND a.model_id=$7))
         AND ($8::text IS NULL OR j.state=$8)
-        AND ($9::text IS NULL OR j.error_code=$9 OR EXISTS (SELECT 1 FROM bb_observability_errors e WHERE e.job_id=j.id AND e.code=$9)))`;
+        AND (($9::text IS NULL AND $10::text IS NULL AND $11::text IS NULL)
+          OR ($10::text IS NULL AND $11::text IS NULL AND j.error_code=$9)
+          OR EXISTS (SELECT 1 FROM bb_observability_errors e WHERE e.job_id=j.id
+            AND ($9::text IS NULL OR e.code=$9) AND ($10::text IS NULL OR e.category=$10) AND ($11::text IS NULL OR e.fingerprint=$11))))`;
     const jobs = (await client.query(`${scope} SELECT count(*)::int total, count(*) FILTER (WHERE state='succeeded')::int succeeded, count(*) FILTER (WHERE state='failed')::int failed,
         count(*) FILTER (WHERE state='cancelled')::int cancelled, count(*) FILTER (WHERE state='rejected')::int rejected,
         avg(EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','test_completed','failed','cancelled')) avg_ms,
@@ -1070,7 +1095,9 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
     const attempts = (await client.query(`${scope} SELECT a.id,a.model_id,a.status call_status,a.attempt_no,u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens,rt.duration_ms
         FROM scoped j JOIN bb_model_call_attempts a ON a.job_id=j.id JOIN bb_call_usage_effective u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id
         WHERE ($7::text IS NULL OR a.model_id=$7)`, args)).rows.map(a => ({ ...a, input_tokens: int(a.input_tokens), output_tokens: int(a.output_tokens), cached_input_tokens: int(a.cached_input_tokens), reasoning_tokens: int(a.reasoning_tokens) }));
-    const errors = (await client.query(`${scope} SELECT e.code error_code,count(*)::int count FROM scoped j JOIN bb_observability_errors e ON e.job_id=j.id GROUP BY e.code ORDER BY count DESC,e.code`, args)).rows;
+    const errors = (await client.query(`${scope} SELECT e.code error_code,e.category error_category,e.fingerprint,count(*)::int count FROM scoped j JOIN bb_observability_errors e ON e.job_id=j.id
+        WHERE ($9::text IS NULL OR e.code=$9) AND ($10::text IS NULL OR e.category=$10) AND ($11::text IS NULL OR e.fingerprint=$11)
+        GROUP BY e.code,e.category,e.fingerprint ORDER BY count DESC,e.code,e.category,e.fingerprint`, args)).rows.map(e=>({...e,fingerprint:e.fingerprint?.trim()??null}));
     const operations = (await client.query(`SELECT count(*) FILTER (WHERE status='submitted')::int submitted, count(*) FILTER (WHERE status='rejected')::int rejected FROM bb_operations o
         WHERE ($1::text IS NULL OR o.owner_user_id=$1) AND ($2::text IS NULL OR o.project_id=$2) AND ($3::text IS NULL OR o.trace_id=$3)
           AND ($4::timestamptz IS NULL OR o.created_at>=$4) AND ($5::timestamptz IS NULL OR o.created_at<=$5) AND ($6::text IS NULL OR o.error_code=$6)`, [filter.user_id ?? null, filter.project_id ?? null, filter.trace_id ?? null, filter.from ?? null, filter.to ?? null, filter.error_code ?? null])).rows[0];
