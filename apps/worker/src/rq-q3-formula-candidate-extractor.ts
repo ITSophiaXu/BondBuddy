@@ -104,6 +104,9 @@ function resultBase(request: SemanticFactExtractionRequest) {
  * Maps only the eight named current-period formula-cache cells in the authorized rq Q3 workbook.
  * Cached numbers are retained as external candidates with mandatory uncertainty; this extractor
  * does not calculate formulas, assert source freshness, or produce audited/verified facts.
+ * A formula with a cached-but-unverified numeric result stays an external `needs_confirmation`
+ * candidate, while a formula whose cache is genuinely absent, a conflicting statement caliber, or
+ * a changed parser version fails closed as `needs_review` with a distinct reason code.
  */
 export function createRqQ3FormulaCandidateExtractor(
   resolveParseCompletion: NativeFinancialParseCompletionResolver,
@@ -149,21 +152,33 @@ export function createRqQ3FormulaCandidateExtractor(
         const period = periodAnchor.length === 1 ? periodFor(target, periodValue(periodAnchor[0]!)) : null;
         const titleText = title.length === 1 ? normalizedLabel(title[0]!.literal_quote) : '';
         const titleMatches = titleText.includes(target.titleContains) && titleText.includes(target.titleKind);
-        const complete = title.length === 1 && titleMatches &&
+        // A statement title that names both consolidated and parent scopes, or the opposite scope only,
+        // is a caliber conflict rather than a candidate: never guess which column the cell belongs to.
+        const oppositeScope = target.scope === 'consolidated' ? '母公司' : '合并';
+        const scopeConflict = title.length === 1 &&
+          ((titleText.includes('合并') && titleText.includes('母公司')) || (!titleMatches && titleText.includes(oppositeScope)));
+        const valueIsFormula = value.length === 1 && value[0]!.literal_quote.startsWith('=');
+        const valueHasUnverifiedCache = valueIsFormula && decimal(cache) &&
+          value[0]!.uncertainty.includes('formula_cached_result_unverified');
+        const complete = title.length === 1 && titleMatches && !scopeConflict &&
           periodAnchor.length === 1 && period !== null && header.length === 1 && header[0]!.literal_quote.trim() === target.headerText &&
           units.length === 1 && units[0]!.literal_quote.trim() === '金额单位：人民币元' &&
-          label.length === 1 && target.label.test(normalizedLabel(label[0]!.literal_quote)) && value.length === 1 &&
-          value[0]!.literal_quote.startsWith('=') && value[0]!.uncertainty.includes('formula_cached_result_unverified') &&
-          decimal(cache) && value[0]!.uncertainty.length > 0;
+          label.length === 1 && target.label.test(normalizedLabel(label[0]!.literal_quote)) &&
+          valueHasUnverifiedCache && value[0]!.uncertainty.length > 0;
         if (!complete) {
           const refs = [...new Set(support.map(record => record.record_id))];
           if (!refs.length) throw fail('RQ_Q3_TARGET_EVIDENCE_MISSING');
-          const reasonCode = title.length !== 1 || !titleMatches ? 'RQ_Q3_SCOPE_HEADER_MISSING'
-            : periodAnchor.length !== 1 || period === null ? 'RQ_Q3_PERIOD_HEADER_UNRESOLVED'
-              : header.length !== 1 || header[0]!.literal_quote.trim() !== target.headerText ? 'RQ_Q3_CURRENT_COLUMN_HEADER_UNRESOLVED'
-                : units.length !== 1 || units[0]!.literal_quote.trim() !== '金额单位：人民币元' ? 'RQ_Q3_UNIT_HEADER_UNRESOLVED'
-                  : label.length !== 1 || !target.label.test(normalizedLabel(label[0]!.literal_quote)) ? 'RQ_Q3_METRIC_LABEL_UNRESOLVED'
-                    : 'RQ_Q3_FORMULA_CACHE_ANCHOR_INCOMPLETE';
+          const reasonCode = title.length !== 1 ? 'RQ_Q3_SCOPE_HEADER_MISSING'
+            : scopeConflict ? 'RQ_Q3_SCOPE_CONFLICT'
+              : !titleMatches ? 'RQ_Q3_SCOPE_HEADER_MISSING'
+                : periodAnchor.length !== 1 || period === null ? 'RQ_Q3_PERIOD_HEADER_UNRESOLVED'
+                  : header.length !== 1 || header[0]!.literal_quote.trim() !== target.headerText ? 'RQ_Q3_CURRENT_COLUMN_HEADER_UNRESOLVED'
+                    : units.length !== 1 || units[0]!.literal_quote.trim() !== '金额单位：人民币元' ? 'RQ_Q3_UNIT_HEADER_UNRESOLVED'
+                      : label.length !== 1 || !target.label.test(normalizedLabel(label[0]!.literal_quote)) ? 'RQ_Q3_METRIC_LABEL_UNRESOLVED'
+                        // Distinguish a formula cell whose cache is genuinely absent (or non-numeric) from a
+                        // cached value whose surrounding anchors are incomplete. Neither ever becomes a fact.
+                        : valueIsFormula && !decimal(cache) ? 'RQ_Q3_FORMULA_CACHE_MISSING'
+                          : 'RQ_Q3_FORMULA_CACHE_ANCHOR_INCOMPLETE';
           needsReview.push({ evidence_refs: refs, reason_code: reasonCode });
           continue;
         }
