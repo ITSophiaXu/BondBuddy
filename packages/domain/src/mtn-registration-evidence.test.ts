@@ -94,6 +94,35 @@ test('quota rules are checked only on the selected notice, not an older non-sele
   assert.equal(result.decision, 'evidence_shape_pass');
 });
 
+test('selected notice requires a resolved quota state and a resolved used-quota state', () => {
+  const unknownQuota = checkMtnRegistrationEvidence(input({
+    registrationArrangement: ev('product_by_product'),
+    quotaLedgerCompleteness: ev('complete'),
+    notices: [notice({
+      statedQuota: { value: null, citations: [{ ...citation }], uncertainty: 'clear' },
+      statedUsedQuota: ev({ status: 'stated', amount: '100', currency: 'CNY', minorUnitScale: 2 }),
+    })],
+  }));
+  assert.equal(unknownQuota.decision, 'needs_review');
+  assert.ok(unknownQuota.reasons.includes('notice_0_quota_state_missing'));
+
+  const unknownUsed = checkMtnRegistrationEvidence(input({
+    notices: [notice({ statedUsedQuota: { value: null, citations: [{ ...citation }], uncertainty: 'clear' } })],
+  }));
+  assert.equal(unknownUsed.decision, 'needs_review');
+  assert.ok(unknownUsed.reasons.includes('notice_0_used_quota_state_missing_uncited_or_uncertain'));
+
+  const mismatchedStates = checkMtnRegistrationEvidence(input({
+    notices: [notice({
+      statedUsedQuota: ev({ status: 'stated', amount: '100', currency: 'CNY', minorUnitScale: 2 }),
+    })],
+  }));
+  assert.equal(mismatchedStates.decision, 'needs_review');
+  assert.ok(mismatchedStates.reasons.includes('notice_0_quota_and_usage_state_mismatch'));
+
+  assert.equal(checkMtnRegistrationEvidence(input()).decision, 'evidence_shape_pass');
+});
+
 test('missing notice, tier, transition, expiry, or required PDFI quota remains needs_review', () => {
   const noNotice = checkMtnRegistrationEvidence(input({ notices: [] }));
   assert.equal(noNotice.decision, 'needs_review');

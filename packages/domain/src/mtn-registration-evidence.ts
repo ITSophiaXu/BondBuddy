@@ -255,6 +255,10 @@ export function checkMtnRegistrationEvidence(input: MtnRegistrationEvidenceInput
     const quota = notice.statedQuota.value?.status === 'stated' ? notice.statedQuota.value : null;
     const usedValue = notice.statedUsedQuota.value;
     const used = usedValue?.status === 'stated' ? usedValue : null;
+    if (notice.statedQuota.value === null) {
+      // Unknown is not the same as an explicitly evidenced absence of a quota.
+      reviewReasons.push(`notice_${index}_quota_state_missing`);
+    }
     if (!hasEvidence(notice.statedUsedQuota) || !isClear(notice.statedUsedQuota) || usedValue === null) {
       reviewReasons.push(`notice_${index}_used_quota_state_missing_uncited_or_uncertain`);
     }
