@@ -252,6 +252,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
       [['parse', 1, 1, 'failed'], ['parse', 2, 1, 'failed'], ['parse', 3, 1, 'failed']], 'failed consumed parser attempts remain separately measurable');
     assert.deepEqual((await errors(textJob.id)).map(e => [e.code, e.recovery_status, e.retry_count]),
       [['MATERIAL_UNREADABLE', 'retry_scheduled', 1], ['MATERIAL_UNREADABLE', 'retry_scheduled', 2], ['MATERIAL_UNREADABLE', 'terminal', 3]]);
+    assert.deepEqual((await pool.query('SELECT outcome FROM bb_error_recovery_events WHERE job_id=$1 ORDER BY error_id', [textJob.id])).rows.map(r => r.outcome),
+      ['retried_failed', 'retried_failed'], 'terminal failure resolves both earlier retry records');
     assert.deepEqual((await outboxTypes(textJob.id)).filter(t => t !== 'material_parse.claimed'), ['material_parse.enqueued', 'material_parse.retry_scheduled', 'material_parse.retry_scheduled', 'material_parse.failed']);
     const failureLog = await internal(textJob.id);
     assert.equal(failureLog.filter(r => r.kind === 'error.recorded').length, 3);
@@ -272,6 +274,17 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.equal(await runMaterialParseOnce(deps()), 'succeeded');
     [timeoutJob] = await jobFor(timeoutId);
     assert.equal(timeoutJob.state, 'succeeded'); assert.equal(timeoutJob.attempts, 2);
+    assert.deepEqual((await pool.query('SELECT outcome FROM bb_error_recovery_events WHERE job_id=$1', [timeoutJob.id])).rows.map(r => r.outcome),
+      ['recovered'], 'later parse success resolves the earlier timeout');
+
+    const cancelledBytes = Buffer.from('Synthetic cancelled parse\n', 'utf8');
+    const cancelledId = (await complete(projectId, await startUpload(projectId, cancelledBytes, 'text/plain', 'audit', 'cancelled.txt'), cancelledBytes)).json().material_id as string;
+    parser = async () => { throw new Error('DOCUMENT_PARSER_TIMEOUT'); };
+    assert.equal(await runMaterialParseOnce(deps()), 'retry_scheduled');
+    const [cancelledJob] = await jobFor(cancelledId);
+    assert.equal((await send('POST', `/api/v1/projects/${projectId}/materials/${cancelledId}/parse-job/cancel`, { reason: 'synthetic cancel' })).statusCode, 200);
+    assert.deepEqual((await pool.query('SELECT outcome FROM bb_error_recovery_events WHERE job_id=$1', [cancelledJob.id])).rows.map(r => r.outcome),
+      ['user_cancelled'], 'cancellation remains distinct from recovery and retry failure');
 
     // A crash on the final attempt is also bounded: the recovered lease fails instead of running again.
     parser = async request => { parserCalls++; return syntheticParse(request); };
