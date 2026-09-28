@@ -8,13 +8,55 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas } from '@bondbuddy/contracts';
-import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
 const validateRecord = new Ajv({ strict: true }).compile(schemas.ModelAdapterAttemptRecord);
 const answerSchema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string' && Number.isInteger((v as { n?: unknown }).n);
+
+test('output schema normalization covers historical nested const/enum nodes without changing validation', () => {
+  const original = structuredClone(historicalGenerationSchema);
+  const normalized = normalizeCodexOutputSchema(historicalGenerationSchema);
+  assert.deepEqual(historicalGenerationSchema, original, 'caller schema stays untouched');
+  const unresolved: string[] = [];
+  const walk = (node: unknown, path: string) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    const s = node as Record<string, unknown>;
+    if (('const' in s || 'enum' in s) && !('type' in s || 'anyOf' in s || '$ref' in s)) unresolved.push(path);
+    for (const key of ['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas']) {
+      const children = s[key]; if (children && typeof children === 'object') for (const [name, child] of Object.entries(children)) walk(child, `${path}.${name}`);
+    }
+    for (const key of ['items', 'additionalProperties']) walk(s[key], `${path}.${key}`);
+    for (const key of ['anyOf', 'oneOf', 'allOf']) if (Array.isArray(s[key])) s[key].forEach((child, i) => walk(child, `${path}.${key}[${i}]`));
+  };
+  walk(normalized, '$');
+  assert.deepEqual(unresolved, []);
+  const before = new Ajv({ strict: false }).compile(original);
+  const after = new Ajv({ strict: false }).compile(normalized);
+  const good = { schema_version: 'historical-generation-v1', blocks: [{ record_id: 'r1', disposition: 'retain', reason: 'synthetic', changes: [] }], columns: [] };
+  for (const value of [good, { ...good, schema_version: 'wrong' }, { ...good, blocks: [{ ...good.blocks[0], disposition: 'wrong' }] }, { ...good, columns: [{ cells: [{ after_record_id: 'r1', expression: { operation: 'fact', candidate_ids: ['f1'] }, display: { kind: 'period', style: 'annual' } }] }] },
+    { ...good, columns: [{ cells: [{ after_record_id: 'r1', expression: { operation: 'fact', candidate_ids: ['f1'] }, display: { kind: 'period', style: 'wrong' } }] }] }]) {
+    assert.equal(before(value), after(value));
+  }
+  assert.equal(before(good), true);
+  assert.equal(before({ ...good, schema_version: 'wrong' }), false);
+});
+
+test('normalization handles nested schema keywords and rejects mixed primitive enums', () => {
+  const schema = { oneOf: [{ allOf: [{ properties: { x: { const: 3 }, y: { enum: [1, 2.5] } }, additionalProperties: { enum: [true] } }] }, { items: { anyOf: [{ const: null }, { const: 'ok' }] } }] };
+  const original = structuredClone(schema);
+  const n = normalizeCodexOutputSchema(schema) as any;
+  assert.equal((n.oneOf[0].allOf[0].properties.x as { type?: string }).type, 'integer');
+  assert.equal((n.oneOf[0].allOf[0].properties.y as { type?: string }).type, 'number');
+  assert.equal((n.oneOf[0].allOf[0].additionalProperties as { type?: string }).type, 'boolean');
+  assert.equal((n.oneOf[1].items.anyOf[0] as { type?: string }).type, 'null');
+  assert.equal((n.oneOf[1].items.anyOf[1] as { type?: string }).type, 'string');
+  assert.throws(() => normalizeCodexOutputSchema({ enum: ['x', 1] }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+  assert.deepEqual(schema, original);
+});
 
 async function setup(overrides: Partial<CodexAdapterConfig> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'bb-codex-test-'));
@@ -155,6 +197,19 @@ test('interrupted, non-zero exit, broken stream and turn.failed map to stable co
       assert.equal(r.attempts[0].usage.status, 'unknown', `${scenario}: no turn.completed means unknown, never 0`);
       assert.ok(validateRecord(r.attempts[0]), scenario);
     }
+  } finally { await cleanup(); }
+});
+
+test('explicit provider request rejection is a failed attempt with unknown usage and no tool attempt', async () => {
+  const { config, cleanup } = await setup();
+  try {
+    const j = new MemoryCodexJournal();
+    const r = await runContainedModelCall(call('SCENARIO:request_rejected'), j, config);
+    assert.equal(r.status, 'failed'); assert.equal(r.error_code, 'MODEL_PROVIDER_REQUEST_REJECTED');
+    assert.equal(r.attempts[0].tool_attempts, 0, 'metadata warning is a text error item');
+    assert.equal(r.attempts[0].usage.status, 'unknown');
+    assert.equal(j.observations[0].observation.outcome, 'failed');
+    assert.ok(!JSON.stringify(r.attempts).includes('synthetic rejected request'), 'raw error is never recorded');
   } finally { await cleanup(); }
 });
 

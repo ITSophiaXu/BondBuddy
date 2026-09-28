@@ -82,6 +82,18 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     assert.deepEqual([tr.status, tr.usage_status, tr.input_tokens, tr.error_code, tr.exit_signal], ['pending_reconcile', 'unknown', null, 'MODEL_TIMEOUT', 'SIGKILL']);
     assert.equal((await jobSnapshot(pool, owner, slow.runId)).state, 'paused');
 
+    // A typed provider request rejection has no generated result or measured usage.
+    // It must fail durably rather than enter the no-lookup reconciliation loop.
+    const rejected = await fixture('rejected');
+    const rejectedCall = await runContainedModelCall(callFor(rejected, 'SCENARIO:request_rejected'), journalFor(rejected), config);
+    assert.equal(rejectedCall.status, 'failed');
+    assert.equal(rejectedCall.error_code, 'MODEL_PROVIDER_REQUEST_REJECTED');
+    assert.equal(rejectedCall.attempts[0].tool_attempts, 0);
+    const rejectedRow = (await pool.query('SELECT a.status,a.usage_status,o.outcome,o.error_code,o.input_tokens FROM bb_model_call_attempts a JOIN bb_provider_call_observations o ON o.attempt_id=a.id WHERE a.job_id=$1', [rejected.lease.jobId])).rows[0];
+    assert.deepEqual([rejectedRow.status, rejectedRow.usage_status, rejectedRow.outcome, rejectedRow.error_code, rejectedRow.input_tokens], ['failed', 'unknown', 'failed', 'MODEL_PROVIDER_REQUEST_REJECTED', null]);
+    assert.equal((await jobSnapshot(pool, owner, rejected.runId)).state, 'failed');
+    assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [rejected.runId])).rows[0].state, 'failed');
+
     // Crash after intent, before any observation: the next lease must not resend.
     const crash = await fixture('crash');
     await journalFor(crash).recordIntent({ owner_user_id: owner, project_id: crash.projectId, job_id: crash.lease.jobId, run_id: crash.runId, trace_id: crash.runId, logical_call_id: 'synthetic-codex-call', call_id: `call-${uid()}`, attempt_no: 1, model_id: 'deepseek-flash', model_config_version: 'codex-deepseek-flash-test', prompt_snapshot_ref: crash.promptRef });

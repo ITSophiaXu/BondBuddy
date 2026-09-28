@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"0199a1f0-0000-7000-8000-00000000c0de"}
+{"type":"item.completed","item":{"type":"error","message":"Model metadata for synthetic-model not found"}}
+{"type":"error","message":"{\"error\":{\"message\":\"synthetic rejected request\",\"type\":\"invalid_request_error\"}}"}
+{"type":"turn.failed","error":{"message":"{\"error\":{\"message\":\"synthetic rejected request\",\"type\":\"invalid_request_error\"}}"}}
+{"fake":"exit","code":1}
