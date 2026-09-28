@@ -8,7 +8,7 @@ import type { FactEvidenceReviewRequest } from '@bondbuddy/contracts';
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const testUrl=process.env.BB_TEST_DATABASE_URL;
 
-test('fact evidence reviewer ledger is exact, append-only, external-safe, and fail-closed (PostgreSQL 16)',{skip:!testUrl&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0061'},async()=>{
+test('fact evidence reviewer ledger is exact, append-only, external-safe, and fail-closed (PostgreSQL 16)',{skip:!testUrl&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0065'},async()=>{
   const db=new Pool({connectionString:testUrl});
   const suffix=randomUUID().replaceAll('-',''),owner=`fer-owner-${suffix}`,reviewer=`fer-reviewer-${suffix}`,manager=`fer-manager-${suffix}`,project=`fer-project-${suffix}`;
   const material=`fer-material-${suffix}`,upload=`fer-upload-${suffix}`,snapshot=`fer-parse-${suffix}`,candidate=`fer-candidate-${suffix}`,context=`fer-context-${suffix}`;
@@ -28,11 +28,11 @@ test('fact evidence reviewer ledger is exact, append-only, external-safe, and fa
     const version=await client.query("SELECT current_setting('server_version_num')::integer AS v");assert.ok(Number(version.rows[0]!.v)>=160000,'requires PostgreSQL 16+');
     const migrationOrder=await client.query(`SELECT filename,applied_at FROM bb_schema_migrations
       WHERE filename=ANY($1::text[]) ORDER BY applied_at`,[[
-        '0059_m1_issuer_annual_profile_reviews.sql','0060_m1_fact_evidence_context_sets.sql','0061_m1_fact_evidence_reviews.sql']]);
+        '0059_m1_issuer_annual_profile_reviews.sql','0060_m1_fact_evidence_context_sets.sql','0061_m1_model_cost_attribution.sql','0065_m1_fact_evidence_reviews.sql']]);
     assert.deepEqual(migrationOrder.rows.map(row=>row.filename),[
-      '0059_m1_issuer_annual_profile_reviews.sql','0060_m1_fact_evidence_context_sets.sql','0061_m1_fact_evidence_reviews.sql'],
-      'PG16 schema applies 0059, then immutable value-pinned 0060 contexts, then 0061 reviews');
-    const migrations=await client.query("SELECT to_regclass('public.bb_fact_evidence_reviewer_grants') g,to_regclass('public.bb_fact_evidence_context_sets') c");assert.ok(migrations.rows[0]!.g&&migrations.rows[0]!.c,'migrations 0060 and 0061 must be applied');
+      '0059_m1_issuer_annual_profile_reviews.sql','0060_m1_fact_evidence_context_sets.sql','0061_m1_model_cost_attribution.sql','0065_m1_fact_evidence_reviews.sql'],
+      'PG16 schema applies 0059, immutable value-pinned 0060 contexts, current develop 0061 attribution, then 0065 reviews');
+    const migrations=await client.query("SELECT to_regclass('public.bb_fact_evidence_reviewer_grants') g,to_regclass('public.bb_fact_evidence_context_sets') c");assert.ok(migrations.rows[0]!.g&&migrations.rows[0]!.c,'migrations 0060 and 0065 must be applied');
     const phoneTail=(Number.parseInt(suffix.slice(-6),16)%1000000).toString().padStart(6,'0');
     for(const [id,n] of [[owner,1],[reviewer,2],[manager,3]] as const) await client.query('INSERT INTO bb_users(id,phone_e164,username) VALUES($1,$2,$3)',[id,`+1202555${phoneTail}${n}`,`fer${n}${suffix.slice(0,10)}`]);
     await client.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,draft_revision) VALUES($1,$2,'synthetic fact evidence review','update',1)",[project,owner]);

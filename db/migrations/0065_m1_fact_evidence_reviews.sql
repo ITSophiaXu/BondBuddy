@@ -1,5 +1,5 @@
 -- #15: separate management-issued authority for reviewing an exact evidence context.
--- This follows #347's 0059 and #350's 0060; it does not upgrade candidates.
+-- This follows #347's 0059, #350's 0060, and the current develop 0061; it does not upgrade candidates.
 CREATE TABLE bb_fact_evidence_reviewer_grants (
   id text PRIMARY KEY,
   user_id text NOT NULL REFERENCES bb_users(id),
