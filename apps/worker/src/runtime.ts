@@ -8,7 +8,7 @@ import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
 import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
-import { defaultWorkerId, recordWorkerHeartbeat } from '@bondbuddy/api/trial-guard';
+import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
 import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type ParsedFactProducer, type RunStage } from './run-pipeline.js';
@@ -195,6 +195,19 @@ export class WorkerRuntime {
       if (readiness.status !== 'pending') await resumePausedRun(pool, r.owner_user_id, r.run_id, 'materials_ready');
     }
     for (const r of await pausedRuns(pool, 'provider_reconcile')) await this.reconcileRun(r.owner_user_id, r.run_id, r.job_id);
+    for (const r of await pausedRuns(pool, 'trial_limit')) {
+      const client = await pool.connect();
+      let ready = false;
+      try {
+        await assertModelCallAllowed(client, trialGuardConfig(), r.owner_user_id);
+        ready = true;
+      } catch (error) {
+        // A later deny override is terminal. Re-claim once so the normal run path records it.
+        if (error instanceof TrialLimitProblem) ready = error.limit === 'operator_deny';
+        else throw error;
+      } finally { client.release(); }
+      if (ready) await resumePausedRun(pool, r.owner_user_id, r.run_id, 'trial_limit_cleared');
+    }
     if (this.o.ocrEnabled && this.o.parse?.ocr) await requeueAwaitingOcrParseJobs(pool, { minPausedSeconds: this.o.ocrRetrySeconds });
     if (this.o.logSink) await forwardLogs(pool, this.o.logSink);
   }
