@@ -82,6 +82,11 @@ export interface ReviewIssuerIdentitySourceRecordInput {
 const trustedReviewerBrand: unique symbol = Symbol('TrustedIssuerIdentityReviewer');
 const trustedReviewerContexts = new WeakSet<object>();
 
+/** Runtime guard for server-branded reviewer contexts. Only authorizeIssuerIdentityReviewer creates them. */
+export function isTrustedIssuerIdentityReviewer(value: unknown): value is TrustedIssuerIdentityReviewer {
+  return typeof value === 'object' && value !== null && trustedReviewerContexts.has(value);
+}
+
 export interface TrustedIssuerIdentityReviewer {
   readonly userId: string;
   readonly grantId: string;
