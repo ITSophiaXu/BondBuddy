@@ -10,6 +10,9 @@ const material: LockedFinancialMaterialRef = {
   material_id: 'financial-1', material_version: 2, material_sha256: 'a'.repeat(64), role: 'interimFinancial',
 };
 const cutoff = '2025-06-30';
+const otherMaterial: LockedFinancialMaterialRef = {
+  material_id: 'financial-2', material_version: 1, material_sha256: 'b'.repeat(64), role: 'financial',
+};
 
 function nativeRecord(id: string, quote: string, context: string, options: {
   readonly uncertainty?: string[]; readonly locator?: Record<string, unknown>;
@@ -45,6 +48,9 @@ function ocrSnapshot(text: string, uncertainty: string[] = []): OcrPeriodEvidenc
 function extract(snapshots: readonly (NativePeriodEvidenceSnapshot | OcrPeriodEvidenceSnapshot)[], reportingCutoff = cutoff) {
   return proposeTargetReportingPeriods({ reporting_cutoff: reportingCutoff, locked_materials: [material], snapshots });
 }
+function extractWith(lockedMaterials: readonly LockedFinancialMaterialRef[], snapshots: readonly (NativePeriodEvidenceSnapshot | OcrPeriodEvidenceSnapshot)[], reportingCutoff = cutoff) {
+  return proposeTargetReportingPeriods({ reporting_cutoff: reportingCutoff, locked_materials: lockedMaterials, snapshots });
+}
 
 test('proposes annual and interim periods from exact native evidence and keeps every candidate pending', () => {
   const snapshot = nativeSnapshot([
@@ -74,6 +80,12 @@ test('cutoff only classifies extracted dates and never creates a reporting perio
   assert.equal(result.candidates[0]!.cutoff_relation, 'after');
   assert.ok(result.candidates[0]!.pending_reasons.includes('candidate_after_reporting_cutoff'));
   assert.equal(extract([], '2025-12-31').candidates.length, 0);
+
+  const wrongQuarter = extract([nativeSnapshot([nativeRecord('q1', '2025年1-3月', '财务报表报告期 合并')])]);
+  assert.equal(wrongQuarter.candidates[0]!.end, '2025-03-31');
+  assert.ok(wrongQuarter.candidates[0]!.anchors.filter(anchor => anchor.kind === 'period_end')
+    .every(anchor => anchor.evidence.quote.includes('2025年1-3月')));
+  assert.ok(!wrongQuarter.candidates.some(item => item.end === cutoff), 'same year cannot make Q1 evidence support a June cutoff');
 });
 
 test('preserves distinct consolidated and parent scopes and leaves mixed scope pending', () => {
@@ -140,4 +152,46 @@ test('deduplicates repeated evidence and rejects snapshots outside the locked ma
   const foreign = nativeSnapshot([nativeRecord('foreign', '2024年度', '财务报表报告期 合并')]);
   assert.throws(() => proposeTargetReportingPeriods({ reporting_cutoff: cutoff, locked_materials: [material],
     snapshots: [{ ...foreign, material_id: 'elsewhere' }] }), /TARGET_PERIOD_CANDIDATE_EVIDENCE_NOT_LOCKED/);
+
+  assert.throws(() => extractWith([material, { ...material, material_version: material.material_version + 1 }], []),
+    /TARGET_PERIOD_CANDIDATE_LOCK_DUPLICATE/);
+  const conflictingRecord = nativeRecord('same-id-conflict', '2024年度', '财务报表报告期 合并');
+  assert.throws(() => extract([nativeSnapshot([conflictingRecord, { ...conflictingRecord, literal_quote: '2025年度' }])]),
+    /TARGET_PERIOD_CANDIDATE_RECORD_ID_CONFLICT/);
+  assert.throws(() => extract([nativeSnapshot([repeated]), { ...nativeSnapshot([repeated]), response_sha256: 'd'.repeat(64) }]),
+    /TARGET_PERIOD_CANDIDATE_SNAPSHOT_ID_CONFLICT/);
+});
+
+test('candidate hash binds exact material and parser snapshot pins even with no candidates', () => {
+  const emptyOriginal = extractWith([material], []);
+  const emptyOtherMaterial = extractWith([otherMaterial], []);
+  assert.notEqual(emptyOriginal.candidate_hash, emptyOtherMaterial.candidate_hash);
+  assert.deepEqual(emptyOriginal.locked_material_pins, [material]);
+  assert.deepEqual(emptyOriginal.source_snapshot_pins, []);
+
+  const failed = nativeSnapshot([], { status: 'failed' });
+  const failedV2 = { ...failed, snapshot_id: 'parse-snapshot-2', response_sha256: 'd'.repeat(64) };
+  const emptyWithFailed = extractWith([material], [failed]);
+  const emptyWithDifferentFailed = extractWith([material], [failedV2]);
+  assert.equal(emptyWithFailed.candidates.length, 0);
+  assert.equal(emptyWithDifferentFailed.candidates.length, 0);
+  assert.notEqual(emptyWithFailed.candidate_hash, emptyWithDifferentFailed.candidate_hash);
+  assert.deepEqual(emptyWithFailed.source_snapshot_pins[0], {
+    method: 'native_text', snapshot_id: failed.snapshot_id, material_id: material.material_id,
+    material_version: material.material_version, material_sha256: material.material_sha256,
+    response_sha256: failed.response_sha256, parser_version: failed.parser_version,
+    status: 'failed', evidence_records: [],
+  });
+});
+
+test('candidate hash binds different parse snapshots that yield the same period values', () => {
+  const periodRecord = nativeRecord('same-values', '2024年度', '财务报表报告期 合并');
+  const original = nativeSnapshot([periodRecord]);
+  const updatedSnapshot = { ...original, snapshot_id: 'parse-snapshot-2', response_sha256: 'd'.repeat(64) };
+  const first = extract([original]);
+  const second = extract([updatedSnapshot]);
+  assert.deepEqual(first.candidates.map(item => [item.start, item.end, item.period_kind, item.scope]),
+    second.candidates.map(item => [item.start, item.end, item.period_kind, item.scope]));
+  assert.notEqual(first.candidate_hash, second.candidate_hash);
+  assert.equal(second.source_snapshot_pins[0]!.snapshot_id, 'parse-snapshot-2');
 });
