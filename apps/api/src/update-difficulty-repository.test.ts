@@ -114,7 +114,7 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
           document_purpose: persisted.document_purpose, as_of: null, target_reporting_periods: persisted.target_reporting_periods,
           confirmed_by: persisted.confirmed_by, confirmed_at: new Date(String(persisted.confirmed_at)) }] : [] };
         if (sql.includes('FROM bb_target_period_evidence_decisions')) return { rows: decisionRow ? [decisionRow] : [] };
-        if (sql.includes('FROM bb_parse_snapshots s JOIN bb_parse_evidence e')) return { rows: [{}] };
+        if (sql.includes('FROM bb_parse_snapshots s JOIN bb_parse_evidence e')) return { rows: [{ uncertainty: [] }] };
         if (sql.includes('FROM bb_material_versions')) {
           materialQueryCount++;
           return { rows: materials.map(item => ({ id: item.material_id, version: item.material_version, role: item.role, sha256: item.sha256 })) };
