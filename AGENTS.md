@@ -103,7 +103,7 @@ A01–A06已按用户明确授权逐项形成[2026-09-26方法决定](knowledge/
 
 ## master 主机直连 Azure 部署机器
 
-- 主调度主机现名 `master`；旧记录中的 `vm1` 指同一台机器。用户指定的 Azure 部署机器兼 DeepSeek 授权测试主机是 `azureuser@20.243.2.34`（登录后主机名 `openclaw-vm`）。在 master 上从任意目录连接：`ssh -i /data/workspaces/bondbuddy/openclaw-vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes azureuser@20.243.2.34`。这只是连接方式，不代表应用已经部署或通过上线验收。
-- 用户于 2026-09-24 核对的 ED25519 主机指纹为 `SHA256:WJkDE47NVg04vfrPTj5xNRM2+p1jkqAvwyjD7jFVGHY`；master 的 `known_hosts` 已固定该主机密钥。若主机密钥不匹配，停止连接并重新核验，不要绕过严格校验。
+- 主调度主机现名 `master`；旧记录中的 `vm1` 指同一台机器。用户指定的 Azure 部署机器兼 DeepSeek 授权测试主机是 `azureuser@52.233.83.83`（登录后主机名 `openclaw-vm`；2026-09-28 按 #35 迁移到 West US 2，旧地址 `20.243.2.34` 已停用）。在 master 上从任意目录连接：`ssh -i /data/workspaces/bondbuddy/openclaw-vm_key.pem -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes azureuser@52.233.83.83`。新主机 SSH 只放行 master 的出口地址。这只是连接方式，不代表应用已经部署或通过上线验收。
+- 迁移后经 Azure 控制面核对的 ED25519 主机指纹为 `SHA256:E+GXBQS8sxcKxWcrEKPFbRy4e497sIUWvceNWWIfdQM`（旧机 2026-09-24 核对的 `SHA256:WJkDE47NVg04vfrPTj5xNRM2+p1jkqAvwyjD7jFVGHY` 已作废）；master 的 `known_hosts` 已固定该主机密钥。若主机密钥不匹配，停止连接并重新核验，不要绕过严格校验。
 - 私钥使用路径为 master 的 `/data/workspaces/bondbuddy/openclaw-vm_key.pem`，权限应为 `0600`，已被本仓库根目录 `.gitignore` 排除。其指定备份位置为私有 `muhualing/agent-config` 的 `secrets/master/bondbuddy/openclaw-vm_key.pem`；按照该仓库 `docs/RECOVERY.md` 人工收集、核对远端文件并在新 master 恢复。清单映射本身不证明备份已完成。不得提交到本业务仓库或回显私钥内容；需要在其他自有开发主机上执行部署或联调时，可以经 `muhualing/agent-config` 的凭据同步复制过去（权限 `0600`）；若备份缺失且 master 丢失，须通过 Azure 控制面重置登录公钥。
 - 主机获授权与真实 DeepSeek 协议、用量验收是两件事；执行 #16 联调后仍需在 Issue 留下脱敏请求与 usage 证据。
