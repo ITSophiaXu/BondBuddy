@@ -66,6 +66,7 @@ class TxMock implements UpdateDifficultyClient {
     if (sql.includes('FROM bb_input_revision_target_confirmations')) return { rows: this.targetConfirmationRows.filter(row =>
       row.owner_user_id === values[0] && row.project_id === values[1] && Number(row.input_revision) === Number(values[2])) };
     if (sql.includes('SELECT m.id,m.version,m.role,m.sha256')) return { rows: this.lockedMaterials };
+    if (sql.includes('FROM bb_target_period_evidence_decisions')) return { rows: [] };
     if (sql.includes('SELECT profile_version FROM bb_historical_profiles')) return { rows: [{ profile_version: 1 }] };
     if (sql.includes('FROM bb_update_difficulty_snapshots') && sql.includes('request_id=$3')) return {
       rows: this.snapshots.filter(row => row.owner_user_id === values[0] && row.project_id === values[1] && row.request_id === values[2]),
@@ -82,9 +83,9 @@ class TxMock implements UpdateDifficultyClient {
       const row = { id: values[0], owner_user_id: values[1], project_id: values[2], request_id: values[3], request_hash: values[4],
         source_material_id: values[5], source_material_version: values[6], source_profile_version: values[7], target_revision: values[8],
         source_market: values[9], source_offering: values[10], target_market: values[11], target_offering: values[12],
-        input_revision: values[13], input_hash: values[14], financial_material_versions: JSON.parse(String(values[15])),
-        comparison_input: JSON.parse(String(values[16])), old_profile_completeness: values[17],
-        estimate: JSON.parse(String(values[18])), created_at: new Date('2026-09-24T00:00:00Z') };
+        input_revision: values[13], input_hash: values[14], evidence_identity: values[15],
+        financial_material_versions: JSON.parse(String(values[16])), comparison_input: JSON.parse(String(values[17])),
+        old_profile_completeness: values[18], estimate: JSON.parse(String(values[19])), created_at: new Date('2026-09-24T00:00:00Z') };
       this.snapshots.push(row); return { rows: [row] };
     }
     if (sql.startsWith('INSERT INTO bb_outbox')) {
@@ -231,19 +232,30 @@ test('locked input assembler derives source, financial materials and user assert
 
 test('locked snapshot callers cannot substitute target periods', async () => {
   const client = new TxMock();
+  const manifestPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
+    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] };
+  const confirmedAt = '2026-09-27T00:00:00.000Z';
   const manifest = { draft_revision: 4, kind: 'update', materials: [
     { material_id: historical, material_version: 1, role: 'historical', sha256: hash },
     { material_id: finance, material_version: 1, role: 'financial', sha256: hash },
-  ], update_details: { target_reporting_periods: [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual',
-    scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }] } };
+  ], market: 'sse', offering: 'private', update_details: { target_reporting_periods: [manifestPeriod] },
+  target_confirmation: { status: 'confirmed', market: 'sse', offering: 'private', document_purpose: null,
+    as_of: null, target_reporting_periods: [manifestPeriod], confirmed_by: owner, confirmed_at: confirmedAt } };
   client.currentInputRevision = 2;
   client.lockedInput = { input_hash: hash, draft_revision: 4, manifest, material_versions: [
     { material_id: historical, material_version: 1 }, { material_id: finance, material_version: 1 },
   ] };
+  client.lockedMaterials = [
+    { id: historical, version: 1, role: 'historical', sha256: hash },
+    { id: finance, version: 1, role: 'financial', sha256: hash },
+  ];
+  client.targetConfirmationRows = [{ owner_user_id: owner, project_id: project, input_revision: 2, market: 'sse', offering: 'private',
+    document_purpose: null, as_of: null, target_reporting_periods: manifest.update_details.target_reporting_periods,
+    confirmed_by: owner, confirmed_at: new Date(confirmedAt) }];
   const lockedPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual' as const,
     scope: 'consolidated' as const, status: 'user_asserted' as const, evidence_refs: [] as const };
   await assert.rejects(createUpdateDifficultySnapshot(dependencies(client), input({ inputRevision: 2, inputHash: hash,
-    targetReportingPeriods: [{ ...lockedPeriod, end: '2026-12-31' }] })), /TARGET_REPORTING_PERIODS_LOCK_MISMATCH/);
+    targetReportingPeriods: [{ ...lockedPeriod, end: '2026-12-31' }] })), /TARGET_PERIOD_DECISION_ASSEMBLY_MISMATCH/);
 });
 
 test('locked assembler rejects non-update and malformed target period manifests', async () => {
