@@ -187,6 +187,12 @@ test('upper bounds are not summed as exact allocations; the stated quote qualifi
   assert.ok(mismatchedExact.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
   assert.ok(!mismatchedExact.reasons.includes('funds_use_amount_total_conflict'));
 
+  const laterQualifiedSameAmount = checkMtnFundsUseEvidence(input({
+    useLines: [line({ amount: moneyEv(exactMoney('8'), '其他用途不超过10亿元，偿贷不超过8亿元，偿贷8亿元。') })],
+  }));
+  assert.equal(laterQualifiedSameAmount.decision, 'needs_review');
+  assert.ok(laterQualifiedSameAmount.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
+
   const compoundQualifier = checkMtnFundsUseEvidence(input({
     useLines: [line({ amount: moneyEv({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '预计偿贷金额不超过8亿元。') })],
   }));

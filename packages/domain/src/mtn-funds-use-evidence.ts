@@ -116,8 +116,9 @@ const pendingAllocationPattern = /按需|结合需要确定|视实际需要|实�
 
 function citedAmountsForKind(quote: string, kind: Exclude<MtnFundsUseMoney['kind'], 'exact'>): string[] {
   return amountQualifierPatterns[kind].flatMap(pattern => {
-    const match = pattern.exec(quote);
-    return match ? match.slice(1).filter((value): value is string => value !== undefined) : [];
+    const globalPattern = new RegExp(pattern.source, `${pattern.flags}g`);
+    return [...quote.matchAll(globalPattern)].flatMap(match =>
+      match.slice(1).filter((value): value is string => value !== undefined));
   });
 }
 
