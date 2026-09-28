@@ -322,6 +322,21 @@ synthetic and rolled back. The current worker entry point still has no
 production parse/fact processor, and #14 OCR plus authorized sample validation
 remain outside this slice; it does not establish #15 acceptance.
 
+`rq-q3-formula-candidate-extractor.ts` is an exact-hash #15 mapper for the
+authorized `rq-202509-02` interim XLSX. It keeps the eight allowlisted
+current-period formula cells as `external` `needs_confirmation` candidates with
+mandatory `FORMULA_CACHE_VALUE_UNVERIFIED` and `FORMULA_SOURCE_CHAIN_UNVERIFIED`,
+marks the two revenue cells as depending on an unauthorized external workbook,
+and never promotes a cached value or external estimate to audited/verified. A
+formula whose cache is genuinely absent, a statement title that conflicts on
+consolidated vs parent scope, or an unrecognized parser version fails closed to
+`needs_review` with a distinct reason code instead of a candidate.
+`rq-q3-formula-fact-candidate.pg.integration.test.ts` is a synthetic
+PostgreSQL 16 regression for the trusted producer: it persists eight
+candidates, replays idempotently, blocks a foreign owner, fails the uncached
+cell closed, and rejects a changed parser version. It needs only
+`BB_TEST_DATABASE_URL` (no Azurite or authorized sample).
+
 `rule-pack-release-ledger.ts` is an internal #19 persistence seam with an
 append-only, hash-bound event history for test-channel release, withdrawal and
 rollback. It only calls the domain publication gate with `channel: test`; it

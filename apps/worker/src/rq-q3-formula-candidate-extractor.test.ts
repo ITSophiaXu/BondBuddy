@@ -6,7 +6,6 @@ import { createRqQ3FormulaCandidateExtractor, RQ_Q3_FORMULA_SOURCE_SHA256 } from
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
 function request(overrides: Partial<SemanticFactExtractionRequest> = {}): SemanticFactExtractionRequest {
   const records: SemanticFactExtractionRequest['records'][number][] = [];
   const add = (sheet: string, cell: string, literal_quote: string,
@@ -105,3 +104,39 @@ test('RQ Q3 formula mapper fails closed on a source hash mismatch and an unrecog
   assert.equal(invalid.needs_review.length, 1);
   assert.equal(invalid.needs_review[0]?.reason_code, 'RQ_Q3_FORMULA_CACHE_ANCHOR_INCOMPLETE');
 });
+
+test('RQ Q3 formula mapper distinguishes missing cache from unverified cache and rejects a scope conflict', async () => {
+  const resolver = async () => ({ status: 'needs_confirmation' as const, warnings: [
+    { code: 'XLSX_FORMULA_CACHE_UNVERIFIED', message: 'formula caches are unresolved' },
+  ] });
+  const extractor = createRqQ3FormulaCandidateExtractor(resolver);
+
+  const req = request();
+  // The consolidated total-assets formula keeps its formula text but is genuinely uncached:
+  // the parser reports formula_result_not_cached and stores no cached_formula_result.
+  const uncached = req.records.map(record => record.locator_type === 'xlsx_cell' &&
+    record.locator.sheet === '01合并资产负债表' && record.locator.cell === 'D78'
+    ? { ...record, formatting: { sheet_state: 'visible' }, uncertainty: ['formula_result_not_cached'] }
+    : record);
+  const missingCache = await extractor.extract({ ...req, records: uncached });
+  assert.equal(missingCache.facts.length, 7);
+  assert.equal(missingCache.needs_review.length, 1);
+  assert.equal(missingCache.needs_review[0]?.reason_code, 'RQ_Q3_FORMULA_CACHE_MISSING');
+  assert.ok(missingCache.needs_review[0]!.evidence_refs.some(id => uncached.some(record => record.record_id === id &&
+    record.locator_type === 'xlsx_cell' && record.locator.cell === 'D78')));
+  assert.ok(!missingCache.facts.some(fact => fact.identity.metric === 'total_assets' && fact.identity.scope === 'consolidated'),
+    'an uncached formula must never be promoted to a candidate');
+
+  // A statement title that names both calibers cannot authorize either column's cell.
+  const conflicted = req.records.map(record => record.locator_type === 'xlsx_cell' &&
+    record.locator.sheet === '02合并利润表' && record.locator.cell === 'A1'
+    ? { ...record, literal_quote: '合并母公司利润表' } : record);
+  const conflict = await extractor.extract({ ...req, records: conflicted });
+  assert.equal(conflict.facts.length, 6);
+  const conflictReviews = conflict.needs_review.filter(item => item.reason_code === 'RQ_Q3_SCOPE_CONFLICT');
+  assert.equal(conflictReviews.length, 2);
+  assert.ok(!conflict.facts.some(fact => fact.identity.scope === 'consolidated' &&
+    (fact.identity.metric === 'operating_revenue' || fact.identity.metric === 'net_profit')),
+  'a conflicting caliber title fails both consolidated income-statement targets closed');
+});
+
