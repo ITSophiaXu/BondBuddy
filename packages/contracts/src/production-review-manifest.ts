@@ -145,6 +145,11 @@ export function validProductionReviewManifestContent(value: unknown): value is P
   if (dates.some(dateValue => !validCalendarDate(dateValue))) return false;
   if (scope.applicable_from && scope.applicable_until && scope.applicable_from > scope.applicable_until) return false;
   for (const source of manifest.content.source_date_evidence) {
+    // A binding rule without a verified legal commencement cannot be signed as
+    // currently applicable. Undated guidance/methods will require a separate
+    // reviewed applicability basis before a production selector can accept them.
+    if (source.source_kind === 'binding_rule' &&
+        !['explicit_text', 'publication_commencement'].includes(source.legal_effective_date_basis)) return false;
     if (source.transition_from_date && source.transition_until_date && source.transition_from_date > source.transition_until_date) return false;
     if ((source.transition_from_date || source.transition_until_date) && source.transition_evidence.length === 0) return false;
     if (source.legal_expiry_date && source.legal_effective_date && source.legal_expiry_date < source.legal_effective_date) return false;

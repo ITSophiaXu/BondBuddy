@@ -150,6 +150,11 @@ assert.equal(validProductionReviewManifestContent(unsortedManifest), false, 'has
 const duplicatedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
 duplicatedManifest.content.applicability_scope.industry_codes.push(duplicatedManifest.content.applicability_scope.industry_codes[0]!);
 assert.equal(validProductionReviewManifestContent(duplicatedManifest), false, 'hash input rejects duplicate set-like references');
+const undatedBindingRule = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+undatedBindingRule.content.source_date_evidence[0]!.legal_effective_date = null;
+undatedBindingRule.content.source_date_evidence[0]!.legal_effective_date_basis = 'unknown';
+undatedBindingRule.content.source_date_evidence[0]!.effective_date_derivation_evidence = [];
+assert.equal(validProductionReviewManifestContent(undatedBindingRule), false, 'binding rule without verified legal commencement cannot be signed');
 const technicalSubmission = byName.get('production-attestation-technical-self-submission-valid-synthetic');
 assert.ok(technicalSubmission, 'synthetic technical self-submission exists');
 const spoofedRoleSubmission = { ...structuredClone(technicalSubmission.value), reviewer_role: 'industry' };
