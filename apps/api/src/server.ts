@@ -28,6 +28,7 @@ import { cancelMaterialParse, documentParserVersion, enqueueMaterialParse, mater
 import { correctHistoricalProfile, historicalProfileCorrectionProblem } from './historical-profile-corrections.js';
 import { installFactReviewRoutes } from './fact-review.js';
 import { installFactEvidenceReviewRoutes } from './fact-evidence-reviews.js';
+import { installFactEvidenceReadRoutes } from './fact-evidence-read.js';
 import { installCreditFacilitySupplementRoutes } from './credit-facility-supplements.js';
 import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-repository.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
@@ -246,6 +247,7 @@ export function createServer(settings: Settings = {}) {
   installLibraryAdminRoutes(app,{db,blobs:blob,owner});
   installFactReviewRoutes(app,{db,owner});
   installFactEvidenceReviewRoutes(app,{db,principal:async request=>({userId:await owner(request)})});
+  installFactEvidenceReadRoutes(app,{db,principal:async request=>({userId:await owner(request)})});
   installCreditFacilitySupplementRoutes(app,{db,owner});
   installIssuerAnnualProfileReviewRoutes(app,{db,owner});
   installProductionReviewLedgerRoutes(app,{db,actor:owner});

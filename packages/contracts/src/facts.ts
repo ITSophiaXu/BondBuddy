@@ -141,6 +141,39 @@ export const factSchemas = {
     evidence_set_sha256: hash, completeness_status: Type.Union([Type.Literal('complete'), Type.Literal('incomplete')]),
     reviewable: Type.Boolean(), manifest: FactEvidenceContextManifestSchema,
   }, { additionalProperties: false }),
+  FactEvidenceReviewerReadQuery: Type.Object({ cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 2048 })) }, { additionalProperties: false }),
+  FactEvidenceReviewerReadResponse: Type.Object({
+    project_id: id, candidate_id: id, evidence_context_set_id: id, evidence_set_sha256: hash,
+    input_revision: Type.Integer({ minimum: 1 }), input_hash: hash,
+    material_id: id, material_version: Type.Integer({ minimum: 1 }), material_sha256: hash,
+    snapshot_id: id, parser_version: Type.String({ minLength: 1, maxLength: 128 }), parse_response_sha256: hash,
+    candidate: Type.Object({
+      identity: Type.Record(Type.String(), Type.Unknown()), identity_sha256: hash,
+      value_kind: Type.Union([Type.Literal('decimal'), Type.Literal('text'), Type.Literal('unknown'), Type.Literal('not_applicable')]),
+      value_decimal: Type.Union([Type.String(), Type.Null()]), value_text: Type.Union([Type.String(), Type.Null()]),
+      source_kind: Type.Union([Type.Literal('audited'), Type.Literal('external'), Type.Literal('user_statement')]),
+      source_ref: Type.String(), status: Type.Union([Type.Literal('extracted'), Type.Literal('verified'), Type.Literal('user_asserted'), Type.Literal('conflicted'), Type.Literal('needs_confirmation'), Type.Literal('superseded')]),
+      uncertainty: Type.Array(Type.Unknown()), confidence: Type.Number({ minimum: 0, maximum: 1 }),
+    }, { additionalProperties: false }),
+    parse_warnings: Type.Array(Type.Object({ code: Type.String(), message: Type.String() }, { additionalProperties: false })),
+    items: Type.Array(Type.Object({
+      record_id: id, record_sha256: hash, content_sha256: hash,
+      locator_type: Type.Union([Type.Literal('docx_block'), Type.Literal('pdf_bbox'), Type.Literal('xlsx_cell'), Type.Literal('csv_cell'), Type.Literal('text_line')]),
+      locator: Type.Record(Type.String(), Type.Unknown()), literal_quote: Type.String({ minLength: 1, maxLength: 65536 }),
+      confidence: Type.Union([Type.Number({ minimum: 0, maximum: 1 }), Type.Null()]), uncertainty: Type.Array(Type.Unknown()),
+    }, { additionalProperties: false })),
+    auxiliary_targets: Type.Array(Type.Object({
+      target_id: id, kind: Type.Union([Type.Literal('header'), Type.Literal('footer'), Type.Literal('footnote'), Type.Literal('endnote'), Type.Literal('drawing'), Type.Literal('auxiliary_part')]),
+      part_name: Type.String({ minLength: 1, maxLength: 1024 }), part_sha256: Type.Union([hash, Type.Null()]), target_sha256: Type.Union([hash, Type.Null()]),
+      scope: Type.Record(Type.String(), Type.Unknown()),
+      parse_status: Type.Union([Type.Literal('parsed'), Type.Literal('empty'), Type.Literal('not_extracted'), Type.Literal('read_failed'), Type.Literal('parse_failed'),
+        Type.Literal('unsafe_xml'), Type.Literal('size_limited'), Type.Literal('unrecognized_part'), Type.Literal('external_relationship'), Type.Literal('missing_relationship'),
+        Type.Literal('unsafe_relationship'), Type.Literal('missing_reference_target')]),
+      relevance: Type.Union([Type.Literal('relevant'), Type.Literal('not_relevant'), Type.Literal('unknown')]), relevance_reason: Type.String(),
+    }, { additionalProperties: false }), { maxItems: 1000 }),
+    next_cursor: Type.Union([Type.String({ minLength: 1, maxLength: 2048 }), Type.Null()]),
+    verification_effect: Type.Literal('none', { description: 'This read exposes evidence only; it does not mark a fact verified.' }),
+  }, { additionalProperties: false }),
   FactEvidenceReviewResponse: Type.Object({
     review_id: id, request_id: id, owner_user_id: id, project_id: id,
     candidate_id: id, candidate_identity_sha256: hash, candidate_snapshot: Type.Record(Type.String(), Type.Unknown()),
@@ -167,6 +200,8 @@ export type FactDecisionResponse = import('@sinclair/typebox').Static<typeof fac
 export type FactEvidenceReviewRequest = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewRequest>;
 export type FactEvidenceContextManifest = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceContextManifest>;
 export type FactEvidenceContextResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceContextResponse>;
+export type FactEvidenceReviewerReadQuery = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewerReadQuery>;
+export type FactEvidenceReviewerReadResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewerReadResponse>;
 export type FactEvidenceReviewResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewResponse>;
 export type FactEvidenceReviewWithdrawalRequest = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewWithdrawalRequest>;
 export type FactEvidenceReviewWithdrawalResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewWithdrawalResponse>;
