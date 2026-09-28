@@ -245,7 +245,7 @@ function nativeSources(snapshot: NativePeriodEvidenceSnapshot, locked: Map<strin
   if (snapshot.status === 'failed') return [];
   const isXlsx = snapshot.media_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const recognitionRecords = isXlsx
-    ? snapshot.records.filter(item => item.formatting.sheet_state !== 'hidden' && item.formatting.sheet_state !== 'veryHidden')
+    ? snapshot.records.filter(item => item.formatting.sheet_state === 'visible')
     : snapshot.records;
   const response: DocumentParseResponse = {
     schema_version: 'document-parse-response-v1', request_id: null, parser_version: snapshot.parser_version,

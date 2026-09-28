@@ -28,7 +28,7 @@ function nativeRecord(id: string, quote: string, context: string, uncertainty: s
     record_id: id, material_id: material.material_id, material_version: material.material_version,
     content_hash: material.material_sha256, locator_type: 'xlsx_cell',
     locator: { path: [{ sheet: '合并利润表', table: 1, row: 1, column: 2 }] }, literal_quote: quote, context,
-    extraction_method: 'native_text', extractor_version: 'parser-1', confidence: 0.99, uncertainty, formatting: {},
+    extraction_method: 'native_text', extractor_version: 'parser-1', confidence: 0.99, uncertainty, formatting: { sheet_state: 'visible' },
     record_sha256: createHash('sha256').update(id, 'utf8').digest('hex'),
   };
 }

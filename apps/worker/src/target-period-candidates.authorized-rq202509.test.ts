@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { canonicalTargetPeriodCandidateSnapshotContent, validTargetPeriodCandidateSnapshot } from '@bondbuddy/contracts';
 import { runDocumentParser, type DocumentParseRequest } from './document-parser.js';
+import { buildTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-builder.js';
 import { proposeTargetReportingPeriods, type NativePeriodEvidenceSnapshot } from './target-period-candidates.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -131,6 +133,20 @@ test('authorized rq-202509 interim XLSX yields only traceable pending target-per
     pin.evidence_records.length === parsed.records.length));
   assert.ok(result.candidates.every(candidate => candidate.status === 'needs_confirmation'),
     'parser-derived periods never become confirmed target periods');
+  const candidateSnapshot = buildTargetPeriodCandidateSnapshot({
+    candidate_set: result,
+    candidate_set_id: 'authorized-rq202509-candidates', candidate_set_version: 1,
+    // Test-only identity and empty requirement-set pin; no production project or review is asserted.
+    owner_user_id: 'authorized-sample-test-owner', project_id: 'authorized-sample-test-project',
+    project_draft_revision: 1, reporting_cutoff: REPORTING_CUTOFF,
+    locked_materials: [{ material_id: FILE_ID, material_version: 1, material_sha256: EXPECTED_SHA256, role: registered.upload_role }],
+    supplemental_requirements: { version: 1, content_sha256: sha256('[]'), message_ids: [] },
+  });
+  assert.equal(validTargetPeriodCandidateSnapshot(candidateSnapshot), true);
+  assert.equal(candidateSnapshot.content.source_snapshots[0]?.record_pins.length, parsed.records.length,
+    'the versioned handoff pins every parse record, including a workbook with more than 20,000 records');
+  assert.equal(candidateSnapshot.content_sha256, sha256(canonicalTargetPeriodCandidateSnapshotContent(candidateSnapshot)));
+  assert.ok(candidateSnapshot.content.candidates.every(candidate => candidate.status === 'needs_confirmation'));
   assert.ok(result.candidates.every(candidate => candidate.evidence.every(ref => ref.material_id === FILE_ID &&
     ref.material_version === 1 && ref.material_sha256 === EXPECTED_SHA256 && ref.snapshot_id === snapshotId &&
     ref.response_sha256 === responseSha256 && /^[a-f0-9]{64}$/.test(ref.record_sha256) &&

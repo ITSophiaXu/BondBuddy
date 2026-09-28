@@ -21,7 +21,7 @@ function nativeRecord(id: string, quote: string, context: string, options: {
     content_hash: material.material_sha256, locator_type: 'xlsx_cell',
     locator: options.locator ?? { path: [{ sheet: '合并利润表', table: 1, row: 1, column: 2 }] },
     literal_quote: quote, context, extraction_method: 'native_text', extractor_version: 'parser-1', confidence: 0.99,
-    uncertainty: options.uncertainty ?? [], formatting: {}, record_sha256: createHash('sha256').update(id).digest('hex') };
+    uncertainty: options.uncertainty ?? [], formatting: { sheet_state: 'visible' }, record_sha256: createHash('sha256').update(id).digest('hex') };
 }
 
 function nativeSnapshot(records: readonly (DocumentParseRecord & { record_sha256: string })[], options: {
@@ -99,6 +99,7 @@ test('recognizes bounded visible XLSX financial header month ranges and excludes
     xlsxCell('ordinary-date', '02合并利润表', 'A2', '2025年9月30日'),
     xlsxCell('hidden-half-year', 'Sheet4', 'B3', '2022年1-6月财务报表报告期', 'hidden'),
     xlsxCell('very-hidden-annual', 'Sheet3', 'B3', '2022年度财务报表报告期', 'veryHidden'),
+    xlsxCell('unknown-visibility', '合并利润表', 'B3', '2023年度财务报表报告期', 'unknown'),
   ]);
 
   const result = extract([snapshot], '2025-09-30');
@@ -114,7 +115,7 @@ test('recognizes bounded visible XLSX financial header month ranges and excludes
     anchor.raw_period_token === '2025年1-9月'));
   assert.ok(current?.anchors.some(anchor => anchor.kind === 'table_header' && anchor.evidence.record_id === 'visible-current'));
   assert.ok(result.candidates.every(item => item.evidence.every(ref => ref.record_id !== 'hidden-half-year' &&
-    ref.record_id !== 'very-hidden-annual' && ref.record_id !== 'ordinary-date')));
+    ref.record_id !== 'very-hidden-annual' && ref.record_id !== 'unknown-visibility' && ref.record_id !== 'ordinary-date')));
 });
 
 test('deduplicated equivalent period tokens retain per-record exact end anchors', () => {
