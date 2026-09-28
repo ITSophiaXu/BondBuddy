@@ -122,7 +122,7 @@ npm test -w @bondbuddy/web -- tests/project-execution.integration.spec.ts
 
 The live test requires the local HTTPS origin `https://127.0.0.1:5173` or an equivalent loopback hostname on port 5173. It rejects remote hosts and alternate ports before registering its synthetic account, so the browser cannot send test credentials to a remote web server.
 
-此用例执行真实 Fastify `/api/v1` 路由、PostgreSQL 写入及 Azurite 材料保存，但故意将 run 留在测试 staging 暂停态。下一步真实浏览器 execute 必须接入 #326 的非生产运行授权/队列和 #79 日志门禁，并确认失败/暂停事件归属及 `execution_request_id` 幂等恢复；不得把该本地 paused run 作为预发/生产 capability、模型用量或 Word 交付证据。
+此用例执行真实 Fastify `/api/v1` 路由、PostgreSQL 写入及 Azurite 材料保存，但故意将 run 留在测试 staging 暂停态。#326 非生产测试通道及 #19 候选运行时现已合入 `develop`；#35 另行记录了预生产授权 run 的浏览器关闭/重登恢复和同 `execution_request_id` 幂等证据。该本地用例不提交测试 grant，也不覆盖这些部署路径、真实模型用量、Word 交付或 #79 日志。#13 仍待预生产 DOCX/XLSX 持久 parse-snapshot 脱敏审计；扫描 OCR 由 #14 验收，含签名 Widget PDF 继续按安全策略拒绝并由独立切片评估。不得把本地 paused run 当作预发/生产 capability、模型用量或 Word 交付证据。
 
 完成后可运行 `docker compose -f deploy/local/compose.yaml -p bondbuddy_issue13_execution down` 停止并移除本测试自己的容器和网络（不要加 `-v`）。该 Compose 文件将 PostgreSQL 与 Azurite 数据目录挂到容器 tmpfs，没有命名卷；容器删除后测试账号、项目、材料字节和 run 记录不保留。
 
