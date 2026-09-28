@@ -36,6 +36,7 @@ import { issuerIdentityReviewSchemas } from './issuer-identity-review.js'; expor
 import { issuerAnnualProfileReviewSchemas } from './issuer-annual-profile-review.js'; export * from './issuer-annual-profile-review.js';
 import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js'; export * from './rule-applicability-context.js';
 import { productionReviewManifestSchemas } from './production-review-manifest.js'; export * from './production-review-manifest.js';
+import { productionReviewAttestationSchemas } from './production-review-attestation.js'; export * from './production-review-attestation.js';
 export { MARKETS, OFFERINGS, DOCUMENT_PURPOSES, MARKET_OFFERINGS, MARKET_LABELS, OFFERING_LABELS } from './public-enums.js';
 import { MARKETS, OFFERINGS, DOCUMENT_PURPOSES, MARKET_OFFERINGS, MARKET_LABELS, OFFERING_LABELS } from './public-enums.js';
 
@@ -142,6 +143,7 @@ export const schemas = {
   ...creditFacilitySupplementSchemas, // #15 owner/project-scoped credit supplement
   ...ruleApplicabilityContextSchemas, // #19 owner-visible needs_review drafts
   ...productionReviewManifestSchemas, // #19 content-only production review manifest; no attestation/release API
+  ...productionReviewAttestationSchemas, // #19 reviewer attestation DTOs; writer/authorization are separate
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
   Page: PageSchema,
