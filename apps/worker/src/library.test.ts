@@ -346,9 +346,9 @@ test('v1.1 lock validation stays fail-closed while v1 replay stays unchanged', {
     const v11Run = await createRun('v11-same-scope');
     const v11Input = lockRequest(firstCandidate, sameScopeHit.index_release!.release_id, v11Run, null,
       { market: 'sse', offering: 'public', instrument: 'corporate_bond', document_stage: 'registration', rule_version: 'lock-rule-v1' });
-    await assert.rejects(lockReferenceSelection(t.pool, v11Input), /requires persisted full-revenue-universe and third-place-tie proof/,
+    await assert.rejects(lockReferenceSelection(t.pool, v11Input), /Revenue rank proof insufficient: proof_missing/,
       'an otherwise eligible reviewed profile still cannot lock without independent completeness/tie evidence');
-    await assert.rejects(lockReferenceSelection(t.pool, v11Input), /requires persisted full-revenue-universe and third-place-tie proof/,
+    await assert.rejects(lockReferenceSelection(t.pool, v11Input), /Revenue rank proof insufficient: proof_missing/,
       'retry remains fail-closed and creates no replayable lock');
     assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [v11Run])).rows[0].count), 0);
     const wrongProfile = { ...v11Input, runId: await createRun('wrong-profile'), profileVersion: firstCandidate.profile_version + 1 };
@@ -384,7 +384,7 @@ test('v1.1 lock validation stays fail-closed while v1 replay stays unchanged', {
     const refreshedCandidate = candidateFor(refreshedHit, firstVersion.id);
     const validMappedRun = await createRun('mapped-lock');
     const validMappedRequest = lockRequest(refreshedCandidate, refreshedHit.index_release!.release_id, validMappedRun, replacementMapping.mapping_version_id);
-    await assert.rejects(lockReferenceSelection(t.pool, validMappedRequest), /requires persisted full-revenue-universe and third-place-tie proof/,
+    await assert.rejects(lockReferenceSelection(t.pool, validMappedRequest), /Revenue rank proof insufficient: proof_missing/,
       'an accepted exact mapping still cannot lock without independent completeness/tie evidence');
     assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [validMappedRun])).rows[0].count), 0);
 
