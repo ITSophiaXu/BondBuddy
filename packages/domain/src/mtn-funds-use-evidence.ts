@@ -51,7 +51,7 @@ export type MtnFundsUseEvidenceInput = {
   issuerTier: MtnEvidenceValue<MtnIssuerTier>;
   registrationArrangement: MtnEvidenceValue<MtnRegistrationArrangement>;
   useLines: MtnFundsUseLineEvidence[];
-  /** Registration estimate total or the exact issuance total, as applicable. */
+  /** Registration/issuance amount with its source-qualified semantics preserved. */
   statedTotal: MtnEvidenceValue<MtnFundsUseMoney>;
   changeProcedure: MtnFundsUseChangeProcedureEvidence;
 };
@@ -92,24 +92,91 @@ function amountsCompare(left: string, right: string): number {
   return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
 }
 
-const amountQualifierPatterns: Record<Exclude<MtnFundsUseMoney['kind'], 'exact'>, RegExp> = {
-  upper_bound: /(?:不超过|不高于|不得超过|最高|至多|上限|不大于|≤|<=|at\s+most|up\s+to|no\s+more\s+than|not\s+exceed)[^\d]{0,8}[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:以内|以下)/i,
-  lower_bound: /(?:至少|不低于|不得低于|不小于|不少于|下限|≥|>=|at\s+least|no\s+less\s+than)[^\d]{0,8}[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:以上)/i,
-  estimate: /(?:约|预计|预估|大约|估计)[^\d]{0,12}[\d,.]+|(?:approximately|around|estimated?)[^\d]{0,12}[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:左右)/i,
-  range: /(?:区间|范围|介于)\s*[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:至|到|[-–—])\s*[\d,.]+|between\s+[\d,.]+\s+and\s+[\d,.]+/i,
+const amountQualifierPatterns: Record<Exclude<MtnFundsUseMoney['kind'], 'exact'>, RegExp[]> = {
+  upper_bound: [
+    /(?:不超过|不高于|不得超过|最高|至多|上限|不大于|≤|<=|at\s+most|up\s+to|no\s+more\s+than|not\s+exceed)[^\d]{0,8}([\d,.]+)/i,
+    /([\d,.]+)\s*(?:元|万元|亿元|万|亿)?\s*(?:以内|以下)/i,
+  ],
+  lower_bound: [
+    /(?:至少|不低于|不得低于|不小于|不少于|下限|≥|>=|at\s+least|no\s+less\s+than)[^\d]{0,8}([\d,.]+)/i,
+    /([\d,.]+)\s*(?:元|万元|亿元|万|亿)?\s*(?:以上)/i,
+  ],
+  estimate: [
+    /(?:约|预计|预估|大约|估计)[^\d]{0,12}([\d,.]+)/i,
+    /(?:approximately|around|estimated?)[^\d]{0,12}([\d,.]+)/i,
+    /([\d,.]+)\s*(?:元|万元|亿元|万|亿)?\s*(?:左右)/i,
+  ],
+  range: [
+    /([\d,.]+)\s*(?:元|万元|亿元|万|亿)?\s*(?:至|到|[-–—])\s*([\d,.]+)/i,
+    /between\s+([\d,.]+)\s+and\s+([\d,.]+)/i,
+    /(?:区间|范围|介于)\s*([\d,.]+)[^\d]{0,8}([\d,.]+)/i,
+  ],
 };
 const pendingAllocationPattern = /按需|结合需要确定|视实际需要|实际需要确定|待分配|尚未确定|待明确|subject\s+to\s+demand/i;
+
+function citedAmountsForKind(quote: string, kind: Exclude<MtnFundsUseMoney['kind'], 'exact'>): string[] {
+  return amountQualifierPatterns[kind].flatMap(pattern => {
+    const match = pattern.exec(quote);
+    return match ? match.slice(1).filter((value): value is string => value !== undefined) : [];
+  });
+}
+
+function quotedRangeMatches(quote: string, money: Extract<MtnFundsUseMoney, { kind: 'range' }>): boolean {
+  const pattern = /([\d,.]+)\s*(亿元|万元|元|万|亿)?\s*(?:至|到|[-–—])\s*([\d,.]+)\s*(亿元|万元|元|万|亿)?/i;
+  const match = pattern.exec(quote);
+  if (!match || !match[1] || !match[3]) return false;
+  const min = match[1].replace(/,/g, '');
+  const max = match[3].replace(/,/g, '');
+  const citedUnits = [match[2], match[4]].filter((unit): unit is string => unit !== undefined);
+  return sameSourceNumber(min, money.minimum) && sameSourceNumber(max, money.maximum) &&
+    citedUnits.length > 0 && citedUnits.every(unit => unit === money.unit);
+}
+
+function quotedAmountMatches(quote: string, quotedAmount: string, structuredAmount: string, unit: string): boolean {
+  const escapedUnit = unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const unitAmountPattern = new RegExp(`([\\d,]+(?:\\.\\d+)?)\\s*${escapedUnit}`, 'g');
+  return [...quote.matchAll(unitAmountPattern)].some(match => match[1] !== undefined &&
+    sameSourceNumber(match[1], quotedAmount) && sameSourceNumber(quotedAmount, structuredAmount));
+}
+
+function canonicalQuotedNumber(value: string): string | null {
+  if (!/^\d+(?:\.\d+)?$/.test(value) && !/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(value)) return null;
+  return value.replace(/,/g, '');
+}
+
+function sameSourceNumber(left: string, right: string): boolean {
+  const canonicalLeft = canonicalQuotedNumber(left);
+  return canonicalLeft !== null && amountsCompare(canonicalLeft, right) === 0;
+}
 
 function amountSemanticsMatchCitations(money: MtnFundsUseMoney, citations: MtnEvidenceValue<unknown>['citations']): boolean {
   const quotes = citations.map(citation => citation.quote);
   if (money.kind === 'exact') {
-    return ![...Object.values(amountQualifierPatterns), pendingAllocationPattern]
-      .some(pattern => quotes.some(quote => pattern.test(quote)));
+    const citedExactAmount = quotes.some(quote => {
+      const tokens = quote.match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+      const amountAppears = tokens.some(token => quotedAmountMatches(quote, token, money.amount, money.unit));
+      const sameAmountIsQualified = Object.keys(amountQualifierPatterns).some(kind =>
+        citedAmountsForKind(quote, kind as Exclude<MtnFundsUseMoney['kind'], 'exact'>)
+          .some(token => quotedAmountMatches(quote, token, money.amount, money.unit)));
+      return amountAppears && !sameAmountIsQualified && !pendingAllocationPattern.test(quote);
+    });
+    return citedExactAmount;
   }
-  const expected = amountQualifierPatterns[money.kind];
-  return quotes.some(quote => expected.test(quote)) &&
-    !Object.entries(amountQualifierPatterns)
-      .some(([kind, pattern]) => kind !== money.kind && quotes.some(quote => pattern.test(quote)));
+  return quotes.some(quote => {
+    const citedAmounts = citedAmountsForKind(quote, money.kind);
+    if (money.kind === 'range') {
+      const endpoints = [money.minimum, money.maximum];
+      const otherQualifierUsesEndpoint = Object.keys(amountQualifierPatterns).some(kind => kind !== money.kind &&
+        citedAmountsForKind(quote, kind as Exclude<MtnFundsUseMoney['kind'], 'exact'>)
+          .some(amount => endpoints.some(endpoint => sameSourceNumber(amount, endpoint))));
+      return quotedRangeMatches(quote, money) && !otherQualifierUsesEndpoint;
+    }
+    const sameAmountHasAnotherQualifier = Object.keys(amountQualifierPatterns).some(kind => kind !== money.kind &&
+      citedAmountsForKind(quote, kind as Exclude<MtnFundsUseMoney['kind'], 'exact'>)
+        .some(amount => sameSourceNumber(amount, money.amount)));
+    return !sameAmountHasAnotherQualifier &&
+      citedAmounts.some(amount => quotedAmountMatches(quote, amount, money.amount, money.unit));
+  });
 }
 
 function validDate(value: string | null): value is string {
@@ -222,6 +289,8 @@ export function checkMtnFundsUseEvidence(input: MtnFundsUseEvidenceInput): MtnFu
       } else if (statedTotal.kind === 'upper_bound') {
         if (amountsCompare(total.amount, statedTotal.amount) > 0) {
           conflicts.push('funds_use_amount_total_conflict');
+        } else {
+          review.push('funds_use_amount_semantics_unresolved_for_total');
         }
       } else if (statedTotal.kind === 'exact') {
         const equal = amountsEqual({ ...total, kind: 'exact' }, statedTotal);

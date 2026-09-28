@@ -4,6 +4,7 @@ import {
   checkMtnFundsUseEvidence,
   type MtnFundsUseEvidenceInput,
   type MtnFundsUseLineEvidence,
+  type MtnFundsUseMoney,
 } from './mtn-funds-use-evidence.js';
 import type { MtnEvidenceValue } from './mtn-registration-evidence.js';
 
@@ -22,12 +23,27 @@ function exactMoney(amount: string, unit = '亿元') {
   return { kind: 'exact' as const, amount, currency: 'CNY', unit };
 }
 
+function moneyEv(value: MtnFundsUseMoney, quote?: string): MtnEvidenceValue<MtnFundsUseMoney> {
+  const amountText = value.kind === 'range' ? `${value.minimum}至${value.maximum}` : value.amount;
+  const unit = value.unit;
+  const generatedQuote = value.kind === 'exact'
+    ? `合成原文记载金额为${amountText}${unit}。`
+    : value.kind === 'upper_bound'
+      ? `合成原文记载金额不超过${amountText}${unit}。`
+      : value.kind === 'lower_bound'
+        ? `合成原文记载金额至少${amountText}${unit}。`
+        : value.kind === 'estimate'
+          ? `合成原文预计金额为${amountText}${unit}。`
+          : `合成原文记载金额范围为${value.minimum}${unit}至${value.maximum}${unit}。`;
+  return ev(value, quote ?? generatedQuote);
+}
+
 function line(overrides: Partial<MtnFundsUseLineEvidence> = {}): MtnFundsUseLineEvidence {
   return {
     lineId: ev('use-1'),
     useDescription: ev('repay synthetic bank loan'),
     detailLevel: ev('specific'),
-    amount: ev(exactMoney('1.25')),
+    amount: moneyEv(exactMoney('1.25')),
     policySensitivity: ev('not_identified_as_sensitive'),
     ...overrides,
   };
@@ -40,7 +56,7 @@ function input(overrides: Partial<MtnFundsUseEvidenceInput> = {}): MtnFundsUseEv
     issuerTier: ev('basic_tier'),
     registrationArrangement: ev('basic_tier_unified_quota'),
     useLines: [line()],
-    statedTotal: ev(exactMoney('1.25')),
+    statedTotal: moneyEv(exactMoney('1.25')),
     changeProcedure: {
       changeStatus: ev('no_change_asserted'),
       procedureStatus: ev('not_applicable_with_basis'),
@@ -55,8 +71,8 @@ function input(overrides: Partial<MtnFundsUseEvidenceInput> = {}): MtnFundsUseEv
 
 test('issuance stage accepts cited specific uses when exact amount, currency, and unit totals align', () => {
   const evidence = input({ useLines: [
-    line({ amount: ev(exactMoney('0.5')) }),
-    line({ lineId: ev('use-2'), amount: ev(exactMoney('0.75')) }),
+    line({ amount: moneyEv(exactMoney('0.5')) }),
+    line({ lineId: ev('use-2'), amount: moneyEv(exactMoney('0.75')) }),
   ] });
   const result = checkMtnFundsUseEvidence(evidence);
   assert.equal(result.decision, 'evidence_shape_pass', result.reasons.join(','));
@@ -73,7 +89,7 @@ test('basic-tier quota-unified registration may retain broad categories for late
     issuerTier: ev('basic_tier'),
     registrationArrangement: ev('basic_tier_unified_quota'),
     useLines: [line({ detailLevel: ev('broad_category'), useDescription: ev('working capital') })],
-    statedTotal: ev(exactMoney('1.25')),
+    statedTotal: moneyEv(exactMoney('1.25')),
   }));
   assert.equal(result.decision, 'evidence_shape_pass');
 });
@@ -109,13 +125,13 @@ test('policy-sensitive use and unresolved policy evidence require specific detai
 
 test('directly evidenced amount mismatches conflict while mixed currency or unit remains needs_review', () => {
   const mismatch = checkMtnFundsUseEvidence(input({
-    statedTotal: ev(exactMoney('1.2')),
+    statedTotal: moneyEv(exactMoney('1.2')),
   }));
   assert.equal(mismatch.decision, 'evidence_conflict');
   assert.ok(mismatch.reasons.includes('funds_use_amount_total_conflict'));
 
   const mixedUnit = checkMtnFundsUseEvidence(input({
-    useLines: [line({ amount: ev(exactMoney('125', '万元')) })],
+    useLines: [line({ amount: moneyEv(exactMoney('125', '万元')) })],
   }));
   assert.equal(mixedUnit.decision, 'needs_review');
   assert.ok(mixedUnit.reasons.includes('funds_use_amount_units_unmatched'));
@@ -123,28 +139,65 @@ test('directly evidenced amount mismatches conflict while mixed currency or unit
 
 test('upper bounds are not summed as exact allocations; the stated quote qualifier must survive', () => {
   const bounded = checkMtnFundsUseEvidence(input({
-    statedTotal: ev({ kind: 'upper_bound', amount: '10', currency: 'CNY', unit: '亿元' }, '本期发行金额不超过10亿元。'),
+    statedTotal: moneyEv({ kind: 'upper_bound', amount: '10', currency: 'CNY', unit: '亿元' }, '本期发行金额不超过10亿元。'),
     useLines: [
-      line({ amount: ev({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '偿还贷款不超过8亿元。') }),
+      line({ amount: moneyEv({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '偿还贷款不超过8亿元。') }),
       line({ lineId: ev('use-2'), useDescription: ev('working capital as needed'),
-        amount: ev({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '补充流动资金不超过8亿元，实际按需确定。') }),
+        amount: moneyEv({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '补充流动资金不超过8亿元，实际按需确定。') }),
     ],
   }));
   assert.equal(bounded.decision, 'needs_review');
   assert.ok(bounded.reasons.includes('funds_use_amount_semantics_unresolved_for_total'));
   assert.ok(!bounded.reasons.includes('funds_use_amount_total_conflict'));
 
+  const belowTotalCap = checkMtnFundsUseEvidence(input({
+    statedTotal: moneyEv({ kind: 'upper_bound', amount: '10', currency: 'CNY', unit: '亿元' }, '本期发行金额不超过10亿元。'),
+    useLines: [
+      line({ amount: moneyEv(exactMoney('6')) }),
+      line({ lineId: ev('use-2'), amount: moneyEv(exactMoney('4')) }),
+    ],
+  }));
+  assert.equal(belowTotalCap.decision, 'needs_review');
+  assert.ok(belowTotalCap.reasons.includes('funds_use_amount_semantics_unresolved_for_total'));
+  assert.ok(!belowTotalCap.reasons.includes('funds_use_amount_total_conflict'));
+
   const qualifierDropped = checkMtnFundsUseEvidence(input({
-    useLines: [line({ amount: ev(exactMoney('1.25'), '偿还贷款金额不超过1.25亿元。') })],
+    useLines: [line({ amount: moneyEv(exactMoney('1.25'), '偿还贷款金额不超过1.25亿元。') })],
   }));
   assert.equal(qualifierDropped.decision, 'needs_review');
   assert.ok(qualifierDropped.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
 
   const pendingAllocation = checkMtnFundsUseEvidence(input({
-    useLines: [line({ amount: ev(exactMoney('8'), '补充流动资金8亿元，实际按需确定。') })],
+    useLines: [line({ amount: moneyEv(exactMoney('8'), '补充流动资金8亿元，实际按需确定。') })],
   }));
   assert.equal(pendingAllocation.decision, 'needs_review');
   assert.ok(pendingAllocation.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
+
+  const mismatchedBound = checkMtnFundsUseEvidence(input({
+    useLines: [line({ amount: moneyEv({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '偿贷金额不超过10亿元。') })],
+  }));
+  assert.equal(mismatchedBound.decision, 'needs_review');
+  assert.ok(mismatchedBound.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
+  assert.ok(!mismatchedBound.reasons.includes('funds_use_amount_total_conflict'));
+
+  const mismatchedExact = checkMtnFundsUseEvidence(input({
+    useLines: [line({ amount: moneyEv(exactMoney('8'), '偿贷金额为10亿元。') })],
+  }));
+  assert.equal(mismatchedExact.decision, 'needs_review');
+  assert.ok(mismatchedExact.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
+  assert.ok(!mismatchedExact.reasons.includes('funds_use_amount_total_conflict'));
+
+  const compoundQualifier = checkMtnFundsUseEvidence(input({
+    useLines: [line({ amount: moneyEv({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '预计偿贷金额不超过8亿元。') })],
+  }));
+  assert.equal(compoundQualifier.decision, 'needs_review');
+  assert.ok(compoundQualifier.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
+
+  const differentAmountQualifier = checkMtnFundsUseEvidence(input({
+    useLines: [line({ amount: moneyEv({ kind: 'upper_bound', amount: '8', currency: 'CNY', unit: '亿元' }, '预计发行总额10亿元，偿贷不超过8亿元。') })],
+  }));
+  assert.equal(differentAmountQualifier.decision, 'needs_review');
+  assert.ok(!differentAmountQualifier.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
 
   const unsupportedBound = checkMtnFundsUseEvidence(input({
     statedTotal: ev({ kind: 'upper_bound', amount: '1.25', currency: 'CNY', unit: '亿元' }),
@@ -155,20 +208,20 @@ test('upper bounds are not summed as exact allocations; the stated quote qualifi
 
 test('only fully determined same-unit exact allocations produce a direct total conflict', () => {
   const exactMismatch = checkMtnFundsUseEvidence(input({
-    statedTotal: ev(exactMoney('10')),
+    statedTotal: moneyEv(exactMoney('10')),
     useLines: [
-      line({ amount: ev(exactMoney('6')) }),
-      line({ lineId: ev('use-2'), amount: ev(exactMoney('5')) }),
+      line({ amount: moneyEv(exactMoney('6')) }),
+      line({ lineId: ev('use-2'), amount: moneyEv(exactMoney('5')) }),
     ],
   }));
   assert.equal(exactMismatch.decision, 'evidence_conflict');
   assert.ok(exactMismatch.reasons.includes('funds_use_amount_total_conflict'));
 
   const mixed = checkMtnFundsUseEvidence(input({
-    statedTotal: ev(exactMoney('10')),
+    statedTotal: moneyEv(exactMoney('10')),
     useLines: [
-      line({ amount: ev(exactMoney('6')) }),
-      line({ lineId: ev('use-2'), amount: ev({ kind: 'estimate', amount: '5', currency: 'CNY', unit: '亿元' }, '预计补流5亿元。') }),
+      line({ amount: moneyEv(exactMoney('6')) }),
+      line({ lineId: ev('use-2'), amount: moneyEv({ kind: 'estimate', amount: '5', currency: 'CNY', unit: '亿元' }, '预计补流5亿元。') }),
     ],
   }));
   assert.equal(mixed.decision, 'needs_review');
@@ -176,10 +229,17 @@ test('only fully determined same-unit exact allocations produce a direct total c
   assert.ok(!mixed.reasons.includes('funds_use_amount_total_conflict'));
 
   const range = checkMtnFundsUseEvidence(input({
-    useLines: [line({ amount: ev({ kind: 'range', minimum: '1', maximum: '2', currency: 'CNY', unit: '亿元' }, '资金需求在1亿元至2亿元之间。') })],
+    useLines: [line({ amount: moneyEv({ kind: 'range', minimum: '8', maximum: '10', currency: 'CNY', unit: '亿元' }, '资金需求在8至10亿元之间。') })],
   }));
   assert.equal(range.decision, 'needs_review');
   assert.ok(range.reasons.includes('funds_use_amount_semantics_unresolved_for_total'));
+  assert.ok(!range.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
+
+  const mismatchedRangeUnit = checkMtnFundsUseEvidence(input({
+    useLines: [line({ amount: moneyEv({ kind: 'range', minimum: '8', maximum: '10', currency: 'CNY', unit: '亿元' }, '资金需求在8至10万元之间。') })],
+  }));
+  assert.equal(mismatchedRangeUnit.decision, 'needs_review');
+  assert.ok(mismatchedRangeUnit.reasons.includes('use_line_0_amount_qualifier_not_preserved_or_supported'));
 });
 
 test('changed use requires cited procedure, dates, and the source-stated business-day lead time', () => {
