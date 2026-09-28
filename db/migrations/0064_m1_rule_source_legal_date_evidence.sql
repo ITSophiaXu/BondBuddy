@@ -39,26 +39,39 @@ ALTER TABLE bb_rule_pack_production_source_checks
     (transition_from_date IS NULL AND transition_until_date IS NULL) OR jsonb_array_length(transition_evidence) > 0
   ),
   ADD CONSTRAINT bb_rule_pack_source_applicability_basis_guard CHECK (
-    applicability_basis IS NULL OR (
+    (applicability_basis IS NULL OR (
       jsonb_typeof(applicability_basis) = 'object'
-      AND applicability_basis->>'basis_id' IS NOT NULL
-      AND (applicability_basis->>'basis_version') ~ '^[1-9][0-9]*$'
+      AND jsonb_typeof(applicability_basis->'basis_id') = 'string'
+      AND length(btrim(applicability_basis->>'basis_id', E' \t\n\r')) > 0
+      AND jsonb_typeof(applicability_basis->'basis_version') = 'number'
+      AND CASE WHEN (applicability_basis->>'basis_version') ~ '^[1-9][0-9]{0,9}$'
+        THEN (applicability_basis->>'basis_version')::numeric <= 2147483647 ELSE false END
+      AND jsonb_typeof(applicability_basis->'basis_sha256') = 'string'
       AND (applicability_basis->>'basis_sha256') ~ '^[a-f0-9]{64}$'
+      AND jsonb_typeof(applicability_basis->'source_document_sha256') = 'string'
       AND (applicability_basis->>'source_document_sha256') ~ '^[a-f0-9]{64}$'
       AND jsonb_typeof(applicability_basis->'applicability_scope') = 'object'
-      AND length(btrim(COALESCE(applicability_basis->>'time_basis',''))) > 0
+      AND jsonb_typeof(applicability_basis->'time_basis') = 'string'
+      AND length(btrim(applicability_basis->>'time_basis', E' \t\n\r')) > 0
       AND jsonb_typeof(applicability_basis->'locator') = 'object'
-    )
+    )) IS TRUE
   ),
   ADD CONSTRAINT bb_rule_pack_source_method_window_guard CHECK (
-    approved_method_window IS NULL OR (
+    (approved_method_window IS NULL OR (
       jsonb_typeof(approved_method_window) = 'object'
-      AND (approved_method_window->>'enabled_from')::date IS NOT NULL
-      AND ((approved_method_window->>'enabled_until') IS NULL
-        OR (approved_method_window->>'enabled_until')::date >= (approved_method_window->>'enabled_from')::date)
-      AND length(btrim(COALESCE(approved_method_window->>'approval_evidence_id',''))) > 0
+      AND jsonb_typeof(approved_method_window->'enabled_from') = 'string'
+      AND CASE WHEN jsonb_typeof(approved_method_window->'enabled_from') = 'string'
+        THEN (approved_method_window->>'enabled_from')::date IS NOT NULL ELSE false END
+      AND approved_method_window ? 'enabled_until'
+      AND CASE jsonb_typeof(approved_method_window->'enabled_until')
+        WHEN 'null' THEN true
+        WHEN 'string' THEN (approved_method_window->>'enabled_until')::date >= (approved_method_window->>'enabled_from')::date
+        ELSE false END
+      AND jsonb_typeof(approved_method_window->'approval_evidence_id') = 'string'
+      AND length(btrim(approved_method_window->>'approval_evidence_id', E' \t\n\r')) > 0
+      AND jsonb_typeof(approved_method_window->'approval_evidence_sha256') = 'string'
       AND (approved_method_window->>'approval_evidence_sha256') ~ '^[a-f0-9]{64}$'
-    )
+    )) IS TRUE
   ),
   ADD CONSTRAINT bb_rule_pack_source_no_method_legal_date CHECK (
     legal_effective_date_basis <> 'not_legal_effectivity' OR effective_from IS NULL
