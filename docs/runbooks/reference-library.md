@@ -55,7 +55,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
   - `library_sync_failed`（critical，scope=来源 id，按小时去重）：同步最终失败，或部分条目失败（`partial`）时触发。`consecutive_failures` 加 1；只有全部条目成功才清零。
   - `library_source_stale`（warning，scope=来源 id，每个 `sync_interval_seconds` 周期最多一条）：距上次成功（从未成功则从登记时间算起）超过 `BB_LIBRARY_STALE_FACTOR × sync_interval_seconds`。
 - `evaluation_only` 来源照常同步和审核，用于评估，但查询时按使用权过滤，任何版本都不会成为任务候选；有测试覆盖。
-- 资源：解析在 ops 容器内运行 Python 子进程。`deploy/m1/compose.yaml` 的 `ops` 为 384M、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 为 768M。叠加 `deploy/m1/compose.prod.yaml` 后 `ops` 仍为 384M，`worker` 改为 512M、`NODE_OPTIONS=--max-old-space-size=160`。开启同步前按实际 PDF 峰值评估 ops 限额。`BB_EGRESS_ALLOW` 的 Compose 默认值只有 `api.deepseek.com`；如果 SSE 流量经出口代理，必须允许 `query.sse.com.cn` 和 `static.sse.com.cn`，并保留 Blob 存储域名。还需验证来源适配器的 Node `fetch` 实际经过该代理，不能仅凭设置 `HTTPS_PROXY` 推断已受白名单约束。
+- 资源：解析在 ops 容器内运行 Python 子进程。`deploy/m1/compose.yaml` 的 `ops` 为 384M、`NODE_OPTIONS=--max-old-space-size=256`；`worker` 为 768M。叠加 `deploy/m1/compose.prod.yaml` 后 `ops` 仍为 384M，`worker` 改为 512M、`NODE_OPTIONS=--max-old-space-size=160`。开启同步前按实际 PDF 峰值评估 ops 限额。`BB_EGRESS_ALLOW` 默认仍不开放 SSE 域名。开启同步时，在既有 DeepSeek 与 Blob 主机之外追加 `query.sse.com.cn static.sse.com.cn`。ops 容器设置 `NODE_USE_ENV_PROXY=1`，使 Node 22 的来源 `fetch` 遵守 `HTTPS_PROXY` 和 `NO_PROXY`；启用前用本地记录型代理确认 CONNECT 与来源响应。PG 使用 TCP，不受 Node fetch 设置影响；Blob SDK 使用自身 HTTP 管线，Codex 模型调用是独立子进程，两者继续使用原有代理变量。容器内服务地址保留在 `NO_PROXY`。
 - 增量游标：`{"publish_date": "<最高已见 PUBLISH_DATE>"}`，下一次从同一日期起重扫（重叠一天），重复条目记为 `unchanged`。失败条目以 `retry_items` 写入游标，直到成功为止，不会因游标前进而丢失。
 - 只有全部条目成功时才更新 `last_success_at`；部分失败记 `partial` 并设置 `last_error_code`。
 - 限速：请求间隔 ≥700 ms，单文件下载超时 180 s，单文件上限 150 MiB，按条最多 3 次尝试（退避 5 s × 次数）。
@@ -123,7 +123,7 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 
 实际 3 轮分别在 13:26、13:31、13:36 UTC 触发并成功结束：首轮 `new_document=1`，后两轮各 `unchanged=1`，游标保持同一披露日；1 份版本留在 `pending_review`，没有审核发布。第 3 轮曾出现两次 `DATA_UNAVAILABLE/retry_scheduled`，同一调度执行继续领取后成功。注入下载失败的单条文件重试 3 次后本轮为 `partial`，产生 `library_sync_failed`；恢复后下一次同步成功并清零连续失败。中断后的任务从 `next_index=1` 接管，领取次数为 2，版本数保持 1，未发现待解析版本或未引用的来源 Blob。两个独立进程并发只新增 1 个来源任务。Node 与解析子进程的 200 毫秒采样峰值 RSS 合计 236.5 MiB，低于现行 ops 384 MiB 限额，但不是容器峰值，也不足以推断其他文件或全量批次的内存安全。
 
-这些结果只证明有限采样的定时执行、错误记录和恢复机制。来源为 `evaluation_only`，不代表 #77 审核发布稿或商用批次验收；未发布版本不进入任务候选。出口核对还须单独完成：Compose 的 `BB_EGRESS_ALLOW` 默认缺少两个 SSE 域名；本机 Node 22 在仅设置不可用 `HTTPS_PROXY` 时仍直接取得来源响应，启用 `NODE_USE_ENV_PROXY=1` 后才按该代理失败。适配器收到响应头后就清除超时计时器，正文读取不受所配超时覆盖；这两处代码问题需另行修复和复验，不应直接打开现有部署的定时同步。
+这些结果只证明有限采样的定时执行、错误记录和恢复机制。来源为 `evaluation_only`，不代表 #77 审核发布稿或商用批次验收；未发布版本不进入任务候选。演练发现的出口与正文超时问题已在后续修复：ops 的 Node `fetch` 启用环境代理支持，JSON/PDF 的计时覆盖完整正文，PDF 超过 150 MiB 时立即取消流。复验运行 `node --test --test-concurrency=2 apps/worker/dist/library-sources.test.js apps/worker/dist/library.test.js apps/worker/dist/library-scheduler.test.js`；代理测试覆盖 CONNECT、不可达代理和 `NO_PROXY`，真实 SSE 查询仍须用本地记录型代理做单次只读抽查。同步开关继续默认关闭；开启前另需增加两个 SSE 域名到出口白名单，核对授权和 ops 内存限额。
 
 ## 7. 任务侧契约（内部 v1）
 

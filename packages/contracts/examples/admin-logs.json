@@ -2,6 +2,12 @@
   "synthetic": true,
   "cases": [
     {
+      "name": "admin-error-counts-redacted",
+      "schema": "AdminErrorCountsResponse",
+      "valid": true,
+      "value": {"items":[{"error_code":"DELIVERY_FAILED","error_category":"delivery","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","count":2}],"audit_id":"audit_syn_70"}
+    },
+    {
       "name": "admin-job-timeline-retry-then-success",
       "schema": "AdminJobTimelineResponse",
       "valid": true,
@@ -110,8 +116,12 @@
             "category": "model_provider",
             "stage": "provider_call",
             "attempt_id": "att_syn_1",
+            "provider_status": null,
+            "provider_error_type": null,
             "retry_count": 0,
             "fingerprint": null,
+            "safe_message": null,
+            "safe_stack": null,
             "recovery_status": "retried",
             "created_at": "2026-09-25T08:00:00Z"
           }

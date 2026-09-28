@@ -17,6 +17,7 @@ const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.m
   : value && typeof value === 'object' ? `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(',')}}`
     : JSON.stringify(value);
 const sha256 = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex');
+export const libraryRevenueRankProofHash = (proof: LibraryRevenueRankProof): string => sha256(proof);
 
 /** The hash covers the immutable financial and classification content, not mutable publication state. */
 export function libraryProfileContentHash(profile: Profile): string {
@@ -82,7 +83,7 @@ export async function persistLibraryRevenueRankProof(pool: Pool, proof: LibraryR
     const evidenceVersionIds = [...new Set([...proof.denominator_evidence, ...proof.rows.flatMap(row => row.evidence)].map(e => e.document_version_id))];
     const evidenceVersions = await client.query('SELECT id FROM bb_library_document_versions WHERE id = ANY($1::text[])', [evidenceVersionIds]);
     if (evidenceVersions.rowCount !== evidenceVersionIds.length) throw new Problem(422, 'VALIDATION_FAILED', 'Revenue proof references a missing evidence document version');
-    const proofHash = sha256(proof);
+    const proofHash = libraryRevenueRankProofHash(proof);
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`library-revenue-proof:${proof.profile_id}`]);
     const existing = (await client.query('SELECT id, proof_hash FROM bb_library_revenue_rank_proofs WHERE profile_id=$1 AND profile_version=$2', [proof.profile_id, proof.profile_version])).rows[0];
     if (existing) {
@@ -100,7 +101,11 @@ export async function readLibraryRevenueRankProofDecision(pool: Pool | PoolClien
   const row = (await pool.query(`SELECT p.*, r.proof, r.proof_hash FROM bb_library_profiles p
     LEFT JOIN bb_library_revenue_rank_proofs r ON r.profile_id=p.id AND r.profile_version=p.profile_version
     WHERE p.id=$1`, [profileId])).rows[0];
-  if (!row || !row.proof) return { sufficient: false, reasons: ['proof_missing'] };
-  if (sha256(row.proof) !== row.proof_hash) return { sufficient: false, reasons: ['proof_hash_mismatch'] };
-  return assessLibraryRevenueRankProof(row.proof as LibraryRevenueRankProof, row as Profile);
+  if (!row || !row.proof) return { sufficient: false, reasons: ['proof_missing'], profile_id: profileId,
+    profile_version: Number(row?.profile_version ?? 1), profile_hash: null, proof_hash: null };
+  if (libraryRevenueRankProofHash(row.proof as LibraryRevenueRankProof) !== row.proof_hash) return { sufficient: false, reasons: ['proof_hash_mismatch'], profile_id: profileId,
+    profile_version: Number(row.profile_version), profile_hash: null, proof_hash: null };
+  const decision = assessLibraryRevenueRankProof(row.proof as LibraryRevenueRankProof, row as Profile);
+  return { ...decision, profile_id: profileId, profile_version: Number(row.profile_version),
+    profile_hash: (row.proof as LibraryRevenueRankProof).profile_hash, proof_hash: decision.sufficient ? row.proof_hash as string : null };
 }

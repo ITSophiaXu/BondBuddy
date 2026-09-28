@@ -7,9 +7,10 @@ import {
   classifyLibraryVersion, enqueueLibraryRecordRerun, enqueueLibrarySync, ingestLibraryVersion, invalidateLibraryCache, libraryAlerts, libraryCacheSize, libraryOverview,
   lockReferenceSelection, markLibraryVersionParsed, queryReferenceLibrary, readLockedReference, reclassifyPendingProfile, registerLibrarySource, reviewLibraryVersion,
   recordChapterMappingVersion, rollbackLibraryRelease, setLibrarySourceRights, syncRunSummary, withdrawChapterMappingVersion, type ProfileDraft, type ProfileLine,
+  libraryProfileContentHash, persistLibraryRevenueRankProof,
 } from '@bondbuddy/api/library';
 import { Ajv } from 'ajv';
-import { LibraryQueryResponseV1_1Schema, LibraryQueryResponseV1Schema, type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponseV1_1 } from '@bondbuddy/contracts';
+import { LibraryQueryResponseV1_1Schema, LibraryQueryResponseV1Schema, type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponseV1_1, type LibraryRevenueRankProof } from '@bondbuddy/contracts';
 import { conservativeClassifier, runLibraryOnce, type LibraryClassifier, type LibraryParser, type LibraryPipelineDependencies } from './library-pipeline.js';
 import { OperatorImportAdapter, OPERATOR_IMPORT_SOURCE, SourceError, SseBondProjectAdapter, type DiscoveredItem, type LibrarySourceAdapter } from './library-sources.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -351,6 +352,34 @@ test('v1.1 lock validation stays fail-closed while v1 replay stays unchanged', {
     await assert.rejects(lockReferenceSelection(t.pool, v11Input), /Revenue rank proof insufficient: proof_missing/,
       'retry remains fail-closed and creates no replayable lock');
     assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [v11Run])).rows[0].count), 0);
+
+    const proofProfile = (await t.pool.query('SELECT * FROM bb_library_profiles WHERE id=$1', [firstCandidate.profile_id])).rows[0];
+    const profileHash = libraryProfileContentHash(proofProfile);
+    const profileTop3 = proofProfile.top3 as Array<{ code: string; label: string; revenue: string; rank: number }>;
+    const proof: LibraryRevenueRankProof = {
+      profile_id: proofProfile.id, profile_version: proofProfile.profile_version, profile_hash: profileHash,
+      document_version_id: firstVersion.id, fiscal_year: proofProfile.fiscal_year, accounting_scope: 'consolidated',
+      revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', denominator: '600',
+      denominator_evidence: [{ document_version_id: firstVersion.id, page: 1, quote: 'Synthetic annual business revenue total: 600' }],
+      rows: profileTop3.map((line, index) => ({ code: line.code, label: line.label, amount: line.revenue, currency: 'CNY', unit: 'ten_thousand_yuan',
+        evidence: [{ document_version_id: firstVersion.id, page: index + 2, quote: `Synthetic ${line.code} revenue ${line.revenue}` }] })),
+      ranking: { top3_codes: profileTop3.map(line => line.code), third_place_tied_codes: [], tie_decision: null },
+      classification_review: { reviewer: 'reviewer-synthetic', reviewed_at: '2026-09-28T00:00:00Z', taxonomy_version: proofProfile.taxonomy_version,
+        profile_id: proofProfile.id, profile_version: proofProfile.profile_version, profile_hash: profileHash, decision: 'approved', evidence_complete: true },
+    };
+    const persistedProof = await persistLibraryRevenueRankProof(t.pool, proof);
+    const proofHit = await t.query(TOP3, { ...scope, rule_version: scope.rule_version }, null, 'reference-library-query-v1.1');
+    const proofCandidate = candidateFor(proofHit, firstVersion.id);
+    assert.deepEqual(proofCandidate.revenue_rank_proof, { profile_id: proofProfile.id, profile_version: proofProfile.profile_version,
+      profile_hash: profileHash, proof_hash: persistedProof.proof_hash, sufficient: true, reasons: [] },
+    'v1.1 query carries only the version-pinned proof decision, not evidence quotes or revenue rows');
+    const proofRun = await createRun('proof-sufficient-but-production-closed');
+    const proofInput = lockRequest(proofCandidate, proofHit.index_release!.release_id, proofRun, null,
+      { market: 'sse', offering: 'public', instrument: 'corporate_bond', document_stage: 'registration', rule_version: 'lock-rule-v1' });
+    await assert.rejects(lockReferenceSelection(t.pool, proofInput), /v1\.1 reference selection awaits authorized data and business acceptance/,
+      'the API revalidates a sufficient immutable proof but keeps the production lock disabled');
+    assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [proofRun])).rows[0].count), 0);
+
     const wrongProfile = { ...v11Input, runId: await createRun('wrong-profile'), profileVersion: firstCandidate.profile_version + 1 };
     await assert.rejects(lockReferenceSelection(t.pool, wrongProfile), /changed since the v1\.1 query/);
     const wrongAttestation = { ...v11Input, runId: await createRun('wrong-attestation'), comparability: {
@@ -384,8 +413,8 @@ test('v1.1 lock validation stays fail-closed while v1 replay stays unchanged', {
     const refreshedCandidate = candidateFor(refreshedHit, firstVersion.id);
     const validMappedRun = await createRun('mapped-lock');
     const validMappedRequest = lockRequest(refreshedCandidate, refreshedHit.index_release!.release_id, validMappedRun, replacementMapping.mapping_version_id);
-    await assert.rejects(lockReferenceSelection(t.pool, validMappedRequest), /Revenue rank proof insufficient: proof_missing/,
-      'an accepted exact mapping still cannot lock without independent completeness/tie evidence');
+    await assert.rejects(lockReferenceSelection(t.pool, validMappedRequest), /v1\.1 reference selection awaits authorized data and business acceptance/,
+      'an accepted exact mapping and sufficient proof still cannot open production lock before #77 acceptance');
     assert.equal(Number((await t.pool.query('SELECT count(*) FROM bb_library_selection_locks WHERE run_id=$1', [validMappedRun])).rows[0].count), 0);
 
     const staleReleaseRun = await createRun('stale-release');
@@ -638,7 +667,9 @@ test('SSE adapter maps project list and prospectus files (recorded synthetic res
         { FILE_TYPE: 11, FILE_VERSION: 2, FILE_TITLE: '1-1 合成募集说明书-2.pdf', FILE_PATH: '/bridge2/disclosure/announcement/c/202609/x2.pdf', FILE_TIME: '2026-09-24' },
         { FILE_TYPE: 11, FILE_VERSION: 1, FILE_TITLE: '1-1 合成募集说明书-1.pdf', FILE_PATH: '/bridge2/disclosure/announcement/c/202608/x1.pdf', FILE_TIME: '2026-08-01' },
         { FILE_TYPE: 31, FILE_VERSION: 1, FILE_TITLE: '3-1 主承销商核查意见.pdf', FILE_PATH: '/bridge2/y.pdf', FILE_TIME: '2026-08-01' }] };
-    return { ok: true, status: 200, json: async () => json, arrayBuffer: async () => new TextEncoder().encode('%PDF-1.4 synthetic').buffer as ArrayBuffer };
+    return u.hostname === 'static.sse.com.cn'
+      ? new Response('%PDF-1.4 synthetic', { status: 200 })
+      : Response.json(json);
   };
   const adapter = new SseBondProjectAdapter({ fetch: fake, delayMs: 0, maxProjects: 5 });
   const d = await adapter.discover({ publish_date: '2026-09-10' }, {});

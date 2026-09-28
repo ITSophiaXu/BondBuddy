@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
+import { Problem } from '@bondbuddy/api/data';
 import { LibrarySelectionLockRequestV1_1Schema, LibrarySelectionLockSchema, LibrarySelectionLockV1_1Schema, type LibraryCandidate, type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponse, type LibraryQueryResponseV1 } from '@bondbuddy/contracts';
 import type { AnnualBusinessProfile } from '@bondbuddy/domain/reference-match';
 import { selectNoHistoryLibraryReference } from './reference-library-selection.js';
@@ -30,6 +31,7 @@ function candidate(overrides: Partial<LibraryCandidateV1_1> = {}): LibraryCandid
     review_quality: 90, disclosed_at: '2025-08-01', top3_set_key: JSON.stringify([...businessCodes].sort()),
     comparability: { accounting_scope: 'consolidated', revenue_basis: 'main_business_revenue', currency: 'CNY', unit: 'ten_thousand_yuan', fiscal_year: 2025,
       attestation: { review_id: 'review-v2', reviewed_by: 'operator-synthetic', reviewed_at: '2026-09-25T00:00:00Z', profile_id: 'profile-v2', profile_version: 2 } },
+    revenue_rank_proof: { profile_id: 'profile-v2', profile_version: 2, profile_hash: 'a'.repeat(64), proof_hash: 'b'.repeat(64), sufficient: true, reasons: [] },
     chapter_mappings: [],
     ...overrides,
   };
@@ -84,18 +86,46 @@ test('selection lock contract keeps v1 shape and requires v1.1 identity and mapp
   assert.equal(Value.Check(LibrarySelectionLockRequestV1_1Schema, { ...request, query_schema_version: 'reference-library-query-v1' }), false);
 });
 
-test('v1.1 validates comparability but waits for source completeness and tie proof before locking', async () => {
+test('v1.1 proof, comparability, and exact applicability permit the consumer to request a version-pinned lock', async () => {
   const fixture = adapters(response([candidate()]));
   const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
-  assert.equal(selected.status, 'needs_review');
-  assert.equal(selected.selected, null);
+  assert.equal(selected.status, 'exact');
+  assert.equal(selected.selected?.revenue_rank_proof_hash, 'b'.repeat(64));
   assert.equal(selected.target.targetBusinessProfile?.topThree[0]?.rank, 1);
   assert.equal(fixture.calls.request?.schema_version, 'reference-library-query-v1.1');
   assert.deepEqual(fixture.calls.request?.target.top3_codes, businessCodes);
   assert.equal(selected.query_schema_version, 'reference-library-query-v1.1');
-  assert.equal(selected.candidate_decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
-  assert.equal(fixture.calls.lock, 0);
+  assert.equal(fixture.calls.lock, 1);
   assert.equal(fixture.calls.persist, 1);
+});
+
+test('missing, insufficient, or profile-mismatched full-revenue proof remains needs_review and unlocked', async () => {
+  const proof = candidate().revenue_rank_proof!;
+  const invalidProofs: NonNullable<LibraryCandidateV1_1['revenue_rank_proof']>[] = [
+    { ...proof, sufficient: false, proof_hash: null, reasons: ['proof_missing'] },
+    { ...proof, profile_id: 'other-profile' },
+    { ...proof, proof_hash: null },
+  ];
+  for (const revenue_rank_proof of invalidProofs) {
+    const fixture = adapters(response([candidate({ revenue_rank_proof })]));
+    const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+    assert.equal(selected.status, 'needs_review');
+    assert.equal(selected.selected, null);
+    assert.equal(fixture.calls.lock, 0);
+  }
+});
+
+test('a sufficient synthetic proof still cannot lock while production reference acceptance is disabled', async () => {
+  const fixture = adapters(response([candidate()]));
+  fixture.deps.lock = async () => {
+    fixture.calls.lock++;
+    throw new Problem(409, 'REFERENCE_COMPLETENESS_REVIEW_REQUIRED', 'v1.1 reference selection awaits authorized data and business acceptance');
+  };
+  const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+  assert.equal(selected.status, 'needs_review');
+  assert.equal(selected.selected, null);
+  assert.equal(selected.candidate_decisions[0]?.reason, 'candidate_proof_revalidation_or_production_acceptance_pending');
+  assert.equal(fixture.calls.lock, 1);
 });
 
 test('target or candidate with operating revenue stays pending and never locks', async () => {
@@ -126,14 +156,13 @@ test('two of three business codes do not match', async () => {
   assert.equal(fixture.calls.lock, 0);
 });
 
-test('different business ranking remains an exact set candidate but cannot skip source profile review', async () => {
+test('different business ranking is an exact set candidate when its full proof is valid', async () => {
   const fixture = adapters(response([candidate({ top3_set_key: JSON.stringify(['equipment', 'chemicals', 'logistics'].sort()) })]));
   const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
-  assert.equal(selected.status, 'needs_review');
+  assert.equal(selected.status, 'exact');
   assert.deepEqual(fixture.calls.request?.target.top3_codes, businessCodes);
-  assert.equal(selected.candidate_decisions[0]?.reason, 'candidate_business_profile_completeness_or_tie_proof_missing');
   assert.deepEqual(selected.target.targetBusinessProfile?.topThree.map(line => line.code), businessCodes);
-  assert.equal(fixture.calls.lock, 0);
+  assert.equal(fixture.calls.lock, 1);
 });
 
 test('missing or mismatched profile-bound comparability stays needs_review without a lock', async () => {
@@ -170,6 +199,21 @@ test('withdrawn or authorization-limited versions returned as no_match cannot be
   const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
   assert.equal(selected.status, 'no_match');
   assert.equal(fixture.calls.lock, 0);
+});
+
+test('an unpublished, withdrawn, or non-commercial candidate that reaches the matcher remains needs_review and unlocked', async () => {
+  const invalidCandidates = [
+    { ...candidate(), availability: 'withdrawn' },
+    { ...candidate(), source_validity: 'withdrawn' },
+    { ...candidate(), use_authorized: false },
+  ] as unknown as LibraryCandidateV1_1[];
+  for (const invalid of invalidCandidates) {
+    const fixture = adapters(response([invalid]));
+    const selected = await selectNoHistoryLibraryReference(input(), fixture.deps);
+    assert.equal(selected.status, 'needs_review');
+    assert.equal(selected.selected, null);
+    assert.equal(fixture.calls.lock, 0);
+  }
 });
 
 test('empty library produces an explicit no_match and durable bounded result', async () => {
