@@ -21,17 +21,18 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
   const owner = `producer-owner-${suffix}`, project = `producer-project-${suffix}`;
   const otherOwner = `producer-other-owner-${suffix}`, otherProject = `producer-other-project-${suffix}`;
   const nativeId = `producer-native-${suffix}`, ocrId = `producer-ocr-${suffix}`;
+  const noEvidenceId = `producer-no-evidence-${suffix}`, nonfinancialId = `producer-nonfinancial-${suffix}`;
   const nativeBytes = Buffer.from(`synthetic native source ${suffix}`), ocrBytes = Buffer.from(`synthetic OCR source ${suffix}`);
   const nativeHash = hash(nativeBytes), ocrHash = hash(ocrBytes);
   const blobs = new Map<string, Buffer>();
 
-  const addMaterial = async (materialId: string, uploadId: string, mediaType: string, sha: string, version = 1) => {
+  const addMaterial = async (materialId: string, uploadId: string, mediaType: string, sha: string, version = 1, role = 'financial') => {
     await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'financial',$8,now()+interval '1 hour','completed')`,
-    [uploadId, owner, project, `${materialId}.source`, mediaType, 16, sha, `synthetic-upload/${uploadId}`]);
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '1 hour','completed')`,
+    [uploadId, owner, project, `${materialId}.source`, mediaType, 16, sha, role, `synthetic-upload/${uploadId}`]);
     await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
-      VALUES($1,$2,$3,$4,$5,'financial',$6,$7,16,$8,$9,'parsed')`,
-    [materialId, version, owner, project, uploadId, `${materialId}.source`, mediaType, sha, `synthetic-material/${materialId}/${version}`]);
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,16,$9,$10,'parsed')`,
+    [materialId, version, owner, project, uploadId, role, `${materialId}.source`, mediaType, sha, `synthetic-material/${materialId}/${version}`]);
   };
 
   try {
@@ -41,6 +42,8 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
     await addMaterial(nativeId, `producer-upload-native-${suffix}`,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', nativeHash);
     await addMaterial(ocrId, `producer-upload-ocr-${suffix}`, 'application/pdf', ocrHash);
+    await addMaterial(noEvidenceId, `producer-upload-no-evidence-${suffix}`, 'application/pdf', hash('no evidence source'));
+    await addMaterial(nonfinancialId, `producer-upload-nonfinancial-${suffix}`, 'application/pdf', hash('nonfinancial source'), 1, 'business');
 
     const parseRequestId = `producer-parse-request-${suffix}`;
     const parseResponse: DocumentParseResponse = {
@@ -91,6 +94,8 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       selectedFinancialMaterials: [{ materialId: nativeId, materialVersion: 1 }, { materialId: ocrId, materialVersion: 1 }],
       projectDraftRevision: 1, reportingCutoff: '2025-06-30' };
     const reference = await produceTargetPeriodCandidateSnapshot(dependencies, request);
+    const replay = await produceTargetPeriodCandidateSnapshot(dependencies, request);
+    assert.deepEqual(replay, reference, 'same exact producer request replays the same immutable reference');
     assert.deepEqual(Object.keys(reference).sort(), ['candidate_set_id', 'candidate_set_version', 'content_sha256']);
     const stored = await pool.query(`SELECT content FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1 AND project_id=$2
       AND candidate_set_id=$3 AND candidate_set_version=$4`, [owner, project, reference.candidate_set_id, reference.candidate_set_version]);
@@ -102,6 +107,30 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
     assert.deepEqual(envelope.supplemental_requirements.message_ids, []);
     assert.equal(envelope.supplemental_requirements.content_sha256, hash('[]'));
     assert.equal(hash(canonical(envelope)), reference.content_sha256);
+    const replayCounts = await pool.query(`SELECT count(DISTINCT s.id)::int AS snapshots, count(o.id)::int AS events
+      FROM bb_target_period_candidate_snapshots s LEFT JOIN bb_outbox o ON o.aggregate_id=s.id
+        AND o.event_type='project.target_period_candidates_snapshotted'
+      WHERE s.owner_user_id=$1 AND s.project_id=$2 AND s.candidate_set_id=$3`, [owner, project, reference.candidate_set_id]);
+    assert.deepEqual(replayCounts.rows[0], { snapshots: 1, events: 1 }, 'exact replay persists only one snapshot and outbox event');
+
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request, projectDraftRevision: 2 }),
+      /TARGET_PERIOD_CANDIDATE_DRAFT_STALE/);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request, reportingCutoff: '2025-03-31' }),
+      /TARGET_PERIOD_CANDIDATE_DRAFT_STALE/);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request,
+      selectedFinancialMaterials: [{ materialId: nonfinancialId, materialVersion: 1 }] }), /TARGET_PERIOD_CANDIDATE_LOCK_INVALID/);
+
+    const noEvidenceRequest = { ...request, selectedFinancialMaterials: [{ materialId: noEvidenceId, materialVersion: 1 }] };
+    const noEvidenceRef = await produceTargetPeriodCandidateSnapshot(dependencies, noEvidenceRequest);
+    const noEvidenceRow = await pool.query(`SELECT content FROM bb_target_period_candidate_snapshots
+      WHERE owner_user_id=$1 AND project_id=$2 AND candidate_set_id=$3`, [owner, project, noEvidenceRef.candidate_set_id]);
+    const noEvidenceContent = typeof noEvidenceRow.rows[0]!.content === 'string'
+      ? JSON.parse(String(noEvidenceRow.rows[0]!.content)) : noEvidenceRow.rows[0]!.content;
+    assert.equal(noEvidenceContent.status, 'needs_confirmation');
+    assert.deepEqual(noEvidenceContent.candidates, []);
+    assert.deepEqual(noEvidenceContent.source_snapshots, []);
+    assert.ok(noEvidenceContent.pending_reasons.includes('no_evidenced_reporting_period_candidates'));
+    assert.ok(noEvidenceContent.pending_reasons.includes('period_evidence_snapshots_missing'));
 
     await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...request,
       ownerUserId: `${owner}-wrong`, projectId: otherProject }), /TARGET_PERIOD_CANDIDATE_PROJECT_NOT_FOUND/);
