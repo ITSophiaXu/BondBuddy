@@ -160,7 +160,8 @@ export function validProductionReviewManifestContent(value: unknown): value is P
   if (!offerings.includes(scope.offering)) return false;
   if (!sortedUnique(scope.instruments)) return false;
   for (const dimension of [scope.issuer_scopes, scope.investor_scopes, scope.industry_codes, scope.special_feature_scope]) {
-    if (dimension.mode === 'explicit_codes' && !sortedUnique(dimension.codes)) return false;
+    if (dimension.mode === 'explicit_codes' &&
+        (!sortedUnique(dimension.codes) || dimension.codes.some(code => ['all', '*'].includes(code.toLowerCase())))) return false;
   }
   if (!scope.exceptions.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.exceptions[index - 1]!.code < item.code))) return false;
   if (!scope.uncovered_items.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.uncovered_items[index - 1]!.code < item.code))) return false;

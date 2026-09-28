@@ -168,13 +168,13 @@ assert.equal(validProductionReviewManifestContent(scopeBasisDrift), false, 'sour
 const emptyUnknownDimension = structuredClone(manifestBaseline.value) as any;
 emptyUnknownDimension.content.applicability_scope.industry_codes = { mode: 'explicit_codes', codes: [], dictionary_version: 'industry-v1' };
 assert.equal(ajv.validate(schemas.ProductionReviewManifest, emptyUnknownDimension), false, 'empty explicit codes cannot encode unknown or unrestricted');
+const inventedAllCode = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+inventedAllCode.content.applicability_scope.industry_codes = { mode: 'explicit_codes', codes: ['all'], dictionary_version: 'industry-v1' };
+assert.equal(validProductionReviewManifestContent(inventedAllCode), false, 'invented all code cannot encode reviewed unrestricted');
 const genericFeatureRule = (manifestBaseline.value as unknown as ProductionReviewManifest).content.applicability_scope.special_feature_scope;
 assert.equal(genericFeatureRule.mode, 'reviewed_unrestricted', 'generic rule-level feature scope is an explicit no-extra-restriction review');
 assert.equal(Object.hasOwn(genericFeatureRule, 'project_verified_absence'), false, 'rule scope does not assert project feature absence');
-// Current withdrawal is a selector/runtime gate, deliberately not a content-manifest assertion.
-const withdrawnSourceIds = new Set(['a-source-synthetic']);
-assert.ok(withdrawnSourceIds.has('a-source-synthetic'));
-assert.equal(validProductionReviewManifestContent(manifestBaseline.value), true, 'content validity alone cannot authorize a withdrawn source');
+// Current withdrawal is a selector/runtime gate; a content-only helper cannot prove it.
 const technicalSubmission = byName.get('production-attestation-technical-self-submission-valid-synthetic');
 assert.ok(technicalSubmission, 'synthetic technical self-submission exists');
 const spoofedRoleSubmission = { ...structuredClone(technicalSubmission.value), reviewer_role: 'industry' };
