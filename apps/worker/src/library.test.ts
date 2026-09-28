@@ -11,7 +11,7 @@ import {
 import { Ajv } from 'ajv';
 import { LibraryQueryResponseV1_1Schema, LibraryQueryResponseV1Schema, type LibraryCandidateV1_1, type LibraryQueryRequest, type LibraryQueryResponseV1_1 } from '@bondbuddy/contracts';
 import { conservativeClassifier, runLibraryOnce, type LibraryClassifier, type LibraryParser, type LibraryPipelineDependencies } from './library-pipeline.js';
-import { OperatorImportAdapter, SourceError, SseBondProjectAdapter, type DiscoveredItem, type LibrarySourceAdapter } from './library-sources.js';
+import { OperatorImportAdapter, OPERATOR_IMPORT_SOURCE, SourceError, SseBondProjectAdapter, type DiscoveredItem, type LibrarySourceAdapter } from './library-sources.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 // Everything here is synthetic: fake source, fake parser output, fake issuers and revenue lines.
@@ -496,6 +496,25 @@ test('personal uploads cannot enter the library: blob keys must be library/ and 
     await classifyLibraryVersion(t.pool, ingested.versionId, { market: 'sse', offering: 'public', instrument: 'corporate_bond', documentStage: 'registration' }, draft(TOP3, t.taxonomy));
     assert.equal((await t.pool.query('SELECT state FROM bb_library_document_versions WHERE id=$1', [ingested.versionId])).rows[0].state, 'pending_review');
     assert.ok(t.blobs.keys().every(k => k.startsWith('library/')));
+  } finally { await t.pool.end(); }
+});
+
+test('operator import rejects a staged SHA mismatch before parsing', { skip }, async () => {
+  const t = await setup();
+  try {
+    await registerLibrarySource(t.pool, OPERATOR_IMPORT_SOURCE);
+    const expected = Buffer.from('synthetic expected bytes');
+    const key = `library/import-staging/${sha(expected)}`;
+    await t.blobs.put(key, Buffer.from('synthetic changed bytes'), 'application/pdf');
+    let parses = 0;
+    t.deps.parser = async request => { parses++; return syntheticParser(request); };
+    t.deps.adapters[OPERATOR_IMPORT_SOURCE.id] = new OperatorImportAdapter(t.blobs);
+    await enqueueLibrarySync(t.pool, OPERATOR_IMPORT_SOURCE.id, { checkpoint: { import_items: [{ external_key: 'tampered', issuer_key: 'synthetic', issuer_name: 'Synthetic', title: 'Synthetic', source_revision: '1', media_type: 'application/pdf', staged_key: key, sha256: sha(expected) }] } });
+    const outcome = await runLibraryOnce(t.deps);
+    const summary = await syncRunSummary(t.pool, outcome.syncRunId!);
+    assert.deepEqual(summary.outcomes, { failed: 1 });
+    assert.equal((await t.pool.query('SELECT error_code FROM bb_library_sync_items WHERE sync_run_id=$1', [summary.sync_run_id])).rows[0].error_code, 'LIBRARY_BYTES_INVALID');
+    assert.equal(parses, 0);
   } finally { await t.pool.end(); }
 });
 
