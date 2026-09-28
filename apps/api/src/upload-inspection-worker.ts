@@ -42,6 +42,7 @@ const MAX_ARCHIVE_EXPANDED_BYTES = 128 * 1024 * 1024;
 const MAX_ARCHIVE_RATIO = 100;
 const MAX_ARCHIVE_PATH_DEPTH = 32;
 const MAX_XML_PART_BYTES = 16 * 1024 * 1024;
+const MAX_XML_DEPTH = 256;
 const MAX_ACTIVE_PART_PREFIX_BYTES = 8 * 1024;
 const MAX_IMAGE_DIMENSION = 16_384;
 const MAX_IMAGE_PIXELS = 16_000_000;
@@ -525,7 +526,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
     const platform = madeBy >>> 8;
     const unixMode = externalAttributes >>> 16;
     if (platform === 3 && (unixMode & 0xf000) === 0xa000) unsupported('Office container contains a symbolic link');
-    if (directory && (compressedSize !== 0 || expandedSize !== 0)) unreadable('zip_directory_invalid');
+    if (directory && expandedSize !== 0) unreadable('zip_directory_invalid');
     if (expandedSize > MAX_ARCHIVE_ENTRY_BYTES || expandedTotal + expandedSize > MAX_ARCHIVE_EXPANDED_BYTES) {
       unsupported('Office container exceeds the expanded-size inspection limit', 'archive_expanded_limit');
     }
@@ -786,6 +787,10 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
   let depth = 0;
   const externalLinkPart = XLSX_EXTERNAL_LINK_PART.test(name);
   let externalBookCount = 0;
+  let directExternalBookCount = 0;
+  let externalBookRelationshipId: string | null = null;
+  let extensionDepth: number | null = null;
+  const xmlElements: string[] = [];
   let capture: { kind: 'formula' | 'instruction'; depth: number; value: string } | null = null;
   const relationships: Relationship[] = [];
   const contentTypes: ContentTypes = { defaults: new Map(), overrides: new Map() };
@@ -795,8 +800,10 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
   parser.on('error', () => unreadable('xml_parse_error'));
   parser.on('opentag', tag => {
     const thisDepth = depth;
+    if (thisDepth >= MAX_XML_DEPTH) unsupported('Office XML nesting exceeds the inspection limit');
     if (thisDepth === 0) root = tag.name;
     const local = localName(tag.name);
+    const parent = xmlElements.at(-1);
     const attrs = tag.attributes as Record<string, unknown>;
     for (const [attrName, rawValue] of Object.entries(attrs)) {
       if (/^on[a-z]+$/i.test(attrName) && typeof rawValue === 'string') unsupported('Office XML contains an active event attribute');
@@ -806,14 +813,24 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     }
     if (local === 'script' || local === 'altchunk') unsupported('Office XML contains active or externally loaded content');
     if (externalLinkPart && (local === 'ddelink' || local === 'olelink')) unsupported('Office external link contains DDE or OLE content');
-    if (externalLinkPart && !XLSX_EXTERNAL_BOOK_ELEMENTS.has(local)) unreadable('external_link_invalid');
-    if (externalLinkPart && thisDepth === 1) {
-      if (local !== 'externalbook') unreadable('external_link_invalid');
+    if (externalLinkPart && extensionDepth === null) {
+      const mcElement = tag.name === 'mc:AlternateContent' || tag.name === 'mc:Choice' || tag.name === 'mc:Fallback';
+      const alternate = tag.name === 'mc:AlternateContent' && (parent === 'externalLink' || parent === 'externalBook');
+      const branch = (tag.name === 'mc:Choice' || tag.name === 'mc:Fallback') && parent === 'mc:AlternateContent';
+      const extensionList = local === 'extlst' && (parent === 'externalLink' || parent === 'externalBook');
+      const extension = local === 'ext' && parent?.toLowerCase() === 'extlst';
+      if (mcElement && !alternate && !branch || !mcElement && !extensionList && !extension && !XLSX_EXTERNAL_BOOK_ELEMENTS.has(local)) unreadable('external_link_invalid');
+      if (extension) extensionDepth = thisDepth;
+    }
+    if (externalLinkPart && (parent === 'externalLink' || parent === 'mc:Choice' || parent === 'mc:Fallback') && extensionDepth === null && local === 'externalbook') {
       externalBookCount++;
+      if (parent === 'externalLink' && ++directExternalBookCount > 1) unreadable('external_link_invalid');
       const relationshipId = attribute(attrs, 'Id');
-      if (!relationshipId) return unreadable('external_link_invalid');
+      if (!relationshipId || externalBookRelationshipId !== null && externalBookRelationshipId !== relationshipId) return unreadable('external_link_invalid');
+      externalBookRelationshipId = relationshipId;
       state.externalBookRelationshipIds.set(name, relationshipId);
     }
+    if (externalLinkPart && thisDepth === 1 && local !== 'externalbook' && local !== 'extlst' && tag.name !== 'mc:AlternateContent') unreadable('external_link_invalid');
     if (name === 'xl/workbook.xml' && local === 'externalreference') {
       const relationshipId = attribute(attrs, 'Id');
       if (!relationshipId || state.workbookExternalReferenceIds.has(relationshipId)) return unreadable('external_link_invalid');
@@ -855,6 +872,7 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
       const instruction = attribute(attrs, 'instr');
       if (instruction && unsafeWordInstruction(instruction)) unsupported('Word fields contain an external or active instruction');
     }
+    xmlElements.push(tag.name);
     depth++;
   });
   const appendCapturedText = (value: string) => {
@@ -866,6 +884,8 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
   parser.on('cdata', appendCapturedText);
   parser.on('closetag', tag => {
     depth--;
+    if (extensionDepth === depth) extensionDepth = null;
+    xmlElements.pop();
     if (capture && capture.depth === depth && localName(tag.name) === (capture.kind === 'formula' ? 'f' : 'instrtext')) {
       if (capture.kind === 'formula' && unsafeSpreadsheetFormula(capture.value, state.files)) unsupported('Spreadsheet formula contains an external or active function');
       if (capture.kind === 'instruction' && unsafeWordInstruction(capture.value)) unsupported('Word fields contain an external or active instruction');
@@ -879,7 +899,7 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     unreadable('xml_parse_error');
   }
   if (!root || depth !== 0 || capture) unreadable('xml_parse_error');
-  if (externalLinkPart && (localName(root) !== 'externallink' || externalBookCount !== 1)) unreadable('external_link_invalid');
+  if (externalLinkPart && (localName(root) !== 'externallink' || externalBookCount < 1)) unreadable('external_link_invalid');
 
   if (name === '[Content_Types].xml') {
     if (localName(root) !== 'types') unreadable('xml_root_unexpected');
@@ -891,7 +911,8 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     if (name === '_rels/.rels') {
       const officeDocument = relationships.filter(item => /\/officedocument$/i.test(item.type));
       if (officeDocument.length !== 1) unreadable('relationship_invalid');
-      state.rootDocumentTarget = officeDocument[0]!.target;
+      if (officeDocument[0]!.external) unsupported('Office relationships contain external content');
+      state.rootDocumentTarget = resolveRelationshipTarget('', officeDocument[0]!.target);
     }
   }
   if (name === 'word/document.xml') {
@@ -917,10 +938,8 @@ function resolveRelationshipTarget(source: string, target: string): string | nul
   if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('//') || target.includes('\\') || /%(?:2e|2f|5c)/i.test(target)) {
     unsupported('Office relationships contain an external or ambiguous target');
   }
-  let decoded: string;
-  try { decoded = decodeURIComponent(target.split('#', 1)[0]!.split('?', 1)[0]!); }
-  catch { return unreadable('relationship_invalid'); }
-  const path = decoded.startsWith('/') ? decoded.slice(1) : `${source ? source.slice(0, Math.max(0, source.lastIndexOf('/') + 1)) : ''}${decoded}`;
+  const targetPath = target.split('#', 1)[0]!.split('?', 1)[0]!;
+  const path = targetPath.startsWith('/') ? targetPath.slice(1) : `${source ? source.slice(0, Math.max(0, source.lastIndexOf('/') + 1)) : ''}${targetPath}`;
   const segments: string[] = [];
   for (const segment of path.split('/')) {
     if (!segment || segment === '.') continue;
@@ -930,7 +949,7 @@ function resolveRelationshipTarget(source: string, target: string): string | nul
     } else segments.push(segment);
   }
   if (!segments.length) unreadable('relationship_invalid');
-  return segments.join('/');
+  return canonicalPartName(segments.join('/'));
 }
 
 const DOCX_HYPERLINK_RELATIONSHIP = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
@@ -1052,7 +1071,12 @@ async function inspectOffice(source: ZipSource, declared: string): Promise<void>
   }
 
   for (const entry of entries) {
-    if (entry.directory) continue;
+    if (entry.directory) {
+      // A DEFLATE stream for an empty directory still has compressed bytes.
+      // Validate its stream, expanded length and CRC exactly like a file entry.
+      await expandEntry(source, entry, false);
+      continue;
+    }
     const xmlPart = /\.(?:xml|rels|vml)$/i.test(entry.name);
     const expanded = await expandEntry(source, entry, xmlPart);
     if (hasNestedContainerHeader(expanded.head)) {

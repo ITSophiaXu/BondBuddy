@@ -14,7 +14,7 @@ import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
   macroDefaultDocxSample, macroDocxSample, neutralExtensionDocxSample, nestedGzipDocxSample, PDF, pdfSample, PNG, pngSample, PPTX, pptxSample, TEXT, textSample,
-  XLSX, xlsxSample, xlsxPartNameSample
+  XLSX, xlsxSample, xlsxPartNameSample, xlsxRelationshipTargetSample, xlsxDeflatedDirectorySample
 } from './upload-safety.samples.js';
 
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -122,6 +122,70 @@ test('authorized rq-202509 financial XLSX passes both inspection paths at its re
   assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
   assert.equal(await verifiedMediaFile(path, bytes.length, XLSX), XLSX);
   assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+});
+
+test('all four registered XLSX originals retain their recorded hashes and pass inspection', async () => {
+  const sampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25');
+  const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as {
+    cases: Array<{ files: Array<{ path: string; bytes: number; sha256: string }> }>;
+  };
+  const entries = manifest.cases.flatMap(item => item.files).filter(item => item.path.toLowerCase().endsWith('.xlsx'));
+  assert.equal(entries.length, 4);
+  for (const entry of entries) {
+    const path = join(sampleRoot, entry.path);
+    const bytes = await readFile(path);
+    assert.equal(bytes.length, entry.bytes);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await verifiedMediaFile(path, bytes.length, XLSX), XLSX);
+  }
+});
+
+test('externalLink extension lists and markup compatibility branches remain passive', async () => {
+  const prefix = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:x="urn:synthetic">';
+  const book = '<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:metadata><x:item>safe</x:item></x:metadata></ext></extLst></externalBook>';
+  for (const body of [
+    `${book}<extLst><ext uri="urn:synthetic"><x:metadata/></ext></extLst>`,
+    `<mc:AlternateContent><mc:Choice Requires="x">${book}</mc:Choice><mc:Fallback><externalBook r:id="rId1"/></mc:Fallback></mc:AlternateContent>`
+  ]) {
+    const bytes = await externalLinkPartXlsxSample({ linkXml: `${prefix}${body}</externalLink>` });
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+  }
+  const deep = '<x:n>'.repeat(260) + '</x:n>'.repeat(260);
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic">${deep}</ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `<!DOCTYPE externalLink [<!ENTITY boom "unsafe">]>${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:n>&boom;</x:n></ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:script/></ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+  await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"/><externalBook r:id="rId1"/></externalLink>` }), 'external_link_invalid');
+});
+
+test('internal relationship targets resolve from package root or source directory without escaping', async () => {
+  for (const [root, sheet] of [
+    ['/xl/workbook.xml', '/xl/worksheets/sheet1.xml'],
+    ['./xl/workbook.xml', './worksheets/sheet1.xml'],
+    ['xl/workbook.xml', '../xl/worksheets/sheet1.xml']
+  ]) {
+    const bytes = await xlsxRelationshipTargetSample(root, sheet);
+    assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+    assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+  }
+  await expectStructureDetail(await xlsxRelationshipTargetSample('/../xl/workbook.xml', 'worksheets/sheet1.xml'), 'relationship_invalid');
+  await expectStructureDetail(await xlsxRelationshipTargetSample('xl/workbook.xml', '../../worksheets/sheet1.xml'), 'relationship_invalid');
+});
+
+test('an empty DEFLATE directory is valid only when it expands to no bytes', async () => {
+  const empty = await xlsxDeflatedDirectorySample();
+  assert.equal(await verifiedMedia(empty, XLSX), XLSX);
+  assert.equal(await spooled(empty, path => verifiedMediaFile(path, empty.length, XLSX)), XLSX);
+  await expectStructureDetail(await xlsxDeflatedDirectorySample(Buffer.from('payload')), 'zip_directory_invalid');
+  const badCrc = Buffer.from(empty);
+  const eocd = badCrc.length - 22;
+  const centralOffset = badCrc.readUInt32LE(eocd + 16);
+  const directoryCentral = centralOffset + badCrc.readUInt32LE(eocd + 12) - 46 - Buffer.byteLength('xl/empty/');
+  const directoryLocal = badCrc.readUInt32LE(directoryCentral + 42);
+  badCrc.writeUInt32LE(1, directoryLocal + 14);
+  badCrc.writeUInt32LE(1, directoryCentral + 16);
+  await expectStructureDetail(badCrc, 'zip_crc_mismatch');
 });
 
 test('only bounded, absolute DOCX http/https/mailto hyperlink relationships are passive', async () => {
