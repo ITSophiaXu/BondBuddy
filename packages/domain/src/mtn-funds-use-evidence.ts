@@ -1,0 +1,197 @@
+/**
+ * Research-only evidence-shape review for MTN proceeds use.
+ *
+ * It preserves cited source values and stage distinctions. It does not decide
+ * legal/policy compliance, whether a use is sensitive, or whether a change
+ * procedure is legally sufficient.
+ */
+
+import type { MtnEvidenceValue, MtnIssuerTier, MtnRegistrationArrangement } from './mtn-registration-evidence.js';
+
+export type MtnFundsUseStage = 'registration' | 'issuance' | 'unknown';
+export type MtnFundsUseMoney = {
+  /** Exact amount text as cited, without normalization or rounding. */
+  amount: string;
+  /** Exact currency code/text as cited. */
+  currency: string;
+  /** Exact unit text as cited, e.g. 元、万元、亿元. */
+  unit: string;
+};
+
+export type MtnFundsUseLineEvidence = {
+  lineId: MtnEvidenceValue<string>;
+  /** Original use wording/category, not a normalized legal conclusion. */
+  useDescription: MtnEvidenceValue<string>;
+  detailLevel: MtnEvidenceValue<'broad_category' | 'specific'>;
+  amount: MtnEvidenceValue<MtnFundsUseMoney>;
+  policySensitivity: MtnEvidenceValue<'sensitive' | 'not_identified_as_sensitive' | 'unresolved'>;
+};
+
+export type MtnFundsUseChangeProcedureEvidence = {
+  changeStatus: MtnEvidenceValue<'no_change_asserted' | 'changed_or_outside_registration_scope' | 'unknown'>;
+  procedureStatus: MtnEvidenceValue<'documented' | 'not_applicable_with_basis' | 'unresolved'>;
+  /** The procedure/source assertion is kept verbatim with its own citation. */
+  procedureDescription: MtnEvidenceValue<string | null>;
+  disclosureDate: MtnEvidenceValue<string | null>;
+  intendedUseDate: MtnEvidenceValue<string | null>;
+  /** Preserve the cited business-day lead time; no calendar conversion is done. */
+  statedLeadTimeBusinessDays: MtnEvidenceValue<number | null>;
+};
+
+export type MtnFundsUseEvidenceInput = {
+  actualInstrument: MtnEvidenceValue<'mtn' | 'other' | 'unknown'>;
+  stage: MtnEvidenceValue<MtnFundsUseStage>;
+  issuerTier: MtnEvidenceValue<MtnIssuerTier>;
+  registrationArrangement: MtnEvidenceValue<MtnRegistrationArrangement>;
+  useLines: MtnFundsUseLineEvidence[];
+  /** Registration estimate total or the exact issuance total, as applicable. */
+  statedTotal: MtnEvidenceValue<MtnFundsUseMoney>;
+  changeProcedure: MtnFundsUseChangeProcedureEvidence;
+};
+
+export type MtnFundsUseEvidenceDecision = 'evidence_shape_pass' | 'evidence_conflict' | 'needs_review';
+
+export type MtnFundsUseEvidenceResult = {
+  decision: MtnFundsUseEvidenceDecision;
+  reasons: string[];
+  engineeringOnly: true;
+  evidence: MtnFundsUseEvidenceInput;
+};
+
+function hasCitation(citation: MtnEvidenceValue<unknown>['citations'][number]): boolean {
+  return citation.sourceRefId.trim().length > 0 && citation.materialVersion.trim().length > 0 &&
+    citation.locator.trim().length > 0 && citation.quote.trim().length > 0;
+}
+
+function usable<T>(field: MtnEvidenceValue<T>): field is MtnEvidenceValue<T> & { value: T } {
+  return field.value !== null && field.uncertainty === 'clear' && !field.conflictingAssertions?.length &&
+    field.citations.length > 0 && field.citations.every(hasCitation);
+}
+
+function validMoney(value: MtnFundsUseMoney): boolean {
+  return /^\d+(?:\.\d+)?$/.test(value.amount) && value.currency.trim().length > 0 && value.unit.trim().length > 0;
+}
+
+function amountInSourceUnits(amount: string): { scale: number; integer: bigint } | null {
+  if (!/^\d+(?:\.\d+)?$/.test(amount)) return null;
+  const [whole, fraction = ''] = amount.split('.');
+  return { scale: fraction.length, integer: BigInt(`${whole}${fraction}`) };
+}
+
+function sameUnit(left: MtnFundsUseMoney, right: MtnFundsUseMoney): boolean {
+  return left.currency === right.currency && left.unit === right.unit;
+}
+
+function amountsEqual(left: MtnFundsUseMoney, right: MtnFundsUseMoney): boolean | null {
+  if (!sameUnit(left, right)) return null;
+  const a = amountInSourceUnits(left.amount);
+  const b = amountInSourceUnits(right.amount);
+  if (!a || !b) return null;
+  const scale = Math.max(a.scale, b.scale);
+  return a.integer * 10n ** BigInt(scale - a.scale) === b.integer * 10n ** BigInt(scale - b.scale);
+}
+
+function sumAmounts(values: MtnFundsUseMoney[]): { amount: string; currency: string; unit: string } | null {
+  if (values.length === 0 || values.some(value => !validMoney(value))) return null;
+  const first = values[0]!;
+  if (values.some(value => !sameUnit(first, value))) return null;
+  const parsed = values.map(value => amountInSourceUnits(value.amount));
+  if (parsed.some(value => value === null)) return null;
+  const scale = Math.max(...parsed.map(value => value!.scale));
+  const integer = parsed.reduce((total, value) => total + value!.integer * 10n ** BigInt(scale - value!.scale), 0n);
+  const digits = integer.toString().padStart(scale + 1, '0');
+  let amount = scale === 0 ? digits : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  if (scale > 0) amount = amount.replace(/0+$/, '').replace(/\.$/, '');
+  return { amount, currency: first.currency, unit: first.unit };
+}
+
+function result(decision: MtnFundsUseEvidenceDecision, reasons: string[], evidence: MtnFundsUseEvidenceInput): MtnFundsUseEvidenceResult {
+  return { decision, reasons: [...new Set(reasons)], engineeringOnly: true, evidence };
+}
+
+/** Checks evidence completeness and direct, source-backed amount conflicts only. */
+export function checkMtnFundsUseEvidence(input: MtnFundsUseEvidenceInput): MtnFundsUseEvidenceResult {
+  const review: string[] = [];
+  const conflicts: string[] = [];
+  if (!usable(input.actualInstrument) || !usable(input.stage) || !usable(input.issuerTier) ||
+    !usable(input.registrationArrangement) || !usable(input.statedTotal)) {
+    review.push('required_context_missing_uncited_or_uncertain');
+  }
+  if (input.actualInstrument.value !== 'mtn') review.push('actual_instrument_not_confirmed_mtn');
+  if (input.stage.value === 'unknown') review.push('document_stage_unresolved');
+  if (input.issuerTier.value === 'unknown' || input.registrationArrangement.value === 'unknown') {
+    review.push('registration_context_not_resolved');
+  }
+  if (input.useLines.length === 0) review.push('funds_use_lines_missing');
+  if (!usable(input.statedTotal) || !validMoney(input.statedTotal.value)) review.push('stated_total_missing_or_invalid');
+
+  const allowBroadRegistrationCategory = input.stage.value === 'registration' &&
+    input.issuerTier.value === 'basic_tier' && input.registrationArrangement.value === 'basic_tier_unified_quota';
+  const clearAmounts: MtnFundsUseMoney[] = [];
+  for (const [index, line] of input.useLines.entries()) {
+    if (!usable(line.lineId) || !usable(line.useDescription) || !usable(line.detailLevel) ||
+      !usable(line.amount) || !usable(line.policySensitivity)) {
+      review.push(`use_line_${index}_missing_uncited_or_uncertain_field`);
+      continue;
+    }
+    if (!line.useDescription.value.trim() || !validMoney(line.amount.value)) {
+      review.push(`use_line_${index}_description_or_amount_invalid`);
+      continue;
+    }
+    clearAmounts.push(line.amount.value);
+    if (line.policySensitivity.value === 'unresolved') review.push(`use_line_${index}_policy_sensitivity_unresolved`);
+    if (line.detailLevel.value === 'broad_category' && !allowBroadRegistrationCategory) {
+      review.push(`use_line_${index}_specific_use_detail_required_or_applicability_unresolved`);
+    }
+    if (line.policySensitivity.value === 'sensitive' && line.detailLevel.value !== 'specific') {
+      review.push(`use_line_${index}_policy_sensitive_use_not_specific`);
+    }
+  }
+
+  if (clearAmounts.length === input.useLines.length && usable(input.statedTotal) && validMoney(input.statedTotal.value)) {
+    const total = sumAmounts(clearAmounts);
+    if (total === null || !sameUnit(total, input.statedTotal.value)) {
+      review.push('funds_use_amount_units_unmatched');
+    } else {
+      const equal = amountsEqual(total, input.statedTotal.value);
+      if (equal === false) conflicts.push('funds_use_amount_total_conflict');
+      if (equal === null) review.push('funds_use_amount_total_unresolved');
+    }
+  }
+
+  const change = input.changeProcedure;
+  if (!usable(change.changeStatus) || !usable(change.procedureStatus)) {
+    review.push('change_procedure_status_missing_uncited_or_uncertain');
+  }
+  if (usable(change.changeStatus) && change.changeStatus.value === 'unknown') {
+    review.push('change_procedure_unresolved');
+  }
+  if (usable(change.procedureStatus) && change.procedureStatus.value === 'unresolved') {
+    review.push('change_procedure_unresolved');
+  }
+  if (usable(change.changeStatus) && change.changeStatus.value === 'no_change_asserted') {
+    if (!usable(change.procedureStatus) || change.procedureStatus.value !== 'not_applicable_with_basis' || !usable(change.procedureDescription) ||
+      change.procedureDescription.value === null) {
+      review.push('no_change_procedure_not_applicable_basis_missing');
+    }
+  } else if (usable(change.changeStatus) && change.changeStatus.value === 'changed_or_outside_registration_scope') {
+    if (!usable(change.procedureStatus) || change.procedureStatus.value !== 'documented' || !usable(change.procedureDescription) ||
+      !change.procedureDescription.value?.trim()) {
+      review.push('changed_use_procedure_evidence_missing');
+    }
+    if (!usable(change.disclosureDate) || !change.disclosureDate.value ||
+      !usable(change.intendedUseDate) || !change.intendedUseDate.value) {
+      review.push('changed_use_disclosure_or_use_date_missing');
+    } else if (change.disclosureDate.value > change.intendedUseDate.value) {
+      conflicts.push('changed_use_disclosure_after_intended_use_date');
+    }
+    if (!usable(change.statedLeadTimeBusinessDays) || change.statedLeadTimeBusinessDays.value === null ||
+      !Number.isInteger(change.statedLeadTimeBusinessDays.value) || change.statedLeadTimeBusinessDays.value < 0) {
+      review.push('changed_use_business_day_lead_time_claim_missing');
+    }
+  }
+
+  if (conflicts.length) return result('evidence_conflict', [...review, ...conflicts], input);
+  if (review.length) return result('needs_review', review, input);
+  return result('evidence_shape_pass', [], input);
+}
