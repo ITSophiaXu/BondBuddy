@@ -5,6 +5,8 @@ import { Pool } from 'pg';
 import { openApiDocument } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { DOCX, PDF, docxSample, externalRelationshipDocxSample, pdfSample } from './upload-safety.samples.js';
+import { UPLOAD_REJECTION_REASONS } from './upload-safety.js';
 import type { PrivateBlobs } from './data.js';
 import { classifyLibraryVersion, ingestLibraryVersion, markLibraryVersionParsed, registerLibrarySource } from './library.js';
 
@@ -12,11 +14,62 @@ import { classifyLibraryVersion, ingestLibraryVersion, markLibraryVersionParsed,
 // user-facing API exposes no library list, candidate or score.
 const connection = process.env.BB_TEST_DATABASE_URL;
 const ORIGIN = 'http://bondbuddy.test';
-function memoryBlobs(): PrivateBlobs {
+function memoryBlobs(): PrivateBlobs & { keys(): string[] } {
   const store = new Map<string, Buffer>();
   return { async put(k, b) { store.set(k, b); }, async get(k) { const v = store.get(k); if (!v) throw new Error('missing'); return v; }, async getIfExists(k) { return store.get(k) ?? null; },
-    async getIfExistsBounded(k, m) { const v = store.get(k); return v && v.length <= m ? v : null; }, async exists(k) { return store.has(k); }, async delete(k) { store.delete(k); } };
+    async getIfExistsBounded(k, m) { const v = store.get(k); return v && v.length <= m ? v : null; }, async exists(k) { return store.has(k); }, async delete(k) { store.delete(k); }, keys: () => [...store.keys()] };
 }
+
+test('operator imports inspect every item before staging or enqueueing', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const blobs = memoryBlobs();
+  const actor = `import_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: actor, csrfVerified: true }) });
+  const item = (key: string, mediaType: string, bytes: Buffer) => ({ external_key: key, issuer_key: 'synthetic', issuer_name: 'Synthetic', title: 'Synthetic filing', source_revision: '1', media_type: mediaType, content_base64: bytes.toString('base64') });
+  const send = (items: unknown[]) => app.inject({ method: 'POST', url: '/api/v1/admin/library/imports', headers: { origin: ORIGIN, 'content-type': 'application/json' }, payload: JSON.stringify({ items }) });
+  try {
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$1)', [actor]);
+    await pool.query("INSERT INTO bb_library_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'library_operator','test','synthetic_grant')", [randomUUID(), actor]);
+    const pdf = pdfSample(), docx = await docxSample();
+    const bad: Array<[string, ReturnType<typeof item>]> = [
+      ['mismatch', item('mismatch', PDF, docx)],
+      ['encrypted', item('encrypted', PDF, pdfSample({ encrypted: true }))],
+      ['javascript', item('javascript', PDF, pdfSample({ javascript: true }))],
+      ['external', item('external', DOCX, await externalRelationshipDocxSample('https://example.test/file', 'attachedTemplate'))],
+      ['zip', item('zip', DOCX, Buffer.from('PK\x03\x04broken'))],
+    ];
+    const jobsBefore = (await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n;
+    for (const [key, invalid] of bad) {
+      const response = await send([invalid]);
+      assert.equal(response.statusCode, 422, `${key}: ${response.body}`);
+      assert.equal(response.json().field_errors[0].field, 'items[0].content_base64');
+      assert.match(response.json().field_errors[0].message, new RegExp(`external_key=${key}: MATERIAL_`));
+      assert.ok(UPLOAD_REJECTION_REASONS.includes(response.json().field_errors[0].code));
+      assert.deepEqual(blobs.keys(), []);
+    }
+    const mixed = await send([item('valid', PDF, pdf), bad[1]![1]]);
+    assert.equal(mixed.statusCode, 422, mixed.body);
+    assert.equal(mixed.json().field_errors[0].field, 'items[1].content_base64');
+    assert.deepEqual(blobs.keys(), []);
+    const malformed = { ...item('malformed', PDF, pdf), content_base64: '%%%' };
+    const multiple = await send([malformed, bad[1]![1]]);
+    assert.equal(multiple.statusCode, 422, multiple.body);
+    assert.deepEqual(multiple.json().field_errors.map((e: { field: string }) => e.field), ['items[0].content_base64', 'items[1].content_base64']);
+    assert.deepEqual(blobs.keys(), []);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n, jobsBefore);
+    const fiveMib = item('over-limit', PDF, Buffer.alloc(5 * 1024 * 1024));
+    const oversized = await send(Array.from({ length: 41 }, (_, index) => ({ ...fiveMib, external_key: `over-${index}` })));
+    assert.equal(oversized.statusCode, 422, oversized.body.slice(0, 500));
+    assert.equal(oversized.json().field_errors[0].code, 'size_limit');
+    assert.deepEqual(blobs.keys(), []);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n, jobsBefore);
+    const valid = await send([item('valid-pdf', PDF, pdf), item('valid-docx', DOCX, docx)]);
+    assert.equal(valid.statusCode, 202, valid.body);
+    assert.equal(valid.json().items, 2);
+    assert.equal(blobs.keys().length, 2);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE job_type='library'")).rows[0].n, jobsBefore + 1);
+  } finally { await app.close(); await pool.end(); }
+});
 
 test('public contract has no library route, schema or candidate field', () => {
   const doc = JSON.stringify(openApiDocument());
