@@ -667,7 +667,9 @@ test('SSE adapter maps project list and prospectus files (recorded synthetic res
         { FILE_TYPE: 11, FILE_VERSION: 2, FILE_TITLE: '1-1 合成募集说明书-2.pdf', FILE_PATH: '/bridge2/disclosure/announcement/c/202609/x2.pdf', FILE_TIME: '2026-09-24' },
         { FILE_TYPE: 11, FILE_VERSION: 1, FILE_TITLE: '1-1 合成募集说明书-1.pdf', FILE_PATH: '/bridge2/disclosure/announcement/c/202608/x1.pdf', FILE_TIME: '2026-08-01' },
         { FILE_TYPE: 31, FILE_VERSION: 1, FILE_TITLE: '3-1 主承销商核查意见.pdf', FILE_PATH: '/bridge2/y.pdf', FILE_TIME: '2026-08-01' }] };
-    return { ok: true, status: 200, json: async () => json, arrayBuffer: async () => new TextEncoder().encode('%PDF-1.4 synthetic').buffer as ArrayBuffer };
+    return u.hostname === 'static.sse.com.cn'
+      ? new Response('%PDF-1.4 synthetic', { status: 200 })
+      : Response.json(json);
   };
   const adapter = new SseBondProjectAdapter({ fetch: fake, delayMs: 0, maxProjects: 5 });
   const d = await adapter.discover({ publish_date: '2026-09-10' }, {});
