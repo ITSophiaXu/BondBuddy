@@ -7,7 +7,7 @@
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
-        "content_sha256": "11d4da9e70aa5e2020c6506f537fb5a82abaa961ceadd9b0b76212cbeea02aed",
+        "content_sha256": "27c12319658d89416d3d25dbd41b3a902b108453eb5c0b0080e77cbe7acf4baa",
         "content": {
           "contract_version": "production-review-content-v1",
           "hash_domain": "bondbuddy:production-review-content:v1",
@@ -47,12 +47,29 @@
               "locators": [{ "kind": "method_section", "value": "synthetic-method#2" }]
             }
           ],
-          "authorized_real_sample_evidence": [{
-            "sample_evidence_id": "sample-result-synthetic", "sample_evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-            "authorization_evidence_id": "sample-authorization-synthetic", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
-            "sample_case_id": "sample-case-synthetic", "expected_outcome_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
-            "reviewed_result_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
-          }]
+          "authorized_real_sample_evidence": [
+            {
+              "sample_evidence_id": "sample-result-boundary-synthetic", "sample_evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+              "authorization_evidence_id": "sample-authorization-synthetic", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "sample_case_id": "sample-case-boundary-synthetic", "polarity": "boundary",
+              "expected_outcome_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+              "reviewed_result_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+            },
+            {
+              "sample_evidence_id": "sample-result-negative-synthetic", "sample_evidence_sha256": "2323232323232323232323232323232323232323232323232323232323232323",
+              "authorization_evidence_id": "sample-authorization-synthetic", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "sample_case_id": "sample-case-negative-synthetic", "polarity": "negative",
+              "expected_outcome_sha256": "4545454545454545454545454545454545454545454545454545454545454545",
+              "reviewed_result_sha256": "5656565656565656565656565656565656565656565656565656565656565656"
+            },
+            {
+              "sample_evidence_id": "sample-result-positive-synthetic", "sample_evidence_sha256": "2424242424242424242424242424242424242424242424242424242424242424",
+              "authorization_evidence_id": "sample-authorization-synthetic", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "sample_case_id": "sample-case-positive-synthetic", "polarity": "positive",
+              "expected_outcome_sha256": "4646464646464646464646464646464646464646464646464646464646464646",
+              "reviewed_result_sha256": "5757575757575757575757575757575757575757575757575757575757575757"
+            }
+          ]
         }
       }
     },
@@ -77,7 +94,7 @@
             "transition_from_date": null, "transition_until_date": null, "transition_evidence": [], "applicability_basis": { "basis_id": "basis-guidance", "basis_version": 1, "basis_sha256": "1313131313131313131313131313131313131313131313131313131313131313", "source_document_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "applicability_scope": { "market": "sse", "offering": "private", "instruments": ["bond"], "document_stages": ["issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": { "mode": "explicit_codes", "codes": ["company"], "dictionary_version": "issuer-v1" }, "investor_scopes": { "mode": "explicit_codes", "codes": ["professional"], "dictionary_version": "investor-v1" }, "industry_codes": { "mode": "explicit_codes", "codes": ["industry"], "dictionary_version": "industry-v1" }, "special_feature_scope": { "mode": "reviewed_unrestricted", "evidence_id": "feature-review", "evidence_version": 1, "evidence_sha256": "1212121212121212121212121212121212121212121212121212121212121212" }, "exceptions": [], "uncovered_items": [] }, "time_basis": "Reviewed scope only; legal date remains unknown.", "locator": { "kind": "section", "value": "synthetic-guidance#1" } }, "approved_method_window": null,
             "locators": [{ "kind": "section", "value": "synthetic-guidance#1" }]
           }],
-          "authorized_real_sample_evidence": [{ "sample_evidence_id": "sample", "sample_evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "authorization_evidence_id": "authorization", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "sample_case_id": "case", "expected_outcome_sha256": "4444444444444444444444444444444444444444444444444444444444444444", "reviewed_result_sha256": "5555555555555555555555555555555555555555555555555555555555555555" }]
+          "authorized_real_sample_evidence": [{ "sample_evidence_id": "sample", "sample_evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "authorization_evidence_id": "authorization", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "sample_case_id": "case", "polarity": "positive", "expected_outcome_sha256": "4444444444444444444444444444444444444444444444444444444444444444", "reviewed_result_sha256": "5555555555555555555555555555555555555555555555555555555555555555" }]
         }
       }
     }

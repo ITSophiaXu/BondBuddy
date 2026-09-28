@@ -7,7 +7,7 @@ import {
   type RulePack,
 } from '@bondbuddy/domain';
 import type { ChapterTemplate, CoverageManifest } from '@bondbuddy/domain';
-import { validProductionReviewManifestContent, type Market, type Offering } from '@bondbuddy/contracts';
+import { PRODUCTION_SAMPLE_POLARITIES, validProductionReviewManifestContent, type Market, type Offering } from '@bondbuddy/contracts';
 
 export type ProductionRulePackRequest = {
   readonly market: Market;
@@ -154,7 +154,7 @@ function isPublishableProductionPack(pack: RulePack): boolean {
   if (pack.rules.some((rule) => !rule.enabled || rule.enforcement === 'research_only')) return false;
   if (pack.sample_suite.cases.some((sample) => sample.result !== 'passed'
     || Date.parse(sample.reviewed_at) > Date.parse(releaseAt))) return false;
-  if (!(['positive', 'negative', 'boundary'] as const).every((polarity) =>
+  if (!PRODUCTION_SAMPLE_POLARITIES.every((polarity) =>
     pack.sample_suite.cases.some((sample) => sample.polarity === polarity))) return false;
   if (pack.reviews.some((review) => Date.parse(review.reviewed_at) > Date.parse(releaseAt))) return false;
   return true;

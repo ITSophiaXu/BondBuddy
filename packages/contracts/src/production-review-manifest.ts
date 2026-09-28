@@ -13,6 +13,8 @@ const nonEmptyCode = Type.String({ minLength: 1, maxLength: 128 });
 export const PRODUCTION_REVIEW_MANIFEST_VERSION = 'production-review-content-v1' as const;
 export const PRODUCTION_REVIEW_MANIFEST_HASH_DOMAIN = 'bondbuddy:production-review-content:v1' as const;
 export const PRODUCTION_REVIEW_MANIFEST_CANONICALIZATION = 'utf8-json-sorted-object-keys-preserve-declared-array-order-v1' as const;
+/** Authoritative case polarities shared with domain sample suites and production review. */
+export const PRODUCTION_SAMPLE_POLARITIES = ['positive', 'negative', 'boundary'] as const;
 
 const componentRef = Type.Object({ id, version, sha256: hash }, { additionalProperties: false });
 const sourceLocator = Type.Object({ kind: nonEmptyCode, value: Type.String({ minLength: 1, maxLength: 1024 }) }, { additionalProperties: false });
@@ -103,6 +105,7 @@ const sampleEvidence = Type.Object({
   authorization_evidence_id: id,
   authorization_evidence_sha256: hash,
   sample_case_id: id,
+  polarity: enumOf(PRODUCTION_SAMPLE_POLARITIES),
   expected_outcome_sha256: hash,
   reviewed_result_sha256: hash,
 }, { additionalProperties: false, description: 'Reference to an authorized real sample and its reviewed outcome; synthetic fixtures cannot satisfy this record.' });
@@ -167,6 +170,8 @@ export function validProductionReviewManifestContent(value: unknown): value is P
   if (!scope.uncovered_items.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.uncovered_items[index - 1]!.code < item.code))) return false;
   if (!manifest.content.source_date_evidence.every((item, index) => index === 0 || manifest.content.source_date_evidence[index - 1]!.source_evidence_id < item.source_evidence_id)) return false;
   if (!manifest.content.authorized_real_sample_evidence.every((item, index) => index === 0 || manifest.content.authorized_real_sample_evidence[index - 1]!.sample_evidence_id < item.sample_evidence_id)) return false;
+  const sampleCaseIds = manifest.content.authorized_real_sample_evidence.map(sample => sample.sample_case_id);
+  if (new Set(sampleCaseIds).size !== sampleCaseIds.length) return false;
   const sourceIds = manifest.content.source_date_evidence.map(source => source.source_evidence_id);
   const sampleIds = manifest.content.authorized_real_sample_evidence.map(sample => sample.sample_evidence_id);
   const knownEvidence = new Set([...sourceIds, ...sampleIds]);

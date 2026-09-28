@@ -41,6 +41,7 @@ test('review hash detects pinned source, sample and scope drift', () => {
     (next: Record<string, any>) => { next.content.source_date_evidence[0].source_check_sha256 = '0'.repeat(64); },
     (next: Record<string, any>) => { next.content.source_date_evidence[0].source_document_sha256 = '0'.repeat(64); },
     (next: Record<string, any>) => { next.content.authorized_real_sample_evidence[0].sample_evidence_sha256 = '0'.repeat(64); },
+    (next: Record<string, any>) => { next.content.authorized_real_sample_evidence[0].polarity = 'positive'; },
     (next: Record<string, any>) => { next.content.applicability_scope.instruments = ['scp']; },
     (next: Record<string, any>) => { next.content.source_date_evidence[0].applicability_basis.basis_sha256 = '0'.repeat(64); },
     (next: Record<string, any>) => { next.content.source_date_evidence[0].applicability_basis.applicability_scope.instruments = ['scp']; },

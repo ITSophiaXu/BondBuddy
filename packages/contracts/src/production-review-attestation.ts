@@ -1,6 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import { ProductionReviewManifestSchema, validProductionReviewManifestContent, type ProductionReviewManifest } from './production-review-manifest.js';
+import { ProductionReviewManifestSchema, PRODUCTION_SAMPLE_POLARITIES, validProductionReviewManifestContent, type ProductionReviewManifest } from './production-review-manifest.js';
 
 const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
@@ -206,6 +206,8 @@ export function validProductionReviewAttestationBinding(
     if (request.decision === 'approve' && reviewedItems.size !== items.size) return false;
 
     const samples = new Map(manifest.content.authorized_real_sample_evidence.map(sample => [sample.sample_evidence_id, sample]));
+    if (request.decision === 'approve' && !PRODUCTION_SAMPLE_POLARITIES.every(polarity =>
+      manifest.content.authorized_real_sample_evidence.some(sample => sample.polarity === polarity))) return false;
     const reviewedSamples = new Set<string>();
     for (const row of evidence.sample_conclusions) {
       const sample = samples.get(row.sample_evidence_id);

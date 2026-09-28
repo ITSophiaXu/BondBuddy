@@ -200,6 +200,25 @@ assert.equal(validProductionReviewAttestationBinding(pendingDimensionRequest, pe
 assert.equal(validProductionReviewAttestationBinding(industryRequest, pendingDimensionManifest), false, 'industry approve is forbidden while any applicability dimension needs review');
 assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, industryRequest), true, 'semantic baseline is schema-valid');
 assert.equal(validProductionReviewAttestationBinding(industryRequest, pinnedManifest), true, 'industry approval binds complete synthetic manifest');
+const missingPolarityManifest = structuredClone(pinnedManifest);
+missingPolarityManifest.content.authorized_real_sample_evidence = missingPolarityManifest.content.authorized_real_sample_evidence
+  .filter(sample => sample.polarity === 'positive');
+assert.equal(validProductionReviewManifestContent(missingPolarityManifest), true, 'an incomplete polarity set may be stored as a pending review manifest');
+const pendingSampleRequest = structuredClone(industryRequest);
+pendingSampleRequest.decision = 'request_more_evidence';
+pendingSampleRequest.content_sha256 = missingPolarityManifest.content_sha256;
+const pendingSampleEvidence = pendingSampleRequest.evidence as { sample_conclusions: Array<{ sample_evidence_id: string }> };
+pendingSampleEvidence.sample_conclusions = pendingSampleEvidence.sample_conclusions
+  .filter(sample => sample.sample_evidence_id === missingPolarityManifest.content.authorized_real_sample_evidence[0]!.sample_evidence_id);
+assert.equal(validProductionReviewAttestationBinding(pendingSampleRequest, missingPolarityManifest), true, 'incomplete sample polarities remain requestable, not approvable');
+assert.equal(validProductionReviewAttestationBinding({ ...pendingSampleRequest, decision: 'approve' }, missingPolarityManifest), false, 'industry approve requires positive, negative and boundary sample evidence');
+const duplicateSampleCase = structuredClone(pinnedManifest);
+duplicateSampleCase.content.authorized_real_sample_evidence[1]!.sample_case_id = duplicateSampleCase.content.authorized_real_sample_evidence[0]!.sample_case_id;
+assert.equal(validProductionReviewManifestContent(duplicateSampleCase), false, 'manifest sample case IDs must be unique');
+const polarityDrift = structuredClone(pinnedManifest);
+polarityDrift.content.authorized_real_sample_evidence[0]!.polarity = 'positive';
+assert.equal(validProductionReviewAttestationBinding(industryRequest, polarityDrift), false, 'attestation is invalidated by sample polarity drift from its pinned manifest hash');
+assert.equal(validProductionReviewAttestationBinding({ ...industryRequest, content_sha256: polarityDrift.content_sha256 }, polarityDrift), false, 'a drifted polarity set cannot approve even when the request is repinned');
 const withIndustry = (change: (value: any) => void, decision = 'approve') => {
   const changed = structuredClone(industryRequest) as any;
   changed.decision = decision;

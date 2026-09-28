@@ -7,7 +7,7 @@
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
-        "content_sha256": "11d4da9e70aa5e2020c6506f537fb5a82abaa961ceadd9b0b76212cbeea02aed",
+        "content_sha256": "27c12319658d89416d3d25dbd41b3a902b108453eb5c0b0080e77cbe7acf4baa",
         "decision": "approve", "reason": "Synthetic review is complete.",
         "evidence": {
           "source_effectivity_applicability": [
@@ -28,9 +28,17 @@
             "evidence_refs": [{ "evidence_id": "a-source-synthetic", "evidence_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }]
           }],
           "sample_conclusions": [{
-            "sample_case_id": "sample-case-synthetic", "sample_evidence_id": "sample-result-synthetic",
+            "sample_case_id": "sample-case-boundary-synthetic", "sample_evidence_id": "sample-result-boundary-synthetic",
             "conclusion": "approve", "reason": "Synthetic expected and reviewed outcomes agree.",
-            "evidence_refs": [{ "evidence_id": "sample-result-synthetic", "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222" }]
+            "evidence_refs": [{ "evidence_id": "sample-result-boundary-synthetic", "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222" }]
+          }, {
+            "sample_case_id": "sample-case-negative-synthetic", "sample_evidence_id": "sample-result-negative-synthetic",
+            "conclusion": "approve", "reason": "Synthetic negative case outcome agrees.",
+            "evidence_refs": [{ "evidence_id": "sample-result-negative-synthetic", "evidence_sha256": "2323232323232323232323232323232323232323232323232323232323232323" }]
+          }, {
+            "sample_case_id": "sample-case-positive-synthetic", "sample_evidence_id": "sample-result-positive-synthetic",
+            "conclusion": "approve", "reason": "Synthetic positive case outcome agrees.",
+            "evidence_refs": [{ "evidence_id": "sample-result-positive-synthetic", "evidence_sha256": "2424242424242424242424242424242424242424242424242424242424242424" }]
           }]
         }
       }
@@ -41,7 +49,7 @@
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
-        "content_sha256": "11d4da9e70aa5e2020c6506f537fb5a82abaa961ceadd9b0b76212cbeea02aed",
+        "content_sha256": "27c12319658d89416d3d25dbd41b3a902b108453eb5c0b0080e77cbe7acf4baa",
         "decision": "request_more_evidence", "reason": "Synthetic test evidence has one open item.",
         "evidence": {
           "checker_version_or_commit": "checker-synthetic-v4",
