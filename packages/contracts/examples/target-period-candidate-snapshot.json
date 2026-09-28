@@ -7,7 +7,7 @@
       "value": {
         "candidate_set_id": "candidate-set-synthetic-01",
         "candidate_set_version": 1,
-        "content_sha256": "6fdac59e652b2d6cea708a100c26b9b4fd692a96462ef3b5ffec0b227b49252e",
+        "content_sha256": "36342707e92c33c9ff716e9f41449dfa13e66e5a6789341ccfb1f23aeae1ba8a",
         "content": {
           "schema_version": "target-period-candidate-snapshot-v1",
           "hash_domain": "bondbuddy:target-period-candidate-snapshot:v1",
@@ -65,7 +65,7 @@
               "evidence_refs": [{ "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" }],
               "anchors": [
                 { "kind": "entity", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" },
-                { "kind": "period_end", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" },
+                { "kind": "period_end", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row", "raw_period_token": "2024年度" },
                 { "kind": "scope", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" },
                 { "kind": "table_header", "snapshot_id": "parse-snapshot-1", "record_id": "annual-row" }
               ],

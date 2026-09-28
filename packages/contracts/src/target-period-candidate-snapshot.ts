@@ -1,6 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { TargetReportingPeriodSchema } from './update-project.js';
+import { M1_MATERIAL_PARTITIONS } from './material-partitions.js';
 import { TARGET_PERIOD_EVIDENCE_ANCHOR_KINDS, TARGET_PERIOD_EVIDENCE_METHODS } from './target-period-evidence.js';
 
 const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
@@ -9,8 +10,9 @@ const revision = Type.Integer({ minimum: 1, maximum: 2147483647 });
 const date = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
 const code = Type.String({ minLength: 1, maxLength: 128 });
 const evidenceMethod = Type.Union(TARGET_PERIOD_EVIDENCE_METHODS.map(value => Type.Literal(value)));
-const anchorKind = Type.Union(TARGET_PERIOD_EVIDENCE_ANCHOR_KINDS.map(value => Type.Literal(value)));
 const locator = Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]);
+const financialMaterialRoles = Type.Union(M1_MATERIAL_PARTITIONS.find(partition => partition.label === '财务与审计')!.roles
+  .map(role => Type.Literal(role.code)));
 
 export const TARGET_PERIOD_CANDIDATE_SNAPSHOT_VERSION = 'target-period-candidate-snapshot-v1' as const;
 export const TARGET_PERIOD_CANDIDATE_SNAPSHOT_HASH_DOMAIN = 'bondbuddy:target-period-candidate-snapshot:v1' as const;
@@ -20,8 +22,8 @@ const materialPin = Type.Object({
   material_id: id,
   material_version: revision,
   material_sha256: hash,
-  /** The authoritative material role is rechecked against M1_MATERIAL_PARTITIONS by the lock transaction. */
-  role: code,
+  /** Restricted to canonical financial roles; the owner/project role is rechecked by the lock transaction. */
+  role: financialMaterialRoles,
 }, { additionalProperties: false });
 
 const recordPin = Type.Object({ record_id: id, record_sha256: hash }, { additionalProperties: false });
@@ -53,7 +55,18 @@ const evidenceRecord = Type.Object({
 }, { additionalProperties: false });
 
 const evidenceRef = Type.Object({ snapshot_id: id, record_id: id }, { additionalProperties: false });
-const anchor = Type.Object({ kind: anchorKind, snapshot_id: id, record_id: id }, { additionalProperties: false });
+const nonPeriodEndAnchorKind = Type.Union(TARGET_PERIOD_EVIDENCE_ANCHOR_KINDS
+  .filter(kind => kind !== 'period_end').map(value => Type.Literal(value)));
+const anchor = Type.Union([
+  Type.Object({ kind: nonPeriodEndAnchorKind, snapshot_id: id, record_id: id }, { additionalProperties: false }),
+  Type.Object({
+    kind: Type.Literal('period_end'),
+    snapshot_id: id,
+    record_id: id,
+    /** Exact raw token from this specific evidence record, never borrowed from a merged candidate value. Producer must validate that its parsed end equals the candidate end. */
+    raw_period_token: Type.String({ minLength: 1, maxLength: 2048 }),
+  }, { additionalProperties: false }),
+]);
 const candidate = Type.Object({
   start: TargetReportingPeriodSchema.properties.start,
   end: TargetReportingPeriodSchema.properties.end,
@@ -184,6 +197,8 @@ export function validTargetPeriodCandidateSnapshot(value: unknown): value is Tar
   for (const item of content.candidates) {
     if (item.start !== null && !validCalendarDate(item.start) || item.end !== null && !validCalendarDate(item.end)) return false;
     if (item.start && item.end && item.start > item.end) return false;
+    const expectedCutoffRelation = item.end === null ? 'unknown' : item.end <= content.reporting_cutoff ? 'on_or_before' : 'after';
+    if (item.cutoff_relation !== expectedCutoffRelation) return false;
     const refs = item.evidence_refs.map(evidenceKey);
     if (!strictlySorted(refs) || refs.some(key => !evidence.has(key))) return false;
     const anchors = item.anchors.map(anchor => `${anchor.kind}\0${evidenceKey(anchor)}`);
@@ -191,9 +206,10 @@ export function validTargetPeriodCandidateSnapshot(value: unknown): value is Tar
     for (const anchor of item.anchors) {
       const sourceEvidence = evidence.get(evidenceKey(anchor))!;
       if (anchor.kind === 'period_end') {
-        if (item.end === null || !(sourceEvidence.quote.includes(item.end) ||
-            (item.raw_value !== null && item.raw_value.split('；').some(token => token.length > 0 && sourceEvidence.quote.includes(token))))) return false;
-      }
+        const candidateTokens = item.raw_value?.split('；') ?? [];
+        if (item.end === null || !candidateTokens.includes(anchor.raw_period_token) ||
+            !sourceEvidence.quote.includes(anchor.raw_period_token)) return false;
+      } else if ('raw_period_token' in anchor) return false;
     }
   }
   return true;
