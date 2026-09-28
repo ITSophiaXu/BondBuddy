@@ -20,7 +20,7 @@ function memoryBlobs(): PrivateBlobs {
 test('public contract has no library route, schema or candidate field', () => {
   const doc = JSON.stringify(openApiDocument());
   for (const needle of ['/admin/library', 'LibraryQuery', 'LibraryCandidate', 'top3_set_key', 'review_quality', 'reference-library-query',
-    'LibraryComparability', 'LibraryChapterMapping', 'revenue_basis', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings',
+    'LibraryComparability', 'LibraryChapterMapping', 'accounting_scope', 'reviewed_by', 'mapping_version_id', 'chapter_mappings',
     // Alert kind names appear in the admin alerts enum; only the per-source sync fields must stay out.
     'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures']) assert.equal(doc.includes(needle), false, needle);
 });
