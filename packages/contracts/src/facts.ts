@@ -149,8 +149,7 @@ export const factSchemas = {
     snapshot_id: id, parser_version: Type.String({ minLength: 1, maxLength: 128 }), parse_response_sha256: hash,
     candidate: Type.Object({
       identity: Type.Record(Type.String(), Type.Unknown()), identity_sha256: hash,
-      value_kind: Type.Union([Type.Literal('decimal'), Type.Literal('text'), Type.Literal('unknown'), Type.Literal('not_applicable')]),
-      value_decimal: Type.Union([Type.String(), Type.Null()]), value_text: Type.Union([Type.String(), Type.Null()]),
+      candidate_value: FactEvidenceCandidateValueSchema,
       source_kind: Type.Union([Type.Literal('audited'), Type.Literal('external'), Type.Literal('user_statement')]),
       source_ref: Type.String(), status: Type.Union([Type.Literal('extracted'), Type.Literal('verified'), Type.Literal('user_asserted'), Type.Literal('conflicted'), Type.Literal('needs_confirmation'), Type.Literal('superseded')]),
       uncertainty: Type.Array(Type.Unknown()), confidence: Type.Number({ minimum: 0, maximum: 1 }),

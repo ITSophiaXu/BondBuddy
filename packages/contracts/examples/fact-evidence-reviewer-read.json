@@ -1,0 +1,48 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "fact-evidence-reviewer-read-page",
+      "schema": "FactEvidenceReviewerReadResponse",
+      "valid": true,
+      "value": {
+        "project_id": "synthetic-project",
+        "candidate_id": "synthetic-candidate",
+        "evidence_context_set_id": "synthetic-context",
+        "evidence_set_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "input_revision": 1,
+        "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "material_id": "synthetic-material",
+        "material_version": 1,
+        "material_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "snapshot_id": "synthetic-snapshot",
+        "parser_version": "synthetic-parser-v1",
+        "parse_response_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "candidate": {
+          "identity": { "entity_id": "synthetic-issuer", "metric": "assets" },
+          "identity_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "candidate_value": { "value_kind": "decimal", "value_decimal": "1200.5", "value_text": null },
+          "source_kind": "audited",
+          "source_ref": "synthetic-audit-page-4",
+          "status": "extracted",
+          "uncertainty": ["SYNTHETIC_REVIEW_REQUIRED"],
+          "confidence": 0.75
+        },
+        "parse_warnings": [{ "code": "SYNTHETIC_WARNING", "message": "Synthetic parser warning." }],
+        "items": [{
+          "record_id": "synthetic-record-1",
+          "record_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "locator_type": "xlsx_cell",
+          "locator": { "sheet": "Synthetic", "cell": "B4" },
+          "literal_quote": "Synthetic source quote only.",
+          "confidence": 0.75,
+          "uncertainty": ["CELL_PARSE_UNCERTAIN"]
+        }],
+        "auxiliary_targets": [],
+        "next_cursor": null,
+        "verification_effect": "none"
+      }
+    }
+  ]
+}

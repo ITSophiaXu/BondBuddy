@@ -46,6 +46,8 @@ const issuerAnnualReviewExamples = JSON.parse(readFileSync(fileURLToPath(new URL
 assert.equal(issuerAnnualReviewExamples.synthetic,true); data.cases.push(...issuerAnnualReviewExamples.cases);
 const factEvidenceContextExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/fact-evidence-context.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(factEvidenceContextExamples.synthetic,true); data.cases.push(...factEvidenceContextExamples.cases);
+const factEvidenceReviewerReadExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/fact-evidence-reviewer-read.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(factEvidenceReviewerReadExamples.synthetic,true); data.cases.push(...factEvidenceReviewerReadExamples.cases);
 const userReferenceReview = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/user-reference-review.json', import.meta.url)), 'utf8')) as {
   synthetic: boolean; snapshot: Parameters<typeof userReferenceParseReviewAccepted>[0];
   review: { confirmed_warning_codes: string[]; outline: unknown; signed_outline_sha256: string };

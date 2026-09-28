@@ -99,7 +99,7 @@ test('fact evidence reviewer read exposes only current pinned native evidence an
       const body = current.json();
       assert.equal(body.evidence_context_set_id, context);
       assert.equal(body.evidence_set_sha256, contextHash);
-      assert.equal(body.candidate.value_decimal, '123.45');
+      assert.deepEqual(body.candidate.candidate_value, { value_kind: 'decimal', value_decimal: '123.45', value_text: null });
       assert.deepEqual(body.candidate.identity, factKey);
       assert.equal(body.candidate.source_kind, 'audited');
       assert.equal(body.items.length, 50);
@@ -116,6 +116,9 @@ test('fact evidence reviewer read exposes only current pinned native evidence an
       assert.equal(secondPage.json().items.length, 1);
       assert.equal(secondPage.json().items[0].record_id, recordIds[50]);
       assert.equal(secondPage.json().next_cursor, null);
+      await pool.query("UPDATE bb_fact_candidates SET value_decimal='123.451' WHERE owner_user_id=$1 AND project_id=$2 AND id=$3", [owner, project, candidate]);
+      const changedCandidateValue = await send(); assert.equal(changedCandidateValue.statusCode, 409, changedCandidateValue.body);
+      await pool.query("UPDATE bb_fact_candidates SET value_decimal='123.450' WHERE owner_user_id=$1 AND project_id=$2 AND id=$3", [owner, project, candidate]);
       await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
         VALUES($1,2,$2,1,$3,'{}','[]','[]')`, [project, owner, sha(`changed input ${suffix}`)]);
       await pool.query('UPDATE bb_projects SET latest_input_revision=2 WHERE owner_user_id=$1 AND id=$2', [owner, project]);

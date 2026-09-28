@@ -122,11 +122,17 @@ async function readFactEvidence(db: Db, principal: Principal, projectId: string,
     }
 
     const { evidence_set_sha256: manifestHash, ...manifestBase } = manifest;
-    let normalizedDecimal: string | null;
-    try { normalizedDecimal = row.value_decimal === null ? null : normalizeDecimal(String(row.value_decimal)); }
-    catch { throw stale(); }
-    const candidateValue = { value_kind: row.value_kind, value_decimal: normalizedDecimal,
-      value_text: row.value_text === null ? null : String(row.value_text) };
+    let candidateValue: FactEvidenceReviewerReadResponse['candidate']['candidate_value'];
+    if (row.value_kind === 'decimal' && row.value_decimal !== null && row.value_text === null) {
+      try { candidateValue = { value_kind: 'decimal', value_decimal: normalizeDecimal(String(row.value_decimal)), value_text: null }; }
+      catch { throw stale(); }
+    } else if (row.value_kind === 'text' && row.value_decimal === null && row.value_text !== null) {
+      candidateValue = { value_kind: 'text', value_decimal: null, value_text: String(row.value_text) };
+    } else if (row.value_kind === 'unknown' && row.value_decimal === null && row.value_text === null) {
+      candidateValue = { value_kind: 'unknown', value_decimal: null, value_text: null };
+    } else if (row.value_kind === 'not_applicable' && row.value_decimal === null && row.value_text === null) {
+      candidateValue = { value_kind: 'not_applicable', value_decimal: null, value_text: null };
+    } else throw stale();
     if (manifestHash !== hash(manifestBase) || String(row.evidence_set_sha256).trim() !== hash(manifestBase) ||
       manifest.input_revision !== Number(row.input_revision) || manifest.input_hash !== String(row.input_hash).trim() ||
       manifest.material_id !== row.material_id || manifest.material_version !== Number(row.material_version) ||
@@ -137,10 +143,7 @@ async function readFactEvidence(db: Db, principal: Principal, projectId: string,
       !object(manifest.candidate_value) || !same(manifest.candidate_value, candidateValue) ||
       !same(manifest.candidate_uncertainty, json(row.candidate_uncertainty)) ||
       typeof manifest.candidate_confidence !== 'number' || !Number.isFinite(manifest.candidate_confidence) || manifest.candidate_confidence < 0 || manifest.candidate_confidence > 1 ||
-      !['decimal','text','unknown','not_applicable'].includes(String(row.value_kind)) ||
-      (row.value_kind === 'decimal' && (row.value_decimal === null || row.value_text !== null)) ||
-      (row.value_kind === 'text' && (row.value_text === null || row.value_decimal !== null)) ||
-      (['unknown','not_applicable'].includes(String(row.value_kind)) && (row.value_text !== null || row.value_decimal !== null))) throw stale();
+      !['decimal','text','unknown','not_applicable'].includes(String(row.value_kind))) throw stale();
 
     const recordInventory = await client.query(`SELECT count(*)::int AS total,
         count(*) FILTER (WHERE content_sha256=$6 AND extractor_version=$7 AND extraction_method='native_text')::int AS eligible
@@ -188,8 +191,8 @@ async function readFactEvidence(db: Db, principal: Principal, projectId: string,
       input_revision: Number(row.input_revision), input_hash: String(row.input_hash).trim(), material_id: String(row.material_id),
       material_version: Number(row.material_version), material_sha256: String(row.content_sha256).trim(), snapshot_id: String(row.snapshot_id),
       parser_version: String(row.parser_version), parse_response_sha256: String(row.parse_response_sha256).trim(),
-      candidate: { identity: json(row.fact_key) as Record<string, unknown>, identity_sha256: String(row.fact_key_hash).trim(), value_kind: row.value_kind,
-        value_decimal: normalizedDecimal, value_text: row.value_text === null ? null : String(row.value_text),
+      candidate: { identity: json(row.fact_key) as Record<string, unknown>, identity_sha256: String(row.fact_key_hash).trim(),
+        candidate_value: candidateValue,
         source_kind: row.source_kind, source_ref: row.source_ref, status: row.candidate_status,
         uncertainty: json(row.candidate_uncertainty) as unknown[], confidence: Number(manifest.candidate_confidence) },
       parse_warnings: warnings, items, auxiliary_targets: manifest.auxiliary_targets as FactEvidenceReviewerReadResponse['auxiliary_targets'],
