@@ -9,6 +9,7 @@ export * from './cp-funds-use-change-evidence.js';
 export * from './scp-mc4-omission-evidence.js';
 export * from './mtn-registration-evidence.js';
 export * from './mtn-funds-use-evidence.js';
+export * from './mtn-quarterly-update-evidence.js';
 
 export const RULE_PACK_SCHEMA_VERSION = 'rule-pack-v1' as const;
 export const RULE_SOURCE_KINDS = ['formal_rule','official_interpretation','internal_method','unverified_lead'] as const;
