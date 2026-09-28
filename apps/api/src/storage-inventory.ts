@@ -18,7 +18,7 @@ const patterns: [InventoryKind, RegExp][] = [
   ['upload', new RegExp(`^users/${id}/projects/${id}/uploads/${id}$`)],
   ['provider_result', new RegExp(`^users/${id}/projects/${id}/provider-results/${id}-${hex}\\.json$`)],
   ['ocr_result', new RegExp(`^users/${id}/projects/${id}/ocr/results/${hex}\\.json$`)],
-  ['ocr_page', new RegExp(`^users/${id}/projects/${id}/ocr/${id}/[1-9][0-9]*/${hex}\\.png$`)],
+  ['ocr_page', new RegExp(`^users/${id}/projects/${id}/ocr/${id}/[1-9][0-9]{0,8}/${hex}\\.png$`)],
   ['artifact', new RegExp(`^users/${id}/runs/${id}/artifacts/${id}/v[1-9][0-9]*\\.docx$`)],
   ['parse_cache', new RegExp(`^parse-cache/${hex}/${uuid}$`)],
   ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)]
