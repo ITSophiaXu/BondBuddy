@@ -9,6 +9,7 @@ const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
 const revision = Type.Integer({ minimum: 1, maximum: 2147483647 });
 const date = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
 const code = Type.String({ minLength: 1, maxLength: 128 });
+const evidenceText = Type.String({ minLength: 1, maxLength: 8192 });
 const evidenceMethod = Type.Union(TARGET_PERIOD_EVIDENCE_METHODS.map(value => Type.Literal(value)));
 const locator = Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]);
 const financialMaterialRoles = Type.Union(M1_MATERIAL_PARTITIONS.find(partition => partition.label === '财务与审计')!.roles
@@ -38,7 +39,7 @@ const sourceSnapshotPin = Type.Object({
   response_sha256: hash,
   /** Derived source state, not candidate approval or a claim that its facts are verified. */
   source_state: Type.Union([Type.Literal('available'), Type.Literal('needs_confirmation'), Type.Literal('failed'), Type.Literal('partial_coverage')]),
-  record_pins: Type.Array(recordPin, { maxItems: 20000 }),
+  record_pins: Type.Array(recordPin, { maxItems: 100000 }),
   page_image_pins: Type.Array(pagePin, { maxItems: 2000 }),
 }, { additionalProperties: false });
 
@@ -49,7 +50,7 @@ const evidenceRecord = Type.Object({
   quote: Type.String({ maxLength: 16384 }),
   context: Type.String({ maxLength: 16384 }),
   locator,
-  uncertainty: Type.Array(code, { maxItems: 100 }),
+  uncertainty: Type.Array(evidenceText, { maxItems: 100 }),
   page: Type.Optional(revision),
   page_image_sha256: Type.Optional(hash),
 }, { additionalProperties: false });
@@ -77,7 +78,7 @@ const candidate = Type.Object({
   cutoff_relation: Type.Union([Type.Literal('on_or_before'), Type.Literal('after'), Type.Literal('unknown')]),
   evidence_refs: Type.Array(evidenceRef, { maxItems: 2000 }),
   anchors: Type.Array(anchor, { maxItems: 2000 }),
-  pending_reasons: Type.Array(code, { minItems: 1, maxItems: 100 }),
+  pending_reasons: Type.Array(evidenceText, { minItems: 1, maxItems: 100 }),
 }, { additionalProperties: false, description: 'A source-derived proposal, never recognized, confirmed, approved, or treated as user target intent.' });
 
 const requirementsPin = Type.Object({
@@ -98,12 +99,12 @@ const snapshotContent = Type.Object({
   supplemental_requirements: requirementsPin,
   financial_materials: Type.Array(materialPin, { maxItems: 60 }),
   source_snapshots: Type.Array(sourceSnapshotPin, { maxItems: 200 }),
-  evidence_records: Type.Array(evidenceRecord, { maxItems: 20000 }),
+  evidence_records: Type.Array(evidenceRecord, { maxItems: 100000 }),
   status: Type.Literal('needs_confirmation'),
   completeness: Type.Literal('not_determined'),
   candidates: Type.Array(candidate, { maxItems: 100 }),
-  source_warnings: Type.Array(code, { maxItems: 1000 }),
-  pending_reasons: Type.Array(code, { minItems: 1, maxItems: 100 }),
+  source_warnings: Type.Array(evidenceText, { maxItems: 1000 }),
+  pending_reasons: Type.Array(evidenceText, { minItems: 1, maxItems: 100 }),
 }, { additionalProperties: false, description: 'Immutable pre-lock candidate snapshot; user target confirmation and later period evidence decisions remain separate records.' });
 
 /** Content hash is over `content` with the declared domain/canonicalization; envelope identity is excluded. */
