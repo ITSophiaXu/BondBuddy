@@ -3,7 +3,7 @@ import { createWriteStream } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
-import { BlobServiceClient } from '@azure/storage-blob';
+import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
 import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, UploadSafetyError, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -87,6 +87,9 @@ export interface PrivateBlobs {
   getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
+  deleteIfMatch?(key: string, etag: string): Promise<boolean>;
+  /** One bounded listing page; continuation is opaque and must never be logged. */
+  listPage?(prefix: string, continuation: string | undefined, pageSize: number): Promise<{ items: { key: string; bytes: number; lastModified?: Date; etag: string }[]; continuation?: string }>;
   /** Streaming variants for large objects (Azure/Azurite). In-memory test doubles may omit them. */
   putFile?(key: string, path: string, mediaType: string): Promise<void>;
   /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
@@ -188,6 +191,11 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       }
     },
     async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); },
+    async deleteIfMatch(key, etag) { return (await container.getBlockBlobClient(key).deleteIfExists({ conditions: { ifMatch: etag } })).succeeded; },
+    async listPage(prefix, continuation, pageSize) {
+      const page = await container.listBlobsFlat({ prefix }).byPage({ continuationToken: continuation, maxPageSize: pageSize }).next();
+      return { items: (page.value?.segment.blobItems ?? []).map((item: BlobItem) => ({ key: item.name, bytes: item.properties.contentLength ?? 0, lastModified: item.properties.lastModified, etag: item.properties.etag ?? '' })), continuation: page.value?.continuationToken || undefined };
+    },
     async putFile(key, path, mediaType) {
       await ensure();
       // Always stage blocks (the SDK would otherwise send objects up to 256 MiB in one buffered request),

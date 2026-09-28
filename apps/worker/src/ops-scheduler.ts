@@ -8,6 +8,7 @@ import { raiseAlert, tripEvidenceGate } from '@bondbuddy/api/evidence-gate';
 import { checkLogHealth, forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, logArchiveOptionsFromEnv, retentionPolicyFromEnv } from '@bondbuddy/api/log-ops';
 import { archivePolicyFromEnv, runArchiveLifecycle } from '@bondbuddy/api/log-archive-lifecycle';
 import { storageLifecyclePolicyFromEnv } from '@bondbuddy/api/storage-lifecycle';
+import { inventoryPolicyFromEnv, runStorageInventory } from '@bondbuddy/api/storage-inventory';
 import { runUserDeletionLifecycle } from '@bondbuddy/api/deletion-lifecycle';
 import { checkTrialHealth, trialConfigFromEnv, trialHealthThresholdsFromEnv } from '@bondbuddy/api/trial-guard';
 import { registerLibrarySource } from '@bondbuddy/api/library';
@@ -154,6 +155,16 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
     } });
   }
   const storage = storageLifecyclePolicyFromEnv(env);
+  if (env.AZURE_STORAGE_CONNECTION_STRING && !off(env.BB_OPS_STORAGE_INVENTORY)) {
+    const blobs = blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING);
+    const policy = inventoryPolicyFromEnv(env);
+    policy.deleteEnabled = false;
+    tasks.push({ name: 'storage_inventory', intervalMs: seconds('BB_OPS_STORAGE_INVENTORY_SECONDS', 3600), leaseMs: 900_000,
+      run: async (): Promise<TaskOutcome> => {
+        const r = await runStorageInventory(pool, blobs, policy);
+        return { ok: true, detail: { scanned: r.scanned, candidates: Object.values(r.byPrefix).reduce((n, b) => n + b.orphan_candidate.count, 0) } };
+      } });
+  }
   if (storage && !off(env.BB_OPS_STORAGE_PURGE)) {
     if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled storage purge requires AZURE_STORAGE_CONNECTION_STRING');
     const blobs = blobsFactory(env.AZURE_STORAGE_CONNECTION_STRING);

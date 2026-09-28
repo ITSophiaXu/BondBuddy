@@ -47,11 +47,11 @@ test('env wiring: sink file enables forwarding; purge needs blob; backfill is op
   const base = { BB_TRIAL_GUARD: 'off', BB_STORAGE_PURGE_ENABLED: 'false' } as NodeJS.ProcessEnv;
   assert.deepEqual(tasksFromEnv(pool, base).map(t => t.name), ['log_health', 'trial_health', 'worker_heartbeat']);
   const all = tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_STORAGE_PURGE_ENABLED: 'true', BB_STORAGE_MATERIAL_RETENTION_DAYS: '7', BB_STORAGE_ORPHAN_GRACE_HOURS: '24', BB_LOG_CONTENT_RETENTION_DAYS: '180', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_OPS_PARSE_BACKFILL: 'on' }, () => noBlobs);
-  assert.deepEqual(all.map(t => t.name), ['log_forward', 'log_health', 'storage_purge', 'trial_health', 'worker_heartbeat', 'backup_retention', 'parse_backfill']);
-  const archived = tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic' });
+  assert.deepEqual(all.map(t => t.name), ['log_forward', 'log_health', 'storage_inventory', 'storage_purge', 'trial_health', 'worker_heartbeat', 'backup_retention', 'parse_backfill']);
+  const archived = tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic' }, () => noBlobs);
   assert.ok(archived.some(task => task.name === 'archive_retention'));
-  assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_ARCHIVE_RETENTION_DAYS: '29' }), /30 to 3650/);
-  assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_SINK_MAX_BYTES: String(65 * 1024 * 1024) }), /64 MiB/);
+  assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_ARCHIVE_RETENTION_DAYS: '29' }, () => noBlobs), /30 to 3650/);
+  assert.throws(() => tasksFromEnv(pool, { ...base, BB_LOG_SINK_FILE: '/tmp/x.ndjson', BB_LOG_ARCHIVE_ENABLED: '1', DATABASE_URL: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_LOG_SINK_MAX_BYTES: String(65 * 1024 * 1024) }, () => noBlobs), /64 MiB/);
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_STORAGE_PURGE_ENABLED: 'true', BB_STORAGE_MATERIAL_RETENTION_DAYS: '7', BB_STORAGE_ORPHAN_GRACE_HOURS: '24' }), /AZURE_STORAGE_CONNECTION_STRING/);
 });
 
@@ -208,7 +208,7 @@ test('backup_retention records its last success and alerts on failure', { skip: 
   try {
     let fail = false;
     const container = { exists: async () => { if (fail) throw Object.assign(new Error('synthetic outage'), { code: 'blob_unavailable' }); return false; } };
-    const env = { BB_TRIAL_GUARD: 'off', BB_STORAGE_PURGE_ENABLED: 'false', BB_OPS_LOG_HEALTH: 'off', BB_OPS_TRIAL_HEALTH: 'off', BB_OPS_WORKER_HEARTBEAT: 'off', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_BACKUP_RETENTION_DAYS: '30' } as NodeJS.ProcessEnv;
+    const env = { BB_TRIAL_GUARD: 'off', BB_STORAGE_PURGE_ENABLED: 'false', BB_OPS_STORAGE_INVENTORY: 'off', BB_OPS_LOG_HEALTH: 'off', BB_OPS_TRIAL_HEALTH: 'off', BB_OPS_WORKER_HEARTBEAT: 'off', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_BACKUP_RETENTION_DAYS: '30' } as NodeJS.ProcessEnv;
     const tasks = tasksFromEnv(pool, env, () => noBlobs, () => container as never);
     assert.deepEqual(tasks.map(t => t.name), ['backup_retention']);
     const scheduler = new OpsScheduler({ pool, tasks, owner: 'synthetic-backup', jitter: 0 });
