@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import { deflateRawSync } from 'node:zlib';
 import { createHash, randomBytes } from 'node:crypto';
 import { M1_UPLOAD_MIME_TYPES } from '@bondbuddy/contracts';
 import { encode as encodeJpeg } from 'jpeg-js';
@@ -161,6 +162,46 @@ function xlsxParts(sheet: Buffer = worksheet, extra: readonly ZipPart[] = []): Z
 
 export function xlsxSample(sheet = worksheet, extra: readonly ZipPart[] = []): Promise<Buffer> {
   return createZip(xlsxParts(sheet, extra));
+}
+
+export function xlsxRelationshipTargetSample(rootTarget: string, sheetTarget: string): Promise<Buffer> {
+  return createZip(xlsxParts().map(part => {
+    if (part.name === '_rels/.rels') return { ...part, contents: Buffer.from(part.contents.toString().replace('xl/workbook.xml', rootTarget)) };
+    if (part.name === 'xl/_rels/workbook.xml.rels') return { ...part, contents: Buffer.from(part.contents.toString().replace('worksheets/sheet1.xml', sheetTarget)) };
+    return part;
+  }));
+}
+
+/** Add one DEFLATE directory entry to a synthetic XLSX with consistent ZIP headers. */
+export async function xlsxDeflatedDirectorySample(contents = Buffer.alloc(0)): Promise<Buffer> {
+  const zip = await xlsxSample();
+  const eocd = zip.length - 22;
+  const centralOffset = zip.readUInt32LE(eocd + 16);
+  const centralSize = zip.readUInt32LE(eocd + 12);
+  const count = zip.readUInt16LE(eocd + 10);
+  const name = Buffer.from('xl/empty/');
+  const data = deflateRawSync(contents);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(contents.length, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(contents.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  central.writeUInt32LE(centralOffset, 42);
+  const newLocal = Buffer.concat([local, name, data]);
+  const newCentral = Buffer.concat([central, name]);
+  const newEocd = Buffer.from(zip.subarray(eocd));
+  newEocd.writeUInt16LE(count + 1, 8);
+  newEocd.writeUInt16LE(count + 1, 10);
+  newEocd.writeUInt32LE(centralSize + newCentral.length, 12);
+  newEocd.writeUInt32LE(centralOffset + newLocal.length, 16);
+  return Buffer.concat([zip.subarray(0, centralOffset), newLocal, zip.subarray(centralOffset, eocd), newCentral, newEocd]);
 }
 
 export function xlsxPartNameSample(zipName: string, overrideName = zipName): Promise<Buffer> {
