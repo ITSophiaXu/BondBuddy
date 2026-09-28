@@ -1,7 +1,7 @@
 // #79/#35 scheduled operations. The ops scheduler (apps/worker ops-scheduler) runs these tasks with
 // PostgreSQL leases (migration 0028) so only one scheduler instance executes a due task.
 // Kept in its own module so parallel PRs appending to index.ts do not collide.
-export const OPS_SCHEDULED_TASKS = ['log_forward', 'log_health', 'storage_purge', 'trial_health', 'worker_heartbeat', 'parse_backfill', 'backup_retention', 'library_sync'] as const;
+export const OPS_SCHEDULED_TASKS = ['log_forward', 'log_health', 'storage_purge', 'archive_retention', 'trial_health', 'worker_heartbeat', 'parse_backfill', 'backup_retention', 'library_sync'] as const;
 export const OPS_SCHEDULE_RUN_STATUSES = ['succeeded', 'failed'] as const;
 // Appended to OPS_ALERT_KINDS (admin-logs.ts) and the bb_ops_alerts kind check (migrations 0028, 0032).
 // library_* alerts are raised by the #78 library_sync task; scope is the library source id.

@@ -67,6 +67,9 @@ test('#79 PG16/Azurite archive survives two rotations, delayed replay and crash 
       await writer.deliver([]);
       const archives = (await pool.query('SELECT count(*)::int n FROM bb_log_archive_receipts WHERE object_key LIKE $1', [`log-archive/${writer.name}/%`])).rows[0].n;
       assert.ok(archives >= 2);
+      assert.equal((await pool.query(`SELECT count(*)::int n FROM bb_log_archive_lifecycle l
+        JOIN bb_log_segments s ON s.id=l.segment_id WHERE s.sink=$1`, [writer.name])).rows[0].n, archives,
+        'only retired local segments enter the cleanup lifecycle');
       const before = await localKeys(file);
       await writer.deliver([a]); // lease-expired process resumes after two local segments are gone
       assert.deepEqual(await localKeys(file), before);
