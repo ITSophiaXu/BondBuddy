@@ -17,6 +17,51 @@ export const PRODUCTION_REVIEW_MANIFEST_CANONICALIZATION = 'utf8-json-sorted-obj
 const componentRef = Type.Object({ id, version, sha256: hash }, { additionalProperties: false });
 const sourceLocator = Type.Object({ kind: nonEmptyCode, value: Type.String({ minLength: 1, maxLength: 1024 }) }, { additionalProperties: false });
 
+const reviewedUnrestricted = Type.Object({
+  mode: Type.Literal('reviewed_unrestricted'),
+  evidence_id: id,
+  evidence_version: Type.Integer({ minimum: 1, maximum: 2147483647 }),
+  evidence_sha256: hash,
+}, { additionalProperties: false, description: 'A reviewer explicitly established that this dimension does not narrow the rule; this is not project qualification or suitability.' });
+const explicitCodes = (maxItems: number) => Type.Object({
+  mode: Type.Literal('explicit_codes'),
+  codes: Type.Array(nonEmptyCode, { minItems: 1, maxItems, uniqueItems: true }),
+  dictionary_version: version,
+}, { additionalProperties: false });
+const needsReview = Type.Object({
+  mode: Type.Literal('needs_review'),
+  reason_code: nonEmptyCode,
+  reason: Type.String({ minLength: 1, maxLength: 2048 }),
+}, { additionalProperties: false, description: 'Pending dimension; it asserts neither unrestricted scope nor any explicit code set and cannot be approved.' });
+const reviewedDimension = (maxItems: number) => Type.Union([reviewedUnrestricted, explicitCodes(maxItems), needsReview]);
+
+const applicabilityScope = Type.Object({
+  market: enumOf(MARKETS),
+  offering: enumOf(OFFERINGS),
+  instruments: Type.Array(nonEmptyCode, { minItems: 1, maxItems: 100, uniqueItems: true }),
+  document_stages: Type.Array(enumOf(DOCUMENT_PURPOSES), { minItems: 1, maxItems: 2, uniqueItems: true }),
+  applicable_from: nullableDate,
+  applicable_until: nullableDate,
+  issuer_scopes: reviewedDimension(100),
+  investor_scopes: reviewedDimension(100),
+  industry_codes: reviewedDimension(1000),
+  /** Rule-level scope only: unrestricted does not assert a project's verified absence. */
+  special_feature_scope: reviewedDimension(100),
+  exceptions: Type.Array(Type.Object({ code: nonEmptyCode, description: Type.String({ minLength: 1, maxLength: 2048 }), evidence_ids: Type.Array(id, { minItems: 1, maxItems: 100 }) }, { additionalProperties: false }), { maxItems: 200 }),
+  uncovered_items: Type.Array(Type.Object({ code: nonEmptyCode, description: Type.String({ minLength: 1, maxLength: 2048 }), evidence_ids: Type.Array(id, { maxItems: 100 }) }, { additionalProperties: false }), { maxItems: 200 }),
+}, { additionalProperties: false });
+
+const sourceApplicabilityBasis = Type.Object({
+  basis_id: id,
+  basis_version: Type.Integer({ minimum: 1, maximum: 2147483647 }),
+  basis_sha256: hash,
+  source_document_sha256: hash,
+  /** Exact scope snapshot reviewed for this source; validator requires equality to manifest scope. */
+  applicability_scope: applicabilityScope,
+  time_basis: Type.String({ minLength: 1, maxLength: 2048 }),
+  locator: sourceLocator,
+}, { additionalProperties: false, description: 'Reviewed source applicability evidence. It is separate from legal effectivity and must pin the exact source bytes, scope and time basis.' });
+
 const sourceDateEvidence = Type.Object({
   source_evidence_id: id,
   source_check_sha256: Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Hash of the immutable source-verification record, including the reviewed date semantics.' }),
@@ -39,6 +84,7 @@ const sourceDateEvidence = Type.Object({
   transition_from_date: nullableDate,
   transition_until_date: nullableDate,
   transition_evidence: Type.Array(sourceLocator, { maxItems: 20 }),
+  applicability_basis: sourceApplicabilityBasis,
   approved_method_window: Type.Union([
     Type.Null(),
     Type.Object({
@@ -60,21 +106,6 @@ const sampleEvidence = Type.Object({
   expected_outcome_sha256: hash,
   reviewed_result_sha256: hash,
 }, { additionalProperties: false, description: 'Reference to an authorized real sample and its reviewed outcome; synthetic fixtures cannot satisfy this record.' });
-
-const applicabilityScope = Type.Object({
-  market: enumOf(MARKETS),
-  offering: enumOf(OFFERINGS),
-  instruments: Type.Array(nonEmptyCode, { minItems: 1, maxItems: 100, uniqueItems: true }),
-  document_stages: Type.Array(enumOf(DOCUMENT_PURPOSES), { minItems: 1, maxItems: 2, uniqueItems: true }),
-  applicable_from: nullableDate,
-  applicable_until: nullableDate,
-  issuer_scopes: Type.Array(nonEmptyCode, { minItems: 1, maxItems: 100, uniqueItems: true }),
-  investor_scopes: Type.Array(nonEmptyCode, { minItems: 1, maxItems: 100, uniqueItems: true }),
-  industry_codes: Type.Array(nonEmptyCode, { minItems: 1, maxItems: 1000, uniqueItems: true }),
-  special_feature_codes: Type.Array(nonEmptyCode, { maxItems: 100, uniqueItems: true, description: 'Empty means reviewed absence of special features, not unknown.' }),
-  exceptions: Type.Array(Type.Object({ code: nonEmptyCode, description: Type.String({ minLength: 1, maxLength: 2048 }), evidence_ids: Type.Array(id, { minItems: 1, maxItems: 100 }) }, { additionalProperties: false }), { maxItems: 200 }),
-  uncovered_items: Type.Array(Type.Object({ code: nonEmptyCode, description: Type.String({ minLength: 1, maxLength: 2048 }), evidence_ids: Type.Array(id, { maxItems: 100 }) }, { additionalProperties: false }), { maxItems: 200 }),
-}, { additionalProperties: false });
 
 /**
  * Content-only hash input. Attestations and release events are separate append-only
@@ -127,7 +158,10 @@ export function validProductionReviewManifestContent(value: unknown): value is P
   const scope = manifest.content.applicability_scope;
   const offerings = MARKET_OFFERINGS[scope.market] as readonly string[];
   if (!offerings.includes(scope.offering)) return false;
-  if (![scope.instruments, scope.issuer_scopes, scope.investor_scopes, scope.industry_codes, scope.special_feature_codes].every(sortedUnique)) return false;
+  if (!sortedUnique(scope.instruments)) return false;
+  for (const dimension of [scope.issuer_scopes, scope.investor_scopes, scope.industry_codes, scope.special_feature_scope]) {
+    if (dimension.mode === 'explicit_codes' && !sortedUnique(dimension.codes)) return false;
+  }
   if (!scope.exceptions.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.exceptions[index - 1]!.code < item.code))) return false;
   if (!scope.uncovered_items.every((item, index) => sortedUnique(item.evidence_ids) && (index === 0 || scope.uncovered_items[index - 1]!.code < item.code))) return false;
   if (!manifest.content.source_date_evidence.every((item, index) => index === 0 || manifest.content.source_date_evidence[index - 1]!.source_evidence_id < item.source_evidence_id)) return false;
@@ -145,9 +179,11 @@ export function validProductionReviewManifestContent(value: unknown): value is P
   if (dates.some(dateValue => !validCalendarDate(dateValue))) return false;
   if (scope.applicable_from && scope.applicable_until && scope.applicable_from > scope.applicable_until) return false;
   for (const source of manifest.content.source_date_evidence) {
-    // A binding rule without a verified legal commencement cannot be signed as
-    // currently applicable. Undated guidance/methods will require a separate
-    // reviewed applicability basis before a production selector can accept them.
+    // Applicability review is content evidence, never a fabricated legal date.
+    // Requiring the same exact scope snapshot here makes scope drift detectable
+    // without treating a reviewed internal basis as statutory effectivity.
+    if (source.applicability_basis.source_document_sha256 !== source.source_document_sha256 ||
+        !sameJsonValue(source.applicability_basis.applicability_scope, scope)) return false;
     if (source.source_kind === 'binding_rule' &&
         !['explicit_text', 'publication_commencement'].includes(source.legal_effective_date_basis)) return false;
     if (source.transition_from_date && source.transition_until_date && source.transition_from_date > source.transition_until_date) return false;
@@ -170,6 +206,19 @@ export function validProductionReviewManifestContent(value: unknown): value is P
     } else if (source.approved_method_window !== null) return false;
   }
   return true;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  return canonicalJson(left) === canonicalJson(right);
 }
 
 /** Backwards-readable alias emphasizing the primary semantic requirement. */

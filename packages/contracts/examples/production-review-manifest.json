@@ -7,7 +7,7 @@
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
-        "content_sha256": "bc3abc428856dcbc6c5242cf9f7fc2f3c8f725e1adc68fcafce0d3b6a47d29b5",
+        "content_sha256": "11d4da9e70aa5e2020c6506f537fb5a82abaa961ceadd9b0b76212cbeea02aed",
         "content": {
           "contract_version": "production-review-content-v1",
           "hash_domain": "bondbuddy:production-review-content:v1",
@@ -18,8 +18,10 @@
           "applicability_scope": {
             "market": "nafmii", "offering": "mtn", "instruments": ["mtn"],
             "document_stages": ["registration", "issuance"], "applicable_from": null, "applicable_until": null,
-            "issuer_scopes": ["domestic-company"], "investor_scopes": ["professional"],
-            "industry_codes": ["synthetic-industry-code"], "special_feature_codes": [], "exceptions": [],
+            "issuer_scopes": { "mode": "explicit_codes", "codes": ["domestic-company"], "dictionary_version": "issuer-v1" },
+            "investor_scopes": { "mode": "explicit_codes", "codes": ["professional"], "dictionary_version": "investor-v1" },
+            "industry_codes": { "mode": "explicit_codes", "codes": ["synthetic-industry-code"], "dictionary_version": "industry-v1" },
+            "special_feature_scope": { "mode": "reviewed_unrestricted", "evidence_id": "feature-scope-review", "evidence_version": 1, "evidence_sha256": "1212121212121212121212121212121212121212121212121212121212121212" }, "exceptions": [],
             "uncovered_items": [{ "code": "special-products", "description": "Synthetic uncovered area", "evidence_ids": ["a-source-synthetic"] }]
           },
           "source_date_evidence": [
@@ -29,7 +31,9 @@
               "official_publication_date": "2026-03-23", "acquired_date": "2026-09-28", "legal_effective_date": "2026-03-23",
               "legal_expiry_date": null, "legal_effective_date_basis": "publication_commencement",
               "effective_date_derivation_evidence": [{ "kind": "article", "value": "Article 8 says effective from publication date" }],
-              "transition_from_date": null, "transition_until_date": null, "transition_evidence": [], "approved_method_window": null,
+              "transition_from_date": null, "transition_until_date": null, "transition_evidence": [],
+              "applicability_basis": { "basis_id": "basis-source-synthetic", "basis_version": 1, "basis_sha256": "1313131313131313131313131313131313131313131313131313131313131313", "source_document_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "applicability_scope": { "market": "nafmii", "offering": "mtn", "instruments": ["mtn"], "document_stages": ["registration", "issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": { "mode": "explicit_codes", "codes": ["domestic-company"], "dictionary_version": "issuer-v1" }, "investor_scopes": { "mode": "explicit_codes", "codes": ["professional"], "dictionary_version": "investor-v1" }, "industry_codes": { "mode": "explicit_codes", "codes": ["synthetic-industry-code"], "dictionary_version": "industry-v1" }, "special_feature_scope": { "mode": "reviewed_unrestricted", "evidence_id": "feature-scope-review", "evidence_version": 1, "evidence_sha256": "1212121212121212121212121212121212121212121212121212121212121212" }, "exceptions": [], "uncovered_items": [{ "code": "special-products", "description": "Synthetic uncovered area", "evidence_ids": ["a-source-synthetic"] }] }, "time_basis": "Synthetic reviewed applicability period and no-expiry interpretation; not a legal effective date.", "locator": { "kind": "article", "value": "synthetic-rule#8" } },
+              "approved_method_window": null,
               "locators": [{ "kind": "official_url_and_article", "value": "https://example.invalid/synthetic#article-8" }]
             },
             {
@@ -38,6 +42,7 @@
               "official_publication_date": null, "acquired_date": "2026-09-28", "legal_effective_date": null, "legal_expiry_date": null,
               "legal_effective_date_basis": "not_legal_effectivity", "effective_date_derivation_evidence": [],
               "transition_from_date": null, "transition_until_date": null, "transition_evidence": [],
+              "applicability_basis": { "basis_id": "basis-method-synthetic", "basis_version": 1, "basis_sha256": "1414141414141414141414141414141414141414141414141414141414141414", "source_document_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "applicability_scope": { "market": "nafmii", "offering": "mtn", "instruments": ["mtn"], "document_stages": ["registration", "issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": { "mode": "explicit_codes", "codes": ["domestic-company"], "dictionary_version": "issuer-v1" }, "investor_scopes": { "mode": "explicit_codes", "codes": ["professional"], "dictionary_version": "investor-v1" }, "industry_codes": { "mode": "explicit_codes", "codes": ["synthetic-industry-code"], "dictionary_version": "industry-v1" }, "special_feature_scope": { "mode": "reviewed_unrestricted", "evidence_id": "feature-scope-review", "evidence_version": 1, "evidence_sha256": "1212121212121212121212121212121212121212121212121212121212121212" }, "exceptions": [], "uncovered_items": [{ "code": "special-products", "description": "Synthetic uncovered area", "evidence_ids": ["a-source-synthetic"] }] }, "time_basis": "Internal method window is separate from legal effectivity.", "locator": { "kind": "method_section", "value": "synthetic-method#2" } },
               "approved_method_window": { "enabled_from": "2026-09-20", "enabled_until": null, "approval_evidence_id": "method-approval-synthetic", "approval_evidence_sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
               "locators": [{ "kind": "method_section", "value": "synthetic-method#2" }]
             }
@@ -63,13 +68,13 @@
           "rule_pack": { "id": "pack-synthetic", "version": "1", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
           "chapter_template": { "id": "template-synthetic", "version": "1", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
           "coverage_manifest": { "id": "coverage-synthetic", "version": "1", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
-          "applicability_scope": { "market": "sse", "offering": "private", "instruments": ["bond"], "document_stages": ["issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": ["company"], "investor_scopes": ["professional"], "industry_codes": ["industry"], "special_feature_codes": [], "exceptions": [], "uncovered_items": [] },
+          "applicability_scope": { "market": "sse", "offering": "private", "instruments": ["bond"], "document_stages": ["issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": { "mode": "explicit_codes", "codes": ["company"], "dictionary_version": "issuer-v1" }, "investor_scopes": { "mode": "explicit_codes", "codes": ["professional"], "dictionary_version": "investor-v1" }, "industry_codes": { "mode": "explicit_codes", "codes": ["industry"], "dictionary_version": "industry-v1" }, "special_feature_scope": { "mode": "reviewed_unrestricted", "evidence_id": "feature-review", "evidence_version": 1, "evidence_sha256": "1212121212121212121212121212121212121212121212121212121212121212" }, "exceptions": [], "uncovered_items": [] },
           "source_date_evidence": [{
             "source_evidence_id": "guidance-source", "source_check_sha256": "6666666666666666666666666666666666666666666666666666666666666666", "source_document_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "source_kind": "interpretive_guidance", "document_revision_date": "2026-01-01", "signed_date": null,
             "official_publication_date": "2026-01-02", "acquired_date": "2026-09-28", "legal_effective_date": "2026-01-02",
             "legal_expiry_date": null, "legal_effective_date_basis": "unknown", "effective_date_derivation_evidence": [],
-            "transition_from_date": null, "transition_until_date": null, "transition_evidence": [], "approved_method_window": null,
+            "transition_from_date": null, "transition_until_date": null, "transition_evidence": [], "applicability_basis": { "basis_id": "basis-guidance", "basis_version": 1, "basis_sha256": "1313131313131313131313131313131313131313131313131313131313131313", "source_document_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "applicability_scope": { "market": "sse", "offering": "private", "instruments": ["bond"], "document_stages": ["issuance"], "applicable_from": null, "applicable_until": null, "issuer_scopes": { "mode": "explicit_codes", "codes": ["company"], "dictionary_version": "issuer-v1" }, "investor_scopes": { "mode": "explicit_codes", "codes": ["professional"], "dictionary_version": "investor-v1" }, "industry_codes": { "mode": "explicit_codes", "codes": ["industry"], "dictionary_version": "industry-v1" }, "special_feature_scope": { "mode": "reviewed_unrestricted", "evidence_id": "feature-review", "evidence_version": 1, "evidence_sha256": "1212121212121212121212121212121212121212121212121212121212121212" }, "exceptions": [], "uncovered_items": [] }, "time_basis": "Reviewed scope only; legal date remains unknown.", "locator": { "kind": "section", "value": "synthetic-guidance#1" } }, "approved_method_window": null,
             "locators": [{ "kind": "section", "value": "synthetic-guidance#1" }]
           }],
           "authorized_real_sample_evidence": [{ "sample_evidence_id": "sample", "sample_evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "authorization_evidence_id": "authorization", "authorization_evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "sample_case_id": "case", "expected_outcome_sha256": "4444444444444444444444444444444444444444444444444444444444444444", "reviewed_result_sha256": "5555555555555555555555555555555555555555555555555555555555555555" }]

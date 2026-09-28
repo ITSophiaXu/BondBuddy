@@ -148,13 +148,33 @@ unsortedManifest.content.source_date_evidence.reverse();
 assert.equal(ajv.validate(schemas.ProductionReviewManifest, unsortedManifest), true, 'schema accepts source row order');
 assert.equal(validProductionReviewManifestContent(unsortedManifest), false, 'hash input rejects noncanonical source row order');
 const duplicatedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
-duplicatedManifest.content.applicability_scope.industry_codes.push(duplicatedManifest.content.applicability_scope.industry_codes[0]!);
+const duplicateCodes = duplicatedManifest.content.applicability_scope.industry_codes;
+if (duplicateCodes.mode === 'explicit_codes') duplicateCodes.codes.push(duplicateCodes.codes[0]!);
 assert.equal(validProductionReviewManifestContent(duplicatedManifest), false, 'hash input rejects duplicate set-like references');
 const undatedBindingRule = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
 undatedBindingRule.content.source_date_evidence[0]!.legal_effective_date = null;
 undatedBindingRule.content.source_date_evidence[0]!.legal_effective_date_basis = 'unknown';
 undatedBindingRule.content.source_date_evidence[0]!.effective_date_derivation_evidence = [];
-assert.equal(validProductionReviewManifestContent(undatedBindingRule), false, 'binding rule without verified legal commencement cannot be signed');
+assert.equal(validProductionReviewManifestContent(undatedBindingRule), false, 'reviewed applicability basis cannot make an undated binding rule approvable');
+const undatedGuidance = structuredClone(undatedBindingRule);
+undatedGuidance.content.source_date_evidence[0]!.source_kind = 'interpretive_guidance';
+assert.equal(validProductionReviewManifestContent(undatedGuidance), true, 'undated guidance may carry a reviewed applicability basis without inventing legal effectivity');
+const noDateNoBasis = structuredClone(undatedBindingRule) as any;
+delete noDateNoBasis.content.source_date_evidence[0].applicability_basis;
+assert.equal(validProductionReviewManifestContent(noDateNoBasis), false, 'undated source without an applicability basis is rejected');
+const scopeBasisDrift = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+scopeBasisDrift.content.source_date_evidence[0]!.applicability_basis.applicability_scope.instruments = ['scp'];
+assert.equal(validProductionReviewManifestContent(scopeBasisDrift), false, 'source basis must pin the exact manifest scope');
+const emptyUnknownDimension = structuredClone(manifestBaseline.value) as any;
+emptyUnknownDimension.content.applicability_scope.industry_codes = { mode: 'explicit_codes', codes: [], dictionary_version: 'industry-v1' };
+assert.equal(ajv.validate(schemas.ProductionReviewManifest, emptyUnknownDimension), false, 'empty explicit codes cannot encode unknown or unrestricted');
+const genericFeatureRule = (manifestBaseline.value as unknown as ProductionReviewManifest).content.applicability_scope.special_feature_scope;
+assert.equal(genericFeatureRule.mode, 'reviewed_unrestricted', 'generic rule-level feature scope is an explicit no-extra-restriction review');
+assert.equal(Object.hasOwn(genericFeatureRule, 'project_verified_absence'), false, 'rule scope does not assert project feature absence');
+// Current withdrawal is a selector/runtime gate, deliberately not a content-manifest assertion.
+const withdrawnSourceIds = new Set(['a-source-synthetic']);
+assert.ok(withdrawnSourceIds.has('a-source-synthetic'));
+assert.equal(validProductionReviewManifestContent(manifestBaseline.value), true, 'content validity alone cannot authorize a withdrawn source');
 const technicalSubmission = byName.get('production-attestation-technical-self-submission-valid-synthetic');
 assert.ok(technicalSubmission, 'synthetic technical self-submission exists');
 const spoofedRoleSubmission = { ...structuredClone(technicalSubmission.value), reviewer_role: 'industry' };
@@ -164,6 +184,20 @@ const industrySubmission = byName.get('production-attestation-industry-self-subm
 assert.ok(industrySubmission, 'synthetic industry self-submission exists');
 const pinnedManifest = manifestBaseline.value as unknown as ProductionReviewManifest;
 const industryRequest = industrySubmission.value as unknown as ProductionReviewAttestationRequest;
+assert.equal(validProductionReviewAttestationBinding(industryRequest, emptyUnknownDimension), false, 'industry approve cannot bind a manifest with unknown applicability');
+const pendingDimensionManifest = structuredClone(pinnedManifest);
+pendingDimensionManifest.content.applicability_scope.industry_codes = {
+  mode: 'needs_review', reason_code: 'industry_mapping_pending', reason: 'Synthetic pending evidence review.',
+};
+for (const source of pendingDimensionManifest.content.source_date_evidence) {
+  source.applicability_basis.applicability_scope = structuredClone(pendingDimensionManifest.content.applicability_scope);
+}
+assert.equal(ajv.validate(schemas.ProductionReviewManifest, pendingDimensionManifest), true, 'pending dimension is representable in a content snapshot');
+assert.equal(validProductionReviewManifestContent(pendingDimensionManifest), true, 'needs_review is a valid pending state, not an unrestricted state');
+const pendingDimensionRequest = structuredClone(industryRequest);
+pendingDimensionRequest.decision = 'request_more_evidence';
+assert.equal(validProductionReviewAttestationBinding(pendingDimensionRequest, pendingDimensionManifest), true, 'pending dimension may be retained while requesting more evidence');
+assert.equal(validProductionReviewAttestationBinding(industryRequest, pendingDimensionManifest), false, 'industry approve is forbidden while any applicability dimension needs review');
 assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, industryRequest), true, 'semantic baseline is schema-valid');
 assert.equal(validProductionReviewAttestationBinding(industryRequest, pinnedManifest), true, 'industry approval binds complete synthetic manifest');
 const withIndustry = (change: (value: any) => void, decision = 'approve') => {

@@ -178,6 +178,9 @@ export function validProductionReviewAttestationBinding(
   };
 
   if ('source_effectivity_applicability' in evidence) {
+    const scope = manifest.content.applicability_scope;
+    const applicabilityDimensions = [scope.issuer_scopes, scope.investor_scopes, scope.industry_codes, scope.special_feature_scope];
+    if (request.decision === 'approve' && applicabilityDimensions.some(dimension => dimension.mode === 'needs_review')) return false;
     const sources = new Map(manifest.content.source_date_evidence.map(source => [source.source_evidence_id, source]));
     const reviewedSources = new Set<string>();
     for (const row of evidence.source_effectivity_applicability) {

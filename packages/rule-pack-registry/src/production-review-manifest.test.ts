@@ -42,6 +42,8 @@ test('review hash detects pinned source, sample and scope drift', () => {
     (next: Record<string, any>) => { next.content.source_date_evidence[0].source_document_sha256 = '0'.repeat(64); },
     (next: Record<string, any>) => { next.content.authorized_real_sample_evidence[0].sample_evidence_sha256 = '0'.repeat(64); },
     (next: Record<string, any>) => { next.content.applicability_scope.instruments = ['scp']; },
+    (next: Record<string, any>) => { next.content.source_date_evidence[0].applicability_basis.basis_sha256 = '0'.repeat(64); },
+    (next: Record<string, any>) => { next.content.source_date_evidence[0].applicability_basis.applicability_scope.instruments = ['scp']; },
     (next: Record<string, any>) => { next.content.chapter_template.sha256 = '0'.repeat(64); },
   ];
   for (const change of variants) {
@@ -64,6 +66,12 @@ test('review hash rejects noncanonical references and invented legal dates', () 
   invented.content.source_date_evidence[1].legal_effective_date = '2026-09-20';
   assert.equal(productionReviewContentHashMatches(invented), false);
 
+  const undatedWithoutBasis = copy();
+  undatedWithoutBasis.content.source_date_evidence[0].legal_effective_date = null;
+  undatedWithoutBasis.content.source_date_evidence[0].legal_effective_date_basis = 'unknown';
+  delete undatedWithoutBasis.content.source_date_evidence[0].applicability_basis;
+  assert.equal(productionReviewContentHashMatches(undatedWithoutBasis), false);
+
   const unsupportedTransition = copy();
   unsupportedTransition.content.source_date_evidence[0].transition_from_date = '2026-03-23';
   assert.equal(productionReviewContentHashMatches(unsupportedTransition), false);
@@ -73,7 +81,7 @@ test('review hash rejects noncanonical references and invented legal dates', () 
   assert.equal(productionReviewContentHashMatches(reversedMethodWindow), false);
 });
 
-test('date contract can represent explicit guidance effectivity and pending method approval', () => {
+test('date contract keeps legal effectivity separate from reviewed applicability and method window', () => {
   const explicitGuidance = copy();
   explicitGuidance.content.source_date_evidence[0].source_kind = 'interpretive_guidance';
   assert.match(productionReviewContentHash(explicitGuidance), /^[a-f0-9]{64}$/);
@@ -82,6 +90,14 @@ test('date contract can represent explicit guidance effectivity and pending meth
   pendingMethod.content.source_date_evidence[1].approved_method_window = null;
   assert.match(productionReviewContentHash(pendingMethod), /^[a-f0-9]{64}$/);
   assert.notEqual(productionReviewContentHash(pendingMethod), productionReviewContentHash(copy()));
+
+  const undatedRule = copy();
+  undatedRule.content.source_date_evidence[0].source_kind = 'interpretive_guidance';
+  undatedRule.content.source_date_evidence[0].legal_effective_date = null;
+  undatedRule.content.source_date_evidence[0].legal_effective_date_basis = 'unknown';
+  undatedRule.content.source_date_evidence[0].effective_date_derivation_evidence = [];
+  assert.match(productionReviewContentHash(undatedRule), /^[a-f0-9]{64}$/);
+  assert.equal(undatedRule.content.source_date_evidence[0].legal_effective_date, null, 'internal applicability basis never fabricates a legal date');
 
   const fakeTemplateDate = copy();
   fakeTemplateDate.content.source_date_evidence[0].source_kind = 'template';
