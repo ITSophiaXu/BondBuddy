@@ -203,6 +203,8 @@ assert.equal(validProductionReviewAttestationBinding(industryRequest, pinnedMani
 const missingPolarityManifest = structuredClone(pinnedManifest);
 missingPolarityManifest.content.authorized_real_sample_evidence = missingPolarityManifest.content.authorized_real_sample_evidence
   .filter(sample => sample.polarity === 'positive');
+// This pure contract check deliberately does not recompute the changed content hash;
+// the registry hash check is a separate mandatory writer precondition.
 assert.equal(validProductionReviewManifestContent(missingPolarityManifest), true, 'an incomplete polarity set may be stored as a pending review manifest');
 const pendingSampleRequest = structuredClone(industryRequest);
 pendingSampleRequest.decision = 'request_more_evidence';
@@ -217,8 +219,8 @@ duplicateSampleCase.content.authorized_real_sample_evidence[1]!.sample_case_id =
 assert.equal(validProductionReviewManifestContent(duplicateSampleCase), false, 'manifest sample case IDs must be unique');
 const polarityDrift = structuredClone(pinnedManifest);
 polarityDrift.content.authorized_real_sample_evidence[0]!.polarity = 'positive';
-assert.equal(validProductionReviewAttestationBinding(industryRequest, polarityDrift), false, 'attestation is invalidated by sample polarity drift from its pinned manifest hash');
-assert.equal(validProductionReviewAttestationBinding({ ...industryRequest, content_sha256: polarityDrift.content_sha256 }, polarityDrift), false, 'a drifted polarity set cannot approve even when the request is repinned');
+assert.equal(validProductionReviewAttestationBinding(industryRequest, polarityDrift), false, 'changing boundary to positive leaves the required category absent');
+assert.equal(validProductionReviewAttestationBinding({ ...industryRequest, content_sha256: polarityDrift.content_sha256 }, polarityDrift), false, 'repinning cannot approve a manifest without a boundary sample');
 const withIndustry = (change: (value: any) => void, decision = 'approve') => {
   const changed = structuredClone(industryRequest) as any;
   changed.decision = decision;
