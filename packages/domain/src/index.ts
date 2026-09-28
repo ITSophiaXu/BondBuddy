@@ -345,12 +345,15 @@ export function publishRulePack(draft:RulePack,input:{channel:'test'|'production
   if(valid.sources.some(source=>source.effective_to!==null && source.effective_to<releaseDate))throw new Error('RULE_SOURCE_EXPIRED_BEFORE_RELEASE');
   if(input.reviews.some(review=>review.reviewed_at>input.released_at) || valid.sample_suite.cases.some(testCase=>testCase.reviewed_at>input.released_at))throw new Error('RULE_PACK_EVIDENCE_AFTER_RELEASE');
   if(valid.sources.some(source=>source.kind==='unverified_lead') || valid.rules.some(rule=>!rule.enabled || rule.enforcement==='research_only'))throw new Error('RULE_PACK_HAS_UNPUBLISHABLE_RULES');
-  if(input.channel==='production' && valid.sources.some(source=>source.effective_from===null
+  if(input.channel==='production' && valid.sources.some(source=>(source.effective_from===null && source.kind!=='internal_method')
     || (source.kind==='formal_rule' && (!source.legal_effective_date_basis || (source.effective_date_derivation_evidence?.length??0)===0))
     || (source.kind==='internal_method' && source.effective_from!==null)
+    || (source.kind==='internal_method' && (!source.approved_method_window
+      || releaseDate<source.approved_method_window.enabled_from
+      || (source.approved_method_window.enabled_until!==null && releaseDate>source.approved_method_window.enabled_until)))
     || (source.kind==='official_interpretation' && !source.legal_effective_date_basis)
     || (source.kind==='official_interpretation' && (source.effective_date_derivation_evidence?.length??0)===0)
-    || (source.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))))
+    || (source.kind!=='internal_method' && source.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis))))
     throw new Error('RULE_SOURCE_APPLICABILITY_NOT_APPROVED');
   if(valid.sample_suite.cases.some(testCase=>testCase.result!=='passed'))throw new Error('RULE_PACK_SAMPLE_FAILURE');
   for(const polarity of PRODUCTION_SAMPLE_POLARITIES)if(!valid.sample_suite.cases.some(testCase=>testCase.polarity===polarity))throw new Error(`RULE_PACK_SAMPLE_${polarity.toUpperCase()}_MISSING`);
@@ -399,16 +402,20 @@ export function evaluateRulePackCapability(pack:RulePack,context:RuleContext):Ca
   const sourceById=new Map(valid.sources.map(source=>[source.source_id,source]));
   const unknownApplicability=valid.rules.some(rule=>rule.enabled && rule.source_ref_ids.some(id=>{
     const source=sourceById.get(id);
-    return source?.effective_from===null
+    return (source?.effective_from===null && !(source.kind==='internal_method' && source.approved_method_window!=null))
       || (source?.kind==='formal_rule' && (!source.legal_effective_date_basis || (source.effective_date_derivation_evidence?.length??0)===0))
       || (source?.kind==='official_interpretation' && !source.legal_effective_date_basis)
       || (source?.kind==='official_interpretation' && (source.effective_date_derivation_evidence?.length??0)===0)
-      || (source?.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis));
+      || (source?.kind!=='internal_method' && source?.legal_effective_date_basis!==undefined && ['unknown','not_legal_effectivity'].includes(source.legal_effective_date_basis));
   }));
   if(unknownApplicability)return {...base,decision:'needs_evidence',reason_codes:['rule_source_effectivity_unknown']};
   const inactiveSource=valid.rules.some(rule=>rule.enabled && rule.source_ref_ids.some(id=>{
     const source=sourceById.get(id);
-    return !source || (source.effective_from!==null && context.as_of<source.effective_from) || (source.effective_to!==null && context.as_of>source.effective_to);
+    if(!source)return true;
+    if(source.kind==='internal_method')return !source.approved_method_window
+      || context.as_of<source.approved_method_window.enabled_from
+      || (source.approved_method_window.enabled_until!==null && context.as_of>source.approved_method_window.enabled_until);
+    return (source.effective_from!==null && context.as_of<source.effective_from) || (source.effective_to!==null && context.as_of>source.effective_to);
   }));
   if(inactiveSource)return {...base,decision:'capability_not_ready',reason_codes:['rule_source_not_effective_on_date']};
   const needsInvestor=valid.rules.some(rule=>rule.enabled && rule.applicability.investor_scopes.length>0) && !context.investor_scope;

@@ -10,7 +10,7 @@ import {
   type RulePack,
 } from '@bondbuddy/domain';
 import {
-  productionSnapshotHash, registerProductionComponentSnapshots,
+  productionSnapshotHash, registerProductionComponentSnapshots, selectProductionRulePack,
 } from '@bondbuddy/rule-pack-registry';
 
 const databaseUrl = await isolatedTestDatabase('PRODUCTION_RULE_PACK_RELEASE_TEST_DATABASE_URL');
@@ -53,6 +53,7 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
   pack.scope = { market: 'sse', offering: 'private', instruments: ['ordinary-company-bond'], document_stages: ['issuance'], issuer_scopes: ['domestic-company'] };
   pack.validity = { ...pack.validity, published_on: null, effective_from: '2026-01-01', effective_to: null };
   const sourceId = `source-${suffix}`;
+  const methodSourceId = `method-${suffix}`;
   const sourceHash = h(5), sourceDocumentHash = h(6);
   pack.sources = [{ ...pack.sources[0]!, source_id: sourceId, kind: 'formal_rule', authority: 'Synthetic test authority',
     document_title: 'Synthetic release writer fixture', source_version: 'synthetic-1', official_url: 'https://example.invalid/synthetic',
@@ -60,8 +61,16 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
     published_on: '2025-12-01', effective_from: '2026-01-01', effective_to: null,
     legal_effective_date_basis: 'explicit_text', effective_date_derivation_evidence: [{ kind: 'synthetic_clause', value: 'clause 1' }],
     verified_by: industry, verified_at: '2026-09-28T00:00:00Z' }];
+  const methodWindow = { enabled_from: '2026-01-01', enabled_until: '2026-12-31',
+    approval_evidence_id: `method-approval-${suffix}`, approval_evidence_sha256: h(8) };
+  pack.sources.push({ ...pack.sources[0]!, source_id: methodSourceId, kind: 'internal_method', authority: 'Synthetic internal method owner',
+    document_title: 'Synthetic internal method fixture', source_version: 'synthetic-method-1',
+    official_url: 'https://example.invalid/synthetic-method', document_hash: h(9), clause_locator: 'synthetic method clause',
+    exact_quote: 'Synthetic only; not an external rule.', published_on: null, effective_from: null, effective_to: null,
+    legal_effective_date_basis: 'not_legal_effectivity', effective_date_derivation_evidence: [], approved_method_window: methodWindow,
+    verified_by: industry, verified_at: '2026-09-28T00:00:00Z' });
   const existingRule = pack.rules[0]!;
-  pack.rules = [{ ...existingRule, rule_id: `rule-${suffix}`, enabled: true, enforcement: 'soft_check', source_ref_ids: [sourceId],
+  pack.rules = [{ ...existingRule, rule_id: `rule-${suffix}`, enabled: true, enforcement: 'soft_check', source_ref_ids: [sourceId, methodSourceId],
     applicability: { ...existingRule.applicability, document_stages: ['issuance'], issuer_scopes: ['domestic-company'] } }];
   pack.sample_suite.data_classification = 'authorized_real';
   pack.sample_suite.cases = pack.sample_suite.cases.map(testCase => {
@@ -87,6 +96,11 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
     applicability_basis: { basis_id: `basis-${suffix}`, basis_version: 1, basis_sha256: h(7), source_document_sha256: sourceDocumentHash,
       applicability_scope: scope, time_basis: 'Synthetic as-of date only.', locator: { kind: 'synthetic_clause', value: 'clause 1' } },
     approved_method_window: null, locators: [{ kind: 'synthetic_clause', value: 'clause 1' }] };
+  const methodEvidence = { ...sourceEvidence, source_evidence_id: methodSourceId, source_check_sha256: h(11),
+    source_document_sha256: h(9), source_kind: 'internal_method' as const, official_publication_date: null,
+    legal_effective_date: null, legal_effective_date_basis: 'not_legal_effectivity' as const,
+    effective_date_derivation_evidence: [], approved_method_window: methodWindow,
+    applicability_basis: { ...sourceEvidence.applicability_basis, source_document_sha256: h(9) } };
   const cases = [...pack.sample_suite.cases].sort((a, b) => `sample-${a.polarity}-${suffix}`.localeCompare(`sample-${b.polarity}-${suffix}`));
   const samples = cases.map((sample, index) => ({ sample_evidence_id: `sample-${sample.polarity}-${suffix}`,
     sample_evidence_sha256: h(10 + index), authorization_evidence_id: `authorization-${sample.polarity}-${suffix}`,
@@ -96,7 +110,8 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
     canonicalization: 'utf8-json-sorted-object-keys-preserve-declared-array-order-v1',
     rule_pack: { id, version: '1', sha256: packHash }, chapter_template: { id: template.template_id, version: '1', sha256: templateHash },
     coverage_manifest: { id: coverage.manifest_id, version: '1', sha256: coverageHash }, applicability_scope: scope,
-    source_date_evidence: [sourceEvidence], authorized_real_sample_evidence: samples };
+    source_date_evidence: [methodEvidence, sourceEvidence].sort((a, b) => a.source_evidence_id.localeCompare(b.source_evidence_id)),
+    authorized_real_sample_evidence: samples };
 
   const insertGrant = async (grantId: string, grantee: string, role: string) => {
     const client = await pool.connect();
@@ -117,9 +132,11 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
   };
   const json = (value: unknown) => JSON.stringify(value);
 
-  const makeIndustryEvidence = () => ({ source_effectivity_applicability: [{ source_evidence_id: sourceId,
-      source_check_sha256: sourceHash, conclusion: 'applicable', reason: 'Synthetic test only.',
-      evidence_refs: [{ evidence_id: `industry-source-${suffix}`, evidence_sha256: h(50) }] }],
+  const makeIndustryEvidence = () => ({ source_effectivity_applicability: [
+      { source_evidence_id: methodSourceId, source_check_sha256: h(11), conclusion: 'applicable', reason: 'Synthetic approved method window only.',
+        evidence_refs: [{ evidence_id: `industry-method-${suffix}`, evidence_sha256: h(12) }] },
+      { source_evidence_id: sourceId, source_check_sha256: sourceHash, conclusion: 'applicable', reason: 'Synthetic test only.',
+        evidence_refs: [{ evidence_id: `industry-source-${suffix}`, evidence_sha256: h(50) }] }],
     chapter_boundaries: [{ chapter_id: `chapter-${suffix}`, boundary: 'included', reason: 'Synthetic test only.',
       evidence_refs: [{ evidence_id: `industry-chapter-${suffix}`, evidence_sha256: h(51) }] }],
     exceptions_and_uncovered: [], sample_conclusions: samples.map((sample, index) => ({ sample_case_id: sample.sample_case_id,
@@ -157,6 +174,14 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
        'synthetic clause','Synthetic only; not legal evidence.',now(),'2026-01-01',NULL,$5,$6,NULL,NULL,'2025-12-01','2026-09-28',
        'explicit_text',$7::jsonb,'[]'::jsonb,$8::jsonb,$9)`, [sourceId, id, packHash, sourceDocumentHash, industry, grants.industry,
       json(sourceEvidence.effective_date_derivation_evidence), json(sourceEvidence.applicability_basis), sourceHash]);
+    await pool.query(`INSERT INTO bb_rule_pack_production_source_checks
+      (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
+       clause_locator,exact_quote,checked_at,effective_from,effective_to,verifier_user_id,verifier_grant_id,
+       acquired_date,legal_effective_date_basis,effective_date_derivation_evidence,applicability_basis,source_check_sha256,approved_method_window)
+      VALUES($1,$2,'1',$3,$1,'Synthetic internal method owner','https://example.invalid/synthetic-method','synthetic-method-1','sse','private',$4,
+       'synthetic method clause','Synthetic only; not an external rule.',now(),NULL,NULL,$5,$6,'2026-09-28',
+       'not_legal_effectivity','[]'::jsonb,$7::jsonb,$8,$9::jsonb)`, [methodSourceId, id, packHash, h(9), industry, grants.industry,
+      json(methodEvidence.applicability_basis), methodEvidence.source_check_sha256, json(methodWindow)]);
     for (const sample of samples) {
       const sampleCase = pack.sample_suite.cases.find(row => row.case_id === sample.sample_case_id)!;
       const sampleIndex = samples.indexOf(sample);
@@ -226,6 +251,13 @@ test('synthetic PostgreSQL 16 production release binds exact approvals, snapshot
     assert.equal(released.json().operator_user_id, operator);
     assert.equal(released.json().industry_attestation_event_id, industryResponse.json().attestation_event_id);
     assert.equal(released.json().technical_attestation_event_id, technicalResponse.json().attestation_event_id);
+    const selected = await selectProductionRulePack(pool, { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond',
+      documentStage: 'issuance', issuerScope: 'domestic-company', asOf: new Date().toISOString().slice(0, 10) });
+    assert.equal(selected.status, 'selected', JSON.stringify(selected));
+    const expiredMethod = await selectProductionRulePack(pool, { market: 'sse', offering: 'private', instrument: 'ordinary-company-bond',
+      documentStage: 'issuance', issuerScope: 'domestic-company', asOf: '2027-01-01' });
+    assert.equal(expiredMethod.status, 'blocked');
+    assert.ok(expiredMethod.status === 'blocked' && expiredMethod.reasons.includes('production_rule_pack_source_not_current'));
     const replayed = await send('POST', '/api/v1/rule-pack-releases', releaseBody);
     assert.equal(replayed.statusCode, 200, replayed.body);
     assert.equal(replayed.json().id, released.json().id, 'same request key/hash replays the exact event');
