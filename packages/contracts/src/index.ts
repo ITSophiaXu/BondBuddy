@@ -372,6 +372,27 @@ export function openApiDocument() {
     const csrfHeader=operation.method==='post'||operation.method==='patch'||operation.method==='delete' ? [{name:'Origin',in:'header',required:true,schema:{type:'string'}},...(!(['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [{name:'X-BB-CSRF',in:'header',required:true,schema:{type:'string'},description:'Match bb_csrf cookie; required for authenticated mutations.'}] : [])] : [];
     paths[path][operation.method] = { summary: operation.summary, 'x-implementation-status': status, security: (['/auth/register','/auth/login'].includes(operation.path) || operation.path.startsWith('/auth/recovery/')) ? [] : [{ [operation.path==='/auth/refresh'||operation.path==='/auth/logout' ? 'refreshCookie' : 'sessionCookie']: [] }], parameters: [...parameters(path), ...queryParameters, ...ifMatch, ...csrfHeader], ...(operation.request ? { requestBody: { required: true, content: { 'application/json': { schema: ref(operation.request) } } } } : {}), responses };
   }
+  const reviewMutation = (summary: string, request: string, response: string, status: string) => ({
+    summary, 'x-implementation-status': status, security: [{ sessionCookie: [] }],
+    parameters: [{ name: 'Origin', in: 'header', required: true, schema: { type: 'string' } },
+      { name: 'X-BB-CSRF', in: 'header', required: true, schema: { type: 'string' } }],
+    requestBody: { required: true, content: { 'application/json': { schema: ref(request as SchemaName) } } },
+    responses: { 200: { description: 'Persisted or identical replay', content: { 'application/json': { schema: ref(response as SchemaName) } } },
+      403: { description: 'Exact active reviewer/operator authorization required', content: { 'application/json': { schema: ref('Error') } } },
+      404: { description: 'Review record not found', content: { 'application/json': { schema: ref('Error') } } },
+      409: { description: 'Conflicting immutable review record', content: { 'application/json': { schema: ref('Error') } } },
+      422: { description: 'Invalid manifest or review evidence', content: { 'application/json': { schema: ref('Error') } } } },
+  });
+  paths['/api/v1/rule-pack-reviews/manifests'] = { post: reviewMutation('Freeze an immutable manifest version for a rule pack', 'ProductionReviewManifestCreateRequest', 'ProductionReviewManifest', 'implemented; active-scoped-operator-grant; content-hash-validated') };
+  paths['/api/v1/rule-pack-reviews/manifests/{manifest_id}/versions/{version}'] = { get: {
+    summary: 'Read one frozen production-review manifest version', 'x-implementation-status': 'implemented; active-scope-grant-required',
+    security: [{ sessionCookie: [] }], parameters: parameters('/rule-pack-reviews/manifests/{manifest_id}/versions/{version}'),
+    responses: { 200: { description: 'Immutable frozen manifest', content: { 'application/json': { schema: ref('ProductionReviewManifest') } } },
+      403: { description: 'Active reviewer/operator grant does not cover the scope', content: { 'application/json': { schema: ref('Error') } } },
+      404: { description: 'Manifest not found', content: { 'application/json': { schema: ref('Error') } } } },
+  } };
+  paths['/api/v1/rule-pack-reviews/manifests/{manifest_id}/versions/{version}/attestations'] = { post: reviewMutation('Submit own industry or technical attestation', 'ProductionReviewAttestationSubmitRequest', 'ProductionReviewAttestationEvent', 'implemented; self-submitted; exact-scope-grant; append-only') };
+  paths['/api/v1/rule-pack-reviews/manifests/{manifest_id}/versions/{version}/attestations/{attestation_event_id}/withdrawal'] = { post: reviewMutation('Withdraw own reviewer attestation', 'ProductionReviewWithdrawalCreateRequest', 'ProductionReviewAttestationWithdrawalEvent', 'implemented; own-event-only; exact-scope-grant; append-only') };
   (paths['/api/v1/projects/{project_id}/facts/decisions'].post as { responses: Record<string, unknown> }).responses['200'] = {
     description: 'Identical idempotency-key replay of a previously appended immutable decision',
     content: { 'application/json': { schema: ref('FactDecisionResponse') } },
