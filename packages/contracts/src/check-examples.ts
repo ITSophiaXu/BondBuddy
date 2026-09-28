@@ -150,6 +150,16 @@ assert.equal(validProductionReviewManifestContent(unsortedManifest), false, 'has
 const duplicatedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
 duplicatedManifest.content.applicability_scope.industry_codes.push(duplicatedManifest.content.applicability_scope.industry_codes[0]!);
 assert.equal(validProductionReviewManifestContent(duplicatedManifest), false, 'hash input rejects duplicate set-like references');
+const technicalSubmission = byName.get('production-attestation-technical-self-submission-valid-synthetic');
+assert.ok(technicalSubmission, 'synthetic technical self-submission exists');
+const spoofedRoleSubmission = { ...structuredClone(technicalSubmission.value), reviewer_role: 'industry' };
+assert.equal(ajv.validate(schemas.ProductionTechnicalAttestationRequest, spoofedRoleSubmission), false, 'request cannot assert its reviewer role');
+assert.equal(ajv.validate(schemas.ProductionReviewAttestationRequest, spoofedRoleSubmission), false, 'generic request cannot assert its reviewer role');
+const industrySubmission = byName.get('production-attestation-industry-self-submission-valid-synthetic');
+assert.ok(industrySubmission, 'synthetic industry self-submission exists');
+const noExceptionSubmission = structuredClone(industrySubmission.value) as { evidence: { exceptions_and_uncovered: unknown[] } };
+noExceptionSubmission.evidence.exceptions_and_uncovered = [];
+assert.equal(ajv.validate(schemas.ProductionIndustryAttestationRequest, noExceptionSubmission), true, 'no exceptions or uncovered items needs no invented attestation row');
 const value = (name: string) => {
   const example = byName.get(name);
   assert.ok(example, name);

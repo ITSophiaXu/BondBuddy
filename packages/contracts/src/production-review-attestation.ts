@@ -30,7 +30,7 @@ export const ProductionIndustryAttestationEvidenceSchema = Type.Object({
     disposition: Type.Union([Type.Literal('within_scope'), Type.Literal('out_of_scope'), Type.Literal('needs_evidence')]),
     reason,
     evidence_refs: Type.Array(evidenceRef, { minItems: 1, maxItems: 100 }),
-  }, { additionalProperties: false }), { minItems: 1, maxItems: 500 }),
+  }, { additionalProperties: false }), { maxItems: 500 }),
   sample_conclusions: Type.Array(Type.Object({
     sample_case_id: id,
     sample_evidence_id: id,
@@ -60,22 +60,24 @@ const manifestPin = {
 };
 
 /** Authenticated reviewer input. Actor, grant and time are intentionally absent. */
+export const ProductionIndustryAttestationRequestSchema = Type.Object({
+  ...manifestPin,
+  decision,
+  reason,
+  evidence: ProductionIndustryAttestationEvidenceSchema,
+}, { additionalProperties: false });
+
+export const ProductionTechnicalAttestationRequestSchema = Type.Object({
+  ...manifestPin,
+  decision,
+  reason,
+  evidence: ProductionTechnicalAttestationEvidenceSchema,
+}, { additionalProperties: false });
+
 export const ProductionReviewAttestationRequestSchema = Type.Union([
-  Type.Object({
-    ...manifestPin,
-    reviewer_role: Type.Literal('industry'),
-    decision,
-    reason,
-    evidence: ProductionIndustryAttestationEvidenceSchema,
-  }, { additionalProperties: false }),
-  Type.Object({
-    ...manifestPin,
-    reviewer_role: Type.Literal('technical'),
-    decision,
-    reason,
-    evidence: ProductionTechnicalAttestationEvidenceSchema,
-  }, { additionalProperties: false }),
-], { description: 'Self-submission by the authenticated reviewer; user identity, grant and reviewed_at are server-derived and cannot be supplied.' });
+  ProductionIndustryAttestationRequestSchema,
+  ProductionTechnicalAttestationRequestSchema,
+], { description: 'Self-submission by the authenticated reviewer; role, user identity, grant and reviewed_at are server-derived and cannot be supplied. The authenticated route validates the role-specific branch.' });
 
 /** Immutable append-only event created from a validated authenticated request. */
 export const ProductionReviewAttestationEventSchema = Type.Union([
@@ -123,6 +125,8 @@ export const ProductionReviewAttestationWithdrawalEventSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const productionReviewAttestationSchemas = {
+  ProductionIndustryAttestationRequest: ProductionIndustryAttestationRequestSchema,
+  ProductionTechnicalAttestationRequest: ProductionTechnicalAttestationRequestSchema,
   ProductionReviewAttestationRequest: ProductionReviewAttestationRequestSchema,
   ProductionReviewAttestationEvent: ProductionReviewAttestationEventSchema,
   ProductionReviewAttestationWithdrawalRequest: ProductionReviewAttestationWithdrawalRequestSchema,
@@ -130,6 +134,8 @@ export const productionReviewAttestationSchemas = {
 } as const;
 
 export type ProductionReviewAttestationRequest = Static<typeof ProductionReviewAttestationRequestSchema>;
+export type ProductionIndustryAttestationRequest = Static<typeof ProductionIndustryAttestationRequestSchema>;
+export type ProductionTechnicalAttestationRequest = Static<typeof ProductionTechnicalAttestationRequestSchema>;
 export type ProductionReviewAttestationEvent = Static<typeof ProductionReviewAttestationEventSchema>;
 export type ProductionReviewAttestationWithdrawalRequest = Static<typeof ProductionReviewAttestationWithdrawalRequestSchema>;
 export type ProductionReviewAttestationWithdrawalEvent = Static<typeof ProductionReviewAttestationWithdrawalEventSchema>;

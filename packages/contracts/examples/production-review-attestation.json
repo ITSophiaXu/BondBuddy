@@ -3,12 +3,12 @@
   "cases": [
     {
       "name": "production-attestation-industry-self-submission-valid-synthetic",
-      "schema": "ProductionReviewAttestationRequest",
+      "schema": "ProductionIndustryAttestationRequest",
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
         "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "reviewer_role": "industry", "decision": "approve", "reason": "Synthetic review is complete.",
+        "decision": "approve", "reason": "Synthetic review is complete.",
         "evidence": {
           "source_effectivity_applicability": [{
             "source_evidence_id": "source-synthetic-01", "source_check_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -34,12 +34,12 @@
     },
     {
       "name": "production-attestation-technical-self-submission-valid-synthetic",
-      "schema": "ProductionReviewAttestationRequest",
+      "schema": "ProductionTechnicalAttestationRequest",
       "valid": true,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
         "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "reviewer_role": "technical", "decision": "request_more_evidence", "reason": "Synthetic test evidence has one open item.",
+        "decision": "request_more_evidence", "reason": "Synthetic test evidence has one open item.",
         "evidence": {
           "checker_version_or_commit": "checker-synthetic-v4",
           "converter_version_or_commit": "converter-synthetic-commit-01",
@@ -60,7 +60,7 @@
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
         "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "reviewer_role": "technical", "decision": "approve", "reason": "Synthetic attempt to spoof identity.",
+        "reviewer_role": "technical", "decision": "approve", "reason": "Synthetic attempt to spoof identity and role.",
         "reviewer_user_id": "spoofed-reviewer", "grant_id": "spoofed-grant", "reviewed_at": "2026-09-28T00:00:00Z",
         "evidence": {
           "checker_version_or_commit": "checker-synthetic-v4", "converter_version_or_commit": "converter-synthetic-v1",
@@ -74,13 +74,13 @@
       }
     },
     {
-      "name": "production-attestation-technical-role-rejects-industry-evidence-shape",
-      "schema": "ProductionReviewAttestationRequest",
+      "name": "production-attestation-technical-request-rejects-industry-evidence-shape",
+      "schema": "ProductionTechnicalAttestationRequest",
       "valid": false,
       "value": {
         "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
         "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "reviewer_role": "technical", "decision": "approve", "reason": "Synthetic role mismatch.",
+        "decision": "approve", "reason": "Synthetic role mismatch.",
         "evidence": {
           "source_effectivity_applicability": [], "chapter_boundaries": [],
           "exceptions_and_uncovered": [], "sample_conclusions": []
