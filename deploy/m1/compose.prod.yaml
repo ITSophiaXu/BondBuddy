@@ -2,7 +2,7 @@
 # ~2.2 GiB available at the 384M worker sizing decision;
 # ~5 GB free disk shared with other apps). Use with:
 #   docker compose -f compose.yaml -f compose.prod.yaml ...   (scripts do this when BB_PROFILE=prod)
-# Steady-state limits: postgres 256M + api 512M + worker 384M + web 32M + egress 48M = 1232M
+# Steady-state limits: postgres 256M + api 512M + worker 512M + web 32M + egress 48M = 1360M
 # (migrate 128M runs to completion before api/worker start). No Azurite: Blob is Azure via env,
 # reached through the egress allow-list proxy, so BB_EGRESS_ALLOW must include the Blob host.
 services:
@@ -26,11 +26,12 @@ services:
   worker:
     environment:
       NODE_OPTIONS: --max-old-space-size=160
-      # One slot: a parse (pdf.js/Python) and a run never share the 384M budget.
+      # One general run/parse slot plus one parse-only slot; allow both to coexist in memory.
       BB_WORKER_CONCURRENCY: '1'
+      BB_WORKER_PARSE_SLOTS: '1'
       NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
       no_proxy: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
-    deploy: {resources: {limits: {cpus: '0.75', memory: 384M}}}
+    deploy: {resources: {limits: {cpus: '0.75', memory: 512M}}}
   egress:
     deploy: {resources: {limits: {cpus: '0.25', memory: 48M}}}
   web:
