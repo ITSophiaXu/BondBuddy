@@ -26,7 +26,7 @@ The scope file is exactly one JSON object with these fields (example values are 
 }
 ```
 
-Arrays are sorted, unique sets; explicit code arrays cannot use `all` or `*`. Each reviewed dimension must match the #367 `reviewedDimension` shape. `needs_review` is valid to preserve a pending boundary, but it grants no coverage for that dimension. The scope hash uses the rule-pack registry canonical JSON SHA-256 over market, offering, and the six scope fields. Grant and immutable scope are inserted in one transaction with the same database timestamp. The grant reason is retained in the outbox event; the grant row keeps the fixed reason code `controlled_ops_cli`.
+Arrays are sorted, unique sets; explicit code arrays cannot use `all` or `*`. Each reviewed dimension must match the #367 `reviewedDimension` shape. `needs_review` is valid to preserve a pending boundary, but it grants no coverage for that dimension. The scope hash uses the rule-pack registry canonical JSON SHA-256 over the six scope fields only; market and offering remain in the 0036 grant row. Grant and immutable scope are inserted in one transaction with the same database timestamp. The grant reason is retained in the outbox event; the grant row keeps the fixed reason code `controlled_ops_cli`.
 
 Revoke by grant ID, explicit active revoker ID, and reason:
 

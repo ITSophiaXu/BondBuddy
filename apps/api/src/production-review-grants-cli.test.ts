@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { productionSnapshotHash } from '@bondbuddy/rule-pack-registry';
 import {
   issueProductionReviewGrant,
   parseProductionReviewGrantScope,
@@ -67,7 +68,7 @@ test('grant validates target/actor, role and market-offering; grant and immutabl
     userId: 'reviewer-1', grantorUserId: 'operator-1', role: 'rule_pack_operator',
     market: 'nafmii', offering: 'mtn', reason: 'Authorized controlled M1 reviewer/operator access', scope: validScope,
   });
-  assert.equal(result.scope_hash.length, 64);
+  assert.equal(result.scope_hash, productionSnapshotHash(validScope), 'the API hashes only the six 0071 scope fields');
   const calls = pool.client.calls;
   assert.deepEqual(calls.filter((call) => ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(call.sql)).map((call) => call.sql), ['BEGIN', 'COMMIT']);
   const grant = calls.find((call) => call.sql.includes('INSERT INTO bb_rule_pack_production_reviewer_grants'))!;

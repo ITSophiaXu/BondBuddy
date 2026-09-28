@@ -116,7 +116,9 @@ export async function issueProductionReviewGrant(
     || !(offeringsByMarket[input.market as keyof typeof offeringsByMarket] as readonly string[] | undefined)?.includes(input.offering)
     || !reason || reason.length > 2048) throw new Error('INVALID_PRODUCTION_REVIEW_GRANT_ARGUMENTS');
   const scope = parseProductionReviewGrantScope(input.scope);
-  const scopeHash = productionSnapshotHash({ market: input.market, offering: input.offering, ...scope });
+  // Market/offering are pinned by the 0036 grant row. The 0071 scope hash
+  // covers only the six immutable fields in bb_rule_pack_production_grant_scopes.
+  const scopeHash = productionSnapshotHash(scope);
   const client = await pool.connect();
   const grantId = randomUUID();
   try {
