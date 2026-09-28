@@ -331,11 +331,11 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   // provenance, and source/target structure changes remain global blockers.
   const candidatePendingProfile = testDraft && profile.state === 'needs_confirmation' &&
     !profileShapeInvalid && sourceFields.some(field => field.status === 'needs_confirmation' && field.uncertainty.length > 0) && sourceFields.every(field =>
-      field.status === 'recognized' && field.uncertainty.length === 0 ||
-      field.status === 'needs_confirmation' && field.uncertainty.length > 0 &&
-        !field.uncertainty.some(reason => /冲突|矛盾|多个候选|不一致/.test(reason)) &&
-        field.provenance.method === 'native_text' &&
-        field.provenance.extractor_version?.endsWith(`/${baseline.parserVersion}`));
+      field.provenance.method === 'native_text' &&
+      field.provenance.extractor_version?.endsWith(`/${baseline.parserVersion}`) &&
+      (field.status === 'recognized' && field.uncertainty.length === 0 ||
+        field.status === 'needs_confirmation' && field.uncertainty.length > 0 &&
+        !field.uncertainty.some(reason => /冲突|矛盾|多个候选|不一致|同一证据同时|不同报表口径|conflict|ambiguous|contradict|multiple candidates/i.test(reason))));
   if (profileShapeInvalid || (!reviewedProfile && !assertedDraftProfile && !candidatePendingProfile)) flag('UPDATE_PROFILE_UNCONFIRMED');
   if (profile.source_market.value !== context.targetMarket || profile.source_offering.value !== context.targetOffering) flag('UPDATE_STRUCTURE_MAPPING_REQUIRED');
   if (candidatePendingProfile && !reviewedProfile) findings.push({ code: 'UPDATE_PROFILE_CANDIDATE_PENDING',

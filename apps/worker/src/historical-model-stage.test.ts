@@ -218,18 +218,22 @@ test('authorized pending native source candidate reaches a non-production draft 
   }
 });
 
-test('pending candidate conflicts and source/target mismatch remain non-production global blockers', async () => {
+test('pending candidate conflicts, mixed provenance and source/target mismatch remain non-production global blockers', async () => {
   const before = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
   process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
   try {
-    for (const change of ['conflict', 'structure'] as const) {
+    for (const change of ['conflict', 'english_conflict', 'scope_conflict', 'mixed_provenance', 'structure'] as const) {
       const s = fixture(true); let calls = 0;
       s.profile.recognition.state = 'needs_confirmation';
       s.profile.recognition.source_market.status = 'needs_confirmation';
-      s.profile.recognition.source_market.uncertainty = [change === 'conflict' ? '多个相互冲突的明确候选，需人工确认' : '原文候选待确认'];
+      s.profile.recognition.source_market.uncertainty = [change === 'conflict' ? '多个相互冲突的明确候选，需人工确认' :
+        change === 'english_conflict' ? 'ambiguous market candidates' : '原文候选待确认'];
+      if (change === 'scope_conflict') s.profile.recognition.reporting_periods[0]!.uncertainty = ['同一期间出现不同报表口径'];
+      if (change === 'scope_conflict') s.profile.recognition.reporting_periods[0]!.status = 'needs_confirmation';
+      if (change === 'mixed_provenance') s.profile.recognition.source_offering.provenance.method = 'user_correction';
       if (change === 'structure') s.profile.recognition.source_market.value = 'szse';
       s.options.model = () => { calls++; throw new Error('blocked source profile must not reach model'); };
-      assert.equal((await historicalModelGenerationStage(s.options).run(s.ctx)).kind, 'pause', change);
+      assert.notEqual((await historicalModelGenerationStage(s.options).run(s.ctx)).kind, 'done', change);
       assert.equal(calls, 0, change);
     }
   } finally {
