@@ -6,6 +6,7 @@ import type { OpsScheduledTask } from '@bondbuddy/contracts';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { raiseAlert, tripEvidenceGate } from '@bondbuddy/api/evidence-gate';
 import { checkLogHealth, forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, logArchiveOptionsFromEnv, retentionPolicyFromEnv } from '@bondbuddy/api/log-ops';
+import { archivePolicyFromEnv, runArchiveLifecycle } from '@bondbuddy/api/log-archive-lifecycle';
 import { storageLifecyclePolicyFromEnv } from '@bondbuddy/api/storage-lifecycle';
 import { runUserDeletionLifecycle } from '@bondbuddy/api/deletion-lifecycle';
 import { checkTrialHealth, trialConfigFromEnv, trialHealthThresholdsFromEnv } from '@bondbuddy/api/trial-guard';
@@ -134,6 +135,14 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
     const r = await checkLogHealth(pool, { maxBacklogAgeSeconds: intEnv(env, 'BB_LOG_BACKLOG_ALERT_SECONDS', 300, 30, 86400) });
     return { ok: true, detail: { backlog: r.backlog, alerts: r.alerts.length } };
   } });
+  if (logArchiveOptionsFromEnv(env)) {
+    if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled archive retention requires AZURE_STORAGE_CONNECTION_STRING');
+    const archivePolicy = archivePolicyFromEnv(env);
+    tasks.push({ name: 'archive_retention', intervalMs: seconds('BB_OPS_ARCHIVE_RETENTION_SECONDS', 900), leaseMs: 900_000, run: async (): Promise<TaskOutcome> => {
+      const r = await runArchiveLifecycle(pool, env.AZURE_STORAGE_CONNECTION_STRING!, env.BB_LOG_ARCHIVE_CONTAINER || 'bondbuddy-private', archivePolicy);
+      return r.failed ? { ok: false, errorCode: 'archive_lifecycle_failed', detail: r } : { ok: true, detail: r };
+    } });
+  }
   const storage = storageLifecyclePolicyFromEnv(env);
   if (storage && !off(env.BB_OPS_STORAGE_PURGE)) {
     if (!env.AZURE_STORAGE_CONNECTION_STRING) throw new Error('Enabled storage purge requires AZURE_STORAGE_CONNECTION_STRING');

@@ -9,6 +9,23 @@ All alerts are rows in `bb_ops_alerts`, visible through `GET /api/v1/admin/alert
 | `evidence_persist_failed` (critical) + gate `paused` | An execution-evidence write failed at the infrastructure level. New external model calls are refused with 503 | 1. Restore PostgreSQL (connectivity, disk, failover). 2. Reconcile in-flight attempts with `pending_reconcile` status using the [provider result reconciliation runbook](provider-result-reconciliation.md). Do not resend them. 3. As a `log_operator`, `POST /api/v1/admin/evidence-gate/resume {"reason_code":"db_recovered"}`. 4. Confirm with `GET /admin/evidence-gate` that both `state` and `process_state` are `open`. Restart any worker whose process still holds an unpersisted pause |
 | `usage_conflict` (warning) | Measured reports disagree for one attempt. Its tokens are excluded | Compare the raw observations in the job timeline with supplier evidence, then, as a `log_operator`, `POST /admin/attempts/{id}/usage-corrections` choosing the correct observation, or choose `unknown`. Raw rows are never edited |
 | `retention_purge_failed` (warning) | A registered-content or orphan-prompt Blob delete failed | Check storage availability and rerun `log-ops retention`. Registered content receives a tombstone; an orphan keeps its `bb_prompt_blob_intents` row until deletion succeeds. Both replay safely. |
+| `scheduled_task_failed` for `archive_retention` (warning) | Archive deletion or rewrite could not finish | Check Blob availability and the segment's lifecycle/action audit. Keep the original object and rerun `node apps/api/dist/log-archive-lifecycle.js retention`. A pending old key is safe to delete only after the new object and lifecycle row match. Escalate repeated user-deletion failures before the 30-day deadline. |
+
+## Archive retention and holds
+
+The ops scheduler runs archive cleanup only with `BB_LOG_ARCHIVE_ENABLED=1`; keep that switch disabled until archive operation is approved. `BB_LOG_ARCHIVE_RETENTION_DAYS` defaults to 180 and rejects values below 30. The command below uses the same database and private Blob settings as the scheduler:
+
+```sh
+node apps/api/dist/log-archive-lifecycle.js retention
+node apps/api/dist/log-archive-lifecycle.js hold-set ACTOR_ID REASON_CODE segment SEGMENT_UUID
+node apps/api/dist/log-archive-lifecycle.js hold-set ACTOR_ID REASON_CODE user USER_ID
+node apps/api/dist/log-archive-lifecycle.js hold-set ACTOR_ID REASON_CODE time FROM_ISO TO_ISO
+node apps/api/dist/log-archive-lifecycle.js hold-release ACTOR_ID HOLD_UUID
+```
+
+Set/release checks an active `log_operator` grant. Record the returned hold UUID in the case record. Confirm each operation in `bb_log_archive_legal_holds` and `bb_log_archive_audit`; time/user scope is recorded on the hold row, and affected segments record any skipped cleanup. For a deletion request, check `bb_users.closed_at`, then inspect `bb_log_archive_lifecycle`, `bb_log_archive_user_purges` and `bb_log_archive_audit` for remaining objects, failed rewrites, holds and `pending_old_key`. A hold intentionally postpones deletion; after release, rerun cleanup. Never delete a held object or edit an immutable receipt by hand.
+
+For a failed rewrite, compare the current object's length and SHA-256 with `bb_log_archive_lifecycle` and rerun cleanup. The original object remains the current address until the new object has passed readback and the transaction commits. Once the row points at the new object, `pending_old_key` identifies the old object to remove on the next pass. A missing current object without a committed delete intent is an incident: preserve metadata and backups, stop cleanup for that segment, and investigate before retrying.
 
 ## Crash recovery facts
 
