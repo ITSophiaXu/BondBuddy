@@ -77,7 +77,7 @@ test('env wiring: library_sync is opt-in and needs blob storage', () => {
   assert.deepEqual(tasksFromEnv(pool, base).map(t => t.name), []);
   assert.throws(() => tasksFromEnv(pool, { ...base, BB_OPS_LIBRARY_SYNC: 'on' }), /AZURE_STORAGE_CONNECTION_STRING/);
   const tasks = tasksFromEnv(pool, { ...base, BB_OPS_LIBRARY_SYNC: 'on', AZURE_STORAGE_CONNECTION_STRING: 'synthetic' }, () => memoryBlobs(), undefined, () => ({}));
-  assert.deepEqual(tasks.map(t => [t.name, t.intervalMs, t.leaseMs]), [['library_sync', 60_000, 1_800_000]]);
+  assert.deepEqual(tasks.map(t => [t.name, t.intervalMs, t.leaseMs]), [['storage_inventory', 3_600_000, 900_000], ['library_sync', 60_000, 1_800_000]]);
 });
 
 test('two scheduler instances sync a due source exactly once, then wait for the per-source interval', { skip }, async () => {

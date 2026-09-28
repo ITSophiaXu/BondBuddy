@@ -64,6 +64,10 @@
       "types": "./dist/storage-lifecycle.d.ts",
       "default": "./dist/storage-lifecycle.js"
     },
+    "./storage-inventory": {
+      "types": "./dist/storage-inventory.d.ts",
+      "default": "./dist/storage-inventory.js"
+    },
     "./deletion-lifecycle": {
       "types": "./dist/deletion-lifecycle.d.ts",
       "default": "./dist/deletion-lifecycle.js"
@@ -106,6 +110,7 @@
     "start": "node dist/server.js",
     "test": "node --test --test-concurrency=1 dist/*.test.js",
     "storage:lifecycle": "node dist/storage-lifecycle.js",
+    "storage:inventory": "node dist/storage-inventory.js scan",
     "log:ops": "node dist/log-ops.js",
     "trial:health": "node dist/trial-guard.js health",
     "deletion:lifecycle": "node dist/deletion-lifecycle.js",
