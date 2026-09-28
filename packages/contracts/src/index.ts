@@ -36,6 +36,7 @@ import { factSchemas } from './facts.js'; export * from './facts.js'; // #15 own
 import { creditFacilitySupplementSchemas } from './credit-facility-supplements.js'; export * from './credit-facility-supplements.js'; // #15 structured user assertions
 import { issuerIdentityReviewSchemas } from './issuer-identity-review.js'; export * from './issuer-identity-review.js';
 import { issuerAnnualProfileReviewSchemas } from './issuer-annual-profile-review.js'; export * from './issuer-annual-profile-review.js';
+import { generationIssuerBindingSchemas } from './generation-issuer-binding.js'; export * from './generation-issuer-binding.js';
 import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js'; export * from './rule-applicability-context.js';
 import { productionReviewManifestSchemas } from './production-review-manifest.js'; export * from './production-review-manifest.js';
 import { productionReviewAttestationSchemas } from './production-review-attestation.js'; export * from './production-review-attestation.js';
@@ -139,6 +140,7 @@ export const schemas = {
   ...targetPeriodEvidenceSchemas,
   ...issuerIdentityReviewSchemas,
   ...issuerAnnualProfileReviewSchemas,
+  ...generationIssuerBindingSchemas,
   ...recoverySchemas,
   ...adminSchemas,
   ...runtimeSchemas, // #17 worker runtime

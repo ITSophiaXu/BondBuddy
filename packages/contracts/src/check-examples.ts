@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, validProductionReviewManifestContent, validProductionReviewAttestationBinding, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProductionReviewManifest, type ProductionReviewAttestationRequest } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, validProductionReviewManifestContent, validProductionReviewAttestationBinding, validGenerationIssuerBindingApproval, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProductionReviewManifest, type ProductionReviewAttestationRequest, type GenerationIssuerBindingResponse } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -48,6 +48,16 @@ const factEvidenceContextExamples = JSON.parse(readFileSync(fileURLToPath(new UR
 assert.equal(factEvidenceContextExamples.synthetic,true); data.cases.push(...factEvidenceContextExamples.cases);
 const factEvidenceReviewerReadExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/fact-evidence-reviewer-read.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(factEvidenceReviewerReadExamples.synthetic,true); data.cases.push(...factEvidenceReviewerReadExamples.cases);
+const generationIssuerBindingExample = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/generation-issuer-binding.json', import.meta.url)), 'utf8')) as { synthetic: boolean; binding: GenerationIssuerBindingResponse };
+assert.equal(generationIssuerBindingExample.synthetic,true);
+data.cases.push({ name: 'generation-issuer-binding-approved-synthetic', schema: 'GenerationIssuerBindingResponse', valid: true, value: generationIssuerBindingExample.binding as unknown as Record<string, unknown> });
+assert.equal(validGenerationIssuerBindingApproval(generationIssuerBindingExample.binding, {
+  owner_user_id: generationIssuerBindingExample.binding.owner_user_id,
+  project_id: generationIssuerBindingExample.binding.project_id,
+  input_revision: generationIssuerBindingExample.binding.input_revision,
+  input_hash: generationIssuerBindingExample.binding.input_hash,
+}, generationIssuerBindingExample.binding.selected_materials), true, 'complete synthetic binding: same issuer across consolidated/parent statements; subsidiary localized in notes');
+assert.ok(!Object.keys(openApiDocument().paths).some(path => path.includes('generation-issuer-binding')), 'contract slice adds no production route');
 const userReferenceReview = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/user-reference-review.json', import.meta.url)), 'utf8')) as {
   synthetic: boolean; snapshot: Parameters<typeof userReferenceParseReviewAccepted>[0];
   review: { confirmed_warning_codes: string[]; outline: unknown; signed_outline_sha256: string };
