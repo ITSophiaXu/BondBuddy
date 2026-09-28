@@ -46,6 +46,31 @@ const FactEvidenceAssessmentSchema = Type.Object({
   assessment: Type.Union([Type.Literal('supports_candidate'), Type.Literal('contradicts_candidate'), Type.Literal('not_relevant'), Type.Literal('unresolved')]),
   reason: Type.String({ minLength: 1, maxLength: 2048 }),
 }, { additionalProperties: false });
+const normalizedDecimal = Type.String({ pattern: '^(?:0(?:\\.[0-9]*[1-9])?|-0\\.[0-9]*[1-9]|-?[1-9][0-9]*(?:\\.[0-9]*[1-9])?)$', description: 'Canonical decimal text without insignificant fractional zeros.' });
+const FactEvidenceCandidateValueSchema = Type.Union([
+  Type.Object({ value_kind: Type.Literal('decimal'), value_decimal: normalizedDecimal, value_text: Type.Null() }, { additionalProperties: false }),
+  Type.Object({ value_kind: Type.Literal('text'), value_decimal: Type.Null(), value_text: Type.String() }, { additionalProperties: false }),
+  Type.Object({ value_kind: Type.Union([Type.Literal('unknown'), Type.Literal('not_applicable')]), value_decimal: Type.Null(), value_text: Type.Null() }, { additionalProperties: false }),
+]);
+const FactEvidenceContextManifestSchema = Type.Object({
+  schema_version: Type.Literal('fact-evidence-context-v1'), owner_user_id: id, project_id: id, candidate_id: id,
+  input_revision: Type.Integer({ minimum: 1 }), input_hash: hash, candidate_identity_sha256: hash,
+  fact_identity: Type.Record(Type.String(), Type.Unknown()), candidate_value: FactEvidenceCandidateValueSchema,
+  source_kind: Type.Union([Type.Literal('audited'), Type.Literal('external')]),
+  candidate_status: Type.Union([Type.Literal('extracted'), Type.Literal('verified'), Type.Literal('user_asserted'), Type.Literal('conflicted'), Type.Literal('needs_confirmation'), Type.Literal('superseded')]),
+  candidate_uncertainty: Type.Array(Type.String()), candidate_confidence: Type.Number({ minimum: 0, maximum: 1 }),
+  material_id: id, material_version: Type.Integer({ minimum: 1 }), material_sha256: hash, snapshot_id: id,
+  parser_version: id, parse_request_hash: hash, parse_response_sha256: hash, parse_status: id,
+  original_warnings: Type.Array(Type.Object({ code: id, message: Type.String() }, { additionalProperties: false })),
+  selected_body: Type.Array(Type.Object({ record_id: id, content_sha256: hash, locator_type: id,
+    locator: Type.Record(Type.String(), Type.Unknown()), confidence: Type.Union([Type.Number({ minimum: 0, maximum: 1 }), Type.Null()]),
+    uncertainty: Type.Array(Type.String()) }, { additionalProperties: false })),
+  auxiliary_targets: Type.Array(Type.Object({ target_id: id, kind: id, part_name: Type.String(), part_sha256: Type.Union([hash, Type.Null()]),
+    target_sha256: Type.Union([hash, Type.Null()]), scope: Type.Record(Type.String(), Type.Unknown()), parse_status: id,
+    relevance: Type.Union([Type.Literal('relevant'), Type.Literal('not_relevant'), Type.Literal('unknown')]), relevance_reason: id }, { additionalProperties: false })),
+  completeness_status: Type.Union([Type.Literal('complete'), Type.Literal('incomplete')]), completeness_reasons: Type.Array(id),
+  reviewable: Type.Boolean(), evidence_set_sha256: hash,
+}, { additionalProperties: false });
 const FactDecisionSummarySchema = Type.Object({
   decision_id: id,
   version: Type.Integer({ minimum: 1 }),
@@ -110,10 +135,11 @@ export const factSchemas = {
     assessments: Type.Array(FactEvidenceAssessmentSchema, { minItems: 1, maxItems: 500 }),
     reason: Type.String({ minLength: 1, maxLength: 2048 }),
   }, { additionalProperties: false }),
+  FactEvidenceContextManifest: FactEvidenceContextManifestSchema,
   FactEvidenceContextResponse: Type.Object({
     evidence_context_set_id: id, owner_user_id: id, project_id: id, candidate_id: id,
     evidence_set_sha256: hash, completeness_status: Type.Union([Type.Literal('complete'), Type.Literal('incomplete')]),
-    reviewable: Type.Boolean(), manifest: Type.Record(Type.String(), Type.Unknown()),
+    reviewable: Type.Boolean(), manifest: FactEvidenceContextManifestSchema,
   }, { additionalProperties: false }),
   FactEvidenceReviewResponse: Type.Object({
     review_id: id, request_id: id, owner_user_id: id, project_id: id,
@@ -139,6 +165,7 @@ export type FactCandidate = import('@sinclair/typebox').Static<typeof factSchema
 export type FactDecisionRequest = import('@sinclair/typebox').Static<typeof factSchemas.FactDecisionRequest>;
 export type FactDecisionResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactDecisionResponse>;
 export type FactEvidenceReviewRequest = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewRequest>;
+export type FactEvidenceContextManifest = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceContextManifest>;
 export type FactEvidenceContextResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceContextResponse>;
 export type FactEvidenceReviewResponse = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewResponse>;
 export type FactEvidenceReviewWithdrawalRequest = import('@sinclair/typebox').Static<typeof factSchemas.FactEvidenceReviewWithdrawalRequest>;

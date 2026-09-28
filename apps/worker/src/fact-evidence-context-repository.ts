@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { normalizeDecimal } from '@bondbuddy/domain/facts';
 import { getParseSnapshot, type ParseEvidencePool, type StoredParseSnapshot } from './parse-evidence-repository.js';
 import { DOCX_AUXILIARY_TARGETS_PARSER_VERSION, type DocxAuxiliaryTarget, type DocumentParseRecord } from './document-parser.js';
 
@@ -36,6 +37,13 @@ export interface FactEvidenceContextAuxiliaryMember {
   readonly relevance_reason: string;
 }
 
+export interface FactEvidenceCandidateValue {
+  readonly value_kind: 'decimal' | 'text' | 'unknown' | 'not_applicable';
+  /** Canonical base-10 representation with insignificant zeros removed. */
+  readonly value_decimal: string | null;
+  readonly value_text: string | null;
+}
+
 export interface FactEvidenceContextManifest {
   readonly schema_version: 'fact-evidence-context-v1';
   readonly owner_user_id: string;
@@ -45,6 +53,7 @@ export interface FactEvidenceContextManifest {
   readonly input_hash: string;
   readonly candidate_identity_sha256: string;
   readonly fact_identity: Record<string, unknown>;
+  readonly candidate_value: FactEvidenceCandidateValue;
   readonly source_kind: 'audited' | 'external';
   readonly candidate_status: 'extracted' | 'verified' | 'user_asserted' | 'conflicted' | 'needs_confirmation' | 'superseded';
   readonly candidate_uncertainty: readonly string[];
@@ -98,6 +107,21 @@ function canonical(value: unknown): string {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function normalizedDecimal(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+  try { return normalizeDecimal(value); } catch { throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID'); }
+}
+
+function normalizedCandidateValue(value: FactEvidenceCandidateValue): FactEvidenceCandidateValue {
+  const normalized = { ...value, value_decimal: normalizedDecimal(value.value_decimal) };
+  if ((normalized.value_kind === 'decimal' && (normalized.value_decimal === null || normalized.value_text !== null)) ||
+    (normalized.value_kind === 'text' && (normalized.value_decimal !== null || normalized.value_text === null)) ||
+    ((normalized.value_kind === 'unknown' || normalized.value_kind === 'not_applicable') &&
+      (normalized.value_decimal !== null || normalized.value_text !== null))) throw fail('FACT_EVIDENCE_CONTEXT_SOURCE_INVALID');
+  return normalized;
 }
 
 function stableRef(record: DocumentParseRecord): string | null {
@@ -156,6 +180,7 @@ function assessAuxiliary(
 export function deriveFactEvidenceContextManifest(input: {
   ownerUserId: string; projectId: string; candidateId: string; identityHash: string; sourceKind: 'audited' | 'external';
   inputRevision: number; inputHash: string; factIdentity: Record<string, unknown>;
+  candidateValue: FactEvidenceCandidateValue;
   candidateStatus: FactEvidenceContextManifest['candidate_status']; candidateUncertainty: string[]; candidateConfidence: number;
   materialId: string; materialVersion: number; sourceSha256: string; snapshot: StoredParseSnapshot;
   selectedRecords: DocumentParseRecord[]; auxiliaryTargets: DocxAuxiliaryTarget[]; docx: boolean;
@@ -208,6 +233,7 @@ export function deriveFactEvidenceContextManifest(input: {
     input_hash: input.inputHash,
     candidate_identity_sha256: input.identityHash,
     fact_identity: input.factIdentity,
+    candidate_value: normalizedCandidateValue(input.candidateValue),
     source_kind: input.sourceKind,
     candidate_status: input.candidateStatus,
     candidate_uncertainty: input.candidateUncertainty,
@@ -261,7 +287,8 @@ export async function createFactEvidenceContextSet(
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       [`fact-evidence-context:${request.ownerUserId}:${request.projectId}:${request.candidateId}`]);
     const source = await client.query(
-      `SELECT c.id AS candidate_id, c.owner_user_id, c.project_id, c.fact_key_hash, c.fact_key, c.source_kind, c.status, c.uncertainty,
+      `SELECT c.id AS candidate_id, c.owner_user_id, c.project_id, c.fact_key_hash, c.fact_key, c.value_kind, c.value_decimal, c.value_text,
+              c.source_kind, c.status, c.uncertainty,
               c.material_id, c.material_version, c.evidence, r.input_revision, r.input_hash, r.snapshot_id, r.parse_response_sha256,
               s.parser_version, s.content_sha256, s.response_sha256, s.request_hash, s.record_count, m.media_type, m.sha256 AS material_sha256
          FROM bb_fact_candidates c
@@ -340,6 +367,11 @@ export async function createFactEvidenceContextSet(
       ownerUserId: request.ownerUserId, projectId: request.projectId, candidateId: request.candidateId,
       inputRevision: Number(row.input_revision), inputHash: String(row.input_hash).trim(),
       identityHash: String(row.fact_key_hash).trim(), factIdentity,
+      candidateValue: {
+        value_kind: row.value_kind as FactEvidenceCandidateValue['value_kind'],
+        value_decimal: normalizedDecimal(row.value_decimal),
+        value_text: row.value_text === null ? null : String(row.value_text),
+      },
       candidateStatus: row.status as FactEvidenceContextManifest['candidate_status'],
       candidateUncertainty: candidateUncertainty as string[], candidateConfidence: candidateConfidences[0] as number,
       sourceKind: row.source_kind as 'audited' | 'external',

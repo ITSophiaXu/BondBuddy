@@ -93,6 +93,25 @@ CREATE FUNCTION bb_fact_evidence_candidate_snapshot(c bb_fact_candidates) RETURN
     'evidence',c.evidence,'uncertainty',c.uncertainty)
 $$;
 
+-- Match the worker/API candidate_value normalization without passing decimals through a
+-- floating-point type. Candidate storage is text, so insignificant fractional zeros are
+-- removed while preserving arbitrary precision.
+CREATE FUNCTION bb_fact_evidence_normalized_decimal(value text) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE negative boolean; unsigned text; dot_at integer; whole text; fraction text;
+BEGIN
+  IF value IS NULL THEN RETURN NULL; END IF;
+  IF value !~ '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$' THEN RETURN NULL; END IF;
+  negative := left(value,1)='-';
+  unsigned := CASE WHEN negative THEN substr(value,2) ELSE value END;
+  dot_at := strpos(unsigned,'.');
+  IF dot_at=0 THEN whole:=unsigned; fraction:='';
+  ELSE whole:=substr(unsigned,1,dot_at-1); fraction:=rtrim(substr(unsigned,dot_at+1),'0'); END IF;
+  whole:=ltrim(whole,'0');
+  IF whole='' THEN whole:='0'; END IF;
+  IF whole='0' AND fraction='' THEN RETURN '0'; END IF;
+  RETURN (CASE WHEN negative THEN '-' ELSE '' END)||whole||CASE WHEN fraction='' THEN '' ELSE '.'||fraction END;
+END $$;
+
 CREATE FUNCTION bb_fact_evidence_review_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE ctx bb_fact_evidence_context_sets%ROWTYPE;
 DECLARE candidate bb_fact_candidates%ROWTYPE;
@@ -110,7 +129,10 @@ BEGIN
     ctx.material_version<>NEW.material_version OR ctx.snapshot_id<>NEW.snapshot_id OR ctx.parser_version<>NEW.parser_version OR
     ctx.parse_response_sha256<>NEW.parse_response_sha256 OR NEW.candidate_identity_sha256<>candidate.fact_key_hash OR
     NEW.source_kind<>candidate.source_kind OR ctx.manifest->>'candidate_identity_sha256' IS DISTINCT FROM btrim(candidate.fact_key_hash::text) OR
-    ctx.manifest->>'source_kind' IS DISTINCT FROM candidate.source_kind OR NEW.candidate_snapshot IS DISTINCT FROM bb_fact_evidence_candidate_snapshot(candidate) OR NOT EXISTS(SELECT 1 FROM bb_fact_evidence_reviewer_grants g
+    ctx.manifest->>'source_kind' IS DISTINCT FROM candidate.source_kind OR
+    ctx.manifest->'candidate_value' IS DISTINCT FROM jsonb_build_object('value_kind',candidate.value_kind,
+      'value_decimal',bb_fact_evidence_normalized_decimal(candidate.value_decimal),'value_text',candidate.value_text) OR
+    NEW.candidate_snapshot IS DISTINCT FROM bb_fact_evidence_candidate_snapshot(candidate) OR NOT EXISTS(SELECT 1 FROM bb_fact_evidence_reviewer_grants g
       JOIN bb_users u ON u.id=g.user_id AND u.status='active' WHERE g.id=NEW.reviewer_grant_id AND g.user_id=NEW.reviewer_user_id
        AND g.role='fact_evidence_reviewer' AND g.scope_owner_user_id=NEW.owner_user_id AND g.scope_project_id=NEW.project_id AND g.revoked_at IS NULL)
   THEN RAISE EXCEPTION 'fact evidence review pins or active grant mismatch' USING ERRCODE='23514'; END IF;

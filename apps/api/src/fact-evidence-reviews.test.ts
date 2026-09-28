@@ -14,8 +14,10 @@ test('fact evidence reviewer ledger is exact, append-only, external-safe, and fa
   const material=`fer-material-${suffix}`,upload=`fer-upload-${suffix}`,snapshot=`fer-parse-${suffix}`,candidate=`fer-candidate-${suffix}`,context=`fer-context-${suffix}`;
   const contentHash=sha(`synthetic material ${suffix}`),responseHash=sha(`synthetic response ${suffix}`),inputHash=sha(`synthetic input ${suffix}`),factHash=sha(`synthetic fact ${suffix}`),evidenceHash=sha(`synthetic context ${suffix}`);
   const incompleteContext=`fer-context-incomplete-${suffix}`,incompleteHash=sha(`synthetic incomplete context ${suffix}`);
+  const legacyContext=`fer-context-legacy-${suffix}`,legacyHash=sha(`synthetic legacy context ${suffix}`);
   const manifest={schema_version:'fact-evidence-context-v1',owner_user_id:owner,project_id:project,candidate_id:candidate,input_revision:1,input_hash:inputHash,
-    candidate_identity_sha256:factHash,fact_identity:{entity_id:'synthetic-issuer',metric:'assets'},source_kind:'external',candidate_status:'needs_confirmation',
+    candidate_identity_sha256:factHash,fact_identity:{entity_id:'synthetic-issuer',metric:'assets'},candidate_value:{value_kind:'decimal',value_decimal:'100',value_text:null},
+    source_kind:'external',candidate_status:'needs_confirmation',
     candidate_uncertainty:['EXTERNAL_WORKBOOK_SOURCE_NOT_AUTHORIZED'],candidate_confidence:0.72,material_id:material,material_version:1,material_sha256:contentHash,
     snapshot_id:snapshot,parser_version:'synthetic-parser-1',parse_request_hash:sha('request'),parse_response_sha256:responseHash,parse_status:'needs_confirmation',original_warnings:[],
     selected_body:[{record_id:'body-anchor',content_sha256:sha('cell'),locator_type:'xlsx_cell',locator:{sheet:'Synthetic',cell:'A1'},confidence:null,uncertainty:[]}],
@@ -23,6 +25,12 @@ test('fact evidence reviewer ledger is exact, append-only, external-safe, and fa
   const client=await db.connect();
   try{
     const version=await client.query("SELECT current_setting('server_version_num')::integer AS v");assert.ok(Number(version.rows[0]!.v)>=160000,'requires PostgreSQL 16+');
+    const migrationOrder=await client.query(`SELECT filename,applied_at FROM bb_schema_migrations
+      WHERE filename=ANY($1::text[]) ORDER BY applied_at`,[[
+        '0059_m1_issuer_annual_profile_reviews.sql','0060_m1_fact_evidence_context_sets.sql','0061_m1_fact_evidence_reviews.sql']]);
+    assert.deepEqual(migrationOrder.rows.map(row=>row.filename),[
+      '0059_m1_issuer_annual_profile_reviews.sql','0060_m1_fact_evidence_context_sets.sql','0061_m1_fact_evidence_reviews.sql'],
+      'PG16 schema applies 0059, then immutable value-pinned 0060 contexts, then 0061 reviews');
     const migrations=await client.query("SELECT to_regclass('public.bb_fact_evidence_reviewer_grants') g,to_regclass('public.bb_fact_evidence_context_sets') c");assert.ok(migrations.rows[0]!.g&&migrations.rows[0]!.c,'migrations 0060 and 0061 must be applied');
     const phoneTail=(Number.parseInt(suffix.slice(-6),16)%1000000).toString().padStart(6,'0');
     for(const [id,n] of [[owner,1],[reviewer,2],[manager,3]] as const) await client.query('INSERT INTO bb_users(id,phone_e164,username) VALUES($1,$2,$3)',[id,`+1202555${phoneTail}${n}`,`fer${n}${suffix.slice(0,10)}`]);
@@ -45,6 +53,10 @@ test('fact evidence reviewer ledger is exact, append-only, external-safe, and fa
     const incompleteManifest={...manifest,completeness_status:'incomplete',completeness_reasons:['AUXILIARY_SCOPE_UNKNOWN'],reviewable:false,evidence_set_sha256:incompleteHash};
     await client.query(`INSERT INTO bb_fact_evidence_context_sets(id,owner_user_id,project_id,candidate_id,input_revision,input_hash,material_id,material_version,snapshot_id,parser_version,parse_response_sha256,content_sha256,schema_version,evidence_set_sha256,completeness_status,reviewable,manifest)
       VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,'incomplete',false,$11::jsonb)`,[incompleteContext,owner,project,candidate,inputHash,material,snapshot,responseHash,contentHash,incompleteHash,JSON.stringify(incompleteManifest)]);
+    const {candidate_value:_oldContextHadNoValuePin,...legacyBase}=manifest;
+    const legacyManifest={...legacyBase,evidence_set_sha256:legacyHash};
+    await client.query(`INSERT INTO bb_fact_evidence_context_sets(id,owner_user_id,project_id,candidate_id,input_revision,input_hash,material_id,material_version,snapshot_id,parser_version,parse_response_sha256,content_sha256,schema_version,evidence_set_sha256,completeness_status,reviewable,manifest)
+      VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,'complete',true,$11::jsonb)`,[legacyContext,owner,project,candidate,inputHash,material,snapshot,responseHash,contentHash,legacyHash,JSON.stringify(legacyManifest)]);
   }finally{client.release();}
   const grant=await changeFactEvidenceReviewerGrant(db,{action:'grant',reviewerUserId:reviewer,actorUserId:manager,reasonCode:'authorized_review',authorizationBasis:'Synthetic test-only authorization',ownerUserId:owner,projectId:project});
   const pinned=(await db.query('SELECT bb_fact_evidence_candidate_snapshot(c) AS snapshot FROM bb_fact_candidates c WHERE c.id=$1',[candidate])).rows[0]!.snapshot;
@@ -59,6 +71,22 @@ test('fact evidence reviewer ledger is exact, append-only, external-safe, and fa
       'direct SQL cannot omit the assessment or reason and still record an externally reviewed result');
   const request:FactEvidenceReviewRequest={request_id:`review-${suffix}`,candidate_id:candidate,evidence_context_set_id:context,evidence_set_sha256:evidenceHash,
     assessments:[{target_id:'body-anchor',assessment:'supports_candidate',reason:'Synthetic exact evidence inspected'}],reason:'Synthetic evidence and impact reviewed'};
+  await assert.rejects(appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`legacy-${suffix}`,evidence_context_set_id:legacyContext,evidence_set_sha256:legacyHash}),
+    /FACT_EVIDENCE_CONTEXT_PIN_MISMATCH/,'contexts created before candidate-value pinning cannot be reviewed');
+  await db.query("UPDATE bb_fact_candidates SET value_decimal='101.00' WHERE id=$1",[candidate]);
+  await assert.rejects(appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`stale-value-${suffix}`}),
+    /FACT_EVIDENCE_CONTEXT_PIN_MISMATCH/,'API rejects a current candidate value that differs from the context pin');
+  const changedPinned=(await db.query('SELECT bb_fact_evidence_candidate_snapshot(c) AS snapshot FROM bb_fact_candidates c WHERE c.id=$1',[candidate])).rows[0]!.snapshot;
+  await assert.rejects(db.query(`INSERT INTO bb_fact_evidence_reviews
+    (id,request_id,request_hash,owner_user_id,project_id,candidate_id,candidate_identity_sha256,candidate_snapshot,evidence_context_set_id,evidence_set_sha256,
+     input_revision,input_hash,material_id,material_version,material_sha256,snapshot_id,parser_version,parse_response_sha256,source_kind,assessments,outcome,
+     reviewer_user_id,reviewer_grant_id,authority,reason)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,1,$11,$12,1,$13,$14,'synthetic-parser-1',$15,'external',$16::jsonb,
+      'external_evidence_impact_reviewed',$17,$18,'fact_evidence_reviewer','Synthetic direct stale-value SQL')`,
+    [`stale-direct-review-${suffix}`,`stale-direct-request-${suffix}`,sha(`stale direct ${suffix}`),owner,project,candidate,factHash,JSON.stringify(changedPinned),context,evidenceHash,inputHash,material,contentHash,snapshot,responseHash,
+      JSON.stringify([{target_id:'body-anchor',assessment:'supports_candidate',reason:'Synthetic exact evidence inspected'}]),reviewer,grant]),
+    /fact evidence review pins or active grant mismatch/,'database guard rejects direct SQL with candidate value drift');
+  await db.query("UPDATE bb_fact_candidates SET value_decimal='100.00' WHERE id=$1",[candidate]);
   await assert.rejects(appendFactEvidenceReview(db,{userId:owner},project,{...request,request_id:`owner-${suffix}`}),/FACT_EVIDENCE_REVIEWER_FORBIDDEN/,'owner cannot self-review');
   await assert.rejects(appendFactEvidenceReview(db,{userId:reviewer},project,{...request,request_id:`missing-${suffix}`,assessments:[]}),/FACT_EVIDENCE_REVIEW_INVALID/);
   const reviewed=await appendFactEvidenceReview(db,{userId:reviewer},project,request,()=>`review-${suffix}`);

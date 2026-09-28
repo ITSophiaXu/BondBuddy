@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import { normalizeDecimal } from '@bondbuddy/domain/facts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { schemas, type FactEvidenceReviewRequest, type FactEvidenceReviewResponse, type FactEvidenceReviewWithdrawalRequest } from '@bondbuddy/contracts';
 import { Problem, missing } from './data.js';
@@ -21,6 +22,22 @@ function canonical(value: unknown): string {
   const encoded = JSON.stringify(value); if (encoded === undefined) throw fail('FACT_EVIDENCE_REVIEW_INVALID'); return encoded;
 }
 function hash(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
+function normalizedDecimal(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
+  try { return normalizeDecimal(value); } catch { throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH'); }
+}
+function candidateValue(row: Row): Record<string, unknown> {
+  const kind = row.value_kind;
+  if (!['decimal', 'text', 'unknown', 'not_applicable'].includes(String(kind))) throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
+  const value = { value_kind: kind, value_decimal: normalizedDecimal(row.value_decimal), value_text: row.value_text === null ? null : String(row.value_text) };
+  if ((kind === 'decimal' && (value.value_decimal === null || value.value_text !== null)) ||
+    (kind === 'text' && (value.value_decimal !== null || value.value_text === null)) ||
+    ((kind === 'unknown' || kind === 'not_applicable') && (value.value_decimal !== null || value.value_text !== null))) {
+    throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
+  }
+  return value;
+}
 function iso(value: unknown): string { const date = value instanceof Date ? value : new Date(String(value)); if (!Number.isFinite(date.getTime())) throw fail('FACT_EVIDENCE_REVIEW_DATA_INVALID'); return date.toISOString(); }
 function validate(principal: Principal, projectId: string, input: FactEvidenceReviewRequest): void {
   if (!principal || !ID.test(principal.userId) || !ID.test(projectId) || !input || !ID.test(input.request_id) ||
@@ -114,6 +131,7 @@ export async function appendFactEvidenceReview(db: Db, principal: Principal, pro
     const row = source.rows[0]!, manifest = json(row.manifest) as Record<string, unknown>;
     if (!object(manifest) || manifest.candidate_id !== input.candidate_id || String(row.fact_key_hash).trim() !== String(manifest.candidate_identity_sha256) ||
       row.source_kind !== manifest.source_kind || Number(row.material_version) !== Number(manifest.material_version) ||
+      !object(manifest.candidate_value) || canonical(manifest.candidate_value) !== canonical(candidateValue(row)) ||
       String(row.content_sha256).trim() !== String(manifest.material_sha256) || String(row.response_sha256 ?? row.parse_response_sha256).trim() !== String(manifest.parse_response_sha256))
       throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
     exactAssessments(manifest, input.assessments);
@@ -184,9 +202,11 @@ async function readFactEvidenceContext(db: Db, principal: Principal, projectId: 
         WHERE g.user_id=$3 AND g.role='fact_evidence_reviewer' AND g.scope_owner_user_id=x.owner_user_id AND g.scope_project_id=x.project_id AND g.revoked_at IS NULL))`,
     [projectId,candidateId,principal.userId]);
   const row=result.rows[0];if(!row)throw fail('FACT_EVIDENCE_REVIEW_NOT_FOUND');
+  const manifest=json(row.manifest);
+  if(!object(manifest)||!object(manifest.candidate_value))throw fail('FACT_EVIDENCE_CONTEXT_PIN_MISMATCH');
   return {evidence_context_set_id:String(row.id),owner_user_id:String(row.owner_user_id),project_id:String(row.project_id),candidate_id:String(row.candidate_id),
     evidence_set_sha256:String(row.evidence_set_sha256).trim(),completeness_status:row.completeness_status as 'complete'|'incomplete',reviewable:row.reviewable===true,
-    manifest:json(row.manifest) as Record<string,unknown>};
+    manifest};
 }
 
 export function installFactEvidenceReviewRoutes(app: FastifyInstance, settings: {db:()=>Pool; principal:(request:FastifyRequest)=>Promise<Principal>}) {
