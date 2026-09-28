@@ -7,8 +7,8 @@ const SOURCE_CHECKER = 'official-source-integrity';
 export const nafmiiMtnDraftRulePack = {
   schema_version: 'rule-pack-v1',
   pack_id: 'nafmii-mtn',
-  version: '2026.09.27-draft.2',
-  supersedes_version: '2026.09-draft.1',
+  version: '2026.09.29-draft.3',
+  supersedes_version: '2026.09.27-draft.2',
   status: 'draft',
   scope: {
     market: 'nafmii',
@@ -168,6 +168,21 @@ export const nafmiiMtnDraftRulePack = {
       boundary_examples: [{ example_id: 'mtn-disclosure-boundary', summary: '材料显示潜在重大事项但触发日和影响尚不能确认。', expected_outcome: 'needs_evidence', evidence_ref: 'synthetic:mtn-material-event-uncertain' }],
       owner_role: 'industry_reviewer',
     },
+    {
+      rule_id: 'mtn-quarterly-refresh', version: '1', title: '新季报披露后首次面向银行间机构投资者发行的全面更新', enabled: false, enforcement: 'research_only',
+      source_ref_ids: ['nafmii-basic-tier-notice-2026','nafmii-disclosure-rules-2023'],
+      applicability: { document_stages: ['issuance'], issuer_scopes: ['domestic-nonfinancial-enterprise-public'], investor_scopes: ['interbank-institutional'], industries: [], special_features: [] },
+      required_inputs: ['investor_scope','trigger_basis','issuance_event_date','first_market_issuance','latest_quarterly_report_period','quarterly_report_publication_date','quarterly_report_source_sha256','document_coverage_period','na058_exception'],
+      checker: { checker_id: 'mtn-quarterly-update-evidence-check', checker_version: '2', parameter_version: '2026-03-23' },
+      exceptions: ['NA058 P00015/P00017 仅限第一类发行人及上市公司在披露新一季报/三季报后的“季度财务数据变动情况及原因”更新，且仍须列表披露近一期资产负债表、利润表、现金流量表及数据来源，编制合并报表的并列示合并和母公司报表；近一年及一期受立案调查、行政处罚或自律处分的上市公司不适用。'],
+      evidence_requirements: ['实际发行行为日及面向银行间市场机构投资者的范围','是否首次面向银行间市场机构投资者发行','新季报期间、披露日及原件 SHA-256','文书覆盖期间','主张 NA058 例外时另需发行人类型、报告种类、例外范围、剩余报表列示与数据来源、处罚/调查记录及依据发布日期'],
+      outputs: { when_met: 'needs_judgement', when_not_met: 'needs_evidence', severity: 'warning' },
+      boundaries: ['不得改写为“新注册通知书项下第一期”，也不得以文件/项目日期替代实际季报披露日与发行行为日。','NA022×NA058 交叉命中的项目保留规则冲突/待人工审核，不自动执行省略；NA058 汇编文件日期不能证明该例外在 2026 仍可无条件采用。'],
+      positive_examples: [{ example_id: 'mtn-quarterly-positive', summary: '合成工程示例：新季报披露严格早于实际发行行为日，发行面向银行间机构投资者且为首次市场发行，各事实分开引用。', expected_outcome: 'pass', evidence_ref: 'synthetic:mtn-quarter-first-market' }],
+      negative_examples: [{ example_id: 'mtn-quarterly-negative', summary: '把“新注册通知书项下第一期”当作触发条件，或以项目/文件名日期代替实际季报披露与发行行为先后。', expected_outcome: 'issue', evidence_ref: 'synthetic:mtn-quarterly-trigger-rewrite' }],
+      boundary_examples: [{ example_id: 'mtn-quarterly-na058-boundary', summary: '第一类发行人主张 NA058 季度变动分析例外但与 NA022 首次市场发行触发交叉，报表列示或处罚记录尚不完整。', expected_outcome: 'needs_evidence', evidence_ref: 'synthetic:mtn-quarterly-na058-intersection' }],
+      owner_role: 'industry_reviewer',
+    },
   ],
   sample_suite: {
     suite_id: 'nafmii-mtn-synthetic-engineering',
@@ -191,7 +206,7 @@ const chapter = (chapter_id:string,title:string,form_refs:string[],required_fiel
 export const nafmiiMtnChapterTemplate = {
   schema_version: 'chapter-template-v1',
   template_id: 'nafmii-mtn-m-form',
-  version: '2026.09.27-draft.2',
+  version: '2026.09.29-draft.3',
   rule_pack_id: 'nafmii-mtn',
   market: 'nafmii',
   offering: 'mtn',
@@ -221,13 +236,14 @@ export const nafmiiMtnChapterTemplate = {
 export const nafmiiMtnCoverageManifest = {
   schema_version: 'capability-coverage-v1',
   manifest_id: 'nafmii-mtn-coverage',
-  version: '2026.09.27-draft.2',
+  version: '2026.09.29-draft.3',
   rule_pack_id: 'nafmii-mtn',
   assessed_at: SOURCE_CHECKED_AT,
   items: [
     { item_id: 'standard-mtn-m-form', area: '标准公开发行MTN的M表章节骨架', disposition: 'covered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-public-forms-2020'], rationale: '已逐章映射M-0至M-17；仅代表工程草案覆盖。' },
     { item_id: 'mtn-core-product', area: '标准MTN产品定义、注册、资金用途和披露', disposition: 'covered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-mtn-guide-2021','nafmii-registration-rules-2023','nafmii-disclosure-rules-2023'], rationale: '已补2023披露原文和修正条号；新来源仍待效力与业务审核，不因字段非空认为完整。' },
     { item_id: 'basic-tier-2026', area: '2026基础层分类和有额度统一注册', disposition: 'uncovered', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-basic-tier-notice-2026','nafmii-registration-rules-2023'], rationale: '官方变化已入库，但与2023规程及具体过渡项目的适用关系尚未经行业审核，不能作确定结论。' },
+    { item_id: 'quarterly-refresh-2026', area: '新季报披露后首次面向银行间机构投资者发行的全面更新及 NA058 例外', disposition: 'uncovered', document_stages: ['issuance'], source_ref_ids: ['nafmii-basic-tier-notice-2026','nafmii-disclosure-rules-2023'], rationale: 'NA022 第四项触发要素已由研究态检查器分别保留并校验先后；NA058 P00015/P00017 的精确例外与 NA022 交叉、现行效力及真实样本仍待专业审核，不自动执行省略。' },
     { item_id: 'ppn-cp-scp-dfi', area: 'PPN、CP、SCP、DFI产品规则', disposition: 'not_applicable', document_stages: ['registration','issuance'], source_ref_ids: ['nafmii-mtn-guide-2021'], rationale: '本包仅适用于offering=mtn；其他产品必须选择独立规则包。' },
     { item_id: 'special-products', area: '永续、绿色、科创、乡村振兴、项目收益等专项或主题MTN', disposition: 'uncovered', document_stages: ['registration','issuance'], source_ref_ids: [], rationale: '需要对应产品补充表、专项规则、有效期与独立样本，标准MTN包不得自动放开。' },
     { item_id: 'industry-overlays', area: '房地产、城市基础设施等行业补充表', disposition: 'uncovered', document_stages: ['registration','issuance'], source_ref_ids: [], rationale: '尚未录入现行行业补充表及政策适用证据。' },

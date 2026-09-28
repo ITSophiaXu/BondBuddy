@@ -36,6 +36,21 @@ test('the M-12 holder meeting chapter retains its source, form, and semantic fie
   ]);
 });
 
+test('the MTN quarterly-refresh rule keeps its research-only trigger and NA058 limits',()=>{
+  const rule=nafmiiMtnDraftRulePack.rules.find(item=>item.rule_id==='mtn-quarterly-refresh');
+  assert.ok(rule,'the quarterly-refresh rule must remain documented in the pack');
+  assert.equal(rule.enabled,false);
+  assert.equal(rule.enforcement,'research_only');
+  assert.equal(rule.checker.checker_id,'mtn-quarterly-update-evidence-check');
+  assert.deepEqual(rule.source_ref_ids,['nafmii-basic-tier-notice-2026','nafmii-disclosure-rules-2023']);
+  assert.ok(rule.required_inputs.includes('investor_scope'));
+  assert.ok(rule.required_inputs.includes('trigger_basis'));
+  assert.ok(rule.exceptions.some(text=>text.includes('列表披露近一期资产负债表')));
+  assert.ok(rule.boundaries.some(text=>text.includes('新注册通知书项下第一期')));
+  const coverage=nafmiiMtnCoverageManifest.items.find(item=>item.item_id==='quarterly-refresh-2026');
+  assert.equal(coverage?.disposition,'uncovered');
+});
+
 test('official binary sources retain reproducible SHA-256 fingerprints',()=>{
   const expected={
     'nafmii-mtn-guide-2021':'a908a42699ab94c9c396fdbcad6fcacb9a0a12b505a3933b36b3f01d3c612b9e',
