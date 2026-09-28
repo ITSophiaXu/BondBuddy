@@ -7,9 +7,9 @@ const configured: DataPolicy = { policy_version: 'data_policy_m1_v1', storage_lo
 
 test('policy copy renders the server numbers and states cloud processing', () => {
   const copy = dataPolicyCopy(configured);
-  assert.match(copy.upload, /传到 BondBuddy 平台/);
-  assert.match(copy.upload, /模型服务商/);
-  assert.match(copy.upload, /30 天内/);
+  assert.match(copy.processing, /传到平台服务器/);
+  assert.match(copy.processing, /模型服务商/);
+  assert.match(copy.deletion, /30 天内/);
   assert.match(copy.retention, /24 小时/);
   assert.match(copy.retention, /180 天/);
   assert.match(copy.backup, /14 天/);
@@ -19,7 +19,7 @@ test('policy copy renders the server numbers and states cloud processing', () =>
 
 test('unconfigured windows are stated as unconfigured, not as zero', () => {
   const copy = dataPolicyCopy({ ...configured, purge_enabled: false, deleted_content_purge_days: null, orphan_upload_purge_hours: null, backup_retention_days: null });
-  assert.match(copy.upload, /尚未配置/);
+  assert.match(copy.deletion, /尚未配置/);
   assert.match(copy.backup, /尚未配置/);
   for (const text of Object.values(copy)) assert.doesNotMatch(text, /\b0 天|null/);
 });

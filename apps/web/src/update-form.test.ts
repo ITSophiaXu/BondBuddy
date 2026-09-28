@@ -1,37 +1,32 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { TargetReportingPeriod } from '@bondbuddy/contracts';
-import { readTargetReportingPeriods, targetReportingRows } from './update-form.js';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
+import { quarterCutoff, cutoffSelection } from './reporting-cutoff.js';
+import { updateFormFields } from './update-form.js';
 
-function formData(values: Record<string, string>) {
-  const data = new FormData();
-  for (const [key, value] of Object.entries(values)) data.append(key, value);
-  return data;
-}
-
-test('target periods round-trip user assertion status without evidence or audited claims', () => {
-  const period: TargetReportingPeriod = { start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] };
-  const html = targetReportingRows([period]);
-  assert.match(html, /我填写，待来源核对/);
-  assert.match(html, /都不是审计事实或已核验期间/);
-  assert.match(html, /target_period_start_0"[^>]*value="2025-01-01/);
-  const restored = readTargetReportingPeriods(formData({
-    target_period_start_0: '2025-01-01', target_period_end_0: '2025-12-31',
-    target_period_kind_0: 'annual', target_period_scope_0: 'consolidated', target_period_status_0: 'user_asserted'
-  }), 1);
-  assert.deepEqual(restored, [period]);
+test('quarter controls map the selected year to four exact quarter ends', () => {
+  for (const year of ['2024','2025','2026']) for (const quarter of ['03-31','06-30','09-30','12-31']) {
+    assert.equal(quarterCutoff(year,quarter),`${year}-${quarter}`);
+    assert.equal(cutoffSelection(`${year}-${quarter}`,2026).quarter,quarter);
+  }
+  assert.equal(quarterCutoff('2026','06-31'),null);
+  assert.equal(quarterCutoff('0000','03-31'),null);
+  assert.equal(quarterCutoff('','03-31'),null);
 });
 
-test('incomplete period remains needs_confirmation and an existing uncertain complete period never upgrades implicitly', () => {
-  const partial = readTargetReportingPeriods(formData({
-    target_period_start_0: '2025-01-01', target_period_status_0: 'user_asserted'
-  }), 1);
-  assert.deepEqual(partial, [{ start: '2025-01-01', end: null, period_kind: null, scope: null, status: 'needs_confirmation', evidence_refs: [] }]);
-  const completeButUncertain = readTargetReportingPeriods(formData({
-    target_period_start_0: '2025-01-01', target_period_end_0: '2025-06-30', target_period_kind_0: 'interim',
-    target_period_scope_0: 'parent', target_period_status_0: 'needs_confirmation'
-  }), 1);
-  assert.equal(completeButUncertain[0].status, 'needs_confirmation');
-  assert.match(targetReportingRows([{ ...completeButUncertain[0], end: '2025-06-30', period_kind: 'interim', scope: 'parent' }]), /value="needs_confirmation" selected/);
-  assert.deepEqual(readTargetReportingPeriods(formData({}), 0), [], 'no rows is an explicit empty set');
+test('unselected and legacy dates are not silently coerced or turned into reporting periods', () => {
+  assert.equal(cutoffSelection(null,2026).quarter,'');
+  const old=cutoffSelection('1997-04-20',2026);
+  assert.equal(old.year,'1997');assert.equal(old.quarter,'');assert.equal(old.legacy,true);assert.ok(old.years.includes('1997'));
+  assert.equal(cutoffSelection('2026-06-30',2026).legacy,false);
+});
+
+test('form shows year and four quarter ends without a date picker or target-period editor', () => {
+  const details={...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'};
+  const html=updateFormFields({name:'合成项目',kind:'update',issuer_name:null,market:null,offering:null,update_details:details});
+  for(const label of ['3月末','6月末','9月末','年末'])assert.ok(html.includes(label));
+  assert.match(html,/name="reporting_year"/);
+  assert.match(html,/name="reporting_quarter" value="09-30" checked/);
+  assert.doesNotMatch(html,/type="date"|target-period|target_period|本次目标报告期间/);
+  assert.equal(details.reporting_cutoff,'2026-09-30');
 });
