@@ -223,6 +223,27 @@ test('planned date before acceptance and unclear comparison evidence stay needs_
   assert.ok(!amountReview.reasons.includes('notice_0_proposed_amount_exceeds_complete_ledger'));
 });
 
+test('quota comparisons with a different currency or minor-unit scale need review, never a conflict', () => {
+  const quotaNotice = notice({
+    statedQuota: ev({ status: 'stated', amount: '200000000000', currency: 'CNY', minorUnitScale: 2 }),
+    statedUsedQuota: ev({ status: 'stated', amount: '150000000000', currency: 'CNY', minorUnitScale: 2 }),
+  });
+  for (const proposedAmount of [
+    { amount: '100000000000', currency: 'USD', minorUnitScale: 2 },
+    { amount: '100000000000', currency: 'CNY', minorUnitScale: 0 },
+  ]) {
+    const result = checkMtnRegistrationEvidence(input({
+      registrationArrangement: ev('basic_tier_unified_quota'),
+      quotaLedgerCompleteness: ev('complete'),
+      proposedAmount: ev(proposedAmount),
+      notices: [quotaNotice],
+    }));
+    assert.equal(result.decision, 'needs_review');
+    assert.ok(result.reasons.includes('notice_0_proposed_amount_unit_unmatched'));
+    assert.ok(!result.reasons.some(reason => reason.includes('amount_exceeds')));
+  }
+});
+
 test('same notice ID with different original hashes is not merged and needs review', () => {
   const first = notice();
   const second = notice({ sourceMaterialSha256: ev('b'.repeat(64)) });
