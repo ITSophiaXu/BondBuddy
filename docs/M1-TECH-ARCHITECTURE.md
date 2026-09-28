@@ -366,7 +366,7 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 
 ### #31 历史原文修改计划切片（2026-09-25）
 
-`packages/domain/src/historical-update.ts` 以锁定的本发行人有效历史正文、#76 profile、#15 事实和上游语义引用清单生成 `historical-update-plan-v1`。它使用精确算术，在原文 UTF-16 锚点上计划局部替换/简单表格新增期间列，保留旧年、风险与未改文字，输出修改前后、理由、公式、来源状态和证据。只有无文档级警告、明确绑定到记录的局部存疑可让独立的已证实修改继续规划；该记录仍待人工确认，PDF 重建、结构不匹配和来源画像不确定仍阻断全局。`apps/worker/src/historical-update.ts` 核验材料 hash、解析快照、识别版本及不可变候选清单，读取 owner/project/精确身份的最新事实决策并将决策版本绑定到计划 hash；未解决冲突、OCR 存疑和用户陈述不会升级为已核实事实。内部计划不使用参考库。
+`packages/domain/src/historical-update.ts` 以锁定的本发行人有效历史正文、#76 profile、#15 事实和上游语义引用清单生成 `historical-update-plan-v1`。它使用精确算术，在原文 UTF-16 锚点上计划局部替换/简单表格新增期间列，保留旧年、风险与未改文字，输出修改前后、理由、公式、来源状态和证据。2026-09-28 阶段决定下，正文局部缺失或疑义在全文处理时保留定位并标记，不作为上传阶段必答项。仅服务端授权的 `non_production_test` 可让完整、干净定位、同结构的待确认源画像候选伴随有依据的修改生成内部工作稿；候选原状态及 evidence refs 随 plan/Word 保留，不提升为已核验画像、难度/计价或合规结论。错误/冲突画像、PDF 重建、结构不匹配、主体/材料版本/授权/目标缺失继续阻断。生产运行不接受此候选例外，并继续受正式画像、目标、规则发布和执行授权门禁约束。`apps/worker/src/historical-update.ts` 核验材料 hash、解析快照、识别版本及不可变候选清单，读取 owner/project/精确身份的最新事实决策并将决策版本绑定到计划 hash；未解决冲突、OCR 存疑和用户陈述不会升级为已核实事实。内部计划不使用参考库。
 
 修改计划是内部 TypeScript handoff，不新增公共 DTO/迁移/任务状态，所有计划 `deliverable=false`。后续 #31 模型阶段已安装到 runtime，复用 #16/#79 调用与日志链路，在原文块上生成受约束的语义清单；M1 成本仍由平台承担。`planned` 不等于专业覆盖或 Word 验收。#15/#17 仍需生产事实和可信发行人绑定，#19 需生产规则 selector/pin，#34/#146 需真实修订、清洁版、comments 及 WPS 验收。PDF 重建、跨市场条款重组、完整财务分析与真实全流程验收未完成。细节见 [模型阶段开发交接](../apps/worker/HISTORICAL-MODEL-STAGE.md) 和 [历史稿修改交接](../apps/worker/HISTORICAL-UPDATE-HANDOFF.md)。
 
