@@ -89,7 +89,7 @@ export interface PrivateBlobs {
   delete(key: string): Promise<void>;
   deleteIfMatch?(key: string, etag: string): Promise<boolean>;
   /** One bounded listing page; continuation is opaque and must never be logged. */
-  listPage?(prefix: string, continuation: string | undefined, pageSize: number): Promise<{ items: { key: string; bytes: number; lastModified: Date; etag: string }[]; continuation?: string }>;
+  listPage?(prefix: string, continuation: string | undefined, pageSize: number): Promise<{ items: { key: string; bytes: number; lastModified?: Date; etag: string }[]; continuation?: string }>;
   /** Streaming variants for large objects (Azure/Azurite). In-memory test doubles may omit them. */
   putFile?(key: string, path: string, mediaType: string): Promise<void>;
   /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
@@ -194,7 +194,7 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
     async deleteIfMatch(key, etag) { return (await container.getBlockBlobClient(key).deleteIfExists({ conditions: { ifMatch: etag } })).succeeded; },
     async listPage(prefix, continuation, pageSize) {
       const page = await container.listBlobsFlat({ prefix }).byPage({ continuationToken: continuation, maxPageSize: pageSize }).next();
-      return { items: (page.value?.segment.blobItems ?? []).map((item: BlobItem) => ({ key: item.name, bytes: item.properties.contentLength ?? 0, lastModified: item.properties.lastModified ?? new Date(0), etag: item.properties.etag ?? '' })), continuation: page.value?.continuationToken || undefined };
+      return { items: (page.value?.segment.blobItems ?? []).map((item: BlobItem) => ({ key: item.name, bytes: item.properties.contentLength ?? 0, lastModified: item.properties.lastModified, etag: item.properties.etag ?? '' })), continuation: page.value?.continuationToken || undefined };
     },
     async putFile(key, path, mediaType) {
       await ensure();

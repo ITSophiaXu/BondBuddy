@@ -6,8 +6,8 @@ import { raiseAlert } from './evidence-gate.js';
 
 export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/'] as const;
 export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'unrecognized';
-export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'unrecognized';
-type Item = { key: string; bytes: number; lastModified: Date; etag: string };
+export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'post_0042_unregistered' | 'snapshot_provenance_unknown' | 'unrecognized';
+type Item = { key: string; bytes: number; lastModified?: Date; etag: string };
 type Db = Pool | PoolClient;
 const digest = (key: string) => createHash('sha256').update(key).digest('hex');
 const id = '[A-Za-z0-9_-]{1,128}';
@@ -73,12 +73,25 @@ export function inventoryPolicyFromEnv(env = process.env): InventoryPolicy {
 type Bucket = { count: number; bytes: number; oldest: string | null };
 export type InventoryReport = { scanned: number; byPrefix: Record<string, Record<InventoryClass, Bucket>>; byKind: Record<string, Record<InventoryClass, Bucket>>;
   candidateKeyHashes: string[]; deleted: number; deleteSkipped: number; continuation: Record<string, boolean> };
-const classes: InventoryClass[] = ['referenced','intent_pending','orphan_candidate','unrecognized'];
+const classes: InventoryClass[] = ['referenced','intent_pending','orphan_candidate','post_0042_unregistered','snapshot_provenance_unknown','unrecognized'];
 const empty = () => Object.fromEntries(classes.map(c => [c,{ count: 0, bytes: 0, oldest: null }])) as Record<InventoryClass,Bucket>;
+const validTime = (time: Date | undefined): time is Date => time instanceof Date && !Number.isNaN(time.getTime());
+async function intentBoundary(db: Db, lock = false): Promise<Date | undefined> {
+  const result = await db.query(`SELECT applied_at FROM bb_schema_migrations
+    WHERE filename='0042_m1_orphan_prompt_blobs.sql'${lock ? ' FOR SHARE' : ''}`);
+  const appliedAt = result.rows[0]?.applied_at;
+  return validTime(appliedAt) ? appliedAt : undefined;
+}
+function snapshotProvenance(item: Item, boundary: Date | undefined): InventoryClass {
+  if (!validTime(item.lastModified) || !boundary) return 'snapshot_provenance_unknown';
+  return item.lastModified < boundary ? 'orphan_candidate' : 'post_0042_unregistered';
+}
 function record(bucket: Bucket, item: Item) {
   bucket.count++; bucket.bytes += item.bytes;
-  const stamp = item.lastModified.toISOString();
-  if (!bucket.oldest || stamp < bucket.oldest) bucket.oldest = stamp;
+  if (validTime(item.lastModified)) {
+    const stamp = item.lastModified.toISOString();
+    if (!bucket.oldest || stamp < bucket.oldest) bucket.oldest = stamp;
+  }
 }
 
 /** One bounded, resumable sweep. The default is read-only; deletion is limited to pre-intent snapshots. */
@@ -90,6 +103,7 @@ export async function runStorageInventory(pool: Pool, blobs: PrivateBlobs, polic
     throw new Error('Invalid inventory bounds');
   if (policy.deleteEnabled && !blobs.deleteIfMatch) throw new Error('Conditional Blob delete required');
   const now = policy.now?.() ?? new Date();
+  const boundary = await intentBoundary(pool);
   const report: InventoryReport = { scanned: 0, byPrefix: {}, byKind: {}, candidateKeyHashes: [], deleted: 0, deleteSkipped: 0, continuation: {} };
   let deleteAttempted = 0;
   for (const prefix of INVENTORY_PREFIXES) {
@@ -99,14 +113,15 @@ export async function runStorageInventory(pool: Pool, blobs: PrivateBlobs, polic
       const page = await blobs.listPage(prefix, cursor, pageSize);
       if (page.items.length > pageSize) throw new Error('Blob listing exceeded page bound');
       for (const item of page.items) {
-        if (!item.key.startsWith(prefix) || !Number.isSafeInteger(item.bytes) || item.bytes < 0 || Number.isNaN(item.lastModified.getTime())) throw new Error('Invalid Blob listing item');
-        const kind = parseInventoryKey(item.key), category = await classify(pool, kind, item.key);
+        if (!item.key.startsWith(prefix) || !Number.isSafeInteger(item.bytes) || item.bytes < 0) throw new Error('Invalid Blob listing item');
+        const kind = parseInventoryKey(item.key), referenceClass = await classify(pool, kind, item.key);
+        const category = kind === 'snapshot' && referenceClass === 'orphan_candidate' ? snapshotProvenance(item, boundary) : referenceClass;
         report.byKind[kind] ??= empty();
         record(report.byPrefix[prefix][category], item); record(report.byKind[kind][category], item);
         report.scanned++;
-        if (category === 'orphan_candidate') {
+        if (category === 'orphan_candidate' || category === 'post_0042_unregistered' || category === 'snapshot_provenance_unknown') {
           if (report.candidateKeyHashes.length < sampleLimit) report.candidateKeyHashes.push(digest(item.key));
-          if (policy.deleteEnabled && deleteAttempted < maxDeletes && kind === 'snapshot' && item.lastModified.getTime() <= now.getTime() - graceHours * 3600000 && item.etag) {
+          if (category === 'orphan_candidate' && policy.deleteEnabled && deleteAttempted < maxDeletes && kind === 'snapshot' && validTime(item.lastModified) && item.lastModified.getTime() <= now.getTime() - graceHours * 3600000 && item.etag) {
             deleteAttempted++;
             await policy.beforeDelete?.(item.key);
             await pool.query(`INSERT INTO bb_storage_inventory_delete_attempts(id,key_sha256,etag_sha256,byte_size,object_last_modified)
@@ -123,7 +138,7 @@ export async function runStorageInventory(pool: Pool, blobs: PrivateBlobs, polic
     }
     report.continuation[prefix] = !!cursor;
   }
-  const candidates = Object.values(report.byPrefix).reduce((n, counts) => n + counts.orphan_candidate.count, 0);
+  const candidates = Object.values(report.byPrefix).reduce((n, counts) => n + counts.orphan_candidate.count + counts.post_0042_unregistered.count + counts.snapshot_provenance_unknown.count, 0);
   if (candidates) await raiseAlert(pool, { kind: 'storage_orphan_candidates', severity: 'warning', scope: 'private_blob', detail: { candidates, scanned: report.scanned } });
   return report;
 }
@@ -136,7 +151,9 @@ async function deleteLegacySnapshot(pool: Pool, blobs: PrivateBlobs, item: Item,
     // intent inserts and blocks new ones until the conditional delete finishes.
     await client.query('LOCK TABLE bb_prompt_blob_intents IN SHARE MODE');
     await client.query('LOCK TABLE bb_snapshot_refs IN SHARE MODE');
-    if (item.lastModified.getTime() > now.getTime() - graceHours * 3600000 || await classify(client, 'snapshot', item.key) !== 'orphan_candidate') {
+    const boundary = await intentBoundary(client, true);
+    if (snapshotProvenance(item, boundary) !== 'orphan_candidate' || !validTime(item.lastModified) ||
+        item.lastModified.getTime() > now.getTime() - graceHours * 3600000 || await classify(client, 'snapshot', item.key) !== 'orphan_candidate') {
       await client.query('ROLLBACK'); return false;
     }
     let removed: boolean;

@@ -38,12 +38,15 @@ test('PostgreSQL/Azurite inventory is read-only by default and deletes only old 
   const unknown = `users/${owner}/projects/${project}/unexpected/file`;
   const created = new Date();
   const now = new Date(created.getTime() + 48 * 3600000);
+  const intentBoundary = new Date(created.getTime() + 3600000);
   const put = async (name: string) => blobs.put(key(name), Buffer.from(name), 'text/plain');
   const register = async (name: string, version: number) => pool.query(`INSERT INTO bb_snapshot_refs
     (id,owner_user_id,project_id,snapshot_kind,version,object_key,content_sha256,redaction_version)
     VALUES($1,$2,$3,'user_prompt',$4,$5,$6,'scrub_v1')`, [randomUUID(),owner,project,version,key(name),'a'.repeat(64)]);
   try {
     await container.create();
+    // Model legacy objects as older than the actual application of 0042 in this cloned database.
+    await pool.query("UPDATE bb_schema_migrations SET applied_at=$1 WHERE filename='0042_m1_orphan_prompt_blobs.sql'", [intentBoundary]);
     await pool.query('INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,$3,$4)', [project,owner,'Synthetic inventory project','update']);
     for (const name of names) await put(name);
     await blobs.put(unknown,Buffer.from('unknown'),'text/plain');
@@ -58,8 +61,9 @@ test('PostgreSQL/Azurite inventory is read-only by default and deletes only old 
     const dry = await runStorageInventory(pool, dated, opts);
     assert.equal(dry.byPrefix['users/'].referenced.count,1);
     assert.equal(dry.byPrefix['users/'].intent_pending.count,1);
-    assert.equal(dry.byPrefix['users/'].orphan_candidate.count,4);
-    assert.equal(dry.byPrefix['users/'].orphan_candidate.bytes, ['c_orphan','d_young','e_race','f_cap'].reduce((n, s) => n + Buffer.byteLength(s), 0));
+    assert.equal(dry.byPrefix['users/'].orphan_candidate.count,3);
+    assert.equal(dry.byPrefix['users/'].orphan_candidate.bytes, ['c_orphan','e_race','f_cap'].reduce((n, s) => n + Buffer.byteLength(s), 0));
+    assert.equal(dry.byPrefix['users/'].post_0042_unregistered.count,1);
     assert.ok(dry.byPrefix['users/'].orphan_candidate.oldest);
     assert.equal(dry.byPrefix['users/'].unrecognized.count,1);
     assert.equal(dry.candidateKeyHashes.length,2);
@@ -87,6 +91,36 @@ test('PostgreSQL/Azurite inventory is read-only by default and deletes only old 
     const stale = await runStorageInventory(pool, changed, { ...opts, deleteEnabled: true });
     assert.equal(stale.deleted,0,'a changed ETag is never deleted');
     assert.equal(await blobs.exists(key('g_changed')),true);
+    await put('h_boundary_race');
+    const boundaryRaced = await runStorageInventory(pool, changed, { ...opts, deleteEnabled: true,
+      beforeDelete: async candidate => {
+        if (candidate === key('h_boundary_race')) await pool.query("UPDATE bb_schema_migrations SET applied_at=$1 WHERE filename='0042_m1_orphan_prompt_blobs.sql'", [new Date(created.getTime() - 3600000)]);
+      } });
+    assert.equal(boundaryRaced.deleted,0,'the 0042 boundary is rechecked in the deletion transaction');
+    assert.equal(await blobs.exists(key('h_boundary_race')),true);
+    await pool.query("UPDATE bb_schema_migrations SET applied_at=$1 WHERE filename='0042_m1_orphan_prompt_blobs.sql'", [intentBoundary]);
+    await register('h_boundary_race',3);
+    await register('g_changed',4);
+    await put('h_post');
+    await put('i_missing_time');
+    const guardedBlobs = { ...changed, listPage: async (prefix: string, cursor: string | undefined, size: number) => {
+      const page = await changed.listPage(prefix,cursor,size);
+      return { ...page, items: page.items.map(item => ({ ...item, lastModified: item.key === key('h_post')
+        ? new Date(intentBoundary.getTime() + 3600000) : item.key === key('i_missing_time') ? undefined : item.lastModified })) };
+    } };
+    const guarded = await runStorageInventory(pool, guardedBlobs, { ...opts, deleteEnabled: true });
+    assert.equal(guarded.deleted,0,'a post-0042 object older than the grace period is never deleted');
+    assert.equal(guarded.byPrefix['users/'].orphan_candidate.count,0);
+    assert.equal(guarded.byPrefix['users/'].post_0042_unregistered.count,2);
+    assert.equal(guarded.byPrefix['users/'].snapshot_provenance_unknown.count,1);
+    assert.equal(await blobs.exists(key('h_post')),true);
+    assert.equal(await blobs.exists(key('i_missing_time')),true);
+    await put('j_missing_boundary');
+    await pool.query("DELETE FROM bb_schema_migrations WHERE filename='0042_m1_orphan_prompt_blobs.sql'");
+    const noBoundary = await runStorageInventory(pool, guardedBlobs, { ...opts, deleteEnabled: true });
+    assert.equal(noBoundary.deleted,0,'missing 0042 application time fails closed');
+    assert.ok(noBoundary.byPrefix['users/'].snapshot_provenance_unknown.count >= 1);
+    assert.equal(await blobs.exists(key('j_missing_boundary')),true);
     await assert.rejects(pool.query('DELETE FROM bb_storage_inventory_deletions'), /immutable|append-only|reject/i);
   } finally { await pool.end(); await container.deleteIfExists(); }
 });
