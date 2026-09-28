@@ -166,7 +166,8 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
     ...codexConfigOverrides(c), ...c.disabled_features.flatMap(f => ['--disable', f])];
   if (o.ephemeral) args.push('--ephemeral');
   if (o.schemaFile) args.push('--output-schema', o.schemaFile);
-  if (o.resumeThreadId) args.push('resume', o.resumeThreadId);
+  // An ephemeral CODEX_HOME is per attempt and has no stored session to resume.
+  if (!o.ephemeral && o.resumeThreadId) args.push('resume', o.resumeThreadId);
   args.push('-');
   if (args.some(a => /danger-full-access|dangerously|workspace-write/.test(a))) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   return args;
@@ -389,7 +390,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if ((await readdir(cwd)).length) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
 
         await journal.recordIntent(intent); // durable before spawn
-        const raw = await runCodexProcess(c, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: threadId, signal: input.signal, onEvent: input.onEvent });
+        const raw = await runCodexProcess(c, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, signal: input.signal, onEvent: input.onEvent });
         if (raw.thread_id) threadId = raw.thread_id;
         const output = input.output;
         const cls = classifyCodexResult(raw, text => {
@@ -402,7 +403,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           catch { obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_RESULT_STORE_FAILED' }; }
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
-        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? threadId, started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
+        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });
