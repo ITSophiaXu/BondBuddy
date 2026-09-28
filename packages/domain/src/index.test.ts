@@ -201,4 +201,8 @@ test('content hash is deterministic and ignores object key insertion order',asyn
   const pack=await validProductionDraft();
   assert.equal(rulePackContentHash(pack),rulePackContentHash(clone(pack)));
   assert.equal(rulePackContentHash(pack),rulePackContentHash(reverseObjectKeys(pack) as RulePack));
+  const published=clone(pack);
+  published.validity.published_on='2026-09-28';
+  assert.equal(rulePackContentHash(pack),rulePackContentHash(published),
+    'the publication date is event metadata and does not drift the frozen rule content hash');
 });

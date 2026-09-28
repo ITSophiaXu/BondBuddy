@@ -39,6 +39,7 @@ import { issuerAnnualProfileReviewSchemas } from './issuer-annual-profile-review
 import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js'; export * from './rule-applicability-context.js';
 import { productionReviewManifestSchemas } from './production-review-manifest.js'; export * from './production-review-manifest.js';
 import { productionReviewAttestationSchemas } from './production-review-attestation.js'; export * from './production-review-attestation.js';
+import { productionRulePackReleaseSchemas } from './production-rule-pack-release.js'; export * from './production-rule-pack-release.js';
 export { MARKETS, OFFERINGS, DOCUMENT_PURPOSES, MARKET_OFFERINGS, MARKET_LABELS, OFFERING_LABELS } from './public-enums.js';
 import { MARKETS, OFFERINGS, DOCUMENT_PURPOSES, MARKET_OFFERINGS, MARKET_LABELS, OFFERING_LABELS } from './public-enums.js';
 import { reviewerParseEvidenceSchemas } from './reviewer-parse-evidence.js'; export * from './reviewer-parse-evidence.js';
@@ -148,6 +149,7 @@ export const schemas = {
   ...ruleApplicabilityContextSchemas, // #19 owner-visible needs_review drafts
   ...productionReviewManifestSchemas, // #19 content-only production review manifest; no attestation/release API
   ...productionReviewAttestationSchemas, // #19 reviewer attestation DTOs; writer/authorization are separate
+  ...productionRulePackReleaseSchemas, // #19 authenticated production release/withdrawal/rollback writes
   ...reviewerParseEvidenceSchemas, // #19 reviewer-only immutable parse evidence lookup
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),
@@ -394,6 +396,9 @@ export function openApiDocument() {
   } };
   paths['/api/v1/rule-pack-reviews/manifests/{manifest_id}/versions/{version}/attestations'] = { post: reviewMutation('Submit own industry or technical attestation', 'ProductionReviewAttestationSubmitRequest', 'ProductionReviewAttestationEvent', 'implemented; self-submitted; exact-scope-grant; append-only') };
   paths['/api/v1/rule-pack-reviews/manifests/{manifest_id}/versions/{version}/attestations/{attestation_event_id}/withdrawal'] = { post: reviewMutation('Withdraw own reviewer attestation', 'ProductionReviewWithdrawalCreateRequest', 'ProductionReviewAttestationWithdrawalEvent', 'implemented; own-event-only; exact-scope-grant; append-only') };
+  paths['/api/v1/rule-pack-releases'] = { post: reviewMutation('Publish an exactly attested frozen rule-pack manifest', 'ProductionRulePackReleaseCreateRequest', 'ProductionRulePackReleaseEvent', 'implemented; active-scoped-operator; two-active-distinct-approvals; frozen-snapshot-only; append-only') };
+  paths['/api/v1/rule-pack-releases/{pack_id}/withdrawals'] = { post: reviewMutation('Withdraw the current production rule-pack event', 'ProductionRulePackReleaseActionRequest', 'ProductionRulePackReleaseEvent', 'implemented; active-scoped-operator; current-event-only; append-only') };
+  paths['/api/v1/rule-pack-releases/{pack_id}/rollbacks'] = { post: reviewMutation('Restore an exact immutable earlier production event', 'ProductionRulePackReleaseActionRequest', 'ProductionRulePackReleaseEvent', 'implemented; active-scoped-operator; historical-event-only; append-only') };
   (paths['/api/v1/projects/{project_id}/facts/decisions'].post as { responses: Record<string, unknown> }).responses['200'] = {
     description: 'Identical idempotency-key replay of a previously appended immutable decision',
     content: { 'application/json': { schema: ref('FactDecisionResponse') } },
