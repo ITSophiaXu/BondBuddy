@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, validProductionReviewManifestContent, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProductionReviewManifest } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -14,6 +14,9 @@ data.cases.push(...updateExamples.cases);
 const targetPeriodEvidenceExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/target-period-evidence.json', import.meta.url)), 'utf8')) as { synthetic:boolean;cases:Example[] };
 assert.equal(targetPeriodEvidenceExamples.synthetic,true);
 data.cases.push(...targetPeriodEvidenceExamples.cases);
+const productionReviewManifestExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/production-review-manifest.json', import.meta.url)), 'utf8')) as { synthetic:boolean;cases:Example[] };
+assert.equal(productionReviewManifestExamples.synthetic,true);
+data.cases.push(...productionReviewManifestExamples.cases);
 const adminExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-logs.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(adminExamples.synthetic, true);
 data.cases.push(...adminExamples.cases);
@@ -130,9 +133,20 @@ for (const example of data.cases) {
   const validate = ajv.compile(schemas[example.schema]);
   const schemaValid = validate(example.value);
   const result=example.schema==='TargetPeriodEvidenceDecisionRequest'&&schemaValid
-    ?validTargetPeriodEvidenceDecision(example.value as unknown as TargetPeriodEvidenceDecisionRequest):schemaValid;
+    ?validTargetPeriodEvidenceDecision(example.value as unknown as TargetPeriodEvidenceDecisionRequest)
+    :example.schema==='ProductionReviewManifest'&&schemaValid
+      ?validProductionReviewManifestContent(example.value as unknown as ProductionReviewManifest):schemaValid;
   assert.equal(result, example.valid, `${example.name}: ${ajv.errorsText(validate.errors)}`);
 }
+const manifestBaseline = byName.get('production-review-manifest-content-only-valid-synthetic');
+assert.ok(manifestBaseline, 'synthetic production manifest baseline exists');
+const unsortedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+unsortedManifest.content.source_date_evidence.reverse();
+assert.equal(ajv.validate(schemas.ProductionReviewManifest, unsortedManifest), true, 'schema accepts source row order');
+assert.equal(validProductionReviewManifestContent(unsortedManifest), false, 'hash input rejects noncanonical source row order');
+const duplicatedManifest = structuredClone(manifestBaseline.value) as unknown as ProductionReviewManifest;
+duplicatedManifest.content.applicability_scope.industry_codes.push(duplicatedManifest.content.applicability_scope.industry_codes[0]!);
+assert.equal(validProductionReviewManifestContent(duplicatedManifest), false, 'hash input rejects duplicate set-like references');
 const value = (name: string) => {
   const example = byName.get(name);
   assert.ok(example, name);
