@@ -130,8 +130,16 @@ export function validGenerationIssuerBindingApproval(
       value.input_revision !== expectedInput.input_revision || value.input_hash !== expectedInput.input_hash) return false;
   if (value.review_events.length === 0 || value.review_events.some(event => event.authority !== 'issuer_identity_reviewer' ||
       event.binding_version !== value.version || event.binding_content_sha256 !== value.content_sha256)) return false;
-  const currentApproval = value.review_events[value.review_events.length - 1]!;
-  if (currentApproval.action !== 'approve') return false;
+  let reviewStatus: GenerationIssuerBindingResponse['status'] = 'pending';
+  const reviewIds = new Set<string>();
+  for (const event of value.review_events) {
+    if (reviewIds.has(event.review_id) || !GENERATION_ISSUER_BINDING_ACTIONS.includes(event.action)) return false;
+    reviewIds.add(event.review_id);
+    const nextStatus = nextGenerationIssuerBindingStatus(reviewStatus, event.action);
+    if (nextStatus === null) return false;
+    reviewStatus = nextStatus;
+  }
+  if (reviewStatus !== value.status || value.review_events[value.review_events.length - 1]!.action !== 'approve') return false;
   if (value.disputes.some(item => item.status === 'open' || item.resolution === null) ||
       value.disputes.some(item => item.source_record_ids.some(sourceId => !value.material_decisions.some(decision => decision.observations.some(observation => observation.source_record_id === sourceId))))) return false;
 

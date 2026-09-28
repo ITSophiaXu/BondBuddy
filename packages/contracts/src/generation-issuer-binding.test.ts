@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { Value } from '@sinclair/typebox/value';
 import {
+  generationIssuerBindingSchemas,
   nextGenerationIssuerBindingStatus,
   validGenerationIssuerBindingApproval,
   type GenerationIssuerBindingResponse,
@@ -121,6 +123,36 @@ test('withdrawal blocks reuse and cannot be reversed on the same binding version
     binding_version: requestedEvidence.version, binding_content_sha256: requestedEvidence.content_sha256, reviewed_at: '2026-09-28T03:00:00Z',
   });
   assert.equal(approves(requestedEvidence), false);
+});
+
+test('approval checks the whole same-version review history, not only its last event', () => {
+  const withdrawThenApprove = clone();
+  withdrawThenApprove.review_events.push({
+    ...structuredClone(base.review_events[0]!), review_id: 'withdraw-synthetic', action: 'withdraw',
+    reviewed_at: '2026-09-28T03:00:00Z',
+  });
+  withdrawThenApprove.review_events.push({
+    ...structuredClone(base.review_events[0]!), review_id: 'reapprove-synthetic',
+    reviewed_at: '2026-09-28T04:00:00Z',
+  });
+  assert.equal(Value.Check(generationIssuerBindingSchemas.GenerationIssuerBindingResponse, withdrawThenApprove), true);
+  assert.equal(approves(withdrawThenApprove), false, 'withdrawn is terminal for this binding version');
+
+  const duplicateApproval = clone();
+  duplicateApproval.review_events.push({
+    ...structuredClone(base.review_events[0]!), review_id: 'duplicate-approve-synthetic',
+    reviewed_at: '2026-09-28T03:00:00Z',
+  });
+  assert.equal(Value.Check(generationIssuerBindingSchemas.GenerationIssuerBindingResponse, duplicateApproval), true);
+  assert.equal(approves(duplicateApproval), false);
+
+  const requestedThenApproved = clone();
+  requestedThenApproved.review_events = [
+    { ...structuredClone(base.review_events[0]!), review_id: 'request-more-synthetic', action: 'request_more_evidence', reviewed_at: '2026-09-28T01:00:00Z' },
+    structuredClone(base.review_events[0]!),
+  ];
+  assert.equal(Value.Check(generationIssuerBindingSchemas.GenerationIssuerBindingResponse, requestedThenApproved), true);
+  assert.equal(approves(requestedThenApproved), true, 'pending may request evidence before approval');
 });
 
 test('the authoritative selected input manifest detects omitted materials even if the snapshot omits them too', () => {
