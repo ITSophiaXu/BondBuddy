@@ -638,9 +638,9 @@ export function createServer(settings: Settings = {}) {
       });
     }catch(error){
       if(error instanceof Problem&&error.uploadReason){
-        const evidence={event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,project_id:id,upload_id:uploadId};
+        const evidence={event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,...(error.uploadDetail?{detail:error.uploadDetail}:{}),project_id:id,upload_id:uploadId};
         process.stderr.write(`${JSON.stringify(evidence)}\n`);
-        await rejectOperation(db(),{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload',status:'rejected',errorCode:error.code,errorId:request.id,errorReason:error.uploadReason});
+        await rejectOperation(db(),{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload',status:'rejected',errorCode:error.code,errorId:request.id,errorReason:error.uploadReason,errorDetail:error.uploadDetail});
       }
       throw error;
     }finally{
@@ -707,9 +707,9 @@ export function createServer(settings: Settings = {}) {
       return accepted(inserted.rows[0]);
     }); } catch(error) {
       if(error instanceof Problem){
-        if(error.uploadReason)process.stderr.write(`${JSON.stringify({event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,project_id:id,upload_id:uploadId})}\n`);
+        if(error.uploadReason)process.stderr.write(`${JSON.stringify({event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,...(error.uploadDetail?{detail:error.uploadDetail}:{}),project_id:id,upload_id:uploadId})}\n`);
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
-        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'material_complete',status:'rejected',errorCode:error.code,errorId:error.uploadReason?request.id:undefined,errorReason:error.uploadReason});
+        await rejectOperation(db(),{owner:user,projectId:owned.rowCount?id:null,requestId:request.id,traceId,kind:'material_complete',status:'rejected',errorCode:error.code,errorId:error.uploadReason?request.id:undefined,errorReason:error.uploadReason,errorDetail:error.uploadDetail});
       }
       throw error;
     }
