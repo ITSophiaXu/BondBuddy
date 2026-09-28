@@ -7,7 +7,7 @@ import {
   type RulePack,
 } from '@bondbuddy/domain';
 import type { ChapterTemplate, CoverageManifest } from '@bondbuddy/domain';
-import type { Market, Offering } from '@bondbuddy/contracts';
+import { PRODUCTION_SAMPLE_POLARITIES, validProductionReviewManifestContent, type Market, type Offering } from '@bondbuddy/contracts';
 
 export type ProductionRulePackRequest = {
   readonly market: Market;
@@ -119,6 +119,19 @@ function snapshotHash(value: unknown): string {
   return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
 }
 
+/** V1 review hash uses the registry's existing canonical JSON algorithm. The
+ * domain/version labels live inside content; manifest identity, reviewer
+ * decisions and release events must not be part of this hash. */
+export function productionReviewContentHash(manifest: unknown): string {
+  if (!validProductionReviewManifestContent(manifest)) throw new Error('INVALID_PRODUCTION_REVIEW_MANIFEST');
+  return snapshotHash(manifest.content);
+}
+
+export function productionReviewContentHashMatches(manifest: unknown): boolean {
+  return validProductionReviewManifestContent(manifest)
+    && snapshotHash(manifest.content) === manifest.content_sha256;
+}
+
 function dateText(value: string | Date | null): string | null {
   if (value === null) return null;
   if (value instanceof Date) {
@@ -148,7 +161,7 @@ function isPublishableProductionPack(pack: RulePack): boolean {
   if (pack.rules.some((rule) => !rule.enabled || rule.enforcement === 'research_only')) return false;
   if (pack.sample_suite.cases.some((sample) => sample.result !== 'passed'
     || Date.parse(sample.reviewed_at) > Date.parse(releaseAt))) return false;
-  if (!(['positive', 'negative', 'boundary'] as const).every((polarity) =>
+  if (!PRODUCTION_SAMPLE_POLARITIES.every((polarity) =>
     pack.sample_suite.cases.some((sample) => sample.polarity === polarity))) return false;
   if (pack.reviews.some((review) => Date.parse(review.reviewed_at) > Date.parse(releaseAt))) return false;
   return true;

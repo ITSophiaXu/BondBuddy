@@ -37,15 +37,13 @@ import { creditFacilitySupplementSchemas } from './credit-facility-supplements.j
 import { issuerIdentityReviewSchemas } from './issuer-identity-review.js'; export * from './issuer-identity-review.js';
 import { issuerAnnualProfileReviewSchemas } from './issuer-annual-profile-review.js'; export * from './issuer-annual-profile-review.js';
 import { ruleApplicabilityContextSchemas } from './rule-applicability-context.js'; export * from './rule-applicability-context.js';
+import { productionReviewManifestSchemas } from './production-review-manifest.js'; export * from './production-review-manifest.js';
+import { productionReviewAttestationSchemas } from './production-review-attestation.js'; export * from './production-review-attestation.js';
+export { MARKETS, OFFERINGS, DOCUMENT_PURPOSES, MARKET_OFFERINGS, MARKET_LABELS, OFFERING_LABELS } from './public-enums.js';
+import { MARKETS, OFFERINGS, DOCUMENT_PURPOSES, MARKET_OFFERINGS, MARKET_LABELS, OFFERING_LABELS } from './public-enums.js';
 import { reviewerParseEvidenceSchemas } from './reviewer-parse-evidence.js'; export * from './reviewer-parse-evidence.js';
 
 // Public values live here. Consumers import these constants and inferred types.
-export const MARKETS = ['sse', 'szse', 'nafmii'] as const;
-export const OFFERINGS = ['private', 'public', 'public_all', 'ppn', 'mtn', 'cp', 'scp', 'dfi'] as const;
-export const DOCUMENT_PURPOSES = ['registration', 'issuance'] as const;
-export const MARKET_OFFERINGS = { sse: ['private', 'public', 'public_all'], szse: ['private', 'public', 'public_all'], nafmii: ['ppn', 'mtn', 'cp', 'scp', 'dfi'] } as const;
-export const MARKET_LABELS = { sse: '上交所', szse: '深交所', nafmii: '交易商协会' } as const;
-export const OFFERING_LABELS = { private: '普通私募公司债', public: '小公募', public_all: '大公募', ppn: 'PPN · 定向债务融资工具', mtn: 'MTN · 中期票据', cp: 'CP · 短期融资券', scp: 'SCP · 超短期融资券', dfi: 'DFI · 储架发行' } as const;
 // M1 update upload roles are the current project-fields.js partitions, excluding later review/generation roles.
 export const M1_UPLOAD_LIMITS = { fileBytes: 100 * 1024 * 1024, projectBytes: 500 * 1024 * 1024, projectFiles: 60 } as const;
 export const M1_UPLOAD_MIME_TYPES = [
@@ -148,6 +146,8 @@ export const schemas = {
   ...factSchemas, // #15 fact candidate review and append-only decisions
   ...creditFacilitySupplementSchemas, // #15 owner/project-scoped credit supplement
   ...ruleApplicabilityContextSchemas, // #19 owner-visible needs_review drafts
+  ...productionReviewManifestSchemas, // #19 content-only production review manifest; no attestation/release API
+  ...productionReviewAttestationSchemas, // #19 reviewer attestation DTOs; writer/authorization are separate
   ...reviewerParseEvidenceSchemas, // #19 reviewer-only immutable parse evidence lookup
   OcrReview: OcrReviewSchema, OcrCorrectionRequest: OcrCorrectionRequestSchema, OcrCorrection: OcrCorrectionSchema,
   Error: obj({ code: errorCode, message: Type.String(), retryable: Type.Boolean(), field_errors: Type.Array(obj({ field: Type.String(), code: Type.String(), message: Type.String() })), correlation_id: id }),

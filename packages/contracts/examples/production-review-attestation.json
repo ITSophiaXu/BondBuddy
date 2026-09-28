@@ -1,0 +1,147 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "production-attestation-industry-self-submission-valid-synthetic",
+      "schema": "ProductionIndustryAttestationRequest",
+      "valid": true,
+      "value": {
+        "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
+        "content_sha256": "27c12319658d89416d3d25dbd41b3a902b108453eb5c0b0080e77cbe7acf4baa",
+        "decision": "approve", "reason": "Synthetic review is complete.",
+        "evidence": {
+          "source_effectivity_applicability": [
+            { "source_evidence_id": "a-source-synthetic", "source_check_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+              "conclusion": "applicable", "reason": "Synthetic source review.",
+              "evidence_refs": [{ "evidence_id": "a-source-synthetic", "evidence_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }] },
+            { "source_evidence_id": "z-method-synthetic", "source_check_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+              "conclusion": "applicable", "reason": "Synthetic method review.",
+              "evidence_refs": [{ "evidence_id": "z-method-synthetic", "evidence_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }] }
+          ],
+          "chapter_boundaries": [{
+            "chapter_id": "chapter-01", "boundary": "included", "reason": "Synthetic chapter review.",
+            "evidence_refs": [{ "evidence_id": "chapter-map-synthetic-01", "evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" }]
+          }],
+          "exceptions_and_uncovered": [{
+            "item_code": "special-products", "item_kind": "uncovered", "disposition": "out_of_scope",
+            "reason": "Synthetic bounded coverage decision.",
+            "evidence_refs": [{ "evidence_id": "a-source-synthetic", "evidence_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }]
+          }],
+          "sample_conclusions": [{
+            "sample_case_id": "sample-case-boundary-synthetic", "sample_evidence_id": "sample-result-boundary-synthetic",
+            "conclusion": "approve", "reason": "Synthetic expected and reviewed outcomes agree.",
+            "evidence_refs": [{ "evidence_id": "sample-result-boundary-synthetic", "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222" }]
+          }, {
+            "sample_case_id": "sample-case-negative-synthetic", "sample_evidence_id": "sample-result-negative-synthetic",
+            "conclusion": "approve", "reason": "Synthetic negative case outcome agrees.",
+            "evidence_refs": [{ "evidence_id": "sample-result-negative-synthetic", "evidence_sha256": "2323232323232323232323232323232323232323232323232323232323232323" }]
+          }, {
+            "sample_case_id": "sample-case-positive-synthetic", "sample_evidence_id": "sample-result-positive-synthetic",
+            "conclusion": "approve", "reason": "Synthetic positive case outcome agrees.",
+            "evidence_refs": [{ "evidence_id": "sample-result-positive-synthetic", "evidence_sha256": "2424242424242424242424242424242424242424242424242424242424242424" }]
+          }]
+        }
+      }
+    },
+    {
+      "name": "production-attestation-technical-self-submission-valid-synthetic",
+      "schema": "ProductionTechnicalAttestationRequest",
+      "valid": true,
+      "value": {
+        "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
+        "content_sha256": "27c12319658d89416d3d25dbd41b3a902b108453eb5c0b0080e77cbe7acf4baa",
+        "decision": "request_more_evidence", "reason": "Synthetic test evidence has one open item.",
+        "evidence": {
+          "checker_version_or_commit": "checker-synthetic-v4",
+          "converter_version_or_commit": "converter-synthetic-commit-01",
+          "test_evidence": [{ "evidence_id": "test-run-synthetic-01", "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
+          "template_coverage_consistency": {
+            "chapter_template_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "coverage_manifest_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "result": "needs_evidence",
+            "evidence_refs": [{ "evidence_id": "consistency-check-synthetic-01", "evidence_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "production-attestation-request-rejects-client-reviewer-identity",
+      "schema": "ProductionReviewAttestationRequest",
+      "valid": false,
+      "value": {
+        "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reviewer_role": "technical", "decision": "approve", "reason": "Synthetic attempt to spoof identity and role.",
+        "reviewer_user_id": "spoofed-reviewer", "grant_id": "spoofed-grant", "reviewed_at": "2026-09-28T00:00:00Z",
+        "evidence": {
+          "checker_version_or_commit": "checker-synthetic-v4", "converter_version_or_commit": "converter-synthetic-v1",
+          "test_evidence": [{ "evidence_id": "test-synthetic", "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
+          "template_coverage_consistency": {
+            "chapter_template_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "coverage_manifest_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "result": "consistent", "evidence_refs": [{ "evidence_id": "check-synthetic", "evidence_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "production-attestation-technical-request-rejects-industry-evidence-shape",
+      "schema": "ProductionTechnicalAttestationRequest",
+      "valid": false,
+      "value": {
+        "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision": "approve", "reason": "Synthetic role mismatch.",
+        "evidence": {
+          "source_effectivity_applicability": [], "chapter_boundaries": [],
+          "exceptions_and_uncovered": [], "sample_conclusions": []
+        }
+      }
+    },
+    {
+      "name": "production-attestation-event-valid-server-derived-fields-synthetic",
+      "schema": "ProductionReviewAttestationEvent",
+      "valid": true,
+      "value": {
+        "attestation_event_id": "attestation-event-synthetic-01", "schema_version": 1,
+        "manifest_id": "manifest-synthetic-01", "manifest_version": 1,
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reviewer_role": "technical", "reviewer_user_id": "reviewer-synthetic-01", "grant_id": "grant-synthetic-01",
+        "decision": "reject", "reason": "Synthetic checker result does not match declared coverage.",
+        "evidence": {
+          "checker_version_or_commit": "checker-synthetic-v4", "converter_version_or_commit": "converter-synthetic-v1",
+          "test_evidence": [{ "evidence_id": "test-synthetic", "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
+          "template_coverage_consistency": {
+            "chapter_template_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "coverage_manifest_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "result": "inconsistent", "evidence_refs": [{ "evidence_id": "check-synthetic", "evidence_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }]
+          }
+        },
+        "reviewed_at": "2026-09-28T00:00:00Z"
+      }
+    },
+    {
+      "name": "production-attestation-withdrawal-request-valid-synthetic",
+      "schema": "ProductionReviewAttestationWithdrawalRequest",
+      "valid": true,
+      "value": { "attestation_event_id": "attestation-event-synthetic-01", "reason": "Synthetic reviewer found a later source correction." }
+    },
+    {
+      "name": "production-attestation-withdrawal-event-valid-synthetic",
+      "schema": "ProductionReviewAttestationWithdrawalEvent",
+      "valid": true,
+      "value": {
+        "withdrawal_event_id": "withdrawal-event-synthetic-01", "schema_version": 1,
+        "attestation_event_id": "attestation-event-synthetic-01", "withdrawn_by_user_id": "reviewer-synthetic-01",
+        "grant_id": "grant-synthetic-01", "reason": "Synthetic reviewer found a later source correction.",
+        "withdrawn_at": "2026-09-28T00:05:00Z"
+      }
+    },
+    {
+      "name": "production-attestation-withdrawal-request-rejects-actor-spoofing",
+      "schema": "ProductionReviewAttestationWithdrawalRequest",
+      "valid": false,
+      "value": { "attestation_event_id": "attestation-event-synthetic-01", "reason": "Synthetic spoof attempt.", "withdrawn_by_user_id": "other-user" }
+    }
+  ]
+}
