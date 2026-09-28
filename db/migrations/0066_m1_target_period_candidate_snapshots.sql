@@ -1,4 +1,4 @@
--- #76: immutable, owner/project-scoped pre-lock candidate envelopes.
+-- #76: immutable, owner/project-scoped pre-lock candidate envelopes (migration 0066).
 -- This is evidence proposal storage only. It does not confirm periods or derive N.
 CREATE FUNCTION bb_target_period_candidate_content_pending(value jsonb) RETURNS boolean LANGUAGE SQL IMMUTABLE AS $$
   SELECT COALESCE(jsonb_typeof(value->'candidates') = 'array', false) AND NOT EXISTS (
