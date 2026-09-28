@@ -41,10 +41,12 @@ import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from '
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
+import { prepareUserSubmission, verifiedMaterialVersions } from './user-submissions.js';
+import { scrubSecrets } from './log-ops.js';
 import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 
 export type Principal = { userId: string; csrfVerified: boolean };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -764,9 +766,9 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);
-    const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string;test_grant_id?:string}>(request);
+    const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string;test_grant_id?:string;user_prompt?:string}>(request);
     const traceId=uid();
-    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
+    const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.user_prompt?{user_prompt_sha256:digest(b.user_prompt)}:{}),...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
     const storedExecutionKey=executionKeyStorage(b.execution_request_id);
     const wideRevision=!isPgInputRevision(b.input_revision);
     const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:b.test_grant_id?'non_production_test' as const:'production' as const,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
@@ -799,6 +801,8 @@ export function createServer(settings: Settings = {}) {
       if('run' in response)return reply.code(202).send(response.run);
       throw new Problem(response.httpStatus,response.errorCode,'Execution request was rejected');
     }
+    if(b.user_prompt)await project(db(),user,b.project_id);
+    const prepared=b.user_prompt ? await (await prepareUserSubmission(db(),blob(),b.user_prompt)).write(user,b.project_id) : undefined;
     let result;
     try {result=await transaction(db(),async client=>{
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
@@ -819,6 +823,7 @@ export function createServer(settings: Settings = {}) {
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',b.test_grant_id?'non_production_test':'production',b.test_grant_id??null]);
+      if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
         await enqueue(client,q.rows[0],runRuntime?RUN_PIPELINE_SUBTYPE:'default');
@@ -853,7 +858,7 @@ export function createServer(settings: Settings = {}) {
         throw new Problem(disposition.httpStatus,disposition.errorCode,!disposition.replay&&disposition.errorCode===error.code?error.message:'Execution request was rejected');
       }
       throw error;
-    }
+    } finally { await prepared?.discard().catch(() => undefined); /* durable intent remains for the orphan sweep */ }
     if('rejection' in result)throw new Problem(result.rejection.httpStatus,result.rejection.errorCode,'Execution request was rejected');
     return reply.code(202).send(result);
   });
@@ -1106,6 +1111,31 @@ export function createServer(settings: Settings = {}) {
       }
       throw error;
     }
+  });
+  app.post('/api/v1/internal/projects/:project_id/submissions',{schema:{body:schemas.UserSubmissionRequest,response:{201:schemas.UserSubmissionResponse}}},async(request,reply)=>{
+    const user=await owner(request);
+    if(!settings.enableUserSubmissionSeam)throw unavailable();
+    const projectId=param(request,'project_id');
+    await project(db(),user,projectId);
+    const b=body<{message_id:string;submission_request_id:string;body:string;run_id?:string;input_revision?:number;input_hash?:string;material_versions:{material_id:string;material_version:number}[]}>(request);
+    if((b.input_revision===undefined)!==(b.input_hash===undefined))throw new Problem(422,'VALIDATION_FAILED','Input revision and hash must be supplied together');
+    const prepared=await(await prepareUserSubmission(db(),blob(),b.body)).write(user,projectId);
+    try {
+      const result=await transaction(db(),async client=>{
+        await project(client,user,projectId);
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${projectId}:message:${b.submission_request_id}`]);
+        const old=(await client.query('SELECT * FROM bb_user_submission_versions WHERE owner_user_id=$1 AND project_id=$2 AND submission_request_id=$3 FOR UPDATE',[user,projectId,b.submission_request_id])).rows[0];
+        if(old){
+          if(old.message_id!==b.message_id||old.content_sha256.trim()!==digest(scrubSecrets(b.body))||old.run_id!==(b.run_id??null)||old.input_revision!==(b.input_revision??null)||old.input_hash?.trim()!==(b.input_hash??undefined)||canonical(old.material_versions)!==canonical(b.material_versions))throw conflict('IDEMPOTENCY_CONFLICT','Submission request ID is bound to another submission');
+          return {submission_id:old.id,snapshot_id:old.snapshot_id,version:old.version,message_version:old.message_version,content_sha256:old.content_sha256.trim(),created_at:date(old.created_at)};
+        }
+        if(b.run_id){const linked=await run(client,user,b.run_id);if(linked.project_id!==projectId)throw missing();}
+        await verifiedMaterialVersions(client,user,projectId,b.material_versions);
+        const saved=await prepared.register(client,{kind:'project_message',messageId:b.message_id,submissionRequestId:b.submission_request_id,runId:b.run_id,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:b.material_versions});
+        return {submission_id:saved.submissionId,snapshot_id:saved.snapshotId,version:saved.version,message_version:saved.messageVersion,content_sha256:saved.contentSha256,created_at:date(saved.createdAt)};
+      });
+      return reply.code(201).send(result);
+    } finally {await prepared.discard().catch(() => undefined); /* durable intent remains for the orphan sweep */}
   });
   app.post('/api/v1/conversations/:conversation_id/messages',async request=>{await owner(request);throw unavailable();});
   return app;
