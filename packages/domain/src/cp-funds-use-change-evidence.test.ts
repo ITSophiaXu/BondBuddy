@@ -99,6 +99,34 @@ test('a scheduled disclosure date and a stated effective date are not completed 
   assert.ok(result.reasons.includes('actual_use_change_event_not_proven'));
 });
 
+test('a board-meeting date cannot be borrowed as the later actual disclosure date', () => {
+  const result = checkCpFundsUseChangeEvidence(input({
+    disclosureDate: evidenced('2025-04-01', '公司于2025-04-01召开董事会，已于2025-04-03对外披露募集资金用途变更。'),
+  }));
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(result.reasons.includes('actual_disclosure_event_not_proven'));
+});
+
+test('explicit non-disclosure and a date paired with another event never prove actual disclosure', () => {
+  for (const quote of [
+    '公司已确认于2025-04-01未披露募集资金用途变更。',
+    '公司已于2025-04-01召开董事会并披露募集资金用途变更。',
+    '公司已于2025-04-01披露年度报告，募集资金用途变更另行公告。',
+  ]) {
+    const result = checkCpFundsUseChangeEvidence(input({ disclosureDate: evidenced('2025-04-01', quote) }));
+    assert.equal(result.decision, 'needs_review', quote);
+    assert.ok(result.reasons.includes('actual_disclosure_event_not_proven'), quote);
+  }
+});
+
+test('multiple dates in a citation remain ambiguous even if one mentions the completed event', () => {
+  const result = checkCpFundsUseChangeEvidence(input({
+    disclosureDate: evidenced('2025-04-01', '公司已于2025-04-01对外披露募集资金用途变更，2025-04-02召开债券持有人会议。'),
+  }));
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(result.reasons.includes('actual_disclosure_event_not_proven'));
+});
+
 test('future event dates stay in review even when the quote uses completed-event wording', () => {
   const result = checkCpFundsUseChangeEvidence(input({
     checkedOn: '2025-03-31',

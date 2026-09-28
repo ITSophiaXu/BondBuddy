@@ -40,6 +40,7 @@ export type CpFundsUseChangeEvidenceResult = {
 };
 
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const QUOTE_DATE_PATTERN = /(?<!\d)(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})(?:日)?(?!\d)/g;
 
 function isCalendarDate(value: string): boolean {
   const match = DATE_PATTERN.exec(value);
@@ -75,21 +76,29 @@ function quoteContainsDate(quote: string, value: string): boolean {
   const target = DATE_PATTERN.exec(value);
   if (!target) return false;
   const [year, month, day] = target.slice(1).map(Number);
-  const dateMentions = quote.matchAll(/(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})(?:日)?/g);
+  const dateMentions = quote.matchAll(QUOTE_DATE_PATTERN);
   for (const mention of dateMentions) {
     if (Number(mention[1]) === year && Number(mention[2]) === month && Number(mention[3]) === day) return true;
   }
   return false;
 }
 
-function quoteDescribesCompletedEvent(quote: string, event: 'disclosure' | 'use_change'): boolean {
-  // Modal/prospective language means the quote may describe a plan, not an
-  // event that has occurred. Ambiguous wording intentionally fails closed.
-  if (/(?:拟|计划|预计|将于|将要|尚未|待披露|待实施|待生效|拟变更|计划变更)/.test(quote)) return false;
+function quoteDescribesCompletedEvent(quote: string, value: string, event: 'disclosure' | 'use_change'): boolean {
+  // This is deliberately a narrow evidence-shape check, not Chinese-language
+  // event extraction. A date shared with a board meeting or another event must
+  // not be borrowed to prove disclosure or actual use of proceeds.
+  const mentions = [...quote.matchAll(QUOTE_DATE_PATTERN)];
+  if (mentions.length !== 1 || !quoteContainsDate(mentions[0]![0], value)) return false;
+  const match = mentions[0]!;
+  const start = Math.max(0, quote.slice(0, match.index).search(/[^，,。；;]*$/));
+  const after = quote.slice(match.index + match[0].length).search(/[，,。；;]/);
+  const end = after < 0 ? quote.length : match.index + match[0].length + after;
+  const clause = quote.slice(start, end).replace(match[0], '<DATE>');
+  if (/(?:拟|计划|预计|将于|将要|尚未|未披露|未公告|未发布|未执行|未实施|待披露|待实施|待生效|拟变更|计划变更)/.test(quote)) return false;
   if (event === 'disclosure') {
-    return /(?:已|已经).{0,40}(?:对外)?(?:公开)?(?:披露|公告|发布)/.test(quote);
+    return /(?:已|已经)于<DATE>(?:向市场|对外|公开)?(?:披露|公告|发布)(?:了)?(?:募集资金用途变更|变更后募集资金用途)/.test(clause);
   }
-  return /用途.{0,40}(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效)|(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效).{0,40}用途/.test(quote);
+  return /(?:变更后的)?募集资金用途自<DATE>起?(?:已开始使用|已使用|已开始实施|已实施|已开始执行|已执行|已生效)/.test(clause);
 }
 
 function citationsBindActualEvent(
@@ -99,7 +108,7 @@ function citationsBindActualEvent(
   return field.citations.length > 0 && field.citations.every(citation =>
     citationIsComplete(citation) &&
     quoteContainsDate(citation.quote, field.value) &&
-    quoteDescribesCompletedEvent(citation.quote, event),
+    quoteDescribesCompletedEvent(citation.quote, field.value, event),
   );
 }
 
