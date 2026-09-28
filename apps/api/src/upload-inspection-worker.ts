@@ -7,10 +7,10 @@ import { fileTypeFromBuffer } from 'file-type';
 import { decode as decodeJpeg } from 'jpeg-js';
 import { SaxesParser } from 'saxes';
 import { M1_UPLOAD_MIME_TYPES, type UploadMediaType } from '@bondbuddy/contracts';
-import type { UploadRejectionReason, UploadSafetyCode, UploadWorkerReply } from './upload-safety.js';
+import type { UploadRejectionReason, UploadSafetyCode, UploadStructureDetail, UploadWorkerReply } from './upload-safety.js';
 
 type ContentSafetyCode = Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>;
-type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string; reason: UploadRejectionReason };
+type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string; reason: UploadRejectionReason; detail?: UploadStructureDetail };
 type InspectionInput = { bytes: ArrayBuffer; mediaType: string } | { path: string; byteSize: number; mediaType: string };
 type PdfPage = {
   getAnnotations(options: { intent: string }): Promise<Array<Record<string, unknown>>>;
@@ -75,17 +75,17 @@ const UNSAFE_OFFICE_MEDIA_TYPES = new Set([
 ]);
 
 class MaterialInspectionError extends Error {
-  constructor(public readonly status: 415 | 422, public readonly code: ContentSafetyCode, message: string, public readonly reason: UploadRejectionReason) {
+  constructor(public readonly status: 415 | 422, public readonly code: ContentSafetyCode, message: string, public readonly reason: UploadRejectionReason, public readonly detail?: UploadStructureDetail) {
     super(message);
   }
 }
 
-function reject(status: 415 | 422, code: ContentSafetyCode, message: string, reason: UploadRejectionReason): never {
-  throw new MaterialInspectionError(status, code, message, reason);
+function reject(status: 415 | 422, code: ContentSafetyCode, message: string, reason: UploadRejectionReason, detail?: UploadStructureDetail): never {
+  throw new MaterialInspectionError(status, code, message, reason, detail);
 }
 
 const mismatch = () => reject(422, 'MATERIAL_CONTENT_MISMATCH', 'Declared media type does not match content', 'content_mismatch');
-const unreadable = () => reject(422, 'MATERIAL_UNREADABLE', 'Material is corrupt or structurally unreadable', 'structure_invalid');
+const unreadable = (detail: UploadStructureDetail) => reject(422, 'MATERIAL_UNREADABLE', 'Material is corrupt or structurally unreadable', 'structure_invalid', detail);
 const unsupported = (message = 'Material contains unsupported or unsafe content', reason: UploadRejectionReason = 'unsupported_content') => reject(415, 'MATERIAL_FORMAT_UNSUPPORTED', message, reason);
 const encrypted = () => reject(422, 'MATERIAL_ENCRYPTED', 'Encrypted or password-protected material is not supported', 'encrypted_content');
 
@@ -97,7 +97,7 @@ function utf8(bytes: Buffer): string {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    return unreadable();
+    return unreadable('text_encoding_invalid');
   }
 }
 
@@ -257,7 +257,7 @@ function csvInspector(): ChunkInspector {
       } else if (value === 0x0a || value === 0x0d) {
         endLine(value);
         state = 'start';
-      } else unreadable();
+      } else unreadable('csv_quote_invalid');
       return;
     }
 
@@ -278,7 +278,7 @@ function csvInspector(): ChunkInspector {
     } else if (value === 0x0a || value === 0x0d) {
       endLine(value);
       state = 'start';
-    } else if (value === 0x22) unreadable();
+    } else if (value === 0x22) unreadable('csv_quote_invalid');
     else append(value);
   };
 
@@ -308,7 +308,7 @@ function csvInspector(): ChunkInspector {
         quoteInQuoted = false;
         state = 'after-quote';
       }
-      if (state === 'quoted') unreadable();
+      if (state === 'quoted') unreadable('csv_quote_invalid');
       if (state !== 'start' || prefix.length > 0 || seen === 0 || last === 0x2c) {
         finishField();
         finishRow();
@@ -377,27 +377,48 @@ function decodeZipName(rawName: Buffer, flags: number): string {
     try {
       return new TextDecoder('utf-8', { fatal: true }).decode(rawName);
     } catch {
-      return unreadable();
+      return unreadable('zip_name_encoding_invalid');
     }
   }
   if (rawName.some(value => value > 0x7f)) return unsupported('Office part names must use an unambiguous UTF-8 encoding');
   return rawName.toString('ascii');
 }
 
+/** OPC part names are URI paths. Compare their decoded form while retaining ZIP header bytes for consistency checks. */
+function canonicalPartName(name: string, override = false): string {
+  if (override && !name.startsWith('/')) unreadable('part_name_invalid');
+  const path = override ? name.slice(1) : name;
+  // Encoded separators and URI delimiters can give ZIP readers and OPC consumers different paths.
+  if (/%(?:2f|5c|3a|3f|23|00|0[0-9a-f]|1[0-9a-f]|7f)/i.test(path)) unsupported('Office container contains an ambiguous part name');
+  let decoded: string;
+  try { decoded = decodeURIComponent(path); }
+  catch { return unreadable('part_name_invalid'); }
+  if (/%[0-9a-f]{2}/i.test(decoded)) unsupported('Office container contains an ambiguous part name');
+  if (decoded.normalize('NFC') !== decoded || decoded.startsWith('/') || /[:?#\\\x00-\x1f\x7f]/.test(decoded)) {
+    unsupported('Office container contains an ambiguous part name');
+  }
+  const directory = !override && decoded.endsWith('/');
+  const segments = (directory ? decoded.slice(0, -1) : decoded).split('/');
+  if (segments.length > MAX_ARCHIVE_PATH_DEPTH || segments.some(part => !part || part === '.' || part === '..')) {
+    unsupported('Office container contains an unsafe part path');
+  }
+  return decoded;
+}
+
 function validateZipExtra(bytes: Buffer): void {
   let offset = 0;
   const end = bytes.length;
   while (offset < end) {
-    if (offset + 4 > end) unreadable();
+    if (offset + 4 > end) unreadable('zip_extra_invalid');
     const id = bytes.readUInt16LE(offset);
     const size = bytes.readUInt16LE(offset + 2);
     offset += 4;
-    if (offset + size > end) unreadable();
+    if (offset + size > end) unreadable('zip_extra_invalid');
     if (id === 0x0001) unsupported('ZIP64 Office containers exceed the bounded inspection profile');
     if (id === 0x7075 || id === 0x6375) unsupported('Unicode path override fields are not accepted in Office containers');
     offset += size;
   }
-  if (offset !== end) unreadable();
+  if (offset !== end) unreadable('zip_extra_invalid');
 }
 
 // Random access to an Office container. The spooled file is read through the ZIP central
@@ -410,7 +431,7 @@ function bufferSource(bytes: Buffer): ZipSource {
   return {
     size: bytes.length,
     read(offset, length) {
-      if (offset < 0 || length < 0 || offset + length > bytes.length) unreadable();
+      if (offset < 0 || length < 0 || offset + length > bytes.length) unreadable('zip_read_out_of_bounds');
       return bytes.subarray(offset, offset + length);
     },
     close() { /* nothing to release */ }
@@ -422,12 +443,12 @@ function fileSource(path: string, byteSize: number): ZipSource {
   return {
     size: byteSize,
     read(offset, length) {
-      if (offset < 0 || length < 0 || offset + length > byteSize) unreadable();
+      if (offset < 0 || length < 0 || offset + length > byteSize) unreadable('zip_read_out_of_bounds');
       const buffer = Buffer.allocUnsafe(length);
       let done = 0;
       while (done < length) {
         const count = readSync(fd, buffer, done, length - done, offset + done);
-        if (count === 0) unreadable();
+        if (count === 0) unreadable('zip_read_incomplete');
         done += count;
       }
       return buffer;
@@ -438,7 +459,7 @@ function fileSource(path: string, byteSize: number): ZipSource {
 
 function parseZip(source: ZipSource): ZipEntry[] {
   const size = source.size;
-  if (size < 22) unreadable();
+  if (size < 22) unreadable('zip_eocd_missing');
   const tailStart = Math.max(0, size - 65_557);
   const tail = source.read(tailStart, size - tailStart);
   let eocd = -1;
@@ -448,7 +469,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
       break;
     }
   }
-  if (eocd < 0) unreadable();
+  if (eocd < 0) unreadable('zip_eocd_missing');
 
   const disk = tail.readUInt16LE(eocd + 4);
   const centralDisk = tail.readUInt16LE(eocd + 6);
@@ -460,7 +481,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
   if (disk !== 0 || centralDisk !== 0 || entriesOnDisk !== entryCount) unsupported('Multi-disk ZIP containers are not supported');
   if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) unsupported('ZIP64 Office containers exceed the bounded inspection profile');
   if (entryCount < 1 || entryCount > MAX_ARCHIVE_ENTRIES) unsupported('Office container has too many entries', 'archive_entry_limit');
-  if (centralOffset + centralSize !== eocdOffset || centralOffset > size || centralSize > size) unreadable();
+  if (centralOffset + centralSize !== eocdOffset || centralOffset > size || centralSize > size) unreadable('zip_central_bounds_invalid');
   if (centralSize > MAX_CENTRAL_DIRECTORY_BYTES) unsupported('Office container directory exceeds the inspection limit');
   const central = source.read(centralOffset, centralSize);
 
@@ -472,7 +493,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
   let compressedTotal = 0;
 
   for (let index = 0; index < entryCount; index++) {
-    if (cursor + 46 > centralEnd || central.readUInt32LE(cursor) !== 0x02014b50) unreadable();
+    if (cursor + 46 > centralEnd || central.readUInt32LE(cursor) !== 0x02014b50) unreadable('zip_central_record_invalid');
     const madeBy = central.readUInt16LE(cursor + 4);
     const flags = central.readUInt16LE(cursor + 8);
     const method = central.readUInt16LE(cursor + 10);
@@ -486,7 +507,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
     const externalAttributes = central.readUInt32LE(cursor + 38);
     const localOffset = central.readUInt32LE(cursor + 42);
     const recordEnd = cursor + 46 + nameLength + extraLength + commentLength;
-    if (nameLength < 1 || nameLength > 512 || recordEnd > centralEnd) unreadable();
+    if (nameLength < 1 || nameLength > 512 || recordEnd > centralEnd) unreadable('zip_central_name_invalid');
     if (diskStart !== 0) unsupported('Multi-disk ZIP containers are not supported');
     if (compressedSize === 0xffffffff || expandedSize === 0xffffffff || localOffset === 0xffffffff) unsupported('ZIP64 Office containers exceed the bounded inspection profile');
     if (flags & (0x0001 | 0x0040 | 0x2000)) encrypted();
@@ -495,20 +516,16 @@ function parseZip(source: ZipSource): ZipEntry[] {
     if (method === 0 && (flags & 0x0006)) unsupported('Stored ZIP entries cannot use deflate options');
 
     const rawName = Buffer.from(central.subarray(cursor + 46, cursor + 46 + nameLength));
-    const name = decodeZipName(rawName, flags);
-    const normalizedName = name.normalize('NFC');
-    if (normalizedName !== name || name.startsWith('/') || name.includes('\\') || /[:?#%\x00-\x1f\x7f]/.test(name)) unsupported('Office container contains an ambiguous part name');
+    const name = canonicalPartName(decodeZipName(rawName, flags));
     const directory = name.endsWith('/');
-    const segments = (directory ? name.slice(0, -1) : name).split('/');
-    if (segments.length > MAX_ARCHIVE_PATH_DEPTH || segments.some(part => !part || part === '.' || part === '..')) unsupported('Office container contains an unsafe part path');
-    const foldedName = normalizedName.toLocaleLowerCase('en-US');
+    const foldedName = name.toLocaleLowerCase('en-US');
     if (names.has(foldedName)) unsupported('Office container contains duplicate part names');
     names.add(foldedName);
 
     const platform = madeBy >>> 8;
     const unixMode = externalAttributes >>> 16;
     if (platform === 3 && (unixMode & 0xf000) === 0xa000) unsupported('Office container contains a symbolic link');
-    if (directory && (compressedSize !== 0 || expandedSize !== 0)) unreadable();
+    if (directory && (compressedSize !== 0 || expandedSize !== 0)) unreadable('zip_directory_invalid');
     if (expandedSize > MAX_ARCHIVE_ENTRY_BYTES || expandedTotal + expandedSize > MAX_ARCHIVE_EXPANDED_BYTES) {
       unsupported('Office container exceeds the expanded-size inspection limit', 'archive_expanded_limit');
     }
@@ -519,9 +536,9 @@ function parseZip(source: ZipSource): ZipEntry[] {
     compressedTotal += compressedSize;
     validateZipExtra(central.subarray(cursor + 46 + nameLength, cursor + 46 + nameLength + extraLength));
 
-    if (localOffset + 30 > centralOffset) unreadable();
+    if (localOffset + 30 > centralOffset) unreadable('zip_local_bounds_invalid');
     const local = source.read(localOffset, 30);
-    if (local.readUInt32LE(0) !== 0x04034b50) unreadable();
+    if (local.readUInt32LE(0) !== 0x04034b50) unreadable('zip_local_signature_invalid');
     const localFlags = local.readUInt16LE(6);
     const localMethod = local.readUInt16LE(8);
     const localCrc = local.readUInt32LE(14);
@@ -531,19 +548,19 @@ function parseZip(source: ZipSource): ZipEntry[] {
     const localExtraLength = local.readUInt16LE(28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     const dataEnd = dataStart + compressedSize;
-    if (localFlags !== flags || localMethod !== method || localNameLength !== nameLength || dataEnd > centralOffset) unreadable();
+    if (localFlags !== flags || localMethod !== method || localNameLength !== nameLength || dataEnd > centralOffset) unreadable('zip_central_local_mismatch');
     const localVariable = source.read(localOffset + 30, localNameLength + localExtraLength);
-    if (!localVariable.subarray(0, localNameLength).equals(rawName)) unreadable();
+    if (!localVariable.subarray(0, localNameLength).equals(rawName)) unreadable('zip_central_local_mismatch');
     validateZipExtra(localVariable.subarray(localNameLength));
-    if (!(flags & 0x0008) && (localCrc !== crc || localCompressed !== compressedSize || localExpanded !== expandedSize)) unreadable();
-    if ((flags & 0x0008) && (localCrc !== 0 && localCrc !== crc || localCompressed !== 0 && localCompressed !== compressedSize || localExpanded !== 0 && localExpanded !== expandedSize)) unreadable();
+    if (!(flags & 0x0008) && (localCrc !== crc || localCompressed !== compressedSize || localExpanded !== expandedSize)) unreadable('zip_central_local_mismatch');
+    if ((flags & 0x0008) && (localCrc !== 0 && localCrc !== crc || localCompressed !== 0 && localCompressed !== compressedSize || localExpanded !== 0 && localExpanded !== expandedSize)) unreadable('zip_central_local_mismatch');
 
     let finalRecordEnd = dataEnd;
     if (flags & 0x0008) {
       const available = source.read(dataEnd, Math.min(16, centralOffset - dataEnd));
       let descriptor = 0;
       if (descriptor + 4 <= available.length && available.readUInt32LE(descriptor) === 0x08074b50) descriptor += 4;
-      if (descriptor + 12 > available.length || available.readUInt32LE(descriptor) !== crc || available.readUInt32LE(descriptor + 4) !== compressedSize || available.readUInt32LE(descriptor + 8) !== expandedSize) unreadable();
+      if (descriptor + 12 > available.length || available.readUInt32LE(descriptor) !== crc || available.readUInt32LE(descriptor + 4) !== compressedSize || available.readUInt32LE(descriptor + 8) !== expandedSize) unreadable('zip_data_descriptor_mismatch');
       finalRecordEnd = dataEnd + descriptor + 12;
     }
 
@@ -551,7 +568,7 @@ function parseZip(source: ZipSource): ZipEntry[] {
     cursor = recordEnd;
   }
 
-  if (cursor !== centralEnd) unreadable();
+  if (cursor !== centralEnd) unreadable('zip_central_bounds_invalid');
   if (expandedTotal > 64 * 1024 && compressedTotal > 0 && expandedTotal / compressedTotal > MAX_ARCHIVE_RATIO) {
     unsupported('Office container exceeds the aggregate compression-ratio inspection limit', 'archive_ratio');
   }
@@ -559,9 +576,9 @@ function parseZip(source: ZipSource): ZipEntry[] {
   const localRecords = [...entries].sort((a, b) => a.localOffset - b.localOffset);
   if (localRecords[0]?.localOffset !== 0) unsupported('Self-extracting ZIP containers are not supported');
   for (let index = 1; index < localRecords.length; index++) {
-    if (localRecords[index - 1]!.recordEnd !== localRecords[index]!.localOffset) unreadable();
+    if (localRecords[index - 1]!.recordEnd !== localRecords[index]!.localOffset) unreadable('zip_record_gap');
   }
-  if (localRecords.at(-1)?.recordEnd !== centralOffset) unreadable();
+  if (localRecords.at(-1)?.recordEnd !== centralOffset) unreadable('zip_record_gap');
   return entries;
 }
 
@@ -577,7 +594,7 @@ async function expandEntry(source: ZipSource, entry: ZipEntry, keepWhole: boolea
   const accept = (chunk: Buffer) => {
     length += chunk.length;
     // Never expand past the declared size: a lying header cannot turn into a zip bomb.
-    if (length > entry.expandedSize) unreadable();
+    if (length > entry.expandedSize) unreadable('zip_expanded_size_mismatch');
     crc = zlibCrc32(chunk, crc);
     if (head.length < PART_HEAD_BYTES) head = Buffer.concat([head, chunk.subarray(0, PART_HEAD_BYTES - head.length)]);
     if (keepWhole) kept.push(Buffer.from(chunk));
@@ -613,12 +630,12 @@ async function expandEntry(source: ZipSource, entry: ZipEntry, keepWhole: boolea
     } catch (error) {
       inflate.destroy();
       if (error instanceof MaterialInspectionError) throw error;
-      unreadable();
+      unreadable('zip_inflate_error');
     } finally {
       await feed;
     }
   }
-  if (length !== entry.expandedSize || crc >>> 0 !== entry.crc) unreadable();
+  if (length !== entry.expandedSize || crc >>> 0 !== entry.crc) unreadable('zip_crc_mismatch');
   return { head, whole: keepWhole ? Buffer.concat(kept, length) : null, length, crc: crc >>> 0 };
 }
 
@@ -638,26 +655,26 @@ type OfficeState = {
 function xmlText(bytes: Buffer): string {
   if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
     try { return new TextDecoder('utf-16le', { fatal: true }).decode(bytes.subarray(2)); }
-    catch { return unreadable(); }
+    catch { return unreadable('xml_encoding_invalid'); }
   }
   if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    if ((bytes.length - 2) % 2) unreadable();
+    if ((bytes.length - 2) % 2) unreadable('xml_encoding_invalid');
     const swapped = Buffer.from(bytes.subarray(2));
     for (let i = 0; i < swapped.length; i += 2) [swapped[i], swapped[i + 1]] = [swapped[i + 1]!, swapped[i]!];
     try { return new TextDecoder('utf-16le', { fatal: true }).decode(swapped); }
-    catch { return unreadable(); }
+    catch { return unreadable('xml_encoding_invalid'); }
   }
   if (bytes.length >= 4 && bytes[0] === 0 && bytes[1] === 0x3c && bytes[2] === 0 && bytes[3] === 0x3f) {
-    if (bytes.length % 2) unreadable();
+    if (bytes.length % 2) unreadable('xml_encoding_invalid');
     const swapped = Buffer.from(bytes);
     for (let i = 0; i < swapped.length; i += 2) [swapped[i], swapped[i + 1]] = [swapped[i + 1]!, swapped[i]!];
     try { return new TextDecoder('utf-16le', { fatal: true }).decode(swapped); }
-    catch { return unreadable(); }
+    catch { return unreadable('xml_encoding_invalid'); }
   }
   if (bytes.length >= 4 && bytes[0] === 0x3c && bytes[1] === 0 && bytes[2] === 0x3f && bytes[3] === 0) {
-    if (bytes.length % 2) unreadable();
+    if (bytes.length % 2) unreadable('xml_encoding_invalid');
     try { return new TextDecoder('utf-16le', { fatal: true }).decode(Buffer.from(bytes).swap16()); }
-    catch { return unreadable(); }
+    catch { return unreadable('xml_encoding_invalid'); }
   }
   return utf8(bytes);
 }
@@ -775,7 +792,7 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
   const parser = new SaxesParser({ xmlns: false });
   parser.on('doctype', () => unsupported('Office XML document types are not supported'));
   parser.on('processinginstruction', () => unsupported('Office XML processing instructions are not supported'));
-  parser.on('error', () => unreadable());
+  parser.on('error', () => unreadable('xml_parse_error'));
   parser.on('opentag', tag => {
     const thisDepth = depth;
     if (thisDepth === 0) root = tag.name;
@@ -789,17 +806,17 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     }
     if (local === 'script' || local === 'altchunk') unsupported('Office XML contains active or externally loaded content');
     if (externalLinkPart && (local === 'ddelink' || local === 'olelink')) unsupported('Office external link contains DDE or OLE content');
-    if (externalLinkPart && !XLSX_EXTERNAL_BOOK_ELEMENTS.has(local)) unreadable();
+    if (externalLinkPart && !XLSX_EXTERNAL_BOOK_ELEMENTS.has(local)) unreadable('external_link_invalid');
     if (externalLinkPart && thisDepth === 1) {
-      if (local !== 'externalbook') unreadable();
+      if (local !== 'externalbook') unreadable('external_link_invalid');
       externalBookCount++;
       const relationshipId = attribute(attrs, 'Id');
-      if (!relationshipId) return unreadable();
+      if (!relationshipId) return unreadable('external_link_invalid');
       state.externalBookRelationshipIds.set(name, relationshipId);
     }
     if (name === 'xl/workbook.xml' && local === 'externalreference') {
       const relationshipId = attribute(attrs, 'Id');
-      if (!relationshipId || state.workbookExternalReferenceIds.has(relationshipId)) return unreadable();
+      if (!relationshipId || state.workbookExternalReferenceIds.has(relationshipId)) return unreadable('external_link_invalid');
       state.workbookExternalReferenceIds.add(relationshipId);
     }
     if (local === 'relationship') {
@@ -807,9 +824,9 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
       const targetMode = attribute(attrs, 'TargetMode');
       const target = attribute(attrs, 'Target');
       const type = attribute(attrs, 'Type');
-      if (!target || !type) return unreadable();
+      if (!target || !type) return unreadable('relationship_invalid');
       const normalizedMode = targetMode?.toLowerCase();
-      if (normalizedMode && normalizedMode !== 'external' && normalizedMode !== 'internal') unreadable();
+      if (normalizedMode && normalizedMode !== 'external' && normalizedMode !== 'internal') unreadable('relationship_invalid');
       if (/(?:oleobject|package|vbaproject|activex|attachedtemplate|afchunk)$/i.test(type)) {
         unsupported('Office relationships contain external or active content');
       }
@@ -818,16 +835,16 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     if (name === '[Content_Types].xml' && local === 'default') {
       const ext = attribute(attrs, 'Extension')?.toLowerCase();
       const type = attribute(attrs, 'ContentType')?.toLowerCase();
-      if (!ext || !type || contentTypes.defaults.has(ext)) return unreadable();
+      if (!ext || !type || contentTypes.defaults.has(ext)) return unreadable('content_types_invalid');
       if (unsafeOfficeContentType(type)) unsupported('Office package declares macro or embedded active content');
       contentTypes.defaults.set(ext, type);
     }
     if (name === '[Content_Types].xml' && local === 'override') {
       const partName = attribute(attrs, 'PartName');
       const type = attribute(attrs, 'ContentType')?.toLowerCase();
-      if (!partName || !type || !partName.startsWith('/') || partName.includes('..') || partName.includes('\\') || partName.includes('%')) return unreadable();
-      const normalized = partName.slice(1);
-      if (contentTypes.overrides.has(normalized)) unreadable();
+      if (!partName || !type) return unreadable('part_name_invalid');
+      const normalized = canonicalPartName(partName, true);
+      if (contentTypes.overrides.has(normalized)) unreadable('content_types_invalid');
       if (unsafeOfficeContentType(type)) unsupported('Office package declares macro or embedded active content');
       contentTypes.overrides.set(normalized, type);
     }
@@ -859,32 +876,32 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     parser.write(text).close();
   } catch (error) {
     if (error instanceof MaterialInspectionError) throw error;
-    unreadable();
+    unreadable('xml_parse_error');
   }
-  if (!root || depth !== 0 || capture) unreadable();
-  if (externalLinkPart && (localName(root) !== 'externallink' || externalBookCount !== 1)) unreadable();
+  if (!root || depth !== 0 || capture) unreadable('xml_parse_error');
+  if (externalLinkPart && (localName(root) !== 'externallink' || externalBookCount !== 1)) unreadable('external_link_invalid');
 
   if (name === '[Content_Types].xml') {
-    if (localName(root) !== 'types') unreadable();
+    if (localName(root) !== 'types') unreadable('xml_root_unexpected');
     state.contentTypes = contentTypes;
   }
   if (name.endsWith('.rels')) {
-    if (localName(root) !== 'relationships') unreadable();
+    if (localName(root) !== 'relationships') unreadable('xml_root_unexpected');
     state.relationships.set(name, relationships);
     if (name === '_rels/.rels') {
       const officeDocument = relationships.filter(item => /\/officedocument$/i.test(item.type));
-      if (officeDocument.length !== 1) unreadable();
+      if (officeDocument.length !== 1) unreadable('relationship_invalid');
       state.rootDocumentTarget = officeDocument[0]!.target;
     }
   }
   if (name === 'word/document.xml') {
-    if (localName(root) !== 'document') unreadable();
+    if (localName(root) !== 'document') unreadable('xml_root_unexpected');
     state.mainPartRoot = 'word';
   } else if (name === 'xl/workbook.xml') {
-    if (localName(root) !== 'workbook') unreadable();
+    if (localName(root) !== 'workbook') unreadable('xml_root_unexpected');
     state.mainPartRoot = 'xl';
   } else if (name === 'ppt/presentation.xml') {
-    if (localName(root) !== 'presentation') unreadable();
+    if (localName(root) !== 'presentation') unreadable('xml_root_unexpected');
     state.mainPartRoot = 'ppt';
   }
 }
@@ -902,17 +919,17 @@ function resolveRelationshipTarget(source: string, target: string): string | nul
   }
   let decoded: string;
   try { decoded = decodeURIComponent(target.split('#', 1)[0]!.split('?', 1)[0]!); }
-  catch { return unreadable(); }
+  catch { return unreadable('relationship_invalid'); }
   const path = decoded.startsWith('/') ? decoded.slice(1) : `${source ? source.slice(0, Math.max(0, source.lastIndexOf('/') + 1)) : ''}${decoded}`;
   const segments: string[] = [];
   for (const segment of path.split('/')) {
     if (!segment || segment === '.') continue;
     if (segment === '..') {
-      if (!segments.length) unreadable();
+      if (!segments.length) unreadable('relationship_invalid');
       segments.pop();
     } else segments.push(segment);
   }
-  if (!segments.length) unreadable();
+  if (!segments.length) unreadable('relationship_invalid');
   return segments.join('/');
 }
 
@@ -947,7 +964,7 @@ function verifyOfficeRelationships(state: OfficeState, declared: string): void {
   const referencedLinks = new Set<string>();
   for (const [relsPath, relationships] of state.relationships) {
     const source = relationshipSource(relsPath);
-    if (source === null) return unreadable();
+    if (source === null) return unreadable('relationship_invalid');
     const externalLinkRels = XLSX_EXTERNAL_LINK_RELS.test(relsPath);
     if (externalLinkRels && (declared !== XLSX_MIME || !state.files.has(source) || relationships.length !== 1)) {
       unsupported('Office external link relationships are not a workbook reference');
@@ -984,7 +1001,7 @@ function verifyOfficeRelationships(state: OfficeState, declared: string): void {
       }
       const target = resolveRelationshipTarget(source, relationship.target);
       if (target) {
-        if (!state.files.has(target)) unreadable();
+        if (!state.files.has(target)) unreadable('relationship_invalid');
         const contentType = officePartContentType(state, target);
         if (contentType && unsafeOfficeContentType(contentType)) {
           unsupported('Office relationship references an active or unsafe content type');
@@ -999,7 +1016,7 @@ function verifyOfficeRelationships(state: OfficeState, declared: string): void {
     }
   }
   if (state.workbookExternalReferenceIds.size !== referencedLinks.size ||
-      [...state.files].some(name => XLSX_EXTERNAL_LINK_PART.test(name) && !referencedLinks.has(name))) unreadable();
+      [...state.files].some(name => XLSX_EXTERNAL_LINK_PART.test(name) && !referencedLinks.has(name))) unreadable('external_link_invalid');
 }
 
 function officePartContentType(state: OfficeState, part: string): string | undefined {
@@ -1066,13 +1083,13 @@ async function inspectOffice(source: ZipSource, declared: string): Promise<void>
   if (state.rootDocumentTarget !== expectedPart || !state.files.has(expectedPart) || state.mainPartRoot !== expectedRoot) {
     mismatch();
   }
-  if (officePartContentType(state, expectedPart) !== expectedContentType) unreadable();
+  if (officePartContentType(state, expectedPart) !== expectedContentType) unreadable('content_types_invalid');
   for (const name of state.files) {
     if (name === '[Content_Types].xml') continue;
-    if (!officePartContentType(state, name)) unreadable();
+    if (!officePartContentType(state, name)) unreadable('content_types_invalid');
     if (XLSX_EXTERNAL_LINK_PART.test(name)) {
       const rels = name.replace('xl/externalLinks/', 'xl/externalLinks/_rels/') + '.rels';
-      if (officePartContentType(state, name) !== XLSX_EXTERNAL_LINK_CONTENT_TYPE || !state.files.has(rels)) unreadable();
+      if (officePartContentType(state, name) !== XLSX_EXTERNAL_LINK_CONTENT_TYPE || !state.files.has(rels)) unreadable('external_link_invalid');
     }
   }
   verifyOfficeRelationships(state, declared);
@@ -1107,7 +1124,7 @@ async function inspectPdfFile(path: string, byteSize: number): Promise<void> {
       tail = Buffer.from(chunk.length >= overlap ? chunk.subarray(chunk.length - overlap) : Buffer.concat([tail, chunk]).subarray(-overlap));
       position += bytesRead;
     }
-    if (position !== byteSize) unreadable();
+    if (position !== byteSize) unreadable('file_size_mismatch');
     const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfJsModule;
     const transport = new pdfjs.PDFDataRangeTransport(byteSize, null);
     transport.requestDataRange = (begin: number, end: number) => {
@@ -1140,7 +1157,7 @@ async function inspectPdfDocument(source: Record<string, unknown>): Promise<void
     });
     const document = await loading.promise;
     if (await document.getPermissions() !== null) encrypted();
-    if (!Number.isInteger(document.numPages) || document.numPages < 1) unreadable();
+    if (!Number.isInteger(document.numPages) || document.numPages < 1) unreadable('pdf_structure_invalid');
     if (document.numPages > 1500) unsupported('PDF exceeds the 1,500-page inspection limit');
     if (document.isPureXfa) unsupported('PDF XFA forms are not supported');
 
@@ -1174,7 +1191,7 @@ async function inspectPdfDocument(source: Record<string, unknown>): Promise<void
   } catch (error) {
     if (error instanceof MaterialInspectionError) throw error;
     if (error && typeof error === 'object' && 'name' in error && error.name === 'PasswordException') encrypted();
-    unreadable();
+    unreadable('pdf_structure_invalid');
   } finally {
     if (loading) {
       try { await loading.destroy(); } catch { /* The inspection result remains fail-closed. */ }
@@ -1202,20 +1219,20 @@ function inspectPng(bytes: Buffer): void {
   const idat: Buffer[] = [];
 
   while (cursor < bytes.length) {
-    if (++chunkCount > 4096 || cursor + 12 > bytes.length) unreadable();
+    if (++chunkCount > 4096 || cursor + 12 > bytes.length) unreadable('png_structure_invalid');
     const length = bytes.readUInt32BE(cursor);
     const typeStart = cursor + 4;
     const type = bytes.toString('ascii', typeStart, typeStart + 4);
     const dataStart = typeStart + 4;
     const dataEnd = dataStart + length;
     const chunkEnd = dataEnd + 4;
-    if (dataEnd < dataStart || chunkEnd > bytes.length || !/^[A-Za-z]{4}$/.test(type)) unreadable();
+    if (dataEnd < dataStart || chunkEnd > bytes.length || !/^[A-Za-z]{4}$/.test(type)) unreadable('png_structure_invalid');
     const expectedCrc = bytes.readUInt32BE(dataEnd);
-    if (pngChunkCrc(bytes, typeStart, length) !== expectedCrc) unreadable();
+    if (pngChunkCrc(bytes, typeStart, length) !== expectedCrc) unreadable('png_crc_mismatch');
 
-    if (chunkCount === 1 && type !== 'IHDR') unreadable();
+    if (chunkCount === 1 && type !== 'IHDR') unreadable('png_structure_invalid');
     if (type === 'IHDR') {
-      if (chunkCount !== 1 || length !== 13) unreadable();
+      if (chunkCount !== 1 || length !== 13) unreadable('png_structure_invalid');
       width = bytes.readUInt32BE(dataStart);
       height = bytes.readUInt32BE(dataStart + 4);
       bitDepth = bytes[dataStart + 8]!;
@@ -1225,19 +1242,19 @@ function inspectPng(bytes: Buffer): void {
       const interlace = bytes[dataStart + 12]!;
       const depths: Record<number, number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
       if (!width || !height || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION || width * height > MAX_IMAGE_PIXELS) unsupported('PNG dimensions exceed the image inspection limit');
-      if (!depths[colorType]?.includes(bitDepth) || compression !== 0 || filter !== 0) unreadable();
+      if (!depths[colorType]?.includes(bitDepth) || compression !== 0 || filter !== 0) unreadable('png_structure_invalid');
       if (interlace !== 0) unsupported('Interlaced PNG exceeds the supported inspection profile');
     } else if (type === 'PLTE') {
-      if (seenIdat || seenPalette || length === 0 || length > 768 || length % 3 !== 0 || colorType === 0 || colorType === 4) unreadable();
+      if (seenIdat || seenPalette || length === 0 || length > 768 || length % 3 !== 0 || colorType === 0 || colorType === 4) unreadable('png_structure_invalid');
       seenPalette = true;
     } else if (type === 'IDAT') {
-      if (idatEnded || seenIend) unreadable();
-      if (colorType === 3 && !seenPalette) unreadable();
+      if (idatEnded || seenIend) unreadable('png_structure_invalid');
+      if (colorType === 3 && !seenPalette) unreadable('png_structure_invalid');
       seenIdat = true;
       idatBytes += length;
       idat.push(bytes.subarray(dataStart, dataEnd));
     } else if (type === 'IEND') {
-      if (length !== 0 || !seenIdat || seenIend) unreadable();
+      if (length !== 0 || !seenIdat || seenIend) unreadable('png_structure_invalid');
       seenIend = true;
       cursor = chunkEnd;
       break;
@@ -1249,16 +1266,16 @@ function inspectPng(bytes: Buffer): void {
     cursor = chunkEnd;
   }
 
-  if (!seenIend || cursor !== bytes.length || !seenIdat || idatBytes === 0) unreadable();
+  if (!seenIend || cursor !== bytes.length || !seenIdat || idatBytes === 0) unreadable('png_structure_invalid');
   const channels: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
   const rowBytes = Math.ceil(width * channels[colorType]! * bitDepth / 8);
   const decodedBytes = (rowBytes + 1) * height;
   if (!Number.isSafeInteger(decodedBytes) || decodedBytes > MAX_PNG_DECODED_BYTES) unsupported('PNG expanded image exceeds the inspection limit');
   let scanlines: Buffer;
   try { scanlines = inflateSync(Buffer.concat(idat), { maxOutputLength: decodedBytes + 1 }); }
-  catch { return unreadable(); }
-  if (scanlines.length !== decodedBytes) unreadable();
-  for (let row = 0; row < height; row++) if (scanlines[row * (rowBytes + 1)]! > 4) unreadable();
+  catch { return unreadable('png_structure_invalid'); }
+  if (scanlines.length !== decodedBytes) unreadable('png_structure_invalid');
+  for (let row = 0; row < height; row++) if (scanlines[row * (rowBytes + 1)]! > 4) unreadable('png_structure_invalid');
 }
 
 function jpegDimensions(bytes: Buffer): { width: number; height: number } {
@@ -1267,28 +1284,28 @@ function jpegDimensions(bytes: Buffer): { width: number; height: number } {
   let dimensions: { width: number; height: number } | null = null;
   const frameMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
   while (cursor < bytes.length) {
-    if (bytes[cursor] !== 0xff) unreadable();
+    if (bytes[cursor] !== 0xff) unreadable('jpeg_structure_invalid');
     while (bytes[cursor] === 0xff) cursor++;
-    if (cursor >= bytes.length) unreadable();
+    if (cursor >= bytes.length) unreadable('jpeg_structure_invalid');
     const marker = bytes[cursor++]!;
     if (marker === 0xd9) break;
     if (marker === 0x00 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) continue;
-    if (cursor + 2 > bytes.length) unreadable();
+    if (cursor + 2 > bytes.length) unreadable('jpeg_structure_invalid');
     const length = bytes.readUInt16BE(cursor);
-    if (length < 2 || cursor + length > bytes.length) unreadable();
+    if (length < 2 || cursor + length > bytes.length) unreadable('jpeg_structure_invalid');
     if (frameMarkers.has(marker)) {
-      if (length < 8 || dimensions) unreadable();
+      if (length < 8 || dimensions) unreadable('jpeg_structure_invalid');
       const height = bytes.readUInt16BE(cursor + 3);
       const width = bytes.readUInt16BE(cursor + 5);
       const components = bytes[cursor + 7]!;
-      if (!width || !height || components < 1 || components > 4) unreadable();
+      if (!width || !height || components < 1 || components > 4) unreadable('jpeg_structure_invalid');
       if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION || width * height > MAX_IMAGE_PIXELS) unsupported('JPEG dimensions exceed the image inspection limit');
       dimensions = { width, height };
     }
     if (marker === 0xda) break;
     cursor += length;
   }
-  if (!dimensions) return unreadable();
+  if (!dimensions) return unreadable('jpeg_structure_invalid');
   return dimensions;
 }
 
@@ -1302,10 +1319,10 @@ function inspectJpeg(bytes: Buffer): void {
       maxResolutionInMP: MAX_IMAGE_PIXELS / 1_000_000,
       maxMemoryUsageInMB: 96
     });
-    if (decoded.width !== dimensions.width || decoded.height !== dimensions.height || decoded.data.length !== decoded.width * decoded.height * 4) unreadable();
+    if (decoded.width !== dimensions.width || decoded.height !== dimensions.height || decoded.data.length !== decoded.width * decoded.height * 4) unreadable('jpeg_structure_invalid');
   } catch (error) {
     if (error instanceof MaterialInspectionError) throw error;
-    unreadable();
+    unreadable('jpeg_structure_invalid');
   }
 }
 
@@ -1361,7 +1378,7 @@ async function inspectFile(path: string, byteSize: number, declared: string): Pr
     } finally {
       await handle.close();
     }
-    if (seen !== byteSize) unreadable();
+    if (seen !== byteSize) unreadable('file_size_mismatch');
     return;
   }
   if (declared === PDF_MIME) return inspectPdfFile(path, byteSize);
@@ -1372,7 +1389,7 @@ async function inspectFile(path: string, byteSize: number, declared: string): Pr
   }
   // Image formats need random access; the one whole-file copy (bounded by the image limits) lives only in this worker.
   const bytes = await readFile(path);
-  if (bytes.length !== byteSize) unreadable();
+  if (bytes.length !== byteSize) unreadable('file_size_mismatch');
   await inspectContent(bytes, declared);
 }
 
@@ -1384,7 +1401,7 @@ async function run(): Promise<void> {
     parentPort?.postMessage({ ok: true } satisfies UploadWorkerReply);
   } catch (error) {
     const failure: InspectionFailure = error instanceof MaterialInspectionError
-      ? { status: error.status, code: error.code, message: error.message, reason: error.reason }
+      ? { status: error.status, code: error.code, message: error.message, reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) }
       : { status: 422, code: 'MATERIAL_UNREADABLE', message: 'Material is corrupt or structurally unreadable', reason: 'inspection_worker_failed' };
     parentPort?.postMessage({ ok: false, ...failure } satisfies UploadWorkerReply);
   } finally {
