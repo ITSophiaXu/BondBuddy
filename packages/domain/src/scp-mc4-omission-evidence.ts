@@ -66,8 +66,9 @@ export type ScpMc4OmissionEvidenceInput = {
   /** M-5/M-6/M-7 content retained independently of any omission candidate. */
   fundsManagementControls: ScpMc4Assertion<'included' | 'missing'>;
   shortTermLiquidityPlan: ScpMc4Assertion<'included' | 'missing'>;
-  /** OF007 note 1: when controls/plans are not yet established, retain the transition scheme evidence. */
-  shortTermLiquidityTransitionScheme: ScpMc4Assertion<'included' | 'missing'>;
+  /** OF007 note 1: keep evidence for each transition scheme separate. */
+  fundsManagementControlsTransitionScheme: ScpMc4Assertion<'included' | 'missing'>;
+  shortTermLiquidityPlanTransitionScheme: ScpMc4Assertion<'included' | 'missing'>;
 };
 
 export type ScpMc4OmissionDecision =
@@ -111,6 +112,21 @@ function hasTrustworthyCitation(citation: unknown): citation is ScpMc4EvidenceCi
     typeof candidate.sourceVersion === 'string' && candidate.sourceVersion.trim().length > 0 &&
     typeof candidate.locator === 'string' && candidate.locator.trim().length > 0 &&
     typeof candidate.quote === 'string' && candidate.quote.trim().length > 0;
+}
+
+function hasRelevantTransitionCitation(assertion: unknown, subject: 'funds_management_controls' | 'short_term_liquidity_plan'): boolean {
+  if (!isRecord(assertion) || assertion.status !== 'cited' || !Array.isArray(assertion.citations)) return false;
+  const subjectTerms = subject === 'funds_management_controls'
+    ? ['内控']
+    : ['短期资金调度', '资金调度', '应急预案'];
+  return assertion.citations.some((citation: unknown) => {
+    if (!hasTrustworthyCitation(citation)) return false;
+    // The regulation proves the obligation, not that this issuer supplied a scheme. Require
+    // a public-market record describing an actual issuer disclosure/arrangement.
+    if (citation.sourceKind !== 'public_market_record') return false;
+    const quote = citation.quote;
+    return subjectTerms.some(term => quote.includes(term)) && /(已提供|已披露|已提交|方案为|安排为|过渡期间采取|过渡期间由)/.test(quote);
+  });
 }
 
 function assertionStatus(assertion: unknown): 'valid' | 'uncertain' | 'conflict' {
@@ -267,18 +283,35 @@ export function checkScpMc4OmissionEvidence(input: ScpMc4OmissionEvidenceInput):
   if (!controlsKnown) reasons.push('funds_management_controls_status_not_source_confirmed');
   if (!liquidityKnown) reasons.push('short_term_liquidity_plan_status_not_source_confirmed');
 
-  // Official OF007 note 1 allows a transition scheme when controls / the short-term liquidity plan
-  // have not yet been established. This remains an evidence-shape candidate only; it is not a waiver.
-  const contentMissing = controlsKnown && input.fundsManagementControls.status === 'cited' && input.fundsManagementControls.value === 'missing' ||
-    liquidityKnown && input.shortTermLiquidityPlan.status === 'cited' && input.shortTermLiquidityPlan.value === 'missing';
-  if (contentMissing) {
-    const transitionStatus = assertionStatus(input.shortTermLiquidityTransitionScheme);
-    const transitionKnown = transitionStatus === 'valid' && input.shortTermLiquidityTransitionScheme.status === 'cited' &&
-      (input.shortTermLiquidityTransitionScheme.value === 'included' || input.shortTermLiquidityTransitionScheme.value === 'missing');
-    if (!transitionKnown) reasons.push('mc4_transition_scheme_status_not_source_confirmed');
-    else if (input.shortTermLiquidityTransitionScheme.status !== 'cited' || input.shortTermLiquidityTransitionScheme.value !== 'included') {
-      reasons.push('mc4_transition_scheme_missing');
-    }
+  // Official OF007 note 1 names a transition scheme for each control/plan. Check the matching
+  // evidence independently; a citation for one cannot satisfy the other. This remains a
+  // professional-review candidate only and is not a waiver.
+  const transitionRequirements = [
+    {
+      contentMissing: controlsKnown && input.fundsManagementControls.status === 'cited' && input.fundsManagementControls.value === 'missing',
+      assertion: input.fundsManagementControlsTransitionScheme,
+      subject: 'funds_management_controls' as const,
+      pendingReason: 'funds_management_controls_transition_scheme_not_source_confirmed',
+      missingReason: 'funds_management_controls_transition_scheme_missing',
+      relevanceReason: 'funds_management_controls_transition_scheme_citation_not_relevant',
+    },
+    {
+      contentMissing: liquidityKnown && input.shortTermLiquidityPlan.status === 'cited' && input.shortTermLiquidityPlan.value === 'missing',
+      assertion: input.shortTermLiquidityPlanTransitionScheme,
+      subject: 'short_term_liquidity_plan' as const,
+      pendingReason: 'short_term_liquidity_plan_transition_scheme_not_source_confirmed',
+      missingReason: 'short_term_liquidity_plan_transition_scheme_missing',
+      relevanceReason: 'short_term_liquidity_plan_transition_scheme_citation_not_relevant',
+    },
+  ];
+  for (const requirement of transitionRequirements) {
+    if (!requirement.contentMissing) continue;
+    const transitionStatus = assertionStatus(requirement.assertion);
+    const transitionKnown = transitionStatus === 'valid' && requirement.assertion.status === 'cited' &&
+      (requirement.assertion.value === 'included' || requirement.assertion.value === 'missing');
+    if (!transitionKnown) reasons.push(requirement.pendingReason);
+    else if (requirement.assertion.status !== 'cited' || requirement.assertion.value !== 'included') reasons.push(requirement.missingReason);
+    else if (!hasRelevantTransitionCitation(requirement.assertion, requirement.subject)) reasons.push(requirement.relevanceReason);
   }
 
   if (reasons.length > 0) return { decision: 'needs_review', reasons, evidence: input };

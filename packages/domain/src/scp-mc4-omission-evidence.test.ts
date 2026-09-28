@@ -21,6 +21,13 @@ function cited<T>(value: T, extra: Partial<Extract<ScpMc4Assertion<T>, { status:
   return { status: 'cited', value, citations: [citation], ...extra };
 }
 
+function transitionSchemeCited(subject: 'funds_management_controls' | 'short_term_liquidity_plan', sourceKind: 'official_publication' | 'public_market_record' | 'user_assertion' = citation.sourceKind, quote?: string): ScpMc4Assertion<'included' | 'missing'> {
+  const subjectQuote = subject === 'funds_management_controls'
+    ? '已披露资金运营内控制度过渡方案：过渡期间采取双人复核和限额审批措施，并尽快完成制度制定。'
+    : '已披露短期资金调度应急预案过渡方案：过渡期间采取临时调度措施，并尽快完成预案制定。';
+  return cited('included', { citations: [{ ...citation, sourceKind, quote: quote ?? subjectQuote }] });
+}
+
 function annualPeriod(year: number): ScpMc4Period {
   return { periodId: `fy-${year}`, kind: 'annual', fiscalYear: year, startDate: `${year}-01-01`, endDate: `${year}-12-31` };
 }
@@ -56,7 +63,8 @@ function input(overrides: Partial<ScpMc4OmissionEvidenceInput> = {}): ScpMc4Omis
     publicItems: [annualPeriod(2022), annualPeriod(2023), annualPeriod(2024), interimPeriod()].map(period => item(period)),
     fundsManagementControls: cited('included'),
     shortTermLiquidityPlan: cited('included'),
-    shortTermLiquidityTransitionScheme: { status: 'uncertain', value: null, reason: 'not needed when both disclosures are included' },
+    fundsManagementControlsTransitionScheme: { status: 'uncertain', value: null, reason: 'not needed when controls are included' },
+    shortTermLiquidityPlanTransitionScheme: { status: 'uncertain', value: null, reason: 'not needed when plan is included' },
     ...overrides,
   };
 }
@@ -331,55 +339,94 @@ test('malformed assertion, citation and conflict shapes fail closed without thro
   }
 });
 
-test('official transition scheme handles missing MC.4 controls without approving chapter omission', () => {
-  const noTransition = checkScpMc4OmissionEvidence(input({ fundsManagementControls: cited('missing') }));
-  assert.equal(noTransition.decision, 'needs_review');
-  assert.ok(noTransition.reasons.includes('mc4_transition_scheme_status_not_source_confirmed'));
+test('transition-scheme evidence is required per missing MC.4 item; a missing companion cannot be borrowed', () => {
+  const cases = [
+    {
+      controls: 'missing', plan: 'included',
+      controlsScheme: transitionSchemeCited('funds_management_controls'),
+      planScheme: { status: 'uncertain', value: null, reason: 'plan exists' } as ScpMc4Assertion<'included' | 'missing'>,
+      expected: 'omission_candidate_needs_professional_review',
+    },
+    {
+      controls: 'included', plan: 'missing',
+      controlsScheme: { status: 'uncertain', value: null, reason: 'controls exist' } as ScpMc4Assertion<'included' | 'missing'>,
+      planScheme: transitionSchemeCited('short_term_liquidity_plan'),
+      expected: 'omission_candidate_needs_professional_review',
+    },
+    {
+      controls: 'missing', plan: 'missing',
+      controlsScheme: transitionSchemeCited('funds_management_controls'),
+      planScheme: transitionSchemeCited('short_term_liquidity_plan'),
+      expected: 'omission_candidate_needs_professional_review',
+    },
+    {
+      controls: 'missing', plan: 'missing',
+      controlsScheme: transitionSchemeCited('funds_management_controls'),
+      planScheme: { status: 'uncertain', value: null, reason: 'plan scheme missing' } as ScpMc4Assertion<'included' | 'missing'>,
+      expected: 'needs_review',
+    },
+    {
+      controls: 'missing', plan: 'missing',
+      controlsScheme: { status: 'uncertain', value: null, reason: 'control scheme missing' } as ScpMc4Assertion<'included' | 'missing'>,
+      planScheme: transitionSchemeCited('short_term_liquidity_plan'),
+      expected: 'needs_review',
+    },
+  ] as const;
 
-  const citedMissingTransition = checkScpMc4OmissionEvidence(input({
-    fundsManagementControls: cited('missing'),
-    shortTermLiquidityTransitionScheme: cited('missing'),
-  }));
-  assert.equal(citedMissingTransition.decision, 'needs_review');
-  assert.ok(citedMissingTransition.reasons.includes('mc4_transition_scheme_missing'));
-
-  for (const [fundsManagementControls, shortTermLiquidityPlan] of [
-    ['missing', 'included'],
-    ['included', 'missing'],
-    ['missing', 'missing'],
-  ] as const) {
-    const transitionCandidate = checkScpMc4OmissionEvidence(input({
-      fundsManagementControls: cited(fundsManagementControls),
-      shortTermLiquidityPlan: cited(shortTermLiquidityPlan),
-      shortTermLiquidityTransitionScheme: cited('included'),
+  for (const entry of cases) {
+    const result = checkScpMc4OmissionEvidence(input({
+      fundsManagementControls: cited(entry.controls),
+      shortTermLiquidityPlan: cited(entry.plan),
+      fundsManagementControlsTransitionScheme: entry.controlsScheme,
+      shortTermLiquidityPlanTransitionScheme: entry.planScheme,
     }));
-    assert.equal(transitionCandidate.decision, 'omission_candidate_needs_professional_review');
-    assert.ok(transitionCandidate.reasons.includes('no_machine_approval_or_omission_decision'));
-    assert.equal(transitionCandidate.evidence.shortTermLiquidityTransitionScheme.status, 'cited');
+    assert.equal(result.decision, entry.expected);
+    if (entry.expected === 'omission_candidate_needs_professional_review') {
+      assert.ok(result.reasons.includes('no_machine_approval_or_omission_decision'));
+    }
   }
-
-  const userOnlyTransition = checkScpMc4OmissionEvidence(input({
-    fundsManagementControls: cited('missing'),
-    shortTermLiquidityTransitionScheme: cited('included', {
-      citations: [{ ...citation, sourceKind: 'user_assertion' }],
-    }),
-  }));
-  assert.equal(userOnlyTransition.decision, 'needs_review');
-  assert.ok(userOnlyTransition.reasons.includes('mc4_transition_scheme_status_not_source_confirmed'));
-
-  const completeDisclosuresDoNotNeedTransitionEvidence = checkScpMc4OmissionEvidence(input());
-  assert.equal(completeDisclosuresDoNotNeedTransitionEvidence.decision, 'omission_candidate_needs_professional_review');
 });
 
-test('malformed transition-scheme evidence fails closed when a retained control is absent', () => {
+test('transition scheme cannot be established by user assertion or by quoting only the rule obligation', () => {
+  const missingControls = { fundsManagementControls: cited<'included' | 'missing'>('missing') };
+  const userAssertedScheme = checkScpMc4OmissionEvidence(input({
+    ...missingControls,
+    fundsManagementControlsTransitionScheme: transitionSchemeCited('funds_management_controls', 'user_assertion'),
+  }));
+  assert.equal(userAssertedScheme.decision, 'needs_review');
+  assert.ok(userAssertedScheme.reasons.includes('funds_management_controls_transition_scheme_not_source_confirmed'));
+
+  const ruleTextOnly = checkScpMc4OmissionEvidence(input({
+    ...missingControls,
+    fundsManagementControlsTransitionScheme: transitionSchemeCited(
+      'funds_management_controls', 'public_market_record',
+      '对于尚未制定资金运营内控制度和短期资金调度应急预案的企业，需提供资金运营内控制度和短期资金调度应急预案过渡方案，并尽快完成制定。',
+    ),
+  }));
+  assert.equal(ruleTextOnly.decision, 'needs_review');
+  assert.ok(ruleTextOnly.reasons.includes('funds_management_controls_transition_scheme_citation_not_relevant'));
+
+  const unrelatedDisclosure = checkScpMc4OmissionEvidence(input({
+    ...missingControls,
+    fundsManagementControlsTransitionScheme: transitionSchemeCited('funds_management_controls', 'public_market_record', '已披露董事会授权及年度预算管理办法。'),
+  }));
+  assert.equal(unrelatedDisclosure.decision, 'needs_review');
+  assert.ok(unrelatedDisclosure.reasons.includes('funds_management_controls_transition_scheme_citation_not_relevant'));
+});
+
+test('malformed transition-scheme evidence fails closed for the missing item only', () => {
   const evidence = input({
     fundsManagementControls: cited('missing'),
-    shortTermLiquidityTransitionScheme: { status: 'cited', value: 'included', citations: null } as unknown as ScpMc4Assertion<'included' | 'missing'>,
+    fundsManagementControlsTransitionScheme: { status: 'cited', value: 'included', citations: null } as unknown as ScpMc4Assertion<'included' | 'missing'>,
   });
   const result = checkScpMc4OmissionEvidence(evidence);
   assert.equal(result.decision, 'needs_review');
-  assert.ok(result.reasons.includes('mc4_transition_scheme_status_not_source_confirmed'));
+  assert.ok(result.reasons.includes('funds_management_controls_transition_scheme_not_source_confirmed'));
   assert.equal(result.evidence, evidence);
+});
+
+test('complete controls and liquidity disclosures do not require transition-scheme evidence', () => {
+  assert.equal(checkScpMc4OmissionEvidence(input()).decision, 'omission_candidate_needs_professional_review');
 });
 
 test('invalid action dates and conflicting registration status need review', () => {
