@@ -237,7 +237,7 @@ async function lockApprovalEvents(client: PoolClient, approvals: { industry: App
   if (locked.rowCount !== 2) fail('INCOMPLETE_ACTIVE_APPROVALS');
 }
 
-async function lockAndValidateEvidence(client: PoolClient, manifest: ProductionReviewManifest) {
+async function lockAndValidateEvidence(client: PoolClient, manifest: ProductionReviewManifest, pack: RulePack) {
   const packRef = manifest.content.rule_pack;
   const sources = manifest.content.source_date_evidence;
   const samples = manifest.content.authorized_real_sample_evidence;
@@ -255,16 +255,40 @@ async function lockAndValidateEvidence(client: PoolClient, manifest: ProductionR
   const sourceById = new Map(sourceResult.rows.map(row => [row.id, row]));
   const authById = new Map(authorizationResult.rows.map(row => [row.id, row]));
   const sampleById = new Map(sampleResult.rows.map(row => [row.id, row]));
+  const packSources = new Map(pack.sources.map(source => [source.source_id, source]));
   const now = new Date(), today = now.toISOString().slice(0, 10);
   for (const source of sources) {
     const row = sourceById.get(source.source_evidence_id);
+    const packSource = packSources.get(source.source_evidence_id);
+    const method = source.source_kind === 'internal_method';
+    const methodWindow = source.approved_method_window;
+    const effectiveWindowValid = method
+      ? row?.effective_from === null && source.legal_effective_date === null
+        && source.legal_effective_date_basis === 'not_legal_effectivity'
+        && methodWindow != null
+        && methodWindow.enabled_from <= today
+        && (methodWindow.enabled_until === null || methodWindow.enabled_until >= today)
+        && canonical(row?.approved_method_window ?? null) === canonical(methodWindow)
+      : row?.effective_from !== null && dbDate(row?.effective_from) !== null
+        && dbDate(row?.effective_from)! <= today
+        && (!row?.effective_to || dbDate(row.effective_to)! >= today);
+    const packSourceValid = method
+      ? packSource?.kind === 'internal_method' && packSource.effective_from === null
+        && canonical(packSource.approved_method_window ?? null) === canonical(methodWindow)
+      : source.source_kind === 'binding_rule'
+        ? packSource?.kind === 'formal_rule' && packSource.effective_from === source.legal_effective_date
+        : true;
     if (!row || trimHash(row.source_check_sha256) !== source.source_check_sha256 ||
         row.pack_id !== packRef.id || row.pack_version !== packRef.version || trimHash(row.pack_hash) !== packRef.sha256 ||
         row.market !== manifest.content.applicability_scope.market || row.offering !== manifest.content.applicability_scope.offering ||
-        !row.checked_at || new Date(row.checked_at) > now || !row.effective_from || dbDate(row.effective_from)! > today ||
-        (row.effective_to && dbDate(row.effective_to)! < today) ||
+        !row.checked_at || new Date(row.checked_at) > now || !effectiveWindowValid ||
+        row.legal_effective_date_basis !== source.legal_effective_date_basis ||
+        canonical(row.effective_date_derivation_evidence) !== canonical(source.effective_date_derivation_evidence) ||
+        !packSourceValid ||
+        (!method && source.legal_effective_date_basis === 'not_legal_effectivity') ||
         source.legal_effective_date && dbDate(row.effective_from) !== source.legal_effective_date ||
-        source.legal_expiry_date && dbDate(row.effective_to) !== source.legal_expiry_date)
+        source.legal_expiry_date && dbDate(row.effective_to) !== source.legal_expiry_date ||
+        (method && canonical(row.approved_method_window ?? null) !== canonical(methodWindow)))
       fail('PRODUCTION_SOURCE_EVIDENCE_MISMATCH');
   }
   for (const sample of samples) {
@@ -386,7 +410,7 @@ export function installProductionRulePackReleaseRoutes(app: FastifyInstance, dep
       const components = await readProductionComponentSnapshots(client as any, refsFromManifest(manifest));
       assertSnapshotMatchesManifest(manifest, components);
       const approvals = await approvedAttestations(client, actor, manifest, operator, packId);
-      const evidence = await lockAndValidateEvidence(client, manifest);
+      const evidence = await lockAndValidateEvidence(client, manifest, components.rule_pack);
       await lockApprovalEvents(client, approvals);
       const occurredAt = new Date().toISOString();
       const reviews: ReviewAttestation[] = [approvals.industry, approvals.technical].map(({ event }) => ({
@@ -500,7 +524,8 @@ export function installProductionRulePackReleaseRoutes(app: FastifyInstance, dep
       const scope = manifest.content.applicability_scope;
       const operatorCandidate = await scopedGrant(client, actor, 'rule_pack_operator', scope, 'NONE');
       const approvals = await approvedAttestations(client, actor, manifest, operatorCandidate, packId);
-      const evidence = await lockAndValidateEvidence(client, manifest);
+      const targetPack = typeof target.pack_snapshot === 'string' ? JSON.parse(target.pack_snapshot) as RulePack : target.pack_snapshot as RulePack;
+      const evidence = await lockAndValidateEvidence(client, manifest, targetPack);
       await lockApprovalEvents(client, approvals);
       if (approvals.industry.event.attestation_event_id !== target.industry_attestation_event_id ||
           approvals.technical.event.attestation_event_id !== target.technical_attestation_event_id) fail('ROLLBACK_APPROVAL_DRIFT');
