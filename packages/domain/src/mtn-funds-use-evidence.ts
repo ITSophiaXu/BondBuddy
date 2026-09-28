@@ -9,14 +9,21 @@
 import type { MtnEvidenceValue, MtnIssuerTier, MtnRegistrationArrangement } from './mtn-registration-evidence.js';
 
 export type MtnFundsUseStage = 'registration' | 'issuance' | 'unknown';
-export type MtnFundsUseMoney = {
-  /** Exact amount text as cited, without normalization or rounding. */
-  amount: string;
+type MtnFundsUseMoneyBase = {
   /** Exact currency code/text as cited. */
   currency: string;
   /** Exact unit text as cited, e.g. 元、万元、亿元. */
   unit: string;
 };
+/** A cited amount keeps its source qualifier; limits and estimates are not exact values. */
+export type MtnFundsUseMoney = MtnFundsUseMoneyBase & (
+  | { kind: 'exact'; amount: string }
+  | { kind: 'upper_bound'; amount: string }
+  | { kind: 'lower_bound'; amount: string }
+  | { kind: 'estimate'; amount: string }
+  | { kind: 'range'; minimum: string; maximum: string }
+);
+type ExactMtnFundsUseMoney = Extract<MtnFundsUseMoney, { kind: 'exact' }>;
 
 export type MtnFundsUseLineEvidence = {
   lineId: MtnEvidenceValue<string>;
@@ -69,7 +76,40 @@ function usable<T>(field: MtnEvidenceValue<T>): field is MtnEvidenceValue<T> & {
 }
 
 function validMoney(value: MtnFundsUseMoney): boolean {
-  return /^\d+(?:\.\d+)?$/.test(value.amount) && value.currency.trim().length > 0 && value.unit.trim().length > 0;
+  const validAmount = (amount: string) => /^\d+(?:\.\d+)?$/.test(amount);
+  return value.currency.trim().length > 0 && value.unit.trim().length > 0 &&
+    (value.kind === 'range'
+      ? validAmount(value.minimum) && validAmount(value.maximum) && amountsCompare(value.minimum, value.maximum) <= 0
+      : validAmount(value.amount));
+}
+
+function amountsCompare(left: string, right: string): number {
+  const a = amountInSourceUnits(left)!;
+  const b = amountInSourceUnits(right)!;
+  const scale = Math.max(a.scale, b.scale);
+  const leftValue = a.integer * 10n ** BigInt(scale - a.scale);
+  const rightValue = b.integer * 10n ** BigInt(scale - b.scale);
+  return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+}
+
+const amountQualifierPatterns: Record<Exclude<MtnFundsUseMoney['kind'], 'exact'>, RegExp> = {
+  upper_bound: /(?:不超过|不高于|不得超过|最高|至多|上限|不大于|≤|<=|at\s+most|up\s+to|no\s+more\s+than|not\s+exceed)[^\d]{0,8}[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:以内|以下)/i,
+  lower_bound: /(?:至少|不低于|不得低于|不小于|不少于|下限|≥|>=|at\s+least|no\s+less\s+than)[^\d]{0,8}[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:以上)/i,
+  estimate: /(?:约|预计|预估|大约|估计)[^\d]{0,12}[\d,.]+|(?:approximately|around|estimated?)[^\d]{0,12}[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:左右)/i,
+  range: /(?:区间|范围|介于)\s*[\d,.]+|[\d,.]+\s*(?:元|万元|亿元|万|亿)?\s*(?:至|到|[-–—])\s*[\d,.]+|between\s+[\d,.]+\s+and\s+[\d,.]+/i,
+};
+const pendingAllocationPattern = /按需|结合需要确定|视实际需要|实际需要确定|待分配|尚未确定|待明确|subject\s+to\s+demand/i;
+
+function amountSemanticsMatchCitations(money: MtnFundsUseMoney, citations: MtnEvidenceValue<unknown>['citations']): boolean {
+  const quotes = citations.map(citation => citation.quote);
+  if (money.kind === 'exact') {
+    return ![...Object.values(amountQualifierPatterns), pendingAllocationPattern]
+      .some(pattern => quotes.some(quote => pattern.test(quote)));
+  }
+  const expected = amountQualifierPatterns[money.kind];
+  return quotes.some(quote => expected.test(quote)) &&
+    !Object.entries(amountQualifierPatterns)
+      .some(([kind, pattern]) => kind !== money.kind && quotes.some(quote => pattern.test(quote)));
 }
 
 function validDate(value: string | null): value is string {
@@ -91,6 +131,7 @@ function sameUnit(left: MtnFundsUseMoney, right: MtnFundsUseMoney): boolean {
 }
 
 function amountsEqual(left: MtnFundsUseMoney, right: MtnFundsUseMoney): boolean | null {
+  if (left.kind !== 'exact' || right.kind !== 'exact') return null;
   if (!sameUnit(left, right)) return null;
   const a = amountInSourceUnits(left.amount);
   const b = amountInSourceUnits(right.amount);
@@ -99,7 +140,7 @@ function amountsEqual(left: MtnFundsUseMoney, right: MtnFundsUseMoney): boolean 
   return a.integer * 10n ** BigInt(scale - a.scale) === b.integer * 10n ** BigInt(scale - b.scale);
 }
 
-function sumAmounts(values: MtnFundsUseMoney[]): { amount: string; currency: string; unit: string } | null {
+function sumExactAmounts(values: ExactMtnFundsUseMoney[]): { amount: string; currency: string; unit: string } | null {
   if (values.length === 0 || values.some(value => !validMoney(value))) return null;
   const first = values[0]!;
   if (values.some(value => !sameUnit(first, value))) return null;
@@ -132,6 +173,12 @@ export function checkMtnFundsUseEvidence(input: MtnFundsUseEvidenceInput): MtnFu
   }
   if (input.useLines.length === 0) review.push('funds_use_lines_missing');
   if (!usable(input.statedTotal) || !validMoney(input.statedTotal.value)) review.push('stated_total_missing_or_invalid');
+  const statedTotal = usable(input.statedTotal) && validMoney(input.statedTotal.value) ? input.statedTotal.value : null;
+  let amountSemanticsSupported = true;
+  if (statedTotal && !amountSemanticsMatchCitations(statedTotal, input.statedTotal.citations)) {
+    review.push('stated_total_amount_qualifier_not_preserved_or_supported');
+    amountSemanticsSupported = false;
+  }
 
   const allowBroadRegistrationCategory = input.stage.value === 'registration' &&
     input.issuerTier.value === 'basic_tier' && input.registrationArrangement.value === 'basic_tier_unified_quota';
@@ -146,6 +193,10 @@ export function checkMtnFundsUseEvidence(input: MtnFundsUseEvidenceInput): MtnFu
       review.push(`use_line_${index}_description_or_amount_invalid`);
       continue;
     }
+    if (!amountSemanticsMatchCitations(line.amount.value, line.amount.citations)) {
+      review.push(`use_line_${index}_amount_qualifier_not_preserved_or_supported`);
+      amountSemanticsSupported = false;
+    }
     clearAmounts.push(line.amount.value);
     if (line.policySensitivity.value === 'unresolved') review.push(`use_line_${index}_policy_sensitivity_unresolved`);
     if (line.detailLevel.value === 'broad_category' && !allowBroadRegistrationCategory) {
@@ -156,14 +207,29 @@ export function checkMtnFundsUseEvidence(input: MtnFundsUseEvidenceInput): MtnFu
     }
   }
 
-  if (clearAmounts.length === input.useLines.length && usable(input.statedTotal) && validMoney(input.statedTotal.value)) {
-    const total = sumAmounts(clearAmounts);
-    if (total === null || !sameUnit(total, input.statedTotal.value)) {
+  if (clearAmounts.length === input.useLines.length && statedTotal) {
+    if (!amountSemanticsSupported) {
+      review.push('funds_use_amount_semantics_unresolved_for_total');
+    } else if (clearAmounts.some(value => !sameUnit(value, statedTotal)) ||
+      clearAmounts.some(value => !sameUnit(value, clearAmounts[0]!))) {
       review.push('funds_use_amount_units_unmatched');
+    } else if (!clearAmounts.every((value): value is ExactMtnFundsUseMoney => value.kind === 'exact')) {
+      review.push('funds_use_amount_semantics_unresolved_for_total');
     } else {
-      const equal = amountsEqual(total, input.statedTotal.value);
-      if (equal === false) conflicts.push('funds_use_amount_total_conflict');
-      if (equal === null) review.push('funds_use_amount_total_unresolved');
+      const total = sumExactAmounts(clearAmounts);
+      if (total === null) {
+        review.push('funds_use_amount_total_unresolved');
+      } else if (statedTotal.kind === 'upper_bound') {
+        if (amountsCompare(total.amount, statedTotal.amount) > 0) {
+          conflicts.push('funds_use_amount_total_conflict');
+        }
+      } else if (statedTotal.kind === 'exact') {
+        const equal = amountsEqual({ ...total, kind: 'exact' }, statedTotal);
+        if (equal === false) conflicts.push('funds_use_amount_total_conflict');
+        if (equal === null) review.push('funds_use_amount_total_unresolved');
+      } else {
+        review.push('funds_use_amount_semantics_unresolved_for_total');
+      }
     }
   }
 
