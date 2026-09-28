@@ -440,6 +440,10 @@ test('transition scheme citation binds the missing item to its own affirmative d
       subject: 'funds_management_controls' as const,
       quote: '已披露资金运营内控制度，过渡方案为临时审批控制。',
     },
+    {
+      subject: 'funds_management_controls' as const,
+      quote: '资金运营内控制度过渡方案与短期资金调度应急预案过渡方案已披露。',
+    },
   ];
 
   for (const entry of cases) {

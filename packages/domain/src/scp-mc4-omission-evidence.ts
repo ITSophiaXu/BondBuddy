@@ -117,12 +117,12 @@ function hasTrustworthyCitation(citation: unknown): citation is ScpMc4EvidenceCi
 function hasRelevantTransitionCitation(assertion: unknown, subject: 'funds_management_controls' | 'short_term_liquidity_plan'): boolean {
   if (!isRecord(assertion) || assertion.status !== 'cited' || !Array.isArray(assertion.citations)) return false;
   const subjectScheme = subject === 'funds_management_controls'
-    ? /资金运营内控制度.{0,8}过渡方案/
-    : /短期资金调度应急预案.{0,8}过渡方案/;
+    ? '资金运营内控制度.{0,8}过渡方案'
+    : '短期资金调度应急预案.{0,8}过渡方案';
   const affirmativeEvidence = (clause: string): boolean => {
-    const providedBeforeObject = /已(?:经)?(?:提供|披露|提交)\s*.{0,12}(?:资金运营内控制度|短期资金调度应急预案).{0,8}过渡方案/.test(clause);
-    const providedAfterObject = /(?:资金运营内控制度|短期资金调度应急预案).{0,8}过渡方案.{0,12}已(?:经)?(?:提供|披露|提交)/.test(clause);
-    const schemeDescribed = /(?:资金运营内控制度|短期资金调度应急预案).{0,8}过渡方案(?:为|包括|内容为)|(?:资金运营内控制度|短期资金调度应急预案).{0,8}过渡方案.{0,12}过渡期间(?:采取|由)/.test(clause);
+    const providedBeforeObject = new RegExp(`已(?:经)?(?:提供|披露|提交)\\s*${subjectScheme}`).test(clause);
+    const providedAfterObject = new RegExp(`${subjectScheme}\\s*已(?:经)?(?:提供|披露|提交)`).test(clause);
+    const schemeDescribed = new RegExp(`${subjectScheme}(?:为|包括|内容为|[:：]过渡期间(?:采取|由))`).test(clause);
     return providedBeforeObject || providedAfterObject || schemeDescribed;
   };
   return assertion.citations.some((citation: unknown) => {
@@ -138,7 +138,7 @@ function hasRelevantTransitionCitation(assertion: unknown, subject: 'funds_manag
     // Require the subject's named scheme and its positive disclosure/description in one
     // punctuation-delimited clause. A general control report, another item's scheme, or
     // an affirmative statement in a neighboring clause cannot establish this item.
-    const matchingClauses = clauses.filter(clause => subjectScheme.test(clause) && affirmativeEvidence(clause));
+    const matchingClauses = clauses.filter(clause => new RegExp(subjectScheme).test(clause) && affirmativeEvidence(clause));
     return matchingClauses.length === 1;
   });
 }
