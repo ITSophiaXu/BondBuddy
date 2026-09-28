@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import type { ProductionReviewManifest } from './production-review-manifest.js';
 
 const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
@@ -139,3 +140,85 @@ export type ProductionTechnicalAttestationRequest = Static<typeof ProductionTech
 export type ProductionReviewAttestationEvent = Static<typeof ProductionReviewAttestationEventSchema>;
 export type ProductionReviewAttestationWithdrawalRequest = Static<typeof ProductionReviewAttestationWithdrawalRequestSchema>;
 export type ProductionReviewAttestationWithdrawalEvent = Static<typeof ProductionReviewAttestationWithdrawalEventSchema>;
+
+/**
+ * Checks that a schema-valid reviewer request refers only to the already-frozen
+ * manifest supplied by the caller. The caller is responsible for validating the
+ * manifest schema/content and verifying its content hash with the canonical hash
+ * implementation; this function deliberately does not calculate a hash.
+ *
+ * Chapter IDs are checked for duplicates, but cannot be checked for completeness:
+ * the manifest pins the chapter-template hash and does not expose its chapter list.
+ */
+export function validProductionReviewAttestationBinding(
+  request: ProductionReviewAttestationRequest,
+  manifest: ProductionReviewManifest,
+): boolean {
+  if (request.manifest_id !== manifest.manifest_id ||
+      request.manifest_version !== manifest.manifest_version ||
+      request.content_sha256 !== manifest.content_sha256) return false;
+
+  const evidence = request.evidence;
+  const seenEvidenceHashes = new Map<string, string>();
+  const uniqueEvidenceRefs = (refs: readonly { evidence_id: string; evidence_sha256: string }[]): boolean => {
+    const local = new Set<string>();
+    for (const ref of refs) {
+      if (local.has(ref.evidence_id)) return false;
+      local.add(ref.evidence_id);
+      const previous = seenEvidenceHashes.get(ref.evidence_id);
+      if (previous !== undefined && previous !== ref.evidence_sha256) return false;
+      seenEvidenceHashes.set(ref.evidence_id, ref.evidence_sha256);
+    }
+    return true;
+  };
+
+  if ('source_effectivity_applicability' in evidence) {
+    const sources = new Map(manifest.content.source_date_evidence.map(source => [source.source_evidence_id, source]));
+    const reviewedSources = new Set<string>();
+    for (const row of evidence.source_effectivity_applicability) {
+      const source = sources.get(row.source_evidence_id);
+      if (!source || source.source_check_sha256 !== row.source_check_sha256 || reviewedSources.has(row.source_evidence_id) ||
+          !uniqueEvidenceRefs(row.evidence_refs)) return false;
+      reviewedSources.add(row.source_evidence_id);
+      if (request.decision === 'approve' && row.conclusion === 'needs_evidence') return false;
+    }
+    if (request.decision === 'approve' && reviewedSources.size !== sources.size) return false;
+
+    const items = new Map<string, 'exception' | 'uncovered'>([
+      ...manifest.content.applicability_scope.exceptions.map(item => [item.code, 'exception'] as const),
+      ...manifest.content.applicability_scope.uncovered_items.map(item => [item.code, 'uncovered'] as const),
+    ]);
+    const reviewedItems = new Set<string>();
+    for (const row of evidence.exceptions_and_uncovered) {
+      if (items.get(row.item_code) !== row.item_kind || reviewedItems.has(row.item_code) || !uniqueEvidenceRefs(row.evidence_refs)) return false;
+      reviewedItems.add(row.item_code);
+      if (request.decision === 'approve' && row.disposition === 'needs_evidence') return false;
+    }
+    if (request.decision === 'approve' && reviewedItems.size !== items.size) return false;
+
+    const samples = new Map(manifest.content.authorized_real_sample_evidence.map(sample => [sample.sample_evidence_id, sample]));
+    const reviewedSamples = new Set<string>();
+    for (const row of evidence.sample_conclusions) {
+      const sample = samples.get(row.sample_evidence_id);
+      if (!sample || sample.sample_case_id !== row.sample_case_id || reviewedSamples.has(row.sample_evidence_id) ||
+          !uniqueEvidenceRefs(row.evidence_refs)) return false;
+      reviewedSamples.add(row.sample_evidence_id);
+      if (request.decision === 'approve' && row.conclusion === 'reject') return false;
+    }
+    if (request.decision === 'approve' && reviewedSamples.size !== samples.size) return false;
+
+    const chapters = new Set<string>();
+    for (const row of evidence.chapter_boundaries) {
+      if (chapters.has(row.chapter_id) || !uniqueEvidenceRefs(row.evidence_refs)) return false;
+      chapters.add(row.chapter_id);
+    }
+    return true;
+  }
+
+  if (evidence.template_coverage_consistency.chapter_template_sha256 !== manifest.content.chapter_template.sha256 ||
+      evidence.template_coverage_consistency.coverage_manifest_sha256 !== manifest.content.coverage_manifest.sha256 ||
+      !uniqueEvidenceRefs(evidence.template_coverage_consistency.evidence_refs) ||
+      !uniqueEvidenceRefs(evidence.test_evidence)) return false;
+  if (request.decision === 'approve' && evidence.template_coverage_consistency.result !== 'consistent') return false;
+  return true;
+}
