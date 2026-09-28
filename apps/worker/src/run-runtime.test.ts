@@ -17,6 +17,7 @@ import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, revi
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
 import { checkpointStage, claim, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
+import { configureTrialGuard, createOverride, revokeOverride, setKillSwitch, trialConfigFromEnv } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
@@ -601,6 +602,68 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const recoveredTl = await adminJobTimeline(pool, operator, await jobOf(unknownRun));
     assert.deepEqual(recoveredTl.stages.filter(s => ['provider_reconciliation_required', 'provider_call_reconciled', 'provider_reconciled'].includes(s.reason ?? '')).map(s => s.reason), ['provider_reconciliation_required', 'provider_call_reconciled', 'provider_reconciled']);
     assert.equal(recoveredTl.outcome.state, 'succeeded');
+    // A completed first call is durable when the next intent is blocked. Neither pause creates
+    // a provider attempt nor consumes the lease retry budget; the sweep resumes after relief.
+    await grantOperator(pool, { userId: operator, role: 'log_operator', grantedBy: 'synthetic-test', reasonCode: 'runtime_test' });
+    const secondModel = codexModelStage({ name: 'second_model_generation', logicalCallId: 'second-update-generation', config, schema,
+      validate: isAnswer, resultSchemaVersion: 'answer-v1', buildPrompt: async ctx => `SYNTHETIC second prompt for run ${ctx.run.id}. SCENARIO:structured` });
+    const twoCalls = [syntheticInputLockStage, materialsReadyStage, model(), secondModel, word()];
+    const trialConfig = { ...trialConfigFromEnv({}), enabled: true, model_tokens_per_user_per_day: 0 };
+    const trialProject = await project('trial limit runtime');
+    const quotaRun = (await execute(trialProject)).json().run_id as string;
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls, afterStage: async stage => {
+      if (stage === 'model_generation') configureTrialGuard(trialConfig);
+    } }), 'paused');
+    const quotaRow = await runRow(quotaRun);
+    assert.equal(quotaRow.state, 'paused'); assert.equal(quotaRow.job_stage, 'trial_limit');
+    assert.equal(quotaRow.checkpoint.stages.model_generation !== undefined, true);
+    assert.deepEqual(await attempts(quotaRow.job_id), [[1, 'completed']], 'blocked intent creates no provider attempt');
+    assert.equal((await pool.query('SELECT attempts FROM bb_jobs WHERE id=$1', [quotaRow.job_id])).rows[0].attempts, 1);
+    const quotaEvent = (await pool.query("SELECT payload FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [quotaRun])).rows[0].payload;
+    assert.deepEqual([quotaEvent.reason, quotaEvent.error_code], ['model_tokens_per_user_per_day', 'TRIAL_QUOTA_EXCEEDED']);
+    assert.equal((await send('POST', `/api/v1/runs/${quotaRun}/resume`, { reason: 'synthetic' })).statusCode, 429);
+    const trialRuntime = new WorkerRuntime({ pool, blobs, runStages: twoCalls });
+    await trialRuntime.sweep();
+    assert.equal((await runRow(quotaRun)).state, 'paused');
+    await createOverride(pool, operator, { user_id: alice, effect: 'allow', reason_code: 'synthetic_trial_relief' });
+    await trialRuntime.sweep();
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls }), 'succeeded');
+    assert.deepEqual(await attempts(quotaRow.job_id), [[1, 'completed'], [1, 'completed']], 'first call is reused; only the next call is sent');
+    assert.equal((await runRow(quotaRun)).state, 'succeeded');
+
+    const killRun = (await execute(trialProject)).json().run_id as string;
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls, afterStage: async stage => {
+      if (stage === 'model_generation') await setKillSwitch(pool, trialConfig, operator, 'engaged', 'synthetic_trial_pause');
+    } }), 'paused');
+    const killRow = await runRow(killRun);
+    const killEvent = (await pool.query("SELECT payload FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [killRun])).rows[0].payload;
+    assert.deepEqual([killEvent.reason, killEvent.error_code], ['kill_switch', 'MODEL_CALLS_SUSPENDED']);
+    assert.deepEqual(await attempts(killRow.job_id), [[1, 'completed']]);
+    await trialRuntime.sweep(); assert.equal((await runRow(killRun)).state, 'paused');
+    await setKillSwitch(pool, trialConfig, operator, 'released', 'synthetic_trial_resume');
+    await trialRuntime.sweep();
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls }), 'succeeded');
+    assert.deepEqual(await attempts(killRow.job_id), [[1, 'completed'], [1, 'completed']]);
+
+    const denyRun = (await execute(trialProject)).json().run_id as string;
+    const denyOverride = await createOverride(pool, operator, { user_id: alice, effect: 'deny', reason_code: 'synthetic_trial_deny' });
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls }), 'failed');
+    const denyRow = await runRow(denyRun);
+    assert.equal(denyRow.job_error, 'TRIAL_ACCESS_DENIED');
+    assert.equal((await pool.query('SELECT attempts FROM bb_jobs WHERE id=$1', [denyRow.job_id])).rows[0].attempts, 1);
+    assert.deepEqual(await attempts(denyRow.job_id), []);
+    const denyEvent = (await pool.query("SELECT payload FROM bb_run_events WHERE run_id=$1 AND state='failed' ORDER BY seq DESC LIMIT 1", [denyRun])).rows[0].payload;
+    assert.equal(denyEvent.error_code, 'TRIAL_ACCESS_DENIED');
+    await revokeOverride(pool, operator, denyOverride.override_id, 'synthetic_trial_done');
+    configureTrialGuard(null);
+    const unexpectedRun = (await execute(trialProject)).json().run_id as string;
+    const unexpectedStage: RunStage = { name: 'model_generation', run: async () => { throw new Error('synthetic_unexpected'); } };
+    const unexpectedStages = [syntheticInputLockStage, materialsReadyStage, unexpectedStage, word()];
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: unexpectedStages, maxAttempts: 2 }), 'retry');
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: unexpectedStages, maxAttempts: 2 }), 'failed');
+    const unexpectedRow = await runRow(unexpectedRun);
+    assert.equal(unexpectedRow.job_error, 'DATA_UNAVAILABLE');
+    assert.equal((await pool.query('SELECT attempts FROM bb_jobs WHERE id=$1', [unexpectedRow.job_id])).rows[0].attempts, 2);
     const rejectedEvents = await adminEvents(pool, operator, parseAdminFilter({ project_id: p9.projectId }));
     const rejections = rejectedEvents.items.filter(e => e.kind === 'operation.rejected').map(e => e.error_code).sort();
     assert.deepEqual(rejections, ['CAPABILITY_NOT_READY', 'INPUT_REVISION_CONFLICT'], 'rejections before any run are queryable');
@@ -661,6 +724,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const legacyJob = await claimMaterialParse(pool, 30);
     assert.equal(legacyJob?.materialId, legacy.material_id);
   } finally {
+    configureTrialGuard(null);
     await app.close(); await closedApp.close();
     await rm(root, { recursive: true, force: true });
     await pool.end();

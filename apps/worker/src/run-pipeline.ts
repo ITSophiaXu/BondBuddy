@@ -16,6 +16,7 @@ import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedCont
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { checkpointStage, claim, finish, pauseRun, promoteWordArtifact, releaseLease, renew, upgradeStageCheckpoint, type Lease } from '@bondbuddy/api/queue';
+import { TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { runContainedModelCall, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
@@ -489,6 +490,14 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   } catch (error) {
     if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
     if (lost(error)) return 'lost';
+    if (error instanceof TrialLimitProblem) {
+      if (error.limit === 'operator_deny') {
+        await finish(pool, lease, 'failed', { errorCode: error.code, failedStage: currentStage });
+        return 'failed';
+      }
+      await pauseRun(pool, lease, 'trial_limit', error.limit, error.code);
+      return 'paused';
+    }
     if (error instanceof Problem && (error.code.startsWith('TEST_GRANT_') || error.code==='TEST_CHANNEL_DISABLED')) {
       await pauseRun(pool,lease,'capability_not_ready',error.code.toLowerCase());
       return 'paused';

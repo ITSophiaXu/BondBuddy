@@ -156,6 +156,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     if(kind==='resume'){
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs a durable result and verified usage before resume');
+      if(j.stage==='trial_limit')await assertModelCallAllowed(client,trialGuardConfig(),owner);
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');
@@ -455,17 +456,18 @@ export async function upgradeStageCheckpoint(pool:Pool,lease:Lease,stage:string,
  * Parks a run that cannot progress yet (a stage is not implemented, pinned materials are still
  * parsing). It keeps its checkpoint and is never reported as success; resume re-queues it.
  */
-export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAGES[number],reason:string) {
+export async function pauseRun(pool:Pool,lease:Lease,stage:typeof RUN_PAUSE_STAGES[number],reason:string,errorCode?:string) {
   if(!RUN_PAUSE_STAGES.includes(stage)||!/^[a-z][a-z0-9_]{0,63}$/.test(reason))throw new Problem(422,'VALIDATION_FAILED','Invalid pause');
+  if(errorCode && !(ERROR_CODES as readonly string[]).includes(errorCode))throw new Problem(422,'VALIDATION_FAILED','Invalid pause error code');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
     await client.query("UPDATE bb_jobs SET state='paused',stage=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[lease.jobId,stage]);
-    await event(client,r,'paused',stage,reason);
+    await event(client,r,'paused',stage,reason,errorCode);
   });
 }
 
 /** Trusted runtime resume (never a browser principal): re-queues a paused run whose blocker cleared. */
-export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled') {
+export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason:'materials_ready'|'provider_reconciled'|'trial_limit_cleared') {
   return transaction(pool,async client=>{
     const r=await run(client,owner,runId,true);
     const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
