@@ -54,6 +54,9 @@ async function killedParseClaim(database: string, jobId: string): Promise<void> 
       BB_DRILL_MATERIAL_MODULE: new URL('./material-jobs.js', import.meta.url).href },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  // 'close' fires after 'exit' or 'error', so registering it before the await guarantees the
+  // finally block never waits on an event that already fired when the child dies early.
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
   try {
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('parse claimant timed out')), 10000);
@@ -63,7 +66,7 @@ async function killedParseClaim(database: string, jobId: string): Promise<void> 
     });
   } finally {
     child.kill('SIGKILL');
-    await new Promise<void>(resolve => child.once('exit', () => resolve()));
+    await closed;
   }
 }
 

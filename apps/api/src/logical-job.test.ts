@@ -7,7 +7,8 @@ import { adminJobTimeline, adminMetrics, grantOperator } from './log-ops.js';
 import { executionKeyHash, recordLogicalJob } from './observability.js';
 import { transaction, uid } from './data.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection=await isolatedTestDatabase();
 test('run-less preflight and execute rejection retain atomic owned job timelines', {skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection});
   let owner=`synthetic-${randomUUID()}`, other=`synthetic-${randomUUID()}`;

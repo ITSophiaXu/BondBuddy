@@ -6,7 +6,8 @@ import {createServer} from './server.js';
 import {canonical,digest,executionKeyStorage,uid} from './data.js';
 import {executionKeyHash} from './observability.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection=await isolatedTestDatabase();
 test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolation and atomic outbox', {skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection});
   const first=`execution-${randomUUID()}`,second=`execution-${randomUUID()}`;

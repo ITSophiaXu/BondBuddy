@@ -9,7 +9,8 @@ import { azureBlobs, digest } from './data.js';
 import { pdfSample, PDF, TEXT } from './upload-safety.samples.js';
 import { runStorageLifecycle } from './storage-lifecycle.js';
 
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
 

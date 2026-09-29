@@ -12,6 +12,9 @@ import {
   type UpdateDifficultyClient,
   type TrustedUpdateDifficultyInput,
 } from './update-difficulty-repository.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const connection = await isolatedTestDatabase();
 
 const input: TrustedUpdateDifficultyInput = {
   ownerUserId: 'api-difficulty-owner',
@@ -214,9 +217,9 @@ test('locked update loader verifies production-rule-pin v1 manifest digests and 
 });
 
 test('ensure-current is idempotent under concurrent PG16 calls and refreshes only for a changed lock/profile', {
-  skip: !process.env.BB_TEST_DATABASE_URL && 'set BB_TEST_DATABASE_URL to migrated PostgreSQL 16 (including migration 0038)',
+  skip: !connection && 'set BB_TEST_DATABASE_URL to migrated PostgreSQL 16 (including migration 0038)',
 }, async () => {
-  const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
+  const pool = new Pool({ connectionString: connection });
   const suffix = randomUUID();
   const owner = `api-difficulty-owner-${suffix}`, project = `api-difficulty-project-${suffix}`;
   const historical = `api-difficulty-history-${suffix}`, finance1 = `api-difficulty-finance1-${suffix}`, finance2 = `api-difficulty-finance2-${suffix}`;

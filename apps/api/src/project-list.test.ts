@@ -8,7 +8,7 @@ import { claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { isolatedTestDatabase } from './test-database.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+const connection=await isolatedTestDatabase(undefined,'project-list-search');
 const runConnection=await isolatedTestDatabase();
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin='http://bondbuddy.test';

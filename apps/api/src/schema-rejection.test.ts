@@ -7,7 +7,8 @@ import {grantOperator} from './log-ops.js';
 import {uid} from './data.js';
 import {executionKeyHash} from './observability.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection=await isolatedTestDatabase();
 test('authenticated schema rejections retain bounded owned evidence and atomic outbox', {skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection});
   const first=`schema-${randomUUID()}`,second=`schema-${randomUUID()}`;

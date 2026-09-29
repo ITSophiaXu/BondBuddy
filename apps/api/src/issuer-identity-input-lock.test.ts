@@ -12,7 +12,8 @@ import {
 import type { IssuerIdentitySourcePool } from './issuer-identity-source.js';
 import { testIssuerCandidateMatches, type TestIssuerCandidate } from './test-issuer-candidate.js';
 
-const databaseUrl = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const databaseUrl = await isolatedTestDatabase();
 const origin = 'http://bondbuddy.test';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const verifiedA = 'entity:11111111-1111-4111-8111-111111111111';

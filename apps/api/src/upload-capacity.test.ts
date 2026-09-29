@@ -7,7 +7,8 @@ import { M1_UPLOAD_LIMITS } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest } from './data.js';
 
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const enabled = process.env.BB_RUN_UPLOAD_CAPACITY_TESTS === '1';
 // Explicit opt-in: sends and saves 500 MiB of synthetic bytes. Use a disposable local DB/Blob only.

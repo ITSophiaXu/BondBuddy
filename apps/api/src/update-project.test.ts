@@ -6,7 +6,8 @@ import { emptyUpdateDetails, updateDetailsErrors, type UpdateDetails } from '@bo
 import { createServer } from './server.js';
 
 const origin = 'http://bondbuddy.test';
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const targetPeriod = (year: number, period_kind: 'annual' | 'interim' = 'annual', scope: 'consolidated' | 'parent' = 'consolidated', months = 12) => ({
   start: `${year}-01-01`, end: months === 12 ? `${year}-12-31` : `${year}-${String(months).padStart(2, '0')}-${months === 6 ? '30' : '30'}`,
   period_kind, scope, status: 'user_asserted' as const, evidence_refs: [] as string[]

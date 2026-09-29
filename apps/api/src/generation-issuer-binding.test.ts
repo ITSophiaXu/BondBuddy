@@ -17,7 +17,8 @@ import {
 } from './generation-issuer-binding.js';
 import { consumeGenerationIssuerBinding, type GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
 
-const databaseUrl = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const databaseUrl = await isolatedTestDatabase();
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const entityA = 'entity:11111111-1111-4111-8111-111111111111';
 const entityB = 'entity:22222222-2222-4222-8222-222222222222';

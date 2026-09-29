@@ -6,6 +6,9 @@ import { azureBlobs, digest, uid } from './data.js';
 import { createServer } from './server.js';
 import { storeOcr, validateOcrResponse, readOcr, correctOcr, authorizeOcrMaterial } from './ocr.js';
 import { pngSample, PNG } from './upload-safety.samples.js';
+import { isolatedTestDatabase } from './test-database.js';
+
+const connection = await isolatedTestDatabase();
 
 function response(materialId='material',requestId='request'):OcrEngineResponse {
   return {schema_version:'ocr-response-v1',request_id:requestId,processor_version:'synthetic-ocr-v1',engine_version:'synthetic-only',language:'eng',language_data_sha256:{eng:'a'.repeat(64)},purpose:'source_preflight',status:'needs_confirmation',
@@ -27,8 +30,8 @@ test('OCR validator rejects wrong identities, coordinates, edited pixels and cer
   ]){const bad=structuredClone(value);mutate(bad);assert.throws(()=>validateOcrResponse(bad,expected));}
 });
 
-test('owned OCR snapshots and user corrections are immutable, replay-safe and private', {skip:!process.env.BB_TEST_DATABASE_URL||!process.env.BB_TEST_AZURITE_CONNECTION_STRING},async()=>{
-  const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL});const blobs=azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!);
+test('owned OCR snapshots and user corrections are immutable, replay-safe and private', {skip:!connection||!process.env.BB_TEST_AZURITE_CONNECTION_STRING},async()=>{
+  const pool=new Pool({connectionString:connection});const blobs=azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!);
   const owner=uid();let active=owner;const origin='http://ocr.synthetic.test';
   const app=createServer({pool,blobs,allowedOrigin:origin,enableRunStaging:true,principal:async()=>({userId:active,csrfVerified:true})});
   const send=(method:any,url:string,payload?:any,extra={})=>app.inject({method,url,headers:{origin,...extra},payload});

@@ -6,7 +6,8 @@ import {claimOutbox,ackOutbox,observeUsage,queryTimeline,queryUsage,usageTotals,
 import {recordPotentialCall} from './queue.js';
 import {azureBlobs,digest,uid} from './data.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection=await isolatedTestDatabase();
 const blob=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {skip:!connection||!blob},async()=>{
   const pool=new Pool({connectionString:connection});
@@ -88,7 +89,8 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id='synthetic-operator'")).rows[0].n>=3);
     assert.deepEqual(await queryUsage(pool,'synthetic-log-b',lease.jobId,'synthetic-operator'),[]);
     await assert.rejects(observeUsage(pool,{owner:'synthetic-log-b',attemptId:failed,source:'provider',sourceEventId:'foreign',status:'unknown'}));
-    // Earlier suites leave pending outbox rows (including parse-job events); claim enough to reach this test's rows.
+    // This file runs against its own private clone of the migrated template, so the only
+    // pending outbox rows are the ones this test just created; claim them all.
     const claimed=await claimOutbox(pool,1000);
     const item=claimed.find(x=>x.event_type==='model.usage_observed');assert.ok(item);
     assert.equal(await ackOutbox(pool,item.id,'wrong-token'),false);

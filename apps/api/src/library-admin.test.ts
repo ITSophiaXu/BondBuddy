@@ -12,7 +12,8 @@ import { classifyLibraryVersion, ingestLibraryVersion, markLibraryVersionParsed,
 
 // Synthetic users, source and document. Proves the #78 operator surface is deny-by-default and that the
 // user-facing API exposes no library list, candidate or score.
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const ORIGIN = 'http://bondbuddy.test';
 function memoryBlobs(): PrivateBlobs & { keys(): string[] } {
   const store = new Map<string, Buffer>();

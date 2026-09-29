@@ -7,7 +7,8 @@ import { factIdentityKey } from '@bondbuddy/domain/facts';
 import { createServer } from './server.js';
 
 const origin = 'http://bondbuddy.test';
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 
 test('fact review API scopes candidates and appends idempotent decisions without promoting source status', { skip: !connection }, async () => {
   const pool = new Pool({ connectionString: connection });
