@@ -52,6 +52,8 @@ function adapters(overrides: Partial<NoHistoryStageAdapters> = {}, counters = { 
     loadReviewedIssuerProfile: async () => reviewedProfile,
     loadTargetFacts: async () => { counters.facts++; return { ...scope, facts: [{ factId: 'target-fact-1', statement: '目标发行人主营业务收入已核实。', evidenceRefs: ['target-audit-p1'], status: 'verified' as const }] }; },
     loadTrustedRuleSelection: async () => { counters.rules++; return rule; },
+    loadApprovedIssuerBinding: async () => ({ ...scope, bindingId: 'synthetic-binding', version: 1, contentSha256: 'e'.repeat(64),
+      issuerEntityId: 'entity:11111111-1111-4111-8111-111111111111', reviewEventId: 'synthetic-review-event', reviewedAt: '2026-09-25T00:00:00Z' }),
     selectReference: async () => { counters.select++; return { schema_version: 'reference-selection-v1', query_schema_version: 'reference-library-query-v1.1', status: 'needs_review', selection_hash: 'c'.repeat(64), target: {} as never,
       index_release: null, candidate_decisions: [], selected: null, reasons: ['synthetic_review_gate'] } as unknown as LibrarySelectionSnapshot; },
     loadReferenceOutline: async () => null,
