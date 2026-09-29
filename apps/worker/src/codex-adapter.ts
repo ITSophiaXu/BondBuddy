@@ -14,7 +14,7 @@ import type { ProbeJournal } from './deepseek-probe.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
 
-export type CodexCredential = { kind: 'env'; name: string } | { kind: 'auth_file'; path: string };
+export type CodexCredential = { kind: 'env'; name: string } | { kind: 'auth_file'; path: string } | { kind: 'command'; path: string; oauth_file: string };
 export type CodexAdapterConfig = {
   command: string[];
   model_id: string;
@@ -130,15 +130,20 @@ export class CodexAdapterError extends Error {
 // Server-side configuration. Credentials are referenced by env var name or file path only;
 // the adapter never reads or logs their values.
 export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): CodexAdapterConfig {
-  const credential: CodexCredential = env.BB_CODEX_AUTH_FILE ? { kind: 'auth_file', path: env.BB_CODEX_AUTH_FILE } : { kind: 'env', name: env.BB_CODEX_CREDENTIAL_ENV ?? 'DEEPSEEK_API_KEY' };
+  const commandMode = env.BB_CODEX_AUTH_MODE === 'copilot_enterprise';
+  if (env.BB_CODEX_AUTH_MODE && !commandMode) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  if (commandMode && (env.BB_CODEX_AUTH_FILE || env.BB_CODEX_CREDENTIAL_ENV)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+  const credential: CodexCredential = commandMode
+    ? { kind: 'command', path: '/usr/local/bin/bb-copilot-token', oauth_file: env.BB_COPILOT_OAUTH_FILE ?? '' }
+    : env.BB_CODEX_AUTH_FILE ? { kind: 'auth_file', path: env.BB_CODEX_AUTH_FILE } : { kind: 'env', name: env.BB_CODEX_CREDENTIAL_ENV || 'DEEPSEEK_API_KEY' };
   const config: CodexAdapterConfig = {
     command: [env.BB_CODEX_BIN ?? 'codex'],
     model_id: env.BB_CODEX_MODEL ?? 'deepseek-flash',
-    model_provider: env.BB_CODEX_PROVIDER ?? 'deepseek',
+    model_provider: env.BB_CODEX_PROVIDER || 'deepseek',
     base_url: env.BB_CODEX_BASE_URL ?? 'https://api.deepseek.com',
     wire_api: 'responses',
-    model_config_version: env.BB_CODEX_CONFIG_VERSION ?? 'codex-deepseek-flash-20260925',
-    reasoning_effort: env.BB_CODEX_REASONING_EFFORT ?? null,
+    model_config_version: env.BB_CODEX_CONFIG_VERSION || 'codex-deepseek-flash-20260925',
+    reasoning_effort: env.BB_CODEX_REASONING_EFFORT || null,
     credential,
     work_root: env.BB_CODEX_WORK_ROOT ?? join(tmpdir(), 'bb-codex'),
     timeout_ms: Number(env.BB_CODEX_TIMEOUT_MS ?? 120000),
@@ -149,6 +154,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     path_env: env.BB_CODEX_PATH ?? '/usr/local/bin:/usr/bin:/bin',
     proxy_env: codexProxyEnv(env),
   };
+  if (commandMode && (!env.BB_CODEX_CONFIG_VERSION || config.model_provider !== 'copilot_enterprise' || config.model_id !== 'gpt-6-sol' || config.base_url !== 'https://api.enterprise.githubcopilot.com' || config.reasoning_effort !== 'max')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   assertCodexConfig(config);
   return config;
 }
@@ -157,7 +163,9 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
   const ok = Array.isArray(c.command) && c.command.length > 0 && c.command.every(p => typeof p === 'string' && p.length > 0) &&
     safeVersion(c.model_id) && /^[a-z0-9_-]{1,64}$/.test(c.model_provider) && /^https:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[A-Za-z0-9._\/-]*)?$/.test(c.base_url) &&
     c.wire_api === 'responses' && safeVersion(c.model_config_version) && (c.reasoning_effort === null || /^[a-z]{1,16}$/.test(c.reasoning_effort)) &&
-    (c.credential.kind === 'env' ? envName(c.credential.name) : isAbsolute(c.credential.path)) && isAbsolute(c.work_root) &&
+    (c.credential.kind === 'env' ? envName(c.credential.name) : c.credential.kind === 'command'
+      ? c.credential.path === '/usr/local/bin/bb-copilot-token' && c.credential.oauth_file === '/run/secrets/bb-copilot-oauth'
+      : isAbsolute(c.credential.path)) && isAbsolute(c.work_root) &&
     count(c.timeout_ms) && c.timeout_ms > 0 && count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
     count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
@@ -171,11 +179,18 @@ export function codexConfigOverrides(c: CodexAdapterConfig): string[] {
   const kv: string[] = [
     `model=${q(c.model_id)}`, `model_provider=${q(c.model_provider)}`,
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,
-    c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : `${p}.requires_openai_auth=true`,
+    c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : c.credential.kind === 'command'
+      ? `${p}.auth.command=${q(c.credential.path)}` : `${p}.requires_openai_auth=true`,
     `approval_policy="never"`, `sandbox_mode="read-only"`, `web_search="disabled"`,
     `shell_environment_policy.inherit="none"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `mcp_servers={}`,
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
+  if (c.credential.kind === 'command') kv.push('model_context_window=872000', 'model_auto_compact_token_limit=780000',
+    `model_catalog_json=${q('/opt/bondbuddy/codex-model-catalog.json')}`,
+    `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,
+    `${p}.http_headers.Copilot-Integration-Id=${q('vscode-chat')}`, `${p}.http_headers.Editor-Version=${q('vscode/1.105.1')}`,
+    `${p}.http_headers.Editor-Plugin-Version=${q('copilot-chat/0.32.3')}`, `${p}.http_headers.User-Agent=${q('GitHubCopilotChat/0.32.3')}`,
+    `${p}.http_headers.OpenAI-Intent=${q('conversation-panel')}`, `${p}.http_headers.X-GitHub-Api-Version=${q('2025-04-01')}`);
   return kv.flatMap(v => ['-c', v]);
 }
 
@@ -230,6 +245,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
     if (value) env[c.credential.name] = value;
+  }
+  if (c.credential.kind === 'command') {
+    env.BB_COPILOT_OAUTH_FILE = c.credential.oauth_file;
+    env.NODE_USE_ENV_PROXY = '1';
   }
   const args = buildCodexArgs(c, o);
   const startedAt = new Date();

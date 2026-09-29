@@ -127,17 +127,25 @@ services:
       https_proxy: http://egress:3128
       NO_PROXY: postgres,azurite,api,localhost,127.0.0.1
       no_proxy: postgres,azurite,api,localhost,127.0.0.1
-      # Model adapter (env credential mode only; no auth.json). Empty in staging = model disabled.
-      BB_CODEX_CREDENTIAL_ENV: ${BB_CODEX_CREDENTIAL_ENV:-DEEPSEEK_API_KEY}
+      # Explicit Copilot command mode reads only the worker's read-only mounted OAuth file.
+      BB_CODEX_AUTH_MODE: ${BB_CODEX_AUTH_MODE:-}
+      BB_COPILOT_OAUTH_FILE: /run/secrets/bb-copilot-oauth
+      BB_CODEX_CREDENTIAL_ENV: ${BB_CODEX_CREDENTIAL_ENV:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       BB_CODEX_BASE_URL: ${BB_CODEX_BASE_URL:-https://api.deepseek.com}
+      BB_CODEX_PROVIDER: ${BB_CODEX_PROVIDER:-deepseek}
       BB_CODEX_MODEL: ${BB_CODEX_MODEL:-}
+      BB_CODEX_REASONING_EFFORT: ${BB_CODEX_REASONING_EFFORT:-}
+      BB_CODEX_CONFIG_VERSION: ${BB_CODEX_CONFIG_VERSION:-}
       BB_CODEX_WORK_ROOT: /tmp/bb-codex
       # Per-call wall-clock limit. Long historical-generation segments exceed the 120 s code default.
       BB_CODEX_TIMEOUT_MS: ${BB_CODEX_TIMEOUT_MS:-600000}
       # #79/#16 operator-only platform probe (POST /api/v1/admin/probes/model). Off by default.
       BB_PLATFORM_PROBE_ENABLED: ${BB_PLATFORM_PROBE_ENABLED:-0}
-    volumes: [parsestaging:/var/lib/bondbuddy/parse-staging]
+    volumes:
+      - parsestaging:/var/lib/bondbuddy/parse-staging
+      # /dev/null is an inert default. Set a private host file only for Copilot mode.
+      - ${BB_COPILOT_OAUTH_HOST_FILE:-/dev/null}:/run/secrets/bb-copilot-oauth:ro
     networks: [backend]
     depends_on:
       postgres: {condition: service_healthy}
@@ -165,6 +173,7 @@ services:
       AZURE_STORAGE_CONNECTION_STRING: *blob
       NODE_OPTIONS: --max-old-space-size=256
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      BB_CODEX_PROVIDER: ${BB_CODEX_PROVIDER:-deepseek}
       BB_OPS_PROVIDER_BALANCE: ${BB_OPS_PROVIDER_BALANCE:-on}
       BB_OPS_PROVIDER_BALANCE_SECONDS: ${BB_OPS_PROVIDER_BALANCE_SECONDS:-300}
       BB_PROVIDER_BALANCE_THRESHOLD_USD: ${BB_PROVIDER_BALANCE_THRESHOLD_USD:-1}

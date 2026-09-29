@@ -32,8 +32,8 @@ export type PlatformProbeDependencies = { pool: Pool; blobs: PrivateBlobs; confi
 
 /** Refuses anything but the env credential mode and a present credential; never reads or prints its value. */
 export function assertProbeConfig(config: CodexAdapterConfig, env: NodeJS.ProcessEnv = process.env) {
-  if (config.credential.kind !== 'env') throw new Error('Platform probe requires the env credential mode (BB_CODEX_AUTH_FILE is not allowed)');
-  if (!env[config.credential.name]) throw new Error(`Platform probe credential ${config.credential.name} is not set`);
+  if (config.credential.kind === 'auth_file') throw new Error('Platform probe does not accept auth.json');
+  if (config.credential.kind === 'env' && !env[config.credential.name]) throw new Error(`Platform probe credential ${config.credential.name} is not set`);
 }
 
 const lostLease = (error: unknown) => (error as { code?: string })?.code === 'ALREADY_TERMINAL';

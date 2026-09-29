@@ -23,7 +23,7 @@ const result = await runContainedModelCall({
 }, journal, config);
 process.stdout.write(JSON.stringify({
   label: 'bb-codex-probe (in-memory journal, not durable)', status: result.status, error_code: result.error_code,
-  config: { command: config.command[0].split('/').pop(), model_id: config.model_id, model_provider: config.model_provider, base_url: config.base_url, wire_api: config.wire_api, model_config_version: config.model_config_version, credential: config.credential.kind === 'env' ? { kind: 'env', name: config.credential.name } : { kind: 'auth_file' }, disabled_features: config.disabled_features },
+  config: { command: config.command[0].split('/').pop(), model_id: config.model_id, model_provider: config.model_provider, base_url: config.base_url, wire_api: config.wire_api, model_config_version: config.model_config_version, credential: config.credential.kind === 'env' ? { kind: 'env', name: config.credential.name } : { kind: config.credential.kind }, disabled_features: config.disabled_features },
   attempts: result.attempts, event_order: journal.events,
 }, null, 2) + '\n');
 process.exit(result.status === 'completed' ? 0 : 1);
