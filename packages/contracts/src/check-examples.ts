@@ -174,9 +174,11 @@ assert.equal(messageSetExamples.synthetic, true);
   const edited = structuredClone(pin);
   edited.members[0]!.message_version = 3;
   edited.members[0]!.content_sha256 = 'e'.repeat(64);
-  assert.notEqual(createHash('sha256').update(canonicalProjectMessageSetContent(edited), 'utf8').digest('hex'), pin.content_sha256,
-    'a saved edit produces a different set hash');
-  assert.equal(edited.version, pin.version, 'a saved edit keeps the first-submission set version');
+  edited.version = pin.version + 1;
+  edited.content_sha256 = createHash('sha256').update(canonicalProjectMessageSetContent(edited), 'utf8').digest('hex');
+  assert.equal(validProjectMessageSetPin(edited), true, 'a saved edit advances set version and hash without reordering members');
+  assert.notEqual(edited.content_sha256, pin.content_sha256, 'a saved edit changes the set hash');
+  assert.equal(projectMessageSetRefMatches(edited, projectMessageSetRef(pin)), false, 'an earlier input ref cannot match a saved edit');
   assert.deepEqual(projectMessageSetRef(pin), { version: pin.version, content_sha256: pin.content_sha256, message_ids: ['message-a', 'message-b'] },
     'the aggregate ref projects strictly sorted message IDs');
   const bareVersion = { version: pin.version } as unknown as ProjectMessageSetRef;
@@ -195,7 +197,7 @@ for (const example of data.cases) {
   assert.ok(!byName.has(example.name), `duplicate example ${example.name}`);
   byName.set(example.name, example);
   assert.ok(Object.hasOwn(schemas, example.schema), `unknown schema ${example.schema}`);
-  const validate = ajv.compile(schemas[example.schema]);
+  const validate = ajv.compile(schemas[example.schema] as import('@sinclair/typebox').TSchema);
   const schemaValid = validate(example.value);
   const result=example.schema==='TargetPeriodEvidenceDecisionRequest'&&schemaValid
     ?validTargetPeriodEvidenceDecision(example.value as unknown as TargetPeriodEvidenceDecisionRequest)

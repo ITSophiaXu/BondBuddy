@@ -14,9 +14,9 @@ const project = 'synthetic-project';
 const sha = (letter: string) => letter.repeat(64);
 
 function pin(messageId: string, messageVersion: number, submissionId: string, firstSubmissionVersion: number,
-  contentSha256: string, firstSubmissionId = submissionId): ProjectMessagePin {
+  contentSha256: string, firstSubmissionId = submissionId, latestSubmissionVersion = firstSubmissionVersion + messageVersion - 1): ProjectMessagePin {
   return { message_id: messageId, submission_id: submissionId, message_version: messageVersion,
-    content_sha256: contentSha256, first_submission_version: firstSubmissionVersion, first_submission_id: firstSubmissionId };
+    content_sha256: contentSha256, first_submission_version: firstSubmissionVersion, latest_submission_version: latestSubmissionVersion, first_submission_id: firstSubmissionId };
 }
 
 const setA = [
@@ -51,11 +51,11 @@ test('a different conversation order of the same members hashes differently', ()
 test('a saved edit produces a new version that changes the set hash but keeps the conversation position', () => {
   const before = normalizeProjectMessageSet(setA);
   const edited = normalizeProjectMessageSet([
-    pin('message-a', 3, 'submission-a3', 2, sha('e'), 'submission-a1'),
+    pin('message-a', 3, 'submission-a3', 2, sha('e'), 'submission-a1', 5),
     pin('message-b', 1, 'submission-b1', 4, sha('b')),
   ]);
   assert.notEqual(edited.content_sha256, before.content_sha256);
-  assert.equal(edited.version, before.version, 'the set version is the first-submission baseline, not the latest message version');
+  assert.equal(edited.version, before.version + 1, 'the set version advances when an existing message is edited');
   assert.deepEqual(edited.message_ids, before.message_ids, 'editing a message stays one active member');
 });
 

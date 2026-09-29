@@ -2,6 +2,30 @@
   "synthetic": true,
   "cases": [
     {
+      "name": "project-message-save-user-only-synthetic",
+      "schema": "ProjectMessageSaveRequest",
+      "valid": true,
+      "value": { "message_id": "synthetic-message", "submission_request_id": "synthetic-request", "expected_message_version": null, "body": "合成项目补充信息", "material_versions": [] }
+    },
+    {
+      "name": "project-message-reject-client-assistant-response",
+      "schema": "ProjectMessageSaveRequest",
+      "valid": false,
+      "value": { "message_id": "synthetic-message", "submission_request_id": "synthetic-request", "expected_message_version": null, "body": "合成项目补充信息", "material_versions": [], "reply": "not a real model reply" }
+    },
+    {
+      "name": "project-message-reject-unversioned-edit",
+      "schema": "ProjectMessageSaveRequest",
+      "valid": false,
+      "value": { "message_id": "synthetic-message", "submission_request_id": "synthetic-request", "body": "合成项目补充信息", "material_versions": [] }
+    },
+    {
+      "name": "project-message-reject-unpinnable-id",
+      "schema": "ProjectMessageSaveRequest",
+      "valid": false,
+      "value": { "message_id": "not a pin id", "submission_request_id": "synthetic-request", "expected_message_version": null, "body": "合成项目补充信息", "material_versions": [] }
+    },
+    {
       "name": "register-valid-synthetic",
       "schema": "RegisterRequest",
       "valid": true,

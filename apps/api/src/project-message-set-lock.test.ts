@@ -40,7 +40,7 @@ test('latest version per message is selected in first-submission conversation or
   assert.deepEqual(pin.members.map(member => [member.message_id, member.message_version, member.content_sha256]),
     [['message-a', 2, sha('a2')], ['message-b', 1, sha('b1')]]);
   assert.deepEqual(pin.message_ids, ['message-a', 'message-b']);
-  assert.equal(pin.version, 4, 'set version is the highest first-submission position');
+  assert.equal(pin.version, 5, 'set version advances on edits without changing conversation order');
 });
 
 test('malformed history fails closed instead of fabricating a set', async () => {

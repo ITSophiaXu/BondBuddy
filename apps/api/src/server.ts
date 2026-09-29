@@ -49,6 +49,7 @@ import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 import { prepareUserSubmission, verifiedMaterialVersions } from './user-submissions.js';
+import { readProjectMessageVersion, readProjectMessages, saveProjectMessage, type SaveProjectMessage } from './project-messages.js';
 import { scrubSecrets } from './log-ops.js';
 import { installBrowserErrorRoutes } from './browser-errors.js';
 import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
@@ -480,7 +481,6 @@ export function createServer(settings: Settings = {}) {
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
     const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
-    if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
     if(b.test_rule_applicability_context_ref && !testChannelEnabled())
       throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
     const result=await transaction(db(),async client=>{
@@ -557,6 +557,10 @@ export function createServer(settings: Settings = {}) {
         throw conflict('INPUT_REVISION_CONFLICT','Active project messages must be pinned with an exact project_message_set_ref');
       }
       const requirementMessageIds=projectMessageSetRef?projectMessageSetRef.message_ids:[];
+      if(b.requirement_message_ids.length &&
+        (b.requirement_message_ids.length!==requirementMessageIds.length ||
+         [...b.requirement_message_ids].sort().some((messageId,index)=>messageId!==requirementMessageIds[index])))
+        throw conflict('INPUT_REVISION_CONFLICT','Requirement message IDs do not match the locked project message set');
       const revision=(p.latest_input_revision??0)+1;
       if(b.user_reference && (p.kind!=='generation'||!p.market||!p.offering))
         throw new Problem(422,'VALIDATION_FAILED','User reference requires a generation target');
@@ -1349,6 +1353,29 @@ export function createServer(settings: Settings = {}) {
       });
       return reply.code(201).send(result);
     } finally {await prepared.discard().catch(() => undefined); /* durable intent remains for the orphan sweep */}
+  });
+  app.post('/api/v1/projects/:project_id/messages',{
+    schema:{body:schemas.ProjectMessageSaveRequest,response:{201:schemas.ProjectMessageSaveResponse}},
+  },async(request,reply)=>{
+    const user=await owner(request),projectId=param(request,'project_id');
+    const saved=await saveProjectMessage(db(),blob(),user,projectId,body<SaveProjectMessage>(request));
+    return reply.code(201).header('cache-control','no-store').send(saved);
+  });
+  app.get('/api/v1/projects/:project_id/messages',{
+    schema:{response:{200:schemas.ProjectMessagePage}},
+  },async(request,reply)=>{
+    const user=await owner(request),projectId=param(request,'project_id');
+    const query=request.query as {cursor?:string;limit?:string};
+    const page=await readProjectMessages(db(),blob(),user,projectId,query);
+    return reply.header('cache-control','no-store').send(page);
+  });
+  app.get('/api/v1/projects/:project_id/messages/:message_id/versions/:version',{
+    schema:{response:{200:schemas.ProjectMessage}},
+  },async(request,reply)=>{
+    const user=await owner(request);
+    const result=await readProjectMessageVersion(db(),blob(),user,param(request,'project_id'),
+      param(request,'message_id'),param(request,'version'));
+    return reply.header('cache-control','no-store').send(result);
   });
   app.post('/api/v1/conversations/:conversation_id/messages',async request=>{await owner(request);throw unavailable();});
   return app;

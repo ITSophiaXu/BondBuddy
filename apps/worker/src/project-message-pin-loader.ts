@@ -17,6 +17,8 @@ export interface ProjectMessagePin {
   readonly content_sha256: string;
   /** Project-wide submission version that fixes this message's original conversation position. */
   readonly first_submission_version: number;
+  /** Most recent persisted edit position; changes even if the message's place stays fixed. */
+  readonly latest_submission_version: number;
   /** Immutable submission row that established that original position. */
   readonly first_submission_id: string;
 }
@@ -73,7 +75,7 @@ export function selectLatestProjectMessagePins(
     const versions = byMessage.get(messageId) ?? [];
     if (versions.some(item => item.message_version === messageVersion)) throw fail();
     versions.push({ message_id: messageId, submission_id: submissionId, message_version: messageVersion,
-      content_sha256: contentSha256, first_submission_version: 0, first_submission_id: '', version });
+      content_sha256: contentSha256, first_submission_version: 0, latest_submission_version: version, first_submission_id: '', version });
     byMessage.set(messageId, versions);
   }
 
@@ -90,7 +92,7 @@ export function selectLatestProjectMessagePins(
     const latest = versions[versions.length - 1]!;
     selected.push({ message_id: latest.message_id, submission_id: latest.submission_id,
       message_version: latest.message_version, content_sha256: latest.content_sha256,
-      first_submission_version: first.version, first_submission_id: first.submission_id });
+      first_submission_version: first.version, latest_submission_version: latest.version, first_submission_id: first.submission_id });
   }
 
   selected.sort((left, right) => left.first_submission_version - right.first_submission_version);

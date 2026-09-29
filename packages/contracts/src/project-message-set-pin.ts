@@ -9,7 +9,9 @@ import { Value } from '@sinclair/typebox/value';
  * - members accumulate in original conversation order (first-submission position),
  *   never lexicographic order; a later saved edit changes the set hash while older
  *   snapshots keep their old pin and every older message version stays auditable;
- * - a bare `max(version)` is never a set identity.
+ * - the aggregate version advances on edits as well as first submissions; the
+ *   first-submission position is only for member order. A bare max(version)
+ *   is never a set identity.
  *
  * `content_sha256` is SHA-256 over a domain-separated canonical JSON object whose
  * `members` array preserves conversation order; object keys are sorted and array
@@ -25,7 +27,8 @@ export const PROJECT_MESSAGE_SET_CANONICALIZATION = 'utf8-json-sorted-object-key
 export const PROJECT_MESSAGE_SET_EMPTY_VERSION = 1 as const;
 export const PROJECT_MESSAGE_SET_MAX_MEMBERS = 500 as const;
 
-const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
+export const ProjectMessageIdSchema = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
+const id = ProjectMessageIdSchema;
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
 const revision = Type.Integer({ minimum: 1, maximum: 2147483647 });
 
