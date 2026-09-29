@@ -77,6 +77,7 @@ function isSerializationFailure(error: unknown): boolean {
 export async function loadAuthorizedSampleMembershipFromLockedInput(
   pool: Pool,
   ref: LockedInputMembershipRef,
+  mode: 'registered_sample' | 'owner_materials' = 'registered_sample',
 ): Promise<AuthorizedSampleMembershipLoadResult> {
   if (!ref.ownerUserId || !ref.projectId || !Number.isSafeInteger(ref.inputRevision) || ref.inputRevision < 1 ||
       !/^[a-f0-9]{64}$/.test(ref.inputHash)) return invalid('locked_input_not_found');
@@ -139,8 +140,10 @@ export async function loadAuthorizedSampleMembershipFromLockedInput(
         id: material.id, version: Number(material.version), role: material.role, sha256: String(material.sha256).trim().toLowerCase() });
     }
 
-    const result = verifyAuthorizedSampleMembership({ ownerUserId: ref.ownerUserId, projectId: ref.projectId,
-      lockedMaterials, persistedMaterials, grantManifestSha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256 });
+    const result = mode === 'registered_sample'
+      ? verifyAuthorizedSampleMembership({ ownerUserId: ref.ownerUserId, projectId: ref.projectId,
+        lockedMaterials, persistedMaterials, grantManifestSha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256 })
+      : verifyOwnerMaterials(ref, lockedMaterials, persistedMaterials);
     await client.query('COMMIT');
     transactionOpen = false;
     return result;
@@ -155,4 +158,24 @@ export async function loadAuthorizedSampleMembershipFromLockedInput(
     if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
     client.release();
   }
+}
+
+/** A preproduction owner may use a new authorized upload; registration in the fixed sample batch is not required. */
+function verifyOwnerMaterials(ref: LockedInputMembershipRef, locked: readonly LockedSampleMaterialRef[],
+  persisted: readonly PersistedSampleMaterialMetadata[]): AuthorizedSampleMembershipLoadResult {
+  if (!locked.length) return invalid('locked_materials_empty');
+  if (locked.length !== persisted.length || new Set(locked.map(m => m.material_id)).size !== locked.length)
+    return invalid('persisted_material_set_mismatch');
+  for (const item of locked) {
+    const row = persisted.find(m => m.id === item.material_id && m.version === item.material_version);
+    if (!row) return invalid('persisted_material_set_mismatch');
+    if (row.owner_user_id !== ref.ownerUserId) return invalid('material_owner_mismatch');
+    if (row.project_id !== ref.projectId) return invalid('material_project_mismatch');
+    if (row.role !== item.role) return invalid('material_role_mismatch');
+    if (row.sha256 !== item.sha256) return invalid('material_hash_mismatch');
+  }
+  if (locked.filter(m => m.role === 'historical').length !== 1) return invalid('historical_material_required');
+  if (!locked.some(m => ['audit','financial','interimFinancial','notes'].includes(m.role)))
+    return invalid('financial_material_required');
+  return { accepted: true, caseId: 'owner_materials', gaps: [] };
 }

@@ -1232,6 +1232,7 @@ export function createServer(settings: Settings = {}) {
         }
         let updateDifficulty: StoredUpdateDifficultySnapshot | undefined;
         if(manifest.kind==='update'){
+          if(!manifest.market||!manifest.offering)missingInputs.push('target_market_offering_required');
           const binding=manifest.issuer_identity;
           if(!isVerifiedIssuerIdentityBinding(binding)){
             const pending=binding&&typeof binding==='object'&&!Array.isArray(binding)?(binding as Record<string,unknown>).reason:null;

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool, type PoolClient } from 'pg';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { OWNER_MATERIAL_SCOPE_SHA256 } from '@bondbuddy/api/non-production-test';
 import { AUTHORIZED_SAMPLE_CASE_FILES, AUTHORIZED_SAMPLE_MANIFEST_SHA256 } from './authorized-sample-membership.generated.js';
 import { createSsePrivateTestRuleCapabilityLoader } from './sse-private-test-rule-capability.js';
 import { SSE_PRIVATE_CANDIDATE_ASSET_PIN as pin } from './sse-private-candidate-assets.js';
@@ -22,8 +23,10 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
   const owner = `sse-test-owner-${randomUUID()}`, project = `sse-test-project-${randomUUID()}`;
   const files = AUTHORIZED_SAMPLE_CASE_FILES.filter(file => file.caseId === 'rq-202509');
   const selected = [files.find(file => file.uploadRole === 'historical')!, files.find(file => file.uploadRole === 'interimFinancial')!];
-  const materials = selected.map(file => ({ material_id: `sse-test-material-${randomUUID()}`, material_version: 1,
-    role: file.uploadRole, sha256: file.sha256 }));
+  const materials = [...selected.map(file => ({ material_id: `sse-test-material-${randomUUID()}`, material_version: 1,
+    role: file.uploadRole, sha256: file.sha256 })),
+    { material_id: `sse-test-xlsx-${randomUUID()}`, material_version: 1, role: 'financial',
+      sha256: 'e98dfa51fa2114898d2ca4eaf6cae2f52379ebc5d161265743550fb6f211cb46' }];
   const manifest = { kind: 'update', draft_revision: 1, market: 'sse', offering: 'private', materials,
     issuer_identity: { status: 'verified', record_id: 'synthetic-identity', version: 1, content_hash: 'd'.repeat(64),
       entity_id: 'synthetic-entity', issuer_display_name: 'Synthetic issuer', material_id: materials[0]!.material_id,
@@ -40,12 +43,14 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
     manifest, rule_pack_version: null, template_version: null };
 
   async function createGrant(label: string, taxonomyHash: string = pin.taxonomy.contentSha256,
-    rulePackHash: string = pin.rulePack.contentSha256) {
+    rulePackHash: string = pin.rulePack.contentSha256, service = false) {
     const grantId = `sse-test-grant-${label}-${randomUUID()}`;
     await pool.query(`INSERT INTO bb_non_production_test_grants
       (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
-      VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','integration fixture',now()+interval '1 hour')`,
-    [grantId, owner, project, inputHash, AUTHORIZED_SAMPLE_MANIFEST_SHA256, taxonomyHash, rulePackHash]);
+      VALUES($1,$2,$3,1,$4,$5,$6,$7,$8,$9,now()+interval '1 hour')`,
+    [grantId, owner, project, inputHash, service ? OWNER_MATERIAL_SCOPE_SHA256 : AUTHORIZED_SAMPLE_MANIFEST_SHA256,
+      taxonomyHash, rulePackHash, service ? 'preprod_service' : 'synthetic-operator',
+      service ? 'controlled_working_draft:issuance:2026-09-29' : 'integration fixture']);
     return grantId;
   }
 
@@ -53,6 +58,9 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
     const version = await pool.query<{ server_version_num: string }>("SELECT current_setting('server_version_num') AS server_version_num");
     assert.ok(Number(version.rows[0]!.server_version_num) >= 160000, 'integration database must be PostgreSQL 16 or newer');
     await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic candidate membership','update')`, [project, owner]);
+    assert.deepEqual((await pool.query('SELECT market,offering FROM bb_projects WHERE id=$1',[project])).rows[0],
+      {market:null,offering:null},'the project starts without a target');
+    await pool.query("UPDATE bb_projects SET market='sse',offering='private',draft_revision=draft_revision+1 WHERE id=$1",[project]);
     for (const material of materials) {
       const uploadId = `sse-test-upload-${randomUUID()}`;
       await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
@@ -70,10 +78,21 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
     const activeGrant = await createGrant('active');
     const loader = createSsePrivateTestRuleCapabilityLoader(pool);
     const active = await loader({ ...runBase, test_grant_id: activeGrant }, input);
-    assert.deepEqual(active, { status: 'not_ready', reason: 'test_reviewed_applicability_pin_missing' },
-      'valid grant, membership and exact candidate bytes pass before the absent immutable review ref blocks selection');
+    assert.deepEqual(active, { status: 'not_ready', reason: 'authorized_sample_sample_material_hash_mismatch' },
+      'the registered sample grant remains limited to its fixed material set');
 
-    const wrongHashGrant = await createGrant('wrong-taxonomy', '0'.repeat(64));
+    const ownerGrant = `sse-test-owner-grant-${randomUUID()}`;
+    await pool.query(`INSERT INTO bb_non_production_test_grants
+      (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+      VALUES($1,$2,$3,1,$4,$5,$6,$7,'preprod_service','controlled_working_draft:issuance:2026-09-29',now()+interval '1 hour')`,
+    [ownerGrant,owner,project,inputHash,OWNER_MATERIAL_SCOPE_SHA256,pin.taxonomy.contentSha256,pin.rulePack.contentSha256]);
+    assert.equal((await loader({ ...runBase, test_grant_id: ownerGrant },input)).status,'ready',
+      'a newly authorized, owner-persisted XLSX does not need fixed sample registration');
+    assert.deepEqual(await loader({ ...runBase, owner_user_id: `${owner}-other`, test_grant_id: ownerGrant },input),
+      {status:'not_ready',reason:'test_grant_inactive_or_scope_changed'});
+    assert.deepEqual(await loader({ ...runBase, project_id: `${project}-other`, test_grant_id: ownerGrant },input),
+      {status:'not_ready',reason:'test_grant_inactive_or_scope_changed'});
+    const wrongHashGrant = await createGrant('wrong-taxonomy', '0'.repeat(64),pin.rulePack.contentSha256,true);
     assert.deepEqual(await loader({ ...runBase, test_grant_id: wrongHashGrant }, input),
       { status: 'not_ready', reason: 'test_candidate_hash_mismatch' });
 
@@ -105,6 +124,9 @@ test('candidate selector uses PostgreSQL grant, exact membership, candidate pins
     } as unknown as Pool;
     assert.deepEqual(await createSsePrivateTestRuleCapabilityLoader(concurrentPool)({ ...runBase, test_grant_id: activeGrant }, input),
       { status: 'not_ready', reason: 'authorized_sample_locked_material_concurrent_change' });
+    await pool.query("UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1",[materials[2]!.material_id]);
+    assert.deepEqual(await loader({ ...runBase, test_grant_id: ownerGrant },input),
+      {status:'not_ready',reason:'test_material_locked_material_deleted_or_missing'});
   } finally {
     await pool.end();
     for (const [index, key] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {

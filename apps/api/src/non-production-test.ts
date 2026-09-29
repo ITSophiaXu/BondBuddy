@@ -1,9 +1,12 @@
 import type { Pool, PoolClient } from 'pg';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { missing, Problem } from './data.js';
 
 export const testChannelEnabled = (env: NodeJS.ProcessEnv = process.env) =>
   env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
+
+/** Distinguishes owner-persisted material authorization from the fixed sample registry. */
+export const OWNER_MATERIAL_SCOPE_SHA256 = createHash('sha256').update('bondbuddy:preprod-owner-materials:v1').digest('hex');
 
 /** Test run metadata is unavailable whenever this deployment cannot serve test artifacts. */
 export function assertTestChannelReadable(channel: string | null | undefined) {
@@ -15,11 +18,10 @@ export type TestGrantScope = { grantId: string; userId: string; projectId: strin
 /** Server-owned, time-bounded admission for a preproduction working draft. */
 export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
   manifest: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
-  if (!testChannelEnabled(env) || !manifest || typeof manifest !== 'object' || manifest.kind !== 'update' || manifest.market !== 'sse' ||
-      manifest.offering !== 'private') return null;
+  if (!testChannelEnabled(env) || !manifest || typeof manifest !== 'object' || manifest.kind !== 'update') return null;
   const until = env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT;
   const expires = until ? new Date(until).getTime() : NaN;
-  const hashes = [env.BB_PREPROD_WORKING_DRAFT_SAMPLE_MANIFEST_SHA256,
+  const hashes = [OWNER_MATERIAL_SCOPE_SHA256,
     env.BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH, env.BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH];
   const stage=env.BB_PREPROD_WORKING_DRAFT_STAGE, asOf=env.BB_PREPROD_WORKING_DRAFT_AS_OF;
   if (!Number.isFinite(expires) || expires <= Date.now() || expires > Date.now() + 7 * 86_400_000 ||
@@ -35,8 +37,12 @@ export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGran
     WHERE user_id=$1 AND project_id=$2 AND input_revision=$3 AND input_hash=$4
       AND granted_by='preprod_service' ORDER BY created_at LIMIT 1`,
   [scope.userId, scope.projectId, scope.inputRevision, scope.inputHash]);
-  if (existing.rows[0]) return existing.rows[0].revoked_at ||
-    new Date(existing.rows[0].expires_at).getTime() <= Date.now() ? null : existing.rows[0].grant_id;
+  if (existing.rows[0]) {
+    if (existing.rows[0].revoked_at) throw new Problem(409,'TEST_GRANT_REVOKED','Test grant was revoked');
+    if (new Date(existing.rows[0].expires_at).getTime() <= Date.now())
+      throw new Problem(409,'TEST_GRANT_EXPIRED','Test grant expired');
+    return existing.rows[0].grant_id;
+  }
   const grantId = randomUUID();
   await db.query(`INSERT INTO bb_non_production_test_grants
     (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,

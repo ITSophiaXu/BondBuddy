@@ -181,7 +181,7 @@ test('ordinary update submission auto-selects an expiring preproduction grant fo
   const send=(url:string,payload:unknown)=>app.inject({method:'POST',url,headers:{origin},payload:payload as any});
   try{
     const projectResponse=await send('/api/v1/projects',{name:'Synthetic working draft',kind:'update',
-      issuer_name:null,market:'sse',offering:'private'});
+      issuer_name:null,market:null,offering:null});
     assert.equal(projectResponse.statusCode,201,projectResponse.body);
     const project=projectResponse.json().project_id as string;
     const inputResponse=await send(`/api/v1/projects/${project}/input-revisions`,
@@ -193,6 +193,8 @@ test('ordinary update submission auto-selects an expiring preproduction grant fo
     assert.equal(preflight.statusCode,200,preflight.body);
     assert.ok(preflight.json().blocking_inputs.includes('material_versions'),
       'automatic admission never turns absent material into a runnable input');
+    assert.ok(preflight.json().blocking_inputs.includes('target_market_offering_required'),
+      'the project must supply its current target before a coherent historical update');
     const preflightJob=(await pool.query(`SELECT channel,test_grant_id FROM bb_jobs WHERE owner_user_id=$1
       AND project_id=$2 AND subtype='free_preflight' ORDER BY created_at DESC LIMIT 1`,[owner,project])).rows[0];
     assert.equal(preflightJob.channel,'non_production_test');
@@ -215,8 +217,7 @@ test('ordinary update submission auto-selects an expiring preproduction grant fo
     await pool.query(`UPDATE bb_non_production_test_grants SET revoked_at=now(),revoked_by='synthetic-operator',
       revoked_reason='synthetic_revoke' WHERE grant_id=$1`,[grantId]);
     const afterRevocation=await send('/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
-    assert.equal(afterRevocation.statusCode,202,afterRevocation.body);
-    assert.equal(afterRevocation.json().channel,'production');
+    assert.equal(afterRevocation.statusCode,409,afterRevocation.body);
     process.env.BB_DEPLOYMENT_TIER='production';
     const production=await send('/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
     assert.equal(production.statusCode,202,production.body);

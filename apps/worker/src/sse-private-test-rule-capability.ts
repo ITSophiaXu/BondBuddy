@@ -4,6 +4,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { isVerifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
 import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
+import { OWNER_MATERIAL_SCOPE_SHA256 } from '@bondbuddy/api/non-production-test';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { AUTHORIZED_SAMPLE_MANIFEST_SHA256 } from './authorized-sample-membership.generated.js';
 import { loadAuthorizedSampleMembershipFromLockedInput } from './authorized-sample-membership-loader.js';
@@ -48,12 +49,16 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
       return notReady('test_grant_inactive_or_scope_changed');
     }
 
+    // Earlier preproduction service grants pinned the registered batch digest.
+    // Their exact owner/input scope remains valid, while operator grants stay sample-only.
+    const ownerMaterials = grant.granted_by === 'preprod_service' &&
+      [OWNER_MATERIAL_SCOPE_SHA256, AUTHORIZED_SAMPLE_MANIFEST_SHA256].includes(grant.sample_manifest_sha256.trim());
     const membership = await loadAuthorizedSampleMembershipFromLockedInput(pool, {
       ownerUserId: run.owner_user_id, projectId: run.project_id,
       inputRevision: run.input_revision, inputHash: run.input_hash.trim(),
-    });
-    if (!membership.accepted) return notReady(`authorized_sample_${membership.reason}`);
-    if (grant.sample_manifest_sha256.trim() !== AUTHORIZED_SAMPLE_MANIFEST_SHA256)
+    }, ownerMaterials ? 'owner_materials' : 'registered_sample');
+    if (!membership.accepted) return notReady(`${ownerMaterials ? 'test_material' : 'authorized_sample'}_${membership.reason}`);
+    if (!ownerMaterials && grant.sample_manifest_sha256.trim() !== AUTHORIZED_SAMPLE_MANIFEST_SHA256)
       return notReady('authorized_sample_manifest_pin_mismatch');
 
     let candidate: Awaited<ReturnType<typeof loadSsePrivateCandidateAssets>>;
@@ -83,6 +88,8 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
     if (!Array.isArray(materials) || materials.some(item => !isRecord(item) || typeof item.material_id !== 'string' ||
         !Number.isSafeInteger(item.material_version) || Number(item.material_version) < 1 || !sha256(item.sha256)))
       return notReady('test_reviewed_material_manifest_invalid');
+    if (!manifest.market || !manifest.offering) return notReady('historical_target_market_offering_required');
+    if (manifest.market !== 'sse' || manifest.offering !== 'private') return notReady('historical_update_scope_not_installed');
     const target=testWorkingDraftTarget(manifest,grant,run.owner_user_id);
     if (!target)
       return notReady('test_reviewed_applicability_scope_mismatch');
@@ -116,7 +123,7 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
     const exclusions = bundle.coverage.items.filter(item => item.disposition === 'not_applicable');
     if (gaps.length !== 31 || exclusions.length !== 1 || gaps.some(item => item.ruleIds.length > 0))
       return notReady('sse_private_candidate_coverage_semantics_changed');
-    return { status: 'ready', sampleManifestSha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256,
+    return { status: 'ready', sampleManifestSha256: ownerMaterials ? grant.sample_manifest_sha256.trim() : AUTHORIZED_SAMPLE_MANIFEST_SHA256,
       taxonomyHash: bundle.taxonomy.contentSha256, rulePackHash: bundle.rulePack.contentSha256,
       uncoveredItems: gaps.map(toTestCoverageGap) };
   };
