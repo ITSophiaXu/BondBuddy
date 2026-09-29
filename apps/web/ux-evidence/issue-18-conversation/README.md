@@ -18,4 +18,4 @@ BB_UX_EVIDENCE_PREFIX=bb18 BB_UX_EVIDENCE_DIR=apps/web/ux-evidence/issue-18-conv
 BB_UX_EVIDENCE_DIR=ux-evidence/issue-18-conversation npm test -w @bondbuddy/web -- tests/project-conversation.spec.ts
 ```
 
-Remaining #18 / #361 UX-05 acceptance: no public assistant, intent classifier, streaming interruption/resume, attachment replacement UI, clarification/job/attempt/usage chain, or deployed original-project professional/Word validation. A message send is `save_only`; explicit “开始更新” remains a separate action. The parent issues stay open pending product review and real service evidence.
+The #33 no-history generation route uses the same explicit message-set lock without changing its `generation` execution kind. Remaining #18 / #361 UX-05 acceptance: no public assistant, intent classifier, streaming interruption/resume, attachment replacement UI, clarification/job/attempt/usage chain, or deployed original-project professional/Word validation. A message send is `save_only`; explicit “开始更新” remains a separate action. The parent issues stay open pending product review and real service evidence.

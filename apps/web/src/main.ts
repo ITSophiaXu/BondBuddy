@@ -418,7 +418,7 @@ function updateSaveState() {
   if (!draft) return;
   syncProjectExecution(draft.project.project_id);
   const context = document.querySelector('#cowork-issuer'); if (context) context.textContent = draft.fields.issuer_name || '待填写发行人';
-  projectConversation?.setContext({ ...draft.fields, kind: 'update', issuer_name: draft.fields.issuer_name || null });
+  projectConversation?.setContext({ ...draft.fields, kind: draft.project.kind, issuer_name: draft.fields.issuer_name || null });
   const labels = { saved: '已保存', dirty: '尚未保存', saving: '正在保存…', conflict: '有版本冲突', error: '保存未确认' };
   const badge = document.querySelector<HTMLElement>('#save-state');
   if (!badge) return;

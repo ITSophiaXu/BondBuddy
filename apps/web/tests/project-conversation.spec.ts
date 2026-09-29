@@ -239,6 +239,21 @@ test('input-lock conflict rereads every saved message before creating a fresh sn
   expect(f.state.inputs[0].project_message_set_ref).toEqual(f.ref());
 });
 
+test('no-history generation keeps the same message pin and generation execution kind', async ({ page }) => {
+  const f = fixture();
+  f.state.project.kind = 'generation';
+  f.state.project.update_details!.has_historical = false;
+  f.state.materials[0].role = 'reference';
+  const { state } = await setup(page, f);
+  await send(page, '生成新稿时保留的用户要求');
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs[0].requirement_message_ids).toEqual(f.ref().message_ids);
+  expect(state.inputs[0].project_message_set_ref).toEqual(f.ref());
+  expect(state.executes[0].task_kind).toBe('generation');
+  await expect(page.locator('.cowork-assistant')).toHaveCount(0);
+});
+
 test('pagination pins all messages, new edit produces a new immutable input without changing active run', async ({ page }) => {
   const f = fixture();
   for (let n = 1; n <= 24; n++) f.save({ message_id: `synthetic-${n}`, submission_request_id: `request-${n}`,
