@@ -1,6 +1,6 @@
 # #34 同项目 Word 版本目录 · 原型对照
 
-依据：`product-prototype/design-previews/update-workspace.fragment.html` 与导出页 `product-prototype/public/previews/update-workspace.html`，#85 head `46764161565027f332bdf28f8b335620bd035018`，完成态 `completeView()`；原有真实应用来源为 `product-prototype/public/project-workspace.js` 和 `apps/web/src/project-execution.ts`。当前实现从 `develop` 合并提交 `290d4c34368f86885ac6b009edca0262afc10e4d` 的 `ArtifactHistoryResponse` 起步；实现准确 commit 和最终合并基线以本 PR 最后一次 rebase 与截图更新记录为准。
+依据：`product-prototype/design-previews/update-workspace.fragment.html` 与导出页 `product-prototype/public/previews/update-workspace.html`，#85 head `46764161565027f332bdf28f8b335620bd035018`，完成态 `completeView()`；原有真实应用来源为 `product-prototype/public/project-workspace.js` 和 `apps/web/src/project-execution.ts`。当前实现使用 #471 的 `ArtifactHistoryResponse`（merge `290d4c34368f86885ac6b009edca0262afc10e4d`）。实现截图的代码 head 为 `423a0ff`（包含 #388 merge `07d143c`）；若合并前再次 rebase，则更新 head 和截图。
 
 截图均为 Chromium 同尺寸**视口**截图（非全页），桌面 1440×960、手机 390×844。原型使用 #85 独立预览页并点选“已完成”；实现使用合成 HTTP/Word 字节模拟本项目已有三个成功版本且新任务失败，滚动至目录。截图是交互对照，不是真实模型、Blob、授权客户成果或 Word/WPS 实机验收。
 
