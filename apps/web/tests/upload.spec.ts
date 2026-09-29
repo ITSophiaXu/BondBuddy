@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import type { MaterialParseJob, Recognition } from '@bondbuddy/contracts';
 
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
