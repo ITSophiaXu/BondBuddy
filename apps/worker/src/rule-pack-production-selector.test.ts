@@ -80,6 +80,35 @@ function canonical(value: unknown): string {
 }
 const hashSnapshot = (value: unknown) => createHash('sha256').update(canonical(value), 'utf8').digest('hex');
 
+// 0071 requires a production grant and its immutable applicability scope to be
+// written at one transaction timestamp. Tests that only need the grant call this
+// inside their own transaction (or an already-open one).
+const reviewedScope = (evidenceId: string, evidenceSha: string) =>
+  ({ mode: 'reviewed_unrestricted', evidence_id: evidenceId, evidence_version: 1, evidence_sha256: evidenceSha });
+async function insertScopedGrant(
+  db: { query: (sql: string, values?: unknown[]) => Promise<unknown> },
+  input: { id: string; userId: string; grantorId: string; role: string; market: string; offering: string;
+    instruments: string[]; documentStages: string[]; suffix: string },
+): Promise<Record<string, unknown>> {
+  await db.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
+    VALUES($1,$2,$3,$4,$5,$6,'synthetic_test')`,
+  [input.id, input.userId, input.role, input.market, input.offering, input.grantorId]);
+  const scope = {
+    instruments: input.instruments, document_stages: input.documentStages,
+    issuer_scopes: reviewedScope(`synthetic-issuer-scope-${input.suffix}`, 'a'.repeat(64)),
+    investor_scopes: reviewedScope(`synthetic-investor-scope-${input.suffix}`, 'b'.repeat(64)),
+    industry_codes: reviewedScope(`synthetic-industry-scope-${input.suffix}`, 'c'.repeat(64)),
+    special_feature_scope: reviewedScope(`synthetic-feature-scope-${input.suffix}`, 'd'.repeat(64)),
+  };
+  await db.query(`INSERT INTO bb_rule_pack_production_grant_scopes
+      (grant_id,instruments,document_stages,issuer_scopes,investor_scopes,industry_codes,special_feature_scope,scope_hash)
+      VALUES($1,$2::text[],$3::text[],$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8)`,
+  [input.id, scope.instruments, scope.document_stages, JSON.stringify(scope.issuer_scopes),
+    JSON.stringify(scope.investor_scopes), JSON.stringify(scope.industry_codes),
+    JSON.stringify(scope.special_feature_scope), hashSnapshot(scope)]);
+  return scope;
+}
+
 function fixture(): { pack: RulePack; template: typeof nafmiiMtnChapterTemplate; coverage: typeof nafmiiMtnCoverageManifest } {
   const draft = structuredClone(nafmiiMtnDraftRulePack) as RulePack;
   draft.pack_id = 'synthetic-selector-pack';
@@ -329,8 +358,13 @@ test('live PostgreSQL 16 migration creates empty production registry and rejects
     const reviewer = `date_reviewer_${suffix}`;
     const grant = `date_grant_${suffix}`;
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$1),($2,$2)', [admin, reviewer]);
-    await pool.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
-      VALUES($1,$2,'rule_pack_industry_reviewer','sse','public_all',$3,'synthetic_test')`, [grant, reviewer, admin]);
+    const grantClient = await pool.connect();
+    try {
+      await grantClient.query('BEGIN');
+      await insertScopedGrant(grantClient, { id: grant, userId: reviewer, grantorId: admin, role: 'rule_pack_industry_reviewer',
+        market: 'sse', offering: 'public_all', instruments: ['synthetic-instrument'], documentStages: ['registration'], suffix });
+      await grantClient.query('COMMIT');
+    } catch (error) { await grantClient.query('ROLLBACK'); throw error; } finally { grantClient.release(); }
     const insertSource = `INSERT INTO bb_rule_pack_production_source_checks
       (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
        clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,verifier_user_id,verifier_grant_id)
@@ -385,11 +419,12 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     for (const [id, username] of [[operator, operator], [industry, industry], [technical, technical], [admin, admin]]) {
       await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, username]);
     }
-    await client.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
-      VALUES ($1,$2,'rule_pack_operator','sse','public_all',$5,'test_fixture'),
-             ($3,$4,'rule_pack_industry_reviewer','sse','public_all',$5,'test_fixture'),
-             ($6,$7,'rule_pack_technical_reviewer','sse','public_all',$5,'test_fixture')`,
-    [operatorGrant, operator, industryGrant, industry, admin, technicalGrant, technical]);
+    await insertScopedGrant(client, { id: operatorGrant, userId: operator, grantorId: admin, role: 'rule_pack_operator',
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], documentStages: ['registration'], suffix });
+    await insertScopedGrant(client, { id: industryGrant, userId: industry, grantorId: admin, role: 'rule_pack_industry_reviewer',
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], documentStages: ['registration'], suffix });
+    await insertScopedGrant(client, { id: technicalGrant, userId: technical, grantorId: admin, role: 'rule_pack_technical_reviewer',
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], documentStages: ['registration'], suffix });
 
     const draft = structuredClone(nafmiiMtnDraftRulePack) as RulePack;
     draft.pack_id = packId;
@@ -407,6 +442,12 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       applicability: { ...firstRule.applicability, document_stages: ['registration'], issuer_scopes: ['synthetic_issuer'],
         investor_scopes: ['synthetic-investor'], industries: ['synthetic-industry'], special_features: [] } }];
     const rule = draft.rules[0]!;
+    const syntheticSha = (kind: string, index = 0) => hashSnapshot({ synthetic: kind, suffix, index });
+    const sourceCheckSha = syntheticSha('source-check');
+    const sampleEvidenceShas = [0, 1, 2].map((index) => syntheticSha('sample-evidence', index));
+    const sampleExpectedShas = [0, 1, 2].map((index) => syntheticSha('sample-expected', index));
+    const sampleReviewedShas = [0, 1, 2].map((index) => syntheticSha('sample-reviewed', index));
+    const sampleAuthorizationShas = [0, 1, 2].map((index) => syntheticSha('sample-authorization', index));
     const sampleExamples = [
       ['positive', rule.positive_examples[0]!],
       ['negative', rule.negative_examples[0]!],
@@ -425,11 +466,11 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     await client.query(`INSERT INTO bb_rule_pack_production_source_checks
       (id,pack_id,pack_version,pack_hash,source_id,authority,official_url,source_version,market,offering,document_hash,
        clause_locator,exact_quote,checked_at,effective_from,effective_to,legal_effective_date_basis,effective_date_derivation_evidence,
-       official_publication_date,verifier_user_id,verifier_grant_id)
+       official_publication_date,verifier_user_id,verifier_grant_id,source_check_sha256)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$10,$11,$12,'2026-01-01',NULL,'explicit_text',
-       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2024-12-31',$13,$14)`,
+       jsonb_build_array(jsonb_build_object('kind','synthetic_clause','value','clause 1')),'2024-12-31',$13,$14,$15)`,
     [sourceCheckId, packId, pack.version, contentHash, sourceId, source.authority, source.official_url, source.source_version,
-      source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant]);
+      source.document_hash, source.clause_locator, source.exact_quote, now.toISOString(), industry, industryGrant, sourceCheckSha]);
 
     const sampleEvidenceIds: string[] = [];
     for (const [index, [polarity, example]] of sampleExamples.entries()) {
@@ -437,15 +478,18 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       const evidenceId = `synthetic-evidence-${suffix}-${index}`;
       const materialHash = (index + 1).toString(16).repeat(64);
       await client.query(`INSERT INTO bb_rule_pack_sample_authorizations
-        (id,material_sha256,authorization_document_sha256,authorization_scope,market,offering,authorized_by_user_id,authorizer_grant_id,authorized_at)
-        VALUES ($1,$2,$3,'rule_pack_validation','sse','public_all',$4,$5,$6)`,
-      [authorizationId, materialHash, (index + 4).toString(16).repeat(64), operator, operatorGrant, now.toISOString()]);
+        (id,material_sha256,authorization_document_sha256,authorization_scope,market,offering,authorized_by_user_id,authorizer_grant_id,authorized_at,authorization_evidence_sha256)
+        VALUES ($1,$2,$3,'rule_pack_validation','sse','public_all',$4,$5,$6,$7)`,
+      [authorizationId, materialHash, (index + 4).toString(16).repeat(64), operator, operatorGrant, now.toISOString(),
+        sampleAuthorizationShas[index]]);
       await client.query(`INSERT INTO bb_rule_pack_production_sample_evidence
         (id,sample_case_id,pack_id,pack_version,pack_hash,polarity,material_sha256,authorization_id,market,offering,
-         expected_outcome,observed_outcome,source_anchor,reviewer_user_id,reviewer_grant_id,reviewed_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$9,$10,$11,$12,$13)`,
+         expected_outcome,observed_outcome,source_anchor,reviewer_user_id,reviewer_grant_id,reviewed_at,
+         sample_evidence_sha256,expected_outcome_sha256,reviewed_result_sha256)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sse','public_all',$9,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [evidenceId, `synthetic-case-${index}`, packId, pack.version, contentHash, polarity, materialHash, authorizationId,
-        example.expected_outcome, `synthetic:${polarity}:test-only`, industry, industryGrant, now.toISOString()]);
+        example.expected_outcome, `synthetic:${polarity}:test-only`, industry, industryGrant, now.toISOString(),
+        sampleEvidenceShas[index], sampleExpectedShas[index], sampleReviewedShas[index]]);
       sampleEvidenceIds.push(evidenceId);
     }
 
@@ -496,13 +540,59 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
         `synthetic-auth-${suffix}-${index}`, example.expected_outcome, `synthetic:${polarity}:wrong-binding-test-only`, industry, industryGrant, now.toISOString()]);
       misboundEvidenceIds.push(evidenceId);
     }
+    // 0073 binds every new production release to an immutable frozen manifest and
+    // two self-submitted approvals in the same registry. Build that synthetic,
+    // test-only binding so the release insert exercises the real 0073 guard.
+    const manifestId = packId;
+    const manifestVersion = 1;
+    const manifestScope = {
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-corporate-bond'], document_stages: ['registration'],
+      applicable_from: '2026-01-01', applicable_until: effectiveTo,
+      issuer_scopes: reviewedScope(`synthetic-issuer-scope-${suffix}`, 'a'.repeat(64)),
+      investor_scopes: reviewedScope(`synthetic-investor-scope-${suffix}`, 'b'.repeat(64)),
+      industry_codes: reviewedScope(`synthetic-industry-scope-${suffix}`, 'c'.repeat(64)),
+      special_feature_scope: reviewedScope(`synthetic-feature-scope-${suffix}`, 'd'.repeat(64)),
+    };
+    const manifestContent = {
+      contract_version: 'production-review-content-v1', hash_domain: 'bondbuddy:production-review-content:v1',
+      rule_pack: { id: packId, version: bundledPack.version, sha256: contentHash },
+      chapter_template: { id: template.template_id, version: template.version, sha256: hashSnapshot(template) },
+      coverage_manifest: { id: coverage.manifest_id, version: coverage.version, sha256: hashSnapshot(coverage) },
+      applicability_scope: manifestScope,
+      source_date_evidence: [{ source_evidence_id: sourceCheckId, source_check_sha256: sourceCheckSha }],
+      authorized_real_sample_evidence: sampleEvidenceIds.map((id, index) => ({
+        sample_evidence_id: id, sample_evidence_sha256: sampleEvidenceShas[index],
+        authorization_evidence_id: `synthetic-auth-${suffix}-${index}`, authorization_evidence_sha256: sampleAuthorizationShas[index],
+        sample_case_id: `synthetic-case-${index}`, polarity: sampleExamples[index]![0],
+        expected_outcome_sha256: sampleExpectedShas[index], reviewed_result_sha256: sampleReviewedShas[index],
+      })),
+    };
+    const manifestContentSha = hashSnapshot(manifestContent);
+    await client.query(`INSERT INTO bb_production_review_manifests
+      (manifest_id,manifest_version,content_sha256,content,request_id,request_hash,frozen_by_user_id,frozen_by_grant_id)
+      VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8)`,
+    [manifestId, manifestVersion, manifestContentSha, JSON.stringify(manifestContent),
+      `synthetic-manifest-${suffix}`, hashSnapshot({ synthetic: 'manifest-request', suffix }), industry, industryGrant]);
+    const industryAttestationId = `synthetic-industry-attestation-${suffix}`;
+    const technicalAttestationId = `synthetic-technical-attestation-${suffix}`;
+    const attestationInsert = `INSERT INTO bb_production_review_attestation_events
+      (attestation_event_id,manifest_id,manifest_version,content_sha256,request_id,request_hash,reviewer_role,reviewer_user_id,
+       grant_id,decision,reason,evidence,reviewed_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'approve',$10,$11::jsonb,$12)`;
+    await client.query(attestationInsert, [industryAttestationId, manifestId, manifestVersion, manifestContentSha,
+      `synthetic-industry-attest-${suffix}`, hashSnapshot({ synthetic: 'industry-attest', suffix }), 'industry', industry,
+      industryGrant, 'Synthetic manifest approval only.', JSON.stringify({ synthetic: true }), now.toISOString()]);
+    await client.query(attestationInsert, [technicalAttestationId, manifestId, manifestVersion, manifestContentSha,
+      `synthetic-technical-attest-${suffix}`, hashSnapshot({ synthetic: 'technical-attest', suffix }), 'technical', technical,
+      technicalGrant, 'Synthetic manifest approval only.', JSON.stringify({ synthetic: true }), now.toISOString()]);
     const releaseInsert = `INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
        coverage_version,coverage_hash,market,offering,instruments,document_stages,effective_from,effective_to,
        pack_snapshot,template_snapshot,coverage_snapshot,source_check_ids,sample_evidence_ids,operator_user_id,operator_grant_id,
-       industry_reviewer_user_id,industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at)
+       industry_reviewer_user_id,industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at,
+       manifest_id,manifest_version,manifest_content_sha256,industry_attestation_event_id,technical_attestation_event_id)
       VALUES ($1,$2,$3,$4,1,'production_release',$5,$6,$7,$8,$9,$10,'sse','public_all',ARRAY['synthetic-corporate-bond'],
-       ARRAY['registration'],'2026-01-01',$24,$11::jsonb,$12::jsonb,$13::jsonb,ARRAY[$14]::text[],$15::text[],$16,$17,$18,$19,$20,$21,$22,$23)`;
+       ARRAY['registration'],'2026-01-01',$24,$11::jsonb,$12::jsonb,$13::jsonb,ARRAY[$14]::text[],$15::text[],$16,$17,$18,$19,$20,$21,$22,$23,$25,$26,$27,$28,$29)`;
     const wrongSourcePack = structuredClone(bundledPack);
     wrongSourcePack.sources[0]!.verified_by = `unbound_source_reviewer_${suffix}`;
     wrongSourcePack.release!.content_hash = rulePackContentHash(wrongSourcePack);
@@ -522,7 +612,8 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), JSON.stringify(wrongSourcePack),
       JSON.stringify(template), JSON.stringify(coverage), wrongSourceCheckId, sampleEvidenceIds, operator, operatorGrant,
       industry, industryGrant, technical, technicalGrant, bundledPack.release!.reason, releaseAt, effectiveTo,
-    ]), /each pack source requires exact current verification evidence/);
+      null, null, null, null, null,
+    ]), /production release requires an exactly pinned manifest and both self-attestations/);
     await client.query('ROLLBACK TO SAVEPOINT wrong_source_reviewer');
     await client.query('RELEASE SAVEPOINT wrong_source_reviewer');
 
@@ -532,14 +623,16 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), JSON.stringify(misboundPack),
       JSON.stringify(template), JSON.stringify(coverage), misboundSourceId, misboundEvidenceIds, operator, operatorGrant,
       industry, industryGrant, technical, technicalGrant, bundledPack.release!.reason, releaseAt, effectiveTo,
-    ]), /every positive negative and boundary pack sample requires exact authorized material and reviewer evidence/);
+      null, null, null, null, null,
+    ]), /production release requires an exactly pinned manifest and both self-attestations/);
     await client.query('ROLLBACK TO SAVEPOINT conflicting_example');
     await client.query('RELEASE SAVEPOINT conflicting_example');
 
     await client.query(releaseInsert, [releaseEventId, packId, `synthetic-request-${suffix}`, 'b'.repeat(64), bundledPack.version, contentHash,
       template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), JSON.stringify(bundledPack),
       JSON.stringify(template), JSON.stringify(coverage), sourceCheckId, sampleEvidenceIds, operator, operatorGrant,
-      industry, industryGrant, technical, technicalGrant, 'Synthetic PG16 test fixture only; not production evidence.', releaseAt, effectiveTo]);
+      industry, industryGrant, technical, technicalGrant, 'Synthetic PG16 test fixture only; not production evidence.', releaseAt, effectiveTo,
+      manifestId, manifestVersion, manifestContentSha, industryAttestationId, technicalAttestationId]);
 
     const selectionRequest: ProductionRulePackRequest = {
       market: 'sse', offering: 'public_all', instrument: 'synthetic-corporate-bond', documentStage: 'registration',
@@ -773,14 +866,16 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     await client.query(`INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
        coverage_version,coverage_hash,target_event_id,market,offering,instruments,document_stages,effective_from,effective_to,
-       pack_snapshot,template_snapshot,coverage_snapshot,source_check_ids,sample_evidence_ids,operator_user_id,operator_grant_id,reason,occurred_at)
+       pack_snapshot,template_snapshot,coverage_snapshot,source_check_ids,sample_evidence_ids,operator_user_id,operator_grant_id,reason,occurred_at,
+       manifest_id,manifest_version,manifest_content_sha256,industry_attestation_event_id,technical_attestation_event_id)
       VALUES ($1,$2,$3,$4,2,'production_withdrawal',$5,$6,$7,$8,$9,$10,$11,'sse','public_all',
        ARRAY['synthetic-corporate-bond'],ARRAY['registration'],'2026-01-01',$12,$13::jsonb,$14::jsonb,$15::jsonb,
-       ARRAY[$16]::text[],$17::text[],$18,$19,$20,$21)`,
+       ARRAY[$16]::text[],$17::text[],$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
     [`synthetic-withdrawal-${suffix}`, packId, `synthetic-withdraw-request-${suffix}`, 'c'.repeat(64), pack.version,
       contentHash, template.version, hashSnapshot(template), coverage.version, hashSnapshot(coverage), releaseEventId,
       effectiveTo, JSON.stringify(withdrawn), JSON.stringify(template), JSON.stringify(coverage), sourceCheckId,
-      sampleEvidenceIds, operator, operatorGrant, 'Synthetic PG16 withdrawal replay test only.', withdrawalAt]);
+      sampleEvidenceIds, operator, operatorGrant, 'Synthetic PG16 withdrawal replay test only.', withdrawalAt,
+      manifestId, manifestVersion, manifestContentSha, industryAttestationId, technicalAttestationId]);
     assert.deepEqual(await revalidateProductionRulePackPin(client, selected.pin, selected.pin.applicabilityContext),
       { status: 'blocked', reasons: ['production_rule_pack_withdrawn'] });
     if (gateCtx) {
@@ -815,11 +910,52 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
       await client.query(`RELEASE SAVEPOINT ${safeName}`);
     };
     for (const [index, id] of users.entries()) await client.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `u${id}`.slice(0, 32)]);
-    await client.query(`INSERT INTO bb_rule_pack_production_reviewer_grants(id,user_id,role,market,offering,granted_by,reason_code)
-      VALUES ($1,$2,'rule_pack_operator','sse','public_all',$5,'test_fixture'),
-             ($3,$4,'rule_pack_industry_reviewer','sse','public_all',$5,'test_fixture'),
-             ($6,$7,'rule_pack_technical_reviewer','sse','public_all',$5,'test_fixture')`,
-    [operatorGrant, operator, industryGrant, industry, admin, technicalGrant, technical]);
+    await insertScopedGrant(client, { id: operatorGrant, userId: operator, grantorId: admin, role: 'rule_pack_operator',
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-bond'], documentStages: ['registration'], suffix });
+    await insertScopedGrant(client, { id: industryGrant, userId: industry, grantorId: admin, role: 'rule_pack_industry_reviewer',
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-bond'], documentStages: ['registration'], suffix });
+    await insertScopedGrant(client, { id: technicalGrant, userId: technical, grantorId: admin, role: 'rule_pack_technical_reviewer',
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-bond'], documentStages: ['registration'], suffix });
+
+    // 0073 requires an exactly pinned frozen manifest and two approvals before the
+    // 0036 snapshot gates can run. Seed one synthetic binding reused by every
+    // negative case; the per-case mutation only touches pack_snapshot.
+    const syntheticPackId = 'synthetic-pack';
+    const manifestOwnerGrant = operatorGrant;
+    const manifestOwner = operator;
+    const manifestScope = {
+      market: 'sse', offering: 'public_all', instruments: ['synthetic-bond'], document_stages: ['registration'],
+      applicable_from: '2026-01-01', applicable_until: null,
+      issuer_scopes: reviewedScope(`synthetic-issuer-scope-${suffix}`, 'a'.repeat(64)),
+      investor_scopes: reviewedScope(`synthetic-investor-scope-${suffix}`, 'b'.repeat(64)),
+      industry_codes: reviewedScope(`synthetic-industry-scope-${suffix}`, 'c'.repeat(64)),
+      special_feature_scope: reviewedScope(`synthetic-feature-scope-${suffix}`, 'd'.repeat(64)),
+    };
+    const manifestContent = {
+      contract_version: 'production-review-content-v1', hash_domain: 'bondbuddy:production-review-content:v1',
+      rule_pack: { id: syntheticPackId, version: '1', sha256: 'a'.repeat(64) },
+      chapter_template: { id: 'synthetic-template', version: 'template.1', sha256: '2'.repeat(64) },
+      coverage_manifest: { id: 'synthetic-coverage', version: 'coverage.1', sha256: '3'.repeat(64) },
+      applicability_scope: manifestScope, source_date_evidence: [], authorized_real_sample_evidence: [],
+    };
+    const manifestContentSha = hashSnapshot(manifestContent);
+    await client.query(`INSERT INTO bb_production_review_manifests
+      (manifest_id,manifest_version,content_sha256,content,request_id,request_hash,frozen_by_user_id,frozen_by_grant_id)
+      VALUES($1,1,$2,$3::jsonb,$4,$5,$6,$7)`,
+    [syntheticPackId, manifestContentSha, JSON.stringify(manifestContent), `synthetic-manifest-${suffix}`,
+      hashSnapshot({ synthetic: 'manifest-request', suffix }), manifestOwner, manifestOwnerGrant]);
+    const industryAttestationId = `synthetic-industry-attestation-${suffix}`;
+    const technicalAttestationId = `synthetic-technical-attestation-${suffix}`;
+    const attestationInsert = `INSERT INTO bb_production_review_attestation_events
+      (attestation_event_id,manifest_id,manifest_version,content_sha256,request_id,request_hash,reviewer_role,reviewer_user_id,
+       grant_id,decision,reason,evidence,reviewed_at)
+      VALUES($1,$2,1,$3,$4,$5,$6,$7,$8,'approve',$9,$10::jsonb,'2026-09-24T00:00:00Z')`;
+    await client.query(attestationInsert, [industryAttestationId, syntheticPackId, manifestContentSha,
+      `synthetic-industry-attest-${suffix}`, hashSnapshot({ synthetic: 'industry-attest', suffix }), 'industry', industry,
+      industryGrant, 'Synthetic manifest approval only.', JSON.stringify({ synthetic: true })]);
+    await client.query(attestationInsert, [technicalAttestationId, syntheticPackId, manifestContentSha,
+      `synthetic-technical-attest-${suffix}`, hashSnapshot({ synthetic: 'technical-attest', suffix }), 'technical', technical,
+      technicalGrant, 'Synthetic manifest approval only.', JSON.stringify({ synthetic: true })]);
 
     const rowSnapshot = { pack_id: 'synthetic-pack', version: '1', status: 'published',
       release: { channel: 'production', content_hash: 'a'.repeat(64) },
@@ -851,15 +987,17 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
         (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
          coverage_version,coverage_hash,market,offering,instruments,document_stages,effective_from,effective_to,
          pack_snapshot,template_snapshot,coverage_snapshot,operator_user_id,operator_grant_id,industry_reviewer_user_id,
-         industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at)
+         industry_reviewer_grant_id,technical_reviewer_user_id,technical_reviewer_grant_id,reason,occurred_at,
+         manifest_id,manifest_version,manifest_content_sha256,industry_attestation_event_id,technical_attestation_event_id)
         VALUES ($1,'synthetic-pack',$2,$3,1,'production_release','1',$4,'template.1',$5,'coverage.1',$6,
          'sse','public_all',ARRAY['synthetic-bond'],ARRAY['registration'],'2026-01-01',NULL,$7::jsonb,
          '{"rule_pack_id":"synthetic-pack","version":"template.1","market":"sse","offering":"public_all"}'::jsonb,
          '{"rule_pack_id":"synthetic-pack","version":"coverage.1","open_blockers":[],"items":[{"disposition":"covered"}]}'::jsonb,
-         $8,$9,$10,$11,$12,$13,$14,$15)`,
+         $8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
       [`unsafe-${label}-${suffix}`, `unsafe-request-${label}-${suffix}`, '9'.repeat(64), releaseHash,
         '2'.repeat(64), '3'.repeat(64), JSON.stringify(snapshot), operator, operatorGrant, industry,
-        industryGrant, technical, technicalGrant, `synthetic ${label}`, occurredAt], pattern, `publish_gate_${label}`);
+        industryGrant, technical, technicalGrant, `synthetic ${label}`, occurredAt,
+        syntheticPackId, 1, manifestContentSha, industryAttestationId, technicalAttestationId], pattern, `publish_gate_${label}`);
     };
     await assertProductionGateRejects('unverified-source', (snapshot) => { snapshot.sources[0]!.kind = 'unverified_lead'; }, /expired or unverified sources cannot be production published/);
     await assertProductionGateRejects('publication-date-mismatch', (snapshot) => { snapshot.validity.published_on = '2026-09-24'; }, /pack publication date must match release event date/);
@@ -878,8 +1016,8 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
        'template.1',$2,'coverage.1',$2,'does-not-exist','sse','public_all',ARRAY['synthetic-bond'],ARRAY['registration'],'2026-01-01',$3::jsonb,
        '{"rule_pack_id":"synthetic-pack","version":"1","market":"sse","offering":"public_all"}'::jsonb,
        '{"rule_pack_id":"synthetic-pack","open_blockers":[]}'::jsonb,$4,$5,$6,$7,$8,$9,'negative fake rollback test',now())`,
-    ['c'.repeat(64), 'a'.repeat(64), JSON.stringify(rowSnapshot), operator, operatorGrant, industry, industryGrant, technical, technicalGrant],
-    /rollback must replay an exact immutable historical production release/, 'fake_rollback');
+     ['c'.repeat(64), 'a'.repeat(64), JSON.stringify(rowSnapshot), operator, operatorGrant, industry, industryGrant, technical, technicalGrant],
+     /rollback must retain the exact immutable historical attestation binding/, 'fake_rollback');
 
     await client.query(`INSERT INTO bb_rule_pack_sample_authorizations
       (id,material_sha256,authorization_document_sha256,authorization_scope,market,offering,authorized_by_user_id,authorizer_grant_id,authorized_at)
@@ -913,6 +1051,10 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
       release: { ...rowSnapshot.release, released_by: operator,
         released_at: releaseAt, reason: 'rolled-back synthetic fixture' } };
     await client.query('ALTER TABLE bb_rule_pack_production_release_events DISABLE TRIGGER bb_rule_pack_production_event_guard');
+    // The seeded legacy row has no manifest binding and the industry grant is
+    // already revoked above, so also suspend the 0073 release binding guard for
+    // this rolled-back fixture; the withdrawal below still runs both guards.
+    await client.query('ALTER TABLE bb_rule_pack_production_release_events DISABLE TRIGGER bb_rule_pack_production_event_attestation_guard');
     await client.query(`INSERT INTO bb_rule_pack_production_release_events
       (id,pack_id,request_id,request_hash,sequence,action,pack_version,content_hash,template_version,template_hash,
        coverage_version,coverage_hash,market,offering,instruments,document_stages,effective_from,effective_to,
@@ -924,6 +1066,7 @@ test('live PostgreSQL 16 rejects fabricated rollback targets and revoked sample 
     [seedId, `request-${suffix}`, '1'.repeat(64), 'a'.repeat(64), '2'.repeat(64), '3'.repeat(64),
       JSON.stringify(releasedSnapshot), JSON.stringify(templateSnapshot), JSON.stringify(coverageSnapshot),
       operator, operatorGrant, industry, industryGrant, technical, technicalGrant, releaseAt]);
+    await client.query('ALTER TABLE bb_rule_pack_production_release_events ENABLE TRIGGER bb_rule_pack_production_event_attestation_guard');
     await client.query('ALTER TABLE bb_rule_pack_production_release_events ENABLE TRIGGER bb_rule_pack_production_event_guard');
     const withdrawnAt = new Date(Date.parse(releaseAt) + 60_000).toISOString();
     const withdrawnSnapshot = { ...releasedSnapshot, status: 'withdrawn', withdrawal: {
