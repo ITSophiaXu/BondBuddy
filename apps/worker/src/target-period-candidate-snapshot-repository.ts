@@ -7,6 +7,7 @@ import {
 } from '@bondbuddy/contracts';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { validateOcrResponse } from '@bondbuddy/api/ocr';
+import { isProjectMessagePinError, loadProjectMessageSetPin, projectMessageSetRequirementsMatch } from './project-message-set-pin.js';
 
 export interface TargetPeriodCandidateSnapshotClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -322,6 +323,27 @@ async function verifyOcrSource(client: TargetPeriodCandidateSnapshotClient, blob
 
 function sha256Bytes(value: Buffer): string { return createHash('sha256').update(value).digest('hex'); }
 
+/**
+ * Re-derive the active message set from owner/project-scoped immutable metadata inside the
+ * same transaction that owns the project lock, and require an exact match with the bound
+ * aggregate pin. The private prompt Blob body is never read. An incomplete set, a missing
+ * body hash, or an aggregate that only carries a version fails closed.
+ */
+async function verifySupplementalRequirements(client: TargetPeriodCandidateSnapshotClient,
+  request: AppendTargetPeriodCandidateSnapshotRequest): Promise<void> {
+  let current;
+  try {
+    current = await loadProjectMessageSetPin({ query: (sql, values = []) => client.query(sql, values) },
+      { ownerUserId: request.ownerUserId, projectId: request.projectId });
+  } catch (error) {
+    if (isProjectMessagePinError(error)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+    throw error;
+  }
+  if (!projectMessageSetRequirementsMatch(current, request.snapshot.content.supplemental_requirements)) {
+    throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  }
+}
+
 async function verifySources(client: TargetPeriodCandidateSnapshotClient, blobs: PrivateBlobs,
   snapshot: TargetPeriodCandidateSnapshot): Promise<void> {
   for (const source of snapshot.content.source_snapshots) {
@@ -347,9 +369,6 @@ export async function appendTargetPeriodCandidateSnapshot(
       sha256(canonicalTargetPeriodCandidateSnapshotContent(request.snapshot)) !== request.snapshot.content_sha256 ||
       Buffer.byteLength(canonical(request.snapshot.content), 'utf8') > 64 * 1024 * 1024) {
     throw fail('TARGET_PERIOD_CANDIDATE_SNAPSHOT_INVALID');
-  }
-  if (request.snapshot.content.supplemental_requirements.message_ids.length > 0) {
-    throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
   }
 
   const client = await dependencies.pool.connect();
@@ -385,10 +404,7 @@ export async function appendTargetPeriodCandidateSnapshot(
     // Any later input-lock consumer must revalidate message metadata before use.
     // Do not take the submission advisory lock here: registration takes it before its FK
     // insert, which would invert the project/advisory lock order and allow a deadlock.
-    const messages = await client.query(`SELECT 1 FROM bb_user_submission_versions
-      WHERE owner_user_id=$1 AND project_id=$2 AND submission_kind='project_message' LIMIT 1`,
-    [request.ownerUserId, request.projectId]);
-    if (messages.rows.length) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+    await verifySupplementalRequirements(client, request);
 
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       [`target-period-candidate:${request.ownerUserId}:${request.projectId}:${request.snapshot.candidate_set_id}`]);

@@ -5,9 +5,12 @@ import { test } from 'node:test';
 import { canonicalTargetPeriodCandidateSnapshotContent, type OcrReview, type TargetPeriodCandidateSnapshot } from '@bondbuddy/contracts';
 import { appendTargetPeriodCandidateSnapshot, type TargetPeriodCandidateSnapshotClient, type TargetPeriodCandidateSnapshotPool } from './target-period-candidate-snapshot-repository.js';
 import { buildTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-builder.js';
+import { normalizeProjectMessageSet, projectMessageSetRequirementsPin } from './project-message-set-pin.js';
 import { proposeTargetReportingPeriods, type NativePeriodEvidenceSnapshot } from './target-period-candidates.js';
 import type { DocumentParseRecord } from './document-parser.js';
 import { createHash } from 'node:crypto';
+
+const EMPTY_REQUIREMENTS = projectMessageSetRequirementsPin(normalizeProjectMessageSet([]));
 
 const testDatabaseUrl = process.env.TARGET_PERIOD_CANDIDATE_TEST_DATABASE_URL;
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
@@ -16,9 +19,8 @@ const canonicalTest = (value: unknown): string => Array.isArray(value) ? `[${val
     .map(([key, item]) => `${JSON.stringify(key)}:${canonicalTest(item)}`).join(',')}}` : JSON.stringify(value);
 
 function fixture(owner: string, project: string, material: string, snapshotId: string, cutoff: string, draftRevision: number,
-  requirements: TargetPeriodCandidateSnapshot['content']['supplemental_requirements'] = {
-    version: 1, content_sha256: digest('empty-requirements'), message_ids: [],
-  }, materialVersion = 1, candidateVersion = 1): TargetPeriodCandidateSnapshot {
+  requirements: TargetPeriodCandidateSnapshot['content']['supplemental_requirements'] = EMPTY_REQUIREMENTS,
+  materialVersion = 1, candidateVersion = 1): TargetPeriodCandidateSnapshot {
   const materialHash = 'a'.repeat(64);
   const record: DocumentParseRecord & { record_sha256: string } = {
     record_id: 'annual-header', material_id: material, material_version: materialVersion, content_hash: materialHash,
@@ -205,7 +207,7 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
         record_sha256_by_id: { [ocrRecord.record_id]: digest(canonicalTest(ocrRecord)) } }] });
     const ocrEnvelope = buildTargetPeriodCandidateSnapshot({ candidate_set: ocrCandidates, candidate_set_id: `candidate-ocr-set-${suffix}`,
       candidate_set_version: 1, owner_user_id: owner, project_id: project, project_draft_revision: 2, reporting_cutoff: '2025-06-30',
-      locked_materials: ocrMaterials, supplemental_requirements: { version: 1, content_sha256: digest('empty-requirements'), message_ids: [] } });
+      locked_materials: ocrMaterials, supplemental_requirements: EMPTY_REQUIREMENTS });
     const persistedOcr = await save('store-ocr-candidate', ocrEnvelope);
     assert.deepEqual(persistedOcr.snapshot, ocrEnvelope);
     assert.equal((await connection.query(`SELECT count(*)::int AS n FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1`, [owner])).rows[0]!.n, 3);
@@ -216,14 +218,31 @@ test('PG16 stores and replays verified native candidates, rejects stale/forged s
   }
 });
 
-test('rejects non-empty requirement pins until their trusted immutable message store exists', async () => {
+test('rejects a bound message set that no exact member metadata can reproduce, including a bare version', async () => {
   const owner = 'owner-candidate-gate', project = 'project-candidate-gate', material = 'material-candidate-gate';
-  const request = { ownerUserId: owner, projectId: project, requestId: 'candidate-gate-request',
-    selectedFinancialMaterials: [{ materialId: material, materialVersion: 1 }],
-    snapshot: fixture(owner, project, material, 'parse-gate', '2024-12-31', 1,
-      { version: 1, content_sha256: 'e'.repeat(64), message_ids: ['message-1'] } as TargetPeriodCandidateSnapshot['content']['supplemental_requirements']) };
-  await assert.rejects(appendTargetPeriodCandidateSnapshot({ pool: { connect: async () => { throw new Error('must fail before DB'); }, query: async () => ({ rows: [] }) }, blobs: {} as never }, request),
-    /REQUIREMENTS_STORE_REQUIRED/);
+  const run = async (summary: { version: number; content_sha256: string; message_ids: string[] },
+    messageRows: Record<string, unknown>[]) => {
+    const request = { ownerUserId: owner, projectId: project, requestId: 'candidate-gate-request',
+      selectedFinancialMaterials: [{ materialId: material, materialVersion: 1 }],
+      snapshot: fixture(owner, project, material, 'parse-gate', '2024-12-31', 1, summary) };
+    const client: TargetPeriodCandidateSnapshotClient = {
+      async query(sql) {
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK' || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+        if (sql.includes('FROM bb_projects') && sql.includes('FOR UPDATE')) return { rows: [{ draft_revision: 1, update_details: { reporting_cutoff: '2024-12-31' } }] };
+        if (sql.includes('FROM bb_target_period_candidate_snapshots WHERE owner_user_id=$1 AND project_id=$2 AND request_id=$3')) return { rows: [] };
+        if (sql.includes('FROM bb_user_submission_versions')) return { rows: messageRows };
+        throw new Error(`unexpected query in gate test: ${sql}`);
+      }, release() {},
+    };
+    await assert.rejects(appendTargetPeriodCandidateSnapshot({ pool: { connect: async () => client, query: (sql, values) => client.query(sql, values) }, blobs: {} as never }, request),
+      /REQUIREMENTS_STORE_REQUIRED/);
+  };
+  // A bare aggregate with a version and IDs but no matching member rows can never be trusted.
+  await run({ version: 1, content_sha256: 'e'.repeat(64), message_ids: ['message-1'] }, []);
+  // A member row missing its body hash is an incomplete set, not an empty one.
+  await run({ version: 1, content_sha256: 'e'.repeat(64), message_ids: ['message-1'] },
+    [{ id: 'submission-1', owner_user_id: owner, project_id: project, submission_kind: 'project_message',
+      message_id: 'message-1', message_version: 1, version: 2 }]);
 });
 
 test('OCR candidate snapshots are accepted only from current hash-verified owner scoped OCR objects', async () => {
@@ -262,7 +281,7 @@ test('OCR candidate snapshots are accepted only from current hash-verified owner
   const baseSnapshot = buildTargetPeriodCandidateSnapshot({ candidate_set: candidateSet, candidate_set_id: 'ocr-candidate-set',
     candidate_set_version: 1, owner_user_id: owner, project_id: project, project_draft_revision: 1,
     reporting_cutoff: '2025-06-30', locked_materials: lockedMaterials,
-    supplemental_requirements: { version: 1, content_sha256: digest('empty-requirements'), message_ids: [] } });
+    supplemental_requirements: EMPTY_REQUIREMENTS });
 
   type State = { resultHash: string; purpose: string; sourceOwner: string; latestSnapshotId: string; latestMaterialVersion: number;
     resultBytes: Buffer | null; pageBytes: Buffer | null };
