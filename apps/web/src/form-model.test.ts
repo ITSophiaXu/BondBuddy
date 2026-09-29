@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MARKET_OFFERINGS, emptyUpdateDetails, type Project } from '@bondbuddy/contracts';
-import { blankDraft, changeMarket, draftFromProject, materialHints, validateDraft } from './form-model.js';
+import { blankDraft, changeMarket, draftFromProject, materialHints, projectKind, validateDraft } from './form-model.js';
+
+test('kind follows the historical-prospectus answer: only "no history" routes to generation', () => {
+  assert.equal(projectKind(false), 'generation');
+  assert.equal(projectKind(true), 'update');
+  assert.equal(projectKind(null), 'update');
+  assert.equal(projectKind(undefined), 'update');
+  const saved: Project = { project_id: 'synthetic-project', draft_revision: 1, input_revision: null, input_hash: null,
+    kind: 'generation', name: '无历史稿项目', issuer_name: '合成发行人', market: 'sse', offering: 'private',
+    updated_at: '2026-09-29T00:00:00Z', update_details: { ...emptyUpdateDetails(), has_historical: false } };
+  assert.equal(draftFromProject(saved).kind, 'generation');
+  assert.deepEqual(validateDraft({ ...blankDraft(), name: '无历史稿', market: 'sse', offering: 'private', kind: 'generation' }), []);
+});
 
 test('all eleven market/offering combinations use the shared contract; DFI is NAFMII only', () => {
   let combinations = 0;

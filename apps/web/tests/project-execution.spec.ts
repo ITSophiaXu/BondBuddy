@@ -281,6 +281,41 @@ test('current historical choice excludes reference-only materials without a seco
   await expect(page.locator('#execution-actions input, #execution-actions select')).toHaveCount(0);
 });
 
+test('no-history project routes to the generation task kind and pins a user-specified reference', async ({ page }) => {
+  const state=fixture();
+  state.project.kind='generation';
+  state.project.update_details={...state.project.update_details!,has_historical:false};
+  const reference={...state.materials[0],material_id:'synthetic-reference',role:'reference' as const,filename:'reference.docx',parse_snapshot_id:'synthetic-snapshot'};
+  state.materials=[reference as Dto<'MaterialResponse'>,state.materials[1]];
+  state.checkStatus='ready';
+  await setup(page,state);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.preflights).toHaveLength(1);
+  expect(state.executes).toHaveLength(1);
+  expect(state.executes[0].task_kind).toBe('generation');
+  expect(state.executes[0].execution_request_id).toMatch(/^web-generation-/);
+  expect(state.inputs[0].material_versions).toEqual([
+    {material_id:'synthetic-reference',material_version:1},{material_id:'synthetic-audit',material_version:1}]);
+  // Structure only: exact reference identity plus the owner-visible parse snapshot; no issuer facts.
+  expect(state.inputs[0].user_reference).toEqual({material_id:'synthetic-reference',material_version:1,
+    material_sha256:hash('history'),parse_snapshot_id:'synthetic-snapshot',target_product:'private',target_document_stage:'issuance'});
+  await expect(page.locator('#execution-message')).not.toContainText('解析快照');
+});
+
+test('a reference without an available parse snapshot is not pinned and is surfaced honestly', async ({ page }) => {
+  const state=fixture();
+  state.project.kind='generation';
+  state.project.update_details={...state.project.update_details!,has_historical:false};
+  state.materials=[{...state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx'},state.materials[1]];
+  state.checkStatus='ready';
+  await setup(page,state);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs[0]).not.toHaveProperty('user_reference');
+  await expect(page.locator('#execution-message')).toContainText('解析快照尚未就绪');
+});
+
 test('paginated recovery and real task actions keep one run', async ({ page }) => {
   const state=fixture(); state.parseSucceeded=true; state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');

@@ -3,6 +3,8 @@ import { prototypeIcon as icon } from './prototype-design';
 import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
+import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
+import { materialParseSnapshotId, selectedReference, userReferenceChoice, type ReferenceSnapshotResolver } from './reference';
 import { date, esc } from './ui';
 import './project-execution.css';
 
@@ -44,6 +46,7 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
   if (reason === 'material_versions') return '请先添加并保存本次需要的材料。';
   if (reason.startsWith('material_parse_failed:') || reason.startsWith('material_parse_cancelled:')) return '有文件处理未完成，请查看材料区的失败原因。';
   if (reason.startsWith('material_parse_') || reason.startsWith('ocr_pending:')) return '材料正在处理，请稍后重新检查。';
+  if (reason.startsWith('user_reference_') || reason.startsWith('reference_selection_') || reason === 'reference_structure_unavailable') return readinessMessage(reason);
   return pendingConditions;
 }
 
@@ -75,6 +78,8 @@ export function readinessMessage(reason: string): string {
   if (reason.startsWith('material_needs_confirmation:')) return '材料内容尚有待核部分，请联系支持核对任务状态。';
   if (reason.startsWith('credit_facility_')) return '授信补充仍属用户提供，需核对日期、单位、口径或冲突。';
   if (reason.startsWith('update_difficulty_')) return '报告期与更新难度仍需核对。';
+  if (reason.startsWith('user_reference_')) return '用户指定参考稿尚未通过结构参考审核，暂不能作为新稿依据。';
+  if (reason.startsWith('reference_selection_') || reason === 'reference_structure_unavailable') return '尚未匹配到可用作结构参考的相似募集书。';
   if (reason.includes('provider_reconcil')) return '正在核对先前模型调用，暂不重复调用。';
   if (reason.includes('capability_not_ready')) return '所需处理能力尚未就绪。';
   if (reason === 'user_cancelled') return '用户已取消任务。';
@@ -82,15 +87,6 @@ export function readinessMessage(reason: string): string {
 }
 
 /** Stable across tabs/reloads; a new input revision is required for an intentional new run. */
-async function executionRequest(input: Input): Promise<Dto<'ExecuteRequest'>> {
-  const bytes = new TextEncoder().encode(JSON.stringify([input.project_id, input.input_revision, input.input_hash]));
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const key = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-  return { execution_request_id: `web-update-${key}`, project_id: input.project_id, input_revision: input.input_revision,
-    input_hash: input.input_hash, task_kind: 'update', storage_origin: 'cloud',
-    input_manifest_ref: input.input_hash, workspace_id: input.project_id };
-}
-
 export class ProjectExecution {
   private controller = new AbortController();
   private host!: HTMLElement;
@@ -127,10 +123,13 @@ export class ProjectExecution {
   private materialReady = false;
   private generation = 0;
   private inputRejected = false;
+  private referenceNote = '';
 
-  constructor(private api: ApiClient, private draft: Draft) {}
+  constructor(private api: ApiClient, private draft: Draft, private referenceSnapshots?: ReferenceSnapshotResolver) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
+  /** The persisted project kind decides the execution task kind; it is fixed at creation. */
+  private get taskKind(): ExecutionTaskKind { return executionTaskKind(this.draft.project.kind); }
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
     host.innerHTML = '<section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div>';
@@ -146,6 +145,31 @@ export class ProjectExecution {
   private eligibleMaterials() {
     const historical = this.draft.fields.update_details.has_historical;
     return this.materials.filter(m => m.role === 'historical' ? historical !== false : m.role === 'reference' ? historical !== true : true);
+  }
+  /**
+   * Pins a user-specified structural reference for a no-history generation project. The parse
+   * snapshot id is owner-visible only through a backend seam; without it the run proceeds with no
+   * reference rather than guessing an id, and the preflight/worker keep the review gate closed.
+   */
+  private async referenceFor(project: Dto<'ProjectResponse'>, selected: readonly Material[]): Promise<Dto<'InputRevisionCreateRequest'>['user_reference']> {
+    this.referenceNote = '';
+    if (project.kind !== 'generation' || this.draft.fields.update_details.has_historical !== false) return undefined;
+    const reference = selectedReference(selected, this.draft.fields.update_details.has_historical);
+    if (!reference) return undefined;
+    if (!project.market || !project.offering) {
+      this.referenceNote = '用户指定参考稿暂无法核对目标市场与发行方式，本次先按未指定参考提交。';
+      return undefined;
+    }
+    try {
+      const parseSnapshotId = this.referenceSnapshots
+        ? await this.referenceSnapshots(this.id, reference)
+        : materialParseSnapshotId(reference);
+      if (!parseSnapshotId) { this.referenceNote = '用户指定参考稿的解析快照尚未就绪，本次先按未指定参考提交。'; return undefined; }
+      return userReferenceChoice(reference, parseSnapshotId, project.offering);
+    } catch {
+      this.referenceNote = '用户指定参考稿信息暂时无法读取，本次先按未指定参考提交。';
+      return undefined;
+    }
   }
   private startBlockReason(): string {
     if (this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state)) return '已有任务正在处理，请查看上方进度。';
@@ -189,7 +213,7 @@ export class ProjectExecution {
     this.button('execute-input').disabled = Boolean(blocked);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.nextRequested ? '生成新版' : '开始更新';
     this.node('#start-disabled-reason').textContent = blocked;
-    this.node('#execution-message').textContent = this.message;
+    this.node('#execution-message').textContent = [this.message, this.referenceNote].filter(Boolean).join(' ');
     this.button('refresh-execution').disabled = this.busy || this.starting;
     this.button('refresh-execution').hidden = !this.inputReadUncertain && !this.run && !this.progressMessage;
     this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain;
@@ -293,10 +317,12 @@ export class ProjectExecution {
       if (!p.market || !p.offering) { this.message = '请先在项目表单选择目标市场和发行方式。'; return; }
       const generation = this.generation;
       this.selected = false; this.preflight = undefined;
+      const userReference = await this.referenceFor(p, selected);
       let result: Input;
       try {
         result = await this.api.createInputRevision(this.id, { draft_revision: p.draft_revision,
           material_versions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })), requirement_message_ids: [],
+          ...(userReference ? { user_reference: userReference } : {}),
           ...(this.input?.credit_facility_supplements?.length ? { credit_facility_supplements: this.input.credit_facility_supplements } : {}),
 
         }, this.controller.signal);
@@ -351,7 +377,7 @@ export class ProjectExecution {
     if (!this.input || !this.preflight || !this.selected || this.draft.dirty) return;
     const input = this.input, generation = this.generation;
     await this.action(async () => {
-      const request = await executionRequest(input);
+      const request = await executionRequest(input, this.taskKind);
       if (!this.active || generation !== this.generation) return;
       const run = await this.api.execute(request, this.controller.signal);
       if (!this.active) return;
