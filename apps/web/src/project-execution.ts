@@ -51,16 +51,15 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
 export function readinessMessage(reason: string): string {
   if (runtimeMessage(reason)) return runtimeMessage(reason)!;
   if (reason === 'TRIAL_ACCESS_DENIED') return '当前账号的试用权限已停用，请联系支持。';
-  if (reason.includes('rule_applicability_overall_review_required')) return '等待规则适用性审核。';
-  if (reason.startsWith('rule_pack:') || reason.startsWith('rule_applicability_')) return '等待适用规则核对或发布。';
-  if (reason.startsWith('issuer_identity_') || reason.startsWith('issuer_material_')) return '发行人身份与历史材料的绑定尚需核对。';
+  if (reason.startsWith('rule_pack:') || reason.startsWith('rule_applicability_')) return '适用规则的处理条件尚未就绪，请联系支持核对。';
+  if (reason.startsWith('issuer_identity_') || reason.startsWith('issuer_material_')) return '发行人资料的后台绑定尚未完成，请联系支持确认是否需要补充材料。';
   if (reason === 'material_versions') return '尚未选择已保存的材料。';
   if (reason.startsWith('material_parse_failed:')) return '有材料解析失败，请查看材料区。';
   if (reason.startsWith('material_parse_cancelled:')) return '有材料解析已取消，请查看材料区。';
   if (reason.startsWith('material_parse_')) return '等待材料解析完成。';
   if (reason.startsWith('ocr_')) return '文件处理尚未完成，请稍后重试。';
   if (reason.startsWith('source_profile_')) return '历史稿处理暂未就绪，请稍后重试；持续未恢复时请联系支持。';
-  if (reason.startsWith('material_needs_confirmation:')) return '材料存在待确认内容；不会作为已核实事实。';
+  if (reason.startsWith('material_needs_confirmation:')) return '材料内容尚有待核部分，请联系支持核对任务状态。';
   if (reason.startsWith('credit_facility_')) return '授信补充仍属用户提供，需核对日期、单位、口径或冲突。';
   if (reason.startsWith('update_difficulty_')) return '报告期与更新难度仍需核对。';
   if (reason.includes('provider_reconcil')) return '正在核对先前模型调用，暂不重复调用。';

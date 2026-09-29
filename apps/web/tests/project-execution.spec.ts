@@ -232,7 +232,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   state.paginate=true; state.eventPages=[]; state.listPages=[]; await page.reload();
-  await expect(page.locator('#execution-progress')).toContainText('等待规则适用性审核');
+  await expect(page.locator('#execution-progress')).toContainText('适用规则的处理条件尚未就绪');
   expect(state.listPages).toContain('page-two'); expect(state.eventPages).toContain('1');
   state.checkStatus='blocked'; await page.locator('#recheck-paused').click();
   await expect(page.locator('#resume-run')).toHaveCount(0);
