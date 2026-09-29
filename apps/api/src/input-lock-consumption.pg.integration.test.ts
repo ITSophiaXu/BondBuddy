@@ -59,19 +59,21 @@ async function insertSyntheticMaterial(pool: Pool, args: {
   }
 }
 
-/** Owner/project with two reviewed issuer-role materials and one approved binding pinned to input revision 1. */
-async function provisionApprovedBinding(pool: Pool, suffix: string, label: string) {
+/** Owner/project with two reviewed issuer-role materials and a binding on an exact generation input. */
+async function provisionApprovedBinding(pool: Pool, suffix: string, label: string, convertExisting = false) {
   const owner = `${label}-owner-${suffix}`, reviewerId = `${label}-reviewer-${suffix}`, grantorId = `${label}-grantor-${suffix}`;
   const projectId = `${label}-project-${suffix}`, grantId = `${label}-grant-${suffix}`, parserVersion = `parser-${label}-${suffix}`;
   const auditId = `${label}-audit-${suffix}`, notesId = `${label}-notes-${suffix}`;
   const auditEvidence = `${label}-audit-evidence-${suffix}`, notesEvidence = `${label}-notes-evidence-${suffix}`;
-  const inputHash = sha(`${label}-input-${suffix}`);
+  let inputHash = sha(`${label}-input-${suffix}`);
+  let inputRevision = 1;
   for (const [id, username] of [[owner, `${label}owner`], [reviewerId, `${label}reviewer`], [grantorId, `${label}grantor`]] as const) {
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `${username}${suffix}`]);
   }
-  await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,draft_revision,latest_input_revision)
-    VALUES($1,$2,'Synthetic generation','generation','Browser supplied name','sse','private',1,null)`, [projectId, owner]);
-  const manifest = { draft_revision: 1, kind: 'generation', materials: [
+  await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,draft_revision,latest_input_revision,update_details)
+    VALUES($1,$2,'Synthetic generation',$3,'Browser supplied name','sse','private',1,null,$4::jsonb)`,
+  [projectId, owner, convertExisting ? 'update' : 'generation', JSON.stringify({ has_historical: false })]);
+  const manifest = { draft_revision: 1, kind: convertExisting ? 'update' : 'generation', materials: [
     { material_id: auditId, material_version: 1, role: 'audit', sha256: sha(`material-bytes-${auditId}`) },
     { material_id: notesId, material_version: 1, role: 'notes', sha256: sha(`material-bytes-${notesId}`) },
   ] };
@@ -97,6 +99,20 @@ async function provisionApprovedBinding(pool: Pool, suffix: string, label: strin
   };
   const auditReview = await addReview(auditId, auditEvidence);
   const notesReview = await addReview(notesId, notesEvidence);
+  if (convertExisting) {
+    const app = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }) });
+    try {
+      const converted = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/convert-to-generation`, headers: { origin },
+        payload: { conversion_request_id: randomUUID(), expected_draft_revision: 1, expected_input_revision: 1,
+          expected_input_hash: inputHash, no_historical_prospectus: true } });
+      assert.equal(converted.statusCode, 200, converted.body);
+      const locked = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers: { origin },
+        payload: { draft_revision: 2, material_versions: [auditId, notesId].map(material_id => ({ material_id, material_version: 1 })), requirement_message_ids: [] } });
+      assert.equal(locked.statusCode, 201, locked.body);
+      inputRevision = locked.json().input_revision;
+      inputHash = locked.json().input_hash;
+    } finally { await app.close(); }
+  }
   const decisions: GenerationIssuerBindingDecisionInput[] = [
     { material_id: auditId, material_version: 1, disposition: 'classified', reason: '合并编制主体。',
       observations: [{ source_record_id: auditEvidence, observed_subject_label: '合成发行人甲', evidence_context: 'financial_statement',
@@ -107,7 +123,7 @@ async function provisionApprovedBinding(pool: Pool, suffix: string, label: strin
   ];
   const deps = { pool, newId: randomUUID };
   const appended = await appendGenerationIssuerBinding(deps, {
-    ownerUserId: owner, projectId, inputRevision: 1, inputHash, requestId: `${label}-binding-${suffix}`, reviewer, materialDecisions: decisions,
+    ownerUserId: owner, projectId, inputRevision, inputHash, requestId: `${label}-binding-${suffix}`, reviewer, materialDecisions: decisions,
   });
   const ref: GenerationIssuerBindingRef = { binding_id: appended.bindingId, version: appended.version, content_sha256: appended.contentSha256 };
   return {
@@ -133,6 +149,30 @@ async function insertProjectMessage(pool: Pool, args: { owner: string; projectId
     VALUES($1,$2,$3,$4,'project_message',$5,$6,$7,$8,$9)`,
   [`msg-submission-${messageId}-${version}`, owner, projectId, snapshotId, messageId, `msg-request-${messageId}-${version}`, messageVersion, version, digest(body)]);
 }
+
+test('converted no-history project can obtain a reviewed issuer binding and lock a new generation input',
+  { skip: !databaseUrl }, async () => {
+    const pool = new Pool({ connectionString: connection });
+    const fixture = await provisionApprovedBinding(pool, randomUUID().replaceAll('-', '').slice(0, 10), 'converted', true);
+    const app = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: fixture.owner, csrfVerified: true }) });
+    try {
+      await fixture.approve();
+      const approved = await app.inject({ method: 'GET',
+        url: `/api/v1/projects/${fixture.projectId}/generation-issuer-bindings/${fixture.ref.binding_id}/versions/${fixture.ref.version}/approved-ref`,
+        headers: { origin } });
+      assert.equal(approved.statusCode, 200, approved.body);
+      const locked = await app.inject({ method: 'POST', url: `/api/v1/projects/${fixture.projectId}/input-revisions`, headers: { origin },
+        payload: { draft_revision: 2, material_versions: [fixture.auditId, fixture.notesId].map(material_id => ({ material_id, material_version: 1 })),
+          requirement_message_ids: [], generation_issuer_binding_ref: fixture.ref } });
+      assert.equal(locked.statusCode, 201, locked.body);
+      const latest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',
+        [fixture.projectId, locked.json().input_revision])).rows[0].manifest;
+      assert.equal(latest.kind, 'generation');
+      assert.deepEqual(latest.generation_issuer_binding_ref, fixture.ref);
+      assert.equal((await pool.query('SELECT manifest->>\'kind\' AS kind FROM bb_input_revisions WHERE project_id=$1 AND revision=1',
+        [fixture.projectId])).rows[0].kind, 'update');
+    } finally { await app.close(); await pool.end(); }
+  });
 
 test('approved generation input with parsed audit enters the controlled channel without a historical draft',
   { skip: !databaseUrl || !blobConnection }, async () => {

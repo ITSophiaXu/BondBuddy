@@ -87,6 +87,10 @@ Legacy phone identities have no password, so none of these routes offers them a 
 
 ## Local validation
 
+### Existing no-history project conversion
+
+`POST /api/v1/projects/{id}/convert-to-generation` accepts an authenticated owner's explicit `no_historical_prospectus: true`, a unique `conversion_request_id`, and the exact current draft revision and latest input revision/hash (both null when no lock exists). It returns 409 `INPUT_REVISION_CONFLICT` if the draft or lock changed, historical material or an unfinished historical upload remains, or any run exists. A reused ID with a changed payload returns 409 `IDEMPOTENCY_CONFLICT`. An identical replay returns the original conversion receipt. The transaction changes `kind` and increments the draft revision once, retaining materials, parse evidence, update details, and all old immutable inputs; migration 0081 stores the append-only receipt and outbox event. The old update lock stays readable but preflight and execute return 409 when its kind differs from the current project. A new generation lock must be created through the normal input API and explicitly pin the selected financial materials and an independently approved issuer binding; no binding or issuer identity is inferred by conversion. Browser entry and wording are tracked separately.
+
 Use Node 22. `deploy/local/compose.yaml` binds PostgreSQL 16 to localhost port 55433 and Azurite Blob to localhost port 10000. It uses an ephemeral database and emulator storage, and is not a production configuration.
 
 The operator reference-library `POST /api/v1/admin/library/imports` accepts 1–50 PDF/DOCX items, at most 100 MiB per item and 200 MiB decoded per batch. It checks every item with the ordinary upload content inspector before staging or enqueueing. A rejected batch returns 422 with indexed `field_errors` containing the external key and reason code; correct the source file or split an oversized batch and retry the complete batch. See [the reference-library runbook](../../docs/runbooks/reference-library.md).
