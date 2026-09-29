@@ -89,6 +89,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 COPY --from=codex --chown=root:root /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
 COPY --chmod=0755 deploy/m1/scripts/copilot-token.mjs /usr/local/bin/bb-copilot-token
+RUN install -d -m 0755 /opt/bondbuddy
+COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 # Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.

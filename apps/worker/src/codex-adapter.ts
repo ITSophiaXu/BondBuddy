@@ -185,8 +185,9 @@ export function codexConfigOverrides(c: CodexAdapterConfig): string[] {
     `shell_environment_policy.inherit="none"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `mcp_servers={}`,
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
-  if (c.credential.kind === 'command') kv.push('model_context_window=1000000', 'model_auto_compact_token_limit=800000',
-    `${p}.requires_openai_auth=false`, `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,
+  if (c.credential.kind === 'command') kv.push('model_context_window=872000', 'model_auto_compact_token_limit=780000',
+    `model_catalog_json=${q('/opt/bondbuddy/codex-model-catalog.json')}`,
+    `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,
     `${p}.http_headers.Copilot-Integration-Id=${q('vscode-chat')}`, `${p}.http_headers.Editor-Version=${q('vscode/1.105.1')}`,
     `${p}.http_headers.Editor-Plugin-Version=${q('copilot-chat/0.32.3')}`, `${p}.http_headers.User-Agent=${q('GitHubCopilotChat/0.32.3')}`,
     `${p}.http_headers.OpenAI-Intent=${q('conversation-panel')}`, `${p}.http_headers.X-GitHub-Api-Version=${q('2025-04-01')}`);

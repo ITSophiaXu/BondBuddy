@@ -20,10 +20,12 @@ The contained worker adapter can use Codex's command-backed bearer authenticatio
    BB_EGRESS_ALLOW=api.github.com api.enterprise.githubcopilot.com <existing Blob host and any separately approved hosts>
    ```
 
-3. Validate `docker compose config` with the production overlays, then recreate the worker, ops, and egress services from the reviewed image. The worker uses a fresh Codex home for each attempt and ignores host user settings. It sets a 1,000,000 token context window and compacts at 800,000 tokens, below the advertised 872,000 prompt limit. No public API contract or database migration changes.
+3. Validate `docker compose config` with the production overlays, then recreate the worker, ops, and egress services from the reviewed image. The worker uses a fresh Codex home for each attempt and ignores host user settings. The image supplies a single-model catalog for `gpt-6-sol`; it pins the verified 872,000-token context window and compacts at 780,000 tokens. No public API contract or database migration changes.
 4. Run the operator's fixed synthetic platform probe and inspect its persisted attempt, actual usage status, provider error code, and request identifier status. A successful connection alone does not establish full document acceptance. Confirm 401 and 429 paths remain classified and that unresolved old attempts remain in reconciliation before allowing new work.
 
 The helper exchanges the mounted OAuth token at `api.github.com/copilot_internal/v2/token` when Codex requests a bearer token. The short-lived bearer is printed only to Codex's private auth pipe. The helper emits a generic failure on stderr; neither OAuth nor bearer values enter application logs. The contained child receives only the OAuth file path and the existing allow-list proxy variables, not the parent environment. Egress permits only configured HTTPS hosts.
+
+A missing or invalid OAuth source currently fails closed with unknown usage, but Codex 0.154 reports the generic `MODEL_TURN_FAILED` code for this command-auth failure. It does not distinguish a missing file from a rejected exchange in the persisted attempt. Check the private file's presence, ownership and read permission, then run the fixed synthetic probe; do not infer credential validity from this error code alone or replay an unresolved call.
 
 The DeepSeek balance endpoint measures DeepSeek account health only. It is skipped automatically while `BB_CODEX_PROVIDER=copilot_enterprise`, even if a legacy DeepSeek key remains configured. Existing balance alert history is retained; use synthetic probe results and attempt records for Copilot health. The provider balance alert settings become active again in DeepSeek mode.
 

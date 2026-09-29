@@ -86,9 +86,10 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
   assert.equal(config.credential.kind, 'command');
   const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
   assert.ok(args.includes('model_providers.copilot_enterprise.auth.command="/usr/local/bin/bb-copilot-token"'));
-  assert.ok(args.includes('model_providers.copilot_enterprise.requires_openai_auth=false'));
-  assert.ok(args.includes('model_context_window=1000000'));
-  assert.ok(args.includes('model_auto_compact_token_limit=800000'));
+  assert.ok(!args.some(a => a.includes('model_providers.copilot_enterprise.requires_openai_auth')));
+  assert.ok(args.includes('model_context_window=872000'));
+  assert.ok(args.includes('model_auto_compact_token_limit=780000'));
+  assert.ok(args.includes('model_catalog_json="/opt/bondbuddy/codex-model-catalog.json"'));
   assert.ok(!args.some(a => /Bearer |gho_|DEEPSEEK_API_KEY/.test(a)));
   for (const override of [{ BB_COPILOT_OAUTH_FILE: '/dev/null' }, { BB_COPILOT_OAUTH_FILE: 'relative' },
     { BB_CODEX_MODEL: 'deepseek-flash' }, { BB_CODEX_REASONING_EFFORT: 'medium' },
