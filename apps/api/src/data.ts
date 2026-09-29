@@ -49,7 +49,7 @@ export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Pro
 }
 export const date = (value: Date | string) => new Date(value).toISOString();
 export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
-export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error, signature_assessment: m.signature_assessment ?? null });
+export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error, signature_assessment: m.signature_assessment ?? null, parse_snapshot_id: typeof m.parse_snapshot_id === 'string' && m.parse_snapshot_id.length > 0 ? m.parse_snapshot_id : null });
 const inputCreditSupplementRefs = (manifest: unknown) => {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || !Object.hasOwn(manifest, 'credit_facility_supplements')) return undefined;
   const pins = (manifest as Record<string, unknown>).credit_facility_supplements;
@@ -89,7 +89,13 @@ export async function run(pool: Pool | PoolClient, owner: string, id: string, lo
   return result.rows[0];
 }
 export async function material(pool: Pool | PoolClient, owner: string, projectId: string, id: string) {
-  const result = await pool.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL ORDER BY version DESC LIMIT 1', [owner,projectId,id]);
+  const result = await pool.query(`SELECT m.*,(SELECT s.id FROM bb_parse_snapshots s
+      WHERE s.owner_user_id=m.owner_user_id AND s.project_id=m.project_id AND s.material_id=m.id AND s.material_version=m.version
+        AND s.response_status <> 'failed'
+        AND NOT EXISTS(SELECT 1 FROM bb_parse_snapshots newer WHERE newer.owner_user_id=s.owner_user_id AND newer.project_id=s.project_id
+          AND newer.material_id=s.material_id AND newer.material_version=s.material_version AND (newer.created_at,newer.id)>(s.created_at,s.id))
+      LIMIT 1) AS parse_snapshot_id
+    FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.deleted_at IS NULL ORDER BY m.version DESC LIMIT 1`, [owner,projectId,id]);
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
