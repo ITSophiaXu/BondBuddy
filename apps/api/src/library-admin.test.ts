@@ -151,7 +151,7 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
 
     // Ordinary user-facing routes: a project listing and detail carry no library data.
     current = plain;
-    const created = await app.inject({ method: 'POST', url: '/api/v1/projects', headers: { ...headers }, payload: JSON.stringify({ name: 'Synthetic', kind: 'generation', issuer_name: null, market: 'sse', offering: 'public' }) });
+    const created = await app.inject({ method: 'POST', url: '/api/v1/projects', headers: { ...headers }, payload: JSON.stringify({ name: 'Synthetic', kind: 'update', issuer_name: null, market: 'sse', offering: 'public' }) });
     assert.equal(created.statusCode, 201, created.body);
     for (const url of ['/api/v1/projects', `/api/v1/projects/${created.json().project_id}`]) {
       const r = await app.inject({ method: 'GET', url, headers });
@@ -159,6 +159,7 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
         'revenue_basis', 'reviewed_by', 'ten_thousand_yuan', 'chapter_mappings', 'reference-library-query',
         sourceId, 'sync_interval_seconds', 'next_sync_due_at', 'consecutive_failures', 'last_success_at', 'library_source_stale', 'library_sync_failed']) assert.equal(r.body.includes(needle), false, `${url} leaks ${needle}`);
     }
+    // Use a staged update run here: generation submission requires an approved issuer binding.
     // A selection trace may contain private library identifiers and review details. It belongs only
     // in the durable job checkpoint, never in run polling, SSE, or Word delivery metadata.
     const projectId = created.json().project_id as string;
@@ -166,7 +167,7 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
       payload: JSON.stringify({ draft_revision: 1, material_versions: [], requirement_message_ids: [] }) });
     assert.equal(input.statusCode, 201, input.body);
     const runRequest = { execution_request_id: `library-output-${suffix}`, project_id: projectId, input_revision: 1,
-      input_hash: input.json().input_hash, task_kind: 'generation', input_manifest_ref: 'synthetic-manifest',
+      input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
       storage_origin: 'cloud', workspace_id: 'synthetic-workspace' };
     const started = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers, payload: JSON.stringify(runRequest) });
     assert.equal(started.statusCode, 202, started.body);

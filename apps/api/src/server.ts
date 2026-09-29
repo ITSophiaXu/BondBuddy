@@ -34,7 +34,7 @@ import { installCreditFacilitySupplementRoutes } from './credit-facility-supplem
 import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-repository.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
-import { consumeGenerationIssuerBinding, type GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
+import type { GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
 import { loadApprovedGenerationIssuerBindingForLock } from './generation-issuer-binding.js';
 import { assertProjectMessageSetRefMatches, isProjectMessageSetLockError, loadCurrentProjectMessageSetPin } from './project-message-set-lock.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
@@ -43,7 +43,7 @@ import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoi
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
-import { assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled } from './non-production-test.js';
+import { assertGenerationIssuerBinding, assertGenerationWorkingDraftInput, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
@@ -59,7 +59,7 @@ import { installProductionRulePackReleaseRoutes } from './production-rule-pack-r
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** #33 guard seam: consume an explicitly provided, approved generation issuer binding. Absent keeps the current fail-closed generation gate. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -1016,9 +1016,14 @@ export function createServer(settings: Settings = {}) {
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+      const lockedKind=input.rows[0].manifest?.kind;
+      if((lockedKind==='generation'||b.task_kind==='generation')&&lockedKind!==b.task_kind)
+        throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
+      if(lockedKind==='generation'&&(b.test_grant_id||workingDraftConfigured()))await assertGenerationWorkingDraftInput(client,
+        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
-      const testGrantId=b.test_grant_id ?? (b.task_kind==='update' ? await autoWorkingDraftGrant(client,
-        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]) : null);
+      const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
+        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',testGrantId?'non_production_test':'production',testGrantId]);
@@ -1261,13 +1266,16 @@ export function createServer(settings: Settings = {}) {
             }
           }
         }
-        // #33 guard seam: consumption is off unless #17 installs it, so production keeps its current
-        // `issuer_identity_not_bound` gate. When installed, an exact approved binding for this locked
-        // input is the only subject source; every failure keeps the stable not-bound code.
-        if(manifest.kind==='generation'&&settings.generationIssuerBinding){
-          const consumed=await consumeGenerationIssuerBinding(client,{ownerUserId:user,projectId:id},
-            settings.generationIssuerBinding,{owner_user_id:user,project_id:id,input_revision:b.input_revision,input_hash:b.input_hash});
-          if(consumed.status!=='approved')missingInputs.push('issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved');
+        // The trusted binding comes from the immutable input pin, not an optional server callback.
+        if(manifest.kind==='generation'){
+          try {await assertGenerationIssuerBinding(client,
+            {userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},input);}
+          catch(error){
+            if(!(error instanceof Problem))throw error;
+            missingInputs.push(error.message.startsWith('Selected user reference')
+              ? 'user_reference_needs_review:stale'
+              : 'issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved');
+          }
         }
         const refs=input.material_versions as {material_id:string;material_version:number}[];
         if(!refs.length)missingInputs.push('material_versions');
