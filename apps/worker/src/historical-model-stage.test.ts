@@ -73,6 +73,7 @@ function fixture(testChannel = false) {
     if (sql.includes('FROM bb_input_revisions')) { assert.deepEqual(values, ['owner-1','project-1',1]); return { rows: [row] }; }
     if (sql.includes('FROM bb_jobs')) { assert.equal(values[1], 'owner-1'); return { rows: [{ checkpoint: { stages: { parse_evidence: { snapshot_id: snapshot.snapshotId } } } }] }; }
     if (sql.includes('FROM bb_material_versions')) { assert.deepEqual(values.slice(0,2), ['owner-1','project-1']); return { rows: materials.filter(m => m.material_id === values[2]).map(m => ({ owner_user_id: 'owner-1', project_id: 'project-1', id: m.material_id, version: m.material_version, sha256: m.sha256, role: m.role })) }; }
+    if (sql.includes('FROM bb_fact_evidence_context_sets')) return { rows: [] };
     throw new Error('Unexpected SQL in synthetic test');
   }, async connect() { throw new Error('Synthetic test uses repository adapters'); } };
   const ctx: StageContext = { pool: pool as unknown as StageContext['pool'], blobs: {} as StageContext['blobs'], lease: {} as StageContext['lease'],
@@ -533,22 +534,22 @@ test('legacy snake-case pins are not a fallback for persisted API pins', async (
 
 test('46 evidenced historical facts remain a storable complete diagnostic', async t => {
   const s = fixture();
-  const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
   const syntheticFacts = Array.from({ length: 100 }, (_, i) => {
     const fact = structuredClone(s.facts[0]!);
     return { ...fact, candidate: { ...fact.candidate, candidateId: `synthetic-candidate-${i}`,
       identity: { ...fact.candidate.identity, metric: `synthetic-metric-${i}` } } };
   });
-  input.facts = syntheticFacts.slice(0, 46);
-  input.decisions = input.facts.map(fact => ({ identity: fact.candidate.identity, decision: null }));
+  s.facts.splice(0, s.facts.length, ...syntheticFacts.slice(0, 46));
+  const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
   const prompt = historicalPrompt(input, s.snapshot.response.records, 0, 1);
   assert.ok(Buffer.byteLength(prompt) >= 43_000);
   assert.ok(Buffer.byteLength(prompt) <= 240_000);
   assert.equal(scrubSecrets(prompt), prompt);
   t.diagnostic(`46 evidenced facts: ${Buffer.byteLength(prompt)} bytes`);
-  input.facts = syntheticFacts;
-  input.decisions = syntheticFacts.map(fact => ({ identity: fact.candidate.identity, decision: null }));
-  const largerPrompt = historicalPrompt(input, s.snapshot.response.records, 0, 1);
+  const larger = fixture();
+  larger.facts.splice(0, larger.facts.length, ...syntheticFacts);
+  const largerInput = await loadHistoricalGenerationInput(larger.ctx, larger.readers);
+  const largerPrompt = historicalPrompt(largerInput, larger.snapshot.response.records, 0, 1);
   assert.ok(Buffer.byteLength(largerPrompt) > Buffer.byteLength(prompt));
   assert.ok(Buffer.byteLength(largerPrompt) <= 240_000);
   assert.equal(scrubSecrets(largerPrompt), largerPrompt);
@@ -668,4 +669,66 @@ test('authorized Renqiu September DOCX parses into complete bounded model chunks
   assert.equal(new Set(chunks.flat().map(r=>r.record_id)).size,response.records.length);
   assert.ok(chunks.every(c=>c.length<=80));
   t.diagnostic(`${response.records.length} original blocks / ${chunks.length} chunks; ${referenceBytes} reference bytes, 20KB reserved for other inputs; no provider call`);
+});
+
+test('evidence review decisions are frozen with preparation and never mutate or promote candidates', async()=>{
+  const s=fixture(),before=structuredClone(s.facts),input=await loadHistoricalGenerationInput(s.ctx,s.readers);
+  assert.equal(input.evidenceReviews?.version,'historical-fact-reviews-v1');
+  assert.equal(input.evidenceReviews?.entries[0]?.pin,null);
+  assert.deepEqual(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]!.fact_evidence_reviews,input.evidenceReviews);
+  assert.deepEqual(s.facts,before);assert.equal(offerableFacts(input).length,1);
+  await input.revalidateEvidenceReviews!();
+});
+
+test('review withdrawal during provider gating prevents the provider call and chains the original gate',async()=>{
+  const s=fixture();let revoked=false,platformGates=0,providerCalls=0;
+  s.readers.evidenceReviews=async()=>({version:'historical-fact-reviews-v1',entries:[{
+    candidateId:s.facts[0]!.candidate.candidateId,hasRecordedReview:revoked,pin:null,determination:null,
+  }]});
+  s.ctx.validateBeforeModelCall=async()=>{platformGates++;return null;};
+  s.options.model=()=>({name:'synthetic-model',run:async ctx=>{
+    assert.equal(await ctx.validateBeforeModelCall!(),null);
+    revoked=true;
+    await ctx.validateBeforeModelCall!();
+    providerCalls++;return {kind:'done',value:s.answer};
+  }});
+  assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
+  assert.equal(providerCalls,0);assert.equal(platformGates,1);
+  assert.equal(s.ctx.checkpoint.historical_generation_error!.code,'UPDATE_FACT_EVIDENCE_REVIEW_CHANGED');
+});
+
+test('a review changed during generation rejects the response before the deterministic plan',async()=>{
+  const s=fixture();let changed=false,prepared=0;
+  s.readers.evidenceReviews=async()=>({version:'historical-fact-reviews-v1',entries:[{
+    candidateId:s.facts[0]!.candidate.candidateId,hasRecordedReview:changed,pin:null,determination:null,
+  }]});
+  s.options.model=()=>({name:'synthetic-model',run:async()=>{changed=true;return {kind:'done',value:s.answer};}});
+  s.options.prepare=async()=>{prepared++;throw Error('stale response must not become a plan');};
+  assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
+  assert.equal(prepared,0);
+});
+
+test('negative review excludes the whole identity without hiding other candidates or clearing their uncertainty',async()=>{
+  const s=fixture(),input=await loadHistoricalGenerationInput(s.ctx,s.readers);
+  const peer=structuredClone(s.facts[0]!);Object.assign(peer.candidate,{candidateId:'peer-candidate'});s.facts.push(peer);
+  const first=input.evidenceReviews!.entries[0]!;
+  input.facts=s.facts;
+  first.hasRecordedReview=true;
+  first.determination={schemaVersion:'fact-evidence-review-seam-v1',reviewedAndCurrent:false,offerable:false,
+    externalImpactReviewed:false,outcome:'needs_more_evidence',sourceKind:'audited',reason:'review_needs_more_evidence',
+    reviewId:'negative-review',reviewerUserId:'reviewer-1',reviewerGrantId:'grant-1',reviewedAt:'2026-09-29T00:00:00Z',
+    evidenceContextSetId:'context-1',evidenceSetSha256:'a'.repeat(64),verificationEffect:'none',originalFieldsPreserved:true};
+  input.evidenceReviews!.entries.push({candidateId:peer.candidate.candidateId,hasRecordedReview:false,pin:null,determination:null});
+  const before=structuredClone(s.facts);
+  assert.equal(offerableFacts(input).length,0);assert.equal(input.facts.length,2);assert.deepEqual(s.facts,before);
+});
+
+test('a legacy preparation does not silently acquire a new evidence-review or prompt binding',async()=>{
+  const s=fixture();await loadHistoricalGenerationInput(s.ctx,s.readers);
+  delete s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]!.fact_evidence_reviews;
+  const oldHash=updateContentHash(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT]);
+  s.readers.evidenceReviews=async()=>{throw Error('legacy run must not read latest reviews');};
+  const recovered=await loadHistoricalGenerationInput(s.ctx,s.readers);
+  assert.equal(recovered.evidenceReviews,undefined);assert.equal(recovered.revalidateEvidenceReviews,undefined);
+  assert.equal(recovered.preparationHash,oldHash);
 });

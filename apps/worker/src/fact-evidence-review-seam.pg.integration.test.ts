@@ -3,6 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
 import { readFactEvidenceReviewDetermination, type FactEvidenceReviewPin } from './fact-evidence-review-seam.js';
+import { readHistoricalFactReviews, historicalReviewAllowsExistingFact } from './historical-fact-reviews.js';
+import { listFactCandidates } from './fact-repository.js';
+import { factIdentityKey } from '@bondbuddy/domain/facts';
+import { updateContentHash } from '@bondbuddy/domain/historical-update';
 import { isolatedTestDatabase } from './test-database.js';
 
 const testDatabaseUrl = await isolatedTestDatabase('FACT_EVIDENCE_REVIEW_SEAM_TEST_DATABASE_URL');
@@ -22,12 +26,13 @@ test('fact evidence review seam reads only exact, current reviewer decisions and
   const seed = async (name: string, sourceKind: 'audited' | 'external', status: string, uncertainty: string[],
     completeness: 'complete' | 'incomplete' = 'complete') => {
     const material = `m-${name}-${suffix}`, upload = `u-${name}-${suffix}`, snapshot = `p-${name}-${suffix}`,
-      candidate = `c-${name}-${suffix}`, context = `x-${name}-${suffix}`, factHash = sha(`identity-${name}-${suffix}`),
+      candidate = `c-${name}-${suffix}`, context = `x-${name}-${suffix}`,
       contentHash = sha(`material-${name}-${suffix}`), responseHash = sha(`response-${name}-${suffix}`),
-      requestHash = sha(`request-${name}-${suffix}`), evidenceHash = sha(`evidence-${name}-${suffix}`);
+      requestHash = sha(`request-${name}-${suffix}`);
     const confidence = 0.9;
     const factKey = { accountId: owner, entityId: 'synthetic-issuer', scope: 'consolidated', metric: 'assets',
       period: { end: '2025-12-31' }, currency: 'CNY', unit: 'yuan', basis: 'balance_sheet', dataVersion: 'synthetic-v1' };
+    const factHash = sha(factIdentityKey(factKey));
     const manifest = { schema_version: 'fact-evidence-context-v1', owner_user_id: owner, project_id: project, candidate_id: candidate,
       input_revision: 1, input_hash: inputHash, candidate_identity_sha256: factHash, fact_identity: factKey,
       candidate_value: { value_kind: 'decimal', value_decimal: '100', value_text: null }, source_kind: sourceKind,
@@ -38,7 +43,9 @@ test('fact evidence review seam reads only exact, current reviewer decisions and
         locator: { sheet: 'Synthetic', cell: 'A1' }, confidence: null, uncertainty: [] }],
       auxiliary_targets: [], completeness_status: completeness,
       completeness_reasons: completeness === 'complete' ? [] : ['AUXILIARY_SCOPE_UNKNOWN'],
-      reviewable: completeness === 'complete', evidence_set_sha256: evidenceHash };
+      reviewable: completeness === 'complete', evidence_set_sha256: '' };
+    const { evidence_set_sha256: _priorHash, ...contextBody } = manifest;
+    const evidenceHash = updateContentHash(contextBody); manifest.evidence_set_sha256 = evidenceHash;
     await client.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
       VALUES($1,$2,$3,$4,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',20,$5,'financial',$6,now()+interval '1 hour','completed')`,
       [upload, owner, project, `${name}.xlsx`, contentHash, `synthetic/${suffix}/${upload}`]);
@@ -52,10 +59,12 @@ test('fact evidence review seam reads only exact, current reviewer decisions and
           parser_version: 'synthetic-parser-1', material: { material_id: material, material_version: 1,
             media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', sha256: contentHash },
           warnings: [], document: {}, error: null })]);
-    await client.query(`INSERT INTO bb_fact_candidates(id,owner_user_id,project_id,entity_id,fact_key_hash,fact_key,value_decimal,value_kind,source_kind,source_ref,status,material_id,material_version,evidence,uncertainty)
-      VALUES($1,$2,$3,'synthetic-issuer',$4,$5::jsonb,'100.00','decimal',$6,$7,$8,$9,1,$10::jsonb,$11::jsonb)`,
+    await client.query(`INSERT INTO bb_fact_candidates(id,owner_user_id,project_id,entity_id,fact_key_hash,fact_key,value_decimal,value_kind,source_kind,source_ref,status,material_id,material_version,evidence,uncertainty,source_observed_at)
+      VALUES($1,$2,$3,'synthetic-issuer',$4,$5::jsonb,'100.00','decimal',$6,$7,$8,$9,1,$10::jsonb,$11::jsonb,'2026-09-29T00:00:00Z')`,
       [candidate, owner, project, factHash, JSON.stringify(factKey), sourceKind, `${sourceKind}-cache`, status, material,
-        JSON.stringify([{ evidence_id: 'body-anchor', material_id: material, material_version: 1, candidate_confidence: confidence }]),
+        JSON.stringify([{ evidence_id: 'body-anchor', material_id: material, material_version: 1, candidate_confidence: confidence, content_hash: contentHash,
+          locator_type: 'xlsx_cell', locator: { sheet: 'Synthetic', cell: 'A1' }, literal_quote: '100.00', extraction_method: 'native_text',
+          extraction_version: 'synthetic-parser-1', confidence, uncertainty: [] }]),
         JSON.stringify(uncertainty)]);
     await client.query(`INSERT INTO bb_fact_evidence_context_sets(id,owner_user_id,project_id,candidate_id,input_revision,input_hash,material_id,material_version,snapshot_id,parser_version,parse_response_sha256,content_sha256,schema_version,evidence_set_sha256,completeness_status,reviewable,manifest)
       VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,$11,$12,$13::jsonb)`,
@@ -143,14 +152,30 @@ test('fact evidence review seam reads only exact, current reviewer decisions and
     const crossProject = await readFactEvidenceReviewDetermination({ pool }, { ownerUserId: owner, projectId: otherProject }, audited.pin);
     assert.equal(crossProject.reason, 'no_current_exact_review');
 
+    // Exercise the #31 consumer's real SQL, canonical set hash and frozen review binding.
+    const consumerScope = { ...scope, inputRevision: 1, inputHash };
+    const consumerFacts = async (candidateId: string) => (await listFactCandidates({ pool }, scope)).filter(f => f.candidate.candidateId === candidateId);
+    const auditedFacts = await consumerFacts(audited.pin.candidateId);
+    const consumerPin = await readHistoricalFactReviews({ pool }, consumerScope, auditedFacts);
+    assert.equal(consumerPin.entries[0]!.determination!.offerable, true);
+    assert.deepEqual(await readHistoricalFactReviews({ pool }, consumerScope, auditedFacts, consumerPin), consumerPin);
+    const negative = await readHistoricalFactReviews({ pool }, consumerScope, await consumerFacts(incomplete.pin.candidateId));
+    assert.equal(historicalReviewAllowsExistingFact(negative, incomplete.pin.candidateId), false);
+
     // Withdrawal removes the decision from the current projection.
     const withdrawn = await seed('withdrawn', 'audited', 'extracted', []);
     const withdrawnReviewId = await insertReview(withdrawn.pin, 'evidence_impact_reviewed', 'withdrawn', grantId);
     assert.equal((await readFactEvidenceReviewDetermination({ pool }, scope, withdrawn.pin)).offerable, true);
+    const withdrawnFacts = await consumerFacts(withdrawn.pin.candidateId);
+    const beforeWithdrawal = await readHistoricalFactReviews({ pool }, consumerScope, withdrawnFacts);
     await client.query(`INSERT INTO bb_fact_evidence_review_withdrawals(id,request_id,request_hash,review_id,owner_user_id,project_id,reviewer_user_id,reviewer_grant_id,reason)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'Synthetic withdrawal')`,
       [`wd-${suffix}`, `wd-request-${suffix}`, sha(`wd-${suffix}`), withdrawnReviewId, owner, project, reviewer, grantId]);
     assert.equal((await readFactEvidenceReviewDetermination({ pool }, scope, withdrawn.pin)).reason, 'no_current_exact_review');
+
+    await assert.rejects(readHistoricalFactReviews({ pool }, consumerScope, withdrawnFacts, beforeWithdrawal), /UPDATE_FACT_EVIDENCE_REVIEW_CHANGED/);
+    const afterWithdrawal = await readHistoricalFactReviews({ pool }, consumerScope, withdrawnFacts);
+    assert.equal(historicalReviewAllowsExistingFact(afterWithdrawal, withdrawn.pin.candidateId), false, 'withdrawn review cannot silently fall back to no-review eligibility');
 
     // A newer material version invalidates the reviewed pin.
     const materialDrift = await seed('material-drift', 'audited', 'extracted', []);
@@ -183,19 +208,31 @@ test('fact evidence review seam reads only exact, current reviewer decisions and
     const evidenceDrift = await seed('evidence-drift', 'audited', 'extracted', []);
     await insertReview(evidenceDrift.pin, 'evidence_impact_reviewed', 'evidence-drift', grantId);
     assert.equal((await readFactEvidenceReviewDetermination({ pool }, scope, evidenceDrift.pin)).offerable, true);
-    const newerContext = `x2-${suffix}`, newerEvidenceHash = sha(`evidence v2 ${suffix}`);
+    const priorEvidenceFacts = await consumerFacts(evidenceDrift.pin.candidateId);
+    const beforeEvidenceChange = await readHistoricalFactReviews({ pool }, consumerScope, priorEvidenceFacts);
+    const newerContext = `x2-${suffix}`;
     const priorManifest = (await client.query('SELECT manifest FROM bb_fact_evidence_context_sets WHERE id=$1', [evidenceDrift.pin.evidenceContextSetId])).rows[0]!.manifest;
-    const newerManifest = { ...(priorManifest as Record<string, unknown>), evidence_set_sha256: newerEvidenceHash };
+    const { evidence_set_sha256: _oldEvidenceHash, ...priorBody } = priorManifest as Record<string, unknown>;
+    const newerBody = { ...priorBody, original_warnings: [{ code: 'SYNTHETIC_CONTEXT_CHANGE', message: 'Synthetic later evidence inventory' }] };
+    const newerEvidenceHash = updateContentHash(newerBody);
+    const newerManifest = { ...newerBody, evidence_set_sha256: newerEvidenceHash };
     await client.query(`INSERT INTO bb_fact_evidence_context_sets(id,owner_user_id,project_id,candidate_id,input_revision,input_hash,material_id,material_version,snapshot_id,parser_version,parse_response_sha256,content_sha256,schema_version,evidence_set_sha256,completeness_status,reviewable,manifest)
       VALUES($1,$2,$3,$4,1,$5,$6,1,$7,'synthetic-parser-1',$8,$9,'fact-evidence-context-v1',$10,'complete',true,$11::jsonb)`,
       [newerContext, owner, project, evidenceDrift.pin.candidateId, inputHash, evidenceDrift.pin.materialId, evidenceDrift.pin.snapshotId,
         evidenceDrift.pin.parseResponseSha256, evidenceDrift.ids.contentHash, newerEvidenceHash, JSON.stringify(newerManifest)]);
     assert.equal((await readFactEvidenceReviewDetermination({ pool }, scope, evidenceDrift.pin)).reason, 'no_current_exact_review', 'a newer evidence context set fails closed');
 
+    await assert.rejects(readHistoricalFactReviews({ pool }, consumerScope, priorEvidenceFacts, beforeEvidenceChange), /UPDATE_FACT_EVIDENCE_REVIEW_CHANGED/);
+    const unreviewedNewContext = await readHistoricalFactReviews({ pool }, consumerScope, priorEvidenceFacts);
+    assert.equal(unreviewedNewContext.entries[0]!.hasRecordedReview, true);
+    assert.equal(historicalReviewAllowsExistingFact(unreviewedNewContext, evidenceDrift.pin.candidateId), false, 'new context must not erase an existing review and fall back to unreviewed eligibility');
+
     // A revoked reviewer grant removes every decision it authorized from the current projection.
     await client.query(`UPDATE bb_fact_evidence_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason='Synthetic revocation' WHERE id=$1 AND revoked_at IS NULL`,
       [grantId, manager]);
     assert.equal((await readFactEvidenceReviewDetermination({ pool }, scope, audited.pin)).reason, 'no_current_exact_review', 'grant revocation fails closed');
+
+    await assert.rejects(readHistoricalFactReviews({ pool }, consumerScope, auditedFacts, consumerPin), /UPDATE_FACT_EVIDENCE_REVIEW_CHANGED/);
 
     // Malformed seam input is rejected instead of silently widening scope.
     await assert.rejects(readFactEvidenceReviewDetermination({ pool }, { ownerUserId: '', projectId: project }, audited.pin),
