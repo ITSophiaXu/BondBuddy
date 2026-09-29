@@ -25,6 +25,7 @@ import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
 import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { createSsePrivateTestRuleCapabilityLoader } from './sse-private-test-rule-capability.js';
+import type { FactEvidenceReviewGateLoaderOptions } from './fact-evidence-review-gate.js';
 
 export type PendingAttempt = { owner_user_id: string; project_id: string; run_id: string; job_id: string; logical_call_id: string; attempt_no: number; call_id: string; model_id: string | null; prompt_snapshot_ref: string | null; observed: boolean };
 export type ReconcileAnswer = { outcome: 'unknown' } | { outcome: 'confirmed_not_sent' } | { outcome: 'completed'; observation: ProviderCallObservation; validate: (value: unknown) => boolean };
@@ -49,6 +50,8 @@ export type WorkerRuntimeOptions = {
   reviewedContextLoader?: ReviewedContextLoader;
   /** #19 private candidate capability for the explicitly enabled preproduction test channel. */
   testRuleCapabilityLoader?: import('./run-pipeline.js').TestRuleCapabilityLoader;
+  /** #15 fact evidence review guard for #31. Absent = off; only the environment flag enables it. */
+  factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
   parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
@@ -83,12 +86,13 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'stagingRoot'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'stagingRoot'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, parseSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
-      runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters }),
+      runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
+        ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     // The environment factory supplies stages before the trusted producer can be installed.
@@ -278,7 +282,11 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     assertProbeConfig(config, env);
     platformProbe = { config, pollMs: intEnv(env, 'BB_PLATFORM_PROBE_POLL_MS', 5000, 500, 600000) };
   }
-  const runStages = defaultRunStages({ model_generation: modelGenerationRouter(),
+  // #15/#31: the fact evidence review guard stays off unless the deployment explicitly enables it.
+  const factEvidenceReviewGate = env.BB_FACT_EVIDENCE_REVIEW_GATE === '1'
+    ? { enabled: () => true } : undefined;
+  const runStages = defaultRunStages({ model_generation: modelGenerationRouter(
+    factEvidenceReviewGate ? { factEvidenceReviewGate } : {}),
     word_delivery: historicalWordDeliveryStage() });
   const testChannelEnabled = env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
   const materials = runStages.find(stage => stage.name === 'materials_ready')!;
