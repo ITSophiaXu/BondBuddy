@@ -1,6 +1,8 @@
 import type { Pool, PoolClient } from 'pg';
 import { createHash, randomUUID } from 'node:crypto';
 import { missing, Problem } from './data.js';
+import { inputManifestHash } from './production-rule-pin.js';
+import { documentParserVersion } from './material-jobs.js';
 
 export const testChannelEnabled = (env: NodeJS.ProcessEnv = process.env) =>
   env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
@@ -15,24 +17,81 @@ export function assertTestChannelReadable(channel: string | null | undefined) {
 
 export type TestGrantScope = { grantId: string; userId: string; projectId: string; inputRevision: number; inputHash: string };
 
+type LockedInput = { input_hash: string; draft_revision: number; manifest: unknown; material_versions: unknown };
+const workingDraftKeys = ['BB_PREPROD_WORKING_DRAFT_EXPIRES_AT', 'BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH',
+  'BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH', 'BB_PREPROD_WORKING_DRAFT_STAGE', 'BB_PREPROD_WORKING_DRAFT_AS_OF'] as const;
+const record = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** Admission checks the persisted lock and current material/parse rows before any grant or run is written. */
+async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>, input: LockedInput) {
+  const manifest = input.manifest;
+  if (!record(manifest) || String(input.input_hash).trim() !== scope.inputHash ||
+      inputManifestHash(manifest) !== scope.inputHash || manifest.draft_revision !== Number(input.draft_revision) ||
+      !Array.isArray(manifest.materials) || !Array.isArray(input.material_versions))
+    throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Locked input manifest changed');
+  const materials = manifest.materials;
+  const refs = input.material_versions;
+  if (materials.length === 0 || materials.length !== refs.length)
+    throw new Problem(409, 'INPUT_REQUIRED', 'Working draft requires locked historical and financial materials');
+  const ids = new Set<string>();
+  let historical = 0, financial = 0;
+  for (let index = 0; index < materials.length; index++) {
+    const pin = materials[index], ref = refs[index];
+    if (!record(pin) || !record(ref) || typeof pin.material_id !== 'string' || !pin.material_id ||
+        !Number.isSafeInteger(pin.material_version) || Number(pin.material_version) < 1 ||
+        pin.material_id !== ref.material_id || pin.material_version !== ref.material_version ||
+        typeof pin.role !== 'string' || typeof pin.sha256 !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(pin.sha256) || ids.has(pin.material_id))
+      throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Locked material references changed');
+    ids.add(pin.material_id);
+    const row = (await db.query(`SELECT role,sha256,media_type,state,deleted_at FROM bb_material_versions
+      WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 FOR SHARE`,
+    [scope.userId,scope.projectId,pin.material_id,pin.material_version])).rows[0];
+    if (!row || row.deleted_at || row.role !== pin.role || String(row.sha256).trim() !== pin.sha256)
+      throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Locked material is missing or changed');
+    if (row.role === 'historical') {
+      historical++;
+      if (!['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(row.media_type))
+        throw new Problem(409, 'MATERIAL_UNREADABLE', 'Historical draft format is not readable');
+    }
+    if (['audit','financial','interimFinancial','notes'].includes(row.role)) financial++;
+    const parse = (await db.query(`SELECT state,material_sha256,result FROM bb_jobs
+      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
+        AND job_type='parse' AND subtype='material_parse' AND parser_version=$5`,
+    [scope.userId,scope.projectId,pin.material_id,pin.material_version,documentParserVersion()])).rows[0];
+    if (!['parsed','needs_confirmation'].includes(row.state) || parse?.state !== 'succeeded' ||
+        String(parse.material_sha256).trim() !== pin.sha256 ||
+        !['parsed','needs_confirmation'].includes(parse.result?.outcome))
+      throw new Problem(409, 'MATERIAL_UNREADABLE', 'Locked material has no successful parse');
+  }
+  if (historical !== 1 || financial < 1)
+    throw new Problem(409, 'INPUT_REQUIRED', 'Working draft requires one historical draft and financial material');
+}
+
 /** Server-owned, time-bounded admission for a preproduction working draft. */
 export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
-  manifest: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
-  if (!testChannelEnabled(env) || !manifest || typeof manifest !== 'object' || manifest.kind !== 'update') return null;
+  input: LockedInput, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  if (!record(input.manifest) || input.manifest.kind !== 'update') return null;
+  if (!workingDraftKeys.some(key => env[key] !== undefined)) return null;
+  if (!testChannelEnabled(env)) throw new Problem(409, 'TEST_CHANNEL_DISABLED', 'Configured working draft channel is unavailable');
   const until = env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT;
   const expires = until ? new Date(until).getTime() : NaN;
   const hashes = [OWNER_MATERIAL_SCOPE_SHA256,
     env.BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH, env.BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH];
   const stage=env.BB_PREPROD_WORKING_DRAFT_STAGE, asOf=env.BB_PREPROD_WORKING_DRAFT_AS_OF;
-  if (!Number.isFinite(expires) || expires <= Date.now() || expires > Date.now() + 7 * 86_400_000 ||
+  if (!Number.isFinite(expires) || expires > Date.now() + 7 * 86_400_000 ||
       hashes.some(value => !value || !/^[a-f0-9]{64}$/.test(value)) ||
       !['registration','issuance'].includes(stage ?? '') || !asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf) ||
       !Number.isFinite(Date.parse(`${asOf}T00:00:00Z`)) ||
-      new Date(`${asOf}T00:00:00Z`).toISOString().slice(0,10)!==asOf) return null;
+      new Date(`${asOf}T00:00:00Z`).toISOString().slice(0,10)!==asOf)
+    throw new Problem(409, 'TEST_GRANT_INVALID', 'Configured working draft window is invalid');
+  if (expires <= Date.now()) throw new Problem(409, 'TEST_GRANT_EXPIRED', 'Configured working draft window expired');
   // Serialize admission of this exact immutable input. A revoked or expired
   // grant is deliberately not replaced by an ordinary browser retry.
   await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
     [`working-draft:${scope.userId}:${scope.projectId}:${scope.inputRevision}:${scope.inputHash}`]);
+  await assertWorkingDraftMaterials(db, scope, input);
   const existing = await db.query(`SELECT grant_id,revoked_at,expires_at FROM bb_non_production_test_grants
     WHERE user_id=$1 AND project_id=$2 AND input_revision=$3 AND input_hash=$4
       AND granted_by='preprod_service' ORDER BY created_at LIMIT 1`,

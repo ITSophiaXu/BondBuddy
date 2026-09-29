@@ -1007,7 +1007,7 @@ export function createServer(settings: Settings = {}) {
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? (b.task_kind==='update' ? await autoWorkingDraftGrant(client,
-        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0].manifest) : null);
+        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]) : null);
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',testGrantId?'non_production_test':'production',testGrantId]);
@@ -1194,7 +1194,7 @@ export function createServer(settings: Settings = {}) {
         const missingInputs:string[]=[],uncertainty:string[]=[];
         const manifest=input.manifest as Record<string,unknown>;
         const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
-          {userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},manifest);
+          {userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},input);
         const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
         if(ruleCheck.status!=='valid')missingInputs.push(ruleCheck.status==='tampered'&&ruleCheck.reason==='input_manifest_hash_mismatch'
           ?ruleCheck.reason:`rule_pack:${ruleCheck.reason}`);
