@@ -49,6 +49,7 @@ import { installBrowserErrorRoutes } from './browser-errors.js';
 import { appendTargetPeriodEvidenceDecision, withdrawTargetPeriodEvidenceDecision } from './target-period-evidence-decisions.js';
 import { installProductionReviewLedgerRoutes } from './production-review-ledger.js';
 import { installProductionRulePackReleaseRoutes } from './production-rule-pack-releases.js';
+import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
 export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
@@ -102,6 +103,7 @@ export function createServer(settings: Settings = {}) {
   const app = Fastify({ logger: false, genReqId: uid, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
+  const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
   const blobs = settings.blobs ?? (process.env.AZURE_STORAGE_CONNECTION_STRING ? azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING) : null);
   // Upload bytes stay a stream here; the route authorises first, then spools to disk while hashing.
@@ -736,7 +738,10 @@ export function createServer(settings: Settings = {}) {
         if(u.state!=='uploading'&&u.state!=='received')throw missing();
         if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
         if(bytes.byteSize!==Number(u.byte_size)||bytes.sha256!==u.sha256.trim())throw mismatch();
-        await verifiedMediaFile(bytes.path,bytes.byteSize,u.declared_media_type);
+        const excepted=uploadInspectionExceptionMatches(uploadInspectionException,{
+          ownerUserId:user,projectId:id,role:u.role,byteSize:bytes.byteSize,sha256:bytes.sha256,mediaType:u.declared_media_type
+        });
+        if(!excepted)await verifiedMediaFile(bytes.path,bytes.byteSize,u.declared_media_type);
         if(u.state==='received'){
           if(u.received_sha256?.trim()!==bytes.sha256||Number(u.received_bytes)!==bytes.byteSize)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload receipt is inconsistent');
           const stored=await readBlobToFile(blob(),u.object_key,null,MAX_BYTES).catch(error=>{if(error instanceof Problem)return null;throw error;});
@@ -753,6 +758,7 @@ export function createServer(settings: Settings = {}) {
         if(updated.rowCount!==1)throw new Problem(503,'DATA_UNAVAILABLE','Upload state changed before bytes were recorded');
         await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.received',{project_id:id,byte_size:bytes.byteSize}]);
         await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_bytes',status:'submitted'});
+        if(excepted)await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_exception_bytes',status:'submitted'});
       });
     }catch(error){
       if(error instanceof Problem&&error.uploadReason){
@@ -775,10 +781,12 @@ export function createServer(settings: Settings = {}) {
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
       const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
+      let excepted=false;
       // The parse job, its outbox/log rows and the #79 operation commit with the verified completion.
       const accepted=async (m:any)=>{
         await enqueueMaterialParse(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
         await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_complete',status:'submitted'});
+        if(excepted)await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_upload_exception_complete',status:'submitted'});
         return materialDto(m);
       };
       const checkedMaterial=async (m:any)=>{
@@ -803,7 +811,10 @@ export function createServer(settings: Settings = {}) {
         const stored=await readBlobToFile(blob(),u.object_key,copy,MAX_BYTES).catch(error=>{if(error instanceof Problem&&error.status===413)return false as const;throw error;});
         if(stored===null)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
         if(!stored||stored.byteSize!==b.byte_size||stored.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
-        media=await verifiedMediaFile(copy,stored.byteSize,u.declared_media_type);
+        excepted=uploadInspectionExceptionMatches(uploadInspectionException,{
+          ownerUserId:user,projectId:id,role:u.role,byteSize:stored.byteSize,sha256:stored.sha256,mediaType:u.declared_media_type
+        });
+        media=excepted?XLSX_MEDIA_TYPE:await verifiedMediaFile(copy,stored.byteSize,u.declared_media_type);
       }finally{await discardSpool(copy);release();}
       const duplicate=await client.query(`SELECT * FROM bb_material_versions
         WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL

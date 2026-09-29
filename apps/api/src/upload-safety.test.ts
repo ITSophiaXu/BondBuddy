@@ -10,6 +10,7 @@ import { Pool } from 'pg';
 import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js';
 import { createServer } from './server.js';
 import { runInspectionWorker } from './upload-safety.js';
+import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
@@ -20,6 +21,99 @@ import {
 const connection = process.env.BB_TEST_DATABASE_URL;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
+
+test('upload inspection exception requires preprod, an explicit switch and one exact XLSX identity', () => {
+  const scopeText = `owner-a:project-a:audit:411637:${'a'.repeat(64)}`;
+  assert.equal(configuredUploadInspectionException({ BB_DEPLOYMENT_TIER: 'preprod', BB_UPLOAD_EXCEPTION_SCOPE: scopeText }), null);
+  assert.throws(() => configuredUploadInspectionException({ BB_DEPLOYMENT_TIER: 'production', BB_UPLOAD_EXCEPTION_ENABLED: '1', BB_UPLOAD_EXCEPTION_SCOPE: scopeText }));
+  assert.throws(() => configuredUploadInspectionException({ BB_DEPLOYMENT_TIER: 'preprod', BB_UPLOAD_EXCEPTION_ENABLED: '1', BB_UPLOAD_EXCEPTION_SCOPE: 'invalid' }));
+  const scope = configuredUploadInspectionException({ BB_DEPLOYMENT_TIER: 'preprod', BB_UPLOAD_EXCEPTION_ENABLED: '1', BB_UPLOAD_EXCEPTION_SCOPE: scopeText });
+  const candidate = { ownerUserId: 'owner-a', projectId: 'project-a', role: 'audit', byteSize: 411637, sha256: 'a'.repeat(64), mediaType: XLSX };
+  assert.equal(uploadInspectionExceptionMatches(scope, candidate), true);
+  for (const changed of [{ ownerUserId: 'owner-b' }, { projectId: 'project-b' }, { role: 'notes' }, { byteSize: 411636 }, { sha256: 'b'.repeat(64) }, { mediaType: DOCX }]) {
+    assert.equal(uploadInspectionExceptionMatches(scope, { ...candidate, ...changed }), false);
+  }
+});
+
+test('preprod exact-byte exception saves one otherwise rejected XLSX and audits both inspections', { skip: !connection || !blobConnection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const containerName = `bb-upload-exception-${randomUUID().replaceAll('-', '')}`;
+  const blobs = azureBlobs(blobConnection!, containerName);
+  const ownerId = `exception-${randomUUID()}`;
+  let actingOwner = ownerId;
+  const settings = { pool, blobs, principal: async () => ({ userId: actingOwner, csrfVerified: true }), allowedOrigin: origin };
+  const send = (app: ReturnType<typeof createServer>, method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
+    method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
+  });
+  const linkXml = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/><externalBook r:id="rId1"/></externalLink>';
+  const bytes = await externalLinkPartXlsxSample({ linkXml });
+  await expectStructureDetail(bytes, 'external_link_invalid');
+  const setupApp = createServer(settings);
+  let app: ReturnType<typeof createServer> | undefined;
+  try {
+    const created = await send(setupApp, 'POST', '/api/v1/projects', { name: 'Synthetic Exception Scope', kind: 'update', issuer_name: null, market: null, offering: null });
+    assert.equal(created.statusCode, 201, created.body);
+    const projectId = created.json().project_id;
+    const saved = { tier: process.env.BB_DEPLOYMENT_TIER, enabled: process.env.BB_UPLOAD_EXCEPTION_ENABLED, scope: process.env.BB_UPLOAD_EXCEPTION_SCOPE };
+    process.env.BB_DEPLOYMENT_TIER = 'preprod';
+    process.env.BB_UPLOAD_EXCEPTION_ENABLED = '1';
+    process.env.BB_UPLOAD_EXCEPTION_SCOPE = `${ownerId}:${projectId}:audit:${bytes.length}:${digest(bytes)}`;
+    try { app = createServer(settings); }
+    finally {
+      for (const [key, value] of Object.entries({ BB_DEPLOYMENT_TIER: saved.tier, BB_UPLOAD_EXCEPTION_ENABLED: saved.enabled, BB_UPLOAD_EXCEPTION_SCOPE: saved.scope })) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+    const otherProject = await send(app, 'POST', '/api/v1/projects', { name: 'Synthetic Other Scope', kind: 'update', issuer_name: null, market: null, offering: null });
+    assert.equal(otherProject.statusCode, 201, otherProject.body);
+    const begin = async (project: string, file: Buffer, role = 'audit', sha256 = digest(file)) => send(app!, 'POST', `/api/v1/projects/${project}/materials/uploads`, {
+      filename: 'synthetic-external.xlsx', media_type: XLSX, byte_size: file.length, sha256, role
+    });
+    const start = await begin(projectId, bytes);
+    assert.equal(start.statusCode, 201, start.body);
+    const uploadId = start.json().upload_id;
+    actingOwner = `other-${randomUUID()}`;
+    assert.equal((await send(app, 'PUT', start.json().upload_url, bytes, 'application/octet-stream')).statusCode, 404);
+    actingOwner = ownerId;
+    const partial = await begin(projectId, bytes);
+    assert.equal(partial.statusCode, 201, partial.body);
+    assert.equal((await send(app, 'PUT', partial.json().upload_url, bytes.subarray(0, -1), 'application/octet-stream')).statusCode, 422);
+    const changed = Buffer.from(bytes);
+    changed[changed.length - 1] ^= 1;
+    const wrong = await begin(projectId, bytes);
+    assert.equal(wrong.statusCode, 201, wrong.body);
+    assert.equal((await send(app, 'PUT', wrong.json().upload_url, changed, 'application/octet-stream')).json().code, 'MATERIAL_CONTENT_MISMATCH');
+    const other = await begin(otherProject.json().project_id, bytes);
+    assert.equal(other.statusCode, 201, other.body);
+    assert.equal((await send(app, 'PUT', other.json().upload_url, bytes, 'application/octet-stream')).statusCode, 422);
+    const differentBytes = await externalLinkPartXlsxSample({ linkXml: linkXml.replace('rId1"/></externalLink>', 'rId2"/></externalLink>') });
+    assert.notEqual(digest(differentBytes), digest(bytes));
+    const different = await begin(projectId, differentBytes);
+    assert.equal(different.statusCode, 201, different.body);
+    const differentPut = await send(app, 'PUT', different.json().upload_url, differentBytes, 'application/octet-stream');
+    assert.equal(differentPut.statusCode, 422);
+    assert.equal(differentPut.json().code, 'MATERIAL_UNREADABLE');
+    assert.equal((await send(app, 'PUT', start.json().upload_url, bytes, 'application/octet-stream')).statusCode, 204);
+    const complete = await send(app, 'POST', `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/complete`, { byte_size: bytes.length, sha256: digest(bytes) });
+    assert.equal(complete.statusCode, 200, complete.body);
+    assert.equal(complete.json().material_version, 1);
+    assert.equal(complete.json().sha256, digest(bytes));
+    const material = await pool.query('SELECT state,byte_size,sha256 FROM bb_material_versions WHERE id=$1 AND owner_user_id=$2', [complete.json().material_id, ownerId]);
+    assert.equal(material.rowCount, 1);
+    assert.equal(material.rows[0].state, 'persisted');
+    assert.equal(Number(material.rows[0].byte_size), bytes.length);
+    assert.equal(material.rows[0].sha256.trim(), digest(bytes));
+    assert.deepEqual(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${uploadId}`), bytes);
+    assert.equal((await pool.query("SELECT 1 FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [complete.json().material_id])).rowCount, 1);
+    const audit = await pool.query("SELECT operation_kind FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND operation_kind LIKE 'material_upload_exception_%' ORDER BY operation_kind", [ownerId, projectId]);
+    assert.deepEqual(audit.rows.map(row => row.operation_kind), ['material_upload_exception_bytes', 'material_upload_exception_complete']);
+  } finally {
+    await app?.close();
+    await setupApp.close();
+    await pool.end();
+    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
+  }
+});
 
 // Every sample is inspected twice: from memory and from a spooled file. The file path must give
 // the same verdict, status, code and message as the in-memory inspection (parity).
