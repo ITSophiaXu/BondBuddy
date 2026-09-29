@@ -1261,6 +1261,55 @@ export async function adminPromptView(pool: Pool, blobs: PrivateBlobs, actorId: 
   finally { signal?.removeEventListener('abort', abort); }
 }
 
+/** Owner-only message history read. Audit is committed before private Blob access;
+ * the same snapshot lock prevents the retention purge from racing the read. */
+export async function ownerProjectMessageBody(
+  pool: Pool, blobs: PrivateBlobs, owner: string, projectId: string, snapshotId: string,
+  expectedHash: string, signal?: AbortSignal,
+): Promise<string> {
+  if (!validId(snapshotId) || !validId(owner) || !validId(projectId) || !/^[a-f0-9]{64}$/.test(expectedHash)) throw missing();
+  const deadlineAt = performance.now() + 60_000;
+  const client = await acquirePromptLock(pool, snapshotId, signal, deadlineAt);
+  try {
+    await setPromptStatementTimeout(client, deadlineAt, signal);
+    await client.query('BEGIN');
+    let row: { object_key: string; content_sha256: string } | undefined;
+    try {
+      row = (await client.query(`SELECT s.object_key,s.content_sha256 FROM bb_snapshot_refs s
+        JOIN bb_users u ON u.id=s.owner_user_id AND u.status='active'
+        JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id AND p.deleted_at IS NULL
+        LEFT JOIN bb_log_content_tombstones t ON t.content_kind='prompt_snapshot' AND t.content_id=s.id
+        WHERE s.id=$1 AND s.owner_user_id=$2 AND s.project_id=$3 AND s.snapshot_kind='user_prompt'
+          AND s.content_sha256=$4 AND t.id IS NULL`,
+      [snapshotId, owner, projectId, expectedHash])).rows[0];
+      await client.query(`INSERT INTO bb_log_access_audit(id,actor_id,owner_user_id,purpose,filter_hash,actor_role,target_ref)
+        VALUES($1,$2,$3,'project_message_view',$4,'owner_service',$5)`,
+      [uid(), owner, owner, digest(JSON.stringify({ projectId, snapshotId })), snapshotId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    }
+    if (!row || signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Saved message content is unavailable');
+    const abortRead = () => rejectAbort?.(new Problem(503, 'DATA_UNAVAILABLE', 'Message read aborted'));
+    let rejectAbort: ((error: Error) => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+    signal?.addEventListener('abort', abortRead, { once: true });
+    let bytes: Buffer | null;
+    try {
+      if (signal?.aborted) throw new Problem(503, 'DATA_UNAVAILABLE', 'Message read aborted');
+      bytes = await Promise.race([blobs.getIfExistsBounded(row.object_key, 64 * 1024), aborted]);
+    } finally {
+      signal?.removeEventListener('abort', abortRead);
+    }
+    if (!bytes || digest(bytes) !== expectedHash || signal?.aborted)
+      throw new Problem(503, 'DATA_UNAVAILABLE', 'Saved message content is unavailable');
+    return bytes.toString('utf8');
+  } finally {
+    client.release(true);
+  }
+}
+
 export async function adminAlerts(pool: Pool, actorId: string) {
   return transaction(pool, async client => {
     await audit(client, { actorId, role: 'log_reader', purpose: 'admin_alerts', filter: {} });

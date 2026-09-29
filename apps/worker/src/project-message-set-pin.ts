@@ -82,6 +82,7 @@ export function normalizeProjectMessageSet(pins: readonly ProjectMessagePin[]): 
         typeof pin.first_submission_id !== 'string' || !IDENTIFIER.test(pin.first_submission_id) ||
         !Number.isSafeInteger(pin.message_version) || pin.message_version < 1 ||
         !Number.isSafeInteger(pin.first_submission_version) || pin.first_submission_version < 1 ||
+        !Number.isSafeInteger(pin.latest_submission_version) || pin.latest_submission_version < pin.first_submission_version ||
         typeof pin.content_sha256 !== 'string' || !SHA256.test(pin.content_sha256) ||
         messageIds.has(pin.message_id) || submissionIds.has(pin.submission_id) || positions.has(pin.first_submission_version)) {
       throw fail();
@@ -98,7 +99,7 @@ export function normalizeProjectMessageSet(pins: readonly ProjectMessagePin[]): 
   }));
   const version = members.length === 0
     ? PROJECT_MESSAGE_SET_EMPTY_VERSION
-    : Math.max(...ordered.map(pin => pin.first_submission_version));
+    : Math.max(...ordered.map(pin => pin.latest_submission_version));
   const message_ids = members.map(member => member.message_id).sort();
   const candidate: ProjectMessageSetPin = {
     version,

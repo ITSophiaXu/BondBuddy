@@ -113,9 +113,7 @@ export async function loadCurrentProjectMessageSetPin(
     message_id: item.message_id, message_version: item.message_version,
     submission_id: item.submission_id, content_sha256: item.content_sha256,
   }));
-  const version = members.length === 0
-    ? PROJECT_MESSAGE_SET_EMPTY_VERSION
-    : Math.max(...ordered.map(item => item.first_submission_version));
+  const version = rows.length === 0 ? PROJECT_MESSAGE_SET_EMPTY_VERSION : Math.max(...projectVersions);
   const candidate: ProjectMessageSetPin = {
     version, content_sha256: '0'.repeat(64), members,
     message_ids: members.map(member => member.message_id).sort(),

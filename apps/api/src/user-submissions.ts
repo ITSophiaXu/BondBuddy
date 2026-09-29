@@ -28,7 +28,8 @@ export async function prepareUserSubmission(pool: Pool, blobs: PrivateBlobs, bod
           const previous = (await client.query('SELECT id,version FROM bb_user_submission_versions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1', [owner,projectId])).rows[0];
           const latestSnapshot = (await client.query("SELECT COALESCE(max(version),0) AS version FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='user_prompt'", [owner,projectId])).rows[0];
           const version = Math.max(Number(previous?.version ?? 0), Number(latestSnapshot.version)) + 1;
-          const messageVersion = input.messageId ? Number((await client.query('SELECT COALESCE(max(message_version),0) AS version FROM bb_user_submission_versions WHERE owner_user_id=$1 AND project_id=$2 AND message_id=$3',[owner,projectId,input.messageId])).rows[0].version)+1 : null;
+          const priorMessage = input.messageId ? (await client.query("SELECT id,message_version FROM bb_user_submission_versions WHERE owner_user_id=$1 AND project_id=$2 AND message_id=$3 AND submission_kind='project_message' ORDER BY message_version DESC LIMIT 1",[owner,projectId,input.messageId])).rows[0] : null;
+          const messageVersion = input.messageId ? Number(priorMessage?.message_version ?? 0)+1 : null;
           if (input.runId) {
             const run = (await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3', [owner,projectId,input.runId])).rowCount;
             if (!run) throw missing();
@@ -36,11 +37,11 @@ export async function prepareUserSubmission(pool: Pool, blobs: PrivateBlobs, bod
           const snapshotId = await saveSnapshotRef(pool,{owner,projectId,runId:input.runId,kind:'user_prompt',version,objectKey:key,sha256:digest(bytes),redactionVersion:SCRUB_VERSION,inputRevision:input.inputRevision,inputHash:input.inputHash,blobs},client);
           const submissionId = uid();
           const row = (await client.query(`INSERT INTO bb_user_submission_versions
-            (id,owner_user_id,project_id,run_id,snapshot_id,submission_kind,message_id,submission_request_id,message_version,version,previous_submission_id,content_sha256,input_revision,input_hash,material_versions)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING created_at`,
-            [submissionId,owner,projectId,input.runId??null,snapshotId,input.kind,input.messageId??null,input.submissionRequestId??null,messageVersion,version,previous?.id??null,digest(bytes),input.inputRevision??null,input.inputHash??null,JSON.stringify(input.materialVersions)])).rows[0];
+            (id,owner_user_id,project_id,run_id,snapshot_id,submission_kind,message_id,submission_request_id,message_version,version,previous_submission_id,revises_submission_id,content_sha256,input_revision,input_hash,material_versions)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING created_at`,
+            [submissionId,owner,projectId,input.runId??null,snapshotId,input.kind,input.messageId??null,input.submissionRequestId??null,messageVersion,version,previous?.id??null,priorMessage?.id??null,digest(bytes),input.inputRevision??null,input.inputHash??null,JSON.stringify(input.materialVersions)])).rows[0];
           await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1',[id]);
-          return {submissionId,snapshotId,version,messageVersion,contentSha256:digest(bytes),createdAt:row.created_at};
+          return {submissionId,snapshotId,version,messageVersion,revisesSubmissionId:priorMessage?.id??null,contentSha256:digest(bytes),createdAt:row.created_at};
         },
         async discard() {
           await transaction(pool,async client=>{

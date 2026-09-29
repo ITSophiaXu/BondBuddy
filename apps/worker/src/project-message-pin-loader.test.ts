@@ -21,11 +21,11 @@ test('latest saved version per message keeps first-submission conversation order
   ];
   assert.deepEqual(selectLatestProjectMessagePins(rows, { ownerUserId: owner, projectId: project }), [
     { message_id: 'message-a', submission_id: 'submission-a2', message_version: 2, content_sha256: sha('c'),
-      first_submission_version: 2, first_submission_id: 'submission-a1' },
+      first_submission_version: 2, latest_submission_version: 7, first_submission_id: 'submission-a1' },
     { message_id: 'message-b', submission_id: 'submission-b1', message_version: 1, content_sha256: sha('b'),
-      first_submission_version: 4, first_submission_id: 'submission-b1' },
+      first_submission_version: 4, latest_submission_version: 4, first_submission_id: 'submission-b1' },
     { message_id: 'message-c', submission_id: 'submission-c1', message_version: 1, content_sha256: sha('d'),
-      first_submission_version: 8, first_submission_id: 'submission-c1' },
+      first_submission_version: 8, latest_submission_version: 8, first_submission_id: 'submission-c1' },
   ]);
 });
 
@@ -80,7 +80,7 @@ test('database loader scopes owner/project and requests only the bounded sentine
     return { rows: [row('submission-a1', 'message-a', 1, 3, null, sha('a'))] };
   } }, { ownerUserId: owner, projectId: project });
   assert.deepEqual(pins[0], { message_id: 'message-a', submission_id: 'submission-a1', message_version: 1,
-    content_sha256: sha('a'), first_submission_version: 3, first_submission_id: 'submission-a1' });
+    content_sha256: sha('a'), first_submission_version: 3, latest_submission_version: 3, first_submission_id: 'submission-a1' });
   assert.match(captured!.sql, /WHERE owner_user_id=\$1 AND project_id=\$2 AND submission_kind='project_message'/);
   assert.match(captured!.sql, /ORDER BY version\s+LIMIT \$3/);
   assert.deepEqual(captured!.values, [owner, project, 501]);
