@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-29T14:37:10.051Z",
+  "assembled_at": "2026-09-29T14:37:41.320Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -28,12 +28,12 @@
     {
       "file": "04-材料导入与证据处理.md",
       "title": "04 材料导入与证据处理",
-      "sha256": "fb5b9f759caddf443084b755073bbecf71242213ae566720f58e7b5b2315b3bf"
+      "sha256": "c758799865c462f6eab074d608aae0a632ba436d96158bf955d520a03ecc4f65"
     },
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "5f404b571c1b4d3383afc0ba869daf2eb526c28144659656af9078555348c21a"
+      "sha256": "757ab44d7bdfe11454dbf22dbdae5dd51924481163d8dba312d3c0faeb4389f7"
     },
     {
       "file": "06-复核募集书.md",
@@ -93,7 +93,7 @@
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "07ccb34055e52ce52c84ba1d67aea45a4a34ec29bef19adfc3326f8eec2d5cc1"
+      "sha256": "68984d282dc3a2213f2e9db65103e1dae1b910b18648d0e3ab7e90df7d7199ce"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -351,7 +351,7 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 74487,
+    "han_characters": 74709,
     "local_links_checked": 214,
     "tables_checked": 135,
     "json_examples_checked": 4,

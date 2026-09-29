@@ -35,6 +35,17 @@ function automaticPauseMessage(run: Dto<'RunResponse'> | undefined) {
 function runtimeMessage(reason: string | undefined) {
   return reason && Object.hasOwn(runtimeMessages, reason) ? runtimeMessages[reason as RuntimeReason] : undefined;
 }
+const pendingConditions = '当前处理条件尚未就绪；已保存资料不会丢失。请稍后重新检查，持续未恢复时请联系支持。';
+function blockedMessage(check: Dto<'PreflightResponse'>): string {
+  const reasons = check.blocking_inputs;
+  if (reasons.length !== 1) return pendingConditions;
+  const reason = reasons[0];
+  if (reason === 'target_market_offering_required') return '请在项目信息中选择本次目标市场和发行方式。';
+  if (reason === 'material_versions') return '请先添加并保存本次需要的材料。';
+  if (reason.startsWith('material_parse_failed:') || reason.startsWith('material_parse_cancelled:')) return '有文件处理未完成，请查看材料区的失败原因。';
+  if (reason.startsWith('material_parse_') || reason.startsWith('ocr_pending:')) return '材料正在处理，请稍后重新检查。';
+  return pendingConditions;
+}
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function readinessMessage(reason: string): string {
@@ -92,6 +103,8 @@ export class ProjectExecution {
   private polling = false;
   private busy = false;
   private inputReadUncertain = false;
+  private resumeVerified = false;
+  private resumedPause?: { runId: string; stage: string | null; reason?: string };
   private message = '';
   private progressMessage = '';
   private materials: Material[] = [];
@@ -105,10 +118,11 @@ export class ProjectExecution {
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
     host.innerHTML = '<section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div>';
-    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message">开始更新 ${icon('arrow')}</button></div>`;
+    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message">开始更新 ${icon('arrow')}</button></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
     this.button('select-saved-input').addEventListener('click', () => { this.selected = true; this.offerSavedInput = false; this.message = ''; void this.start(); });
+    this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
   }
@@ -122,6 +136,7 @@ export class ProjectExecution {
     if (this.restoring) return '正在读取项目状态…';
     if (this.busy || this.starting) return '正在提交，请稍候。';
     if (this.inputReadUncertain) return '上次操作结果尚未确认，请重新读取。';
+    if (this.preflight?.status === 'blocked' && this.selected) return '当前处理条件尚未就绪，请重新检查；条件未变时无需重复提交。';
     if (!this.materialReady) return this.materialMessage || '材料尚未保存完成，请查看文件进度。';
     if (!this.eligibleMaterials().length) return '请先添加本次需要的项目材料。';
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return '项目信息尚未保存，请返回上一步处理。';
@@ -131,6 +146,7 @@ export class ProjectExecution {
   }
   private invalidate() {
     this.generation++; this.selected = false; this.preflight = undefined;
+    this.resumeVerified = false;
     this.render();
   }
   sync(materials: Material[], ready: boolean, materialMessage = '') {
@@ -144,12 +160,24 @@ export class ProjectExecution {
     this.render();
   }
   private button(id: string) { return this.node(`#${id}`) as HTMLButtonElement; }
+  private samePauseAfterResume(run: Dto<'RunResponse'>) {
+    if (this.resumedPause?.runId === run.run_id && this.resumedPause.stage === run.stage && this.resumedPause.reason === this.reason) return true;
+    let resumed = -1;
+    for (let i = this.events.length - 1; i >= 0; i--) if (this.events[i].payload.reason === 'user_resumed') {
+      resumed = i; break;
+    }
+    if (resumed < 0) return false;
+    const before = this.events.slice(0, resumed).reverse().find(event => event.state === 'paused');
+    const after = this.events.slice(resumed + 1).reverse().find(event => event.state === 'paused');
+    return Boolean(before && after && after.stage === run.stage && before.stage === after.stage &&
+      before.payload.reason === after.payload.reason);
+  }
   private render() {
     if (!this.active) return;
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked);
-    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.preflight?.status === 'blocked' ? '继续提交并等待处理' : this.nextRequested ? '生成新版' : '开始更新';
+    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.nextRequested ? '生成新版' : '开始更新';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -158,7 +186,9 @@ export class ProjectExecution {
     this.button('select-saved-input').disabled = Boolean(blocked);
     const check = this.preflight;
     this.node('#execution-preflight').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
-    this.node('#execution-preflight').innerHTML = check && check.status === 'blocked' ? `<ul>${[...new Set(check.missing_inputs.map(readinessMessage))].map(message => `<li>${esc(message)}</li>`).join('')}</ul>` : '';
+    this.node('#execution-preflight').textContent = check?.status === 'blocked' && !activeRun ? blockedMessage(check) : '';
+    this.button('recheck-input').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
+    this.button('recheck-input').disabled = this.busy || this.starting || !this.selected || this.inputReadUncertain;
     const run = this.run;
     this.node('#run-panel').hidden = !run;
     const progressHost = document.querySelector('#workspace-progress');
@@ -166,19 +196,29 @@ export class ProjectExecution {
     if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = false; } this.materialRun = run.run_id; }
     const testCompleted = run?.state === 'test_completed' && run.channel === 'non_production_test';
     const automaticPause = automaticPauseMessage(run);
+    const repeatedPause = run?.state === 'paused' && this.samePauseAfterResume(run);
     // The current run stage is authoritative even when event history is late or unavailable.
     const summary = automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
-      : this.reason ? readinessMessage(this.reason) : undefined;
+      : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
+      : this.reason ? readinessMessage(this.reason)
+        : run?.state === 'paused' ? run.stage === 'awaiting_materials'
+          ? '等待材料处理完成，条件满足后后台会继续。'
+          : run.stage === 'provider_reconcile' ? '正在核对先前模型调用，请联系支持处理。'
+          : '处理条件尚未就绪，请联系支持核对。' : undefined;
     this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
-      <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' && !automaticPause ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
+      <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
+        ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
+          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume']] as const) {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
       if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
     }
+    const recheckPaused = this.host.querySelector<HTMLButtonElement>('#recheck-paused');
+    if (recheckPaused) { recheckPaused.disabled = this.busy; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
     this.host.querySelector('#prepare-next-version')?.addEventListener('click', () => { this.nextRequested = true; this.invalidate(); this.actions.scrollIntoView({block:'center'}); });
     this.host.querySelector('#show-project-materials')?.addEventListener('click', () => { const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#materials-title')?.scrollIntoView({block:'start'}); });
     const artifactId = (run?.state === 'succeeded' || testCompleted) ? run?.artifact_id : undefined;
@@ -195,24 +235,22 @@ export class ProjectExecution {
     try {
       if (!this.selected) await this.save();
       if (!this.active || !this.selected || !this.input) return;
-      const hadPreflight = Boolean(this.preflight);
       if (!this.preflight) await this.check();
       if (!this.active || !this.selected || !this.preflight) return;
-      // Content uncertainty is retained by the server and handled during execution.
-      // Only an actual blocked response pauses this submission; no upload review acknowledgment.
-      if (!hadPreflight && this.preflight.status === 'blocked') {
-        this.message = '仍有上述待处理事项，可继续提交等待处理。'; return;
-      }
+      // Backend admission is authoritative; uncertainty alone does not add an upload review step.
+      if (this.preflight.status === 'blocked') return;
       await this.execute();
     } finally { this.starting = false; this.render(); }
   }
   private async changeRun(action: 'cancel' | 'resume') {
-    if (!this.run || action === 'resume' && automaticPauseMessage(this.run)) return;
+    if (!this.run || action === 'resume' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     const runId = this.run.run_id;
+    if (action === 'resume') this.resumeVerified = false;
     await this.action(async () => {
       const run = await this.api.runAction(runId, action, this.controller.signal);
       if (!this.active) return;
       if (run.run_id !== runId || run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      if (action === 'resume') this.resumedPause = { runId, stage: this.run?.stage ?? null, reason: this.reason };
       this.acceptRun(run); void this.poll();
     });
   }
@@ -270,6 +308,26 @@ export class ProjectExecution {
       this.preflight = result;
     });
   }
+  private async recheck() {
+    if (!this.input || !this.selected || this.preflight?.status !== 'blocked') return;
+    await this.check();
+    if (this.active && this.preflight?.status === 'blocked') this.message = blockedMessage(this.preflight);
+  }
+  private async recheckPaused() {
+    const run = this.run;
+    if (!run || run.state !== 'paused' || run.stage !== 'capability_not_ready' || this.samePauseAfterResume(run)) return;
+    this.resumeVerified = false;
+    await this.action(async () => {
+      const input = await this.api.inputRevision(this.id, run.input_revision, this.controller.signal);
+      if (!this.active || this.run?.run_id !== run.run_id || this.run.state !== 'paused' || this.run.stage !== run.stage) return;
+      if (input.project_id !== this.id || input.input_hash !== run.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      const check = await this.api.preflight(this.id, { input_revision: run.input_revision, input_hash: run.input_hash }, this.controller.signal);
+      if (!this.active || this.run?.run_id !== run.run_id || this.run.state !== 'paused' || this.run.stage !== run.stage) return;
+      if (check.project_id !== this.id || check.input_revision !== run.input_revision || check.input_hash !== run.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      this.resumeVerified = check.status !== 'blocked';
+      this.message = this.resumeVerified ? '预检未报告阻断条件，可继续同一任务；再次暂停时请联系支持。' : blockedMessage(check);
+    });
+  }
   private async execute() {
     if (!this.input || !this.preflight || !this.selected || this.draft.dirty) return;
     const input = this.input, generation = this.generation;
@@ -287,6 +345,8 @@ export class ProjectExecution {
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
     if (this.run?.run_id !== run.run_id) { this.eventCursor = 0; this.reason = undefined; this.events = []; }
+    if (this.run?.run_id !== run.run_id) this.resumedPause = undefined;
+    if (this.run?.run_id !== run.run_id || this.run?.state !== run.state || this.run?.stage !== run.stage) this.resumeVerified = false;
     this.run = run; this.nextRequested = false;
   }
   private async restore() {
@@ -295,6 +355,7 @@ export class ProjectExecution {
     await this.action(async () => {
       this.inputReadUncertain = true;
       this.selected = false; this.preflight = undefined;
+      this.resumeVerified = false;
       const project = await this.api.project(this.id, this.controller.signal);
       const input = project.input_revision ? await this.api.inputRevision(this.id, project.input_revision, this.controller.signal) : undefined;
       if (!this.active) return;
@@ -336,6 +397,7 @@ export class ProjectExecution {
       if (!this.active || this.run?.run_id !== id) return;
       if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
+      if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
       this.run = run;
       // Read all new pages: a reconnect must not lose the actual pause/error reason.
       let cursor = this.eventCursor;
@@ -346,8 +408,10 @@ export class ProjectExecution {
           if (event.run_id !== id || event.seq <= this.eventCursor) continue;
           this.eventCursor = event.seq;
           this.events.push(event); this.events = this.events.slice(-12);
-          this.reason = event.state === run.state && event.stage === run.stage
+          const reason = event.state === run.state && event.stage === run.stage
             ? event.payload.reason ?? event.payload.error_code : undefined;
+          if (this.reason !== reason) this.resumeVerified = false;
+          this.reason = reason;
         }
         if (page.next_cursor === null || page.next_cursor <= cursor) break;
         cursor = page.next_cursor;
