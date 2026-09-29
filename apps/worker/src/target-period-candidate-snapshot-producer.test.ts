@@ -103,9 +103,20 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       const value = blobs.get(key);
       return value && value.length <= maxBytes ? value : null;
     } } as never };
+    const insertInputRevision = async (targetProject: string, revision: number, draftRevision: number,
+      manifest: Record<string, unknown>, hashSeed: string) => {
+      const inputHash = hash(hashSeed);
+      await pool.query(`INSERT INTO bb_input_revisions
+        (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,'[]'::jsonb,'[]'::jsonb)`,
+      [targetProject, revision, owner, draftRevision, inputHash, JSON.stringify(manifest)]);
+      return inputHash;
+    };
+    const inputHash = await insertInputRevision(project, 1, 1,
+      { draft_revision: 1, kind: 'update', requirement_message_ids: [] }, `producer-input-${suffix}`);
     const request = { ownerUserId: owner, projectId: project,
       selectedFinancialMaterials: [{ materialId: nativeId, materialVersion: 1 }, { materialId: ocrId, materialVersion: 1 }],
-      projectDraftRevision: 1, reportingCutoff: '2025-06-30' };
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30', inputRevision: 1, inputHash };
     const reference = await produceTargetPeriodCandidateSnapshot(dependencies, request);
     const replay = await produceTargetPeriodCandidateSnapshot(dependencies, request);
     assert.deepEqual(replay, reference, 'same exact producer request replays the same immutable reference');
@@ -175,8 +186,10 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       },
       delete: async (key: string) => { privateObjects.delete(key); },
     } as never;
-    const registerMessage = async (targetProject: string, messageId: string) => {
-      const prepared = await prepareUserSubmission(pool, privateBlobs, `synthetic test message ${messageId}`);
+    const registerMessage = async (targetProject: string, messageId: string,
+      options: { body?: string; requestTag?: string } = {}) => {
+      const prepared = await prepareUserSubmission(pool, privateBlobs,
+        options.body ?? `synthetic test message ${messageId}`);
       const handle = await prepared.write(owner, targetProject);
       const client = await pool.connect();
       try {
@@ -185,7 +198,7 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
           [`${owner}:${targetProject}:user_submission`]);
         const saved = await handle.register(client, { kind: 'project_message', messageId,
-          submissionRequestId: `submission-${messageId}`, materialVersions: [] });
+          submissionRequestId: `submission-${messageId}${options.requestTag ?? ''}`, materialVersions: [] });
         await client.query('COMMIT');
         await handle.discard();
         return { handle, submissionId: saved.submissionId };
@@ -196,15 +209,24 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       } finally { client.release(); }
     };
 
+    const readMessageSet = () => loadProjectMessageSetPin(
+      { query: (sql: string, values: unknown[] = []) => pool.query(sql, values as never) as never },
+      { ownerUserId: owner, projectId: messageProject });
+
     const priorMessage = await registerMessage(messageProject, `prior-${suffix}`);
     assert.ok(priorMessage.submissionId);
     const priorMessageId = `prior-${suffix}`;
-    const boundRef = await produceTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: messageProject,
+    // The message set is pinned by the input revision; the producer binds that exact pin, never the
+    // live draft by itself.
+    const priorPin = await readMessageSet();
+    const priorInputHash = await insertInputRevision(messageProject, 1, 1,
+      { draft_revision: 1, kind: 'update', project_message_set_ref: projectMessageSetRequirementsPin(priorPin) },
+      `producer-message-input-${suffix}`);
+    const messageRequest = { ownerUserId: owner, projectId: messageProject,
       selectedFinancialMaterials: [{ materialId: messageMaterial, materialVersion: 1 }],
-      projectDraftRevision: 1, reportingCutoff: '2025-06-30' });
-    const expectedPriorSet = projectMessageSetRequirementsPin(
-      await loadProjectMessageSetPin({ query: (sql: string, values: unknown[] = []) => pool.query(sql, values as never) as never },
-        { ownerUserId: owner, projectId: messageProject }));
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30', inputRevision: 1, inputHash: priorInputHash };
+    const boundRef = await produceTargetPeriodCandidateSnapshot(dependencies, messageRequest);
+    const expectedPriorSet = projectMessageSetRequirementsPin(await readMessageSet());
     const boundRow = await pool.query(`SELECT content FROM bb_target_period_candidate_snapshots
       WHERE owner_user_id=$1 AND project_id=$2 AND candidate_set_id=$3 AND candidate_set_version=$4`,
     [owner, messageProject, boundRef.candidate_set_id, boundRef.candidate_set_version]);
@@ -213,16 +235,56 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
     assert.deepEqual(boundContent.supplemental_requirements, expectedPriorSet,
       'a previously committed project_message is bound as an exact normalized set pin, never dropped as []');
     assert.deepEqual(boundContent.supplemental_requirements.message_ids, [priorMessageId]);
-    assert.deepEqual(await produceTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: messageProject,
-      selectedFinancialMaterials: [{ materialId: messageMaterial, materialVersion: 1 }],
-      projectDraftRevision: 1, reportingCutoff: '2025-06-30' }), boundRef,
+    assert.deepEqual(await produceTargetPeriodCandidateSnapshot(dependencies, messageRequest), boundRef,
     'an exact producer replay with the same bound message set is idempotent');
+
+    // Cross-scope and missing locked input revisions never authorize another project or a fabricated pin.
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...messageRequest, inputRevision: 99 }),
+      /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/, 'a missing locked input revision fails closed');
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ...messageRequest, inputHash: 'f'.repeat(64) }),
+      /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/, 'an input-hash mismatch fails closed');
+    const crossProject = `producer-cross-project-${suffix}`, crossMaterial = `producer-cross-material-${suffix}`;
+    await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,update_details)
+      VALUES($1,$2,'synthetic cross project','update',$3::jsonb)`,
+    [crossProject, owner, JSON.stringify({ reporting_cutoff: '2025-06-30', supplementary_notes: null, other_information: null })]);
+    await addMaterial(crossMaterial, `producer-upload-cross-${suffix}`, 'application/pdf', hash('cross project source'), 1, 'financial', crossProject);
+    const crossInputHash = await insertInputRevision(crossProject, 1, 1,
+      { draft_revision: 1, kind: 'update', project_message_set_ref: projectMessageSetRequirementsPin(await readMessageSet()) },
+      `producer-cross-input-${suffix}`);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, {
+      ownerUserId: owner, projectId: crossProject,
+      selectedFinancialMaterials: [{ materialId: crossMaterial, materialVersion: 1 }],
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30', inputRevision: 1, inputHash: crossInputHash,
+    }), /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
+    'a foreign project cannot adopt another project pinned message set');
+
+    // An unpinned input revision cannot bind a non-empty live set as [].
+    const unpinnedHash = await insertInputRevision(messageProject, 3, 1,
+      { draft_revision: 1, kind: 'update' }, `producer-message-unpinned-${suffix}`);
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies,
+      { ...messageRequest, inputRevision: 3, inputHash: unpinnedHash }),
+    /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/, 'an unpinned non-empty set is never bound as []');
+
+    // A later saved message version changes the live set: the old input keeps its old pin and can no
+    // longer produce, while a new input revision that pins the new set binds it.
+    await registerMessage(messageProject, `prior-${suffix}`,
+      { body: `synthetic edited test message prior-${suffix}`, requestTag: '-v2' });
+    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, messageRequest),
+      /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/, 'a live edit invalidates the older pinned input');
+    const newInputHash = await insertInputRevision(messageProject, 5, 1,
+      { draft_revision: 1, kind: 'update', project_message_set_ref: projectMessageSetRequirementsPin(await readMessageSet()) },
+      `producer-message-new-input-${suffix}`);
+    const newRef = await produceTargetPeriodCandidateSnapshot(dependencies,
+      { ...messageRequest, inputRevision: 5, inputHash: newInputHash });
+    assert.notEqual(newRef.candidate_set_id, boundRef.candidate_set_id, 'the new set only affects the new input revision');
 
     // Pause the real producer after it owns the project FOR UPDATE lock, then let the real
     // #397 registration helper take its advisory lock and reach the FK KEY SHARE boundary.
+    const raceInputHash = await insertInputRevision(raceProject, 1, 1,
+      { draft_revision: 1, kind: 'update' }, `producer-race-input-${suffix}`);
     const raceRequest = { ownerUserId: owner, projectId: raceProject,
       selectedFinancialMaterials: [{ materialId: raceMaterial, materialVersion: 1 }],
-      projectDraftRevision: 1, reportingCutoff: '2025-06-30' };
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30', inputRevision: 1, inputHash: raceInputHash };
     const preparedRaceMessage = await prepareUserSubmission(pool, privateBlobs, `synthetic race message ${suffix}`);
     const raceMessageHandle = await preparedRaceMessage.write(owner, raceProject);
 
@@ -301,8 +363,18 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       assert.deepEqual((raceSnapshot.rows[0]!.content as { supplemental_requirements: { message_ids: string[] } })
         .supplemental_requirements.message_ids, [], 'the candidate was serialized before the waiting message registration');
       // The stored snapshot is intentionally earlier project-message state and keeps its old empty pin.
-      // A fresh request observes the committed message and binds the exact nonempty set.
-      const afterRaceRef = await produceTargetPeriodCandidateSnapshot(dependencies, raceRequest);
+      // Its unpinned input revision can no longer bind the later non-empty set; only a new input
+      // revision that pins the committed set can, and the old snapshot keeps its original empty pin.
+      await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, raceRequest),
+        /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
+        'the older unpinned input revision never silently binds the later non-empty set');
+      const afterRaceInputHash = await insertInputRevision(raceProject, 2, 1,
+        { draft_revision: 1, kind: 'update', project_message_set_ref: projectMessageSetRequirementsPin(
+          await loadProjectMessageSetPin({ query: (sql: string, values: unknown[] = []) => pool.query(sql, values as never) as never },
+            { ownerUserId: owner, projectId: raceProject })) },
+        `producer-race-input-after-${suffix}`);
+      const afterRaceRef = await produceTargetPeriodCandidateSnapshot(dependencies,
+        { ...raceRequest, inputRevision: 2, inputHash: afterRaceInputHash });
       assert.notEqual(afterRaceRef.candidate_set_id, candidateRef.candidate_set_id);
       const afterRaceSnapshot = await pool.query<{ content: { supplemental_requirements: { message_ids: string[] } } }>(
         `SELECT content FROM bb_target_period_candidate_snapshots
@@ -312,8 +384,6 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       assert.deepEqual((raceSnapshot.rows[0]!.content as { supplemental_requirements: { message_ids: string[] } })
         .supplemental_requirements.message_ids, [], 'the old snapshot keeps its original empty pin');
       assert.deepEqual(afterRaceSnapshot.rows[0]!.content.supplemental_requirements.message_ids, [`race-${suffix}`]);
-      // This remains intentionally later project-message state than the stored snapshot. The future
-      // input-lock consumer must revalidate metadata; producer idempotency is not that consumer.
     } finally {
       producerResume();
       if (candidatePromise) await timeout(candidatePromise, 5000, 'candidate cleanup').catch(() => undefined);

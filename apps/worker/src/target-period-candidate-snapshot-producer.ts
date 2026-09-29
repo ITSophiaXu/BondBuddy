@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import type { OcrReview, TargetPeriodCandidateSnapshotRef } from '@bondbuddy/contracts';
+import { validProjectMessageSetRef, type OcrReview, type ProjectMessageSetRef, type TargetPeriodCandidateSnapshotRef } from '@bondbuddy/contracts';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { validateOcrResponse } from '@bondbuddy/api/ocr';
 import type { Pool } from 'pg';
 import { getParseSnapshot } from './parse-evidence-repository.js';
 import { appendTargetPeriodCandidateSnapshot, type TargetPeriodCandidateSnapshotPool } from './target-period-candidate-snapshot-repository.js';
 import { buildTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-builder.js';
-import { isProjectMessagePinError, loadProjectMessageSetPin, projectMessageSetRequirementsPin,
+import { isProjectMessagePinError, loadProjectMessageSetPin, projectMessageSetRequirementsMatch,
+  projectMessageSetRequirementsPin, type ProjectMessageSetPin,
   type ProjectMessageSetRequirementsPin } from './project-message-set-pin.js';
 import { proposeTargetReportingPeriods, type LockedFinancialMaterialRef, type NativePeriodEvidenceSnapshot,
   type OcrPeriodEvidenceSnapshot, type TargetPeriodEvidenceSnapshot } from './target-period-candidates.js';
@@ -30,6 +31,13 @@ export interface ProduceTargetPeriodCandidateSnapshotRequest {
   /** Asserted project draft values; the current owner-scoped row is independently compared before persistence. */
   readonly projectDraftRevision: number;
   readonly reportingCutoff: string;
+  /**
+   * Exact locked #17 input revision this candidate belongs to. The producer reads the immutable
+   * manifest's pinned `project_message_set_ref`; it never derives the requirement set from the live
+   * draft or a browser-supplied value.
+   */
+  readonly inputRevision: number;
+  readonly inputHash: string;
 }
 
 type MaterialRow = {
@@ -94,26 +102,60 @@ async function loadCurrentProject(pool: Pool, request: ProduceTargetPeriodCandid
 }
 
 /**
- * Resolve the exact active supplemental-requirement set for this owner/project and
- * bind its normalized pin. The private Blob body is never read; only immutable
- * per-message metadata. Any incomplete set fails closed, so a nonempty requirement
- * set is never silently bound as [].
+ * Read the pinned `project_message_set_ref` from the immutable owner/project-scoped input
+ * manifest. A missing revision, hash/draft mismatch or malformed pin fails closed; an absent
+ * pin is returned as null so only a genuinely empty active set keeps the historical empty binding.
  */
-async function loadSupplementalRequirements(pool: Pool,
-  request: ProduceTargetPeriodCandidateSnapshotRequest): Promise<ProjectMessageSetRequirementsPin> {
+async function loadLockedProjectMessageSetRef(pool: Pool,
+  request: ProduceTargetPeriodCandidateSnapshotRequest): Promise<ProjectMessageSetRef | null> {
+  const result = await pool.query(`SELECT input_hash, draft_revision, manifest FROM bb_input_revisions
+    WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`, [request.ownerUserId, request.projectId, request.inputRevision]);
+  if (result.rows.length !== 1) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  const row = result.rows[0]!;
+  if (String(row.input_hash).trim().toLowerCase() !== request.inputHash ||
+      Number(row.draft_revision) !== request.projectDraftRevision) {
+    throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  }
+  const manifest = parseJson(row.manifest);
+  if (!record(manifest)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  const pinned = manifest.project_message_set_ref;
+  if (pinned === undefined || pinned === null) return null;
+  // A malformed pinned aggregate is not a set identity; never fall back to the live draft.
+  if (!validProjectMessageSetRef(pinned)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  const ref = pinned as ProjectMessageSetRef;
+  return { version: ref.version, content_sha256: ref.content_sha256, message_ids: [...ref.message_ids] };
+}
+
+/**
+ * Resolve the exact supplemental-requirement binding for this candidate. When the locked input
+ * manifest pins a set, the live owner/project-scoped metadata must re-match it exactly; when the
+ * manifest has no pin, only a genuinely empty active set keeps the historical empty binding. The
+ * private Blob body is never read, a nonempty set is never silently bound as [], and any incomplete
+ * or divergent set fails closed. The repository re-derives and re-matches under the project lock.
+ */
+async function loadSupplementalRequirements(pool: Pool, request: ProduceTargetPeriodCandidateSnapshotRequest,
+  lockedRef: ProjectMessageSetRef | null): Promise<ProjectMessageSetRequirementsPin> {
+  let live: ProjectMessageSetPin;
   try {
-    const set = await loadProjectMessageSetPin({ query: (sql, values = []) => pool.query(sql, values as never) as never },
+    live = await loadProjectMessageSetPin({ query: (sql, values = []) => pool.query(sql, values as never) as never },
       { ownerUserId: request.ownerUserId, projectId: request.projectId });
-    return projectMessageSetRequirementsPin(set);
   } catch (error) {
     if (isProjectMessagePinError(error)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
     throw error;
   }
+  if (lockedRef === null) {
+    if (live.members.length > 0) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+    return projectMessageSetRequirementsPin(live);
+  }
+  if (!projectMessageSetRequirementsMatch(live, lockedRef)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  return lockedRef;
 }
 
 function validateRequest(request: ProduceTargetPeriodCandidateSnapshotRequest): void {
   if (!IDENTIFIER.test(request.ownerUserId) || !IDENTIFIER.test(request.projectId) ||
       !Number.isSafeInteger(request.projectDraftRevision) || request.projectDraftRevision < 1 ||
+      !Number.isSafeInteger(request.inputRevision) || request.inputRevision < 1 ||
+      typeof request.inputHash !== 'string' || !SHA256.test(request.inputHash) ||
       !date(request.reportingCutoff) || !Array.isArray(request.selectedFinancialMaterials) ||
       request.selectedFinancialMaterials.length < 1 || request.selectedFinancialMaterials.length > 60) {
     throw fail('TARGET_PERIOD_CANDIDATE_REQUEST_INVALID');
@@ -244,10 +286,12 @@ function repositoryPool(pool: Pool): TargetPeriodCandidateSnapshotPool {
 }
 
 /**
- * Builds and persists one server-derived pre-lock period candidate set. The caller supplies only
- * authenticated scope, exact selected financial IDs/versions, and draft intent. Evidence, hashes,
- * roles, parser/OCR identities, and the empty requirement pin are resolved here from trusted rows.
- * The returned reference never approves the candidate or changes target intent.
+ * Builds and persists one server-derived period candidate set for an exact locked input revision.
+ * The caller supplies only authenticated scope, the input revision/hash, exact selected financial
+ * IDs/versions, and draft intent. Evidence, hashes, roles, parser/OCR identities and the pinned
+ * requirement set are resolved here from trusted rows and must match the locked manifest before the
+ * repository re-verifies them under the project lock. The returned reference never approves the
+ * candidate or changes target intent.
  */
 export async function produceTargetPeriodCandidateSnapshot(
   dependencies: TargetPeriodCandidateSnapshotProducerDependencies,
@@ -255,6 +299,7 @@ export async function produceTargetPeriodCandidateSnapshot(
 ): Promise<TargetPeriodCandidateSnapshotRef> {
   validateRequest(request);
   await loadCurrentProject(dependencies.pool, request);
+  const lockedRequirementRef = await loadLockedProjectMessageSetRef(dependencies.pool, request);
   const lockedMaterials = await loadLockedFinancialMaterials(dependencies.pool, request);
   const snapshots: TargetPeriodEvidenceSnapshot[] = [];
   for (const material of lockedMaterials) {
@@ -266,10 +311,10 @@ export async function produceTargetPeriodCandidateSnapshot(
 
   const candidateSet = proposeTargetReportingPeriods({ reporting_cutoff: request.reportingCutoff,
     locked_materials: lockedMaterials, snapshots });
-  // Bind the normalized active message set. Empty means no still-effective project messages and
-  // still carries an explicit normalized empty pin; nonempty sets are bound from immutable
-  // per-message metadata and revalidated under the project lock by the repository.
-  const supplementalRequirements = await loadSupplementalRequirements(dependencies.pool, request);
+  // Bind the requirement set pinned by the locked input manifest. The live owner/project metadata
+  // must re-match that pin exactly; an unpinned nonempty set or any divergence fails closed, and
+  // the repository re-derives and re-matches under the project lock before persisting.
+  const supplementalRequirements = await loadSupplementalRequirements(dependencies.pool, request, lockedRequirementRef);
   const identityHash = sha256(canonical({ producer: PRODUCER_IDENTITY_VERSION, owner_user_id: request.ownerUserId,
     project_id: request.projectId, project_draft_revision: request.projectDraftRevision,
     reporting_cutoff: request.reportingCutoff, financial_materials: lockedMaterials,

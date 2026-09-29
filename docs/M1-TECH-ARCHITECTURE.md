@@ -161,6 +161,8 @@ This slice supplies the contract, extractor/builder, durable repository, synthet
 
 worker 内部 `apps/worker/src/project-message-set-pin.ts` 改为复用上述公共类型与纯函数，只保留 owner/project 限定的不可变元数据装载与规范化；`TargetPeriodCandidateSnapshot.content.supplemental_requirements` 直接复用公共 `ProjectMessageSetRef`，producer/repository 仍在事务内按精确成员身份重算并比对，集合不完整、缺正文 hash 或不可复现时以 `TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED` 关闭。
 
+worker target-period candidate producer 已消费锁定 input manifest 的 pin（2026-09-29）：`ProduceTargetPeriodCandidateSnapshotRequest` 新增 `inputRevision`/`inputHash`，producer 以 owner/project 限定读取 `bb_input_revisions.manifest.project_message_set_ref`（draft/hash 必须与请求一致），再用 `projectMessageSetRefMatches` 与重算的活跃集合精确匹配；pin 缺失且活跃集合非空、活编辑产生新 version、跨账号/项目、ref 发散任一情况都以 `TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED` 关闭，绝不静默 `[]`。repository 在项目 `FOR UPDATE` 锁下再次重算比对。旧 input 保持旧 pin，新保存/编辑只影响绑定新集合的新 input；无 pin 且活跃集合为空时保持原有空集合绑定。无迁移、无公共 DTO/枚举变化。
+
 `#17` input-lock 消费接缝已接线（2026-09-29）：`InputRevisionCreateRequest` 新增可选 `project_message_set_ref`，直接复用公共 `ProjectMessageSetRef`（仍只在 `packages/contracts` 定义一次）。API 在既有 input-lock 事务内、按现有项目→材料锁序，从 owner/project 限定的 `bb_user_submission_versions`（`submission_kind='project_message'`，上限 500）重新装载、按首次提交位置重算有序 pin，并与新锁定的材料/解析状态解耦（消息 pin 只证明集合身份，不证明解析或内容事实）。提供的 ref 必须与当前精确集合逐成员、hash、version 一致；裸 version、成员投影不符、空/非空不一致、撤回或换料任一情况都以 `INPUT_REVISION_CONFLICT` 拒绝。集合非空但未提供 ref 时同样拒绝，绝不把非空补充要求写成 `[]`；匹配成功后 ref 与 `requirement_message_ids` 一起进入不可变 manifest/`input_hash`，旧版本与旧 input 保持不可变。仍未接线的下游是 worker/预检对该 pin 的消费，以及生产消息持久化入口；本切片不改变用户可见流程、状态或错误文案。
 
 
