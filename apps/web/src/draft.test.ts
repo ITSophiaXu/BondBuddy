@@ -2,9 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { ApiError, type ApiClient, type Dto } from './api.js';
-import { Draft } from './draft.js';
+import { createFromFields, Draft } from './draft.js';
 
 const project: Dto<'ProjectResponse'> = { project_id: 'synthetic', draft_revision: 1, input_revision: null, input_hash: null, name: '合成测试', kind: 'update', issuer_name: null, market: 'nafmii', offering: 'dfi', update_details: emptyUpdateDetails(), updated_at: '2026-09-24T00:00:00Z' };
+test('local draft kind is derived from the historical answer for creation and validation', () => {
+  const fields = { name: '无历史稿项目', issuer_name: '', market: 'sse' as const, offering: 'private' as const,
+    update_details: { ...emptyUpdateDetails(), has_historical: false } };
+  assert.equal(createFromFields(fields).kind, 'generation');
+  assert.equal(createFromFields({ ...fields, update_details: { ...emptyUpdateDetails(), has_historical: true } }).kind, 'update');
+  assert.equal(createFromFields({ ...fields, update_details: { ...emptyUpdateDetails(), has_historical: null } }).kind, 'update');
+});
 test('JSONB object key order does not trigger repeated autosaves, while funding row order remains meaningful', async () => {
   let calls = 0;
   const reorder = (value: any): any => Array.isArray(value) ? value.map(reorder) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, reorder(value[key])])) : value;

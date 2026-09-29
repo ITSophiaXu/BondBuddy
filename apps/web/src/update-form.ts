@@ -1,7 +1,7 @@
 import { cutoffSelection, quarterCutoff, QUARTER_ENDS } from './reporting-cutoff.js';
 import { FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from '@bondbuddy/contracts';
 import { prototypeIcon as icon } from './prototype-design.js';
-import { changeMarket, marketValue, materialHints, type ProjectCreate } from './form-model.js';
+import { changeMarket, marketValue, materialHints, projectKind, type ProjectCreate } from './form-model.js';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const option = (value: string, label: string, active: unknown) => `<option value="${esc(value)}"${value === active ? ' selected' : ''}>${esc(label)}</option>`;
@@ -48,11 +48,12 @@ function readMoney(data: FormData, name: string): Money | null {
 }
 export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
   const data = new FormData(form);
+  const hasHistorical = data.get('has_historical') === 'yes' ? true : data.get('has_historical') === 'no' ? false : null;
 
-  return { kind: 'update', name: String(data.get('name') ?? ''), issuer_name: text(data, 'issuer'), market: marketValue(String(data.get('market') ?? '')), offering: text(data, 'offering') as Offering | null,
+  return { kind: projectKind(hasHistorical), name: String(data.get('name') ?? ''), issuer_name: text(data, 'issuer'), market: marketValue(String(data.get('market') ?? '')), offering: text(data, 'offering') as Offering | null,
     update_details: {
       ...structuredClone(retainedDetails.get(form) ?? {}),
-      has_historical: data.get('has_historical') === 'yes' ? true : data.get('has_historical') === 'no' ? false : null,
+      has_historical: hasHistorical,
       reporting_cutoff: text(data, 'reporting_cutoff'), registration_amount: readMoney(data, 'registration_amount'), issuance_amount: readMoney(data, 'issuance_amount'),
       bond_terms: text(data, 'bond_terms'), underwriting: text(data, 'underwriting'), other_agencies: text(data, 'other_agencies'), rating_enhancement: text(data, 'rating_enhancement'),
       funding_uses: [...form.querySelectorAll('[data-purpose]')].map((_, i) => ({ purpose: text(data, `purpose_${i}`) as UpdateDetails['funding_uses'][number]['purpose'], amount: readMoney(data, `use_amount_${i}`), details: text(data, `use_details_${i}`), target: text(data, `use_target_${i}`) })),

@@ -3,11 +3,15 @@ import { schemas, MARKETS, MARKET_OFFERINGS, emptyUpdateDetails, updateDetailsEr
 import type { Dto } from './api.js';
 export type ProjectCreate = Dto<'ProjectCreateRequest'>;
 
+/** No in-issuer history routes the project to the controlled new-draft (generation) path. */
+export function projectKind(hasHistorical: boolean | null | undefined): 'generation' | 'update' {
+  return hasHistorical === false ? 'generation' : 'update';
+}
 export function blankDraft(): ProjectCreate {
   return { name: '', kind: 'update', issuer_name: null, market: null, offering: null, update_details: emptyUpdateDetails() };
 }
 export function draftFromProject(project: Project): ProjectCreate {
-  return { name: project.name, kind: 'update', issuer_name: project.issuer_name, market: project.market, offering: project.offering,
+  return { name: project.name, kind: project.kind, issuer_name: project.issuer_name, market: project.market, offering: project.offering,
     update_details: structuredClone(project.update_details ?? emptyUpdateDetails()) };
 }
 export function changeMarket(draft: ProjectCreate, market: Market | null): { draft: ProjectCreate; cleared: boolean } {

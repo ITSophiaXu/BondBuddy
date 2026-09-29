@@ -342,7 +342,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   draft = new Draft(project, api, updateSaveState);
   materialProcessing = new MaterialProcessing(api, project.project_id, () => updateProcessingRows(project.project_id));
   materialProcessing.setVisible(document.visibilityState === 'visible');
-  const value = { ...draft.fields, kind: 'update' as const, issuer_name: draft.fields.issuer_name || null };
+  const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
   shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
@@ -369,7 +369,8 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   };
   document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
-  if (project.kind === 'update') {
+  // No-history projects enter the controlled generation path with the same execution surface.
+  if (project.kind === 'update' || project.kind === 'generation') {
     projectExecution = new ProjectExecution(api, draft);
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
