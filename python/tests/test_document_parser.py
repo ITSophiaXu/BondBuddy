@@ -1013,6 +1013,73 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual([record["literal_quote"] for record in csv_result["records"]], ["项目", "金额", "营业收入", "1,234.50"])
         self.assertEqual(csv_result["records"][-1]["locator"], {"row": 2, "column": 2, "stable_ref": "csv:r000002:c0002"})
 
+    def test_synthetic_csv_boundary_regression_keeps_versioned_anchored_evidence(self):
+        # Synthetic engineering fixture only: it does not represent an authorized
+        # customer CSV, and an XLSX re-save must not be passed off as a native CSV.
+        path = self.root / "synthetic-boundary.csv"
+        path.write_bytes(
+            '项目,金额,说明\r\n'
+            '"营业收入","1,234,567,890,123.45","正常"\r\n'
+            '"营业成本","","缺失"\r\n'
+            '"负债\n合计","-98765432109876543210.00","跨行说明"\r\n'
+            '"净利润","0.00","引号""转义"""\r\n'.encode("utf-8")
+        )
+
+        first = self.request(path, MEDIA_CSV)
+        second = self.request(path, MEDIA_CSV)
+
+        # Same versioned response envelope and immutable material binding as DOCX/PDF/XLSX/TXT.
+        self.assertEqual(first["schema_version"], "document-parse-response-v1")
+        self.assertEqual(first["request_id"], "parse-synthetic")
+        self.assertEqual(first["parser_version"], "bondbuddy-document-parser-1.0.7")
+        self.assertEqual(first["status"], "parsed")
+        self.assertEqual(first["error"], None)
+        self.assertEqual(first["warnings"], [])
+        self.assertEqual(first["material"], {
+            "material_id": "material-synthetic",
+            "material_version": 1,
+            "sha256": digest(path),
+            "media_type": MEDIA_CSV,
+        })
+        self.assertEqual(first["document"], {"page_count": None, "encoding": "utf-8-sig", "delimiter": ","})
+
+        # Header, quoted delimiters, embedded newline, escaped quotes and empty cells
+        # all keep their exact row/column coordinates; an empty cell is skipped
+        # without breaking the continuous evidence record_id sequence.
+        expected = [
+            (1, 1, "项目"), (1, 2, "金额"), (1, 3, "说明"),
+            (2, 1, "营业收入"), (2, 2, "1,234,567,890,123.45"), (2, 3, "正常"),
+            (3, 1, "营业成本"), (3, 3, "缺失"),
+            (4, 1, "负债\n合计"), (4, 2, "-98765432109876543210.00"), (4, 3, "跨行说明"),
+            (5, 1, "净利润"), (5, 2, "0.00"), (5, 3, '引号"转义"'),
+        ]
+        self.assertEqual(
+            [(record["locator"]["row"], record["locator"]["column"], record["literal_quote"]) for record in first["records"]],
+            expected,
+        )
+        self.assertEqual(
+            [record["record_id"] for record in first["records"]],
+            [f"evidence-{index:06d}" for index in range(1, len(expected) + 1)],
+        )
+        for record in first["records"]:
+            self.assertEqual(record["locator_type"], "csv_cell")
+            self.assertEqual(
+                record["locator"]["stable_ref"],
+                f"csv:r{record['locator']['row']:06d}:c{record['locator']['column']:04d}",
+            )
+            self.assertEqual(record["material_id"], "material-synthetic")
+            self.assertEqual(record["material_version"], 1)
+            self.assertEqual(record["content_hash"], digest(path))
+
+        # The strict worker validator expects exactly these record keys for csv_cell.
+        self.assertEqual(
+            set(first["records"][0]),
+            {"record_id", "material_id", "material_version", "content_hash", "locator_type", "locator",
+             "literal_quote", "context", "extraction_method", "extractor_version", "confidence",
+             "uncertainty", "formatting"},
+        )
+        self.assertEqual(first["records"], second["records"])
+
         text_path = self.root / "synthetic.txt"
         text_path.write_text("第一行\n\n第三行\n", encoding="utf-8")
         text_result = self.request(text_path, MEDIA_TEXT)
