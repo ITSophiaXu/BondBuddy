@@ -6,13 +6,14 @@ import type { Pool } from 'pg';
 import { getParseSnapshot } from './parse-evidence-repository.js';
 import { appendTargetPeriodCandidateSnapshot, type TargetPeriodCandidateSnapshotPool } from './target-period-candidate-snapshot-repository.js';
 import { buildTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-builder.js';
+import { isProjectMessagePinError, loadProjectMessageSetPin, projectMessageSetRequirementsPin,
+  type ProjectMessageSetRequirementsPin } from './project-message-set-pin.js';
 import { proposeTargetReportingPeriods, type LockedFinancialMaterialRef, type NativePeriodEvidenceSnapshot,
   type OcrPeriodEvidenceSnapshot, type TargetPeriodEvidenceSnapshot } from './target-period-candidates.js';
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const MAX_OCR_RESULT_BYTES = 32 * 1024 * 1024;
-const EMPTY_REQUIREMENTS_VERSION = 1;
 const PRODUCER_IDENTITY_VERSION = 'target-period-candidate-producer-v1';
 
 export interface TargetPeriodCandidateSnapshotProducerDependencies {
@@ -90,12 +91,24 @@ async function loadCurrentProject(pool: Pool, request: ProduceTargetPeriodCandid
     throw fail('TARGET_PERIOD_CANDIDATE_DRAFT_STALE');
   }
   assertNoUnboundProjectRequirements(row.update_details);
-  // #397 stores project_message metadata separately from the project's update_details.
-  // Do not inspect or fetch its private Blob body; its presence means [] is not truthful.
-  const messages = await pool.query(`SELECT 1 FROM bb_user_submission_versions
-    WHERE owner_user_id=$1 AND project_id=$2 AND submission_kind='project_message' LIMIT 1`,
-  [request.ownerUserId, request.projectId]);
-  if (messages.rowCount) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+}
+
+/**
+ * Resolve the exact active supplemental-requirement set for this owner/project and
+ * bind its normalized pin. The private Blob body is never read; only immutable
+ * per-message metadata. Any incomplete set fails closed, so a nonempty requirement
+ * set is never silently bound as [].
+ */
+async function loadSupplementalRequirements(pool: Pool,
+  request: ProduceTargetPeriodCandidateSnapshotRequest): Promise<ProjectMessageSetRequirementsPin> {
+  try {
+    const set = await loadProjectMessageSetPin({ query: (sql, values = []) => pool.query(sql, values as never) as never },
+      { ownerUserId: request.ownerUserId, projectId: request.projectId });
+    return projectMessageSetRequirementsPin(set);
+  } catch (error) {
+    if (isProjectMessagePinError(error)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+    throw error;
+  }
 }
 
 function validateRequest(request: ProduceTargetPeriodCandidateSnapshotRequest): void {
@@ -253,11 +266,10 @@ export async function produceTargetPeriodCandidateSnapshot(
 
   const candidateSet = proposeTargetReportingPeriods({ reporting_cutoff: request.reportingCutoff,
     locked_materials: lockedMaterials, snapshots });
-  // Empty means no messages are selected; bind its canonical empty ID set. Nonempty requirements
-  // cannot enter this producer until #18 has immutable message content/version storage.
-  const supplementalRequirements: { version: number; content_sha256: string; message_ids: string[] } = {
-    version: EMPTY_REQUIREMENTS_VERSION, content_sha256: sha256('[]'), message_ids: [],
-  };
+  // Bind the normalized active message set. Empty means no still-effective project messages and
+  // still carries an explicit normalized empty pin; nonempty sets are bound from immutable
+  // per-message metadata and revalidated under the project lock by the repository.
+  const supplementalRequirements = await loadSupplementalRequirements(dependencies.pool, request);
   const identityHash = sha256(canonical({ producer: PRODUCER_IDENTITY_VERSION, owner_user_id: request.ownerUserId,
     project_id: request.projectId, project_draft_revision: request.projectDraftRevision,
     reporting_cutoff: request.reportingCutoff, financial_materials: lockedMaterials,

@@ -6,6 +6,7 @@ import { prepareUserSubmission } from '../../api/dist/user-submissions.js';
 import type { DocumentParseResponse } from './document-parser.js';
 import { persistParseSnapshot } from './parse-evidence-repository.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { loadProjectMessageSetPin, normalizeProjectMessageSet, projectMessageSetRequirementsPin } from './project-message-set-pin.js';
 import { produceTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-producer.js';
 
 const testDatabaseUrl = await isolatedTestDatabase('TARGET_PERIOD_CANDIDATE_TEST_DATABASE_URL', 'producer');
@@ -116,8 +117,10 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
     assert.equal(envelope.status, 'needs_confirmation');
     assert.equal(envelope.candidates.every((candidate: { status: string }) => candidate.status === 'needs_confirmation'), true);
     assert.deepEqual(envelope.source_snapshots.map((source: { evidence_method: string }) => source.evidence_method).sort(), ['native_text', 'ocr']);
+    const emptyRequirements = projectMessageSetRequirementsPin(normalizeProjectMessageSet([]));
     assert.deepEqual(envelope.supplemental_requirements.message_ids, []);
-    assert.equal(envelope.supplemental_requirements.content_sha256, hash('[]'));
+    assert.equal(envelope.supplemental_requirements.version, emptyRequirements.version);
+    assert.equal(envelope.supplemental_requirements.content_sha256, emptyRequirements.content_sha256);
     assert.equal(hash(canonical(envelope)), reference.content_sha256);
     const replayCounts = await pool.query(`SELECT count(DISTINCT s.id)::int AS snapshots, count(o.id)::int AS events
       FROM bb_target_period_candidate_snapshots s LEFT JOIN bb_outbox o ON o.aggregate_id=s.id
@@ -195,11 +198,25 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
 
     const priorMessage = await registerMessage(messageProject, `prior-${suffix}`);
     assert.ok(priorMessage.submissionId);
-    await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: messageProject,
+    const priorMessageId = `prior-${suffix}`;
+    const boundRef = await produceTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: messageProject,
       selectedFinancialMaterials: [{ materialId: messageMaterial, materialVersion: 1 }],
-      projectDraftRevision: 1, reportingCutoff: '2025-06-30' }),
-    /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
-    'a previously committed project_message prevents creating a new empty-requirements candidate pin');
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30' });
+    const expectedPriorSet = projectMessageSetRequirementsPin(
+      await loadProjectMessageSetPin({ query: (sql: string, values: unknown[] = []) => pool.query(sql, values as never) as never },
+        { ownerUserId: owner, projectId: messageProject }));
+    const boundRow = await pool.query(`SELECT content FROM bb_target_period_candidate_snapshots
+      WHERE owner_user_id=$1 AND project_id=$2 AND candidate_set_id=$3 AND candidate_set_version=$4`,
+    [owner, messageProject, boundRef.candidate_set_id, boundRef.candidate_set_version]);
+    const boundContent = typeof boundRow.rows[0]!.content === 'string'
+      ? JSON.parse(String(boundRow.rows[0]!.content)) : boundRow.rows[0]!.content;
+    assert.deepEqual(boundContent.supplemental_requirements, expectedPriorSet,
+      'a previously committed project_message is bound as an exact normalized set pin, never dropped as []');
+    assert.deepEqual(boundContent.supplemental_requirements.message_ids, [priorMessageId]);
+    assert.deepEqual(await produceTargetPeriodCandidateSnapshot(dependencies, { ownerUserId: owner, projectId: messageProject,
+      selectedFinancialMaterials: [{ materialId: messageMaterial, materialVersion: 1 }],
+      projectDraftRevision: 1, reportingCutoff: '2025-06-30' }), boundRef,
+    'an exact producer replay with the same bound message set is idempotent');
 
     // Pause the real producer after it owns the project FOR UPDATE lock, then let the real
     // #397 registration helper take its advisory lock and reach the FK KEY SHARE boundary.
@@ -283,10 +300,19 @@ test('PG16 producer derives native and OCR sources, returns only pending referen
       assert.equal(raceSnapshot.rowCount, 1);
       assert.deepEqual((raceSnapshot.rows[0]!.content as { supplemental_requirements: { message_ids: string[] } })
         .supplemental_requirements.message_ids, [], 'the candidate was serialized before the waiting message registration');
-      await assert.rejects(produceTargetPeriodCandidateSnapshot(dependencies, raceRequest),
-        /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
-      'a request after the lock-ordered message registration rechecks metadata before creating an empty pin');
-      // This is intentionally later project-message state than the stored snapshot. The future
+      // The stored snapshot is intentionally earlier project-message state and keeps its old empty pin.
+      // A fresh request observes the committed message and binds the exact nonempty set.
+      const afterRaceRef = await produceTargetPeriodCandidateSnapshot(dependencies, raceRequest);
+      assert.notEqual(afterRaceRef.candidate_set_id, candidateRef.candidate_set_id);
+      const afterRaceSnapshot = await pool.query<{ content: { supplemental_requirements: { message_ids: string[] } } }>(
+        `SELECT content FROM bb_target_period_candidate_snapshots
+          WHERE owner_user_id=$1 AND project_id=$2 AND candidate_set_id=$3 AND candidate_set_version=$4`,
+        [owner, raceProject, afterRaceRef.candidate_set_id, afterRaceRef.candidate_set_version]);
+      assert.equal(afterRaceSnapshot.rowCount, 1);
+      assert.deepEqual((raceSnapshot.rows[0]!.content as { supplemental_requirements: { message_ids: string[] } })
+        .supplemental_requirements.message_ids, [], 'the old snapshot keeps its original empty pin');
+      assert.deepEqual(afterRaceSnapshot.rows[0]!.content.supplemental_requirements.message_ids, [`race-${suffix}`]);
+      // This remains intentionally later project-message state than the stored snapshot. The future
       // input-lock consumer must revalidate metadata; producer idempotency is not that consumer.
     } finally {
       producerResume();
