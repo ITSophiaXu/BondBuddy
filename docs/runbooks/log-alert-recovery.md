@@ -1,5 +1,7 @@
 # Runbook: #79 log alerts and recovery
 
+For the isolated pre-release fault drill and phase-by-phase reconciliation, see [log recovery drill](log-recovery-drill.md).
+
 All alerts are rows in `bb_ops_alerts`, visible through `GET /api/v1/admin/alerts`. External paging is wired by #35.
 
 | Alert | Meaning | Action |

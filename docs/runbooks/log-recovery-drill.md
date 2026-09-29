@@ -1,0 +1,59 @@
+# Log and job recovery drill (#79)
+
+Two evidence levels are available. `run-log-recovery-drill.sh` exercises an isolated PostgreSQL 16/Azurite database and a private file sink; its recorded result in `docs/acceptance/79-recovery-drill-synthetic-2026-09-29.md` is a synthetic rehearsal. `deployed-recovery-drill.mjs` exercises the **already running** API, worker, ops scheduler, PostgreSQL and configured Blob service. Neither path calls an external model. Isolated usage records are synthetic; they do not establish supplier usage or balance.
+
+## Existing deployment: prerequisites and exact invocation
+
+Run from the checkout root with Node 22 and Docker Compose. Reserve a quiet window of at least eight minutes and freeze deployment changes. Use the exact 40-character deployed commit, existing private Compose env file, and full IDs of the running `api`, `worker`, `ops`, `postgres` and `web` containers. The script verifies IDs against Compose labels, image tags, `BB_RELEASE_SHA` in application containers, PostgreSQL 16, migrations through `0074`, sink and origin. For API health it probes `/health` **inside the named API container** and `/healthz` through the named Web container's localhost port. Both must return the exact API JSON, the Web proxy configuration must match this checkout, and `api` DNS from Web must resolve to the named API container. An HTML fallback, wrong container, or wrong release fails closed before injection. It never starts replacement PostgreSQL, Azurite, API or collector services. Do not derive the target from a hostname or put a database URL in shell history. It reads the database through `docker exec ... psql` in the **specified** PostgreSQL container. The private state file holds a temporary synthetic password and must stay local with mode `0600`.
+
+```sh
+cd <checkout-of-deployed-commit>
+umask 077
+export BB_DRILL_EXPECTED_SHA=<full-deployed-commit-sha>
+export BB_DRILL_ENV_FILE="$PWD/deploy/m1/.env"
+export BB_DRILL_ORIGIN="$(node -e 'const s=require("node:fs").readFileSync(process.argv[1],"utf8");console.log(s.match(/^BB_PUBLIC_ORIGIN=(.+)$/m)?.[1]??"")' "$BB_DRILL_ENV_FILE")"
+drill_port="$(node -e 'const s=require("node:fs").readFileSync(process.argv[1],"utf8");console.log(s.match(/^BB_HTTP_PORT=(.+)$/m)?.[1]??"18080")' "$BB_DRILL_ENV_FILE")"
+export BB_DRILL_BASE_URL="http://127.0.0.1:$drill_port"
+for service in api worker ops postgres web; do
+  id="$(docker compose --project-directory deploy/m1 -f deploy/m1/compose.yaml --env-file "$BB_DRILL_ENV_FILE" ps -q "$service")"
+  export "BB_DRILL_${service^^}_ID=$id"
+done
+drill_stamp="$(date +%Y%m%dT%H%M%S)"
+mkdir -p "$HOME/.local/state/bondbuddy-drill"
+chmod 700 "$HOME/.local/state/bondbuddy-drill"
+export BB_DRILL_STATE_FILE="$HOME/.local/state/bondbuddy-drill/$drill_stamp.state.json"
+export BB_DRILL_EVIDENCE_FILE="$HOME/.local/state/bondbuddy-drill/$drill_stamp.evidence.ndjson"
+node deploy/m1/scripts/deployed-recovery-drill.mjs preflight
+timeout --signal=TERM --kill-after=30s 480s node deploy/m1/scripts/deployed-recovery-drill.mjs run
+```
+
+Obtain container IDs with the same Compose project and env file as the deployment; verify all five names and IDs before exporting them. The base URL must reach the existing Web container and allow registration from the configured origin. `preflight` is read-only apart from its local evidence file. It reports active job and external-call attempt IDs, refusing injection if another job is `queued`/`running`. Only exact job UUIDs saved by this invocation may be excluded after creation; user IDs are UUIDs and are never classified by a name prefix. A historical `paused/provider_reconcile` run with a failed, `unknown` usage attempt is left untouched and does not itself block the log or parse rehearsal. Newly active work during a fault window stops injection.
+
+The original evidence gate state and sequence are recorded. An already paused gate is **never** opened by this script. If it prevents a particular API step, retain successful earlier phases and record the blocked remainder. The script does not change the gate or supplier usage rows.
+
+Before D2, the managed parse staging directory must have zero outstanding job directories. A prior crash can leave a locked staging allocation counted as 384 MiB until the normal stale sweep; repeating process faults against a nonempty staging directory can exhaust its 1 GiB admission budget and make subsequent parse attempts fail with `DATA_UNAVAILABLE`. The script refuses D2 in that condition while still allowing D1. Do not remove directories by hand or sweep other jobs' files. After this run's D2 job reaches a terminal state, the script verifies the one directory recorded before the kill and invokes the existing safe staging sweeper for only that directory; it records the before/after count. If the directory identity differs, stop and investigate.
+
+## Fault phases and required checks
+
+| Phase | Deployed component and expected evidence |
+| --- | --- |
+| D1 before/during | Pause only the named existing `ops` container. Register one synthetic account and project through the real API. Capture UUIDs and exact observability outbox IDs; pending count must rise while the collector is stopped. |
+| D1 restore/replay | Unpause the same `ops` container. Its normal `log_forward` task drains the backlog to its configured `BB_LOG_SINK_FILE`; every scoped outbox ID must have one `ndjson_file` receipt and a unique `delivery_key`. Observe one more scheduler interval for duplicate receipts. No private sink or manual forwarder is used. |
+| D2 before/during | Pause only the named deployed worker while a valid synthetic text upload creates a real parse job. A trigger on the exact material's parse snapshot adds an eight-second observation window. Unpause, observe `running`, recheck the activity guard, kill only that verified worker container once, then remove the trigger and restart the same service under its existing restart policy. |
+| D2 restore | The normal deployed worker reclaims the expired lease. The same job ID reaches `succeeded`, attempts ≥2, with exactly one terminal job event. This runs the real parser. The scoped orphaned staging directory is removed through the existing sweeper after the job is terminal. |
+| D3 before/during | Queue a second synthetic material through the API with the worker paused. Install a uniquely named trigger on `bb_outbox`; it aborts only this job's first two `material_parse.succeeded` inserts. The second abort waits six seconds to expose a nonterminal retry for inspection. The transactions roll back and the normal worker records `material_parse.retry_scheduled`; no terminal event commits during the fault. |
+| D3 restore | Drop the trigger, let the normal worker retry, and verify the same job reaches `succeeded` with attempts ≥3 and one terminal event. Preserve original gate state, especially `paused`. |
+
+The evidence file contains only time, exact IDs, states, counts, image SHA, migration summary and delivery keys. It contains no cookies, connection strings, prompt content or log bodies. Keep it private while reviewing; commit only a short sanitized summary. Compare job event IDs, outbox IDs, receipt IDs and `delivery_key`s across before, during and after records. The `ndjson_file` receipt is the deployed collector's durable acknowledgment; also check the existing sink through normal operator tooling for the same keys without exporting body text.
+
+## Recovery, timeout and cleanup
+
+The outer timeout is 480 seconds; D1 drain has 90 seconds, D2 claim 30 seconds and lease recovery 180 seconds, D3 fault 60 seconds and recovery 120 seconds. The signal handler and `finally` restore only this run's paused containers, stopped worker and named trigger. A local `0600` state file is saved **before** each reversible mutation. After interruption or uncertain cleanup, run this against the same exact IDs, commit and private state file before another injection:
+
+```sh
+node deploy/m1/scripts/deployed-recovery-drill.mjs recover
+```
+
+`recover` removes only this run's trigger, unpauses only containers this run paused, starts only the named worker if this run stopped it, safely sweeps its recorded staging directory after its job is terminal, and closes only the exact synthetic account through the API, including when registration succeeded but project creation failed. If the exact synthetic project exists, it is deleted through its normal API route before account closure; an already deleted project or closed account is safe on repeated `recover`. Closure failure is recorded and returns failure, leaving private state for another attempt. Deletion uses the supported soft-deletion flow; append-only job, audit, outbox and log evidence remains. It never broadly terminates database connections, retries historical runs or resumes an originally paused gate. Failed recovery is a stop condition: inspect private evidence and state, then repeat `recover` after correcting the cause. Remove the private state after successful recovery and evidence capture. Do not delete historical logs or service volumes.
+
+The isolated script remains available for regression checks and synthetic usage deduplication, but running it on a deployment host does **not** verify deployed services. Target-environment acceptance requires independent execution of the existing-deployment mode after release installation, with exact deployed SHA and per-phase evidence; this document and local rehearsal alone do not complete that acceptance.
