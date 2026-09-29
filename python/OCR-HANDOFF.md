@@ -4,13 +4,17 @@
 
 ## v2 物理页批次与 checkpoint 契约（2026-09-26）
 
-**状态：共享契约 + Python 算法/CLI 已实现；持久运行时 NOT YET IMPLEMENTED。** 本节在既有 v1 上增量定义，不更改下文 v1 的处理器、请求/响应、50 页全文限制、数据库快照和校正接口。后续 v1 OCR hook 的运行编排以 `docs/M1-TECH-ARCHITECTURE.md` 的 #17 章节为准；现有 hook 没有切换为 v2。真实 74/70 页材料目前仍不能通过 v1 全文 OCR。
+**状态：共享契约 + Python 算法/CLI + 独立 opt-in 内部持久运行时已实现；自动 parse/OCR hook 和用户核对 API 仍是 v1。** 本节在既有 v1 上增量定义，不更改下文 v1 的处理器、请求/响应、50 页全文限制、数据库快照和校正接口。后续 v1 OCR hook 的运行编排以 `docs/M1-TECH-ARCHITECTURE.md` 的 #17 章节为准；现有 hook 没有切换为 v2。真实 74/70 页材料目前仍不能通过 v1 自动预检路径接入全文 OCR。
+
+2026-09-29 的内部运行切片以 `npm run ocr:v2 -- full_ocr OWNER PROJECT MATERIAL VERSION RUN_ID LEASE_TOKEN` 调用已存在的 running、已领取租约、输入锁定且包含该材料版本的 run；`source_preflight OWNER PROJECT MATERIAL VERSION` 只限已有持久 parse job 与前 3 页，跨请求累计最多 5 页尝试（失败或中断保守占满该批页预算）。不对浏览器增加执行入口、不给 v1 的最新核对快照冒充 v2 结果。Python `ocr-identity-probe-v2` 从已核对 SHA 的私有原件和当前 Tesseract/语言文件/PDFium/配置计算物理总页数及身份；后续逐批最多 50 页，缺页单独重试。默认要求目标环境 `chi_sim+eng`，调试可在受信调用方设 `language: eng`；不得将本机英文字库调试宣称中文部署验收。运行时只在独立 `0080_m1_ocr_v2_checkpoints.sql` 中记录批次、成功页引用及既有 `platform.processing_cost` outbox；租约冲突用数据库会话 advisory lock 序列化同一材料，单个 batch 的真实尝试量或中断后的 null 用量与 outbox 同一事务提交。读取缓存必须按 owner/project、原件精确版本/SHA、处理器/引擎/语言包/配置/渲染/物理页身份读回 checkpoint JSON 和 PNG 字节并调用共享 v2 语义校验；失败页不保存成功记录，任一页缺失只能 partial，不宣称 complete。删除材料的派生字节清理由现有 deletion lifecycle 处理，未入库的对象由存储 inventory 标记为候选而非自动删除。
+
+本切片不将成功 v2 页变成 `bb_ocr_snapshots` 的 v1 原页或校正：v2 页面核对的公共 API、自动 source preflight→全文 run 串联、#15/#76 消费及 run 阶段/终态接线仍须单独做，不能用内部 CLI 的 aggregate=complete 判断成果已交付。原生解析优先、上传预检不触发全文 OCR、M1 平台承担的费用策略均保持不变。测试覆盖 PostgreSQL 16 上的 74 页 synthetic 分批、单页失败/重试、读回变更/跨账号拒绝、中断后 unknown 消费及累计预算；Python 探针在合成 PDF 上验证真实页数和原件 SHA，不能替代私有 Blob/Azurite 实机、目标镜像中文语言包、扫描历史募集书/财务金标准准确率和专业签认。
 
 2026-09-27 的 Python 算法切片新增 `python/bondbuddy_ocr/v2.py` 和 CLI 的 `ocr-invocation-v2` 内部信封。信封包含契约原样的 `request`、受信调用方写入临时目录的 `material_path`，以及由调用方读回后提供的 `reuse_checkpoints`（每项 checkpoint + 原页 PNG Base64）。成功输出为 `ocr-invocation-response-v2`，其中 `response` 是契约 `OcrBatchResponseV2`，`checkpoints` 是新成功页的 `OcrPageCheckpointV2` + 原页 PNG Base64。它只产生内存/子进程结果，不证明 owner 授权、持久化、Blob 读回或缓存安全；服务端仍须用合同 validator 对持久读回的 checkpoint/image 做最终验证。新页最多50、单页 PNG 最大48 MiB、一次返回图像总量最多128 MiB；超限页会有明确失败，不会静默截断。CLI v1 输入/输出保持原状。
 
 新处理器按 `pages` 指定的原件物理页号调用 PDFium/Tesseract，稀疏选择不重排页号；失败项保留 `attempted`/`retryable`，预引擎失败计 `false`，已启动引擎的失败计 `true`。如果 Python 子进程/worker 在没有响应时中断，运行时必须按既有计量契约把该页消费记为 unknown（`attempted=null`），不能把没有结果当成零消耗。单页重试须使用新 `request_id`；复用仅接受请求中精确引用、先前请求、匹配物理页身份/hash 和可校验 checkpoint/image。每条新 OCR record 继续带 `uncertainty` 并固定 `eligible_for_manuscript=false`。Python 与 TypeScript 使用同一规范 JSON 摘要算法，并由共享 synthetic checkpoint 固定向量交叉检查。
 
-这是算法/协议实现，不包含 #17 租约、持久检查点、outbox/成本重放、worker 调度、API、迁移、生产 Tesseract/语言包镜像或 #15/#76 消费接线。worker 的持久复用必须先做 owner/material/run 校验并从私有存储读回；哈希不构成签名或授权。真实页 OCR 仅作为本地 smoke 时也不是准确率/财务验收。
+原算法 PR 只实现算法/协议；上述独立运行切片补齐内部调用的持久检查点和计量，但仍不接入 #17 常驻 run 阶段调度、公共核对 API、生产 Tesseract/语言包镜像或 #15/#76 消费接线。worker 的持久复用必须先做 owner/material/run 校验并从私有存储读回；哈希不构成签名或授权。真实页 OCR 仅作为本地 smoke 时也不是准确率/财务验收。
 
 `packages/contracts/src/ocr.ts` 定义 TypeBox schema 和推导类型，`ocr-v2.ts` 定义导出的语义校验器与摘要函数；均从 `@bondbuddy/contracts` 导入。它们是内部传输契约，不进入公共 OpenAPI，也不新建 HTTP 路由。**JSON Schema 只能检查形状，必须同时调用相应 `validateOcr*V2` 校验器**，不能仅凭 `Value.Check` / AJV 接受完整覆盖或 checkpoint。
 
@@ -61,7 +65,7 @@ npm run check:ocr-v2 -w @bondbuddy/contracts
 npm run check:contracts
 ```
 
-后续在 #15/#35 限定复核契约后，分别接入 Python v2 协议和有界渲染、worker 租约/单页 checkpoint/恢复与成本事件、私有 Blob 读回与原子数据库/outbox、API 聚合/校正版本和下游事实/profile 消费。迁移只能新增，现存 v1 snapshot 不原地改写、不自动转换为 v2 成功页；本 PR 无迁移、无运行时/部署改动。Tesseract/chi_sim 部署、真实 74/70 页性能与财务金标准、Windows/Word 和专业验收仍未完成，不关闭 #14。
+Python v2 协议、有界渲染及独立内部 worker/API 持久页路径已接入；后续需把这些内部页接入现有 #17 常驻调度及公开核对/校正版本与下游事实/profile 消费。现存 v1 snapshot 不原地改写、不自动转换为 v2 成功页；本次只新增独立 0080 迁移，不改既有部署镜像。Tesseract/chi_sim 部署、真实 74/70 页性能与财务金标准、Windows/Word 和专业验收仍未完成，不关闭 #14。
 
 ## 运行边界
 

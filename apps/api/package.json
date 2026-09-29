@@ -36,6 +36,10 @@
       "types": "./dist/ocr.d.ts",
       "default": "./dist/ocr.js"
     },
+    "./ocr-v2": {
+      "types": "./dist/ocr-v2.d.ts",
+      "default": "./dist/ocr-v2.js"
+    },
     "./log-ops": {
       "types": "./dist/log-ops.d.ts",
       "default": "./dist/log-ops.js"

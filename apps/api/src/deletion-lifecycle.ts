@@ -73,6 +73,13 @@ async function purgeOcrObjects(pool: Pool, blobs: PrivateBlobs, t: { owner_user_
       await blobs.delete(snapshot.result_key); deleted++;
     }
   }
+  const v2 = await pool.query(`SELECT checkpoint_key,image_key FROM bb_ocr_v2_pages WHERE owner_user_id=$1
+    AND project_id=$2 AND material_id=$3 AND material_version=$4`,
+    [t.owner_user_id, t.project_id, t.material_id, t.material_version]);
+  for (const page of v2.rows) {
+    await blobs.delete(page.image_key); deleted++;
+    await blobs.delete(page.checkpoint_key); deleted++;
+  }
   return deleted;
 }
 

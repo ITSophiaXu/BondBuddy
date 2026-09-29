@@ -13,12 +13,17 @@ try:
     if isinstance(request, dict) and request.get("schema_version") == "ocr-invocation-v2":
         from .v2 import process_v2
         result = process_v2(request)
+    elif isinstance(request, dict) and request.get("schema_version") == "ocr-identity-probe-v2":
+        if len(raw) > 65536:
+            raise ValueError("identity probe input limit")
+        from .v2 import probe_v2_identity
+        result = probe_v2_identity(request)
     else:
         if len(raw) > 65536:
             raise ValueError("v1 input limit")
         result = process(request)
 except Exception:
-    if isinstance(request, dict) and request.get("schema_version") == "ocr-invocation-v2":
+    if isinstance(request, dict) and request.get("schema_version") in {"ocr-invocation-v2", "ocr-identity-probe-v2"}:
         result = {"schema_version": "ocr-invocation-response-v2", "error": "INVALID_OCR_INVOCATION",
                   "response": None, "checkpoints": []}
     else:

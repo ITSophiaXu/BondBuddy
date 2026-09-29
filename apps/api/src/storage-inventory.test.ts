@@ -13,6 +13,8 @@ test('inventory keys accept only known private object layouts', () => {
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/uploads/u1`), 'upload');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/provider-results/c1-${sha}.json`), 'provider_result');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr/results/${sha}.json`), 'ocr_result');
+  assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr-v2/material/1/${sha}/${sha}.json`), 'ocr_v2_checkpoint');
+  assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr-v2/material/1/${sha}/${sha}.png`), 'ocr_v2_page');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr/m1/1/${sha}.png`), 'ocr_page');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr/m1/2147483648/${sha}.png`), 'unrecognized');
   assert.equal(parseInventoryKey(`users/${owner}/runs/r1/artifacts/a1/v1.docx`), 'artifact');

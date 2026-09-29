@@ -5,7 +5,7 @@ import { azureBlobs, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
 
 export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/'] as const;
-export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'unrecognized';
+export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'unrecognized';
 export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'post_0042_unregistered' | 'snapshot_provenance_unknown' | 'unrecognized';
 type Item = { key: string; bytes: number; lastModified?: Date; etag: string };
 type Db = Pool | PoolClient;
@@ -19,6 +19,8 @@ const patterns: [InventoryKind, RegExp][] = [
   ['provider_result', new RegExp(`^users/${id}/projects/${id}/provider-results/${id}-${hex}\\.json$`)],
   ['ocr_result', new RegExp(`^users/${id}/projects/${id}/ocr/results/${hex}\\.json$`)],
   ['ocr_page', new RegExp(`^users/${id}/projects/${id}/ocr/${id}/[1-9][0-9]{0,8}/${hex}\\.png$`)],
+  ['ocr_v2_checkpoint', new RegExp(`^users/${id}/projects/${id}/ocr-v2/${id}/[1-9][0-9]{0,8}/${hex}/${hex}\\.json$`)],
+  ['ocr_v2_page', new RegExp(`^users/${id}/projects/${id}/ocr-v2/${id}/[1-9][0-9]{0,8}/${hex}/${hex}\\.png$`)],
   ['artifact', new RegExp(`^users/${id}/runs/${id}/artifacts/${id}/v[1-9][0-9]*\\.docx$`)],
   ['parse_cache', new RegExp(`^parse-cache/${hex}/${uuid}$`)],
   ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)]
@@ -41,6 +43,8 @@ async function classify(db: Db, kind: InventoryKind, key: string): Promise<Inven
     ocr_page: `SELECT 1 FROM bb_ocr_snapshots WHERE owner_user_id=split_part($1,'/',2)
       AND project_id=split_part($1,'/',4) AND material_id=split_part($1,'/',6)
       AND material_version=split_part($1,'/',7)::integer`,
+    ocr_v2_checkpoint: 'SELECT 1 FROM bb_ocr_v2_pages WHERE checkpoint_key=$1',
+    ocr_v2_page: 'SELECT 1 FROM bb_ocr_v2_pages WHERE image_key=$1',
     artifact: 'SELECT 1 FROM bb_artifact_versions WHERE object_key=$1',
     parse_cache: 'SELECT 1 FROM bb_parse_cache WHERE object_key=$1',
     log_archive: `SELECT 1 FROM bb_log_archive_receipts r LEFT JOIN bb_log_archive_lifecycle l ON l.segment_id=r.segment_id

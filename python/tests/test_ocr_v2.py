@@ -79,6 +79,32 @@ class OcrV2ProtocolTests(unittest.TestCase):
         self.assertEqual(identity_sha, "cd398e2d3beff04865b96bcc745b5b84fa65d737b4e6cb6b329c2d48d172dcef")
         self.assertEqual(result_sha, "bcd7f2a9effa77879889b56cc47968c36fba832b5a0b1ec63783525ab6dfa7f9")
 
+    def test_runtime_probe_pins_real_page_count_and_configuration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "synthetic.pdf"
+            writer = PdfWriter()
+            for _ in range(2):
+                writer.add_blank_page(width=100, height=100)
+            with path.open("wb") as target:
+                writer.write(target)
+            material = {"material_id": "synthetic-material", "material_version": 1,
+                        "media_type": "application/pdf", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            probe = {"schema_version": "ocr-identity-probe-v2", "material_path": str(path),
+                     "owner_user_id": "synthetic-owner", "project_id": "synthetic-project",
+                     "material": material, "language": "eng"}
+            with patch.object(v2, "_tesseract_runtime", return_value=("synthetic-tesseract", {"eng": "a" * 64})):
+                document = v2.probe_v2_identity(probe)["document"]
+                self.assertEqual(document["page_count"], 2)
+                self.assertEqual(document["material"], material)
+                self.assertEqual(document["processor_version"], v2.PROCESSOR_VERSION)
+                self.assertEqual(len(document["rendering"]["parameters_sha256"]), 64)
+                altered = {**probe, "material": {**material, "sha256": "f" * 64}}
+                with self.assertRaisesRegex(v2.V2Failure, "OCR_SOURCE_HASH_MISMATCH"):
+                    v2.probe_v2_identity(altered)
+                altered = {**probe, "material": {**material, "material_version": 0}}
+                with self.assertRaisesRegex(v2.V2Failure, "INVALID_OCR_INVOCATION"):
+                    v2.probe_v2_identity(altered)
+
     def test_numeric_zero_blank_dash_negative_decimal_and_units(self):
         vectors = {
             "0": ("number", "0", None), "": ("blank", None, None),
