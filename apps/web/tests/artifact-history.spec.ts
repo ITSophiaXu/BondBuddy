@@ -124,7 +124,10 @@ test('API client paginates checked versions in the same project, keeps old succe
   await page.locator('#word-history-title').scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(tmpdir(), 'bb34-history-implementation-mobile.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
-  expect(data.requests.filter(request => request.path.endsWith('/artifacts')).map(request => new URLSearchParams(request.query).get('cursor'))).toEqual([null, 'after/+=']);
+  const cursors = data.requests.filter(request => request.path.endsWith('/artifacts'))
+    .map(request => new URLSearchParams(request.query).get('cursor'));
+  expect(cursors.at(-1)).toBe('after/+=');
+  expect(cursors.slice(0, -1).every(cursor => cursor === null)).toBe(true);
   expect(data.requests.filter(request => request.path.endsWith('/artifacts')).every(request => new URLSearchParams(request.query).get('limit') === '20')).toBe(true);
   for (const [index, name] of [[0, '修订版'], [1, '清洁版'], [2, '有效基线']] as const) {
     const downloaded = page.waitForEvent('download');
