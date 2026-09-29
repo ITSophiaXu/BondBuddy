@@ -56,14 +56,16 @@ function checkServices() {
   }
   const api = snapshot(ids.api), ops = snapshot(ids.ops), worker = snapshot(ids.worker);
   const value = (container, key) => container.Config.Env.find(item => item.startsWith(`${key}=`))?.slice(key.length + 1);
-  if (!value(ops, 'BB_LOG_SINK_FILE') || value(ops, 'BB_OPS_LOG_FORWARD') === 'off') throw new Error('Deployed log forwarder is disabled');
+  if (!value(ops, 'BB_LOG_SINK_FILE') || ['0', 'false', 'off', 'no'].includes((value(ops, 'BB_OPS_LOG_FORWARD') ?? '').toLowerCase()))
+    throw new Error('Deployed log forwarder is disabled');
   if (!value(api, 'AZURE_STORAGE_CONNECTION_STRING') || !value(worker, 'AZURE_STORAGE_CONNECTION_STRING')) throw new Error('Blob configuration missing');
   if (value(api, 'BB_ALLOWED_ORIGIN') !== required('BB_DRILL_ORIGIN')) throw new Error('API origin mismatch');
   const migrations = rows('SELECT filename FROM bb_schema_migrations ORDER BY filename').map(row => row[0]);
   const requiredMigrations = ['0021_m1_log_operations.sql', '0028_m1_ops_scheduler.sql', '0074_m1_storage_inventory.sql'];
   for (const filename of requiredMigrations) if (!migrations.includes(filename)) throw new Error(`Migration missing: ${filename}`);
   const gate = rows('SELECT state,seq FROM bb_evidence_gate_events ORDER BY seq DESC LIMIT 1')[0] ?? ['open', '0'];
-  return { image_sha: expectedSha, migrations: migrations.length, latest_migration: migrations.at(-1), gate_state: gate[0], gate_seq: Number(gate[1]), service_ids: ids };
+  return { image_sha: expectedSha, migrations: migrations.length, latest_migration: migrations.at(-1), gate_state: gate[0],
+    gate_seq: Number(gate[1]), staging_directories: stagingNames().length, service_ids: ids };
 }
 
 function guard(state, phase) {
@@ -103,6 +105,32 @@ function sinkKeyCounts(keys) {
       if(!line) continue; const key=JSON.parse(line).delivery_key; if(keys.has(key)) counts[key]++; }
     console.log(JSON.stringify(counts));`;
   return JSON.parse(docker('exec', ids.ops, 'node', '-e', script, JSON.stringify(keys)));
+}
+function stagingNames() {
+  const script = `const fs=require('node:fs'); const root=process.env.BB_PARSE_STAGING_DIR;
+    if(!root) throw Error('staging root missing');
+    console.log(JSON.stringify(fs.readdirSync(root).filter(name=>/^bb-material-[A-Za-z0-9]{6}$/.test(name)).sort()));`;
+  return JSON.parse(docker('exec', ids.worker, 'node', '-e', script));
+}
+function cleanupStaging(state, record) {
+  if (state.d2_staging_cleaned || !state.d2_staging_before) return;
+  const jobId = state.job_ids[0];
+  if (!jobId || !['succeeded', 'failed', 'cancelled'].includes(jobSnapshot(jobId).state)) throw new Error('D2 job is not terminal; staging cleanup deferred');
+  guard(state, 'd2_staging_cleanup_guard');
+  const before = stagingNames();
+  if (state.d2_staging_before.length !== 0 || before.length > 1 ||
+      (before.length === 1 && before[0] !== state.d2_staging_name)) throw new Error('Unexpected staging directory; scoped cleanup refused');
+  if (before.length === 1) {
+    const script = `import {sweepParseStaging} from './apps/worker/dist/parse-staging.js';
+      const result=await sweepParseStaging(process.env.BB_PARSE_STAGING_DIR,Date.now()+31*60*1000);
+      console.log(JSON.stringify({removed:result.removed}));`;
+    const result = JSON.parse(docker('exec', '-w', '/app', ids.worker, 'node', '--input-type=module', '-e', script));
+    if (result.removed !== 1) throw new Error('Scoped staging sweep did not remove one directory');
+  }
+  const after = stagingNames();
+  if (after.length !== 0) throw new Error('Scoped staging cleanup left managed directories');
+  state.d2_staging_cleaned = true; save(state);
+  record('d2_staging_cleanup', { before: before.length, after: after.length, removed: before.length, job_id: jobId });
 }
 async function waitJobLogs(jobId) {
   return until(() => { const current = jobSnapshot(jobId); return current.log_outbox_ids.length > 0 &&
@@ -204,6 +232,9 @@ if (mode === 'recover') {
   if (state.expected_sha !== expectedSha || JSON.stringify(state.ids) !== JSON.stringify(ids)) throw new Error('State service IDs or commit differ');
   const errors = restore(state);
   emit('recover', { service_ids: ids, trigger_removed: !state.trigger_name, errors });
+  if (!errors.length && state.d2_staging_before) {
+    try { cleanupStaging(state, emit); } catch { emit('recover_staging', { status: 'pending', job_id: state.job_ids[0] }); process.exitCode = 1; }
+  }
   if (!errors.length && !await cleanupSynthetic(state, emit)) process.exitCode = 1;
   if (errors.length) process.exitCode = 1;
 } else {
@@ -221,6 +252,7 @@ if (mode === 'recover') {
     const state = { expected_sha: expectedSha, ids, username: `synthetic79_${randomBytes(6).toString('hex')}`,
       password: randomBytes(24).toString('base64url'), user_id: null, project_id: null, upload_ids: [], material_ids: [], job_ids: [],
       ops_paused: false, worker_paused: false, worker_killed: false, trigger_name: null, trigger_table: null,
+      d2_staging_before: null, d2_staging_name: null, d2_staging_cleaned: false,
       original_gate: preflight.gate_state, original_gate_seq: preflight.gate_seq };
     save(state);
     activeState = state; activeRecords = records;
@@ -248,7 +280,11 @@ if (mode === 'recover') {
       record('d1_replay', { user_id: state.user_id, receipts: replay.receipt_ids.length, unique_delivery_keys: new Set(replay.delivery_keys).size });
 
       // D2: queue via real upload while the named deployed worker is briefly paused.
-      guard(state, 'd2_guard'); pause('worker', state);
+      guard(state, 'd2_guard');
+      state.d2_staging_before = stagingNames(); save(state);
+      record('d2_staging_preflight', { managed_directories: state.d2_staging_before.length });
+      if (state.d2_staging_before.length !== 0) throw new Error('D2 staging is not empty; wait for normal stale sweep');
+      pause('worker', state);
       const d2Id = await upload(state, 'synthetic79_crash', 4096);
       record('d2_before', jobSnapshot(d2Id));
       const d2Trigger = `bb_drill79_${randomBytes(6).toString('hex')}`;
@@ -259,7 +295,11 @@ if (mode === 'recover') {
         CREATE TRIGGER ${d2Trigger} BEFORE INSERT ON bb_parse_snapshots FOR EACH ROW EXECUTE FUNCTION ${d2Trigger}()`);
       record('d2_trigger_armed', { trigger_name: d2Trigger, material_id: state.material_ids.at(-1) });
       guard(state, 'd2_fault_guard'); unpause('worker', state);
-      await until(() => jobSnapshot(d2Id).state === 'running', 30000, 'D2 claim');
+      const d2Staging = await until(() => {
+        if (jobSnapshot(d2Id).state !== 'running') return null;
+        const names = stagingNames(); return names.length === 1 ? names : null;
+      }, 30000, 'D2 claim and staging');
+      state.d2_staging_name = d2Staging[0]; save(state);
       guard(state, 'd2_kill_guard');
       if (compose('ps', '-q', 'worker') !== ids.worker) throw new Error('Worker changed before fault');
       state.worker_killed = true; save(state); docker('kill', '-s', 'KILL', ids.worker);
@@ -269,6 +309,7 @@ if (mode === 'recover') {
       if (restarted.length) throw new Error('D2 worker restoration failed');
       const d2Done = await until(() => { const current = jobSnapshot(d2Id); return ['succeeded', 'failed', 'cancelled'].includes(current.state) ? current : null; }, 180000, 'D2 lease recovery');
       record('d2_after', d2Done);
+      cleanupStaging(state, record);
       if (d2Done.state !== 'succeeded' || d2Done.attempts < 2 || d2Done.terminal_count !== 1) throw new Error('D2 recovery invariant failed');
       const d2Logs = await waitJobLogs(d2Id);
       if (Object.values(sinkKeyCounts(d2Logs.delivery_keys)).some(count => count !== 1)) throw new Error('D2 sink key reconciliation failed');
