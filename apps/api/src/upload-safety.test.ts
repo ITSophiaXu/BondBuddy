@@ -474,9 +474,7 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
 });
 
 test('PDF upload rejects populated signature, blank signature, and non-Sig Widgets', async () => {
-  // Keep the Sig-only negative case fail-closed until Felix's independent #8 security decision
-  // defines and reviews a restricted acceptance policy. /Contents is a synthetic placeholder,
-  // not CMS data; this fixture does not claim signature validity or verify signing semantics.
+  // The placeholder /Contents is not CMS data and makes no validity claim.
   const populatedSigOnly = pdfWidgetSample({ fieldType: 'Sig', populated: true });
   const blankSig = pdfWidgetSample({ fieldType: 'Sig', populated: false });
   const populatedTextWidget = pdfWidgetSample({ fieldType: 'Tx', populated: true });
@@ -516,6 +514,32 @@ test('PDF upload rejects populated signature, blank signature, and non-Sig Widge
   }
   assert.match(populatedSigOnly.toString('ascii'), /\/V << \/Type \/Sig /,
     'the populated Sig fixture has a value dictionary, without claiming its CMS validity');
+});
+
+test('signed PDF risk controls remain fail-closed on both inspection paths', async () => {
+  const sig = (contents: string, range = '[0 0000000000 0000000000 0000000000]') =>
+    `<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange ${range} /Contents ${contents} >>`;
+  const cases: Array<[string, Buffer]> = [
+    ['empty signature value', pdfWidgetSample({ signatureValue: 'null' })],
+    ['missing byte range', pdfWidgetSample({ signatureValue: '<< /Type /Sig /Contents <01> >>' })],
+    ['overlapping byte range', pdfWidgetSample({ signatureValue: sig('<01>', '[0 10 9 10]') })],
+    ['out-of-bounds byte range', pdfWidgetSample({ signatureValue: sig('<01>', '[0 10 9999999999 10]') })],
+    ['empty contents', pdfWidgetSample({ signatureValue: sig('<>') })],
+    ['non-hex contents', pdfWidgetSample({ signatureValue: sig('<GG>') })],
+    ['incremental revision after signature', pdfWidgetSample({ appendRevision: true })],
+    ['choice widget', pdfWidgetSample({ fieldType: 'Ch' })],
+    ['button widget', pdfWidgetSample({ fieldType: 'Btn' })],
+    ['document JavaScript action', pdfWidgetSample({ catalogExtra: '/OpenAction << /S /JavaScript /JS (app.alert\(1\)) >>' })],
+    ['annotation additional action', pdfWidgetSample({ widgetExtra: '/AA << /U << /S /JavaScript /JS (app.alert\(1\)) >> >>' })],
+    ['XFA', pdfWidgetSample({ catalogExtra: '/XFA (synthetic)' })],
+    ['embedded files', pdfWidgetSample({ catalogExtra: '/Names << /EmbeddedFiles << /Names [] >> >>' })],
+    ['RichMedia', pdfWidgetSample({ widgetExtra: '/RichMedia << >>' })],
+    ['external action', pdfWidgetSample({ pageExtra: '/AA << /O << /S /URI /URI (https://example.invalid) >> >>' })]
+  ];
+  for (const [name, bytes] of cases) {
+    await expectInspectionFailure(bytes, PDF, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+    assert.ok(bytes.length < 10_000, `${name} is a small synthetic control`);
+  }
 });
 
 test('inspection infrastructure and size rejections expose fixed internal reasons', async () => {
@@ -605,6 +629,26 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
     assert.equal(rejection.rows[0].event.error.error_id, rejectedPut.json().correlation_id);
     const blobKey = `users/${ownerId}/projects/${projectId}/uploads/${rejectedStart.json().upload_id}`;
     assert.equal(await blobs.getIfExists(blobKey), null, 'rejected bytes never reach private Blob storage');
+
+    for (const [name, bytes] of [
+      ['blank signature', pdfWidgetSample({ populated: false })],
+      ['additional revision', pdfWidgetSample({ appendRevision: true })],
+      ['active widget', pdfWidgetSample({ widgetExtra: '/AA << /U << /S /JavaScript /JS (synthetic) >> >>' })]
+    ] as const) {
+      const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
+        filename: 'synthetic-signed.pdf', media_type: PDF, byte_size: bytes.length, sha256: digest(bytes), role: 'audit'
+      });
+      assert.equal(start.statusCode, 201, `${name}: ${start.body}`);
+      const put = await send('PUT', start.json().upload_url, bytes, 'application/octet-stream');
+      assert.equal(put.statusCode, 415, `${name}: ${put.body}`);
+      assert.equal(put.json().code, 'MATERIAL_FORMAT_UNSUPPORTED');
+      const uploadKey = `users/${ownerId}/projects/${projectId}/uploads/${start.json().upload_id}`;
+      assert.equal(await blobs.getIfExists(uploadKey), null, `${name}: no private Blob bytes`);
+      const persisted = await pool.query('SELECT count(*)::int AS count FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2', [ownerId, start.json().upload_id]);
+      assert.equal(persisted.rows[0].count, 0, `${name}: no material version`);
+      const parseJobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND job_type='parse'", [ownerId, projectId]);
+      assert.equal(parseJobs.rows[0].count, 1, `${name}: only the earlier accepted PDF has a parse job`);
+    }
 
     ownerId = `upload-other-${randomUUID()}`;
     assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${complete.json().material_id}`)).statusCode, 404);

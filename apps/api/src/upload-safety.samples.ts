@@ -84,20 +84,25 @@ export function pdfSample(options: { encrypted?: boolean; javascript?: boolean; 
  * The placeholder /Contents bytes are not CMS data and make no signature-validity claim.
  */
 export function pdfWidgetSample(options: {
-  fieldType?: 'Sig' | 'Tx';
+  fieldType?: 'Sig' | 'Tx' | 'Ch' | 'Btn';
   populated?: boolean;
+  signatureValue?: string;
+  catalogExtra?: string;
+  pageExtra?: string;
+  widgetExtra?: string;
+  appendRevision?: boolean;
 } = {}): Buffer {
   const fieldType = options.fieldType ?? 'Sig';
   const populated = options.populated ?? true;
   const fieldValue = fieldType === 'Sig' && populated
-    ? ' /V << /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0000000000 0000000000 0000000000] /Contents <01> >>'
+    ? ` /V ${options.signatureValue ?? '<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0000000000 0000000000 0000000000] /Contents <01> >>'}`
     : fieldType === 'Tx' && populated ? ' /V (Synthetic text)' : '';
   const objects = [
-    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R] /SigFlags 3 >> >>\nendobj\n',
+    `1 0 obj\n<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R] /SigFlags 3 >> ${options.catalogExtra ?? ''} >>\nendobj\n`,
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> /Contents 4 0 R /Annots [5 0 R] >>\nendobj\n',
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> /Contents 4 0 R /Annots [5 0 R] ${options.pageExtra ?? ''} >>\nendobj\n`,
     '4 0 obj\n<< /Length 0 >>\nstream\n\nendstream\nendobj\n',
-    `5 0 obj\n<< /Type /Annot /Subtype /Widget /FT /${fieldType} /T (syntheticField) /Rect [0 0 1 1] /P 3 0 R /F 4${fieldValue} /AP << /N 6 0 R >> >>\nendobj\n`,
+    `5 0 obj\n<< /Type /Annot /Subtype /Widget /FT /${fieldType} /T (syntheticField) /Rect [0 0 1 1] /P 3 0 R /F 4${fieldValue} /AP << /N 6 0 R >> ${options.widgetExtra ?? ''} >>\nendobj\n`,
     '6 0 obj\n<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >> /Length 0 >>\nstream\n\nendstream\nendobj\n'
   ];
 
@@ -113,10 +118,16 @@ export function pdfWidgetSample(options: {
   document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
   if (fieldType === 'Sig' && populated) {
     const contentsStart = document.indexOf('<01>');
-    const contentsEnd = contentsStart + '<01>'.length;
-    const byteRange = [0, contentsStart, contentsEnd, document.length - contentsEnd]
-      .map(value => String(value).padStart(10, '0'));
-    document = document.replace('0000000000 0000000000 0000000000', byteRange.slice(1).join(' '));
+    if (contentsStart >= 0) {
+      const contentsEnd = contentsStart + '<01>'.length;
+      const byteRange = [0, contentsStart, contentsEnd, document.length - contentsEnd]
+        .map(value => String(value).padStart(10, '0'));
+      document = document.replace('0000000000 0000000000 0000000000', byteRange.slice(1).join(' '));
+    }
+  }
+  if (options.appendRevision) {
+    const revisionOffset = Buffer.byteLength(document, 'ascii');
+    document += `xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Prev ${xrefOffset} >>\nstartxref\n${revisionOffset}\n%%EOF\n`;
   }
   return Buffer.from(document, 'ascii');
 }
