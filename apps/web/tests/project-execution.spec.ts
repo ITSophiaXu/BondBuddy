@@ -25,6 +25,7 @@ function fixture() {
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    parseSucceeded: false,
     runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
     runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
     eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
@@ -53,7 +54,15 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     }
     if (path === `/projects/${id}/events`) return json(route, 200, { items: state.materials.map((m, i) => ({ event_id: `event-${i}`, schema_version: 1, project_id: id, trace_id: 'trace', seq: i + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: m.material_id } })), next_cursor: null });
     if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
-    if (path.endsWith('/parse-job')) return json(route, 404, { code: 'NOT_FOUND' });
+    if (path.endsWith('/parse-job')) {
+      const material = state.materials.find(m => m.material_id === path.split('/').at(-2));
+      if (!state.parseSucceeded || !material) return json(route, 404, { code: 'NOT_FOUND' });
+      return json(route, 200, { job_id: `job-${material.material_id}`, job_type: 'parse', subtype: 'material_parse', project_id: id,
+        material_id: material.material_id, material_version: material.material_version, material_sha256: material.sha256,
+        parser_version: 'synthetic-v1', state: 'succeeded', stage: 'succeeded', completed_stages: ['parse_evidence'],
+        attempts: 1, max_attempts: 3, error_code: null, outcome: 'needs_confirmation', parse_status: 'needs_confirmation',
+        profile_version: material.role === 'historical' ? 1 : null, pending_capabilities: [], updated_at: now });
+    }
     const material = state.materials.find(m => path === `/projects/${id}/materials/${m.material_id}`);
     if (material) return json(route, 200, material);
     if (path === `/projects/${id}/input-revisions` && method === 'POST') {
@@ -141,7 +150,7 @@ test('ready input saves, preflights and executes through one explicit action', a
 });
 
 test('blocked preflight keeps backend gates and does not turn five diagnostics into user tasks or runs', async ({ page }) => {
-  const state=fixture(); state.blockers=['rule_pack:rule_applicability_overall_review_required',
+  const state=fixture(); state.parseSucceeded=true; state.blockers=['rule_pack:rule_applicability_overall_review_required',
     'issuer_identity_not_bound:issuer_identity_source_missing_unreviewed_or_conflicting',
     'material_needs_confirmation:synthetic-audit:1','source_profile_missing:synthetic-history:1','update_difficulty_pending:target_confirmation_required'];
   await setup(page,state); await prepare(page);
@@ -229,7 +238,7 @@ test('current historical choice excludes reference-only materials without a seco
 });
 
 test('paginated recovery and real task actions keep one run', async ({ page }) => {
-  const state=fixture(); state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
+  const state=fixture(); state.parseSucceeded=true; state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   state.paginate=true; state.eventPages=[]; state.listPages=[]; await page.reload();
   await expect(page.locator('#execution-progress')).toContainText('适用规则的处理条件尚未就绪');
