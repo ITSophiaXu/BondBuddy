@@ -1,0 +1,23 @@
+{
+  "issue": 420,
+  "base_commit": "0b2f1bc936cfa3d9185945e38982a6653b27e687",
+  "source_sha256": {
+    "upload_safety_test": "f66682d6f5e8ff43d9f978fd1ab62148f27e793499241edced9b0d0f1384aac2",
+    "api_server": "220bc0c2ce693e5a0235a846335921313c87f8792106d1adb527e5b318ae07dc",
+    "migration_0076": "d4f01a07bad5759226ebd08245fe54085ab834f592d05f8ec8a7ef85981dbcb8"
+  },
+  "verification": [
+    { "command": "npm run build", "result": "pass" },
+    { "command": "npm run check:contracts", "result": "pass", "synthetic_examples": 147 },
+    { "command": "node db/migrate.mjs (empty PostgreSQL 16 database)", "result": "pass", "migration_count": 76 },
+    { "command": "node db/migrate.mjs (PostgreSQL 16 through 0075, then 0076)", "result": "pass", "before": 75, "after": 76 },
+    { "command": "node --test --test-concurrency=2 apps/api/dist/upload-safety.test.js (PostgreSQL 16, Azurite 3.35 --skipApiVersionCheck)", "result": "pass", "tests": 26, "passed": 26, "failed": 0, "skipped": 0 },
+    { "command": "git diff origin/develop --check", "result": "pass" }
+  ],
+  "covered_seams": [
+    "restricted filled-Sig PDF upload, byte preservation, material and parse job persistence, owner-scoped unverified assessment",
+    "rejected PDF variants leave no Blob, material version or parse job",
+    "scoped preproduction XLSX exception accepts the exact SHA and rejects a different SHA before Blob persistence"
+  ],
+  "authorized_qx_sample": "415 MATERIAL_FORMAT_UNSUPPORTED; original bytes unchanged; signature validity not assessed"
+}
