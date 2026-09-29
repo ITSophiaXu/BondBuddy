@@ -4,7 +4,7 @@ import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type Pr
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
-import { referencePin, selectedReference, type ReferenceSnapshotResolver } from './reference';
+import { referencePin, selectedReference, type ReferenceSnapshotResolver, type UserReferenceChoice } from './reference';
 import type { ProjectConversation } from './project-conversation';
 import { date, esc } from './ui';
 import './project-execution.css';
@@ -125,7 +125,6 @@ export class ProjectExecution {
   private materialReady = false;
   private generation = 0;
   private inputRejected = false;
-  private referenceNote = '';
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation, private referenceSnapshots?: ReferenceSnapshotResolver) {}
   private get active() { return !this.controller.signal.aborted; }
@@ -169,30 +168,29 @@ export class ProjectExecution {
     return this.materials.filter(m => m.role === 'historical' ? historical !== false : m.role === 'reference' ? historical !== true : true);
   }
   /**
-   * Pins a user-specified structural reference for a no-history generation project. The parse
-   * snapshot id is owner-visible only through a backend seam, and the selected version is re-checked
-   * against the fresh read first; a version change or a missing snapshot keeps the run unpinned
-   * rather than guessing an id or mixing versions, and the preflight/worker keep the review gate
-   * closed.
+   * Resolves the structural reference for a no-history generation project. The parse snapshot id is
+   * owner-visible only through a backend seam, and the selected version is re-checked against the
+   * fresh read first. When the user *did* select a reference, a version change, a missing snapshot or
+   * a failed read is a hard stop: the caller must not create a reference-less input or run, and tells
+   * the user to refresh saved materials and re-select. A project with no selected reference keeps the
+   * optional path.
    */
-  private async referenceFor(project: Dto<'ProjectResponse'>, selected: readonly Material[]): Promise<Dto<'InputRevisionCreateRequest'>['user_reference']> {
-    this.referenceNote = '';
-    if (project.kind !== 'generation' || this.draft.fields.update_details.has_historical !== false) return undefined;
+  private async referenceFor(project: Dto<'ProjectResponse'>, selected: readonly Material[]): Promise<
+    { status: 'none' } | { status: 'pinned'; choice: UserReferenceChoice } | { status: 'blocked'; message: string }> {
+    if (project.kind !== 'generation' || this.draft.fields.update_details.has_historical !== false) return { status: 'none' };
     const reference = selectedReference(selected, this.draft.fields.update_details.has_historical);
-    if (!reference) return undefined;
+    if (!reference) return { status: 'none' };
     if (!project.market || !project.offering) {
-      this.referenceNote = '用户指定参考稿暂无法核对目标市场与发行方式，本次先按未指定参考提交。';
-      return undefined;
+      return { status: 'blocked', message: '用户指定参考稿的目标市场与发行方式尚未保存，请刷新项目信息并重新选择参考稿后再开始更新。' };
     }
+    let fresh: Material;
     try {
-      const fresh = this.referenceSnapshots ? await this.referenceSnapshots(this.id, reference) : reference;
-      const resolved = referencePin(reference, fresh, project.offering);
-      if ('note' in resolved) { this.referenceNote = resolved.note; return undefined; }
-      return resolved.choice;
+      fresh = this.referenceSnapshots ? await this.referenceSnapshots(this.id, reference) : reference;
     } catch {
-      this.referenceNote = '用户指定参考稿信息暂时无法读取，本次先按未指定参考提交。';
-      return undefined;
+      return { status: 'blocked', message: '用户指定参考稿信息暂时无法读取，请刷新已保存材料并重新选择参考稿后再开始更新。' };
     }
+    const resolved = referencePin(reference, fresh, project.offering);
+    return 'note' in resolved ? { status: 'blocked', message: resolved.note } : { status: 'pinned', choice: resolved.choice };
   }
   private startBlockReason(): string {
     if (this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state)) return '已有任务正在处理，请查看上方进度。';
@@ -238,7 +236,7 @@ export class ProjectExecution {
     this.button('execute-input').disabled = Boolean(blocked);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.nextRequested ? '生成新版' : '开始更新';
     this.node('#start-disabled-reason').textContent = blocked;
-    this.node('#execution-message').textContent = [this.message, this.referenceNote].filter(Boolean).join(' ');
+    this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
     this.button('refresh-execution').hidden = !this.inputReadUncertain && !this.run && !this.progressMessage;
     this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain || !this.conversation.ready || this.conversation.hasMessages;
@@ -345,13 +343,19 @@ export class ProjectExecution {
       if (beforeMessages !== this.generation) { this.message = '消息列表已变化，请核对最新内容后再次开始。'; return; }
       const generation = this.generation;
       this.selected = false; this.preflight = undefined;
-      const userReference = await this.referenceFor(p, selected);
+      const reference = await this.referenceFor(p, selected);
+      if (reference.status === 'blocked') {
+        // A selected reference that cannot be pinned is a hard stop: never lock or run a
+        // reference-less input the user did not ask for.
+        this.message = reference.message;
+        return;
+      }
       let result: Input;
       try {
         result = await this.api.createInputRevision(this.id, { draft_revision: p.draft_revision,
           material_versions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })),
           requirement_message_ids: messages.message_ids, project_message_set_ref: messages,
-          ...(userReference ? { user_reference: userReference } : {}),
+          ...(reference.status === 'pinned' ? { user_reference: reference.choice } : {}),
           ...(this.input?.credit_facility_supplements?.length ? { credit_facility_supplements: this.input.credit_facility_supplements } : {}),
 
         }, this.controller.signal);

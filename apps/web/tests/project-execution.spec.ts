@@ -247,7 +247,8 @@ test('input error identifies the missing historical draft without blaming saved 
 
 test('reference + audit without historical is not relabeled or reuploaded on INPUT_REQUIRED', async ({ page }) => {
   const state=fixture(); state.project.update_details!.has_historical=false;
-  state.materials[0].role='reference'; state.checkStatus='ready';
+  Object.assign(state.materials[0], { role: 'reference', parse_snapshot_id: 'synthetic-snapshot' });
+  state.checkStatus='ready';
   state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-required'};
   await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('当前新稿入口未能处理');
@@ -308,7 +309,7 @@ test('no-history project routes to the generation task kind and pins a user-spec
   await expect(page.locator('#execution-message')).not.toContainText('解析快照');
 });
 
-test('a reference without an available parse snapshot is not pinned and is surfaced honestly', async ({ page }) => {
+test('a selected reference without an available parse snapshot stops before creating an input or run', async ({ page }) => {
   const state=fixture();
   state.project.kind='generation';
   state.project.update_details={...state.project.update_details!,has_historical:false};
@@ -316,9 +317,33 @@ test('a reference without an available parse snapshot is not pinned and is surfa
   state.checkStatus='ready';
   await setup(page,state);
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  expect(state.inputs[0]).not.toHaveProperty('user_reference');
   await expect(page.locator('#execution-message')).toContainText('解析快照尚未就绪');
+  expect(state.inputs).toHaveLength(0);
+  expect(state.preflights).toHaveLength(0);
+  expect(state.executes).toHaveLength(0);
+  await expect(page.locator('#run-panel')).toBeHidden();
+});
+
+test('list v1 -> GET v2 before start stops without creating an input or run', async ({ page }) => {
+  const state=fixture();
+  state.project.kind='generation';
+  state.project.update_details={...state.project.update_details!,has_historical:false};
+  const reference={...state.materials[0],material_id:'synthetic-reference',role:'reference' as const,filename:'reference.docx',parse_snapshot_id:'synthetic-snapshot-v1'};
+  state.materials=[reference as Dto<'MaterialResponse'>,state.materials[1]];
+  state.checkStatus='ready';
+  await setup(page,state);
+  // The page recovered the list entry as v1; the owner-scoped re-read taken at submission now returns v2.
+  Object.assign(state.materials[0],{material_version:2,sha256:hash('history-v2'),parse_snapshot_id:'synthetic-snapshot-v2'});
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('已更新为新的版本');
+  expect(state.inputs).toHaveLength(0);
+  expect(state.preflights).toHaveLength(0);
+  expect(state.executes).toHaveLength(0);
+  await expect(page.locator('#run-panel')).toBeHidden();
+  expect(state.runs.size).toBe(0);
+  // The page stays on the project and the action remains available for a refreshed re-selection.
+  await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
+  await expect(page.getByRole('heading',{name:'合成任务项目',exact:true})).toBeVisible();
 });
 
 test('paginated recovery and real task actions keep one run', async ({ page }) => {

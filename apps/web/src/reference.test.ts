@@ -58,7 +58,7 @@ test('a re-read only counts when id, version and hash are unchanged', () => {
 test('list v1 -> GET v2 is a safe stop: no mixed pin is submitted', () => {
   const v2: Material = { ...reference, material_version: 3, sha256: 'c'.repeat(64), parse_snapshot_id: 'snapshot-v2' };
   assert.deepEqual(referencePin(reference, v2, 'private'),
-    { note: '用户指定参考稿在提交前已更新为新的版本，本次先按未指定参考提交；请刷新已保存材料并重新选择参考稿后再提交。' });
+    { note: '用户指定参考稿在提交前已更新为新的版本，请刷新已保存材料并重新选择参考稿后再开始更新。' });
 });
 
 test('the same version can be pinned, and a still-unparsed version stays unpinned', () => {
@@ -66,5 +66,5 @@ test('the same version can be pinned, and a still-unparsed version stays unpinne
   assert.deepEqual(referencePin(reference, fresh, 'private'),
     { choice: userReferenceChoice(fresh, 'fresh-snapshot', 'private') });
   assert.deepEqual(referencePin(reference, reference, 'private'),
-    { note: '用户指定参考稿的解析快照尚未就绪，本次先按未指定参考提交。' });
+    { note: '用户指定参考稿的解析快照尚未就绪，请刷新已保存材料并重新选择参考稿后再开始更新。' });
 });
