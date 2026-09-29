@@ -1,21 +1,24 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { documentParserVersion } from '@bondbuddy/api/material-jobs';
-import { runDocumentParser, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
+import { DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES, runDocumentParser, type DocumentParseRequest, type DocumentParseResponse } from './document-parser.js';
 import {
   M1_PARSE_BYTE_LIMITS,
   M1_PARSE_OUTPUT_BUDGET_BYTES,
+  M1_PARSE_STREAM_OUTPUT_BUDGET_BYTES,
   parseAuthorizedMaterial,
+  parseAuthorizedMaterialToStream,
   type MaterialParserDependencies,
   type MaterialParserPool,
 } from './material-parser.js';
+import { classifyMaterialParseError } from './material-parse-job.js';
 import type { ParseCacheDependencies, ParseCacheVersions } from './parse-cache.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -86,7 +89,7 @@ function dependencies(options: {
   onBlob?: (key: string) => void;
   parser?: MaterialParserDependencies['parser'];
   parseCache?: MaterialParserDependencies['parseCache'];
-  tempRoot: string;
+  tempRoot?: string;
 }): MaterialParserDependencies {
   const pool: MaterialParserPool = {
     async query(sql, values) {
@@ -703,4 +706,54 @@ test('migrated PostgreSQL and actual Python reuse content only within the owner 
     client.release();
     await database.end();
   }
+});
+
+// Streams start plus records until the requested per-mode budget trips; the media type is ignored by the fake.
+const streamBudgetGenerator=[
+  '#!/usr/bin/env node',
+  "let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{",
+  'const req=JSON.parse(input);const m=req.material;const mode=process.env.FAKE_MODE||"text-limit";const pad="x".repeat(16000);',
+  'const emit=o=>process.stdout.write(JSON.stringify(o)+"\\n");',
+  'emit({type:"start",schema_version:"document-parse-stream-v1",request_id:req.request_id,parser_version:"bondbuddy-document-parser-1.0.7",material:{material_id:m.material_id,material_version:m.material_version,sha256:m.sha256,media_type:m.media_type},document:{page_count:null,encoding:"utf-8"}});',
+  'const count=mode==="output-limit"?1:1200;',
+  'for(let i=1;i<=count;i++)emit({type:"record",record:{record_id:"evidence-"+String(i).padStart(6,"0"),material_id:m.material_id,material_version:m.material_version,content_hash:m.sha256,locator_type:"text_line",locator:{line:i,stable_ref:"text:l"+String(i).padStart(6,"0")},literal_quote:pad,context:"",extraction_method:"native_text",extractor_version:"bondbuddy-document-parser-1.0.7",confidence:null,uncertainty:[],formatting:{}}});',
+  '});',
+].join('\n');
+
+test('#17 streamed PDF/TXT stdout and text budgets map to terminal MATERIAL_TOO_LARGE', async (t) => {
+  assert.equal(M1_PARSE_STREAM_OUTPUT_BUDGET_BYTES, 256 * 1024 * 1024);
+  assert.equal(DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES, 16 * 1024 * 1024);
+  const root = await temporaryRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bindir = join(root, 'bin');
+  await mkdir(bindir);
+  await writeFile(join(bindir, 'python3'), streamBudgetGenerator, { mode: 0o700 });
+  const saved = {
+    PATH: process.env.PATH, staging: process.env.BB_PARSE_STAGING_DIR,
+    output: process.env.BB_PARSE_STREAM_MAX_OUTPUT_BYTES, mode: process.env.FAKE_MODE,
+  };
+  process.env.PATH = `${bindir}:${saved.PATH ?? ''}`;
+  // No staging root -> a plain temporary directory, so the synthetic failure must be the budget, not staging.
+  delete process.env.BB_PARSE_STAGING_DIR;
+  t.after(() => {
+    if (saved.PATH === undefined) delete process.env.PATH; else process.env.PATH = saved.PATH;
+    if (saved.staging === undefined) delete process.env.BB_PARSE_STAGING_DIR; else process.env.BB_PARSE_STAGING_DIR = saved.staging;
+    if (saved.output === undefined) delete process.env.BB_PARSE_STREAM_MAX_OUTPUT_BYTES; else process.env.BB_PARSE_STREAM_MAX_OUTPUT_BYTES = saved.output;
+    if (saved.mode === undefined) delete process.env.FAKE_MODE; else process.env.FAKE_MODE = saved.mode;
+  });
+
+  process.env.FAKE_MODE = 'text-limit';
+  await assert.rejects(parseAuthorizedMaterialToStream(dependencies({}), { ...input, options: {} }), (error: Error) => {
+    assert.equal(error.message, 'MATERIAL_PARSE_SIZE_LIMIT');
+    assert.deepEqual(classifyMaterialParseError(error), { code: 'MATERIAL_TOO_LARGE', retryable: false, category: 'material_parse' });
+    return true;
+  });
+
+  process.env.FAKE_MODE = 'output-limit';
+  process.env.BB_PARSE_STREAM_MAX_OUTPUT_BYTES = '1024';
+  await assert.rejects(parseAuthorizedMaterialToStream(dependencies({}), { ...input, options: {} }), (error: Error) => {
+    assert.equal(error.message, 'MATERIAL_PARSE_OUTPUT_LIMIT');
+    assert.deepEqual(classifyMaterialParseError(error), { code: 'MATERIAL_TOO_LARGE', retryable: false, category: 'material_parse' });
+    return true;
+  });
 });
