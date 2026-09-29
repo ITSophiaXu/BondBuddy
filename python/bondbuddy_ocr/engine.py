@@ -16,7 +16,7 @@ from PIL import Image, ImageOps
 import pypdfium2 as pdfium
 from pypdf import PdfReader
 
-VERSION = 'bondbuddy-ocr-1.0.0'
+VERSION = 'bondbuddy-ocr-1.0.1'
 MAX_PIXELS = 20_000_000
 MAX_OUTPUT = 48 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
@@ -173,6 +173,18 @@ def _tables(image):
     return result
 
 
+def _cell_crop(image, bbox):
+    if (not isinstance(bbox, (list, tuple)) or len(bbox) != 4
+            or any(type(edge) is not int for edge in bbox)):
+        raise Failure('OCR_INVALID_GEOMETRY')
+    x0, y0, x1, y1 = bbox
+    if not (0 <= x0 < x1 <= image.width and 0 <= y0 < y1 <= image.height):
+        raise Failure('OCR_INVALID_GEOMETRY')
+    x_inset = min(6, (x1 - x0 - 1) // 2)
+    y_inset = min(6, (y1 - y0 - 1) // 2)
+    return image.crop((x0 + x_inset, y0 + y_inset, x1 - x_inset, y1 - y_inset))
+
+
 def extract_page(image, language, directory, page_number, attempt_tracker=None):
     image, rotation, warnings = _orientation(image, directory, attempt_tracker)
     words = _tsv(image, language, directory, page_number, attempt_tracker=attempt_tracker)
@@ -200,9 +212,7 @@ def extract_page(image, language, directory, page_number, attempt_tracker=None):
                     selected.append(word); used.add(i)
             # Page segmentation often drops short headers/zeros beside grid lines.
             # Recognize each ruled cell without its border; preserve the page pixels for review.
-            inset=6
-            crop=image.crop((x0+inset,y0+inset,x1-inset,y1-inset))
-            if crop.width<1 or crop.height<1:raise Failure('OCR_INVALID_GEOMETRY')
+            crop=_cell_crop(image,cell['bbox'])
             ink = np.asarray(crop.convert('L')) < 140
             has_ink = bool(np.any(ink))
             ys, xs = np.where(ink)

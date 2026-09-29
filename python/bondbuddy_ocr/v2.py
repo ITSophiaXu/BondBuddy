@@ -21,7 +21,7 @@ from pypdf import PdfReader
 
 from . import engine as v1
 
-PROCESSOR_VERSION = "bondbuddy-ocr-2.0.0"
+PROCESSOR_VERSION = "bondbuddy-ocr-2.0.1"
 INVOCATION_SCHEMA = "ocr-invocation-v2"
 INVOCATION_RESPONSE_SCHEMA = "ocr-invocation-response-v2"
 MAX_SOURCE_BYTES = 100 * 1024 * 1024
@@ -38,6 +38,7 @@ _ENGINE_CONFIG = {
         "minimum_line_length_px": 40, "relative_line_length_divisor": 30,
         "line_merge_distance_px": 8, "maximum_segments": 1500,
         "maximum_cells_per_table": 2000, "cell_crop_inset_px": 6,
+        "cell_crop_inset_strategy": "per-axis-positive-interior-v1",
         "recognition_padding_px": 16,
     },
     "numeric_parser": "explicit-decimal-unit-v1",

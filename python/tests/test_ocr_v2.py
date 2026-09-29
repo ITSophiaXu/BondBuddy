@@ -257,6 +257,47 @@ class OcrV2ProtocolTests(unittest.TestCase):
         self.assertEqual(response["attempted_pages"], 0)
         self.assertEqual(response["coverage"], "none")
 
+    def test_narrow_cell_checkpoint_and_invalid_cell_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            pdf_path = Path(temporary) / "synthetic.pdf"
+            writer = PdfWriter()
+            writer.add_blank_page(width=100, height=100)
+            with pdf_path.open("wb") as target:
+                writer.write(target)
+            document = _document(pdf_path, 1)
+
+            def run_with_cell(bbox, request_id):
+                cell = {"bbox": bbox, "row": 1, "column": 1, "row_span": 1,
+                        "column_span": 1, "table_id": "table-1"}
+                with patch.object(v2, "_validate_document_runtime", return_value=("synthetic-tesseract", {"eng": "a" * 64})), \
+                        patch.object(engine, "_orientation", side_effect=lambda image, *_args, **_kwargs: (image, 0, [])), \
+                        patch.object(engine, "_tables", return_value=[[cell]]), \
+                        patch.object(engine, "_tsv", return_value=[]):
+                    return v2.process_v2({
+                        "schema_version": v2.INVOCATION_SCHEMA,
+                        "request": _request(document, [1], request_id),
+                        "material_path": str(pdf_path), "reuse_checkpoints": [],
+                    })
+
+            succeeded = run_with_cell([10, 10, 11, 21], "narrow-cell")
+            response = succeeded["response"]
+            self.assertEqual(response["page_results"][0]["status"], "succeeded")
+            self.assertEqual(response["attempted_pages"], 1)
+            self.assertEqual(response["coverage"], "partial")
+            self.assertEqual(len(succeeded["checkpoints"]), 1)
+            checkpoint = succeeded["checkpoints"][0]["checkpoint"]
+            self.assertEqual(checkpoint["result"]["status"], "needs_confirmation")
+            self.assertFalse(checkpoint["result"]["eligible_for_manuscript"])
+            self.assertEqual(checkpoint["result"]["records"][0]["bbox"], [10, 10, 11, 21])
+            self.assertEqual(checkpoint["result"]["records"][0]["numeric"]["kind"], "blank")
+            self.assertFalse(checkpoint["result"]["records"][0]["eligible_for_manuscript"])
+
+            failed = run_with_cell([10, 10, 10, 21], "invalid-cell")["response"]
+            self.assertEqual(failed["page_results"][0]["status"], "failed")
+            self.assertEqual(failed["page_results"][0]["error"], "OCR_INVALID_GEOMETRY")
+            self.assertEqual(failed["attempted_pages"], 0)
+            self.assertEqual(failed["coverage"], "none")
+
 
 if __name__ == "__main__":
     unittest.main()

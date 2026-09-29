@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import io
 import os
@@ -5,10 +6,11 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfWriter
-from bondbuddy_ocr.engine import process, numeric_value, _tables
+from bondbuddy_ocr.engine import Failure, _cell_crop, _tables, extract_page, numeric_value, process
 
 FONT = os.environ.get('BB_OCR_TEST_FONT')
 if not FONT:
@@ -30,6 +32,78 @@ def sample_image():
 
 
 class OcrTests(unittest.TestCase):
+    def test_cell_crop_keeps_narrow_axes_positive_and_pads_larger_cells(self):
+        image = Image.new('RGB', (80, 80))
+        for y in range(image.height):
+            for x in range(image.width):
+                image.putpixel((x, y), (x, y, 0))
+        for width in range(1, 13):
+            for height in range(1, 13):
+                with self.subTest(width=width, height=height):
+                    crop = _cell_crop(image, [10, 20, 10 + width, 20 + height])
+                    x_inset = min(6, (width - 1) // 2)
+                    y_inset = min(6, (height - 1) // 2)
+                    self.assertEqual(crop.size, (width - 2 * x_inset, height - 2 * y_inset))
+                    self.assertGreaterEqual(crop.width, 1)
+                    self.assertGreaterEqual(crop.height, 1)
+                    self.assertEqual(crop.getpixel((0, 0)), (10 + x_inset, 20 + y_inset, 0))
+        crop = _cell_crop(image, [10, 20, 50, 50])
+        self.assertEqual(crop.size, (28, 18))
+        self.assertEqual(crop.getpixel((0, 0)), (16, 26, 0))
+
+    def test_cell_crop_rejects_invalid_original_geometry(self):
+        image = Image.new('RGB', (80, 80), 'white')
+        for bbox in ([10, 20, 10, 40], [10, 20, 40, 20], [40, 20, 10, 40],
+                     [10, 40, 40, 20], [-1, 20, 40, 40], [10, 20, 81, 40],
+                     [10, 20, 40, 81], [10.5, 20, 40, 40], [10, 20, 40]):
+            with self.subTest(bbox=bbox), self.assertRaisesRegex(Failure, '^OCR_INVALID_GEOMETRY$'):
+                _cell_crop(image, bbox)
+
+    def test_narrow_ruled_cells_keep_original_page_and_pending_decisions(self):
+        image = Image.new('RGB', (140, 680), 'white')
+        cells = []
+        sizes = [(width, 20) for width in range(1, 13)] + [(20, height) for height in range(1, 13)]
+        for index, (width, height) in enumerate(sizes):
+            y = 10 + index * 26
+            cells.append({'bbox': [10, y, 10 + width, y + height],
+                          'row': index + 1, 'column': 1, 'row_span': 1, 'column_span': 1,
+                          'table_id': 'table-1'})
+        image.putpixel((10, 20), (0, 0, 0))
+        dash_cell = {'bbox': [50, 10, 100, 40], 'row': 25, 'column': 1,
+                     'row_span': 1, 'column_span': 1, 'table_id': 'table-1'}
+        number_cell = {**dash_cell, 'bbox': [50, 50, 100, 80], 'row': 26}
+        ImageDraw.Draw(image).line((57, 25, 88, 25), fill='black')
+        ImageDraw.Draw(image).rectangle((65, 60, 68, 63), fill='black')
+
+        def tsv(_image, _language, _directory, index, *args, **kwargs):
+            if index == '9-cell-25':
+                return [{'text': '0', 'bbox': [16, 16, 19, 19], 'confidence': .95}]
+            return []
+
+        with tempfile.TemporaryDirectory() as temp, \
+                patch('bondbuddy_ocr.engine._orientation', return_value=(image, 0, [])), \
+                patch('bondbuddy_ocr.engine._tables', return_value=[[*cells, dash_cell, number_cell]]), \
+                patch('bondbuddy_ocr.engine._tsv', side_effect=tsv):
+            page, records = extract_page(image, 'eng', temp, 9)
+
+        self.assertEqual(len(records), 26)
+        self.assertEqual(records[0]['bbox'], [10, 10, 11, 30])
+        self.assertEqual(records[0]['numeric']['kind'], 'unparsed')
+        self.assertIn('unreadable_cell', records[0]['uncertainty'])
+        self.assertTrue(all(record['bbox'] == cell['bbox']
+                            for record, cell in zip(records, [*cells, dash_cell, number_cell])))
+        self.assertTrue(all(not record['eligible_for_manuscript'] and record['uncertainty']
+                            for record in records))
+        self.assertTrue(all(record['numeric']['kind'] == 'blank' for record in records[1:24]))
+        self.assertEqual(records[24]['numeric']['kind'], 'dash')
+        self.assertIn('dash_shape_inferred', records[24]['uncertainty'])
+        self.assertEqual(records[25]['numeric'], {'kind': 'number', 'decimal': '0', 'unit': None})
+        self.assertIn('critical_value_requires_confirmation', records[25]['uncertainty'])
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        self.assertEqual(base64.b64decode(page['image_base64']), buffer.getvalue())
+        self.assertEqual(page['image_sha256'], hashlib.sha256(buffer.getvalue()).hexdigest())
+
     def test_numeric_semantics(self):
         cases={'0':('number','0'),'':('blank',None),'—':('dash',None),'-':('dash',None),'(1,234.50)':('number','-1234.50'),'（0.25）万元':('number','-0.25'),'1.25%':('number','1.25'),'12,34':('unparsed',None),'(1.2':('unparsed',None),'1e3':('unparsed',None)}
         for raw,(kind,decimal) in cases.items():
