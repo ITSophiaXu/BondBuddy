@@ -986,6 +986,40 @@ class DocumentParserTests(unittest.TestCase):
         self.assertEqual(result["records"], [])
         self.assertEqual(result["error"]["code"], "MATERIAL_UNREADABLE")
 
+    def test_password_protected_ooxml_compound_files_fail_closed_without_partial_records(self):
+        # ECMA-376 password-protected DOCX/XLSX packages are CFBF/OLE compound
+        # files, not ZIP archives. A synthetic OLE stub (CFBF signature plus a
+        # decoy body) must be rejected as unreadable instead of being truncated
+        # and reported as a successful partial parse.
+        marker = b"SYNTHETIC_ENCRYPTED_OOXML_MARKER"
+        ole_stub = bytes.fromhex("D0CF11E0A1B11AE1") + b"\x00" * 24 + marker + b"\x00" * (512 - 32 - len(marker))
+        for media_type, name in ((MEDIA_DOCX, "protected.docx"), (MEDIA_XLSX, "protected.xlsx")):
+            path = self.root / name
+            path.write_bytes(ole_stub)
+            result = self.request(path, media_type)
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["records"], [])
+            self.assertEqual(result["error"]["code"], "MATERIAL_UNREADABLE")
+            self.assertNotIn(marker.decode("ascii"), json.dumps(result, ensure_ascii=False))
+
+    def test_xlsx_over_worksheet_cell_limit_fails_closed_without_partial_records(self):
+        path = self.root / "over-cell-limit.xlsx"
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "Oversize"
+        for row in range(1, 43):
+            for column in range(1, 43):
+                sheet.cell(row=row, column=column, value=f"r{row:02d}c{column:02d}")
+        book.save(path)
+
+        with patch.object(parser_module, "MAX_WORKSHEET_CELLS", 100):
+            result = self.request(path, MEDIA_XLSX)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+        self.assertNotIn("r01c01", json.dumps(result, ensure_ascii=False))
+
     def test_xlsx_preserves_cells_units_order_and_unknown_formula(self):
         path = self.root / "synthetic.xlsx"
         book = Workbook()

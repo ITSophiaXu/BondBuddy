@@ -107,6 +107,40 @@ test('an explicit substantial restatement of a retained cutoff counts once', () 
   assert.ok(!result.retainedCutoffs.includes('2024-12-31'));
 });
 
+test('an old-only source gaining two distinct new cutoffs estimates N=2', () => {
+  const result = estimateUpdateDifficulty(input({
+    source: { ...input().source, reportingPeriods: [period('2022-12-31'), period('2023-12-31')] },
+    target: { ...input().target, reportingPeriods: [period('2022-12-31'), period('2023-12-31'), period('2024-12-31'), period('2025-12-31')] },
+  }));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.estimatedN, 2);
+  assert.deepEqual(result.newCutoffs, ['2024-12-31', '2025-12-31']);
+  assert.deepEqual(result.retainedCutoffs, ['2022-12-31', '2023-12-31']);
+  assert.equal(result.latestConfirmedSourceCutoff, '2023-12-31');
+});
+
+test('duplicate or equivalent representations of two new cutoffs still estimate N=2', () => {
+  const result = estimateUpdateDifficulty(input({
+    source: { ...input().source, reportingPeriods: [period('2022-12-31'), period('2023-12-31')] },
+    target: {
+      ...input().target,
+      reportingPeriods: [
+        period('2022-12-31'),
+        period('2023-12-31'),
+        period('2024-12-31'),
+        period('2024-12-31', 'parent'),
+        period('2024-12-31'),
+        period('2025-12-31'),
+        period('2025-12-31', 'consolidated', { raw_value: '2025 annual (duplicate submission)' }),
+      ],
+    },
+  }));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.estimatedN, 2);
+  assert.deepEqual(result.newCutoffs, ['2024-12-31', '2025-12-31']);
+  assert.deepEqual(result.retainedCutoffs, ['2022-12-31', '2023-12-31']);
+});
+
 test('replacement and restatement on one cutoff count once and require evidence and reason', () => {
   const result = estimateUpdateDifficulty(input({
     replacements: [{ cutoff: '2024-12-31', evidence: ['synthetic-replacement-anchor'], reason: 'Synthetic replacement financial material.' }],
