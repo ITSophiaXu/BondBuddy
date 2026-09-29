@@ -521,6 +521,8 @@ The other five bundles now use `2026.09.26-draft.2`; SSE private now uses its dr
 
 2026-09-29 独立持久运行切片：`apps/worker/src/ocr-v2.ts` 的 opt-in 内部入口从已核对 SHA 的私有原件调用 Python 身份探针和稀疏批次；`apps/api/src/ocr-v2.ts` 按数据库 owner/project/material/run 重验，将有界成功页 PNG/checkpoint 写入私有 Blob 并读回验证，以 0080 追加批次/成功页与 `platform.processing_cost` outbox；中断消费 unknown，失败页不作为覆盖，累计预检预算限定 5 页。PG advisory lock 序列化同一材料；不会切换既有 v1 parse hook、开放 HTTP 全文入口、接入 run 成功状态或改变公共 OCR DTO。缓存完整覆盖是工程页集，不是专业事实或成果交付。页面核对、常驻 #17 阶段调度、#15/#76 消费、目标镜像中文模型、扫描历史募集书与财务专业验收仍需单独接线；详见 `python/OCR-HANDOFF.md`。
 
+2026-09-29 独立 worker 镜像切片：`deploy/m1/Dockerfile` 的 worker stage 精确安装 Debian 12 Tesseract 5.3.0-2 与 eng/chi_sim/osd 4.1.0-2，构建及默认启动时核对已装版本、语言目录与模型 SHA；API/web/旧部署不变，#17 常驻调度仍未启用 v2。离线目标镜像 PNG/PDF 实机 smoke 命令、准确 hash 和 0.75 CPU/512 MiB 生产单页容量边界见 `python/OCR-HANDOFF.md`；未跑目标镜像前不宣称部署验收。
+
 ### #17 用户参考稿结构锁（2026-09-26）
 
 用户主动上传的相似稿与平台参考库分开锁定。新增 `0046_m1_user_reference_pins.sql`，保存追加式审核结论和每个 input revision 的不可变 pin；迁移不预置审核权限或通过结论。input lock 只接受 generation 中已列入 manifest 的本人项目 `reference` 材料版本，核对 SHA-256 和同源解析 snapshot。pin 同时进入 `input_hash`，包含材料版本/hash、snapshot、授权/可读性/目标适用状态、目标市场/发行方式/品种/文书阶段、审核引用和事实隔离检查版本。审核必须匹配完整目标且授权仍有效；没有已审核结论时为 `needs_review`，后续审核只能创建新 input revision。`user-reference-outline-v1` 在后台任务进程重验材料、snapshot、审核和 grant 后只投影审核过的章节顺序与标题；解析正文和参考发行人事实不进入模型输入。未选择用户参考稿时，#33 继续使用 #77 库选择链。业务审核口径和授权由业务负责人确定，此切片不增加前台选择页或审核入口。
