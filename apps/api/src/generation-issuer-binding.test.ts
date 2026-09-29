@@ -496,3 +496,142 @@ test('synthetic PostgreSQL: an approved generation issuer binding fails closed o
       await pool.end();
     }
   });
+
+test('synthetic PostgreSQL: generation issuer binding hardening rejects scope, conflict and history edits',
+  { skip: !databaseUrl }, async () => {
+    const pool = new Pool({ connectionString: databaseUrl });
+    const connection = await pool.connect();
+    const scopedPool = savepointPool(connection);
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+    const owner = `hard-owner-${suffix}`, reviewerId = `hard-reviewer-${suffix}`, grantorId = `hard-grantor-${suffix}`;
+    const projectId = `hard-project-${suffix}`, otherProjectId = `hard-other-project-${suffix}`;
+    const otherGrantId = `hard-other-grant-${suffix}`;
+    const auditId = `hard-audit-${suffix}`, notesId = `hard-notes-${suffix}`;
+    const auditEvidence = `hard-audit-evidence-${suffix}`, notesEvidence = `hard-notes-evidence-${suffix}`;
+    const inputHash = sha(`hard-input-${suffix}`);
+    const parserVersion = `parser-${suffix}`;
+    const deps: GenerationIssuerBindingDependencies = { pool: scopedPool, newId: randomUUID };
+
+    try {
+      await connection.query('BEGIN');
+      for (const [id, username] of [[owner, 'hardowner'], [reviewerId, 'hardreviewer'], [grantorId, 'hardgrantor']] as const) {
+        await connection.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `${username}${suffix}`]);
+      }
+      await connection.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,draft_revision)
+        VALUES($1,$2,'Synthetic hardening','generation','Browser supplied name','sse','private',1)`, [projectId, owner]);
+      await connection.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,draft_revision)
+        VALUES($1,$2,'Synthetic other project','generation','Browser supplied name','sse','private',1)`, [otherProjectId, owner]);
+      const manifest = { draft_revision: 1, kind: 'generation', materials: [
+        { material_id: auditId, material_version: 1, role: 'audit', sha256: sha(`material-bytes-${auditId}`) },
+        { material_id: notesId, material_version: 1, role: 'notes', sha256: sha(`material-bytes-${notesId}`) },
+      ] };
+      await connection.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]')`,
+      [projectId, owner, inputHash, JSON.stringify(manifest),
+        JSON.stringify(manifest.materials.map(material => ({ material_id: material.material_id, material_version: material.material_version })))]);
+      await insertSyntheticMaterial(connection, { owner, projectId, parserVersion,
+        material: { id: auditId, role: 'audit', evidence: [{ recordId: auditEvidence, quote: '合成发行人甲合并资产负债表' }] } });
+      await insertSyntheticMaterial(connection, { owner, projectId, parserVersion,
+        material: { id: notesId, role: 'notes', evidence: [{ recordId: notesEvidence, quote: '本公司为合成发行人甲有限公司' }] } });
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [`hard-grant-${suffix}`, reviewerId, grantorId, owner, projectId]);
+      // A second grant scoped to a different project of the same owner must never authorize this project.
+      await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [otherGrantId, reviewerId, grantorId, owner, otherProjectId]);
+      const reviewer = (await authorizeIssuerIdentityReviewer(scopedPool, reviewerId, { ownerUserId: owner, projectId }))!;
+      const otherReviewer = (await authorizeIssuerIdentityReviewer(scopedPool, reviewerId, { ownerUserId: owner, projectId: otherProjectId }))!;
+      assert.ok(reviewer && otherReviewer, 'both scoped grants authorize their own project');
+
+      const addReview = async (materialId: string, recordId: string, entity: string) => {
+        const record = await appendIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
+          ownerUserId: owner, projectId, materialId, materialVersion: 1, requestId: `request-${recordId}`,
+          sourceRecordId: recordId, issuerDisplayName: '合成发行人甲', entityId: `issuer-name:v1:${sha(entity).slice(0, 32)}`,
+        });
+        return (await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
+          ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: record.id, reviewer,
+          decision: 'verified', reasonCode: 'synthetic_verified', verifiedEntityId: entity,
+          entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic identity review',
+        })).reviewId;
+      };
+      const auditReview = await addReview(auditId, auditEvidence, entityA);
+      const notesReview = await addReview(notesId, notesEvidence, entityA);
+      const decisions = () => [
+        { material_id: auditId, material_version: 1, disposition: 'classified' as const, reason: '合并编制主体。',
+          observations: [{ source_record_id: auditEvidence, observed_subject_label: '合成发行人甲', evidence_context: 'financial_statement' as const,
+            subject_relation: 'issuer_compiler' as const, accounting_scope: 'consolidated' as const, relation_reason: '合并编制主体。', source_identity_review_id: auditReview }] },
+        { material_id: notesId, material_version: 1, disposition: 'classified' as const, reason: '附注主体说明。',
+          observations: [{ source_record_id: notesEvidence, observed_subject_label: '合成发行人甲', evidence_context: 'identity_relationship' as const,
+            subject_relation: 'issuer_compiler' as const, accounting_scope: 'not_applicable' as const, relation_reason: '附注主体说明。', source_identity_review_id: notesReview }] },
+      ];
+
+      // A reviewer scoped to a different project of the same owner cannot append or review under this project.
+      await assert.rejects(appendGenerationIssuerBinding(deps, {
+        ownerUserId: owner, projectId, inputRevision: 1, inputHash, requestId: `wrong-scope-append-${suffix}`,
+        reviewer: otherReviewer, materialDecisions: decisions(),
+      }), /REVIEWER_NOT_AUTHORIZED/, 'a grant scoped to another project never authorizes this project');
+
+      const appended = await appendGenerationIssuerBinding(deps, {
+        ownerUserId: owner, projectId, inputRevision: 1, inputHash, requestId: `hard-binding-${suffix}`,
+        reviewer, materialDecisions: decisions(),
+      });
+      const ref = { binding_id: appended.bindingId, version: appended.version, content_sha256: appended.contentSha256 };
+      const expectedInput = { owner_user_id: owner, project_id: projectId, input_revision: 1, input_hash: inputHash };
+      await reviewGenerationIssuerBinding(deps, {
+        ownerUserId: owner, projectId, bindingId: ref.binding_id, version: ref.version, contentSha256: ref.content_sha256,
+        requestId: `hard-approve-${suffix}`, action: 'approve', reason: '逐项核验。', reviewer,
+      });
+      assert.ok(await loadApprovedGenerationIssuerBinding(scopedPool, { ownerUserId: owner, projectId }, ref, expectedInput));
+
+      await assert.rejects(reviewGenerationIssuerBinding(deps, {
+        ownerUserId: owner, projectId, bindingId: ref.binding_id, version: ref.version, contentSha256: ref.content_sha256,
+        requestId: `wrong-scope-review-${suffix}`, action: 'withdraw', reason: '越权。', reviewer: otherReviewer,
+      }), /REVIEWER_NOT_AUTHORIZED/, 'the wrong-project reviewer cannot review this binding');
+
+      // The binding is referenced by another owner/project combination only through its exact scope.
+      assert.equal(await loadApprovedGenerationIssuerBinding(scopedPool, { ownerUserId: owner, projectId: otherProjectId }, ref, expectedInput),
+        null, 'a binding is never loadable under a different project scope');
+
+      // Re-verifying the same subject observation to a different entity is an unresolved conflict, not a silent supersession.
+      const conflicting = await appendIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
+        ownerUserId: owner, projectId, materialId: auditId, materialVersion: 1, requestId: `reobserve-${suffix}`,
+        sourceRecordId: auditEvidence, issuerDisplayName: '合成发行人甲', entityId: `issuer-name:v1:${sha('合成发行人甲').slice(0, 32)}`,
+      });
+      await reviewIssuerIdentitySourceRecord({ pool: scopedPool, newId: randomUUID }, {
+        ownerUserId: owner, projectId, materialId: auditId, materialVersion: 1, sourceRecordRowId: conflicting.id, reviewer,
+        decision: 'verified', reasonCode: 'synthetic_verified', verifiedEntityId: entityB,
+        entityBasisKind: 'manual_attestation', entityBasisRef: 'synthetic re-verification',
+      });
+      assert.equal(await loadApprovedGenerationIssuerBinding(scopedPool, { ownerUserId: owner, projectId }, ref, expectedInput),
+        null, 'a re-verified conflicting entity invalidates the approved binding');
+      const conflictAppend = await appendGenerationIssuerBinding(deps, {
+        ownerUserId: owner, projectId, inputRevision: 1, inputHash, requestId: `conflict-reverify-${suffix}`,
+        reviewer, materialDecisions: decisions(),
+      });
+      await assert.rejects(reviewGenerationIssuerBinding(deps, {
+        ownerUserId: owner, projectId, bindingId: conflictAppend.bindingId, version: conflictAppend.version,
+        contentSha256: conflictAppend.contentSha256, requestId: `conflict-reverify-approve-${suffix}`,
+        action: 'approve', reason: '冲突未解决。', reviewer,
+      }), /NOT_CURRENTLY_APPROVABLE/, 'an unresolved same-subject conflict blocks approval');
+
+      // Append-only: the decision ledger and its review events can never be rewritten or deleted.
+      const appendOnlyStatements: readonly [string, string, readonly unknown[]][] = [
+        ['binding update', `UPDATE bb_generation_issuer_bindings SET issuer_entity_id=NULL WHERE id=$1`, [ref.binding_id]],
+        ['binding delete', `DELETE FROM bb_generation_issuer_bindings WHERE id=$1`, [ref.binding_id]],
+        ['review update', `UPDATE bb_generation_issuer_binding_reviews SET action='withdraw' WHERE binding_id=$1`, [ref.binding_id]],
+        ['review delete', `DELETE FROM bb_generation_issuer_binding_reviews WHERE binding_id=$1`, [ref.binding_id]],
+        ['binding truncate', `TRUNCATE bb_generation_issuer_bindings CASCADE`, []],
+      ];
+      for (const [label, statement, values] of appendOnlyStatements) {
+        const point = `hard_append_only_${label.replaceAll(' ', '_')}`;
+        await connection.query(`SAVEPOINT ${point}`);
+        await assert.rejects(connection.query(statement, [...values]), /append-only/,
+          `${label} must be rejected`);
+        await connection.query(`ROLLBACK TO SAVEPOINT ${point}`);
+        await connection.query(`RELEASE SAVEPOINT ${point}`);
+      }
+    } finally {
+      await connection.query('ROLLBACK');
+      connection.release();
+      await pool.end();
+    }
+  });
