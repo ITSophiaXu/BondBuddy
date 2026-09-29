@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Usage: rollback.sh <previous-sha>
 # Re-points the stack at images of an earlier release WITHOUT running migrations. Migrations are
-# append-only; if the newer release's schema is incompatible with the old code, restore the
-# pre-deploy backup instead (see docs/runbooks/m1-deploy.md).
+# append-only; check compatibility before release because rollback does not restore data.
 source "$(dirname "$0")/lib.sh"
 target="${1:?usage: rollback.sh <previous-sha>}"
 tag="$(git -C "$BB_REPO" rev-parse --verify "$target^{commit}" 2>/dev/null | cut -c1-12 || true)"

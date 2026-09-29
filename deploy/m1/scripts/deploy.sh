@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: deploy.sh <git-sha>
-# Builds images from the exact commit (git archive, so no uncommitted files leak in), takes a
-# pre-deploy backup when a database already exists, runs migrations, starts the stack and smokes it.
+# Builds images from the exact commit (git archive, so no uncommitted files leak in),
+# runs migrations, starts the stack and smokes it. Releases do not create backups.
 source "$(dirname "$0")/lib.sh"
 if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value BB_DEPLOYMENT_TIER)" != preprod ]; then
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2
@@ -67,7 +67,7 @@ fi
 previous="$(current_tag)"
 export BB_IMAGE_TAG="$tag"
 # Optional pre-switch gate (BB_DEPLOY_INFLIGHT_GATE=1): the build above can take many minutes, so a run
-# may have started since the caller last checked. Stop before backup, migration or any container switch:
+# may have started since the caller last checked. Stop before migration or any container switch:
 # exit 76 when non-parse runs hold a live lease, 77 when the count is unavailable. Built images are kept,
 # so a retry skips the build.
 if [ "${BB_DEPLOY_INFLIGHT_GATE:-0}" = 1 ] && compose ps --status running --services 2>/dev/null | grep -qx postgres; then
@@ -81,10 +81,6 @@ if [ "${BB_DEPLOY_INFLIGHT_GATE:-0}" = 1 ] && compose ps --status running --serv
     echo "deploy in-flight gate: $in_flight non-parse runs in flight; images $tag kept, nothing switched" >&2
     exit 76
   fi
-fi
-if [ -n "$previous" ] && compose ps --status running --services 2>/dev/null | grep -qx postgres; then
-  # Use the new image's backup tooling against the still-running database before switching services.
-  BB_BACKUP_SOURCE_TAG="$previous" "$(dirname "$0")/backup.sh" "pre-deploy-$tag"
 fi
 compose up -d postgres $( [ "$(env_value COMPOSE_PROFILES)" = staging-blob ] && echo azurite )
 compose run --rm migrate

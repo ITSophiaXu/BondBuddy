@@ -108,6 +108,7 @@ run_case() {
     [ "$result" -eq 0 ] || { echo "$label: unexpected rejection ($result)" >&2; cat "$test_dir/error" "$test_dir/output" "$TEST_CALLS" >&2; exit 1; }
     rg -q '^archive$' "$TEST_CALLS"
     rg -q 'compose' "$TEST_CALLS"
+    if rg -q '^backup ' "$TEST_CALLS"; then echo "$label: automatic backup invoked" >&2; exit 1; fi
   fi
   echo "PASS $label"
 }
@@ -124,7 +125,6 @@ run_case 'local build passes at 4 GiB' pass
 rg -q 'build' "$TEST_CALLS"
 export TEST_IMAGES=all TEST_FREE_BYTES=2684354560
 run_case 'four preloaded images pass at 2.5 GiB' pass
-rg -q '^backup image=aaaaaaaaaaaa source=old-release$' "$TEST_CALLS"
 if rg -q 'build' "$TEST_CALLS"; then echo 'unexpected build with preloaded images' >&2; exit 1; fi
 export TEST_FREE_BYTES=2684354559
 run_case 'preloaded deploy rejects below 2.5 GiB' reject
@@ -152,7 +152,7 @@ export TEST_IMAGES=vanish-egress
 run_case 'preloaded egress disappears before build' reject_after_archive
 rg -q 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"
 
-# Pre-switch in-flight gate: checked after images exist, before backup, migration or container switch.
+# Pre-switch in-flight gate: checked after images exist, before migration or container switch.
 export TEST_IMAGES=all TEST_FREE_BYTES=4294967296
 gate_case() {
   local label="$1" gate="$2" inflight="$3" expected_rc="$4" result=0
@@ -163,7 +163,7 @@ gate_case() {
   [ "$result" -eq "$expected_rc" ] || { echo "$label: exit $result, expected $expected_rc" >&2; cat "$test_dir/error" >&2; exit 1; }
   if [ "$expected_rc" -ne 0 ]; then
     [ "$(cat "$test_dir/state/current")" = old-release ] || { echo "$label: release state changed" >&2; exit 1; }
-    if rg -q 'backup|run --rm migrate|up -d|image rm|smoke' "$TEST_CALLS"; then
+    if rg -q '^backup |run --rm migrate|up -d|image rm|^smoke$' "$TEST_CALLS"; then
       echo "$label: switched or backed up before gate" >&2; exit 1
     fi
     rg -q '^inflight-query$' "$TEST_CALLS"
