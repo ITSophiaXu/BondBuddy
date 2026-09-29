@@ -35,7 +35,7 @@ test('persisted material with an exact successful needs-confirmation parse enter
       assert.equal(created.statusCode, 201, created.body);
       const project = created.json().project_id as string;
       const add = async (role: 'historical' | 'interimFinancial', hash: string,
-        parse: 'succeeded' | 'queued' | 'paused' | 'failed' | 'absent' = 'succeeded', parserVersion = documentParserVersion()) => {
+        parse: 'succeeded' | 'queued' | 'running' | 'paused' | 'failed' | 'absent' = 'succeeded', parserVersion = documentParserVersion()) => {
         const id = randomUUID(), upload = randomUUID();
         const media = role === 'historical'
           ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -80,18 +80,22 @@ test('persisted material with an exact successful needs-confirmation parse enter
         return [grants.rows[0].n, events.rows[0].n, runs.rows[0].n];
       };
       const historical = await add('historical', sha('c'));
-      for (const [label, hashLetter, state, parser] of [
-        ['missing', '3', 'absent', documentParserVersion()],
-        ['queued', '4', 'queued', documentParserVersion()],
-        ['paused', '7', 'paused', documentParserVersion()],
-        ['failed', '5', 'failed', documentParserVersion()],
-        ['wrong-parser', '6', 'succeeded', `${documentParserVersion()}-old`],
+      for (const [label, hashLetter, state, parser, code, message] of [
+        ['missing', '3', 'absent', documentParserVersion(), 'INPUT_REQUIRED', /complete its saved upload again/i],
+        ['queued', '4', 'queued', documentParserVersion(), 'CAPABILITY_NOT_READY', /parsing is pending/i],
+        ['running', '9', 'running', documentParserVersion(), 'CAPABILITY_NOT_READY', /parsing is pending/i],
+        ['paused', '7', 'paused', documentParserVersion(), 'CAPABILITY_NOT_READY', /parsing is pending/i],
+        ['failed', '5', 'failed', documentParserVersion(), 'MATERIAL_UNREADABLE', /no successful parse/i],
+        ['wrong-parser', '6', 'succeeded', `${documentParserVersion()}-old`, 'INPUT_REQUIRED', /complete its saved upload again/i],
       ] as const) {
         const financial = await add('interimFinancial', sha(hashLetter), state, parser);
         const input = await lock([historical, financial]);
         const checked = await preflight(input), submitted = await execute(input);
-        assert.equal(checked.json().code, 'MATERIAL_UNREADABLE', `${label}: ${checked.body}`);
-        assert.equal(submitted.json().code, 'MATERIAL_UNREADABLE', `${label}: ${submitted.body}`);
+        for (const response of [checked, submitted]) {
+          assert.equal(response.statusCode, 409, `${label}: ${response.body}`);
+          assert.equal(response.json().code, code, `${label}: ${response.body}`);
+          assert.match(response.json().message, message, `${label}: ${response.body}`);
+        }
         assert.deepEqual(await counts(), [0, 0, 0], label);
       }
       const wrongHash = await add('interimFinancial', sha('e'));

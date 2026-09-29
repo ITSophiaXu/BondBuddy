@@ -169,6 +169,23 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs a durable result and verified usage before resume');
       if(j.stage==='trial_limit')await assertModelCallAllowed(client,trialGuardConfig(),owner);
+      if(r.task_kind==='update' && r.stage==='capability_not_ready' && j.stage==='capability_not_ready'){
+        const latest=await client.query(`SELECT payload->>'reason' AS reason FROM bb_run_events
+          WHERE owner_user_id=$1 AND run_id=$2 AND state='paused' AND type='run.state_changed'
+          ORDER BY seq DESC LIMIT 1`,[owner,runId]);
+        if(latest.rows[0]?.reason==='issuer_identity_source_missing_unreviewed_or_conflicting'){
+          const input=await client.query(`SELECT input_hash,manifest FROM bb_input_revisions
+            WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3`,[owner,r.project_id,r.input_revision]);
+          if(!input.rows[0] || String(input.rows[0].input_hash).trim()!==String(r.input_hash).trim())
+            throw new Problem(409,'INPUT_REVISION_CONFLICT','Locked input changed');
+          const manifest=input.rows[0].manifest;
+          if(manifest?.issuer_identity?.status==='pending' &&
+             manifest.issuer_identity.reason==='issuer_identity_source_missing_unreviewed_or_conflicting' &&
+             !manifest.test_issuer_candidate)
+            throw new Problem(409,'CAPABILITY_NOT_READY',
+              'Issuer identity source is unresolved in this locked input; verify the source and create a new input revision');
+        }
+      }
     }
     await client.query('UPDATE bb_jobs SET state=$2,stage=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1',[j.id,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued']);
     await event(client,r,kind==='cancel'?'cancelled':'queued',kind==='cancel'?'cancelled':'queued',kind==='cancel'?'user_cancelled':'user_resumed');

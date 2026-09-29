@@ -266,8 +266,34 @@ test('working draft admission requires a successful parse job and fails closed f
     assert.equal((await send('/api/v1/runs/execute',request(removedInput))).json().code,'INPUT_REVISION_CONFLICT');
     const unreadable=await addMaterial('financial',sha('1'),false);
     const unreadableInput=await locked([historical,unreadable]);
+    for(const response of [await check(unreadableInput),await send('/api/v1/runs/execute',request(unreadableInput))]){
+      assert.equal(response.statusCode,409,response.body);
+      assert.equal(response.json().code,'INPUT_REQUIRED');
+      assert.match(response.json().message,/complete its saved upload again/i);
+    }
+    const parseJob=randomUUID();
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
+      material_sha256,parser_version,trace_id,max_attempts,error_code,result)
+      VALUES($1,$2,NULL,'parse','material_parse','queued',$3,$4,1,$5,$6,$7,3,NULL,NULL)`,
+    [parseJob,owner,project,unreadable.material_id,sha('1'),documentParserVersion(),randomUUID()]);
+    for(const state of ['queued','running']){
+      await pool.query('UPDATE bb_jobs SET state=$2 WHERE id=$1',[parseJob,state]);
+      assert.equal((await check(unreadableInput)).json().code,'CAPABILITY_NOT_READY');
+      assert.equal((await send('/api/v1/runs/execute',request(unreadableInput))).json().code,'CAPABILITY_NOT_READY');
+    }
+    await pool.query("UPDATE bb_jobs SET state='failed',error_code='MATERIAL_UNREADABLE',result=$2 WHERE id=$1",
+      [parseJob,{outcome:'failed',parse_status:'failed',profile_version:null,pending_capabilities:[]}]);
     assert.equal((await check(unreadableInput)).json().code,'MATERIAL_UNREADABLE');
     assert.equal((await send('/api/v1/runs/execute',request(unreadableInput))).json().code,'MATERIAL_UNREADABLE');
+    const corrupt=await addMaterial('financial',sha('3'),false);
+    const corruptInput=await locked([historical,corrupt]);
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
+      material_sha256,parser_version,trace_id,max_attempts,result)
+      VALUES($1,$2,NULL,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8)`,
+    [randomUUID(),owner,project,corrupt.material_id,sha('3'),documentParserVersion(),randomUUID(),
+      {outcome:'failed',parse_status:'failed',profile_version:null,pending_capabilities:[]}]);
+    assert.equal((await check(corruptInput)).json().code,'MATERIAL_UNREADABLE',
+      'a success state with a failed parse result is still unreadable');
     assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
 
     process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT='invalid';
