@@ -10,6 +10,19 @@
 
 `apps/api/src/project-messages.ts` 使用已有私有 prompt Blob、`bb_user_submission_versions`、提交意图和 `packages/contracts` 的 `ProjectMessageSetRef`。追加迁移 0077 保存精确修订来源并为 bounded 历史读取建索引；后端 `POST /projects/{id}/messages` 只保存用户原话和材料精确版本，不调用助手/模型或创建文书任务，返回 `user_asserted` / `not_classified` / `save_only`，不给 `reply=null` 包装伪成功。`GET /projects/{id}/messages` 和单版本读取按本人项目授权、校验私有正文哈希、读取前审计、分页；缺失/清理的正文明确失败。当前 set 的版本按最新一次消息提交单调变化，即使编辑已有消息亦递增；成员位置仍按首次提交顺序，hash 仍按 #76 的规范成员集合计算；老的 input revision 不改写。input-lock 继续在同事务重验完整集合，没有精确 ref 的非空历史拒绝。受控内部提交入口及旧会话回复接口不代表真实聊天已实现；网页原型草稿未接入此公开 API，真正的模型回复、意图路由、流式中断、问答 job/attempt/usage 仍待后续 #18/#79 联调。
 
+## #361 上传与启动失败的公开反馈（2026-09-29）
+
+上传检查拒绝沿用 `Error.field_errors`，仅在 `field=material_upload` 时公开
+`packages/contracts/src/upload-inspection-errors.ts` 的有限原因码与已有 `correlation_id`；
+原始解析详情和材料内容仍留服务端。文件包含暂不能核验的外部工作簿引用时不称原件损坏，
+检查超时/服务故障显示可重试，无法归类的拒绝请用户保留原件并联系支持。
+`ApiClient` 的 fetch/XHR 路径均保留公开错误码、重试性及关联编号；启动阶段
+`INPUT_REQUIRED` 仅结合真实已保存材料与“有/无本发行人历史稿”区分可操作缺项，
+无历史稿相似参考不会伪装成本发行人历史稿。未取得准确接口子原因时不推断原用户截图
+根因，刷新状态或联系支持而不盲目重提交。合成浏览器回归与原型对照见
+[#361 错误状态记录](../apps/web/ux-evidence/issue-361-errors/README.md)；
+#384 的后台待核清单与暂停恢复另在 #388，真实部署/原项目连续复测仍需 #35。
+
 ## #18 试用限制暂停的浏览器消费（2026-09-28）
 
 浏览器复用 `packages/contracts` 的 `RUN_PAUSE_STAGES` / `RUN_RUNTIME_REASONS` 类型，为 `trial_limit` 在既有同页进度区显示额度或服务停用原因及自动恢复提示，等待后台解除限制，不主动调用 resume。run.state/stage 优先于迟到事件；阶段变化清除旧原因，事件读取失败仍保留真实暂停。运营拒绝按 failed/TRIAL_ACCESS_DENIED 展示。无新 DTO、迁移、输入或配额策略变化；合成浏览器证据见 [#18](../apps/web/ux-evidence/issue-18-trial/README.md)，不替代 #35 真实配额/模型验收。

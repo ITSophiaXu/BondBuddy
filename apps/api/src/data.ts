@@ -4,7 +4,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
-import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, type Market, type Offering } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed, UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
 export const uid = () => randomUUID();
@@ -24,6 +24,19 @@ export const executionKeyFromStorage=(value:string):string=>{
 };
 export class Problem extends Error {
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
+}
+export function publicProblem(error: Problem, correlationId: string) {
+  const inspection = error.uploadReason && (error.code === 'MATERIAL_UNREADABLE' || error.code === 'DATA_UNAVAILABLE')
+    ? isUploadInspectionPublicReason(error.uploadDetail) ? error.uploadDetail
+      : isUploadInspectionPublicReason(error.uploadReason) ? error.uploadReason : 'structure_invalid'
+    : undefined;
+  return {
+    code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
+    retryable: error.status === 503 || inspection === 'inspection_queue_timeout' ||
+      inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
+    field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }] : [],
+    correlation_id: correlationId,
+  };
 }
 export const missing = () => new Problem(404, 'NOT_FOUND', 'Resource does not exist');
 export const conflict = (code: string, message: string) => new Problem(409, code, message);

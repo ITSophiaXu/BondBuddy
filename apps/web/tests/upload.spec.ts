@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import type { MaterialParseJob, Recognition } from '@bondbuddy/contracts';
 
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
@@ -12,11 +13,13 @@ type FixtureState = {
   materials: Map<string, Material>;
   sequence: number;
   failNextComplete: Set<string>;
+  unavailableNextComplete: Map<string, string>;
   dropNextComplete: Set<string>;
   releaseSlowComplete?: () => void;
   holdNextCreate: boolean;
   releaseCreate?: () => void;
   expireNextBytes: boolean;
+  inspectionFailures: Map<string, { reason: string; correlationId: string }>;
   byteAttempts: string[];
   putNames: string[];
 };
@@ -82,6 +85,14 @@ async function installApi(page: Page, state: FixtureState) {
       upload.bytes = request.postDataBuffer()?.length ?? 0;
       state.byteAttempts.push(upload.filename);
       if (state.expireNextBytes) { state.expireNextBytes = false; return json(route, 401, { code: 'UNAUTHENTICATED' }); }
+      const inspection = state.inspectionFailures.get(upload.filename);
+      if (inspection) {
+        state.inspectionFailures.delete(upload.filename);
+        return json(route, 422, {
+          code: 'MATERIAL_UNREADABLE', retryable: false, correlation_id: inspection.correlationId,
+          field_errors: [{ field: 'material_upload', code: inspection.reason, message: 'File inspection was not completed' }],
+        });
+      }
       state.putNames.push(upload.filename);
       return route.fulfill({ status: 204 });
     }
@@ -90,6 +101,11 @@ async function installApi(page: Page, state: FixtureState) {
       const upload = state.uploads.get(decodeURIComponent(completeMatch[1]));
       if (!upload || upload.owner !== state.owner) return json(route, 404, { code: 'NOT_FOUND' });
       if (!upload.bytes) return json(route, 422, { code: 'MATERIAL_UNREADABLE' });
+      const unavailable = state.unavailableNextComplete.get(upload.filename);
+      if (unavailable) {
+        state.unavailableNextComplete.delete(upload.filename);
+        return json(route, 503, { code: 'DATA_UNAVAILABLE', retryable: true, correlation_id: unavailable });
+      }
       if (state.failNextComplete.has(upload.filename)) {
         state.failNextComplete.delete(upload.filename);
         return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' });
@@ -107,7 +123,7 @@ async function installApi(page: Page, state: FixtureState) {
 }
 
 function state(): FixtureState {
-  return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, byteAttempts: [], putNames: [] };
+  return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), unavailableNextComplete: new Map(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, inspectionFailures: new Map(), byteAttempts: [], putNames: [] };
 }
 
 async function login(page: Page, username: string, expectProject = true) {
@@ -149,7 +165,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   fixture.releaseSlowComplete!();
   await expect(slowRow).toContainText('服务器已确认保存');
   const failedRow = page.locator('.material-file-row').filter({ hasText: 'failed-once.pdf' });
-  await expect(failedRow).toContainText('服务器检测到文件内容与声明格式不符');
+  await expect(failedRow).toContainText('文件内容校验与声明不一致');
   await expect(page.locator('.material-file-row').filter({ hasText: 'survives.pdf' })).toContainText('服务器已确认保存');
   expect(fixture.materials.size).toBe(2);
   await failedRow.getByRole('button', { name: '重试此文件' }).click();
@@ -174,6 +190,47 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   await expect(page.getByText(/slow-save\.pdf|failed-once\.pdf|survives\.pdf/)).toHaveCount(0);
   expect(fixture.putNames.filter(name => name === 'survives.pdf')).toHaveLength(1);
   expect(pageErrors).toEqual([]);
+});
+
+test('an unsupported external workbook reference is explained without claiming file damage; only that file retries', async ({ page }) => {
+  const fixture=state(); fixture.inspectionFailures.set('external.xlsx', {
+    reason: 'external_link_invalid', correlationId: 'synthetic-external-link',
+  });
+  await installApi(page,fixture); await login(page,'owner_a');
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles([
+    { name:'external.xlsx', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer:Buffer.from('synthetic external workbook') },
+    { name:'saved.pdf', mimeType:'application/pdf', buffer:Buffer.from('%PDF synthetic saved') },
+  ]);
+  const row=page.locator('.material-file-row').filter({hasText:'external.xlsx'});
+  await expect(row).toContainText('外部工作簿引用');
+  await expect(row).toContainText('错误编号：synthetic-external-link');
+  await expect(row).not.toContainText('损坏');
+  if (process.env.BB_361_ERROR_EVIDENCE_DIR) {
+    for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await row.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(process.env.BB_361_ERROR_EVIDENCE_DIR,`upload-error-${device}.png`)});
+    }
+  }
+  await expect(page.locator('.material-file-row').filter({hasText:'saved.pdf'})).toContainText('服务器已确认保存');
+  await row.getByRole('button',{name:'重试此文件'}).click();
+  await expect(row).toContainText('服务器已确认保存');
+  expect(fixture.materials.size).toBe(2);
+  expect(fixture.byteAttempts.filter(name=>name==='saved.pdf')).toHaveLength(1);
+});
+
+test('uncertain completion keeps the support reference and reconciles before resending bytes', async ({ page }) => {
+  const fixture=state(); fixture.unavailableNextComplete.set('uncertain.pdf', 'synthetic-completion-503');
+  await installApi(page,fixture); await login(page,'owner_a');
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({
+    name:'uncertain.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic uncertain'),
+  });
+  const row=page.locator('.material-file-row').filter({hasText:'uncertain.pdf'});
+  await expect(row).toContainText('错误编号：synthetic-completion-503');
+  await expect(row).toContainText('请勿盲目重传');
+  await row.getByRole('button',{name:'核对并继续保存'}).click();
+  await expect(row).toContainText('服务器已确认保存');
+  expect(fixture.byteAttempts.filter(name=>name==='uncertain.pdf')).toHaveLength(1);
 });
 
 test('lost completion response reconciles the original upload without resending bytes', async ({ page }) => {

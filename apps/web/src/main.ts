@@ -6,7 +6,8 @@ import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
-import { ApiClient, ApiError, friendlyError, type Dto } from './api';
+import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
+import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
 import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
@@ -452,7 +453,7 @@ function uploadStatus(upload: LocalUpload) {
     case 'persisted': return `服务器已确认保存 · 材料版本 ${upload.material?.material_version ?? '—'}${upload.session && upload.material?.upload_id !== upload.session.upload_id ? ' · 已复用相同内容' : ''}`;
     case 'failed': return upload.error ?? '文件未保存。可以单独重试。';
     case 'cancelled': return '本次传输已取消；所选文件仍在此页面，可单独重试。';
-    case 'uncertain': return '保存结果尚未确认。可核对并继续保存，将优先查询原上传记录。';
+    case 'uncertain': return upload.error ?? '保存结果尚未确认。可核对并继续保存，将优先查询原上传记录。';
   }
 }
 
@@ -596,17 +597,6 @@ function updateMaterialWorkspace(projectId: string) {
   }
 }
 
-function uploadErrorMessage(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.code === 'MATERIAL_CONTENT_MISMATCH') return '服务器检测到文件内容与声明格式不符，材料未确认保存。请使用正确文件后重试。';
-    if (error.code === 'MATERIAL_ENCRYPTED') return '服务器无法读取加密文件。请提供可读取的副本。';
-    if (error.code === 'MATERIAL_UNREADABLE') return '文件无法完整读取，可能损坏或传输未完成。可先重试；仍失败时请检查原文件并重新导出。';
-    if (error.code === 'MATERIAL_FORMAT_UNSUPPORTED') return '服务器暂不支持此文件格式。';
-    if (error.code === 'VALIDATION_FAILED') return '请检查单份 100 MB、项目 60 份 / 500 MB 的限制；上传会话过期时请重试。';
-  }
-  return friendlyError(error);
-}
-
 function declaredMediaType(file: File, role: UploadRole): typeof M1_UPLOAD_MIME_TYPES[number] {
   const extension = file.name.toLowerCase().split('.').at(-1) ?? '';
   const mediaType = mimeByExtension[extension];
@@ -693,7 +683,9 @@ async function performUpload(upload: LocalUpload) {
     const explicitServerFailure = error instanceof ApiError && error.status > 0;
     const uncertain = (!explicitServerFailure || error instanceof ApiError && error.status >= 500) && (upload.sentBytes >= upload.file.size || acceptedByByteEndpoint);
     upload.phase = aborted && !uncertain ? 'cancelled' : uncertain ? 'uncertain' : 'failed';
-    upload.error = aborted && !uncertain ? undefined : uncertain ? '服务器可能已收到文件，但当前会话未取得保存凭证。请刷新服务器记录；请勿盲目重传。' : uploadErrorMessage(error);
+    upload.error = aborted && !uncertain ? undefined : uncertain
+      ? `保存结果尚未确认。服务器可能已收到文件，但当前会话未取得保存凭证。请刷新服务器记录；请勿盲目重传。${error instanceof ApiError ? errorReference(error) : ''}`
+      : uploadErrorMessage(error);
     updateMaterialWorkspace(upload.projectId);
   } finally {
     if (upload.controller === controller) upload.controller = undefined;

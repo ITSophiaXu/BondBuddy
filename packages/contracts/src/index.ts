@@ -18,6 +18,7 @@ export { validTargetPeriodEvidenceDecision } from './target-period-evidence.js';
 export * from './target-period-candidate-snapshot.js';
 import { ProjectMessageIdSchema, projectMessageSetSchemas } from './project-message-set-pin.js';
 export * from './project-message-set-pin.js'; // #76 active project-message set pin; the aggregate ref is pinned by immutable input/candidate snapshots
+export * from './upload-inspection-errors.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';

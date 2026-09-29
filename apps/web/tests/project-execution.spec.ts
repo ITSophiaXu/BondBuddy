@@ -30,6 +30,7 @@ function fixture() {
     runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
     eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
     eventHistory: [] as { seq: number; state: Dto<'RunResponse'>['state']; stage: string; reason: string }[],
+    executeError: undefined as { status: number; code: string; correlation_id: string } | undefined,
     runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
     blockers: undefined as string[] | undefined };
@@ -92,6 +93,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       const body = request.postDataJSON();
       expect(Value.Check(schemas.ExecuteRequest, body)).toBe(true);
       state.executes.push(body);
+      if (state.executeError) return json(route, state.executeError.status, state.executeError);
       let run = state.runs.get(body.execution_request_id);
       if (!run) {
         run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
@@ -226,6 +228,48 @@ test('409 preserves target input and never submits a run', async ({ page }) => {
   await expect(page.locator('#execution-message')).toContainText('其他页面修改');
   expect(state.project.update_details!.reporting_cutoff).toBe('2025-12-31');
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+});
+
+test('input error identifies the missing historical draft without blaming saved financial material', async ({ page }) => {
+  const state=fixture(); state.materials.shift(); state.checkStatus='ready';
+  state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-history-required'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('本发行人历史募集书');
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-history-required');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.materials).toHaveLength(1); expect(state.runs.size).toBe(0);
+});
+
+test('reference + audit without historical is not relabeled or reuploaded on INPUT_REQUIRED', async ({ page }) => {
+  const state=fixture(); state.project.update_details!.has_historical=false;
+  state.materials[0].role='reference'; state.checkStatus='ready';
+  state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-required'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('当前新稿入口未能处理');
+  await expect(page.locator('#execution-message')).toContainText('不要把相似稿改作本发行人历史稿');
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-generation-required');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  if (process.env.BB_361_ERROR_EVIDENCE_DIR) {
+    for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.locator('#execution-message').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(process.env.BB_361_ERROR_EVIDENCE_DIR,`generation-input-${device}.png`)});
+    }
+  }
+  expect(state.inputs[0].material_versions).toHaveLength(2);
+  expect(state.runs.size).toBe(0);
+  await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.project.update_details!.has_historical).toBe(false);
+});
+
+test('temporary start failure retains support reference and does not claim missing materials', async ({ page }) => {
+  const state=fixture(); state.checkStatus='ready';
+  state.executeError={status:503,code:'DATA_UNAVAILABLE',correlation_id:'synthetic-start-unavailable'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('服务暂时无法完成操作，结果尚未确认');
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-start-unavailable');
+  await expect(page.locator('#execution-message')).not.toContainText('填写内容');
+  expect(state.runs.size).toBe(0);
 });
 
 test('current historical choice excludes reference-only materials without a second selection form', async ({ page }) => {
