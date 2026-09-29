@@ -243,13 +243,21 @@ test('no-history generation keeps the same message pin and generation execution 
   const f = fixture();
   f.state.project.kind = 'generation';
   f.state.project.update_details!.has_historical = false;
-  f.state.materials[0].role = 'reference';
+  f.state.materials[0] = { ...f.state.materials[0], material_id: 'synthetic-reference',
+    role: 'reference', filename: 'reference.docx', sha256: hash('reference'),
+    parse_snapshot_id: 'synthetic-reference-snapshot' };
   const { state } = await setup(page, f);
   await send(page, '生成新稿时保留的用户要求');
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1);
+  expect(state.executes).toHaveLength(1);
   expect(state.inputs[0].requirement_message_ids).toEqual(f.ref().message_ids);
   expect(state.inputs[0].project_message_set_ref).toEqual(f.ref());
+  expect(state.inputs[0].user_reference).toEqual({
+    material_id: 'synthetic-reference', material_version: 1, material_sha256: hash('reference'),
+    parse_snapshot_id: 'synthetic-reference-snapshot', target_product: 'private', target_document_stage: 'issuance'
+  });
   expect(state.executes[0].task_kind).toBe('generation');
   await expect(page.locator('.cowork-assistant')).toHaveCount(0);
 });
