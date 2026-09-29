@@ -7,7 +7,8 @@ import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { azureBlobs, digest, uid } from '@bondbuddy/api/data';
 import type { LibrarySelectionSnapshot } from './reference-library-selection.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
-import { buildNoHistoryGenerationPrompt, noHistoryModelGenerationStage, validateNoHistoryDraft, type NoHistoryStageAdapters, type TrustedRuleSelection } from './no-history-model-stage.js';
+import { buildNoHistoryGenerationPrompt, noHistoryModelGenerationStage, validAcceptedUserReferenceOutline, validateNoHistoryDraft, type NoHistoryStageAdapters, type TrustedRuleSelection } from './no-history-model-stage.js';
+import type { UserReferenceOutline } from '@bondbuddy/contracts';
 import type { StageContext } from './run-pipeline.js';
 
 const scope = { ownerUserId: 'owner-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic', inputRevision: 4, inputHash: 'a'.repeat(64) };
@@ -69,6 +70,59 @@ function context(): StageContext {
     run: { id: scope.runId, owner_user_id: scope.ownerUserId, project_id: scope.projectId, input_revision: scope.inputRevision, input_hash: scope.inputHash, task_kind: 'generation' },
     signal: new AbortController().signal, checkpoint: {}, values: new Map() };
 }
+
+function userReferenceOutline(overrides: Partial<UserReferenceOutline> = {}): UserReferenceOutline {
+  return {
+    schema_version: 'user-reference-outline-v1', owner_user_id: scope.ownerUserId, project_id: scope.projectId,
+    run_id: scope.runId, input_revision: scope.inputRevision, input_hash: scope.inputHash,
+    material_id: 'synthetic-reference', material_version: 1, material_sha256: 'd'.repeat(64),
+    parse_snapshot_id: 'synthetic-snapshot', review_id: 'synthetic-review', fact_isolation_check_version: 'synthetic-v1',
+    chapters: [{ order: 1, heading: '发行概况' }],
+    ...overrides,
+  };
+}
+
+test('a locked user reference must belong to the exact run input and carry a valid reviewed outline', () => {
+  const outline = userReferenceOutline();
+  assert.equal(validAcceptedUserReferenceOutline(outline, scope), true);
+  const mismatches: Array<Partial<UserReferenceOutline>> = [
+    { owner_user_id: 'other-owner' }, { project_id: 'other-project' }, { run_id: 'other-run' },
+    { input_revision: scope.inputRevision + 1 }, { input_hash: 'f'.repeat(64) },
+    { material_id: ' ' }, { material_version: 0 }, { material_sha256: 'not-a-hash' },
+    { parse_snapshot_id: '' }, { review_id: ' ' }, { fact_isolation_check_version: '' },
+    { chapters: [{ order: 2, heading: '发行概况' }] },
+    { chapters: [{ order: 1, heading: '' }] },
+    { chapters: [] },
+  ];
+  for (const mismatch of mismatches) {
+    assert.equal(validAcceptedUserReferenceOutline(userReferenceOutline(mismatch), scope), false, JSON.stringify(mismatch));
+  }
+});
+
+test('an accepted user reference outside the run scope pauses before library selection or model setup', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  const stage = noHistoryModelGenerationStage(adapters({ loadUserReferenceOutline: async () => ({
+    status: 'accepted', outline: userReferenceOutline({ owner_user_id: 'other-owner' }),
+  }) }, counts));
+  assert.deepEqual(await stage.run(context()), {
+    kind: 'pause', stage: 'capability_not_ready', reason: 'needs_review:user_reference_outline_scope_mismatch',
+  });
+  assert.deepEqual(counts, { config: 0, rules: 1, select: 0, facts: 1 });
+});
+
+test('a stale accepted user reference is rejected again before the model call', async () => {
+  const counts = { config: 0, rules: 0, select: 0, facts: 0 };
+  let reads = 0;
+  const stage = noHistoryModelGenerationStage(adapters({ loadUserReferenceOutline: async () => {
+    reads++;
+    return reads === 1 ? { status: 'accepted' as const, outline: userReferenceOutline() }
+      : { status: 'accepted' as const, outline: userReferenceOutline({ input_hash: 'f'.repeat(64) }) };
+  } }, counts));
+  const ctx = context();
+  ctx.validateBeforeModelCall = async () => null;
+  assert.deepEqual(await stage.run(ctx), { kind: 'pause', stage: 'capability_not_ready', reason: 'user_reference_review_stale' });
+  assert.ok(reads >= 2, 'the user reference is re-read and re-validated before the model call');
+});
 
 test('no reviewed target issuer profile pauses before reference selection or model setup', async () => {
   const counts = { config: 0, rules: 0, select: 0, facts: 0 };

@@ -4,6 +4,7 @@
  * claimed owner's immutable run input. It emits a draft JSON value only; Word inspection and
  * delivery remain a separate required pipeline stage.
  */
+import { validUserReferenceOutline, type UserReferenceOutline } from '@bondbuddy/contracts';
 import { hasLib01AAutoMatchBasis, type AnnualBusinessProfile, type ReferenceTarget } from '@bondbuddy/domain/reference-match';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { LibrarySelectionSnapshot, NoHistoryLibrarySelectionInput } from './reference-library-selection.js';
@@ -190,6 +191,26 @@ function validApprovedIssuerBinding(
     && !Number.isNaN(Date.parse(binding.reviewedAt));
 }
 
+/**
+ * Fail-closed guard for the trusted user-reference seam. The default loader already proves this
+ * against the persisted pin, but an injected adapter (or a future #17 input lock) must not hand
+ * the stage an outline for another owner, project, run or input revision, a malformed chapter
+ * list, or a projection with no reviewed material/parse/review identity. Any mismatch pauses.
+ */
+export function validAcceptedUserReferenceOutline(outline: UserReferenceOutline, scope: NoHistoryRunScope): boolean {
+  return outline.schema_version === 'user-reference-outline-v1'
+    && outline.owner_user_id === scope.ownerUserId && outline.project_id === scope.projectId
+    && outline.run_id === scope.runId && outline.input_revision === scope.inputRevision
+    && outline.input_hash.trim() === scope.inputHash
+    && typeof outline.material_id === 'string' && outline.material_id.trim().length > 0
+    && Number.isSafeInteger(outline.material_version) && outline.material_version >= 1
+    && /^[a-f0-9]{64}$/.test(outline.material_sha256)
+    && typeof outline.parse_snapshot_id === 'string' && outline.parse_snapshot_id.trim().length > 0
+    && typeof outline.review_id === 'string' && outline.review_id.trim().length > 0
+    && typeof outline.fact_isolation_check_version === 'string' && outline.fact_isolation_check_version.trim().length > 0
+    && validUserReferenceOutline(outline.chapters);
+}
+
 function validTargetFacts(snapshot: TargetFactsSnapshot, scope: NoHistoryRunScope): boolean {
   if (!sameScope(snapshot, scope) || !Array.isArray(snapshot.facts) || snapshot.facts.length === 0) return false;
   const seenFactIds = new Set<string>();
@@ -267,6 +288,10 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     const userReference = await (adapters.loadUserReferenceOutline?.(scope, ctx) ?? loadUserReferenceOutline(ctx.pool, scope));
     if (userReference.status === 'needs_review') throw new Error(`NO_HISTORY_USER_REFERENCE_NEEDS_REVIEW:${userReference.reason}`);
     if (userReference.status === 'accepted') {
+      // A locked user structure replaces the automatic library path, but it must still belong to
+      // this exact run input; a mismatched or malformed outline never reaches a model call.
+      if (!validAcceptedUserReferenceOutline(userReference.outline, scope))
+        throw new Error('NO_HISTORY_USER_REFERENCE_NEEDS_REVIEW:outline_scope_mismatch');
       return { prompt: buildNoHistoryGenerationPrompt({ scope, profile: profileRecord.profile, facts: facts.facts,
         rule, chapters: userReference.outline.chapters }), factIds: new Set(facts.facts.map(fact => fact.factId)), userReferenceUsed: true };
     }
@@ -319,7 +344,7 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
           if (prepared.userReferenceUsed) {
             const reference = await (adapters.loadUserReferenceOutline?.(scopeOf(ctx), ctx)
               ?? loadUserReferenceOutline(ctx.pool, scopeOf(ctx)));
-            if (reference.status !== 'accepted')
+            if (reference.status !== 'accepted' || !validAcceptedUserReferenceOutline(reference.outline, scopeOf(ctx)))
               return { kind: 'pause' as const, stage: 'capability_not_ready' as const, reason: 'user_reference_review_stale' };
           }
           return null;
