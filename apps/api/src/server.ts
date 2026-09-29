@@ -4,7 +4,7 @@ import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
-import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
@@ -34,6 +34,8 @@ import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import { consumeGenerationIssuerBinding, type GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
+import { loadApprovedGenerationIssuerBindingForLock } from './generation-issuer-binding.js';
+import { assertProjectMessageSetRefMatches, isProjectMessageSetLockError, loadCurrentProjectMessageSetPin } from './project-message-set-lock.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 import { confirmTargetIntent, loadTargetConfirmation, type TargetConfirmationRequest } from './target-confirmation.js';
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
@@ -475,7 +477,7 @@ export function createServer(settings: Settings = {}) {
   });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[]}>(request);
+    const b=body<{draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
     if(b.requirement_message_ids.length) throw unavailable(); // #7/#conversation persistence must authenticate these associations.
     if(b.test_rule_applicability_context_ref && !testChannelEnabled())
       throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
@@ -514,6 +516,42 @@ export function createServer(settings: Settings = {}) {
           }
         }
       }
+      // #17 input-lock consumption: an explicitly supplied ref is re-verified inside this
+      // transaction against the exact stored decision and the newly locked materials. A missing
+      // ref keeps the generation identity gate closed; an invalid ref never falls back to the
+      // browser issuer_name and never selects a latest binding.
+      if(b.generation_issuer_binding_ref && p.kind!=='generation')
+        throw new Problem(422,'VALIDATION_FAILED','Generation issuer binding ref requires a generation project');
+      let generationIssuerBinding: { ref: GenerationIssuerBindingRef; issuerEntityId: string } | undefined;
+      if(b.generation_issuer_binding_ref){
+        const binding=await loadApprovedGenerationIssuerBindingForLock(client,{ownerUserId:user,projectId:id},b.generation_issuer_binding_ref);
+        const materialKey=(item:{material_id:string;material_version:number;role:string;sha256:string})=>`${item.material_id}\u0000${item.material_version}\u0000${item.role}\u0000${item.sha256}`;
+        const issuerMaterials=resolved.filter(item=>GENERATION_ISSUER_MATERIAL_ROLES.includes(item.role)).map(materialKey).sort();
+        const pinnedMaterials=binding?.selected_materials.map(pin=>materialKey({material_id:pin.material_id,material_version:pin.material_version,role:pin.role,sha256:pin.material_sha256})).sort()??[];
+        if(!binding||!binding.issuer_entity_id||issuerMaterials.length!==pinnedMaterials.length||
+           !issuerMaterials.every((value,index)=>value===pinnedMaterials[index]))
+          throw conflict('INPUT_REVISION_CONFLICT','Generation issuer binding is missing, withdrawn, stale or does not match the selected issuer materials');
+        generationIssuerBinding={ref:{binding_id:binding.binding_id,version:binding.version,content_sha256:binding.content_sha256},issuerEntityId:binding.issuer_entity_id};
+      }
+      // #17 input-lock consumption: the active message-set identity is re-derived from immutable
+      // owner/project rows. A supplied ref must equal that exact set; a non-empty set must be
+      // pinned explicitly and is never replaced by an empty placeholder.
+      let currentMessageSet: Awaited<ReturnType<typeof loadCurrentProjectMessageSetPin>>;
+      try { currentMessageSet=await loadCurrentProjectMessageSetPin(client,{ownerUserId:user,projectId:id}); }
+      catch(error) {
+        if(isProjectMessageSetLockError(error)) throw new Problem(503,'DATA_UNAVAILABLE','Stored project message set could not be verified');
+        throw error;
+      }
+      let projectMessageSetRef: ProjectMessageSetRef | undefined;
+      if(b.project_message_set_ref){
+        let matches=false;
+        try { assertProjectMessageSetRefMatches(currentMessageSet,b.project_message_set_ref);matches=true; } catch { matches=false; }
+        if(!matches) throw conflict('INPUT_REVISION_CONFLICT','Message set ref does not match the current active project messages');
+        projectMessageSetRef={version:b.project_message_set_ref.version,content_sha256:b.project_message_set_ref.content_sha256,message_ids:[...b.project_message_set_ref.message_ids]};
+      } else if(currentMessageSet.members.length>0){
+        throw conflict('INPUT_REVISION_CONFLICT','Active project messages must be pinned with an exact project_message_set_ref');
+      }
+      const requirementMessageIds=projectMessageSetRef?projectMessageSetRef.message_ids:[];
       const revision=(p.latest_input_revision??0)+1;
       if(b.user_reference && (p.kind!=='generation'||!p.market||!p.offering))
         throw new Problem(422,'VALIDATION_FAILED','User reference requires a generation target');
@@ -534,7 +572,9 @@ export function createServer(settings: Settings = {}) {
         }
       }
       // Update generation must only see the reviewed historical issuer name, never the browser draft label.
-      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:[],rule_pack_version:null,template_version:null,reference_release:null};
+      const manifest={draft_revision:p.draft_revision,name:p.name,kind:p.kind,issuer_name:p.kind==='update'?(issuerIdentity?.status==='verified'?issuerIdentity.issuer_display_name:null):p.issuer_name,market:p.market,offering:p.offering,update_details:projectDto(p).update_details,materials:resolved,requirement_message_ids:requirementMessageIds,rule_pack_version:null,template_version:null,reference_release:null};
+      if(projectMessageSetRef)Object.assign(manifest,{project_message_set_ref:projectMessageSetRef});
+      if(generationIssuerBinding)Object.assign(manifest,{generation_issuer_binding_ref:generationIssuerBinding.ref,generation_issuer_entity_id:generationIssuerBinding.issuerEntityId});
       Object.assign(manifest,{target_confirmation:targetConfirmation??{status:'unconfirmed',market:null,offering:null,document_purpose:null,as_of:null,target_reporting_periods:[],confirmed_by:null,confirmed_at:null}});
       if(p.kind==='update'){
         Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
@@ -563,7 +603,7 @@ export function createServer(settings: Settings = {}) {
       if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       const hash=inputManifestHash(manifest);
-      const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),'[]',ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
+      const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),JSON.stringify(requirementMessageIds),ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
       if(targetConfirmation)await client.query(`INSERT INTO bb_input_revision_target_confirmations
         (owner_user_id,project_id,input_revision,market,offering,document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[user,id,revision,targetConfirmation.market,targetConfirmation.offering,
