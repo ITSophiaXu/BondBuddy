@@ -147,6 +147,11 @@ export class ApiClient {
     return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {}, signal);
   }
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
+  artifactHistory(id: string, cursor?: string, signal?: AbortSignal) {
+    const query = new URLSearchParams({ limit: '20' });
+    if (cursor) query.set('cursor', cursor);
+    return this.request<Dto<'ArtifactHistoryResponse'>>('GET', `/projects/${encodeURIComponent(id)}/artifacts?${query}`, undefined, {}, signal);
+  }
   artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }
   runAction(id: string, action: 'cancel' | 'resume', signal?: AbortSignal) {
     return this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : 'user_resumed' }, {}, signal);

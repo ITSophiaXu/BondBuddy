@@ -6,6 +6,10 @@
 
 #85 批准的同项目连续工作区下，#34 浏览器完整版本目录仍待 #384/#361/#18 的 UI 合并后接入此接口；本切片不修改网页。合成 PG16/Blob 夹具不能替代 #35 真实模型→Blob→本人下载，也不能替代 #146 Windows WPS/Word 实机修订/批注/往返验收，PDF/扫描、无历史稿、复杂表与跨品种仍为 #34 开放条件。
 
+## #34 同项目浏览器版本目录（2026-09-29，接续切片）
+
+`apps/web/src/artifact-history.ts` 从 `packages/contracts` 使用 `ArtifactHistoryResponse`，通过现有 `api.ts` 在项目工作区的进度/成果区域分页列出检查过的 Word 版本。它不创建新导航或任务；旧版在后续执行中、失败后仍可直接重新读取下载。旧单件只给通用 Word 名称；生产与有效测试授权下的工作稿逐行标明不同通道。点击逐份读取 owner/project/run 和成果，重新取得 grant，再复用现有同源、完整字节及 SHA-256 校验；账号/项目切换和列表刷新取消在途读取，不持久化授权。404/422/503、撤销及校验失败明确显示失败而非空目录成功。无公共 DTO、状态枚举、数据库迁移或收费变化；#85 无目录，布局补充须按 [同尺寸对照](../apps/web/ux-evidence/issue-34-history/README.md)取得产品负责人确认后才可合入。
+
 ## #18 项目消息受控持久化第一切片（2026-09-29）
 
 浏览器增量：`apps/web/src/project-conversation.ts` 将右侧原型布局接至上述保存/分页/版本读取 API，只展示 `user_asserted` / `save_only`，不伪造助手或执行。已确认保存但尚未读取列表时显示读取错误而非空成功；未提交或丢失响应的 composer 不混入已保存列表。`project-execution.ts` 在锁输入之前重新读取服务端完整 message-set ref，将全体 IDs 与 ref 同时提交；保存/编辑使预检失效，执行前再次校验 ref，409 重新读取但不覆写。没有新增 DTO、迁移或服务器路由；[合成浏览器与同尺寸对照](../apps/web/ux-evidence/issue-18-conversation/README.md) 不代表助手、真实 PG/Blob/模型或 #79 链路验收。

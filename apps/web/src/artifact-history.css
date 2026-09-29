@@ -1,0 +1,20 @@
+.word-history { margin: 20px 0; padding: 24px; }
+.word-history-heading, .word-history-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.word-history-heading h2 { margin: 0 0 8px; font-size: 18px; }
+.word-history-heading p, .word-history-item p { font-size: 11px; }
+.word-history-list { list-style: none; padding: 0; margin: 18px 0 0; }
+.word-history-item { border: 1px solid var(--line); border-radius: 9px; padding: 17px; margin-top: 10px; overflow-wrap: anywhere; }
+.word-history-item h3 { margin: 0 0 5px; font-size: 13px; }
+.word-history-item p { margin: 0; }
+.word-history-test { background: #faf4e8; border-color: #dec8a1; }
+.word-history-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.word-history-error { color: #8a4527; }
+.word-history-download-status:not(:empty) { margin-top: 10px; }
+.word-history-empty { margin-top: 18px; }
+.word-history [data-history-more] { margin-top: 16px; }
+@media (max-width: 760px) {
+  .word-history { padding: 18px; }
+  .word-history-heading, .word-history-row { flex-direction: column; }
+  .word-history-actions { width: 100%; }
+  .word-history-actions .button { flex: 1 1 auto; }
+}

@@ -1,4 +1,5 @@
 import { ArtifactPage } from './artifact-page';
+import { ArtifactHistory } from './artifact-history';
 import { prototypeIcon as icon } from './prototype-design';
 import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -101,6 +102,7 @@ export class ProjectExecution {
   private nextRequested = false;
   private materialRun?: string;
   private delivery?: ArtifactPage;
+  private history?: ArtifactHistory;
   private deliveryId?: string;
   private events: Dto<'RunEvent'>[] = [];
   private selected = false;
@@ -133,7 +135,7 @@ export class ProjectExecution {
   private get taskKind(): ExecutionTaskKind { return executionTaskKind(this.draft.project.kind); }
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
-    host.innerHTML = '<section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div>';
+    host.innerHTML = '<section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div><div id="execution-history"></div>';
     actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message">开始更新 ${icon('arrow')}</button></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
@@ -159,6 +161,8 @@ export class ProjectExecution {
       })();
     });
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
+    this.history = new ArtifactHistory(this.api, this.id, () => this.draft.project.name, host.querySelector<HTMLElement>('#execution-history')!);
+    this.history.mount();
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
   }
@@ -433,6 +437,7 @@ export class ProjectExecution {
     }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    const previous = this.run;
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
     if (this.run?.run_id !== run.run_id) {
@@ -442,6 +447,7 @@ export class ProjectExecution {
     if (this.run?.run_id !== run.run_id) this.resumedPause = undefined;
     if (this.run?.run_id !== run.run_id || this.run?.state !== run.state || this.run?.stage !== run.stage) this.resumeVerified = false;
     this.run = run; this.nextRequested = false;
+    if (previous && previous.state !== run.state && (run.state === 'succeeded' || run.state === 'test_completed')) void this.history?.refresh();
   }
   private async restore() {
     if (this.busy) return;
@@ -494,6 +500,7 @@ export class ProjectExecution {
       if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
+      if (this.run.state !== run.state && (run.state === 'succeeded' || run.state === 'test_completed')) void this.history?.refresh();
       this.run = run;
       // Read all new pages: a reconnect must not lose the actual pause/error reason.
       let cursor = this.eventCursor;
@@ -527,5 +534,5 @@ export class ProjectExecution {
         this.timer = setTimeout(() => { void this.poll(); }, 5000);
     }
   }
-  dispose() { this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
+  dispose() { this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); this.history?.dispose(); }
 }
