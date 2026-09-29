@@ -1,0 +1,84 @@
+{
+  "recorded_at_beijing": "2026-09-29 09:12 +08:00",
+  "base_commit": "33e9988bcb828a498d155a61f6745da31c6ee4a2",
+  "previous_proxy_evidence": "reference-library-post408-proxy-acceptance-2026-09-29.json",
+  "node_image_id": "sha256:8010d01fbe1a0e64621a61170a72984673d1b45813d1922ba71287844bca6cde",
+  "node_version": "v22.23.3",
+  "scope": "SSE adapter request spacing and isolated probe guard; no additional live SSE attempt",
+  "adapter_test": {
+    "command": "node --test --test-concurrency=2 apps/worker/dist/library-sources.test.js",
+    "tests": 5,
+    "pass": 5,
+    "fail": 0,
+    "observed_synthetic_request_start_ms": [
+      0,
+      700,
+      1400,
+      2100
+    ],
+    "observed_synthetic_wait_ms": [
+      700,
+      700,
+      700
+    ],
+    "coverage": [
+      "project list",
+      "project detail",
+      "PDF failed request",
+      "PDF retry",
+      "concurrent fetch serialization",
+      "body timeout",
+      "150 MiB stream limit",
+      "proxy CONNECT fail-closed"
+    ]
+  },
+  "library_integration_test": {
+    "command": "node --test --test-concurrency=2 apps/worker/dist/library.test.js apps/worker/dist/library-scheduler.test.js",
+    "environment": "dedicated migrated PostgreSQL 16 and Azurite 3.35 with --skipApiVersionCheck",
+    "tests": 22,
+    "pass": 22,
+    "fail": 0,
+    "skipped": 0
+  },
+  "probe_safety_test": {
+    "command": "node --test docs/runbooks/tools/reference-library-probe-safety.test.mjs",
+    "tests": 2,
+    "pass": 2,
+    "fail": 0,
+    "configuration_rejection": "PROBE_ISOLATION_REQUIRED before database write",
+    "recovery_rejection": "PROBE_RECOVERY_NOT_SELECTED before lease update",
+    "nonblank_database_rejection": "PROBE_DATABASE_NOT_EMPTY before source registration"
+  },
+  "synthetic_uncommitted_blob_fault": {
+    "fault_exit_code": 137,
+    "fault_marker_count": 1,
+    "inventory_after_fault": {
+      "scanned": 1,
+      "unreferenced": 1,
+      "referenced": 0,
+      "truncated": false
+    },
+    "recovery": {
+      "before_versions": 0,
+      "after_versions": 1,
+      "version": 1,
+      "state": "pending_review",
+      "sync_items": 1,
+      "active_index_entries": 0,
+      "blob_after_recovery": true
+    },
+    "inventory_after_recovery": {
+      "scanned": 1,
+      "unreferenced": 0,
+      "referenced": 1,
+      "truncated": false
+    }
+  },
+  "limits": [
+    "The earlier real SSE proxy and 384 MiB processing measurements belong to the previous code baseline; this record does not claim a new live SSE transfer.",
+    "Virtual-clock timing proves adapter request order and minimum spacing; it is not a measured remote-server interval.",
+    "No preproduction sync was enabled. The source remains evaluation_only and no version was approved or published.",
+    "The isolated recovery shows reuse of one object; automatic reclaim after permanent failure remains unproven.",
+    "No authorization, commercial batch, or professional review acceptance is claimed."
+  ]
+}
