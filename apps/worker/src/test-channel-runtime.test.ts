@@ -26,7 +26,7 @@ const wordSkipReason=!databaseUrl?'set BB_TEST_CHANNEL_DATABASE_URL or BB_TEST_D
   !process.env.BB_TEST_AZURITE_CONNECTION_STRING?'set BB_TEST_AZURITE_CONNECTION_STRING to an Azurite instance':
   !wordPythonReady?`${pythonBin} must import lxml (set BB_PYTHON_BIN to a Python with python-docx installed)`:false;
 
-test('test input gate pauses a missing applicability ref before capability loading', {skip:!databaseUrl},async()=>{
+test('test input gate delegates an absent applicability review to the scoped capability loader', {skip:!databaseUrl},async()=>{
   const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
   process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
   const pool=new Pool({connectionString:databaseUrl});
@@ -48,13 +48,14 @@ test('test input gate pauses a missing applicability ref before capability loadi
     let called=false;
     assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages:[inputLockStage],
       testRuleCapabilityLoader:async()=>{called=true;return {status:'not_ready',reason:'unexpected'};}}),'paused');
-    assert.equal(called,false);
+    assert.equal(called,true);
     const event=(await pool.query(`SELECT payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 1`,[run.run_id])).rows[0];
-    assert.equal(event.payload.reason,'test_reviewed_applicability_pin_missing');
+    assert.equal(event.payload.reason,'unexpected');
     const stopped=(await pool.query('SELECT state,stage FROM bb_runs WHERE id=$1',[run.run_id])).rows[0];
     assert.deepEqual(stopped,{state:'paused',stage:'capability_not_ready'});
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',
       [run.run_id])).rows[0].n,0,'the missing ref cannot start a model call');
+    called=false;
     const locked=(await pool.query('SELECT manifest,input_hash FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=1',
       [owner,project])).rows[0];
     const tampered={...locked.manifest,test_rule_applicability_ref:{context_id:'forged',version:1,content_hash:'a'.repeat(64),

@@ -11,7 +11,8 @@ import { workerRuntimeOptionsFromEnv } from './runtime.js';
 
 type Fixture = ReturnType<typeof fixture>;
 
-function fixture(withReviewPin = true, investorScope = 'professional', reviewState: { reasons: string[] | null } = { reasons: null }) {
+function fixture(withReviewPin = true, investorScope = 'professional', reviewState: { reasons: string[] | null } = { reasons: null },
+  blockReason?: string) {
   const owner = `synthetic-owner-${randomUUID()}`, project = `synthetic-project-${randomUUID()}`;
   const files = AUTHORIZED_SAMPLE_CASE_FILES.filter(file => file.caseId === 'rq-202509');
   const selected = [files.find(file => file.uploadRole === 'historical')!, files.find(file => file.uploadRole === 'interimFinancial')!];
@@ -28,6 +29,7 @@ function fixture(withReviewPin = true, investorScope = 'professional', reviewSta
       document_purpose: 'issuance', as_of: '2026-09-27' },
     ...(withReviewPin ? { test_rule_applicability_ref: { context_id: 'synthetic-context', version: 1, content_hash: 'f'.repeat(64),
       source_input_revision: 1, source_input_hash: 'a'.repeat(64) } } : {}),
+    ...(blockReason ? { test_rule_applicability_block_reason: blockReason } : {}),
   };
   const inputHash = inputManifestHash(manifest);
   const input = { input_hash: inputHash, draft_revision: 1, material_versions: materials.map(({ material_id, material_version }) => ({ material_id, material_version })),
@@ -136,9 +138,13 @@ test('candidate capability fails closed before applicability when grant, members
     assert.equal(f.reviewCalls(), 0, `${label} must fail before reviewing applicability`);
   }
   const withoutPin = fixture(false);
-  assert.deepEqual(await withoutPin.loader(withoutPin.run, withoutPin.input),
-    { status: 'not_ready', reason: 'test_reviewed_applicability_pin_missing' });
+  assert.equal((await withoutPin.loader(withoutPin.run, withoutPin.input)).status, 'ready',
+    'an exact test grant can use research guidance with applicability still pending');
   assert.equal(withoutPin.reviewCalls(), 0);
+  const blockedPin = fixture(false, 'professional', { reasons: null }, 'rule_applicability_overall_review_withdrawn');
+  assert.deepEqual(await blockedPin.loader(blockedPin.run, blockedPin.input),
+    { status: 'not_ready', reason: 'rule_applicability_overall_review_withdrawn' },
+    'a failed explicit review cannot fall back to the unreviewed path');
 }));
 
 test('candidate capability does not treat a reviewed non-professional investor scope as the ordinary private-bond candidate', async () => preprod(async () => {

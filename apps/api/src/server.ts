@@ -43,6 +43,7 @@ import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotW
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
 import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
+import { classifyPreflightReadiness } from './preflight-readiness.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -1173,7 +1174,7 @@ export function createServer(settings: Settings = {}) {
     }
   });
   app.post('/api/v1/projects/:project_id/preflight',{schema:{body:schemas.PreflightRequest,response:{200:schemas.PreflightResponse}}},async request=>{
-    const user=await owner(request),id=param(request,'project_id'),b=body<{input_revision:number;input_hash:string}>(request),traceId=uid();
+    const user=await owner(request),id=param(request,'project_id'),b=body<{input_revision:number;input_hash:string;test_grant_id?:string}>(request),traceId=uid();
     try {
       return await transaction(db(),async client=>{
         await project(client,user,id);
@@ -1181,6 +1182,8 @@ export function createServer(settings: Settings = {}) {
         const input=(await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,id,b.input_revision])).rows[0];
         if(!input)throw missing();
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+        if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:id,
+          inputRevision:b.input_revision,inputHash:b.input_hash});
         const missingInputs:string[]=[],uncertainty:string[]=[];
         const manifest=input.manifest as Record<string,unknown>;
         const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
@@ -1288,9 +1291,12 @@ export function createServer(settings: Settings = {}) {
         }
         // Execution stays 501 until #16/#79/Word delivery are live, so preflight cannot report an executable input.
         if(!settings.enableRunStaging&&!queueEnabled)missingInputs.push('execution_capability_not_ready');
-        const status=missingInputs.length?'blocked' as const:uncertainty.length?'needs_confirmation' as const:'ready' as const;
-        await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status});
-        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,billing_mode:'platform_trial' as const,
+        const {status,blockingInputs,advisoryInputs}=classifyPreflightReadiness(missingInputs,uncertainty,!!b.test_grant_id);
+        await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',
+          status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status,
+          channel:b.test_grant_id?'non_production_test':'production',testGrantId:b.test_grant_id});
+        return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,
+          blocking_inputs:blockingInputs,advisory_inputs:advisoryInputs,billing_mode:'platform_trial' as const,
           ...(updateDifficulty?{update_difficulty:{snapshot_id:updateDifficulty.id,status:updateDifficulty.estimate.status,estimated_n:updateDifficulty.estimate.estimatedN,
              structure_adaptation_required:updateDifficulty.estimate.structureAdaptationRequired,confirmation_reasons:updateDifficulty.estimate.confirmationReasons,
              source_profile_version:updateDifficulty.sourceProfileVersion}}:{})};

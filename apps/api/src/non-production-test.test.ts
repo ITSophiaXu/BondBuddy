@@ -55,6 +55,23 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     assert.equal(submitted.statusCode,202,submitted.body);
     assert.equal(submitted.json().channel,'non_production_test');assert.equal(submitted.json().test_grant_id,grantId);
     assert.equal(submitted.json().billing_mode,'non_billable_test');
+    const preflightPayload={input_revision:1,input_hash:input.input_hash,test_grant_id:grantId};
+    const checked=await send('POST',`/api/v1/projects/${project}/preflight`,preflightPayload);
+    assert.equal(checked.statusCode,200,checked.body);
+    assert.ok(checked.json().missing_inputs.includes('rule_pack:issuer_identity_not_bound'));
+    assert.ok(checked.json().advisory_inputs.includes('rule_pack:issuer_identity_not_bound'),
+      'the preflight preserves the original reason while allowing test submission');
+    assert.ok(checked.json().blocking_inputs.includes('material_versions'),
+      'missing material bytes are still blocking');
+    const preflightAudit=(await pool.query("SELECT channel,test_grant_id,stage FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND subtype='free_preflight' ORDER BY created_at DESC LIMIT 1",
+      [user,project])).rows[0];
+    assert.deepEqual(preflightAudit,{channel:'non_production_test',test_grant_id:grantId,stage:'blocked'});
+    const wrongPreflight=await send('POST',`/api/v1/projects/${project}/preflight`,
+      {...preflightPayload,input_hash:sha('d')});
+    assert.equal(wrongPreflight.statusCode,409,wrongPreflight.body);
+    const expiredPreflight=await send('POST',`/api/v1/projects/${project}/preflight`,
+      {...preflightPayload,test_grant_id:expiredGrant});
+    assert.equal(expiredPreflight.statusCode,409,expiredPreflight.body);
     await assert.rejects(pool.query("UPDATE bb_runs SET channel='production',test_grant_id=NULL WHERE id=$1",[submitted.json().run_id]),
       (error:any)=>error.code==='23514');
     const replay=await send('POST','/api/v1/runs/execute',request);

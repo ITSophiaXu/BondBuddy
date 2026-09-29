@@ -62,9 +62,11 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
 
     const manifest = input.manifest;
     const ref = readTestApplicabilityRef(manifest);
-    if (!ref) return notReady('test_reviewed_applicability_pin_missing');
-    if (ref.source_input_revision > run.input_revision ||
-        (ref.source_input_revision === run.input_revision && ref.source_input_hash !== run.input_hash.trim()))
+    if (manifest.test_rule_applicability_ref != null && !ref) return notReady('test_reviewed_applicability_pin_invalid');
+    if (typeof manifest.test_rule_applicability_block_reason === 'string')
+      return notReady(manifest.test_rule_applicability_block_reason);
+    if (ref && (ref.source_input_revision > run.input_revision ||
+        (ref.source_input_revision === run.input_revision && ref.source_input_hash !== run.input_hash.trim())))
       return notReady('test_reviewed_applicability_source_mismatch');
     if (!isVerifiedIssuerIdentityBinding(manifest.issuer_identity))
       return notReady('test_reviewed_issuer_identity_required');
@@ -73,28 +75,32 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
     if (!Array.isArray(materials) || materials.some(item => !isRecord(item) || typeof item.material_id !== 'string' ||
         !Number.isSafeInteger(item.material_version) || Number(item.material_version) < 1 || !sha256(item.sha256)))
       return notReady('test_reviewed_material_manifest_invalid');
-    const reviewed = await reviewedContextLoader(pool, {
-      ownerUserId: run.owner_user_id, projectId: run.project_id, contextId: ref.context_id,
-      version: ref.version, contentHash: ref.content_hash,
-      expectedSourceInputRevision: ref.source_input_revision, expectedSourceInputHash: ref.source_input_hash,
-      expectedIssuerBinding: manifest.issuer_identity,
-      currentDraftRevision: Number(input.draft_revision), mode: 'non_production_test',
-      currentMaterialVersions: materials.map(item => ({ materialId: String((item as Record<string, unknown>).material_id),
-        materialVersion: Number((item as Record<string, unknown>).material_version),
-        sha256: String((item as Record<string, unknown>).sha256).trim().toLowerCase() })),
-    });
-    if (reviewed.status !== 'approved') return notReady(`test_reviewed_applicability_${reviewed.reasons[0] ?? 'not_approved'}`);
-
-    const request = reviewed.request;
     const target = manifest.target_confirmation;
     if (!isRecord(target) || target.status !== 'confirmed' || target.confirmed_by !== run.owner_user_id ||
-        request.market !== 'sse' || request.offering !== 'private' ||
-        request.market !== target.market || request.offering !== target.offering ||
-        request.documentStage !== target.document_purpose || request.asOf !== target.as_of ||
-        request.instrument !== 'ordinary-company-bond' || request.issuerScope !== 'domestic-company' ||
-        request.investorScope !== 'professional' ||
-        !request.industry || !Array.isArray(request.specialFeatures))
+        manifest.market !== 'sse' || manifest.offering !== 'private' ||
+        target.market !== manifest.market || target.offering !== manifest.offering ||
+        !['registration','issuance'].includes(String(target.document_purpose)) ||
+        typeof target.as_of !== 'string')
       return notReady('test_reviewed_applicability_scope_mismatch');
+    if (ref) {
+      const reviewed = await reviewedContextLoader(pool, {
+        ownerUserId: run.owner_user_id, projectId: run.project_id, contextId: ref.context_id,
+        version: ref.version, contentHash: ref.content_hash,
+        expectedSourceInputRevision: ref.source_input_revision, expectedSourceInputHash: ref.source_input_hash,
+        expectedIssuerBinding: manifest.issuer_identity,
+        currentDraftRevision: Number(input.draft_revision), mode: 'non_production_test',
+        currentMaterialVersions: materials.map(item => ({ materialId: String((item as Record<string, unknown>).material_id),
+          materialVersion: Number((item as Record<string, unknown>).material_version),
+          sha256: String((item as Record<string, unknown>).sha256).trim().toLowerCase() })),
+      });
+      if (reviewed.status !== 'approved') return notReady(`test_reviewed_applicability_${reviewed.reasons[0] ?? 'not_approved'}`);
+      const request = reviewed.request;
+      if (request.market !== target.market || request.offering !== target.offering ||
+          request.documentStage !== target.document_purpose || request.asOf !== target.as_of ||
+          request.instrument !== 'ordinary-company-bond' || request.issuerScope !== 'domestic-company' ||
+          request.investorScope !== 'professional' || !request.industry || !Array.isArray(request.specialFeatures))
+        return notReady('test_reviewed_applicability_scope_mismatch');
+    }
 
     // 31 coverage gaps have no linked rule IDs; the sole not_applicable coverage
     // item is a scope exclusion, not a gap. Project only uncovered items through
