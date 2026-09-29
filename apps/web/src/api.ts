@@ -1,26 +1,66 @@
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
+import { isUploadInspectionPublicReason, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
-  constructor(public status: number, public code: string) { super(code); }
+  constructor(public status: number, public code: string, public readonly details: {
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason;
+  } = {}) { super(code); }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function parseApiError(status: number, value: unknown, fallbackCode = 'DATA_UNAVAILABLE'): ApiError {
+  if (!isRecord(value)) return new ApiError(status, fallbackCode);
+  const problem = value;
+  const code = typeof problem.code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(problem.code) ? problem.code : fallbackCode;
+  const correlationId = typeof problem.correlation_id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(problem.correlation_id)
+    ? problem.correlation_id : undefined;
+  const fields: unknown[] = Array.isArray(problem.field_errors) ? problem.field_errors : [];
+  let uploadReason: UploadInspectionPublicReason | undefined;
+  if (code === 'MATERIAL_UNREADABLE') for (const field of fields) {
+    if (isRecord(field) && field.field === 'material_upload' && isUploadInspectionPublicReason(field.code)) {
+      uploadReason = field.code;
+      break;
+    }
+  }
+  return new ApiError(status, code, {
+    ...(correlationId ? { correlationId } : {}),
+    ...(typeof problem.retryable === 'boolean' ? { retryable: problem.retryable } : {}),
+    ...(uploadReason ? { uploadReason } : {}),
+  });
+}
+
+export function errorReference(error: ApiError): string {
+  return error.details.correlationId ? ` 错误编号：${error.details.correlationId}。` : '';
 }
 
 export function friendlyError(error: unknown): string {
   if (!(error instanceof ApiError)) return '连接中断，尚未确认保存。请检查网络后重试。';
+  const reference = errorReference(error);
   switch (error.code) {
     case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
-    case 'VALIDATION_FAILED': case 'INPUT_REQUIRED': return '请检查填写内容后重试。';
-    case 'CAPABILITY_NOT_READY': return '这项功能暂未开放，请稍后再试。';
+    case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
+    case 'INPUT_REQUIRED': return `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
+    case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
+    case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
     case 'PASSWORD_INVALID': return '当前密码不正确。';
     case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
     case 'PROJECT_DELETE_BLOCKED': return '项目中还有任务尚未结束，暂时不能删除。';
-    default: return '暂时无法完成操作，请稍后重试。';
+    case 'DATA_UNAVAILABLE': return error.status >= 500
+      ? `服务暂时无法确认操作结果，请刷新项目状态；仍无法继续时联系支持。${reference}`
+      : `当前结果无法核实，请刷新后联系支持。${reference}`;
+    default: return error.details.retryable || error.status >= 500
+      ? `操作结果尚未确认，请刷新项目状态后重试。${reference}`
+      : `操作未完成，请核对当前状态；仍无法继续时联系支持。${reference}`;
   }
 }
 
@@ -52,7 +92,7 @@ export class ApiClient {
     if (response.status === 401 && authenticated && document.cookie.includes('bb_csrf=')) {
       if (!this.refresh) {
         const pending = this.send('POST', '/auth/refresh', undefined, {}, signal).then(async res => {
-          if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({}))).code ?? 'UNAUTHENTICATED');
+          if (!res.ok) throw parseApiError(res.status, await res.json().catch(() => ({})), 'UNAUTHENTICATED');
         });
         this.refresh = pending;
         void pending.finally(() => { if (this.refresh === pending) this.refresh = undefined; }).catch(() => {});
@@ -67,9 +107,9 @@ export class ApiClient {
     }
     signal.throwIfAborted();
     if (!response.ok) {
-      const problem = await response.json().catch(() => ({}));
+      const problem: unknown = await response.json().catch(() => ({}));
       if (response.status === 401 && authenticated) this.sessionLost();
-      throw new ApiError(response.status, problem.code ?? 'DATA_UNAVAILABLE');
+      throw parseApiError(response.status, problem);
     }
     return response;
   }
@@ -219,9 +259,9 @@ export class ApiClient {
           onProgress(0, file.size); // The next progress events describe the fresh, real retry attempt.
           continue;
         }
-      let code = 'DATA_UNAVAILABLE';
-      try { code = JSON.parse(xhr.responseText).code ?? code; } catch { /* response may be empty */ }
-      throw new ApiError(xhr.status, code);
+      let problem: unknown;
+      try { problem = JSON.parse(xhr.responseText); } catch { /* response may be empty */ }
+      throw parseApiError(xhr.status, problem);
       }
     })();
   }

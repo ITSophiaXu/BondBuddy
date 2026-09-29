@@ -1,7 +1,7 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
 import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS } from '@bondbuddy/contracts';
-import { ApiClient, ApiError, friendlyError, type Dto } from './api';
+import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { date, esc } from './ui';
 import './project-execution.css';
@@ -45,6 +45,19 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
   if (reason.startsWith('material_parse_failed:') || reason.startsWith('material_parse_cancelled:')) return '有文件处理未完成，请查看材料区的失败原因。';
   if (reason.startsWith('material_parse_') || reason.startsWith('ocr_pending:')) return '材料正在处理，请稍后重新检查。';
   return pendingConditions;
+}
+
+export function executionInputError(error: unknown, hasHistorical: boolean | null, materials: readonly Material[]): string | undefined {
+  if (!(error instanceof ApiError) || error.code !== 'INPUT_REQUIRED' || error.status !== 409) return undefined;
+  const reference = errorReference(error);
+  if (hasHistorical === true && !materials.some(material => material.role === 'historical'))
+    return `本项目选择了有历史稿，但尚未添加本发行人历史募集书。请在历史稿分区添加对应文件。${reference}`;
+  if (hasHistorical === true && !materials.some(material => ['audit', 'financial', 'interimFinancial', 'notes'].includes(material.role)))
+    return `本项目还没有已保存的审计报告或财务报表，请在现有财务材料分区添加。${reference}`;
+  if (hasHistorical === false && materials.some(material => material.role === 'reference') &&
+      materials.some(material => ['audit', 'financial', 'interimFinancial', 'notes'].includes(material.role)))
+    return `无本发行人历史稿、已有相似稿及财务材料，但当前新稿入口未能处理这组输入。请保留材料并联系支持，不要把相似稿改作本发行人历史稿。${reference}`;
+  return undefined;
 }
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
@@ -113,6 +126,7 @@ export class ProjectExecution {
   private sourceStamp = '';
   private materialReady = false;
   private generation = 0;
+  private inputRejected = false;
 
   constructor(private api: ApiClient, private draft: Draft) {}
   private get active() { return !this.controller.signal.aborted; }
@@ -138,6 +152,7 @@ export class ProjectExecution {
     if (this.restoring) return '正在读取项目状态…';
     if (this.busy || this.starting) return '正在提交，请稍候。';
     if (this.inputReadUncertain) return '上次操作结果尚未确认，请重新读取。';
+    if (this.inputRejected) return '本次输入已被拒绝；请按上方提示处理，输入不变时无需重复提交。';
     if (this.preflight?.status === 'blocked' && this.selected) return '当前处理条件尚未就绪，请重新检查；条件未变时无需重复提交。';
     if (!this.materialReady) return this.materialMessage || '材料尚未保存完成，请查看文件进度。';
     if (!this.eligibleMaterials().length) return '请先添加本次需要的项目材料。';
@@ -149,6 +164,7 @@ export class ProjectExecution {
   private invalidate() {
     this.generation++; this.selected = false; this.preflight = undefined;
     this.resumeVerified = false;
+    this.inputRejected = false;
     this.render();
   }
   sync(materials: Material[], ready: boolean, materialMessage = '') {
@@ -249,11 +265,22 @@ export class ProjectExecution {
     });
   }
 
-  private async action(work: () => Promise<void>) {
+  private async action(work: () => Promise<void>, operation: 'execute' | 'other' = 'other') {
     if (this.busy || !this.active) return;
     this.busy = true; this.message = ''; this.render();
     try { await work(); }
-    catch (error) { if (this.active) this.message = error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY' ? '当前环境尚未开放全文更新，请联系支持或稍后重试。' : friendlyError(error); }
+    catch (error) {
+      if (this.active) {
+        const inputMessage = operation === 'execute'
+          ? executionInputError(error, this.draft.fields.update_details.has_historical, this.eligibleMaterials()) : undefined;
+        this.inputRejected = Boolean(inputMessage);
+        this.message = operation === 'execute'
+        ? inputMessage ??
+          (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
+            ? `当前环境尚未开放全文更新，请联系支持。${errorReference(error)}` : friendlyError(error))
+        : friendlyError(error);
+      }
+    }
     finally { this.busy = false; this.render(); }
   }
   private async save() {
@@ -333,7 +360,7 @@ export class ProjectExecution {
       if (run.project_id !== this.id || run.input_revision !== input.input_revision || run.input_hash !== input.input_hash || run.execution_request_id !== request.execution_request_id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       this.acceptRun(run); this.message = '任务已提交；重复提交此版本会返回同一任务。';
       void this.poll();
-    });
+    }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
