@@ -7,6 +7,7 @@ const testSubmissionAdvisories = new Set([
   'rule_pack:production_rule_pack_registry_empty',
   'rule_pack:rule_pack_pin_missing',
   'issuer_identity_not_bound:issuer_identity_source_missing_unreviewed_or_conflicting',
+  'update_difficulty_pending:target_confirmation_required',
 ]);
 
 export function classifyPreflightReadiness(missingInputs: readonly string[], uncertainty: readonly string[],

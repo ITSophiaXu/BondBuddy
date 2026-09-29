@@ -59,8 +59,8 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     const checked=await send('POST',`/api/v1/projects/${project}/preflight`,preflightPayload);
     assert.equal(checked.statusCode,200,checked.body);
     assert.ok(checked.json().missing_inputs.includes('rule_pack:issuer_identity_not_bound'));
-    assert.ok(checked.json().advisory_inputs.includes('rule_pack:issuer_identity_not_bound'),
-      'the preflight preserves the original reason while allowing test submission');
+    assert.ok(checked.json().blocking_inputs.includes('rule_pack:issuer_identity_not_bound'),
+      'an input without an issuer source observation remains technically blocked');
     assert.ok(checked.json().blocking_inputs.includes('material_versions'),
       'missing material bytes are still blocking');
     const preflightAudit=(await pool.query("SELECT channel,test_grant_id,stage FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND subtype='free_preflight' ORDER BY created_at DESC LIMIT 1",
@@ -159,5 +159,70 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     await app.close();await pool.end();
     if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
     if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
+  }
+});
+
+test('ordinary update submission auto-selects an expiring preproduction grant for its locked input',
+  {skip:!databaseUrl},async()=>{
+  const names=['BB_DEPLOYMENT_TIER','BB_NON_PRODUCTION_TEST_CHANNEL','BB_PREPROD_WORKING_DRAFT_EXPIRES_AT',
+    'BB_PREPROD_WORKING_DRAFT_SAMPLE_MANIFEST_SHA256','BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH',
+    'BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH','BB_PREPROD_WORKING_DRAFT_STAGE','BB_PREPROD_WORKING_DRAFT_AS_OF'] as const;
+  const original=names.map(name=>process.env[name]);
+  process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+  process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT=new Date(Date.now()+3_600_000).toISOString();
+  process.env.BB_PREPROD_WORKING_DRAFT_SAMPLE_MANIFEST_SHA256=sha('a');
+  process.env.BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH=sha('b');
+  process.env.BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH=sha('c');
+  process.env.BB_PREPROD_WORKING_DRAFT_STAGE='issuance';
+  process.env.BB_PREPROD_WORKING_DRAFT_AS_OF='2026-09-29';
+  const pool=new Pool({connectionString:databaseUrl});
+  let owner=`auto-owner-${randomUUID()}`;
+  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(url:string,payload:unknown)=>app.inject({method:'POST',url,headers:{origin},payload:payload as any});
+  try{
+    const projectResponse=await send('/api/v1/projects',{name:'Synthetic working draft',kind:'update',
+      issuer_name:null,market:'sse',offering:'private'});
+    assert.equal(projectResponse.statusCode,201,projectResponse.body);
+    const project=projectResponse.json().project_id as string;
+    const inputResponse=await send(`/api/v1/projects/${project}/input-revisions`,
+      {draft_revision:1,material_versions:[],requirement_message_ids:[]});
+    assert.equal(inputResponse.statusCode,201,inputResponse.body);
+    const input=inputResponse.json();
+    const preflight=await send(`/api/v1/projects/${project}/preflight`,
+      {input_revision:1,input_hash:input.input_hash});
+    assert.equal(preflight.statusCode,200,preflight.body);
+    assert.ok(preflight.json().blocking_inputs.includes('material_versions'),
+      'automatic admission never turns absent material into a runnable input');
+    const preflightJob=(await pool.query(`SELECT channel,test_grant_id FROM bb_jobs WHERE owner_user_id=$1
+      AND project_id=$2 AND subtype='free_preflight' ORDER BY created_at DESC LIMIT 1`,[owner,project])).rows[0];
+    assert.equal(preflightJob.channel,'non_production_test');
+    assert.ok(preflightJob.test_grant_id);
+    const request={execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.input_hash,
+      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
+    const submitted=await send('/api/v1/runs/execute',request);
+    assert.equal(submitted.statusCode,202,submitted.body);
+    assert.equal(submitted.json().channel,'non_production_test');
+    const grantId=submitted.json().test_grant_id as string;
+    assert.equal((await send('/api/v1/runs/execute',request)).json().run_id,submitted.json().run_id);
+    const grant=(await pool.query('SELECT granted_by,reason FROM bb_non_production_test_grants WHERE grant_id=$1',[grantId])).rows[0];
+    assert.deepEqual(grant,{granted_by:'preprod_service',reason:'controlled_working_draft:issuance:2026-09-29'});
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_type='test_grant'
+      AND aggregate_id=$1 AND event_type='test_grant.created'`,[grantId])).rows[0].n,1);
+    owner=`foreign-${randomUUID()}`;
+    assert.equal((await send('/api/v1/runs/execute',{...request,execution_request_id:randomUUID()})).statusCode,404);
+    owner=(await pool.query('SELECT owner_user_id FROM bb_runs WHERE id=$1',[submitted.json().run_id])).rows[0].owner_user_id;
+    assert.equal((await send('/api/v1/runs/execute',{...request,execution_request_id:randomUUID(),input_hash:sha('d')})).statusCode,409);
+    await pool.query(`UPDATE bb_non_production_test_grants SET revoked_at=now(),revoked_by='synthetic-operator',
+      revoked_reason='synthetic_revoke' WHERE grant_id=$1`,[grantId]);
+    const afterRevocation=await send('/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
+    assert.equal(afterRevocation.statusCode,202,afterRevocation.body);
+    assert.equal(afterRevocation.json().channel,'production');
+    process.env.BB_DEPLOYMENT_TIER='production';
+    const production=await send('/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
+    assert.equal(production.statusCode,202,production.body);
+    assert.equal(production.json().channel,'production');
+  }finally{
+    await app.close();await pool.end();
+    names.forEach((name,index)=>{if(original[index]===undefined)delete process.env[name];else process.env[name]=original[index];});
   }
 });

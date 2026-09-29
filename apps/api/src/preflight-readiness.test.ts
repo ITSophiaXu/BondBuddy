@@ -15,6 +15,9 @@ test('a test grant makes selected review gaps advisory for submission', () => {
   assert.deepEqual(classifyPreflightReadiness(unreviewedIdentity, ['update_difficulty_needs_confirmation'], true), {
     status:'needs_confirmation',blockingInputs:[],advisoryInputs:unreviewedIdentity,
   });
+  assert.deepEqual(classifyPreflightReadiness(['update_difficulty_pending:target_confirmation_required'],[],true),{
+    status:'needs_confirmation',blockingInputs:[],advisoryInputs:['update_difficulty_pending:target_confirmation_required'],
+  });
 });
 
 test('missing bytes, stale identity and corrupted pins remain blocking in a test channel', () => {

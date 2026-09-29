@@ -10,6 +10,7 @@ import {
   reviewIssuerIdentitySourceRecord,
 } from './issuer-identity-source.js';
 import type { IssuerIdentitySourcePool } from './issuer-identity-source.js';
+import { testIssuerCandidateMatches, type TestIssuerCandidate } from './test-issuer-candidate.js';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const origin = 'http://bondbuddy.test';
@@ -207,6 +208,13 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
         historical_materials: [{ material_id: historicalA, material_version: 1 }],
       });
       assert.equal(unreviewedInput.manifest.issuer_name, null, 'unreviewed browser label is not frozen as an issuer identity');
+      const candidate=unreviewedInput.manifest.test_issuer_candidate as Record<string,unknown>;
+      assert.equal(candidate.status,'pending_test_candidate');
+      assert.equal(candidate.source_record_id,observationA.id);
+      assert.equal(candidate.content_sha256,observationA.contentSha256);
+      assert.equal(candidate.candidate_key,observationA.entityId);
+      assert.equal(unreviewedInput.manifest.issuer_entity_id,null,'test evidence does not promote a verified issuer entity');
+      assert.equal(await testIssuerCandidateMatches(scopedPool,{ownerUserId:owner,projectId},candidate as TestIssuerCandidate),true);
       const firstHash = unreviewedInput.input_hash as string;
 
       await connection.query(`INSERT INTO bb_issuer_identity_reviewer_grants
@@ -294,6 +302,8 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       assert.equal((oldInput.issuer_identity as Record<string,unknown>).status,'pending','review never rewrites a locked input revision');
 
       const verifiedInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
+      assert.equal(await testIssuerCandidateMatches(scopedPool,{ownerUserId:owner,projectId},candidate as TestIssuerCandidate),false,
+        'a reviewer decision invalidates the old pending test candidate');
       assert.notEqual(verifiedInput.input_hash, firstHash, 'reviewed identity changes the canonical input hash');
       assert.equal(verifiedInput.manifest.issuer_entity_id, verifiedA, 'the submitted historical version selects its own source, even when another historical source exists');
       assert.equal(verifiedInput.manifest.issuer_name, '合成发行人甲', 'model input uses the reviewed source name, not the browser label');

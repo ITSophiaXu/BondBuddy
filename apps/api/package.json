@@ -80,6 +80,10 @@
       "types": "./dist/issuer-identity-binding.d.ts",
       "default": "./dist/issuer-identity-binding.js"
     },
+    "./test-issuer-candidate": {
+      "types": "./dist/test-issuer-candidate.d.ts",
+      "default": "./dist/test-issuer-candidate.js"
+    },
     "./generation-issuer-binding": {
       "types": "./dist/generation-issuer-binding.d.ts",
       "default": "./dist/generation-issuer-binding.js"

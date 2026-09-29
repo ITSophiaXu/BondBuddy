@@ -11,6 +11,7 @@ from lxml import etree
 from .writer import CT, Q, R, W, add_comments, make_run, paragraph_map, parse_xml, write_zip
 
 MARK = "内部测试工作稿·未经专业审核·不得对外使用"
+PENDING_REVIEW = "待人工确认：历史稿发行人身份、原市场与发行方式、候选规则适用性及更新难度；工作稿内容不得作为已核验事实或正式交付。"
 HEADER_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
 HEADER_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
 
@@ -77,6 +78,7 @@ def mark(source: str, manifest: str, target: str) -> None:
             notes.append({"recordId": key, "message": f"待人工确认：{detail}；原因 {item['reason_code']}；证据 {ref or '未提供'}"})
         add_comments(parts, root, notes, by_record)
         body.insert(0, paragraph(MARK))
+        body.insert(1, paragraph(PENDING_REVIEW))
         rels_name = "word/_rels/document.xml.rels"
         rels = parse_xml(parts[rels_name]) if rels_name in parts else etree.Element(f"{{{R}}}Relationships", nsmap={None: R})
         header_names = [name for name in parts if name.startswith("word/header") and name.endswith(".xml")]

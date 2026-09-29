@@ -3,17 +3,20 @@ import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { isVerifiedIssuerIdentityBinding } from '@bondbuddy/api/issuer-identity-binding';
+import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
 import { AUTHORIZED_SAMPLE_MANIFEST_SHA256 } from './authorized-sample-membership.generated.js';
 import { loadAuthorizedSampleMembershipFromLockedInput } from './authorized-sample-membership-loader.js';
 import { loadSsePrivateCandidateAssets, SSE_PRIVATE_CANDIDATE_RUNTIME_ROOT } from './sse-private-candidate-assets.js';
 import { toTestCoverageGap } from './test-coverage.js';
 import type { RunRow, TestRuleCapability, TestRuleCapabilityLoader } from './run-pipeline.js';
+import { testWorkingDraftTarget } from './test-working-draft-target.js';
 
 type LockedInput = Parameters<TestRuleCapabilityLoader>[1];
 type CapabilityDependencies = {
   readonly candidateRoot?: string;
   readonly reviewedContextLoader?: typeof loadReviewedRuleApplicabilityContext;
+  readonly candidateMatcher?: typeof testIssuerCandidateMatches;
 };
 
 const notReady = (reason: string): TestRuleCapability => ({ status: 'not_ready', reason });
@@ -28,6 +31,7 @@ const sha256 = (value: unknown): value is string => typeof value === 'string' &&
 export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencies: CapabilityDependencies = {}): TestRuleCapabilityLoader {
   const candidateRoot = dependencies.candidateRoot ?? SSE_PRIVATE_CANDIDATE_RUNTIME_ROOT;
   const reviewedContextLoader = dependencies.reviewedContextLoader ?? loadReviewedRuleApplicabilityContext;
+  const candidateMatcher = dependencies.candidateMatcher ?? testIssuerCandidateMatches;
   return async (run: RunRow, input: LockedInput): Promise<TestRuleCapability> => {
     if (run.channel !== 'non_production_test' || !run.test_grant_id || run.task_kind !== 'update')
       return notReady('test_run_scope_required');
@@ -68,21 +72,24 @@ export function createSsePrivateTestRuleCapabilityLoader(pool: Pool, dependencie
     if (ref && (ref.source_input_revision > run.input_revision ||
         (ref.source_input_revision === run.input_revision && ref.source_input_hash !== run.input_hash.trim())))
       return notReady('test_reviewed_applicability_source_mismatch');
-    if (!isVerifiedIssuerIdentityBinding(manifest.issuer_identity))
-      return notReady('test_reviewed_issuer_identity_required');
+    if (!isVerifiedIssuerIdentityBinding(manifest.issuer_identity)) {
+      if (!isTestIssuerCandidate(manifest.test_issuer_candidate) ||
+          !await candidateMatcher(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id},manifest.test_issuer_candidate))
+        return notReady('test_issuer_candidate_missing_or_stale');
+      if (ref) return notReady('test_reviewed_applicability_requires_verified_issuer');
+    }
 
     const materials = manifest.materials;
     if (!Array.isArray(materials) || materials.some(item => !isRecord(item) || typeof item.material_id !== 'string' ||
         !Number.isSafeInteger(item.material_version) || Number(item.material_version) < 1 || !sha256(item.sha256)))
       return notReady('test_reviewed_material_manifest_invalid');
-    const target = manifest.target_confirmation;
-    if (!isRecord(target) || target.status !== 'confirmed' || target.confirmed_by !== run.owner_user_id ||
-        manifest.market !== 'sse' || manifest.offering !== 'private' ||
-        target.market !== manifest.market || target.offering !== manifest.offering ||
-        !['registration','issuance'].includes(String(target.document_purpose)) ||
-        typeof target.as_of !== 'string')
+    const target=testWorkingDraftTarget(manifest,grant,run.owner_user_id);
+    if (!target)
       return notReady('test_reviewed_applicability_scope_mismatch');
+    if(ref && target.status!=='confirmed')return notReady('test_reviewed_applicability_requires_confirmed_target');
     if (ref) {
+      if (!isVerifiedIssuerIdentityBinding(manifest.issuer_identity))
+        return notReady('test_reviewed_applicability_requires_verified_issuer');
       const reviewed = await reviewedContextLoader(pool, {
         ownerUserId: run.owner_user_id, projectId: run.project_id, contextId: ref.context_id,
         version: ref.version, contentHash: ref.content_hash,

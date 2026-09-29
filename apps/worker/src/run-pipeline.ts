@@ -12,6 +12,7 @@ import { documentParserVersion } from '@bondbuddy/api/material-jobs';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
+import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
 import { inputManifestHash, revalidateStoredProductionRulePin, type ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { readTestApplicabilityRef } from '@bondbuddy/api/test-rule-applicability-pin';
 import { assertTestGrant } from '@bondbuddy/api/non-production-test';
@@ -133,6 +134,17 @@ async function verifyUpdateIssuerIdentityBinding(pool: Pool, run: RunRow, manife
     return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_issuer_identity_not_bound' };
   const binding = manifest.issuer_identity;
   if (!isVerifiedIssuerIdentityBinding(binding)) {
+    if (run.channel === 'non_production_test' && isTestIssuerCandidate(manifest.test_issuer_candidate)) {
+      const candidate=manifest.test_issuer_candidate;
+      const materials=Array.isArray(manifest.materials)?manifest.materials as Record<string,unknown>[]:[];
+      const historical=materials.filter(material=>material.role==='historical');
+      if(historical.length!==1 || historical[0]?.material_id!==candidate.material_id ||
+          historical[0]?.material_version!==candidate.material_version ||
+          historical[0]?.sha256!==candidate.source_content_sha256)
+        return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      const matches=await testIssuerCandidateMatches(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id},candidate);
+      return matches?null:{kind:'pause',stage:'capability_not_ready',reason:'historical_issuer_candidate_stale'};
+    }
     const reason = binding && typeof binding === 'object' && !Array.isArray(binding) &&
       typeof (binding as Record<string, unknown>).reason === 'string' ? String((binding as Record<string, unknown>).reason)
       : 'historical_issuer_identity_not_bound';
@@ -280,7 +292,8 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
     for (const material of financial) {
       const result = await producer!({ ownerUserId: run.owner_user_id, projectId: run.project_id,
         inputRevision: run.input_revision, inputHash: run.input_hash.trim(), materialId: material.material_id,
-        materialVersion: material.material_version, snapshotId: material.parse_snapshot_id! });
+        materialVersion: material.material_version, snapshotId: material.parse_snapshot_id!,
+        ...(run.channel==='non_production_test'?{testRunId:run.id}:{}) });
       if (result.snapshotId !== material.parse_snapshot_id || !result.extractionRunId || !/^[a-f0-9]{64}$/.test(result.responseSha256))
         throw new Error('FACT_EXTRACTION_RESULT_INVALID');
       const stored = (await pool.query(`SELECT input_hash,parse_response_sha256,candidate_ids,needs_review FROM bb_fact_extraction_runs

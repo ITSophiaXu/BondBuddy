@@ -42,7 +42,8 @@ import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoi
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
-import { assertTestChannelReadable, assertTestGrant, testChannelEnabled } from './non-production-test.js';
+import { assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled } from './non-production-test.js';
+import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
@@ -501,6 +502,7 @@ export function createServer(settings: Settings = {}) {
       const resolved=[];
       for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
       let issuerIdentity: ReturnType<typeof pendingIssuerIdentityBinding> | ReturnType<typeof verifiedIssuerIdentityBinding> | undefined;
+      let testIssuerCandidate: Awaited<ReturnType<typeof loadTestIssuerCandidate>> = null;
       if(p.kind==='update'){
         const historical=resolved.filter(ref=>ref.role==='historical');
         const historicalMaterials=historical.map(ref=>({material_id:ref.material_id,material_version:ref.material_version}));
@@ -511,6 +513,8 @@ export function createServer(settings: Settings = {}) {
           const verified=await loadVerifiedIssuerIdentitySourceRecord(client,{ownerUserId:user,projectId:id,materialId:selected.material_id,materialVersion:selected.material_version});
           if(!verified){
             issuerIdentity=pendingIssuerIdentityBinding('issuer_identity_source_missing_unreviewed_or_conflicting',historicalMaterials);
+            testIssuerCandidate=await loadTestIssuerCandidate(client,{ownerUserId:user,projectId:id,
+              materialId:selected.material_id,materialVersion:selected.material_version});
           }else{
             if(verified.materialId!==selected.material_id||verified.materialVersion!==selected.material_version)throw new Error('ISSUER_IDENTITY_SCOPE_MISMATCH');
             issuerIdentity=verifiedIssuerIdentityBinding(verified);
@@ -579,6 +583,7 @@ export function createServer(settings: Settings = {}) {
       Object.assign(manifest,{target_confirmation:targetConfirmation??{status:'unconfirmed',market:null,offering:null,document_purpose:null,as_of:null,target_reporting_periods:[],confirmed_by:null,confirmed_at:null}});
       if(p.kind==='update'){
         Object.assign(manifest,{issuer_identity:issuerIdentity,issuer_entity_id:issuerIdentity?.status==='verified'?issuerIdentity.entity_id:null});
+        if(testIssuerCandidate)Object.assign(manifest,{test_issuer_candidate:testIssuerCandidate});
       }
       const ruleBinding=await lockProductionRulePack(client,p,{draftRevision:p.draft_revision,materials:resolved},
         issuerIdentity?.status==='verified'?issuerIdentity:undefined,b.rule_applicability_context_ref,settings.reviewedContextLoader);
@@ -1001,9 +1006,11 @@ export function createServer(settings: Settings = {}) {
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
+      const testGrantId=b.test_grant_id ?? (b.task_kind==='update' ? await autoWorkingDraftGrant(client,
+        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0].manifest) : null);
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
-      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',b.test_grant_id?'non_production_test':'production',b.test_grant_id??null]);
+      const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',testGrantId?'non_production_test':'production',testGrantId]);
       if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
       if(queueEnabled) {
@@ -1186,6 +1193,8 @@ export function createServer(settings: Settings = {}) {
           inputRevision:b.input_revision,inputHash:b.input_hash});
         const missingInputs:string[]=[],uncertainty:string[]=[];
         const manifest=input.manifest as Record<string,unknown>;
+        const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
+          {userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},manifest);
         const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);
         if(ruleCheck.status!=='valid')missingInputs.push(ruleCheck.status==='tampered'&&ruleCheck.reason==='input_manifest_hash_mismatch'
           ?ruleCheck.reason:`rule_pack:${ruleCheck.reason}`);
@@ -1291,10 +1300,15 @@ export function createServer(settings: Settings = {}) {
         }
         // Execution stays 501 until #16/#79/Word delivery are live, so preflight cannot report an executable input.
         if(!settings.enableRunStaging&&!queueEnabled)missingInputs.push('execution_capability_not_ready');
-        const {status,blockingInputs,advisoryInputs}=classifyPreflightReadiness(missingInputs,uncertainty,!!b.test_grant_id);
+        const testCandidate=isTestIssuerCandidate(manifest.test_issuer_candidate)?manifest.test_issuer_candidate:null;
+        const candidateCurrent=testCandidate&&await testIssuerCandidateMatches(client,{ownerUserId:user,projectId:id},testCandidate);
+        if(testCandidate&&!candidateCurrent)missingInputs.push('issuer_identity_candidate_stale');
+        const hasIssuerEvidence=manifest.kind!=='update'||isVerifiedIssuerIdentityBinding(manifest.issuer_identity)||Boolean(candidateCurrent);
+        const {status,blockingInputs,advisoryInputs}=classifyPreflightReadiness(missingInputs,uncertainty,
+          !!testGrantId&&hasIssuerEvidence);
         await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',
           status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status,
-          channel:b.test_grant_id?'non_production_test':'production',testGrantId:b.test_grant_id});
+          channel:testGrantId?'non_production_test':'production',testGrantId:testGrantId??undefined});
         return {project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,missing_inputs:missingInputs,uncertainty,
           blocking_inputs:blockingInputs,advisory_inputs:advisoryInputs,billing_mode:'platform_trial' as const,
           ...(updateDifficulty?{update_difficulty:{snapshot_id:updateDifficulty.id,status:updateDifficulty.estimate.status,estimated_n:updateDifficulty.estimate.estimatedN,

@@ -132,6 +132,28 @@ test('test-channel input reaches the historical planner with exact research guid
   }
 });
 
+test('a provisional issuer marks every changed block for manual identity review in the working draft',async()=>{
+  const before=[process.env.BB_DEPLOYMENT_TIER,process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+  try{
+    const s=fixture(true);
+    s.options.load=async c=>({...await loadHistoricalGenerationInput(c,s.readers),issuerIdentityPending:true});
+    const input=await s.options.load(s.ctx);
+    assert.match(historicalPrompt(input,input.snapshot.response.records,0,1),/"issuer_identity_status":"pending_test_candidate"/);
+    const result=await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind,'done');
+    if(result.kind!=='done')return;
+    const plan=result.value as HistoricalGenerationPlan;
+    assert.ok(plan.replacements.length>0);
+    for(const change of plan.replacements)
+      assert.ok(plan.reviewNotes.some(note=>note.recordId===change.recordId&&note.message.includes('发行人身份')));
+  }finally{
+    for(const [index,key] of ['BB_DEPLOYMENT_TIER','BB_NON_PRODUCTION_TEST_CHANNEL'].entries()){
+      if(before[index]===undefined)delete process.env[key];else process.env[key]=before[index];
+    }
+  }
+});
+
 function pendingBaselineFixture(testChannel = true) {
   const s = fixture(testChannel);
   const relationshipHash = createHash('sha256').update('rId1').digest('hex');

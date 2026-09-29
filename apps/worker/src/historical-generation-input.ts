@@ -17,6 +17,7 @@ import type { HistoricalCandidateRuleGuidance } from './historical-candidate-rul
 import { loadAuthorizedHistoricalTestRuleGuidance } from './historical-test-rule-authorization.js';
 import { HISTORICAL_TEST_BASELINE_POLICY } from './historical-baseline-warnings.js';
 import { readHistoricalFactReviews, historicalReviewAllowsExistingFact, type HistoricalFactReviews } from './historical-fact-reviews.js';
+import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
 const detailsValidator = new Ajv({ strict: false }).compile(UpdateDetailsSchema);
@@ -32,7 +33,7 @@ export interface HistoricalGenerationInput {
   evidenceReviews?: HistoricalFactReviews;
   revalidateEvidenceReviews?: () => Promise<void>;
   planReaders: HistoricalUpdateReaders;
-  details: UpdateDetails; issuerName: string; preparationHash: string;
+  details: UpdateDetails; issuerName: string; issuerIdentityPending: boolean; preparationHash: string;
   ruleGuidance: HistoricalRuleGuidance | HistoricalCandidateRuleGuidance;
 }
 interface PreparationPin {
@@ -83,7 +84,12 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     ruleGuidance = await loadHistoricalRuleGuidance(pool, productionRule, manifest.rule_pack_context, readers.rules);
     rule = productionRule;
   }
-  if (typeof manifest.issuer_name !== 'string' || !manifest.issuer_name.trim()) unavailable('historical_issuer_required');
+  const testCandidate=run.channel==='non_production_test' && isTestIssuerCandidate(manifest.test_issuer_candidate)
+    ? manifest.test_issuer_candidate : null;
+  if(testCandidate && !await testIssuerCandidateMatches(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id},testCandidate))
+    unavailable('historical_issuer_candidate_stale');
+  const issuerName=testCandidate?.issuer_display_name ?? manifest.issuer_name;
+  if (typeof issuerName !== 'string' || !issuerName.trim()) unavailable('historical_issuer_required');
   const materials: LockedHistoricalUpdate['materials'] = Array.isArray(manifest.materials) ? manifest.materials.map((m: Record<string, unknown>) => ({
     materialId: m.material_id, materialVersion: m.material_version, contentHash: m.sha256, role: m.role,
   })) : [];
@@ -129,7 +135,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   // Project facts may contain subsidiaries. Do not guess which entity is the issuer.
   // The trusted extraction pipeline must use the project issuer's exact identity.
   const entities = new Set(facts.map(f => f.candidate.identity.entityId));
-  const entity = previous?.issuer_entity_id ?? manifest.issuer_entity_id;
+  const entity = previous?.issuer_entity_id ?? testCandidate?.candidate_key ?? manifest.issuer_entity_id;
   if (typeof entity !== 'string' || !entity.trim() || !entities.has(entity)) unavailable('historical_issuer_identity_not_bound');
   if (facts.some(f => f.candidate.identity.accountId !== run.owner_user_id || f.provenance.evidence.some(a => {
     const m = materialMap.get(`${a.material_id}:${a.material_version}`); return !m || a.content_hash !== m.contentHash;
@@ -197,7 +203,8 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
       return found.decision;
     },
   };
-  return { locked, snapshot, profile, facts, decisions, evidenceReviews, revalidateEvidenceReviews, planReaders, details, ruleGuidance, issuerName: manifest.issuer_name, preparationHash: updateContentHash(pin) };
+  return { locked, snapshot, profile, facts, decisions, evidenceReviews, revalidateEvidenceReviews, planReaders, details, ruleGuidance,
+    issuerName, issuerIdentityPending:!!testCandidate, preparationHash: updateContentHash(pin) };
 }
 
 /** Never offer one clean member of a conflicted/uncertain identity while concealing the other candidates. */
