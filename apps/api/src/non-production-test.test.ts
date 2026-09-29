@@ -268,8 +268,8 @@ test('working draft admission requires a successful parse job and fails closed f
     const unreadableInput=await locked([historical,unreadable]);
     for(const response of [await check(unreadableInput),await send('/api/v1/runs/execute',request(unreadableInput))]){
       assert.equal(response.statusCode,409,response.body);
-      assert.equal(response.json().code,'CAPABILITY_NOT_READY');
-      assert.match(response.json().message,/parsing is pending/i);
+      assert.equal(response.json().code,'INPUT_REQUIRED');
+      assert.match(response.json().message,/complete its saved upload again/i);
     }
     const parseJob=randomUUID();
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
