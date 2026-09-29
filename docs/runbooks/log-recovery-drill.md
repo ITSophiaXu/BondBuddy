@@ -10,15 +10,19 @@ Run from the checkout root with Node 22 and Docker Compose. Reserve a quiet wind
 cd <checkout-of-deployed-commit>
 umask 077
 export BB_DRILL_EXPECTED_SHA=<full-deployed-commit-sha>
-export BB_DRILL_ENV_FILE=<absolute-path-to-existing-private-compose-env-file>
-export BB_DRILL_BASE_URL=<existing-api-origin-or-local-reverse-proxy-url>
-export BB_DRILL_ORIGIN=<configured-public-origin>
-export BB_DRILL_API_ID=<full-docker-container-id>
-export BB_DRILL_WORKER_ID=<full-docker-container-id>
-export BB_DRILL_OPS_ID=<full-docker-container-id>
-export BB_DRILL_POSTGRES_ID=<full-docker-container-id>
-export BB_DRILL_STATE_FILE=<absolute-private-path-for-this-run.state.json>
-export BB_DRILL_EVIDENCE_FILE=<absolute-private-path-for-this-run.evidence.ndjson>
+export BB_DRILL_ENV_FILE="$PWD/deploy/m1/.env"
+export BB_DRILL_ORIGIN="$(node -e 'const s=require("node:fs").readFileSync(process.argv[1],"utf8");console.log(s.match(/^BB_PUBLIC_ORIGIN=(.+)$/m)?.[1]??"")' "$BB_DRILL_ENV_FILE")"
+drill_port="$(node -e 'const s=require("node:fs").readFileSync(process.argv[1],"utf8");console.log(s.match(/^BB_HTTP_PORT=(.+)$/m)?.[1]??"18080")' "$BB_DRILL_ENV_FILE")"
+export BB_DRILL_BASE_URL="http://127.0.0.1:$drill_port"
+for service in api worker ops postgres; do
+  id="$(docker compose --project-directory deploy/m1 -f deploy/m1/compose.yaml --env-file "$BB_DRILL_ENV_FILE" ps -q "$service")"
+  export "BB_DRILL_${service^^}_ID=$id"
+done
+drill_stamp="$(date +%Y%m%dT%H%M%S)"
+mkdir -p "$HOME/.local/state/bondbuddy-drill"
+chmod 700 "$HOME/.local/state/bondbuddy-drill"
+export BB_DRILL_STATE_FILE="$HOME/.local/state/bondbuddy-drill/$drill_stamp.state.json"
+export BB_DRILL_EVIDENCE_FILE="$HOME/.local/state/bondbuddy-drill/$drill_stamp.evidence.ndjson"
 node deploy/m1/scripts/deployed-recovery-drill.mjs preflight
 timeout --signal=TERM --kill-after=30s 480s node deploy/m1/scripts/deployed-recovery-drill.mjs run
 ```
