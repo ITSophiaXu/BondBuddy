@@ -18,6 +18,8 @@ import { loadCurrentProjectMessageSetPin } from './project-message-set-lock.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
+import { documentParserVersion } from './material-jobs.js';
+import { inputManifestHash } from './production-rule-pin.js';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -30,7 +32,7 @@ const ENTITY_BASIS = { verifiedEntityId: ENTITY, entityBasisKind: 'manual_attest
 interface EvidenceSpec { readonly recordId: string; readonly quote: string }
 
 async function insertSyntheticMaterial(pool: Pool, args: {
-  owner: string; projectId: string; material: { id: string; role: 'audit' | 'notes'; evidence: readonly EvidenceSpec[] }; parserVersion: string;
+  owner: string; projectId: string; material: { id: string; role: 'audit' | 'notes' | 'reference'; evidence: readonly EvidenceSpec[] }; parserVersion: string;
 }): Promise<void> {
   const { owner, projectId, material, parserVersion } = args;
   const contentHash = sha(`material-bytes-${material.id}`), uploadId = `upload-${material.id}`, snapshotId = `snapshot-${material.id}`;
@@ -131,6 +133,175 @@ async function insertProjectMessage(pool: Pool, args: { owner: string; projectId
     VALUES($1,$2,$3,$4,'project_message',$5,$6,$7,$8,$9)`,
   [`msg-submission-${messageId}-${version}`, owner, projectId, snapshotId, messageId, `msg-request-${messageId}-${version}`, messageVersion, version, digest(body)]);
 }
+
+test('approved generation input with parsed audit enters the controlled channel without a historical draft',
+  { skip: !databaseUrl || !blobConnection }, async () => {
+    const names = ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL', 'BB_PREPROD_WORKING_DRAFT_EXPIRES_AT',
+      'BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH', 'BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH',
+      'BB_PREPROD_WORKING_DRAFT_STAGE', 'BB_PREPROD_WORKING_DRAFT_AS_OF'] as const;
+    const previous = names.map(name => process.env[name]);
+    process.env.BB_DEPLOYMENT_TIER = 'preprod';
+    process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+    process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT = new Date(Date.now() + 3_600_000).toISOString();
+    process.env.BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH = 'a'.repeat(64);
+    process.env.BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH = 'b'.repeat(64);
+    process.env.BB_PREPROD_WORKING_DRAFT_STAGE = 'issuance';
+    process.env.BB_PREPROD_WORKING_DRAFT_AS_OF = '2026-09-29';
+    const pool = new Pool({ connectionString: connection });
+    const blobs = azureBlobs(blobConnection!);
+    const fixture = await provisionApprovedBinding(pool, randomUUID().replaceAll('-', '').slice(0, 10), 'admit');
+    let activeOwner = fixture.owner;
+    const app = createServer({ pool, blobs, principal: async () => ({ userId: activeOwner, csrfVerified: true }),
+      allowedOrigin: origin, enableSyntheticQueue: true });
+    const post = (url: string, payload: unknown) => app.inject({ method: 'POST', url, headers: { origin }, payload: payload as never });
+    try {
+      await fixture.approve();
+      for (const materialId of [fixture.auditId, fixture.notesId]) {
+        await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
+          material_sha256,parser_version,trace_id,max_attempts,result)
+          VALUES($1,$2,NULL,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8)`,
+        [randomUUID(), fixture.owner, fixture.projectId, materialId, sha(`material-bytes-${materialId}`),
+          documentParserVersion(), randomUUID(), { outcome: 'parsed', parse_status: 'parsed' }]);
+      }
+      const locked = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [fixture.auditId, fixture.notesId].map(material_id => ({ material_id, material_version: 1 })),
+        requirement_message_ids: [], generation_issuer_binding_ref: fixture.ref,
+      });
+      assert.equal(locked.statusCode, 201, locked.body);
+      const input = locked.json() as { input_revision: number; input_hash: string };
+      const preflight = await post(`/api/v1/projects/${fixture.projectId}/preflight`,
+        { input_revision: input.input_revision, input_hash: input.input_hash });
+      assert.equal(preflight.statusCode, 200, preflight.body);
+      const request = { input_revision: input.input_revision, input_hash: input.input_hash,
+        project_id: fixture.projectId, execution_request_id: randomUUID(), task_kind: 'generation',
+        input_manifest_ref: 'synthetic', storage_origin: 'cloud', workspace_id: 'synthetic' };
+      const submitted = await post('/api/v1/runs/execute', request);
+      assert.equal(submitted.statusCode, 202, submitted.body);
+      assert.equal(submitted.json().channel, 'non_production_test');
+      assert.equal((await post('/api/v1/runs/execute', request)).json().run_id, submitted.json().run_id);
+      const count = await pool.query('SELECT count(*)::int AS n FROM bb_non_production_test_grants WHERE user_id=$1 AND project_id=$2',
+        [fixture.owner, fixture.projectId]);
+      assert.equal(count.rows[0].n, 1);
+      // A reviewed reference may supply structure; the issuer binding still covers only audit/notes.
+      const referenceId = `admit-reference-${randomUUID().replaceAll('-', '')}`, evidenceId = `reference-evidence-${referenceId}`;
+      await insertSyntheticMaterial(pool, { owner: fixture.owner, projectId: fixture.projectId, parserVersion: documentParserVersion(),
+        material: { id: referenceId, role: 'reference', evidence: [{ recordId: evidenceId, quote: '合成参考章节' }] } });
+      const referenceHash = sha(`material-bytes-${referenceId}`), referenceSnapshot = `snapshot-${referenceId}`;
+      await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
+        material_sha256,parser_version,trace_id,max_attempts,result)
+        VALUES($1,$2,NULL,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8)`,
+        [randomUUID(), fixture.owner, fixture.projectId, referenceId, referenceHash,
+          documentParserVersion(), randomUUID(), { outcome: 'parsed', parse_status: 'parsed' }]);
+      const referenceGrant = `reference-grant-${referenceId}`, referenceReview = `reference-review-${referenceId}`;
+      const referenceContext = `reference-context-${referenceId}`, product = 'synthetic_bond', stage = 'draft';
+      await pool.query(`INSERT INTO bb_user_reference_reviewer_grants(id,reviewer_user_id,granted_by)
+        VALUES($1,$2,$3)`, [referenceGrant, fixture.reviewer.userId, fixture.owner]);
+      await pool.query(`INSERT INTO bb_user_reference_target_contexts(id,owner_user_id,project_id,target_market,target_offering,
+        target_product,target_document_stage,content_hash,status,reviewer_user_id,reviewer_grant_id)
+        VALUES($1,$2,$3,'sse','private',$4,$5,$6,'accepted',$7,$8)`,
+        [referenceContext, fixture.owner, fixture.projectId, product, stage,
+          inputManifestHash({ market: 'sse', offering: 'private', product, document_stage: stage }),
+          fixture.reviewer.userId, referenceGrant]);
+      const outline = [{ order: 1, heading: '合成参考章节' }];
+      await pool.query(`INSERT INTO bb_user_reference_reviews(id,owner_user_id,project_id,material_id,material_version,
+        material_sha256,parse_snapshot_id,target_market,target_offering,target_product,target_document_stage,
+        authorization_status,readability_status,applicability_status,status,fact_isolation_check_version,outline,
+        confirmed_warning_codes,parse_response_sha256,signed_outline_sha256,reviewer_user_id,reviewer_grant_id)
+        VALUES($1,$2,$3,$4,1,$5,$6,'sse','private',$7,$8,'accepted','accepted','accepted','accepted',
+          'synthetic-isolation-v1',$9,'[]',$10,$11,$12,$13)`,
+        [referenceReview, fixture.owner, fixture.projectId, referenceId, referenceHash, referenceSnapshot,
+          product, stage, JSON.stringify(outline), sha(`parse-response-${referenceSnapshot}`),
+          inputManifestHash(outline), fixture.reviewer.userId, referenceGrant]);
+      const withReference = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [fixture.auditId, fixture.notesId, referenceId]
+          .map(material_id => ({ material_id, material_version: 1 })), requirement_message_ids: [],
+        generation_issuer_binding_ref: fixture.ref,
+        user_reference: { material_id: referenceId, material_version: 1, material_sha256: referenceHash,
+          parse_snapshot_id: referenceSnapshot, target_product: product, target_document_stage: stage },
+      });
+      assert.equal(withReference.statusCode, 201, withReference.body);
+      const referenced = withReference.json() as { input_revision: number; input_hash: string };
+      const referenceRun = await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
+        input_revision: referenced.input_revision, input_hash: referenced.input_hash });
+      assert.equal(referenceRun.statusCode, 202, referenceRun.body);
+      assert.equal(referenceRun.json().channel, 'non_production_test');
+      const referenceWithoutBinding = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [fixture.auditId, fixture.notesId, referenceId]
+          .map(material_id => ({ material_id, material_version: 1 })), requirement_message_ids: [],
+        user_reference: { material_id: referenceId, material_version: 1, material_sha256: referenceHash,
+          parse_snapshot_id: referenceSnapshot, target_product: product, target_document_stage: stage },
+      });
+      assert.equal(referenceWithoutBinding.statusCode, 201, referenceWithoutBinding.body);
+      const unboundReference = referenceWithoutBinding.json() as { input_revision: number; input_hash: string };
+      assert.equal((await post(`/api/v1/projects/${fixture.projectId}/preflight`, {
+        input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash,
+      })).json().code, 'INPUT_REQUIRED');
+      assert.equal((await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
+        input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash })).json().code, 'INPUT_REQUIRED');
+      await pool.query('UPDATE bb_user_reference_reviewer_grants SET revoked_at=now() WHERE id=$1', [referenceGrant]);
+      assert.equal((await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
+        input_revision: referenced.input_revision, input_hash: referenced.input_hash })).json().code, 'INPUT_REQUIRED');
+      const execute = (changes: Record<string, unknown> = {}) => post('/api/v1/runs/execute',
+        { ...request, execution_request_id: randomUUID(), ...changes });
+      const preflightAgain = () => post(`/api/v1/projects/${fixture.projectId}/preflight`,
+        { input_revision: input.input_revision, input_hash: input.input_hash });
+      assert.equal((await execute({ input_hash: 'f'.repeat(64) })).json().code, 'INPUT_REVISION_CONFLICT');
+      assert.equal((await execute({ task_kind: 'update' })).json().code, 'INPUT_REVISION_CONFLICT');
+      process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'disabled';
+      assert.equal((await execute()).json().code, 'TEST_CHANNEL_DISABLED');
+      process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+      process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT = new Date(Date.now() - 3_600_000).toISOString();
+      assert.equal((await execute()).json().code, 'TEST_GRANT_EXPIRED');
+      process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT = new Date(Date.now() + 3_600_000).toISOString();
+      await fixture.withdraw();
+      assert.equal((await preflightAgain()).json().code, 'INPUT_REQUIRED');
+      assert.equal((await execute()).json().code, 'INPUT_REQUIRED');
+      assert.equal((await post('/api/v1/runs/execute', request)).json().run_id, submitted.json().run_id,
+        'same execution request remains bound to its original run');
+      const after = await pool.query('SELECT count(*)::int AS n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
+        [fixture.owner, fixture.projectId]);
+      assert.equal(after.rows[0].n, 2);
+      const noBinding = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [fixture.auditId, fixture.notesId].map(material_id => ({ material_id, material_version: 1 })),
+        requirement_message_ids: [],
+      });
+      assert.equal(noBinding.statusCode, 201, noBinding.body);
+      const unboundInput = noBinding.json() as { input_revision: number; input_hash: string };
+      assert.equal((await execute({ input_revision: unboundInput.input_revision, input_hash: unboundInput.input_hash })).json().code, 'INPUT_REQUIRED');
+      const empty = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [], requirement_message_ids: [],
+      });
+      assert.equal(empty.statusCode, 201, empty.body);
+      const emptyInput = empty.json() as { input_revision: number; input_hash: string };
+      assert.equal((await execute({ input_revision: emptyInput.input_revision, input_hash: emptyInput.input_hash })).json().code, 'INPUT_REQUIRED');
+      const pending = await provisionApprovedBinding(pool, randomUUID().replaceAll('-', '').slice(0, 10), 'pending');
+      await pending.approve();
+      activeOwner = pending.owner;
+      for (const materialId of [pending.auditId, pending.notesId]) {
+        const queued = materialId === pending.auditId;
+        await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
+          material_sha256,parser_version,trace_id,max_attempts,result)
+          VALUES($1,$2,NULL,'parse','material_parse',$3,$4,$5,1,$6,$7,$8,3,$9)`,
+          [randomUUID(), pending.owner, queued ? 'queued' : 'succeeded', pending.projectId, materialId,
+            sha(`material-bytes-${materialId}`), documentParserVersion(), randomUUID(),
+            queued ? null : { outcome: 'parsed', parse_status: 'parsed' }]);
+      }
+      const pendingLock = await post(`/api/v1/projects/${pending.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [pending.auditId, pending.notesId].map(material_id => ({ material_id, material_version: 1 })),
+        requirement_message_ids: [], generation_issuer_binding_ref: pending.ref,
+      });
+      assert.equal(pendingLock.statusCode, 201, pendingLock.body);
+      const pendingInput = pendingLock.json() as { input_revision: number; input_hash: string };
+      assert.equal((await post(`/api/v1/projects/${pending.projectId}/preflight`,
+        { input_revision: pendingInput.input_revision, input_hash: pendingInput.input_hash })).json().code, 'CAPABILITY_NOT_READY');
+      assert.equal((await post('/api/v1/runs/execute', { ...request, project_id: pending.projectId,
+        input_revision: pendingInput.input_revision, input_hash: pendingInput.input_hash,
+        execution_request_id: randomUUID() })).json().code, 'CAPABILITY_NOT_READY');
+    } finally {
+      await app.close(); await pool.end();
+      names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; });
+    }
+  });
 
 test('synthetic PostgreSQL input revision locks an approved generation issuer binding and exact message set',
   { skip: !databaseUrl || !blobConnection }, async () => {

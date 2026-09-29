@@ -28,7 +28,7 @@ function approvedBinding(scope: { ownerUserId: string; projectId: string }, expe
   };
 }
 
-test('generation preflight consumes an injected approved issuer binding and fails closed otherwise',
+test('generation preflight cannot bypass the immutable input pin with an injected issuer binding',
   { skip: !databaseUrl || !blobConnection }, async () => {
     const pool = new Pool({ connectionString: connection });
     const blobs = azureBlobs(blobConnection!);
@@ -65,11 +65,10 @@ test('generation preflight consumes an injected approved issuer binding and fail
       // Explicit ref but not approved: still closed.
       providerMode = 'ref';
       assert.equal(preflightMissing(await preflight()), true, 'unapproved ref must fail closed');
-      // Explicit approved ref for this exact input: the generation identity gate is satisfied.
+      // Even an injected approved ref cannot replace the missing immutable input pin.
       loaderMode = 'approved';
       const approved = await preflight();
-      assert.equal(preflightMissing(approved), false, 'approved binding satisfies the generation identity gate');
-      assert.equal(loaderMode, 'approved');
+      assert.equal(preflightMissing(approved), true, 'an unpinned generation input remains blocked');
     } finally {
       await app.close();
       await pool.end();

@@ -3,6 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { missing, Problem } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import { documentParserVersion } from './material-jobs.js';
+import { GENERATION_ISSUER_MATERIAL_ROLES, type GenerationIssuerBindingRef } from '@bondbuddy/contracts';
+import { loadApprovedGenerationIssuerBindingForLock } from './generation-issuer-binding.js';
+import { resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
+import { canonicalInputManifest } from './production-rule-pin.js';
 
 export const testChannelEnabled = (env: NodeJS.ProcessEnv = process.env) =>
   env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
@@ -20,6 +24,8 @@ export type TestGrantScope = { grantId: string; userId: string; projectId: strin
 type LockedInput = { input_hash: string; draft_revision: number; manifest: unknown; material_versions: unknown };
 const workingDraftKeys = ['BB_PREPROD_WORKING_DRAFT_EXPIRES_AT', 'BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH',
   'BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH', 'BB_PREPROD_WORKING_DRAFT_STAGE', 'BB_PREPROD_WORKING_DRAFT_AS_OF'] as const;
+export const workingDraftConfigured = (env: NodeJS.ProcessEnv = process.env) =>
+  workingDraftKeys.some(key => env[key]?.trim());
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -33,7 +39,7 @@ async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrant
   const materials = manifest.materials;
   const refs = input.material_versions;
   if (materials.length === 0 || materials.length !== refs.length)
-    throw new Problem(409, 'INPUT_REQUIRED', 'Working draft requires locked historical and financial materials');
+    throw new Problem(409, 'INPUT_REQUIRED', 'Working draft requires locked issuer financial material');
   const ids = new Set<string>();
   let historical = 0, financial = 0;
   for (let index = 0; index < materials.length; index++) {
@@ -72,15 +78,65 @@ async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrant
         !['parsed','needs_confirmation'].includes(parse.result?.outcome))
       throw new Problem(409, 'MATERIAL_UNREADABLE', 'Locked material has no successful parse');
   }
-  if (historical !== 1 || financial < 1)
-    throw new Problem(409, 'INPUT_REQUIRED', 'Working draft requires one historical draft and financial material');
+  if (financial < 1 || (manifest.kind === 'update' && historical !== 1))
+    throw new Problem(409, 'INPUT_REQUIRED', manifest.kind === 'update'
+      ? 'Working draft requires one historical draft and financial material'
+      : 'Generation working draft requires issuer financial material');
+}
+
+/** A generation run can only use the binding pinned at input lock, verified against today's reviews and parse snapshots. */
+export async function assertGenerationIssuerBinding(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
+  input: LockedInput): Promise<void> {
+  const manifest = input.manifest;
+  const unavailable = () => new Problem(409, 'INPUT_REQUIRED',
+    'Approved generation issuer binding is missing, withdrawn or stale; review and lock the exact binding before retrying');
+  if (!record(manifest) || manifest.kind !== 'generation' || !Array.isArray(manifest.materials)) throw unavailable();
+  const raw = manifest.generation_issuer_binding_ref;
+  if (!record(raw) || typeof raw.binding_id !== 'string' || !Number.isSafeInteger(raw.version) ||
+      typeof raw.content_sha256 !== 'string') throw unavailable();
+  const ref: GenerationIssuerBindingRef = { binding_id: raw.binding_id, version: raw.version as number,
+    content_sha256: raw.content_sha256 };
+  const binding = await loadApprovedGenerationIssuerBindingForLock(db,
+    { ownerUserId: scope.userId, projectId: scope.projectId }, ref);
+  if (!binding || binding.status !== 'approved' || !binding.issuer_entity_id ||
+      binding.issuer_entity_id !== manifest.generation_issuer_entity_id) throw unavailable();
+  const key = (item: { material_id: string; material_version: number; role: string; sha256: string }) =>
+    `${item.material_id}\u0000${item.material_version}\u0000${item.role}\u0000${item.sha256}`;
+  const issuerRoles = new Set<string>(GENERATION_ISSUER_MATERIAL_ROLES);
+  const pins = manifest.materials.filter((item): item is Record<string, unknown> => record(item) && issuerRoles.has(String(item.role)));
+  const selected = binding.selected_materials.map(item => key({ material_id: item.material_id, material_version: item.material_version,
+    role: item.role, sha256: item.material_sha256 })).sort();
+  const locked = pins.map(item => key({ material_id: String(item.material_id), material_version: Number(item.material_version),
+    role: String(item.role), sha256: String(item.sha256) })).sort();
+  if (!locked.length || locked.length !== selected.length || locked.some((value, index) => value !== selected[index])) throw unavailable();
+  if (manifest.user_reference_pin !== undefined) {
+    const pin = manifest.user_reference_pin;
+    if (!record(pin) || pin.status !== 'accepted')
+      throw new Problem(409, 'INPUT_REQUIRED', 'Selected user reference requires accepted review');
+    const choice: UserReferenceChoice = {
+      material_id: String(pin.material_id), material_version: Number(pin.material_version),
+      material_sha256: String(pin.material_sha256), parse_snapshot_id: String(pin.parse_snapshot_id),
+      target_product: String(pin.target_product), target_document_stage: String(pin.target_document_stage),
+    };
+    const current = await resolveUserReferencePin(db, { owner: scope.userId, projectId: scope.projectId,
+      revision: scope.inputRevision, market: String(manifest.market), offering: String(manifest.offering) }, choice,
+    manifest.materials as { material_id: string; material_version: number; role: string; sha256: string }[]);
+    if (current.pin.status !== 'accepted' || canonicalInputManifest(current.pin) !== canonicalInputManifest(pin))
+      throw new Problem(409, 'INPUT_REQUIRED', 'Selected user reference review is no longer current');
+  }
+}
+
+export async function assertGenerationWorkingDraftInput(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
+  input: LockedInput): Promise<void> {
+  await assertGenerationIssuerBinding(db, scope, input);
+  await assertWorkingDraftMaterials(db, scope, input);
 }
 
 /** Server-owned, time-bounded admission for a preproduction working draft. */
 export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
   input: LockedInput, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
-  if (!record(input.manifest) || input.manifest.kind !== 'update') return null;
-  if (!workingDraftKeys.some(key => env[key]?.trim())) return null;
+  if (!record(input.manifest) || !['update', 'generation'].includes(String(input.manifest.kind))) return null;
+  if (!workingDraftConfigured(env)) return null;
   if (!testChannelEnabled(env)) throw new Problem(409, 'TEST_CHANNEL_DISABLED', 'Configured working draft channel is unavailable');
   const until = env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT;
   const expires = until ? new Date(until).getTime() : NaN;
@@ -98,7 +154,8 @@ export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGran
   // grant is deliberately not replaced by an ordinary browser retry.
   await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
     [`working-draft:${scope.userId}:${scope.projectId}:${scope.inputRevision}:${scope.inputHash}`]);
-  await assertWorkingDraftMaterials(db, scope, input);
+  if (input.manifest.kind === 'generation') await assertGenerationWorkingDraftInput(db, scope, input);
+  else await assertWorkingDraftMaterials(db, scope, input);
   const existing = await db.query(`SELECT grant_id,revoked_at,expires_at FROM bb_non_production_test_grants
     WHERE user_id=$1 AND project_id=$2 AND input_revision=$3 AND input_hash=$4
       AND granted_by='preprod_service' ORDER BY created_at LIMIT 1`,
