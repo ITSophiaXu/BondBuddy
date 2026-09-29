@@ -125,6 +125,24 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 
 这些结果只证明有限采样的定时执行、错误记录和恢复机制。来源为 `evaluation_only`，不代表 #77 审核发布稿或商用批次验收；未发布版本不进入任务候选。演练发现的出口与正文超时问题已在后续修复：ops 的 Node `fetch` 启用环境代理支持，JSON/PDF 的计时覆盖完整正文，PDF 超过 150 MiB 时立即取消流。复验运行 `node --test --test-concurrency=2 apps/worker/dist/library-sources.test.js apps/worker/dist/library.test.js apps/worker/dist/library-scheduler.test.js`；代理测试覆盖 CONNECT、不可达代理和 `NO_PROXY`，真实 SSE 查询仍须用本地记录型代理做单次只读抽查。同步开关继续默认关闭；开启前另需增加两个 SSE 域名到出口白名单，核对授权和 ops 内存限额。
 
+### 6.1 出口修复后的隔离复验（2026-09-29）
+
+[脱敏记录](evidence/reference-library-post408-proxy-acceptance-2026-09-29.json)基于 `33e9988` 的当前 Dockerfile 构建镜像，使用 Node 22.23.3、与 ops 一致的 `NODE_USE_ENV_PROXY=1`、`HTTPS_PROXY`/`NO_PROXY`、`NODE_OPTIONS=--max-old-space-size=256` 和 384 MiB cgroup 限额。应用只连 Docker 内部网络；仅记录型 CONNECT 代理同时连外部网络，精确放行 `query.sse.com.cn` 和 `static.sse.com.cn`。两次真实只读采样各查询一个项目、下载三份匹配文件中的第一份 PDF：每次的两个查询和文件响应均为 200，代理分别记录两个目标主机的 CONNECT 200。首轮没有记录或明确限制项目详情到 PDF 的间隔；第二轮统一节流后，所有请求起点的最短间隔为 1,212 毫秒，结果为 `unchanged`，数据库仍只有一个版本。文件 5,247,897 字节，SHA-256 和逐请求耗时见记录。第一次正文通过实际解析、分类流程后只有一个 `pending_review` 版本，活动索引为 0；该次容器 `memory.peak` 为 144,592,896 字节，未发生 OOM。这个峰值只适用于该文件及单次运行。
+
+禁止查询域名的代理返回 CONNECT 403；代理地址不可达时连接被拒；没有代理的内部网络不能直连解析来源。三种情况均未取得来源响应，不能透明绕行。现有定向测试在同镜像中 25/25 通过，覆盖正文阶段超时、150 MiB 流式上限、错误码与 `library_sync_failed` 告警、`NO_PROXY` 和评估稿隔离；超时与超大正文仅用合成流测试，没有向真实来源施压。镜像、状态、代理结果和命令均在脱敏记录中。
+
+故障复验使用隔离 PostgreSQL 16 与 Azurite 3.35（`--skipApiVersionCheck`），在测试对象的 Blob `put` 返回后、文书行及条目检查点提交前对进程注入 SIGKILL。进程须以 `docker run --init` 启动，使被注入的 Node 进程不是容器 PID 1。故障后 Blob 存在而版本数为 0；租约过期后重领并处理同一对象，结果为唯一版本 1、一个同步条目、`pending_review`、活动索引 0。对象采用内容哈希键，恢复时被引用；若此处永久失败，仍可能遗留未引用的 `library/` 对象。现有存储盘点不扫描该前缀，本次未证明自动回收，运营不得仅凭无数据库行就手动删除对象。
+
+上述旧基线的探针曾自行等待，而常规适配器的 `delayMs` 只在发现流程内等待，发现结束后流水线会立即开始文件下载。该缺口由下一节修复并以适配器自身请求时间复验。旧证据保留为旧基线记录，不作为新实现的限速证明。`fault`/`recover` 只处理合成对象。上述工程证据不代表预发布持续同步已开启，也不替代 #77 的授权、商用来源和专业验收；`evaluation_only` 与 v1.1 生产锁定门禁保持原样。
+
+### 6.2 统一请求间隔与隔离探针
+
+SSE 适配器在实际请求入口对同一实例的列表、详情、PDF 和重试统一排队；请求起点至少相隔 700 毫秒，ops 配置为 800 毫秒。失败同样占用一次请求时隙。队列等待结束后才开始 180 秒正文超时计时，150 MiB 流式上限不变。适配器实例各自限速；多实例或多容器共用一个来源时，仍须由来源租约和部署配置约束并发，不把单实例间隔当成全局限流。
+
+`docs/runbooks/tools/reference-library-post408-probe.mjs` 的 `live` 模式只记录真实适配器调用 `fetch` 的时间，不再自行等待。运行前必须显式设置 `BB_REFERENCE_PROBE_ENV=isolated`、`BB_REFERENCE_PROBE_DB_HOST`，并提供名称以 `bb_ref_probe_` 开头的专用 PostgreSQL 数据库及 `http` Azurite 端点（测试账号名以 `bbprobe` 开头）。程序核对实际数据库名，拒绝已有个人用户、项目、run、无关来源/任务或已发布库版本的数据库；`live`/`fault` 还要求库内没有既有参考库来源、文书或任务。迁移 0027 固定创建的禁用合成平台探针用户和项目是唯一例外。配置不满足时在任何写入前报错。`recover` 还要求 `BB_REFERENCE_PROBE_RECOVER=synthetic_uncommitted_blob_fault`，并只在合成 Blob 已存在、版本尚未提交且恰有一个运行中的对应任务时修改该任务租约。[定向复验证据](evidence/reference-library-request-spacing-2026-09-29.json)列出隔离环境与拒绝样例。配置和空库检查是必要门禁，不授权接入生产数据库或存储。
+
+只读盘点使用 `docs/runbooks/tools/reference-library-blob-inventory.mjs <source_id>`，只枚举该来源 `library/<source_id>/` 下的原件对象，并用数据库中相同 `blob_key` 做精确相等比较；输出对象键的 SHA-256、字节数和是否被版本引用，不输出原对象名或正文。盘点限制 1000 个对象，出现 `truncated=true` 时不能据此得出全量结论。故障后先查看任务状态、租约、检查点和 Blob 哈希；租约到期后通过原同步任务恢复，再复核版本唯一性、哈希读回及索引状态。对永久失败且无版本行的对象，只记录盘点结果与任务证据，交由后续保留/回收策略处理。Blob 写入与数据库提交跨系统，短时间没有版本行可能表示未提交的有效任务；现行 `storage-inventory` 不扫描 `library/`，因此不得以“无行”为删除依据，也不得称自动回收已实现。
+
 ## 7. 任务侧契约（内部 v1）
 
 `packages/contracts/src/reference-library.ts` 定义 `reference-library-query-v1`（采用 @loooo139 在 #77 提出的最小内部查询契约），仅供受信任务服务使用，不进入公开 OpenAPI（`check:contracts` 会校验）。
