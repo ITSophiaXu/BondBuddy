@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
+import { PROJECT_MESSAGE_SET_HASH_DOMAIN } from '@bondbuddy/contracts';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Dto } from '../src/api';
@@ -11,6 +12,8 @@ const when = '2026-09-29T12:00:00Z';
 const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const bytes = Buffer.from('synthetic checked Word bytes');
 const digest = createHash('sha256').update(bytes).digest('hex');
+const emptyMessages = { version: 1, content_sha256: createHash('sha256')
+  .update(JSON.stringify({ hash_domain: PROJECT_MESSAGE_SET_HASH_DOMAIN, members: [] })).digest('hex'), message_ids: [] };
 const project = (id = projectId): Dto<'ProjectResponse'> => ({
   project_id: id, draft_revision: 1, input_revision: null, input_hash: null,
   name: '合成历史项目', kind: 'update', issuer_name: '合成发行人',
@@ -48,6 +51,10 @@ async function install(page: Page, data: Scenario) {
     if (path === '/auth/refresh' || data.loggedOut) return reply(route, 401, { code: 'UNAUTHENTICATED' });
     if (path === `/projects/${otherProjectId}`) return reply(route, 200, project(otherProjectId));
     if (path === `/projects/${projectId}`) return reply(route, 200, project());
+    if (path === `/projects/${projectId}/messages` || path === `/projects/${otherProjectId}/messages`) {
+      return reply(route, 200, { conversation_id: path.split('/')[2], items: [],
+        project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
+    }
     if (path === '/projects') return reply(route, 200, { items: [{ ...project(), latest_run: { run_id: 'latest-failed',
       state: data.latestRunState, updated_at: when }, latest_artifact: { artifact_id: 'revision-3', run_id: 'run-3', version: 3, created_at: when } }],
       page: { has_more: false, next_cursor: null } });
@@ -117,6 +124,7 @@ test('API client paginates checked versions in the same project, keeps old succe
   await expect(page.locator('.word-history-item')).toHaveCount(2);
   await page.getByRole('button', { name: '加载更多版本' }).click();
   await expect(page.locator('.word-history-item')).toHaveCount(3);
+  await expect(page.locator('#conversation-status')).toContainText('已读取');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.locator('#word-history-title').scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(tmpdir(), 'bb34-history-implementation-desktop.png') });
