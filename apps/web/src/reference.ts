@@ -53,15 +53,16 @@ export function sameMaterialVersion(selected: Material, fresh: Material): boolea
 /**
  * Decides the user reference pin from a fresh owner-scoped read taken right before submission. The
  * read can be a newer version than the selected list entry, so its identity is re-checked. A changed
- * version or an unfinished parse keeps the run unpinned (safe stop) and tells the user how to
- * recover; a mixed pin (old version/hash + new snapshot) is never submitted.
+ * version or an unfinished parse returns a note instead of a pin, so the caller can stop and ask the
+ * user to refresh and re-select rather than submitting a reference-less run; a mixed pin (old
+ * version/hash + new snapshot) is never submitted.
  */
 export function referencePin(selected: Material, fresh: Material, offering: Offering): { choice: UserReferenceChoice } | { note: string } {
   if (!sameMaterialVersion(selected, fresh)) {
-    return { note: '用户指定参考稿在提交前已更新为新的版本，本次先按未指定参考提交；请刷新已保存材料并重新选择参考稿后再提交。' };
+    return { note: '用户指定参考稿在提交前已更新为新的版本，请刷新已保存材料并重新选择参考稿后再开始更新。' };
   }
   const parseSnapshotId = materialParseSnapshotId(fresh);
-  if (!parseSnapshotId) return { note: '用户指定参考稿的解析快照尚未就绪，本次先按未指定参考提交。' };
+  if (!parseSnapshotId) return { note: '用户指定参考稿的解析快照尚未就绪，请刷新已保存材料并重新选择参考稿后再开始更新。' };
   return { choice: userReferenceChoice(fresh, parseSnapshotId, offering) };
 }
 
