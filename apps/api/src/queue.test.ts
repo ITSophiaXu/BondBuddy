@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { isolatedTestDatabase } from './test-database.js';
 import { createServer } from './server.js';
-import { checkpoint, claim, finish, jobSnapshot, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
+import { checkpoint, claim, finish, jobSnapshot, pauseRun, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
 import { azureBlobs, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { Ajv } from 'ajv';
@@ -12,6 +13,58 @@ import { schemas } from '@bondbuddy/contracts';
 const connection=process.env.BB_TEST_DATABASE_URL;
 const isolatedConnection=await isolatedTestDatabase();
 const blobConnection=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
+test('unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume', {skip:!connection},async()=>{
+  const database=await isolatedTestDatabase('BB_TEST_DATABASE_URL','issuer-resume-gate');
+  const pool=new Pool({connectionString:database});
+  let owner=`resume-owner-${randomUUID()}`;
+  const origin='http://bondbuddy.test';
+  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
+  try{
+    const project=(await send('POST','/api/v1/projects',{name:'Synthetic resume gate',kind:'update',issuer_name:null,market:'sse',offering:'private'})).json().project_id;
+    const material=randomUUID(),upload=randomUUID(),sha='a'.repeat(64);
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',10,$4,'historical',$5,now()+interval '1 hour','completed')`,
+    [upload,owner,project,sha,`synthetic/${upload}`]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'historical','synthetic.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',10,$5,$6,'parsed')`,
+    [material,owner,project,upload,sha,`synthetic/${material}`]);
+    const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material,material_version:1}],requirement_message_ids:[]})).json();
+    const manifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,input.input_revision])).rows[0].manifest;
+    assert.equal(manifest.issuer_identity.reason,'issuer_identity_source_missing_unreviewed_or_conflicting');
+    const request={execution_request_id:randomUUID(),project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,
+      task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
+    const submitted=await send('POST','/api/v1/runs/execute',request);
+    assert.equal(submitted.statusCode,202,submitted.body);
+    const id=submitted.json().run_id;
+    const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,id);
+    await pauseRun(pool,lease,'capability_not_ready','issuer_identity_source_missing_unreviewed_or_conflicting');
+    const before=await pool.query('SELECT event_cursor FROM bb_runs WHERE id=$1',[id]);
+    for(let click=0;click<5;click++){
+      const response=await send('POST',`/api/v1/runs/${id}/resume`,{reason:'synthetic'});
+      assert.equal(response.statusCode,409,response.body);
+      assert.equal(response.json().code,'CAPABILITY_NOT_READY');
+      assert.match(response.json().message,/issuer identity source/i);
+    }
+    assert.equal((await pool.query('SELECT event_cursor FROM bb_runs WHERE id=$1',[id])).rows[0].event_cursor,before.rows[0].event_cursor);
+    assert.deepEqual((await pool.query('SELECT state,stage,attempts FROM bb_jobs WHERE run_id=$1',[id])).rows[0],
+      {state:'paused',stage:'capability_not_ready',attempts:1});
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[lease.jobId])).rows[0].n,0);
+    assert.equal(await claim(pool),null);
+    assert.equal((await send('POST','/api/v1/runs/execute',request)).json().run_id,id);
+    owner=`foreign-${randomUUID()}`;
+    assert.equal((await send('POST',`/api/v1/runs/${id}/resume`,{reason:'synthetic'})).statusCode,404);
+    owner=(await pool.query('SELECT owner_user_id FROM bb_runs WHERE id=$1',[id])).rows[0].owner_user_id;
+    const clearable=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
+    assert.equal(clearable.statusCode,202,clearable.body);
+    const clearableId=clearable.json().run_id;
+    const clearableLease=await claim(pool,30);assert.ok(clearableLease);assert.equal(clearableLease.runId,clearableId);
+    await pauseRun(pool,clearableLease,'awaiting_materials','material_parse_pending');
+    const cleared=await send('POST',`/api/v1/runs/${clearableId}/resume`,{reason:'synthetic'});
+    assert.equal(cleared.statusCode,200,cleared.body);
+    assert.equal((await claim(pool,30))?.runId,clearableId);
+  }finally{await app.close();await pool.end();}
+});
 test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor', {skip:!connection||!blobConnection},async()=>{
   const pool=new Pool({connectionString:isolatedConnection});
   let owner='synthetic-queue-a';

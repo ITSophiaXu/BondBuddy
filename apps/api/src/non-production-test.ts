@@ -60,7 +60,11 @@ async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrant
       WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
         AND job_type='parse' AND subtype='material_parse' AND parser_version=$5`,
     [scope.userId,scope.projectId,pin.material_id,pin.material_version,documentParserVersion()])).rows[0];
-    if (parse?.state !== 'succeeded' ||
+    if (!parse || ['queued','running','paused'].includes(parse.state))
+      throw new Problem(409, 'CAPABILITY_NOT_READY', 'Locked material parsing is pending; retry after parsing completes');
+    if (parse.state === 'cancelled')
+      throw new Problem(409, 'CAPABILITY_NOT_READY', 'Locked material parsing was cancelled; restart parsing before retrying');
+    if (parse.state !== 'succeeded' ||
         String(parse.material_sha256).trim() !== pin.sha256 ||
         !['parsed','needs_confirmation'].includes(parse.result?.outcome))
       throw new Problem(409, 'MATERIAL_UNREADABLE', 'Locked material has no successful parse');
