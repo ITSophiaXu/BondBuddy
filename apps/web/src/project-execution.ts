@@ -104,6 +104,9 @@ export class ProjectExecution {
   private inputReadUncertain = false;
   private resumeVerified = false;
   private resumedPause?: { runId: string; stage: string | null; reason?: string };
+  private lastPausedEvent?: Dto<'RunEvent'>;
+  private pauseBeforeResume?: Dto<'RunEvent'>;
+  private repeatedPauseEvent?: Dto<'RunEvent'>;
   private message = '';
   private progressMessage = '';
   private materials: Material[] = [];
@@ -161,15 +164,7 @@ export class ProjectExecution {
   private button(id: string) { return this.node(`#${id}`) as HTMLButtonElement; }
   private samePauseAfterResume(run: Dto<'RunResponse'>) {
     if (this.resumedPause?.runId === run.run_id && this.resumedPause.stage === run.stage && this.resumedPause.reason === this.reason) return true;
-    let resumed = -1;
-    for (let i = this.events.length - 1; i >= 0; i--) if (this.events[i].payload.reason === 'user_resumed') {
-      resumed = i; break;
-    }
-    if (resumed < 0) return false;
-    const before = this.events.slice(0, resumed).reverse().find(event => event.state === 'paused');
-    const after = this.events.slice(resumed + 1).reverse().find(event => event.state === 'paused');
-    return Boolean(before && after && after.stage === run.stage && before.stage === after.stage &&
-      before.payload.reason === after.payload.reason);
+    return this.repeatedPauseEvent?.stage === run.stage && this.repeatedPauseEvent.payload.reason === this.reason;
   }
   private render() {
     if (!this.active) return;
@@ -343,7 +338,10 @@ export class ProjectExecution {
   private acceptRun(run: Dto<'RunResponse'>) {
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
-    if (this.run?.run_id !== run.run_id) { this.eventCursor = 0; this.reason = undefined; this.events = []; }
+    if (this.run?.run_id !== run.run_id) {
+      this.eventCursor = 0; this.reason = undefined; this.events = [];
+      this.lastPausedEvent = undefined; this.pauseBeforeResume = undefined; this.repeatedPauseEvent = undefined;
+    }
     if (this.run?.run_id !== run.run_id) this.resumedPause = undefined;
     if (this.run?.run_id !== run.run_id || this.run?.state !== run.state || this.run?.stage !== run.stage) this.resumeVerified = false;
     this.run = run; this.nextRequested = false;
@@ -407,6 +405,12 @@ export class ProjectExecution {
           if (event.run_id !== id || event.seq <= this.eventCursor) continue;
           this.eventCursor = event.seq;
           this.events.push(event); this.events = this.events.slice(-12);
+          if (event.payload.reason === 'user_resumed') this.pauseBeforeResume = this.lastPausedEvent;
+          if (event.state === 'paused') {
+            this.repeatedPauseEvent = this.pauseBeforeResume?.stage === event.stage &&
+              this.pauseBeforeResume.payload.reason === event.payload.reason ? event : undefined;
+            this.lastPausedEvent = event;
+          }
           const reason = event.state === run.state && event.stage === run.stage
             ? event.payload.reason ?? event.payload.error_code : undefined;
           if (this.reason !== reason) this.resumeVerified = false;

@@ -260,9 +260,21 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   await expect(page.locator('#resume-run')).toHaveCount(0);
   await expect(page.locator('#recheck-paused')).toHaveCount(0);
   await expect(page.locator('.execution-summary')).toContainText('重复继续不会推进');
+  state.eventHistory = [
+    ...state.eventHistory.slice(0, 2),
+    ...Array.from({ length: 14 }, (_, i) => ({
+      seq: i + 4, state: 'running' as const, stage: 'model_generation', reason: 'progress'
+    })),
+    { ...state.eventHistory[2], seq: 18 }
+  ];
+  state.eventSeq = 18;
   await page.reload();
   await expect(page.locator('.execution-summary')).toContainText('重复继续不会推进');
   await expect(page.locator('#resume-run')).toHaveCount(0);
+  state.eventHistory.push({seq:19,state:'paused',stage:'capability_not_ready',reason:'issuer_material_missing'});
+  state.eventSeq=19;
+  await page.reload();
+  await expect(page.locator('#recheck-paused')).toBeVisible();
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
   run.state='running';
   await expect(page.locator('#cancel-run')).toBeVisible({ timeout: 10000 });
