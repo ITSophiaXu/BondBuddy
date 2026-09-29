@@ -140,7 +140,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       const manifest = { version: 'historical-batch-plan-v2', template, preparation_hash: input.preparationHash,
         result_schema: HISTORICAL_GENERATION_VERSION, max_logical_calls: HISTORICAL_MAX_LOGICAL_CALLS,
         // The existing adapter permits at most three schema re-asks; unknown attempts never restart.
-        max_schema_reasks_per_call: 3, max_provider_attempts: chunks.length * 4,
+        max_schema_reasks_per_call: 3, automatic_attempt_upper_bound: chunks.length * 4,
         batches: batches.map(({ records, prompt }) => ({ records_hash: updateContentHash(records.map(r => r.record_id)),
           prompt_hash: updateContentHash(prompt), blocks: records.length, prompt_bytes: Buffer.byteLength(prompt, 'utf8') })) };
       const manifestHash = updateContentHash(manifest);
