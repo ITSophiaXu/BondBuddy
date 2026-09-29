@@ -55,7 +55,7 @@ export async function loadTestIssuerCandidate(db: Pool | PoolClient, scope: {
     source_record_id: item.source_record_id, identity_version: item.identity_version, content_sha256: item.content_sha256,
     snapshot_id: item.snapshot_id, snapshot_sha256: item.snapshot_sha256,
     source_content_sha256: item.source_content_sha256, candidate_key: item.candidate_key,
-    issuer_display_name: name,
+    issuer_display_name: item.issuer_display_name,
     ...(items.length>1?{observations,observations_sha256:observationHash(observations)}:{}) };
 }
 

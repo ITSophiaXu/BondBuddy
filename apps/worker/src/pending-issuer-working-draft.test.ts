@@ -25,6 +25,8 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
       issuer_name:null,market:'sse',offering:'private'});
     assert.equal(projectResponse.statusCode,201,projectResponse.body);
     const project=projectResponse.json().project_id as string;
+    const storedName='合成　发行人Ａ';
+    const candidateKey=`issuer-name:${sha('合成 发行人A').slice(0,32)}`;
     const material=randomUUID(),upload=randomUUID(),snapshot=randomUUID(),evidence=randomUUID();
     const materialHash=sha(`material-${material}`),snapshotHash=sha(`snapshot-${snapshot}`);
     await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,
@@ -46,9 +48,9 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
        context,extraction_method,extractor_version,confidence,uncertainty,formatting,record_sha256,ordinal)
       VALUES($1,$2,$3,1,$4,$5,$6,'docx_block',$7::jsonb,$8,'synthetic','native_text','synthetic-parser',0.99,'[]','{}',$9,$10)`,
     [owner,project,material,snapshot,id,materialHash,JSON.stringify({paragraph:ordinal}),quote,sha(id),ordinal]);
-    await addEvidence(evidence,'合成发行人甲',0);
+    await addEvidence(evidence,storedName,0);
     await appendIssuerIdentitySourceRecord({pool},{ownerUserId:owner,projectId:project,materialId:material,materialVersion:1,
-      requestId:`issuer-${evidence}`,sourceRecordId:evidence,issuerDisplayName:'合成发行人甲',entityId:`issuer-name:${sha('合成发行人甲').slice(0,32)}`});
+      requestId:`issuer-${evidence}`,sourceRecordId:evidence,issuerDisplayName:storedName,entityId:candidateKey});
     const inputResponse=await send(`/api/v1/projects/${project}/input-revisions`,
       {draft_revision:1,material_versions:[{material_id:material,material_version:1}],requirement_message_ids:[]});
     assert.equal(inputResponse.statusCode,201,inputResponse.body);
@@ -57,6 +59,10 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
       [owner,project])).rows[0].manifest;
     assert.equal(manifest.issuer_identity.status,'pending');
     assert.equal(manifest.test_issuer_candidate.status,'pending_test_candidate');
+    assert.equal(manifest.test_issuer_candidate.issuer_display_name,storedName,
+      'one source retains its exact stored legal spelling');
+    assert.equal(manifest.test_issuer_candidate.observations,undefined,'the single-source pin keeps its old shape');
+    assert.equal(manifest.test_issuer_candidate.observations_sha256,undefined);
     const grant=randomUUID(),sample='a'.repeat(64),taxonomy='b'.repeat(64),pack='c'.repeat(64);
     await pool.query(`INSERT INTO bb_non_production_test_grants
       (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
@@ -80,9 +86,9 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
     assert.deepEqual(unparsedRun,{state:'paused',stage:'awaiting_materials'},
       'an unparsed material cannot yield a completed Word');
     const another=randomUUID();
-    await addEvidence(another,'合成发行人甲',1);
+    await addEvidence(another,storedName,1);
     await appendIssuerIdentitySourceRecord({pool},{ownerUserId:owner,projectId:project,materialId:material,materialVersion:1,
-      requestId:`issuer-${another}`,sourceRecordId:another,issuerDisplayName:'合成发行人甲',entityId:`issuer-name:${sha('合成发行人甲').slice(0,32)}`});
+      requestId:`issuer-${another}`,sourceRecordId:another,issuerDisplayName:storedName,entityId:candidateKey});
     assert.equal((await submit()).statusCode,202);
     assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
     assert.equal(reached,1,'a changed issuer observation cannot pass the pinned test input');
