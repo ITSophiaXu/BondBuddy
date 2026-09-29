@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { loadVerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
+import { loadVerifiedIssuerIdentitySourceRecord, type VerifiedIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { isVerifiedIssuerIdentityBinding, issuerIdentityBindingMatches } from '@bondbuddy/api/issuer-identity-binding';
+import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
+import { assertTestGrant } from '@bondbuddy/api/non-production-test';
 import type { FactCandidate, FactIdentity } from '@bondbuddy/domain/facts';
 import type { Pool } from 'pg';
 import { SEMANTIC_FACT_EXTRACTION_REQUEST_VERSION, SEMANTIC_FACT_EXTRACTION_RESULT_VERSION } from './semantic-fact-extraction-constants.js';
@@ -68,6 +70,7 @@ export interface SemanticFactExtractor {
 }
 
 export interface FactCandidateProductionContext extends FactRepositoryContext {
+  readonly testRunId?: string;
   readonly inputRevision: number;
   readonly inputHash: string;
   readonly materialId: string;
@@ -256,15 +259,30 @@ export async function produceParsedFactCandidates(
   if (!Array.isArray(refs) || !refs.some(ref => isRecord(ref) && ref.material_id === context.materialId &&
       ref.material_version === context.materialVersion)) throw fail('FACT_EXTRACTION_MATERIAL_NOT_PINNED');
   const manifest = parseJson(inputResult.rows[0]!.manifest);
-  if (!isRecord(manifest) || !isVerifiedIssuerIdentityBinding(manifest.issuer_identity)) {
-    throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_NOT_VERIFIED');
-  }
-  const binding = manifest.issuer_identity;
-  const verifiedIdentity = await (dependencies.loadIssuerIdentity ?? loadVerifiedIssuerIdentitySourceRecord)(dependencies.pool as Pool, {
-    ownerUserId: context.ownerUserId, projectId: context.projectId,
-    materialId: binding.material_id, materialVersion: binding.material_version,
-  });
-  if (!verifiedIdentity || !issuerIdentityBindingMatches(binding, verifiedIdentity)) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
+  if (!isRecord(manifest)) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_NOT_VERIFIED');
+  const verifiedBinding=isVerifiedIssuerIdentityBinding(manifest.issuer_identity)?manifest.issuer_identity:null;
+  const testCandidate=isTestIssuerCandidate(manifest.test_issuer_candidate)?manifest.test_issuer_candidate:null;
+  if(!verifiedBinding && (!testCandidate || !context.testRunId))throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_NOT_VERIFIED');
+  const validateTestRun=async(db:Pool)=>{
+    const row=(await db.query(`SELECT channel,test_grant_id FROM bb_runs WHERE id=$1 AND owner_user_id=$2
+      AND project_id=$3 AND input_revision=$4 AND input_hash=$5 AND task_kind='update'`,
+    [context.testRunId,context.ownerUserId,context.projectId,context.inputRevision,context.inputHash])).rows[0];
+    if(!row || row.channel!=='non_production_test' || !row.test_grant_id || !testCandidate ||
+        !await testIssuerCandidateMatches(db,{ownerUserId:context.ownerUserId,projectId:context.projectId},testCandidate))
+      throw fail('FACT_EXTRACTION_TEST_ISSUER_CANDIDATE_STALE');
+    await assertTestGrant(db,{grantId:row.test_grant_id,userId:context.ownerUserId,projectId:context.projectId,
+      inputRevision:context.inputRevision,inputHash:context.inputHash});
+  };
+  if(testCandidate && !verifiedBinding)await validateTestRun(dependencies.pool as Pool);
+  const binding=verifiedBinding ?? testCandidate!;
+  const verifiedIdentity=verifiedBinding
+    ? await (dependencies.loadIssuerIdentity ?? loadVerifiedIssuerIdentitySourceRecord)(dependencies.pool as Pool, {
+      ownerUserId: context.ownerUserId, projectId: context.projectId,
+      materialId: binding.material_id, materialVersion: binding.material_version })
+    : {recordId:testCandidate!.source_record_id,version:testCandidate!.identity_version,contentHash:testCandidate!.content_sha256,
+      entityId:testCandidate!.candidate_key};
+  if (!verifiedIdentity || (verifiedBinding && !issuerIdentityBindingMatches(verifiedBinding, verifiedIdentity as VerifiedIssuerIdentitySourceRecord)))
+    throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
 
   const materialResult = await dependencies.pool.query(
     `SELECT role, media_type, sha256 FROM bb_material_versions
@@ -339,6 +357,10 @@ export async function produceParsedFactCandidates(
   if (previous.rows.length > 1) throw fail('FACT_EXTRACTION_LEDGER_AMBIGUOUS');
   if (previous.rows.length === 1) return replayPersisted(previous.rows[0]!);
 
+  // Numerical/source uncertainty remains the extractor's exact result. The
+  // provisional issuer identity is tracked separately in the locked input and
+  // annotated on every test-draft edit; combining them here would make every
+  // otherwise evidenced fact unusable to the historical planner.
   const result = validateExtractionResult(await extractor.extract(request), context, snapshot);
   if (result.extractor.id !== extractor.id || result.extractor.version !== extractor.version) {
     throw fail('FACT_EXTRACTION_VERSION_MISMATCH');
@@ -385,16 +407,18 @@ export async function produceParsedFactCandidates(
     const lockedIdentitySource = await client.query(`SELECT id FROM bb_issuer_identity_source_records WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4 FOR SHARE`,
       [context.ownerUserId, context.projectId, binding.material_id, binding.material_version]);
     if (!lockedIdentitySource.rowCount) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
-    const lockedReviewerGrant = await client.query(`SELECT g.id FROM bb_issuer_identity_source_reviews rv
+    const lockedReviewerGrant = verifiedBinding ? await client.query(`SELECT g.id FROM bb_issuer_identity_source_reviews rv
       JOIN bb_issuer_identity_reviewer_grants g ON g.id=rv.reviewer_grant_id
       WHERE rv.owner_user_id=$1 AND rv.project_id=$2 AND rv.material_id=$3 AND rv.material_version=$4 FOR SHARE OF g`,
-      [context.ownerUserId, context.projectId, binding.material_id, binding.material_version]);
-    if (!lockedReviewerGrant.rowCount) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
-    const currentIdentity = await (dependencies.loadIssuerIdentity ?? loadVerifiedIssuerIdentitySourceRecord)(client as unknown as Pool, {
+      [context.ownerUserId, context.projectId, binding.material_id, binding.material_version]) : null;
+    if (verifiedBinding && !lockedReviewerGrant?.rowCount) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
+    if(testCandidate && !verifiedBinding)await validateTestRun(client as unknown as Pool);
+    const currentIdentity = verifiedBinding ? await (dependencies.loadIssuerIdentity ?? loadVerifiedIssuerIdentitySourceRecord)(client as unknown as Pool, {
       ownerUserId: context.ownerUserId, projectId: context.projectId,
       materialId: binding.material_id, materialVersion: binding.material_version,
-    });
-    if (!currentIdentity || !issuerIdentityBindingMatches(binding, currentIdentity)) throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
+    }) : verifiedIdentity;
+    if (!currentIdentity || (verifiedBinding && !issuerIdentityBindingMatches(verifiedBinding, currentIdentity as VerifiedIssuerIdentitySourceRecord)))
+      throw fail('FACT_EXTRACTION_ISSUER_IDENTITY_STALE');
 
     const priorRun = await client.query(`SELECT id,input_hash,parse_response_sha256,result_sha256,candidate_ids,needs_review
       FROM bb_fact_extraction_runs WHERE owner_user_id=$1 AND project_id=$2 AND input_revision=$3 AND material_id=$4

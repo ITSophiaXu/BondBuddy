@@ -9,7 +9,7 @@ from pathlib import Path
 from docx import Document
 from lxml import etree
 
-from bondbuddy_word_delivery.test_marking import MARK, mark
+from bondbuddy_word_delivery.test_marking import MARK, PENDING_REVIEW, mark
 
 
 class TestWordMarking(unittest.TestCase):
@@ -31,6 +31,7 @@ class TestWordMarking(unittest.TestCase):
                 headers = [name for name in archive.namelist() if name.startswith("word/header") and name.endswith(".xml")]
                 self.assertTrue(headers)
                 self.assertIn(MARK, document)
+                self.assertIn(PENDING_REVIEW, document)
                 self.assertIn(MARK, archive.read(headers[0]).decode())
                 self.assertIn("合成风险说明", document)
                 self.assertIn("待人工确认", comments)

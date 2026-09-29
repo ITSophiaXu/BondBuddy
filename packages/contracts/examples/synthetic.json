@@ -179,13 +179,13 @@
       "name": "synthetic-rule-applicability-missing-preflight",
       "schema": "PreflightResponse",
       "valid": true,
-      "value": { "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "blocked", "missing_inputs": ["rule_pack:rule_applicability_reference_missing"], "uncertainty": [], "billing_mode": "platform_trial" }
+      "value": { "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "blocked", "missing_inputs": ["rule_pack:rule_applicability_reference_missing"], "uncertainty": [], "blocking_inputs": ["rule_pack:rule_applicability_reference_missing"], "advisory_inputs": [], "billing_mode": "platform_trial" }
     },
     {
       "name": "update-preflight-with-conservative-difficulty",
       "schema": "PreflightResponse",
       "valid": true,
-      "value": { "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "blocked", "missing_inputs": ["issuer_identity_not_bound:historical_issuer_identity_not_bound", "execution_capability_not_ready"], "uncertainty": ["source_profile_needs_confirmation:material-synthetic:1", "update_difficulty_needs_confirmation"], "billing_mode": "platform_trial", "update_difficulty": { "snapshot_id": "difficulty-synthetic-1", "status": "needs_confirmation", "estimated_n": null, "structure_adaptation_required": null, "confirmation_reasons": ["source_profile_needs_confirmation", "target_period_needs_confirmation"], "source_profile_version": 1 } }
+      "value": { "project_id": "project-synthetic", "input_revision": 7, "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "blocked", "missing_inputs": ["issuer_identity_not_bound:historical_issuer_identity_not_bound", "execution_capability_not_ready"], "uncertainty": ["source_profile_needs_confirmation:material-synthetic:1", "update_difficulty_needs_confirmation"], "blocking_inputs": ["issuer_identity_not_bound:historical_issuer_identity_not_bound", "execution_capability_not_ready"], "advisory_inputs": [], "billing_mode": "platform_trial", "update_difficulty": { "snapshot_id": "difficulty-synthetic-1", "status": "needs_confirmation", "estimated_n": null, "structure_adaptation_required": null, "confirmation_reasons": ["source_profile_needs_confirmation", "target_period_needs_confirmation"], "source_profile_version": 1 } }
     },
     {
       "name": "recognition-needs-confirmation",

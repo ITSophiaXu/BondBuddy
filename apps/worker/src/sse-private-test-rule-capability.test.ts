@@ -11,7 +11,8 @@ import { workerRuntimeOptionsFromEnv } from './runtime.js';
 
 type Fixture = ReturnType<typeof fixture>;
 
-function fixture(withReviewPin = true, investorScope = 'professional', reviewState: { reasons: string[] | null } = { reasons: null }) {
+function fixture(withReviewPin = true, investorScope = 'professional', reviewState: { reasons: string[] | null } = { reasons: null },
+  blockReason?: string, candidateState?: { matches: boolean }) {
   const owner = `synthetic-owner-${randomUUID()}`, project = `synthetic-project-${randomUUID()}`;
   const files = AUTHORIZED_SAMPLE_CASE_FILES.filter(file => file.caseId === 'rq-202509');
   const selected = [files.find(file => file.uploadRole === 'historical')!, files.find(file => file.uploadRole === 'interimFinancial')!];
@@ -19,24 +20,35 @@ function fixture(withReviewPin = true, investorScope = 'professional', reviewSta
     role: file.uploadRole, sha256: file.sha256 }));
   const manifest = {
     kind: 'update', draft_revision: 1, market: 'sse', offering: 'private', materials,
-    issuer_identity: { status: 'verified', record_id: 'synthetic-identity', version: 1, content_hash: 'd'.repeat(64),
+    issuer_identity: candidateState ? {status:'pending',reason:'unreviewed',historical_materials:[
+      {material_id:materials[0]!.material_id,material_version:1}]} : { status: 'verified', record_id: 'synthetic-identity', version: 1, content_hash: 'd'.repeat(64),
       entity_id: 'synthetic-entity', issuer_display_name: 'Synthetic issuer', material_id: materials[0]!.material_id,
       material_version: 1, source_snapshot_id: 'synthetic-snapshot', source_record_id: 'synthetic-record',
       source_record_sha256: 'e'.repeat(64), source_content_sha256: materials[0]!.sha256,
       reviewed_by: 'synthetic-reviewer', reviewed_at: '2026-09-27T00:00:00.000Z' },
-    target_confirmation: { status: 'confirmed', confirmed_by: owner, market: 'sse', offering: 'private',
+    ...(candidateState?{test_issuer_candidate:{status:'pending_test_candidate',material_id:materials[0]!.material_id,
+      material_version:1,source_record_id:'synthetic-observation',identity_version:1,content_sha256:'d'.repeat(64),
+      snapshot_id:'synthetic-snapshot',snapshot_sha256:'e'.repeat(64),
+      source_content_sha256:materials[0]!.sha256,candidate_key:'issuer-name:synthetic',issuer_display_name:'Synthetic issuer'}}:{}),
+    target_confirmation: candidateState ? {status:'unconfirmed',confirmed_by:null,market:null,offering:null,
+      document_purpose:null,as_of:null} : { status: 'confirmed', confirmed_by: owner, market: 'sse', offering: 'private',
       document_purpose: 'issuance', as_of: '2026-09-27' },
     ...(withReviewPin ? { test_rule_applicability_ref: { context_id: 'synthetic-context', version: 1, content_hash: 'f'.repeat(64),
       source_input_revision: 1, source_input_hash: 'a'.repeat(64) } } : {}),
+    ...(blockReason ? { test_rule_applicability_block_reason: blockReason } : {}),
   };
   const inputHash = inputManifestHash(manifest);
   const input = { input_hash: inputHash, draft_revision: 1, material_versions: materials.map(({ material_id, material_version }) => ({ material_id, material_version })),
     manifest, rule_pack_version: null, template_version: null };
   const grant: { user_id: string; project_id: string; input_revision: number; input_hash: string;
-    sample_manifest_sha256: string; taxonomy_hash: string; rule_pack_hash: string; expires_at: Date; revoked_at: Date | null } = {
+    sample_manifest_sha256: string; taxonomy_hash: string; rule_pack_hash: string; granted_by:string; reason:string;
+    expires_at: Date; revoked_at: Date | null } = {
     user_id: owner, project_id: project, input_revision: 2, input_hash: inputHash,
     sample_manifest_sha256: AUTHORIZED_SAMPLE_MANIFEST_SHA256, taxonomy_hash: pin.taxonomy.contentSha256,
-    rule_pack_hash: pin.rulePack.contentSha256, expires_at: new Date(Date.now() + 60_000), revoked_at: null };
+    rule_pack_hash: pin.rulePack.contentSha256,
+    granted_by:candidateState?'preprod_service':'synthetic-operator',
+    reason:candidateState?'controlled_working_draft:issuance:2026-09-29':'synthetic',
+    expires_at: new Date(Date.now() + 60_000), revoked_at: null };
   const queries: string[] = [];
   const pool = {
     query: async (sql: string) => {
@@ -69,7 +81,8 @@ function fixture(withReviewPin = true, investorScope = 'professional', reviewSta
   const run = { id: 'synthetic-run', owner_user_id: owner, project_id: project, input_revision: 2,
     input_hash: inputHash, task_kind: 'update', channel: 'non_production_test' as const, test_grant_id: 'synthetic-grant' };
   let reviewCalls = 0;
-  const loader = createSsePrivateTestRuleCapabilityLoader(pool, { reviewedContextLoader: async (_db, args) => {
+  const loader = createSsePrivateTestRuleCapabilityLoader(pool, { candidateMatcher:async()=>candidateState?.matches??true,
+    reviewedContextLoader: async (_db, args) => {
     reviewCalls++;
     assert.equal(args.ownerUserId, owner);
     assert.equal(args.projectId, project);
@@ -136,10 +149,29 @@ test('candidate capability fails closed before applicability when grant, members
     assert.equal(f.reviewCalls(), 0, `${label} must fail before reviewing applicability`);
   }
   const withoutPin = fixture(false);
-  assert.deepEqual(await withoutPin.loader(withoutPin.run, withoutPin.input),
-    { status: 'not_ready', reason: 'test_reviewed_applicability_pin_missing' });
+  assert.equal((await withoutPin.loader(withoutPin.run, withoutPin.input)).status, 'ready',
+    'an exact test grant can use research guidance with applicability still pending');
   assert.equal(withoutPin.reviewCalls(), 0);
+  const blockedPin = fixture(false, 'professional', { reasons: null }, 'rule_applicability_overall_review_withdrawn');
+  assert.deepEqual(await blockedPin.loader(blockedPin.run, blockedPin.input),
+    { status: 'not_ready', reason: 'rule_applicability_overall_review_withdrawn' },
+    'a failed explicit review cannot fall back to the unreviewed path');
 }));
+
+test('unreviewed issuer observation permits only a current test candidate without a reviewed applicability pin',
+  async()=>preprod(async()=>{
+    const state={matches:true};
+    const pending=fixture(false,'professional',{reasons:null},undefined,state);
+    assert.equal((await pending.loader(pending.run,pending.input)).status,'ready');
+    assert.equal(pending.reviewCalls(),0);
+    state.matches=false;
+    assert.deepEqual(await pending.loader(pending.run,pending.input),
+      {status:'not_ready',reason:'test_issuer_candidate_missing_or_stale'});
+    state.matches=true;
+    const reviewed=fixture(true,'professional',{reasons:null},undefined,state);
+    assert.deepEqual(await reviewed.loader(reviewed.run,reviewed.input),
+      {status:'not_ready',reason:'test_reviewed_applicability_requires_verified_issuer'});
+  }));
 
 test('candidate capability does not treat a reviewed non-professional investor scope as the ordinary private-bond candidate', async () => preprod(async () => {
   const f = fixture(true, 'other');

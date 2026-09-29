@@ -63,7 +63,8 @@ export function historicalChunks(records: readonly DocumentParseRecord[], maxChu
 export function historicalPrompt(input: HistoricalGenerationInput, records: readonly DocumentParseRecord[], index: number, total: number): string {
   const facts = offerableFacts(input);
   const payload = {
-    issuer: input.issuerName, market: input.locked.context.targetMarket, offering: input.locked.context.targetOffering,
+    issuer: input.issuerName, issuer_identity_status: input.issuerIdentityPending?'pending_test_candidate':'verified',
+    market: input.locked.context.targetMarket, offering: input.locked.context.targetOffering,
     target_details_user_asserted: input.details, original_profile: input.profile.recognition,
     rule_reference: input.locked.context.ruleSnapshot, chunk: index + 1, chunks: total,
     rule_guidance: input.ruleGuidance,
@@ -98,6 +99,7 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
       'original_profile 中 user_asserted 是用户校正的原稿信息，仍待人工核验；不可描述为已确认画像或用于确定扣费。原稿图片、页眉页脚等辅助对象保持原样，另有待核清单；未解析图片或辅助内容不能作为事实来源。',
       '所有规则的 applicability、边界和例外均待核，不得据此声称合规通过或替发行人新增未经证实的义务。相关缺口标 needs_evidence；outside_declared_interval 来源不得作为本期义务依据。coverage 的 not_applicable 是范围排除记录，不应当作用户缺少材料。',
     ] : []),
+    ...(input.issuerIdentityPending ? ['历史稿发行人仅为定位到原解析证据的待审核候选。所有改动都必须在 Word 标明发行人身份待人工确认，不得称为已核验主体。'] : []),
     '资金用途及分项规模、披露负责人和联络人、真实签署承诺等缺少本期依据时，标 needs_evidence 并定位待人工确认。不能因参考条款存在就替用户添加承诺；负责人未变更且有效既有承诺可复用时不机械要求重签。',
     '本切片仅能回写已支持且有证据的修改；需要法律条款改写或目录结构重组而当前表达式无法表达时，明确标 needs_evidence，不用 retain 掩盖未完成事项。',
     '仅简单矩形表、当前块包含该表每行且每行均有当期事实时才提出 columns；其余表格保留原状并说明待人工补全。',
@@ -185,6 +187,16 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
           if (note) note.message += `；${finding.message}`;
           else reviewNotes.push({ recordId, message: `待人工确认：${finding.message}` });
         } else if (!reviewNotes.some(n => n.recordId === recordId)) reviewNotes.push({ recordId, message: `待人工确认：${finding.code}` });
+      }
+      if(input.issuerIdentityPending){
+        const changed=new Set([...plan.replacements.map(change=>change.recordId),
+          ...plan.columns.flatMap(column=>column.cells.map(cell=>cell.anchorRecordId))]);
+        for(const recordId of changed){
+          const message='历史稿发行人身份仅为带解析证据的待审核候选；本处改动须人工核对主体归属。';
+          const note=reviewNotes.find(item=>item.recordId===recordId);
+          if(note)note.message+=`；${message}`;
+          else reviewNotes.push({recordId,message:`待人工确认：${message}`});
+        }
       }
       const boundedNotes = splitHistoricalReviewNotes(reviewNotes);
       if (boundedNotes.length > HISTORICAL_REVIEW_NOTE_MAX_COUNT) throw new HistoricalGenerationUnavailable('historical_review_notes_exceed_limit');

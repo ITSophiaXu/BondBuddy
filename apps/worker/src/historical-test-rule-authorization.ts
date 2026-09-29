@@ -5,6 +5,7 @@ import { updateContentHash } from '@bondbuddy/domain/historical-update';
 import type { StageContext, TestRuleCapabilityLoader } from './run-pipeline.js';
 import { HistoricalRulesUnavailable } from './historical-rule-context.js';
 import { loadHistoricalCandidateRuleGuidance } from './historical-candidate-rule-context.js';
+import { testWorkingDraftTarget } from './test-working-draft-target.js';
 
 /** Test-only consumer. Never interpret a draft/blocked production pin as a release. */
 export async function loadAuthorizedHistoricalTestRuleGuidance(ctx: StageContext, input: Parameters<TestRuleCapabilityLoader>[1]) {
@@ -31,16 +32,15 @@ export async function loadAuthorizedHistoricalTestRuleGuidance(ctx: StageContext
   if (capability.sampleManifestSha256 !== grant.sample_manifest_sha256.trim() ||
       capability.taxonomyHash !== grant.taxonomy_hash.trim() || capability.rulePackHash !== grant.rule_pack_hash.trim())
     throw new HistoricalRulesUnavailable('historical_test_rule_pin_mismatch');
-  const t = manifest.target_confirmation as Record<string, unknown> | undefined;
-  if (!t || t.status !== 'confirmed' || t.confirmed_by !== ctx.run.owner_user_id ||
-      t.market !== 'sse' || t.offering !== 'private' || manifest.market !== t.market || manifest.offering !== t.offering ||
-      (t.document_purpose !== 'registration' && t.document_purpose !== 'issuance') || typeof t.as_of !== 'string')
+  const t=testWorkingDraftTarget(manifest,grant,ctx.run.owner_user_id);
+  if (!t)
     throw new HistoricalRulesUnavailable('historical_test_rule_target_confirmation_required');
   const guidance = await loadHistoricalCandidateRuleGuidance({ market: t.market, offering: t.offering,
     documentStage: t.document_purpose, asOf: t.as_of },
   { taxonomyHash: grant.taxonomy_hash.trim(), rulePackHash: grant.rule_pack_hash.trim() });
   const { content_hash: _, ...reference } = guidance;
   const content = { ...reference, authorization: { grant_id: ctx.run.test_grant_id, input_revision: ctx.run.input_revision,
-    input_hash: ctx.run.input_hash.trim(), sample_manifest_sha256: grant.sample_manifest_sha256.trim() } };
+    input_hash: ctx.run.input_hash.trim(), sample_manifest_sha256: grant.sample_manifest_sha256.trim(),
+    target_status:t.status } };
   return { ...content, content_hash: updateContentHash(content) };
 }
