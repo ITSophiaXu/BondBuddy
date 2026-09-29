@@ -10,6 +10,7 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { LibrarySelectionSnapshot, NoHistoryLibrarySelectionInput } from './reference-library-selection.js';
 import { codexModelStage, type RunStage, type StageContext, type StageOutcome } from './run-pipeline.js';
 import type { CodexAdapterConfig } from './codex-adapter.js';
+import { loadPinnedApprovedGenerationIssuerBinding, type VerifyPinnedBinding } from './generation-issuer-binding-loader.js';
 import { loadUserReferenceOutline, type UserReferenceLoad } from './user-reference-outline.js';
 
 export const NO_HISTORY_DRAFT_SCHEMA_VERSION = 'no-history-manuscript-draft-v1';
@@ -142,8 +143,12 @@ export interface NoHistoryStageAdapters {
   /** Must use the internal #77 selector and persist the run-scoped selected version lock. */
   readonly selectReference: (input: NoHistoryLibrarySelectionInput) => Promise<LibrarySelectionSnapshot>;
   readonly loadReferenceOutline: ReferenceOutlineLoader;
-  /** #33 trusted issuer subject for this run input. Absent means fail closed with `issuer_identity_not_bound`. */
+  /** #33 trusted issuer subject for this run input. Defaults to the persisted pin loader that reads
+   * the locked manifest's `generation_issuer_binding_ref` and re-verifies it; tests may inject a
+   * deterministic boundary. A missing/absent pin still means fail closed with `issuer_identity_not_bound`. */
   readonly loadApprovedIssuerBinding?: ApprovedIssuerBindingLoader;
+  /** Low-level #33 re-verification for the default locked-manifest loader; tests/tooling only. */
+  readonly verifyPinnedIssuerBinding?: VerifyPinnedBinding;
   /** Defaults to the persisted owner/run scoped pin loader; tests may supply a deterministic boundary. */
   readonly loadUserReferenceOutline?: (scope: NoHistoryRunScope, ctx: StageContext) => Promise<UserReferenceLoad>;
   readonly codexConfig: CodexAdapterConfig | (() => CodexAdapterConfig);
@@ -277,9 +282,11 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     if (!profileRecord || !isReviewedProfile(profileRecord, scope)) throw new Error('NO_HISTORY_PROFILE_NEEDS_REVIEW');
     const rule = await adapters.loadTrustedRuleSelection(scope);
     if (!rule || !validRuleSelection(rule, scope)) throw new Error('NO_HISTORY_RULE_CAPABILITY_NOT_READY');
-    // #33: the legal issuer subject is only the trusted binding for this exact run input. When the
-    // adapter is absent (production default) or the binding is missing/withdrawn/stale, pause.
-    const issuerBinding = await adapters.loadApprovedIssuerBinding?.(scope);
+    // #33: the legal issuer subject is only the trusted binding pinned into this exact run input.
+    // The default loader reads `generation_issuer_binding_ref` from the locked manifest and
+    // re-verifies it; when there is no pin or the binding is missing/withdrawn/stale/conflicting, pause.
+    const issuerBinding = await (adapters.loadApprovedIssuerBinding?.(scope)
+      ?? loadPinnedApprovedGenerationIssuerBinding(ctx.pool, scope, adapters.verifyPinnedIssuerBinding));
     if (!validApprovedIssuerBinding(issuerBinding, scope)) throw new Error('NO_HISTORY_ISSUER_BINDING_NOT_BOUND');
     // Resolve issuer facts before reference selection because exact reference selection may create
     // a durable lock, and missing issuer evidence must never consume one.
@@ -337,8 +344,10 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
         return await model.run({ ...ctx, validateBeforeModelCall: async () => {
           const current = await ctx.validateBeforeModelCall?.();
           if (current) return current;
-          // A withdrawn, re-materialised or re-parsed binding must invalidate the subject before any model call.
-          const binding = await adapters.loadApprovedIssuerBinding?.(scopeOf(ctx));
+          // A withdrawn, re-materialised or re-parsed binding must invalidate the subject before any
+          // model call; re-read the same locked manifest pin, never a latest binding.
+          const binding = await (adapters.loadApprovedIssuerBinding?.(scopeOf(ctx))
+            ?? loadPinnedApprovedGenerationIssuerBinding(ctx.pool, scopeOf(ctx), adapters.verifyPinnedIssuerBinding));
           if (!validApprovedIssuerBinding(binding, scopeOf(ctx)))
             return { kind: 'pause' as const, stage: 'capability_not_ready' as const, reason: 'issuer_identity_not_bound' };
           if (prepared.userReferenceUsed) {
