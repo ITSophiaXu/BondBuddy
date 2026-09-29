@@ -164,7 +164,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
   }
 });
 
-test('working draft admission requires parsed owner materials and fails closed for invalid windows',
+test('working draft admission requires a successful parse job and fails closed for invalid windows',
   {skip:!databaseUrl},async()=>{
   const names=['BB_DEPLOYMENT_TIER','BB_NON_PRODUCTION_TEST_CHANNEL','BB_PREPROD_WORKING_DRAFT_EXPIRES_AT',
     'BB_PREPROD_WORKING_DRAFT_SAMPLE_MANIFEST_SHA256','BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH',
@@ -209,7 +209,7 @@ test('working draft admission requires parsed owner materials and fails closed f
     assert.equal((await send('/api/v1/runs/execute',request(empty))).json().code,'INPUT_REQUIRED');
     assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
 
-    const addMaterial=async(role:'historical'|'financial',hash:string)=>{
+    const addMaterial=async(role:'historical'|'financial',hash:string,withParse=true)=>{
       const id=randomUUID(),uploadId=randomUUID();
       const media=role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -219,7 +219,7 @@ test('working draft admission requires parsed owner materials and fails closed f
       await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
         VALUES($1,1,$2,$3,$4,$5,'synthetic', $6,20,$7,$8,'parsed')`,
       [id,owner,project,uploadId,role,media,hash,`users/${owner}/projects/${project}/materials/${id}`]);
-      await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
+      if(withParse)await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
         material_sha256,parser_version,trace_id,max_attempts,result)
         VALUES($1,$2,NULL,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8)`,
       [randomUUID(),owner,project,id,hash,documentParserVersion(),randomUUID(),
@@ -264,9 +264,8 @@ test('working draft admission requires parsed owner materials and fails closed f
     await pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1',[removed.material_id]);
     assert.equal((await check(removedInput)).json().code,'INPUT_REVISION_CONFLICT');
     assert.equal((await send('/api/v1/runs/execute',request(removedInput))).json().code,'INPUT_REVISION_CONFLICT');
-    const unreadable=await addMaterial('financial',sha('1'));
+    const unreadable=await addMaterial('financial',sha('1'),false);
     const unreadableInput=await locked([historical,unreadable]);
-    await pool.query("UPDATE bb_material_versions SET state='ready' WHERE id=$1",[unreadable.material_id]);
     assert.equal((await check(unreadableInput)).json().code,'MATERIAL_UNREADABLE');
     assert.equal((await send('/api/v1/runs/execute',request(unreadableInput))).json().code,'MATERIAL_UNREADABLE');
     assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});

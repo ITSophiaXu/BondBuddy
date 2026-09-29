@@ -45,7 +45,7 @@ async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrant
         !/^[a-f0-9]{64}$/.test(pin.sha256) || ids.has(pin.material_id))
       throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Locked material references changed');
     ids.add(pin.material_id);
-    const row = (await db.query(`SELECT role,sha256,media_type,state,deleted_at FROM bb_material_versions
+    const row = (await db.query(`SELECT role,sha256,media_type,deleted_at FROM bb_material_versions
       WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 FOR SHARE`,
     [scope.userId,scope.projectId,pin.material_id,pin.material_version])).rows[0];
     if (!row || row.deleted_at || row.role !== pin.role || String(row.sha256).trim() !== pin.sha256)
@@ -60,7 +60,7 @@ async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrant
       WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4
         AND job_type='parse' AND subtype='material_parse' AND parser_version=$5`,
     [scope.userId,scope.projectId,pin.material_id,pin.material_version,documentParserVersion()])).rows[0];
-    if (!['parsed','needs_confirmation'].includes(row.state) || parse?.state !== 'succeeded' ||
+    if (parse?.state !== 'succeeded' ||
         String(parse.material_sha256).trim() !== pin.sha256 ||
         !['parsed','needs_confirmation'].includes(parse.result?.outcome))
       throw new Problem(409, 'MATERIAL_UNREADABLE', 'Locked material has no successful parse');
