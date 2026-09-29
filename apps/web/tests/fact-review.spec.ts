@@ -46,7 +46,15 @@ async function installApi(page: Page, state: { requests: any[]; fail: number; cu
       draft_revision: 1, updated_at: now, latest_run: null, latest_artifact: null }], page: { next_cursor: null, has_more: false } });
     if (path === `/api/v1/projects/${projectId}`) return json(route, 200, { project_id: projectId, draft_revision: 1, input_revision: null,
       input_hash: null, name: '合成事实审核项目', kind: 'update', issuer_name: null, market: null, offering: null, updated_at: now });
+    if (path === `/api/v1/projects/${projectId}/messages`) return json(route, 200, {
+      conversation_id: projectId, items: [], project_message_set_ref: { version: 1, content_sha256: hash, message_ids: [] },
+      next_cursor: null, has_more: false
+    });
     if (path === `/api/v1/projects/${projectId}/events`) return json(route, 200, { items: [], next_cursor: 0 });
+    if (path === `/api/v1/projects/${projectId}/messages`) return json(route, 200, {
+      conversation_id: projectId, items: [], project_message_set_ref: { version: 1, content_sha256: hash, message_ids: [] },
+      next_cursor: null, has_more: false
+    });
     if (path === `/api/v1/projects/${projectId}/facts/candidates`) {
       const cursor = url.searchParams.get('cursor') ?? '';
       state.cursors.push(cursor);

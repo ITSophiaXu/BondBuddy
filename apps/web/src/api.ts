@@ -155,6 +155,17 @@ export class ApiClient {
   inputRevision(id: string, revision: number, signal?: AbortSignal) {
     return this.request<Dto<'InputRevisionResponse'>>('GET', `/projects/${encodeURIComponent(id)}/input-revisions/${revision}`, undefined, {}, signal);
   }
+  projectMessages(id: string, cursor?: string, signal?: AbortSignal) {
+    const query = new URLSearchParams({ limit: '20' });
+    if (cursor) query.set('cursor', cursor);
+    return this.request<Dto<'ProjectMessagePage'>>('GET', `/projects/${encodeURIComponent(id)}/messages?${query}`, undefined, {}, signal);
+  }
+  saveProjectMessage(id: string, input: Dto<'ProjectMessageSaveRequest'>, signal?: AbortSignal) {
+    return this.request<Dto<'ProjectMessageSaveResponse'>>('POST', `/projects/${encodeURIComponent(id)}/messages`, input, {}, signal);
+  }
+  projectMessageVersion(id: string, messageId: string, version: number, signal?: AbortSignal) {
+    return this.request<Dto<'ProjectMessage'>>('GET', `/projects/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/versions/${version}`, undefined, {}, signal);
+  }
   createInputRevision(id: string, input: Dto<'InputRevisionCreateRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'InputRevisionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/input-revisions`, input, {}, signal);
   }

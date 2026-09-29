@@ -8,7 +8,9 @@
 
 ## #18 项目消息受控持久化第一切片（2026-09-29）
 
-`apps/api/src/project-messages.ts` 使用已有私有 prompt Blob、`bb_user_submission_versions`、提交意图和 `packages/contracts` 的 `ProjectMessageSetRef`。追加迁移 0077 保存精确修订来源并为 bounded 历史读取建索引；后端 `POST /projects/{id}/messages` 只保存用户原话和材料精确版本，不调用助手/模型或创建文书任务，返回 `user_asserted` / `not_classified` / `save_only`，不给 `reply=null` 包装伪成功。`GET /projects/{id}/messages` 和单版本读取按本人项目授权、校验私有正文哈希、读取前审计、分页；缺失/清理的正文明确失败。当前 set 的版本按最新一次消息提交单调变化，即使编辑已有消息亦递增；成员位置仍按首次提交顺序，hash 仍按 #76 的规范成员集合计算；老的 input revision 不改写。input-lock 继续在同事务重验完整集合，没有精确 ref 的非空历史拒绝。受控内部提交入口及旧会话回复接口不代表真实聊天已实现；网页原型草稿未接入此公开 API，真正的模型回复、意图路由、流式中断、问答 job/attempt/usage 仍待后续 #18/#79 联调。
+浏览器增量：`apps/web/src/project-conversation.ts` 将右侧原型布局接至上述保存/分页/版本读取 API，只展示 `user_asserted` / `save_only`，不伪造助手或执行。已确认保存但尚未读取列表时显示读取错误而非空成功；未提交或丢失响应的 composer 不混入已保存列表。`project-execution.ts` 在锁输入之前重新读取服务端完整 message-set ref，将全体 IDs 与 ref 同时提交；保存/编辑使预检失效，执行前再次校验 ref，409 重新读取但不覆写。没有新增 DTO、迁移或服务器路由；[合成浏览器与同尺寸对照](../apps/web/ux-evidence/issue-18-conversation/README.md) 不代表助手、真实 PG/Blob/模型或 #79 链路验收。
+
+`apps/api/src/project-messages.ts` 使用已有私有 prompt Blob、`bb_user_submission_versions`、提交意图和 `packages/contracts` 的 `ProjectMessageSetRef`。追加迁移 0077 保存精确修订来源并为 bounded 历史读取建索引；后端 `POST /projects/{id}/messages` 只保存用户原话和材料精确版本，不调用助手/模型或创建文书任务，返回 `user_asserted` / `not_classified` / `save_only`，不给 `reply=null` 包装伪成功。`GET /projects/{id}/messages` 和单版本读取按本人项目授权、校验私有正文哈希、读取前审计、分页；缺失/清理的正文明确失败。当前 set 的版本按最新一次消息提交单调变化，即使编辑已有消息亦递增；成员位置仍按首次提交顺序，hash 仍按 #76 的规范成员集合计算；老的 input revision 不改写。input-lock 继续在同事务重验完整集合，没有精确 ref 的非空历史拒绝。受控内部提交入口及旧会话回复接口不代表真实聊天已实现；网页现已接保存 API，但真正的模型回复、意图路由、流式中断、问答 job/attempt/usage 仍待后续 #18/#79 联调。
 
 ## #361 上传与启动失败的公开反馈（2026-09-29）
 

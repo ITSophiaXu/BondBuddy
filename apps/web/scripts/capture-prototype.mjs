@@ -42,12 +42,16 @@ try {
     else await page.evaluate(()=>scrollTo(0,0));
     await page.screenshot({path:join(output,`${prefix}-reference-${name}.png`),fullPage:!errorStateEvidence});
   };
-  await page.goto(`${base}/#dashboard`);await page.getByRole('heading',{name:'工作台',exact:true}).waitFor();if(!errorStateEvidence)await capture('dashboard');
+  if(!errorStateEvidence && prefix!=='bb18'){await page.goto(`${base}/#dashboard`);await page.getByRole('heading',{name:'工作台',exact:true}).waitFor();await capture('dashboard');}
   await page.goto(`${base}/#update`);await page.getByRole('heading',{name:'更新募集说明书',exact:true}).waitFor();
   await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');await page.getByLabel('发行人全称').fill('合成发行人有限公司');await page.locator(`[name=authoringMode][value=${errorStateEvidence?'reference':'historical'}]`).check();
-  if(prefix==='bb370'||materialPreview){await page.locator('#year').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();}
+  if(prefix==='bb18'){
+    await page.locator('#exchange').selectOption('sse');await page.locator('#offering').selectOption('private');
+    await page.locator('#project-message').fill('合成补充：授信口径待核对。');
+  }
+  if(prefix==='bb370'||prefix==='bb18'||materialPreview){await page.locator('#year').selectOption('2026');await page.getByRole('radio',{name:'6月末',exact:true}).check();}
   if(!errorStateEvidence)await capture('create');
-  if(prefix==='bb370'||materialPreview){await page.setViewportSize({width:390,height:844});await capture('create-mobile');await page.setViewportSize({width:1440,height:960});}
+  if(prefix==='bb370'||prefix==='bb18'||materialPreview){await page.setViewportSize({width:390,height:844});if(prefix==='bb18')await page.waitForTimeout(300);await capture('create-mobile');await page.setViewportSize({width:1440,height:960});}
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();await page.getByRole('heading',{name:'提供项目材料',exact:true}).waitFor();
   if(materialPreview){
     await page.locator('[data-project-upload-role=historical]').setInputFiles({name:'合成历史稿.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic history')});
@@ -57,6 +61,6 @@ try {
   }
   await capture('materials');
   if(errorStateEvidence)await capture('materials-footer','#start-task');
-  if(prefix==='bb370'||materialPreview||errorStateEvidence){await page.setViewportSize({width:390,height:844});await capture('materials-mobile');}
+  if(prefix==='bb370'||prefix==='bb18'||materialPreview||errorStateEvidence){await page.setViewportSize({width:390,height:844});if(prefix==='bb18')await page.waitForTimeout(300);await capture('materials-mobile');}
   if(errorStateEvidence)await capture('materials-footer-mobile','#start-task');
 } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}

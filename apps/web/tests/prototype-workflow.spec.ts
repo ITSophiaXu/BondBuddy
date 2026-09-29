@@ -4,10 +4,14 @@ import { Value } from '@sinclair/typebox/value';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Dto } from '../src/api';
+import { createHash } from 'node:crypto';
 
 // Synthetic API state; the UI, routing, saves and layouts are real browser code.
 async function setup(page: Page) {
   const projects: Dto<'ProjectResponse'>[] = [];
+  const messages: Dto<'ProjectMessage'>[] = [];
+  const messageRef = () => ({ version: messages.length + 1, content_sha256: createHash('sha256').update(JSON.stringify(messages)).digest('hex'),
+    message_ids: messages.map(m => m.message_id).sort() });
   const writes: unknown[] = [];
   const routes: string[] = [];
   await page.route('**/api/v1/**', async route => {
@@ -22,12 +26,22 @@ async function setup(page: Page) {
     else if(path==='/projects/synthetic-design-project') {
       if(request.method()==='PATCH') { const input=request.postDataJSON();writes.push(input);Object.assign(projects[0],input,{draft_revision:projects[0].draft_revision+1}); }
       body=projects[0];
+    } else if(path==='/projects/synthetic-design-project/messages' && request.method()==='GET') {
+      body={conversation_id:'synthetic-design-project',items:messages,project_message_set_ref:messageRef(),next_cursor:null,has_more:false};
+    } else if(path==='/projects/synthetic-design-project/messages' && request.method()==='POST') {
+      const input=request.postDataJSON() as Dto<'ProjectMessageSaveRequest'>;
+      expect(Value.Check(schemas.ProjectMessageSaveRequest,input)).toBe(true);
+      const message: Dto<'ProjectMessage'>={message_id:input.message_id,submission_id:input.submission_request_id,submission_version:1,
+        message_version:1,prompt_snapshot_ref:'synthetic-prompt',revises_submission_id:null,
+        content_sha256:createHash('sha256').update(input.body).digest('hex'),body:input.body,material_versions:[],created_at:'2026-09-28T00:00:00Z',
+        role:'user',source_status:'user_asserted',intent_status:'not_classified',route:'save_only'};
+      messages.push(message);body={...message,conversation_id:'synthetic-design-project',is_current:true,project_message_set_ref:messageRef()};status=201;
     } else if(path.endsWith('/events')) body={items:[],next_cursor:null};
     else {status=404;body={code:'NOT_FOUND'};}
     await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   });
   await page.goto('/#dashboard');
-  return {projects,writes,routes};
+  return {projects,writes,routes,messages};
 }
 
 test('prototype dashboard leads through creation to materials with persistent right-side requirements',async({page})=>{
@@ -62,9 +76,13 @@ test('prototype dashboard leads through creation to materials with persistent ri
   await expect(page.locator('#draft-form')).toBeHidden();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
   await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('补充授信证明后核对时点。');
+  await page.getByRole('button',{name:'发送并保存'}).click();
+  await expect(page.locator('.cowork-message')).toContainText('补充授信证明后核对时点。');
   await page.getByLabel('补充说明与写作要求').fill('材料阶段也可保存下一轮说明。');
-  await expect.poll(()=>state.projects[0]?.update_details?.supplementary_notes).toBe('材料阶段也可保存下一轮说明。');
+  await page.getByRole('button',{name:'发送并保存'}).click();
+  await expect.poll(()=>state.messages.map(m=>m.body)).toEqual(['补充授信证明后核对时点。','材料阶段也可保存下一轮说明。']);
   await page.reload(); await expect(page.locator('.step.current')).toContainText('材料与要求');
+  await expect(page.locator('.cowork-message')).toHaveCount(2);
   await page.getByRole('button',{name:'编辑项目信息'}).click();
   await expect(page.getByLabel('发行人全称')).toHaveValue('合成发行人有限公司');
   await page.reload(); await expect(page.locator('.step.current')).toContainText('创建项目');
