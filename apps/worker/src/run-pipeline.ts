@@ -23,6 +23,19 @@ import { CodexDurableJournal } from './durable-probe-journal.js';
 import type { FactCandidateProductionContext, FactCandidateProductionResult } from './fact-candidate-producer.js';
 import { markTestWord } from './test-word-marking.js';
 import { isTestUncoveredItems, type TestUncoveredItem } from '@bondbuddy/contracts';
+import type { ApprovedGenerationIssuerBinding } from './no-history-model-stage.js';
+import type { ProduceTargetPeriodCandidateSnapshotRequest } from './target-period-candidate-snapshot-producer.js';
+
+/**
+ * Trusted #33 pinned generation issuer binding loader. The production runtime builds the
+ * pinned-manifest loader (`loadPinnedApprovedGenerationIssuerBinding`) and injects it here; a
+ * non-null value authorizes the generation run's issuer subject, null keeps it fail-closed at the
+ * stable `issuer_identity_not_bound` pause. Absent = the run keeps its pre-wiring behavior.
+ */
+export type GenerationIssuerBindingScope = { ownerUserId: string; projectId: string; runId: string; inputRevision: number; inputHash: string };
+export type LoadGenerationIssuerBinding = (scope: GenerationIssuerBindingScope) => Promise<ApprovedGenerationIssuerBinding | null>;
+/** #76 target-period candidate producer call site; injected by the runtime only when enabled. */
+export type TargetPeriodCandidateProducer = (request: ProduceTargetPeriodCandidateSnapshotRequest) => Promise<void>;
 
 export type RunRow = { id: string; owner_user_id: string; project_id: string; input_revision: number; input_hash: string; task_kind: string; channel?: 'production'|'non_production_test'; test_grant_id?: string|null };
 export type StageContext = {
@@ -33,6 +46,10 @@ export type StageContext = {
   validateBeforeModelCall?: () => Promise<InputBindingGate | null>;
   reviewedContextLoader?: ReviewedContextLoader;
   testRuleCapabilityLoader?: TestRuleCapabilityLoader;
+  /** #33 pinned issuer binding re-verification call point; absent = unchanged. */
+  loadGenerationIssuerBinding?: LoadGenerationIssuerBinding;
+  /** #76 target-period candidate producer call point; absent = unchanged. */
+  produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
 };
 export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
@@ -52,6 +69,10 @@ export type RunPipelineDependencies = {
   pool: Pool; blobs: PrivateBlobs; stages: RunStage[]; leaseSeconds?: number; maxAttempts?: number;
   signal?: AbortSignal; reviewedContextLoader?: ReviewedContextLoader;
   testRuleCapabilityLoader?: TestRuleCapabilityLoader;
+  /** #33 pinned issuer binding re-verification call point; absent = unchanged. */
+  loadGenerationIssuerBinding?: LoadGenerationIssuerBinding;
+  /** #76 target-period candidate producer call point; absent = unchanged. */
+  produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -88,7 +109,7 @@ export type TestRuleCapabilityLoader = (run: RunRow, input: InputRevisionRow) =>
 // #19 supplies the candidate selector. Until then a test run stays paused before any model call.
 export const unavailableTestRuleCapability: TestRuleCapabilityLoader = async () =>
   ({ status:'not_ready', reason:'test_rule_capability_not_ready' });
-type InputRevisionRow = { input_hash: string; draft_revision: number; material_versions: unknown;
+export type InputRevisionRow = { input_hash: string; draft_revision: number; material_versions: unknown;
   manifest: Record<string, unknown> | null; rule_pack_version: string | null; template_version: string | null };
 
 async function verifyTestRuleCapability(pool: Pool, run: RunRow, input: InputRevisionRow,
@@ -181,12 +202,91 @@ async function currentRunInput(pool: Pool, run: RunRow): Promise<InputRevisionRo
   return (result.rows[0] as InputRevisionRow | undefined) ?? null;
 }
 
+const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+/**
+ * #33 run-pipeline call point for the pinned generation issuer binding. The worker runtime injects
+ * the trusted loader; the run's locked manifest must actually pin a binding ref before the loader
+ * is consulted, so a generation input without a pin keeps its current behavior. A present but
+ * malformed/stale/withdrawn pin fails closed at the stable `issuer_identity_not_bound`.
+ */
+async function verifyGenerationIssuerBinding(run: RunRow, manifest: Record<string, unknown> | null,
+  load?: LoadGenerationIssuerBinding): Promise<InputBindingGate | null> {
+  if (!load || run.task_kind !== 'generation') return null;
+  const pinned = manifest?.generation_issuer_binding_ref;
+  if (pinned === undefined || pinned === null) return null;
+  let binding: ApprovedGenerationIssuerBinding | null = null;
+  try {
+    binding = await load({ ownerUserId: run.owner_user_id, projectId: run.project_id, runId: run.id,
+      inputRevision: run.input_revision, inputHash: run.input_hash.trim() });
+  } catch { binding = null; }
+  return binding ? null : { kind: 'pause', stage: 'capability_not_ready', reason: 'issuer_identity_not_bound' };
+}
+
+/** Selected financial materials from the locked manifest, exactly as the #76 producer re-reads them. */
+function financialMaterialSelections(manifest: unknown): { materialId: string; materialVersion: number }[] {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return [];
+  const materials = (manifest as Record<string, unknown>).materials;
+  if (!Array.isArray(materials)) return [];
+  const selected: { materialId: string; materialVersion: number }[] = [];
+  for (const item of materials) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.role !== 'string' || !financialRoles.has(record.role)) continue;
+    const materialVersion = record.material_version;
+    if (typeof record.material_id !== 'string' || !identifierPattern.test(record.material_id) ||
+        !Number.isSafeInteger(materialVersion) || (materialVersion as number) < 1) return [];
+    selected.push({ materialId: record.material_id, materialVersion: materialVersion as number });
+  }
+  return selected;
+}
+
+function reportingCutoffOf(updateDetails: unknown): string | null {
+  let details = updateDetails;
+  if (typeof details === 'string') { try { details = JSON.parse(details) as unknown; } catch { return null; } }
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return null;
+  const cutoff = (details as Record<string, unknown>).reporting_cutoff;
+  return typeof cutoff === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cutoff) ? cutoff : null;
+}
+
+/**
+ * Resolve the exact #76 producer request from trusted rows only: the locked input manifest supplies
+ * the financial-material identities and the owner-scoped project row supplies the current draft
+ * revision plus reporting cutoff. A value the producer could not re-derive is never guessed.
+ */
+async function targetPeriodCandidateRequest(pool: Pool, run: RunRow, input: InputRevisionRow): Promise<ProduceTargetPeriodCandidateSnapshotRequest | null> {
+  const selectedFinancialMaterials = financialMaterialSelections(input.manifest);
+  if (!selectedFinancialMaterials.length) return null;
+  const project = (await pool.query(`SELECT draft_revision,update_details FROM bb_projects
+    WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL`, [run.owner_user_id, run.project_id])).rows[0];
+  if (!project) return null;
+  const projectDraftRevision = Number(project.draft_revision);
+  const reportingCutoff = reportingCutoffOf(project.update_details);
+  if (!Number.isSafeInteger(projectDraftRevision) || projectDraftRevision < 1 || !reportingCutoff) return null;
+  return { ownerUserId: run.owner_user_id, projectId: run.project_id, selectedFinancialMaterials,
+    projectDraftRevision, reportingCutoff, inputRevision: run.input_revision, inputHash: run.input_hash.trim() };
+}
+
+/**
+ * #76 run-pipeline call point. Called once after the input gates pass, for update/generation runs
+ * whose locked input selects financial materials. The producer is atomic: a failure persists nothing
+ * and is swallowed here so it never blocks the rest of the run.
+ */
+export async function invokeTargetPeriodCandidateProducer(pool: Pool, run: RunRow, input: InputRevisionRow,
+  producer?: TargetPeriodCandidateProducer): Promise<void> {
+  if (!producer || (run.task_kind !== 'update' && run.task_kind !== 'generation')) return;
+  let request: ProduceTargetPeriodCandidateSnapshotRequest | null;
+  try { request = await targetPeriodCandidateRequest(pool, run, input); } catch { request = null; }
+  if (!request) return;
+  try { await producer(request); } catch { /* fail-closed: the producer persists nothing on failure */ }
+}
+
 /** input_lock: the run is pinned to its immutable input revision and hash. */
 export const inputLockStage: RunStage = {
   name: 'input_lock',
   // Recovery must re-check the production rule pin before any later stage can run.
   replay: true,
-  run: async ({ pool, run, reviewedContextLoader, testRuleCapabilityLoader }) => {
+  run: async ({ pool, run, reviewedContextLoader, testRuleCapabilityLoader, loadGenerationIssuerBinding, produceTargetPeriodCandidates }) => {
     const q = await pool.query(`SELECT i.input_hash,i.draft_revision,i.material_versions,i.rule_pack_version,i.manifest,i.template_version,i.reference_release FROM bb_input_revisions i
       JOIN bb_projects p ON p.owner_user_id=i.owner_user_id AND p.id=i.project_id AND p.deleted_at IS NULL
       WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.revision=$3`, [run.owner_user_id, run.project_id, run.input_revision]);
@@ -196,6 +296,9 @@ export const inputLockStage: RunStage = {
     const manifest = input.manifest as Record<string, unknown> | null;
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
+    const issuerBindingGate = await verifyGenerationIssuerBinding(run, manifest, loadGenerationIssuerBinding);
+    if (issuerBindingGate) return issuerBindingGate;
+    await invokeTargetPeriodCandidateProducer(pool, run, input, produceTargetPeriodCandidates);
     if(run.channel==='non_production_test')return (await verifyTestRuleCapability(pool,run,input,testRuleCapabilityLoader)) ?? {kind:'done'};
     return (await verifyProductionRulePin(pool, run, input, reviewedContextLoader)) ?? { kind: 'done' };
   },
@@ -420,12 +523,16 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   try {
     const run = (await pool.query('SELECT id,owner_user_id,project_id,input_revision,input_hash,task_kind,channel,test_grant_id FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [lease.runId, lease.owner])).rows[0] as RunRow;
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
-    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader, validateBeforeModelCall: async () => {
+    const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
+      loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
+      validateBeforeModelCall: async () => {
       // Synthetic mechanics tests install their own input-lock stage. The production stage
-      // always rechecks both bindings before a provider intent, including checkpoint replay.
+      // always rechecks every binding before a provider intent, including checkpoint replay.
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      const generationGate = await verifyGenerationIssuerBinding(run, input.manifest, deps.loadGenerationIssuerBinding);
+      if (generationGate) return generationGate;
       if(run.channel==='non_production_test')
         return (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
           await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader);
@@ -436,7 +543,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if(run.channel==='non_production_test' && stage.name!=='input_lock'){
         const input=await currentRunInput(pool,run);
         const gate=input
-          ? (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
+          ? (await verifyGenerationIssuerBinding(run,input.manifest,deps.loadGenerationIssuerBinding)) ??
+            (await verifyUpdateIssuerIdentityBinding(pool,run,input.manifest)) ??
             await verifyTestRuleCapability(pool,run,input,deps.testRuleCapabilityLoader)
           : {kind:'fail',code:'INPUT_REVISION_CONFLICT'} as const;
         if(gate?.kind==='pause'){await pauseRun(pool,lease,gate.stage,safePauseReason(gate.reason));return 'paused';}

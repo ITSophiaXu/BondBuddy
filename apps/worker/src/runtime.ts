@@ -12,9 +12,11 @@ import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Le
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
-import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type ParsedFactProducer, type RunStage } from './run-pipeline.js';
+import { createMaterialsReadyStage, defaultRunStages, materialsReadiness, runPipelineOnce, type LoadGenerationIssuerBinding, type ParsedFactProducer, type RunStage, type TargetPeriodCandidateProducer } from './run-pipeline.js';
 import { createRuntimeParseCache, runtimeParseCacheVersions } from './runtime-parse-cache.js';
 import { modelGenerationRouter } from './model-generation-router.js';
+import { loadPinnedApprovedGenerationIssuerBinding } from './generation-issuer-binding-loader.js';
+import { produceTargetPeriodCandidateSnapshot } from './target-period-candidate-snapshot-producer.js';
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
 import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
@@ -54,6 +56,10 @@ export type WorkerRuntimeOptions = {
   factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
   /** Optional trusted #33 server adapters; absent in production until their sources are ready. */
   noHistoryGenerationAdapters?: NoHistoryStageAdapters;
+  /** #33 pinned generation issuer binding loader run at `input_lock`; the env factory installs the pinned-manifest loader. */
+  loadGenerationIssuerBinding?: LoadGenerationIssuerBinding;
+  /** #76 target-period candidate producer call; off unless the deployment explicitly enables it. */
+  produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
   parse?: Omit<MaterialParseJobDependencies, 'pool' | 'leaseSeconds' | 'onLease'>;
   ocrEnabled?: boolean;
   /** Back-off before a paused awaiting_ocr job is re-queued again. */
@@ -86,8 +92,8 @@ export class WorkerRuntime {
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
   readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot'>;
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, parseSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
@@ -138,6 +144,8 @@ export class WorkerRuntime {
             ? await runPipelineOnce({ pool: this.o.pool, blobs: this.o.blobs, stages: this.o.runStages, leaseSeconds: this.o.leaseSeconds, signal: this.workAbort.signal,
               reviewedContextLoader: this.o.reviewedContextLoader,
               testRuleCapabilityLoader: this.o.testRuleCapabilityLoader,
+              loadGenerationIssuerBinding: this.o.loadGenerationIssuerBinding,
+              produceTargetPeriodCandidates: this.o.produceTargetPeriodCandidates,
               onUnexpectedError: error => this.emit({ slot, kind: 'run', outcome: 'unexpected_error', ...error }),
               onLease: lease => { if (lease) this.runLeases.set(slot, lease); else this.runLeases.delete(slot); } })
             : this.o.parse ? await runMaterialParseOnce({ ...this.o.parse, pool: this.o.pool, leaseSeconds: this.o.leaseSeconds,
@@ -289,11 +297,18 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     factEvidenceReviewGate ? { factEvidenceReviewGate } : {}),
     word_delivery: historicalWordDeliveryStage() });
   const testChannelEnabled = env.BB_DEPLOYMENT_TIER === 'preprod' && env.BB_NON_PRODUCTION_TEST_CHANNEL === 'enabled';
+  // #76 target-period candidate producer: off unless the deployment explicitly enables the call.
+  // The #33 pinned issuer binding loader is always installed; it only runs when a generation run's
+  // locked manifest actually pins a binding ref, so an unpinned input keeps its current behavior.
+  const targetPeriodCandidateProducer = env.BB_TARGET_PERIOD_CANDIDATE_PRODUCER === '1';
   const materials = runStages.find(stage => stage.name === 'materials_ready')!;
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages,
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
+    loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
+    ...(targetPeriodCandidateProducer ? { produceTargetPeriodCandidates: async request =>
+      { await produceTargetPeriodCandidateSnapshot({ pool, blobs }, request); } } : {}),
     ...(testChannelEnabled ? { testRuleCapabilityLoader: createSsePrivateTestRuleCapabilityLoader(pool) } : {}),
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
