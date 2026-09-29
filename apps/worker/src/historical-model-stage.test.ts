@@ -13,6 +13,7 @@ import { factIdentityKey } from '@bondbuddy/domain/facts';
 import { updateContentHash, type HistoricalUpdateInput } from '@bondbuddy/domain/historical-update';
 import { prepareHistoricalUpdate, type HistoricalUpdateReaders } from './historical-update.js';
 import { GENERATION_INPUT_CHECKPOINT, loadHistoricalGenerationInput, offerableFacts, type GenerationInputReaders } from './historical-generation-input.js';
+import { promptTable, historicalRulePrompt } from './historical-prompt-tables.js';
 import { historicalChunks, historicalModelGenerationStage, historicalPrompt, type HistoricalGenerationPlan, type HistoricalModelStageOptions } from './historical-model-stage.js';
 import { HISTORICAL_GENERATION_VERSION, mergeInventories, semanticInventory, type HistoricalModelAnswer } from './historical-generation-schema.js';
 import type { StoredParseSnapshot } from './parse-evidence-repository.js';
@@ -110,7 +111,7 @@ test('test-channel input reaches the historical planner with exact research guid
     s.readers.rules = async () => { throw new Error('Must not call production registry for test input'); };
     const model = s.options.model!;
     s.options.model = options => {
-      assert.equal(options.templateVersion, 'historical-sse-private-test-v2'); calls++;
+      assert.equal(options.templateVersion, 'historical-sse-private-test-v3'); calls++;
       return model(options);
     };
     const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
@@ -609,7 +610,7 @@ test('UTF-8 chunk budget preserves long Chinese blocks after complete rules and 
     { taxonomyHash: candidatePin.taxonomy.contentSha256, rulePackHash: candidatePin.rulePack.contentSha256 });
   const records = Array.from({length: 30}, (_, i) => ({ ...s.snapshot.response.records[0]!,
     record_id: `long-${i}`, locator: {path: [{paragraph: i + 1}]}, literal_quote: '中文原文'.repeat(1000) }));
-  const budget = 240_000 - Buffer.byteLength(historicalPrompt(input, [], 499, 500)) - 16;
+  const budget = 240_000 - Buffer.byteLength(historicalPrompt(input, [], 499, 500)) - 256;
   const chunks = historicalChunks(records, budget);
   assert.deepEqual(chunks.flat(), records);
   chunks.forEach((chunk, i) => assert.ok(Buffer.byteLength(historicalPrompt(input, chunk, i, chunks.length)) <= 240_000));
@@ -646,15 +647,15 @@ test('run rereads exact decision version and detects mutation in decision eviden
 
 test('all chunks resume under stable logical calls and reconstruct the same plan',async()=>{
   const s=fixture(); const records=s.snapshot.response.records;
-  for(let i=0;i<90;i++) records.push({...records[3]!,record_id:`extra-${i}`,locator:{path:[{paragraph:10+i}],stable_ref:`docx:p${String(10+i).padStart(4,'0')}`}});
+  for(let i=0;i<600;i++) records.push({...records[3]!,record_id:`extra-${i}`,locator:{path:[{paragraph:10+i}],stable_ref:`docx:p${String(10+i).padStart(4,'0')}`}});
   const {request_id:_,...stable}=s.snapshot.response; s.snapshot.responseSha256=updateContentHash(stable);
   const cached=new Map<string,unknown>(); let calls=0; let interrupt=true;
   s.options.model=o=>({name:o.name,run:async c=>{
     if(o.name==='historical_model_1'&&interrupt) {interrupt=false;return {kind:'stopped'};}
     if(cached.has(o.logicalCallId)) return {kind:'done',value:cached.get(o.logicalCallId)};
     const prompt=await o.buildPrompt(c); const data=JSON.parse(prompt.split('BEGIN_UNTRUSTED_PROJECT_DATA\n')[1]!.split('\nEND_UNTRUSTED_PROJECT_DATA')[0]!);
-    const answer:HistoricalModelAnswer={schema_version:HISTORICAL_GENERATION_VERSION,blocks:data.original_blocks.map((r:{record_id:string})=>
-      s.answer.blocks.find(b=>b.record_id===r.record_id)??{record_id:r.record_id,disposition:'retain',reason:'原有风险保留',changes:[]}),
+    const answer:HistoricalModelAnswer={schema_version:HISTORICAL_GENERATION_VERSION,blocks:data.original_blocks.rows.map((row:unknown[])=>{const r={record_id:row[0] as string};return (
+      s.answer.blocks.find(b=>b.record_id===r.record_id)??{record_id:r.record_id,disposition:'retain',reason:'原有风险保留',changes:[]});}),
       columns:o.name==='historical_model_0'?s.answer.columns:[]};
     assert.equal(o.validate(answer),true); cached.set(o.logicalCallId,answer);calls++;return {kind:'done',value:answer};
   }});
@@ -662,7 +663,7 @@ test('all chunks resume under stable logical calls and reconstruct the same plan
   assert.equal((await stage.run(s.ctx)).kind,'stopped'); assert.equal(calls,1);
   const resumed=await stage.run(s.ctx); assert.equal(resumed.kind,'done');assert.equal(calls,2);
   const replay=await stage.run(s.ctx); assert.deepEqual(replay,resumed); assert.equal(calls,2);
-  if(resumed.kind==='done') assert.equal((resumed.value as HistoricalGenerationPlan).generation.reviewedBlocks,100);
+  if(resumed.kind==='done') assert.equal((resumed.value as HistoricalGenerationPlan).generation.reviewedBlocks,610);
 });
 
 test('authorized Renqiu September DOCX parses into complete bounded model chunks without editing the original', {
@@ -685,11 +686,13 @@ test('authorized Renqiu September DOCX parses into complete bounded model chunks
   const guidance = await loadHistoricalCandidateRuleGuidance({ market: 'sse', offering: 'private', documentStage: 'issuance', asOf: '2026-09-27' },
     { taxonomyHash: candidatePin.taxonomy.contentSha256, rulePackHash: candidatePin.rulePack.contentSha256 });
   // Byte-budget smoke only: no model call or approval of the sample facts/profile.
-  const referenceBytes = Buffer.byteLength(JSON.stringify(guidance));
-  const chunks=historicalChunks(response.records, 240_000 - referenceBytes - 20_000);
+  const referenceBytes = Buffer.byteLength(JSON.stringify(historicalRulePrompt(guidance)));
+  const chunks=historicalChunks(response.records, 240_000 - referenceBytes - 20_000 - 256);
   assert.deepEqual(chunks.flat().map(r=>r.record_id),response.records.map(r=>r.record_id));
   assert.equal(new Set(chunks.flat().map(r=>r.record_id)).size,response.records.length);
-  assert.ok(chunks.every(c=>c.length<=80));
+  assert.ok(chunks.every(c=>c.length<=512));
+  assert.ok(chunks.length<=32);
+  assert.equal(response.records.length,9690);
   t.diagnostic(`${response.records.length} original blocks / ${chunks.length} chunks; ${referenceBytes} reference bytes, 20KB reserved for other inputs; no provider call`);
 });
 
@@ -753,4 +756,66 @@ test('a legacy preparation does not silently acquire a new evidence-review or pr
   const recovered=await loadHistoricalGenerationInput(s.ctx,s.readers);
   assert.equal(recovered.evidenceReviews,undefined);assert.equal(recovered.revalidateEvidenceReviews,undefined);
   assert.equal(recovered.preparationHash,oldHash);
+});
+
+test('tabular prompt is lossless for original locators, rule citations, exceptions and uncertainty', async () => {
+  const s=fixture(true);
+  const { loadHistoricalCandidateRuleGuidance }=await import('./historical-candidate-rule-context.js');
+  const guidance=await loadHistoricalCandidateRuleGuidance({market:'sse',offering:'private',documentStage:'issuance',asOf:'2026-09-27'},
+    {taxonomyHash:candidatePin.taxonomy.contentSha256,rulePackHash:candidatePin.rulePack.contentSha256});
+  const expand=(value: unknown): unknown => {
+    if(Array.isArray(value))return value.map(expand);
+    if(value && typeof value==='object') {
+      const v=value as Record<string,unknown>;
+      if(Array.isArray(v.columns)&&Array.isArray(v.rows))return v.rows.map(row=>Object.fromEntries((v.columns as string[]).map((key,i)=>[key,expand(row[i])])));
+      return Object.fromEntries(Object.entries(v).map(([key,item])=>[key,expand(item)]));
+    }
+    return value;
+  };
+  const compact=historicalRulePrompt(guidance);
+  assert.deepEqual(expand(compact),guidance);
+  assert.ok(Buffer.byteLength(JSON.stringify(compact))<Buffer.byteLength(JSON.stringify(guidance)));
+  const records=s.snapshot.response.records.map(r=>({...r,uncertainty:['SYNTHETIC_UNRESOLVED']}));
+  assert.deepEqual(expand(promptTable(records)),records);
+});
+
+test('generation capacity is checked for the full document before any model intent', async () => {
+  const s=fixture();const input=await loadHistoricalGenerationInput(s.ctx,s.readers);
+  input.snapshot.response.records=Array.from({length:32*512+1},(_,i)=>({...s.snapshot.response.records[0]!,record_id:'capacity-'+i,locator:{path:[{paragraph:i+1}]},literal_quote:'short'}));
+  s.options.load=async()=>input;
+  s.options.model=()=>{throw new Error('capacity check must precede every paid intent')};
+  assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'pause',stage:'capability_not_ready',reason:'historical_generation_capacity_exceeded'});
+  assert.equal(s.ctx.checkpoint.historical_generation_capacity!.planned_calls,33);
+  assert.equal(Object.keys(s.ctx.checkpoint).some(k=>/^historical_model_/.test(k)),false);
+});
+
+test('old partition checkpoints and duplicate source IDs fail without replaying a provider call', async () => {
+  const s=fixture();s.ctx.checkpoint.historical_model_0_binding={hash:'legacy-80-record-plan'};
+  s.options.model=()=>{throw new Error('never relabel old completed or unknown calls')};
+  assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
+  assert.equal(s.ctx.checkpoint.historical_generation_error!.code,'UPDATE_GENERATION_INPUT_CHANGED');
+  const r=s.snapshot.response.records[0]!;
+  assert.throws(()=>historicalChunks([r,r]),/UPDATE_SOURCE_COVERAGE_INVALID/);
+});
+
+test('512 explicit model decisions still reject omissions, duplicates and absent fact references', () => {
+  const s=fixture();const records=Array.from({length:512},(_,i)=>({...s.snapshot.response.records[0]!,record_id:'coverage-'+i}));
+  const answer:HistoricalModelAnswer={schema_version:HISTORICAL_GENERATION_VERSION,blocks:records.map(r=>({record_id:r.record_id,disposition:'needs_evidence',reason:'合成待核事项',changes:[]})),columns:[]};
+  assert.equal(semanticInventory(answer,records,s.facts,0).coverage.length,512);
+  assert.throws(()=>semanticInventory({...answer,blocks:answer.blocks.slice(1)},records,s.facts,0),/COVERAGE_INCOMPLETE/);
+  assert.throws(()=>semanticInventory({...answer,blocks:[...answer.blocks.slice(1),answer.blocks[1]!]},records,s.facts,0),/COVERAGE_MISMATCH/);
+  const invalid=structuredClone(answer);invalid.blocks[0]!.disposition='update';invalid.blocks[0]!.changes=[{...s.answer.blocks.find(b=>b.changes.length)!.changes[0]!,expression:{operation:'fact',candidate_ids:['absent-fact']}}];
+  assert.throws(()=>semanticInventory(invalid,records,s.facts,0),/UNKNOWN_FACT/);
+});
+
+test('a later batch input mutation is rejected before replaying even the first completed batch', async () => {
+  const s=fixture();const input=await loadHistoricalGenerationInput(s.ctx,s.readers);
+  const seed=input.snapshot.response.records[0]!;
+  input.snapshot.response.records=Array.from({length:513},(_,i)=>({...seed,record_id:'future-'+i,locator:{path:[{paragraph:i+1}]},literal_quote:'original'}));
+  s.options.load=async()=>input;
+  let calls=0;s.options.model=o=>({name:o.name,run:async()=>{calls++;return {kind:'stopped'}}});
+  assert.equal((await historicalModelGenerationStage(s.options).run(s.ctx)).kind,'stopped');assert.equal(calls,1);
+  input.snapshot.response.records[512]!.literal_quote='changed';
+  assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
+  assert.equal(calls,1);
 });

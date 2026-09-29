@@ -9,7 +9,7 @@
 1. `historical-generation-input.ts` 从 owner/project/input revision 读取锁定清单，校验材料版本/hash、唯一历史稿、解析作业和有效正文快照。使用原历史稿，不查 #77 参考库。
 2. 首次模型调用前在私有 job checkpoint 的 `historical_generation_input` 固定 parse snapshot、profile version/hash、全部财务候选 ID/hash，以及各事实决策的 version/hash（尚无决策记为 0）。恢复时重读指定版本；缺失、篡改或身份冲突不能改用 latest。新增 `getFactDecisionAtVersion` 补充 #193 的精确版本读取，不改变原 latest reader 的行为。
 3. `historical-generation-schema.ts` 只允许模型提出原文位置、候选事实 ID、公式、展示格式及逐块覆盖说明。模型不能提供最终数值、主体身份、证据或“已核验”状态。缺块、重复块、未知候选、错位原文、重叠修改和非法公式参数会被拒绝。
-4. 遍历全篇有效块；每片最多 80 块/24,000 字符，prompt 最多 240,000 UTF-8 字节，总计最多 500 片。不截断超限内容；超限暂停并留下原因。完整小表尽量同片，大表不能靠片内数据伪造整列。全篇相同财务表达式合并 binding，由既有精确计算器统一计算和校验。
+4. 遍历全篇有效块；每片最多 512 块/24,000 字符，prompt 最多 240,000 UTF-8 字节；首次调用前固定完整分块清单，超过 32 个逻辑调用即暂停。不截断超限内容；超限暂停并留下原因。完整小表尽量同片，大表不能靠片内数据伪造整列。全篇相同财务表达式合并 binding，由既有精确计算器统一计算和校验。
 5. 每片经过现有 `codexModelStage`：私有 prompt 快照 → durable attempt → 模型结果/真实 usage 或 unknown。稳定 logical call ID 和 prompt 输入 hash 支持恢复复用；供应商结果未知交给现有 reconciliation，不盲目重发。进度 checkpoint 只含完成片数和块数；模型文本不进入公开事件。
 6. 局部缺证据形成 `needs_confirmation` 计划及 `reviewNotes`，有依据的改动继续保留。只有占位符或没有任何可支持修改的结果暂停为 `historical_no_supported_changes`，不得当成已完成更新。
 
@@ -73,3 +73,8 @@ prompt提供`source_kind/material_id/material_role`并禁止冒称审计机构�
 本切片不会清除#314的16条年度uncertainty，不新增#316的8项当期公式候选，不部署、不调用真实供应商。详见[验收与剩余依赖](../../docs/acceptance/issue-31-financial-input-2026-09-27.md)；[8项业务核对交接](../../docs/acceptance/issue-15-rq202509-review-handoff-2026-09-27.md)用于后续逐项确认，不是已签认结果。
 
 2026-09-27评审修复：模型coverage允许1200字符的reason，Word单条批注保持512个UTF-16代码单元限制。`historical-review-notes.ts`将过长的完整说明按同一record分为有顺序编号的批注，不截断原因或external来源限定，不拆开代理对；总条数仍限1000，超限在模型计划阶段明确暂停为`historical_review_notes_exceed_limit`，不等Word阶段报笼统校验错误。#323已将8个公式缓存格落为external/needs_confirmation候选，本消费者仍排除其公式/来源链不确定性，保留冻结清单供审核。
+
+
+## 2026-09-30 容量修复
+
+原文及规则以 columns/rows 无损去除重复字段名，不删原文、来源、例外、事实或待核状态。新增整体 batch plan pin，旧模板调用不能静默按新分块回放。授权原 DOCX 的 9,690 条记录在完整规则＋20KB 其余上下文预留的离线检查中为 24 块；实际平台 pin 的块数与真实 token/Word 仍须验证。详见[容量验证与恢复要求](../../docs/acceptance/issue-31-bounded-context-2026-09-30.md)。
