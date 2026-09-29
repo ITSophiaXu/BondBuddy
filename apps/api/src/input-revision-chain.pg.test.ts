@@ -15,6 +15,7 @@ import {
 } from './issuer-identity-source.js';
 import {
   appendGenerationIssuerBinding,
+  loadApprovedGenerationIssuerBinding,
   loadApprovedGenerationIssuerBindingForLock,
   reviewGenerationIssuerBinding,
   type GenerationIssuerBindingDecisionInput,
@@ -127,6 +128,7 @@ async function insertProjectMessage(pool: Pool, args: { owner: string; projectId
 async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool: Pool, suffix: string) {
   const owner = await harness.register('own', suffix);
   const reviewer = await harness.register('rev', suffix);
+  const bindingApprover = await harness.register('apr', suffix);
   const grantor = await harness.register('grt', suffix);
   const factReviewer = await harness.register('fct', suffix);
   const intruder = await harness.register('int', suffix);
@@ -158,6 +160,9 @@ async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool:
 
   await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
     VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [`grant-${suffix}`, reviewer.userId, grantor.userId, owner.userId, projectId]);
+  const approvalGrantId = `approval-grant-${suffix}`;
+  await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+    VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [approvalGrantId, bindingApprover.userId, grantor.userId, owner.userId, projectId]);
   await pool.query(`INSERT INTO bb_fact_evidence_reviewer_grants(id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
     VALUES($1,$2,'fact_evidence_reviewer',$3,'synthetic_test','synthetic chain fixture',$4,$5)`,
   [`fact-grant-${suffix}`, factReviewer.userId, grantor.userId, owner.userId, projectId]);
@@ -231,7 +236,7 @@ async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool:
   },owner)).statusCode,404,'owner cannot approve the binding');
   const approved=await harness.send('POST',`${bindingUrl}/${bindingRef.binding_id}/review`,{
     request_id:`approve-${suffix}`,action:'approve',expected_binding:bindingRef,reason:'逐项核验。',
-  },reviewer);
+  },bindingApprover);
   assert.equal(approved.statusCode,201,approved.body);
   assert.equal(approved.json().status,'approved');
   const readRef=await harness.send('GET',refUrl,undefined,owner);
@@ -253,7 +258,7 @@ async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool:
   const withdraw = () => reviewGenerationIssuerBinding(deps, { ownerUserId: owner.userId, projectId, bindingId: bindingRef.binding_id,
     version: bindingRef.version, contentSha256: bindingRef.content_sha256, requestId: `withdraw-${suffix}`, action: 'withdraw', reason: '材料撤回。', reviewer: reviewerContext });
 
-  return { owner, reviewer, factReviewer, intruder, projectId, materials, audit, notes, bindingRef, messageRef, withdraw };
+  return { owner, reviewer, bindingApprover, approvalGrantId, factReviewer, intruder, projectId, materials, audit, notes, bindingRef, messageRef, withdraw };
 }
 
 const revisions = async (pool: Pool, ownerId: string, projectId: string) => {
@@ -382,6 +387,75 @@ test('HTTP chain: a withdrawn approved binding is refused for the lock and leave
         generation_issuer_binding_ref: chain.bindingRef, project_message_set_ref: chain.messageRef }, chain.owner);
       assert.equal(denied.statusCode, 409, denied.body);
       assert.deepEqual(await revisions(pool, chain.owner.userId, chain.projectId), before);
+    } finally { await harness.app.close(); await pool.end(); }
+  });
+
+test('HTTP chain: revoking only the binding approver invalidates the exact ref, lock and preflight',
+  { skip: !databaseUrl || !blobConnection }, async () => {
+    const pool = new Pool({ connectionString: connection });
+    const harness = makeHarness(pool);
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 8);
+    try {
+      const chain = await provisionHttpChain(harness, pool, suffix);
+      const scope = { ownerUserId: chain.owner.userId, projectId: chain.projectId };
+      const refUrl = `/api/v1/projects/${chain.projectId}/generation-issuer-bindings/${chain.bindingRef.binding_id}/versions/${chain.bindingRef.version}/approved-ref`;
+      const lockBody = { draft_revision: 1, requirement_message_ids: [], material_versions: chain.materials,
+        generation_issuer_binding_ref: chain.bindingRef, project_message_set_ref: chain.messageRef };
+      const locked = await harness.send('POST', `/api/v1/projects/${chain.projectId}/input-revisions`, lockBody, chain.owner);
+      assert.equal(locked.statusCode, 201, locked.body);
+      assert.equal((await harness.send('GET', refUrl, undefined, chain.owner)).statusCode, 200);
+      assert.ok(await loadApprovedGenerationIssuerBindingForLock(pool, scope, chain.bindingRef));
+      assert.equal((await harness.send('GET', refUrl, undefined, chain.intruder)).statusCode, 404,
+        'another owner cannot read the approved ref');
+      assert.equal(await loadApprovedGenerationIssuerBindingForLock(pool,
+        { ownerUserId: chain.intruder.userId, projectId: chain.projectId }, chain.bindingRef), null);
+      assert.equal(await loadApprovedGenerationIssuerBindingForLock(pool,
+        { ownerUserId: chain.owner.userId, projectId: `other-${chain.projectId}` }, chain.bindingRef), null);
+      assert.equal(await authorizeIssuerIdentityReviewer(pool, chain.bindingApprover.userId,
+        { ownerUserId: chain.intruder.userId, projectId: chain.projectId }), null,
+      'the approver grant cannot cross owners');
+      assert.equal(await authorizeIssuerIdentityReviewer(pool, chain.bindingApprover.userId,
+        { ownerUserId: chain.owner.userId, projectId: `other-${chain.projectId}` }), null,
+      'the approver grant cannot cross projects');
+
+      await pool.query(`UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(), revoked_by=$2,
+        revocation_reason_code='synthetic_revoke', revocation_basis='synthetic test revocation' WHERE id=$1`,
+      [chain.approvalGrantId, chain.owner.userId]);
+      assert.ok(await authorizeIssuerIdentityReviewer(pool, chain.reviewer.userId, scope),
+        'source reviewer A retains an active scoped grant');
+      assert.equal(await authorizeIssuerIdentityReviewer(pool, chain.bindingApprover.userId, scope), null,
+        'binding approver B has no active grant');
+      const review = await pool.query(`SELECT reviewer_user_id, reviewer_grant_id FROM bb_generation_issuer_binding_reviews
+        WHERE owner_user_id=$1 AND project_id=$2 AND binding_id=$3 AND action='approve'`,
+      [chain.owner.userId, chain.projectId, chain.bindingRef.binding_id]);
+      assert.equal(review.rows.length, 1, 'the immutable approval event remains recorded');
+      assert.equal(review.rows[0].reviewer_user_id, chain.bindingApprover.userId);
+      assert.equal(review.rows[0].reviewer_grant_id, chain.approvalGrantId);
+
+      const firstInput = await pool.query(`SELECT input_hash FROM bb_input_revisions
+        WHERE owner_user_id=$1 AND project_id=$2 AND revision=1`, [chain.owner.userId, chain.projectId]);
+      assert.equal(await loadApprovedGenerationIssuerBinding(pool, scope, chain.bindingRef,
+        { owner_user_id: chain.owner.userId, project_id: chain.projectId,
+          input_revision: 1, input_hash: String(firstInput.rows[0].input_hash).trim() }), null,
+      'the shared approved binding loader rejects the revoked approval');
+      assert.equal(await loadApprovedGenerationIssuerBindingForLock(pool, scope, chain.bindingRef), null,
+        'a revoked approval is not loadable even while source reviews remain valid');
+      assert.equal((await harness.send('GET', refUrl, undefined, chain.owner)).statusCode, 404,
+        'the owner cannot read a revoked approved ref');
+      const before = await revisions(pool, chain.owner.userId, chain.projectId);
+      const denied = await harness.send('POST', `/api/v1/projects/${chain.projectId}/input-revisions`, lockBody, chain.owner);
+      assert.equal(denied.statusCode, 409, denied.body);
+      assert.deepEqual(await revisions(pool, chain.owner.userId, chain.projectId), before,
+        'a rejected successor lock creates no revision');
+      const preflight = await harness.send('POST', `/api/v1/projects/${chain.projectId}/preflight`,
+        { input_revision: locked.json().input_revision, input_hash: locked.json().input_hash }, chain.owner);
+      assert.equal(preflight.statusCode, 200, preflight.body);
+      assert.ok(preflight.json().missing_inputs.includes('issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved'));
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
+        [chain.owner.userId, chain.projectId])).rows[0].n, 0);
+      assert.equal((await pool.query(`SELECT count(*)::int n FROM bb_model_call_attempts a
+        JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.id=a.job_id WHERE a.owner_user_id=$1 AND j.project_id=$2`,
+      [chain.owner.userId, chain.projectId])).rows[0].n, 0);
     } finally { await harness.app.close(); await pool.end(); }
   });
 

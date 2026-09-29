@@ -694,6 +694,20 @@ export async function loadApprovedGenerationIssuerBinding(
     const events = await readReviewEvents(pool, scope, ref.binding_id, ref.version);
     const status = statusFromEvents(events, ref.version, ref.content_sha256);
     if (status !== 'approved' || events.length === 0 || events[events.length - 1]!.action !== 'approve') return null;
+    // Earlier events remain immutable history. Only the approval that currently confers
+    // authority must still have its exact project-scoped grant and an active reviewer.
+    const approval = events[events.length - 1]!;
+    const authority = await pool.query(`SELECT 1 FROM bb_generation_issuer_binding_reviews r
+      JOIN bb_issuer_identity_reviewer_grants g ON g.id=r.reviewer_grant_id AND g.user_id=r.reviewer_user_id
+      JOIN bb_users u ON u.id=r.reviewer_user_id
+      WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.binding_id=$4
+        AND r.binding_version=$5 AND r.binding_content_sha256=$6 AND r.action='approve'
+        AND r.authority='issuer_identity_reviewer' AND r.reviewer_user_id=$7 AND r.reviewer_grant_id=$8
+        AND g.role='issuer_identity_reviewer' AND g.scope_owner_user_id=$2 AND g.scope_project_id=$3
+        AND g.revoked_at IS NULL AND u.status='active'`,
+    [approval.review_id, scope.ownerUserId, scope.projectId, ref.binding_id, ref.version,
+      ref.content_sha256, approval.reviewer_user_id, approval.reviewer_grant_id]);
+    if (authority.rows.length !== 1) return null;
     const pins = await currentApprovablePins(pool, scope, stored);
     if (!pins || !contractGate(stored, status, events, pins)) return null;
     return {
