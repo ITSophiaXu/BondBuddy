@@ -113,7 +113,13 @@
       "name": "material-persisted",
       "schema": "MaterialResponse",
       "valid": true,
-      "value": { "material_id": "material-synthetic", "material_version": 1, "upload_id": "upload-synthetic", "role": "historical", "filename": "synthetic-baseline.pdf", "media_type": "application/pdf", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "state": "persisted", "persisted_at": "2026-09-24T03:02:00Z", "error": null }
+      "value": { "material_id": "material-synthetic", "material_version": 1, "upload_id": "upload-synthetic", "role": "historical", "filename": "synthetic-baseline.pdf", "media_type": "application/pdf", "byte_size": 1200, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "state": "persisted", "persisted_at": "2026-09-24T03:02:00Z", "error": null, "signature_assessment": null }
+    },
+    {
+      "name": "material-synthetic-signature-unverified",
+      "schema": "MaterialResponse",
+      "valid": true,
+      "value": { "material_id": "material-signed-synthetic", "material_version": 1, "upload_id": "upload-signed-synthetic", "role": "audit", "filename": "synthetic-signed.pdf", "media_type": "application/pdf", "byte_size": 1200, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "state": "persisted", "persisted_at": "2026-09-29T03:02:00Z", "error": null, "signature_assessment": { "status": "signature_unverified", "profile_version": "signed-pdf-classic-v1", "signature_count": 1 } }
     },
     {
       "name": "project-upload-progress-event",

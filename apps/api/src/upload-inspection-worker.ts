@@ -6,8 +6,9 @@ import { crc32 as zlibCrc32, createInflateRaw, inflateSync } from 'node:zlib';
 import { fileTypeFromBuffer } from 'file-type';
 import { decode as decodeJpeg } from 'jpeg-js';
 import { SaxesParser } from 'saxes';
-import { M1_UPLOAD_MIME_TYPES, type UploadMediaType } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, type SignatureAssessment, type UploadMediaType } from '@bondbuddy/contracts';
 import type { UploadRejectionReason, UploadSafetyCode, UploadStructureDetail, UploadWorkerReply } from './upload-safety.js';
+import { MAX_SIGNED_PDF_BYTES, SignedPdfProfileError, validateSignedPdfProfile } from './signed-pdf-profile.js';
 
 type ContentSafetyCode = Exclude<UploadSafetyCode, 'DATA_UNAVAILABLE'>;
 type InspectionFailure = { status: 415 | 422; code: ContentSafetyCode; message: string; reason: UploadRejectionReason; detail?: UploadStructureDetail };
@@ -1123,14 +1124,21 @@ const ACTIVE_PDF_TOKENS = ['/Launch', '/EmbeddedFile', '/EmbeddedFiles', '/RichM
 const PDF_RANGE_CHUNK_BYTES = 64 * 1024;
 const activePdfToken = (bytes: Buffer) => ACTIVE_PDF_TOKENS.some(token => bytes.includes(token));
 
-async function inspectPdf(bytes: Buffer): Promise<void> {
+async function inspectPdf(bytes: Buffer): Promise<SignatureAssessment | null> {
   if (!bytes.subarray(0, 8).toString('ascii').startsWith('%PDF-')) mismatch();
   if (activePdfToken(bytes)) unsupported('PDF contains an active action or embedded file');
-  await inspectPdfDocument({ data: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), disableRange: true });
+  // PDF.js may transfer/detach its input. Keep the original small candidate for lexical checks.
+  const pdfjsBytes = bytes.length <= MAX_SIGNED_PDF_BYTES
+    ? Uint8Array.from(bytes)
+    : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return inspectPdfDocument({ data: pdfjsBytes, disableRange: true }, async () => {
+    if (bytes.length > MAX_SIGNED_PDF_BYTES) unsupported('Signed PDF exceeds the restricted profile limit');
+    return bytes;
+  });
 }
 
 /** PDF from a spooled file: tokens are scanned in chunks and pdf.js reads only the byte ranges it needs. */
-async function inspectPdfFile(path: string, byteSize: number): Promise<void> {
+async function inspectPdfFile(path: string, byteSize: number): Promise<SignatureAssessment | null> {
   const handle = await open(path, 'r');
   try {
     const buffer = Buffer.allocUnsafe(TEXT_CHUNK_BYTES);
@@ -1158,13 +1166,18 @@ async function inspectPdfFile(path: string, byteSize: number): Promise<void> {
         () => transport.abort()
       );
     };
-    await inspectPdfDocument({ range: transport, length: byteSize, rangeChunkSize: PDF_RANGE_CHUNK_BYTES, disableRange: false });
+    return await inspectPdfDocument({ range: transport, length: byteSize, rangeChunkSize: PDF_RANGE_CHUNK_BYTES, disableRange: false }, async () => {
+      if (byteSize > MAX_SIGNED_PDF_BYTES) unsupported('Signed PDF exceeds the restricted profile limit');
+      const bytes = await readFile(path);
+      if (bytes.length !== byteSize) unreadable('file_size_mismatch');
+      return bytes;
+    });
   } finally {
     await handle.close();
   }
 }
 
-async function inspectPdfDocument(source: Record<string, unknown>): Promise<void> {
+async function inspectPdfDocument(source: Record<string, unknown>, loadSignatureBytes: () => Promise<Buffer>): Promise<SignatureAssessment | null> {
   let loading: PdfLoadingTask | undefined;
   try {
     const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfJsModule;
@@ -1190,21 +1203,20 @@ async function inspectPdfDocument(source: Record<string, unknown>): Promise<void
     const attachments = await document.getAttachments();
     if (attachments && attachments.size > 0) unsupported('PDF contains embedded files');
     const fields = await document.getFieldObjects();
-    if (fields && Object.keys(fields).length > 0) unsupported('PDF contains interactive form fields');
     const openAction = await document.getOpenAction();
     if (openAction && (openAction.has('url') || openAction.has('unsafeUrl') || openAction.has('action'))) {
       unsupported('PDF contains an active document-open action');
     }
 
+    let widgetCount = 0;
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
       const page = await document.getPage(pageNumber);
       const annotations = await page.getAnnotations({ intent: 'display' });
       if (annotations.some((item: Record<string, unknown>) => Boolean(item.url || item.unsafeUrl || item.action))) {
         unsupported('PDF contains an external or active annotation');
       }
-      if (annotations.some((item: Record<string, unknown>) => item.annotationType === pdfjs.AnnotationType.WIDGET || item.annotationType === pdfjs.AnnotationType.FILEATTACHMENT)) {
-        unsupported('PDF contains interactive fields or file annotations');
-      }
+      if (annotations.some((item: Record<string, unknown>) => item.annotationType === pdfjs.AnnotationType.FILEATTACHMENT)) unsupported('PDF contains file annotations');
+      widgetCount += annotations.filter((item: Record<string, unknown>) => item.annotationType === pdfjs.AnnotationType.WIDGET).length;
       const pageActions = await page.getJSActions();
       if (pageActions && pageActions.size > 0) unsupported('PDF page contains JavaScript actions');
       await page.getOperatorList();
@@ -1212,10 +1224,20 @@ async function inspectPdfDocument(source: Record<string, unknown>): Promise<void
       // Decoded page images are garbage now; with --expose-gc free them before the next page.
       (globalThis as { gc?: () => void }).gc?.();
     }
+    if (widgetCount === 0) {
+      if (fields && Object.keys(fields).length > 0) unsupported('PDF contains interactive form fields');
+      return null;
+    }
+    if (widgetCount !== 1) unsupported('PDF contains multiple interactive fields');
+    try { return validateSignedPdfProfile(await loadSignatureBytes()); }
+    catch (error) {
+      if (error instanceof SignedPdfProfileError) unsupported('PDF signature structure is outside the supported profile');
+      throw error;
+    }
   } catch (error) {
     if (error instanceof MaterialInspectionError) throw error;
     if (error && typeof error === 'object' && 'name' in error && error.name === 'PasswordException') encrypted();
-    unreadable('pdf_structure_invalid');
+    return unreadable('pdf_structure_invalid');
   } finally {
     if (loading) {
       try { await loading.destroy(); } catch { /* The inspection result remains fail-closed. */ }
@@ -1350,40 +1372,39 @@ function inspectJpeg(bytes: Buffer): void {
   }
 }
 
-async function inspectContent(bytes: Buffer, declared: string): Promise<void> {
+async function inspectContent(bytes: Buffer, declared: string): Promise<SignatureAssessment | null> {
   if (!(M1_UPLOAD_MIME_TYPES as readonly string[]).includes(declared)) unsupported('Declared format is outside the seven supported material MIME types');
   switch (declared) {
     case PDF_MIME:
-      await inspectPdf(bytes);
-      return;
+      return inspectPdf(bytes);
     case DOCX_MIME:
     case XLSX_MIME:
       await inspectOffice(bufferSource(bytes), declared);
-      return;
+      return null;
     case TEXT_MIME:
       await inspectText(bytes, false);
-      return;
+      return null;
     case CSV_MIME:
       await inspectText(bytes, true);
-      return;
+      return null;
     case PNG_MIME: {
       const detected = await fileTypeFromBuffer(bytes);
       if (detected?.mime !== PNG_MIME) mismatch();
       inspectPng(bytes);
-      return;
+      return null;
     }
     case JPEG_MIME: {
       const detected = await fileTypeFromBuffer(bytes);
       if (detected?.mime !== JPEG_MIME) mismatch();
       inspectJpeg(bytes);
-      return;
+      return null;
     }
     default:
-      unsupported('Declared format is outside the seven supported material MIME types');
+      return unsupported('Declared format is outside the seven supported material MIME types');
   }
 }
 
-async function inspectFile(path: string, byteSize: number, declared: string): Promise<void> {
+async function inspectFile(path: string, byteSize: number, declared: string): Promise<SignatureAssessment | null> {
   if (declared === TEXT_MIME || declared === CSV_MIME) {
     // One reused read buffer: no per-chunk allocations for the GC to catch up with.
     const handle = await open(path, 'r');
@@ -1403,26 +1424,27 @@ async function inspectFile(path: string, byteSize: number, declared: string): Pr
       await handle.close();
     }
     if (seen !== byteSize) unreadable('file_size_mismatch');
-    return;
+    return null;
   }
   if (declared === PDF_MIME) return inspectPdfFile(path, byteSize);
   if (declared === DOCX_MIME || declared === XLSX_MIME) {
     const source = fileSource(path, byteSize);
     try { await inspectOffice(source, declared); } finally { source.close(); }
-    return;
+    return null;
   }
   // Image formats need random access; the one whole-file copy (bounded by the image limits) lives only in this worker.
   const bytes = await readFile(path);
   if (bytes.length !== byteSize) unreadable('file_size_mismatch');
-  await inspectContent(bytes, declared);
+  return inspectContent(bytes, declared);
 }
 
 async function run(): Promise<void> {
   const input = workerData as InspectionInput;
   try {
-    if ('path' in input) await inspectFile(input.path, input.byteSize, input.mediaType);
-    else await inspectContent(Buffer.from(input.bytes), input.mediaType);
-    parentPort?.postMessage({ ok: true } satisfies UploadWorkerReply);
+    const signatureAssessment = 'path' in input
+      ? await inspectFile(input.path, input.byteSize, input.mediaType)
+      : await inspectContent(Buffer.from(input.bytes), input.mediaType);
+    parentPort?.postMessage({ ok: true, signatureAssessment } satisfies UploadWorkerReply);
   } catch (error) {
     const failure: InspectionFailure = error instanceof MaterialInspectionError
       ? { status: error.status, code: error.code, message: error.message, reason: error.reason, ...(error.detail ? { detail: error.detail } : {}) }

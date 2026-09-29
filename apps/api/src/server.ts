@@ -5,7 +5,7 @@ import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import { M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, type PrivateBlobs } from './data.js';
+import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -806,6 +806,7 @@ export function createServer(settings: Settings = {}) {
       // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
       const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
       let media:string;
+      let signatureAssessment: { status: 'signature_unverified'; profile_version: string; signature_count: 1 } | null = null;
       try{
         await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
         const stored=await readBlobToFile(blob(),u.object_key,copy,MAX_BYTES).catch(error=>{if(error instanceof Problem&&error.status===413)return false as const;throw error;});
@@ -814,12 +815,21 @@ export function createServer(settings: Settings = {}) {
         excepted=uploadInspectionExceptionMatches(uploadInspectionException,{
           ownerUserId:user,projectId:id,role:u.role,byteSize:stored.byteSize,sha256:stored.sha256,mediaType:u.declared_media_type
         });
-        media=excepted?XLSX_MEDIA_TYPE:await verifiedMediaFile(copy,stored.byteSize,u.declared_media_type);
+        if(excepted) media=XLSX_MEDIA_TYPE;
+        else {
+          const inspection=await verifiedMediaFileDetailed(copy,stored.byteSize,u.declared_media_type);
+          media=inspection.mediaType;
+          signatureAssessment=inspection.signatureAssessment;
+        }
       }finally{await discardSpool(copy);release();}
       const duplicate=await client.query(`SELECT * FROM bb_material_versions
         WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL
         ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,media]);
       if(duplicate.rows[0]){
+        const priorAssessment=duplicate.rows[0].signature_assessment;
+        if (signatureAssessment
+          ? priorAssessment?.status!==signatureAssessment.status || priorAssessment?.profile_version!==signatureAssessment.profile_version || priorAssessment?.signature_count!==signatureAssessment.signature_count
+          : priorAssessment!==null) throw new Problem(503,'DATA_UNAVAILABLE','Stored material inspection metadata is inconsistent');
         const m=duplicate.rows[0], result=await checkedMaterial(m);
         await client.query('INSERT INTO bb_upload_reuse_receipts(upload_id,owner_user_id,project_id,material_id,material_version) VALUES($1,$2,$3,$4,$5)',[uploadId,user,id,m.id,m.version]);
         await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.reused',$4)",[uid(),user,uploadId,{project_id:id,material_id:m.id,material_version:m.version}]);
@@ -829,7 +839,7 @@ export function createServer(settings: Settings = {}) {
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+b.byte_size>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const materialId=uid();
-      const inserted=await client.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'persisted') RETURNING *",[materialId,user,id,uploadId,u.role,u.filename,media,b.byte_size,b.sha256,u.object_key]);
+      const inserted=await client.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state,signature_assessment) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'persisted',$11::jsonb) RETURNING *",[materialId,user,id,uploadId,u.role,u.filename,media,b.byte_size,b.sha256,u.object_key,signatureAssessment===null?null:JSON.stringify(signatureAssessment)]);
       await client.query("UPDATE bb_uploads SET state='completed' WHERE owner_user_id=$1 AND id=$2",[user,uploadId]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.persisted',{material_id:materialId,material_version:1,project_id:id}]);
       await appendProjectMaterialEvent(client, user, id, materialId, Number(inserted.rows[0].byte_size));

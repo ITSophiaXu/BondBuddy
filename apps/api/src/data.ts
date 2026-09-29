@@ -5,7 +5,7 @@ import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
 import { isMarketOffering, emptyUpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { inspectMaterialUpload, inspectMaterialUploadFile, UploadSafetyError, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
+import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed, UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
 export const uid = () => randomUUID();
 export const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
@@ -36,7 +36,7 @@ export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Pro
 }
 export const date = (value: Date | string) => new Date(value).toISOString();
 export const projectDto = (p: any) => ({ project_id: p.id, draft_revision: p.draft_revision, input_revision: p.latest_input_revision, input_hash: p.input_hash ?? null, name: p.name, kind: p.kind, issuer_name: p.issuer_name, market: p.market, offering: p.offering, update_details: { ...emptyUpdateDetails(), ...p.update_details }, updated_at: date(p.updated_at), archived_at: p.archived_at ? date(p.archived_at) : null });
-export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error });
+export const materialDto = (m: any) => ({ material_id: m.id, material_version: m.version, upload_id: m.upload_id, role: m.role, filename: m.filename, media_type: m.media_type, byte_size: Number(m.byte_size), sha256: m.sha256.trim(), state: m.state, persisted_at: date(m.persisted_at), error: m.error, signature_assessment: m.signature_assessment ?? null });
 const inputCreditSupplementRefs = (manifest: unknown) => {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || !Object.hasOwn(manifest, 'credit_facility_supplements')) return undefined;
   const pins = (manifest as Record<string, unknown>).credit_facility_supplements;
@@ -248,6 +248,14 @@ export async function verifiedMediaFile(path: string, byteSize: number, declared
     if (error instanceof UploadSafetyError) {
       throw new Problem(error.status, error.code, error.message, error.reason, error.detail);
     }
+    throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected','inspection_worker_failed');
+  }
+}
+export async function verifiedMediaFileDetailed(path: string, byteSize: number, declared: string): Promise<UploadInspectionResult> {
+  try {
+    return await inspectMaterialUploadFileDetailed(path, byteSize, declared);
+  } catch (error) {
+    if (error instanceof UploadSafetyError) throw new Problem(error.status, error.code, error.message, error.reason, error.detail);
     throw new Problem(422,'MATERIAL_UNREADABLE','Material could not be safely inspected','inspection_worker_failed');
   }
 }
