@@ -32,10 +32,10 @@ import { installFactEvidenceReviewRoutes } from './fact-evidence-reviews.js';
 import { installFactEvidenceReadRoutes } from './fact-evidence-read.js';
 import { installCreditFacilitySupplementRoutes } from './credit-facility-supplements.js';
 import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-repository.js';
-import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
+import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
 import type { GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
-import { loadApprovedGenerationIssuerBindingForLock } from './generation-issuer-binding.js';
+import { appendGenerationIssuerBinding, loadApprovedGenerationIssuerBindingForLock, reviewGenerationIssuerBinding, type GenerationIssuerBindingDecisionInput, type GenerationIssuerBindingDisputeInput } from './generation-issuer-binding.js';
 import { assertProjectMessageSetRefMatches, isProjectMessageSetLockError, loadCurrentProjectMessageSetPin } from './project-message-set-lock.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 import { confirmTargetIntent, loadTargetConfirmation, type TargetConfirmationRequest } from './target-confirmation.js';
@@ -293,12 +293,39 @@ export function createServer(settings: Settings = {}) {
       throw new Problem(422,'VALIDATION_FAILED','Invalid material version');
     return {ownerUserId,projectId:param(request,'project_id'),materialId:param(request,'material_id'),materialVersion:Number(rawVersion)};
   };
-  app.get(issuerObservations,{schema:{response:{200:schemas.IssuerIdentityObservationListResponse}}},async request=>{
+  app.get(issuerObservations,{schema:{response:{200:schemas.IssuerIdentityObservationSummaryResponse}}},async request=>{
     const user=await owner(request);
-    try{return await listIssuerIdentitySourceRecords(db(),issuerScope(request,user));}
+    try{
+      const listed=await listIssuerIdentitySourceRecords(db(),issuerScope(request,user));
+      return {project_id:listed.project_id,material_id:listed.material_id,material_version:listed.material_version,
+        status:listed.status,items:listed.items.map(item=>({source_record_id:item.source_record_id,
+          identity_version:item.identity_version,status:item.status,verified_entity_id:item.verified_entity_id}))};
+    }
     catch(error){if(error instanceof Error&&error.message==='ISSUER_IDENTITY_MATERIAL_NOT_FOUND')throw missing();throw error;}
   });
   const reviewerObservations=`/api/v1/reviewer${issuerObservations.slice('/api/v1'.length)}`;
+  async function issuerReviewerScope(request:FastifyRequest){
+    const reviewerUserId=await owner(request),projectId=param(request,'project_id');
+    const found=await db().query('SELECT owner_user_id FROM bb_projects WHERE id=$1 AND deleted_at IS NULL',[projectId]);
+    if(found.rows.length!==1)throw missing();
+    const ownerUserId=String(found.rows[0].owner_user_id);
+    const reviewer=await authorizeIssuerIdentityReviewer(db(),reviewerUserId,{ownerUserId,projectId});
+    if(!reviewer)throw missing();
+    return {ownerUserId,projectId,reviewer};
+  }
+  function issuerRouteError(error:unknown):never{
+    const code=error instanceof Error?error.message:'';
+    if(code.endsWith('_NOT_FOUND')||code.endsWith('_NOT_AUTHORIZED')||code==='GENERATION_ISSUER_BINDING_PROJECT_NOT_FOUND'||
+       code==='ISSUER_IDENTITY_SOURCE_EVIDENCE_NOT_FOUND_OR_UNCERTAIN')throw missing();
+    if(code.includes('STALE')||code.includes('CONFLICT')||code.includes('MISMATCH')||
+       code.includes('NOT_CURRENTLY_APPROVABLE')||code.includes('REVIEW_REQUIRED')||
+       code.includes('TRANSITION_INVALID')||code.includes('REVIEW_STATE_INVALID')||code.includes('ALREADY_DECIDED'))
+      throw conflict('INPUT_REVISION_CONFLICT','Issuer evidence or binding is no longer current');
+    if(code.startsWith('INVALID_')||code.endsWith('_INVALID')||code.includes('UNCERTAIN')||
+       code.includes('INCOMPLETE')||code.includes('UNRESOLVED'))
+      throw new Problem(422,'VALIDATION_FAILED','Issuer evidence or binding is invalid');
+    throw error;
+  }
   app.get(reviewerObservations,{schema:{response:{200:schemas.IssuerIdentityObservationListResponse}}},async request=>{
     const reviewerUserId=await owner(request), projectId=param(request,'project_id');
     return transaction(db(),async client=>{
@@ -320,8 +347,7 @@ export function createServer(settings: Settings = {}) {
       return listed;
     });
   });
-  app.get('/api/v1/reviewer/projects/:project_id/materials/:material_id/versions/:v/parse-evidence',
-    {schema:{response:{200:schemas.ReviewerParseEvidenceResponse}}},async(request,reply)=>{
+  const parseEvidenceRoute=async(request:FastifyRequest,reply:any)=>{
       reply.header('cache-control','private, no-store');
       const reviewerUserId=await owner(request),projectId=param(request,'project_id'),materialId=param(request,'material_id');
       const rawVersion=param(request,'v');
@@ -350,14 +376,18 @@ export function createServer(settings: Settings = {}) {
         }catch(error){if(error instanceof Problem)throw error;throw new Problem(422,'VALIDATION_FAILED','Invalid evidence cursor');}
       }
       return transaction(db(),async client=>{
+        const identityEvidence=request.routeOptions.url?.endsWith('/issuer-parse-evidence')===true;
+        const grantTable=identityEvidence?'bb_issuer_identity_reviewer_grants':'bb_rule_applicability_reviewer_grants';
+        const grantRole=identityEvidence?'issuer_identity_reviewer':'rule_applicability_reviewer';
         const allowed=await client.query(`SELECT p.owner_user_id,g.id AS grant_id,m.sha256 AS material_sha256
           FROM bb_projects p
-          JOIN bb_rule_applicability_reviewer_grants g ON g.scope_owner_user_id=p.owner_user_id AND g.scope_project_id=p.id
+          JOIN ${grantTable} g ON g.scope_owner_user_id=p.owner_user_id AND g.scope_project_id=p.id
           JOIN bb_users u ON u.id=g.user_id AND u.status='active'
           JOIN bb_material_versions m ON m.owner_user_id=p.owner_user_id AND m.project_id=p.id
             AND m.id=$3 AND m.version=$4 AND m.deleted_at IS NULL
-          WHERE p.id=$1 AND p.deleted_at IS NULL AND g.user_id=$2 AND g.role='rule_applicability_reviewer'
-            AND g.revoked_at IS NULL FOR SHARE OF p,g,u,m`,[projectId,reviewerUserId,materialId,materialVersion]);
+          WHERE p.id=$1 AND p.deleted_at IS NULL AND g.user_id=$2 AND g.role=$5
+            AND g.revoked_at IS NULL ${identityEvidence?"AND m.role IN ('audit','financial','interimFinancial','notes')":''}
+          FOR SHARE OF p,g,u,m`,[projectId,reviewerUserId,materialId,materialVersion,grantRole]);
         if(allowed.rows.length!==1)throw missing();
         const scopeOwner=String(allowed.rows[0].owner_user_id),materialSha=String(allowed.rows[0].material_sha256).trim();
         const selected=await client.query(`SELECT id,content_sha256,parser_version,response_sha256,response_status,response_schema_version,record_count,response_meta
@@ -402,17 +432,78 @@ export function createServer(settings: Settings = {}) {
         const warnings=responseMeta.warnings;
         const warningCodes=warnings.map((warning:any)=>typeof warning?.code==='string'?warning.code:'UNKNOWN_WARNING');
         await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
-          VALUES($1,$2,'project',$3,'rule_applicability.reviewer_parse_evidence_read',$4::jsonb)`,
+          VALUES($1,$2,'project',$3,$5,$4::jsonb)`,
         [uid(),scopeOwner,projectId,JSON.stringify({reviewer_user_id:reviewerUserId,reviewer_grant_id:allowed.rows[0].grant_id,
           material_id:materialId,material_version:materialVersion,snapshot_id:snapshotId,parser_version:snapshot.parser_version,
           response_sha256:String(snapshot.response_sha256).trim(),query_sha256:queryHash,
-          record_refs:page.map(row=>({record_id:row.record_id,record_sha256:String(row.record_sha256).trim()})),page_size:page.length})]);
+          record_refs:page.map(row=>({record_id:row.record_id,record_sha256:String(row.record_sha256).trim()})),page_size:page.length}),
+          identityEvidence?'issuer.identity_source.parse_evidence_read':'rule_applicability.reviewer_parse_evidence_read']);
         return {project_id:projectId,material_id:materialId,material_version:materialVersion,material_sha256:materialSha,
           snapshot_id:snapshotId,parser_version:snapshot.parser_version,response_sha256:String(snapshot.response_sha256).trim(),
           response_status:snapshot.response_status,warning_codes:warningCodes,items:page.map(row=>({record_id:row.record_id,
             record_sha256:String(row.record_sha256).trim(),content_sha256:String(row.content_sha256).trim(),locator_type:row.locator_type,
             locator:row.locator,literal_quote:row.literal_quote,uncertainty:row.uncertainty})),next_cursor:next};
       });
+    };
+  app.get('/api/v1/reviewer/projects/:project_id/materials/:material_id/versions/:v/parse-evidence',
+    {schema:{response:{200:schemas.ReviewerParseEvidenceResponse}}},parseEvidenceRoute);
+  app.get('/api/v1/reviewer/projects/:project_id/materials/:material_id/versions/:v/issuer-parse-evidence',
+    {schema:{response:{200:schemas.ReviewerParseEvidenceResponse}}},parseEvidenceRoute);
+  app.post(reviewerObservations,{schema:{body:schemas.IssuerIdentityObservationProposalRequest,
+    response:{201:schemas.IssuerIdentityObservationProposalResponse}}},async(request,reply)=>{
+    const scope=await issuerReviewerScope(request);
+    const materialScope=issuerScope(request,scope.ownerUserId);
+    const input=body<{request_id:string;evidence_record_id:string;issuer_display_name:string;candidate_key:string}>(request);
+    try{
+      const record=await appendIssuerIdentitySourceRecord({pool:db()},{...materialScope,requestId:input.request_id,
+        sourceRecordId:input.evidence_record_id,issuerDisplayName:input.issuer_display_name,entityId:input.candidate_key,
+        reviewer:scope.reviewer});
+      reply.code(201);
+      return {source_record_id:record.id,identity_version:record.identityVersion,content_sha256:record.contentSha256,
+        snapshot_id:record.snapshotId,status:record.state,replayed:record.replayed};
+    }catch(error){issuerRouteError(error);}
+  });
+  app.post('/api/v1/reviewer/projects/:project_id/generation-issuer-bindings',
+    {schema:{body:schemas.GenerationIssuerBindingCreateRequest,response:{201:schemas.GenerationIssuerBindingCreateResponse}}},async(request,reply)=>{
+      const scope=await issuerReviewerScope(request);
+      const input=body<{request_id:string;input_revision:number;input_hash:string;
+        material_decisions:GenerationIssuerBindingDecisionInput[];disputes?:GenerationIssuerBindingDisputeInput[]}>(request);
+      try{
+        const result=await appendGenerationIssuerBinding({pool:db()},{...scope,requestId:input.request_id,
+          inputRevision:input.input_revision,inputHash:input.input_hash,materialDecisions:input.material_decisions,
+          disputes:input.disputes});
+        reply.code(201);
+        return {binding_ref:{binding_id:result.bindingId,version:result.version,content_sha256:result.contentSha256},
+          status:result.status,created:result.created};
+      }catch(error){issuerRouteError(error);}
+    });
+  app.post('/api/v1/reviewer/projects/:project_id/generation-issuer-bindings/:binding_id/review',
+    {schema:{body:schemas.GenerationIssuerBindingReviewRequest,response:{201:schemas.GenerationIssuerBindingReviewResponse}}},async(request,reply)=>{
+      const scope=await issuerReviewerScope(request);
+      const input=body<{request_id:string;action:'request_more_evidence'|'approve'|'withdraw';
+        expected_binding:GenerationIssuerBindingRef;reason:string}>(request);
+      if(input.expected_binding.binding_id!==param(request,'binding_id'))throw missing();
+      try{
+        const result=await reviewGenerationIssuerBinding({pool:db()},{...scope,bindingId:input.expected_binding.binding_id,
+          version:input.expected_binding.version,contentSha256:input.expected_binding.content_sha256,
+          requestId:input.request_id,action:input.action,reason:input.reason});
+        reply.code(201);
+        return {review_id:result.reviewId,status:result.status,replayed:result.replayed};
+      }catch(error){issuerRouteError(error);}
+    });
+  app.get('/api/v1/projects/:project_id/generation-issuer-bindings/:binding_id/versions/:version/approved-ref',
+    {schema:{response:{200:schemas.GenerationIssuerBindingRefResponse}}},async request=>{
+      const ownerUserId=await owner(request),projectId=param(request,'project_id'),bindingId=param(request,'binding_id');
+      await project(db(),ownerUserId,projectId);
+      const version=Number(param(request,'version'));
+      if(!Number.isSafeInteger(version)||version<1)throw missing();
+      const found=await db().query(`SELECT content_sha256 FROM bb_generation_issuer_bindings
+        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4`,[ownerUserId,projectId,bindingId,version]);
+      if(found.rows.length!==1)throw missing();
+      const ref={binding_id:bindingId,version,content_sha256:String(found.rows[0].content_sha256).trim()};
+      const approved=await loadApprovedGenerationIssuerBindingForLock(db(),{ownerUserId,projectId},ref);
+      if(!approved)throw missing();
+      return {binding_ref:ref,input_revision:approved.input_revision,input_hash:approved.input_hash,status:'approved' as const};
     });
   app.post(`${issuerObservations}/:source_record_id/review`,{schema:{body:schemas.IssuerIdentityReviewRequest,response:{201:schemas.IssuerIdentityReviewResponse}}},async(request,reply)=>{
     const reviewerUserId=await owner(request);

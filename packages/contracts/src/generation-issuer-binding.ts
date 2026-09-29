@@ -87,6 +87,35 @@ const reviewEvent = Type.Object({
 
 export const generationIssuerBindingSchemas = {
   GenerationIssuerBindingRef: Type.Object({ binding_id: id, version: revision, content_sha256: hash }, { additionalProperties: false }),
+  GenerationIssuerBindingCreateRequest: Type.Object({
+    request_id: id, input_revision: revision, input_hash: hash,
+    material_decisions: Type.Array(Type.Object({
+      material_id: id, material_version: revision,
+      disposition: Type.Union(GENERATION_ISSUER_MATERIAL_DISPOSITIONS.map(value => Type.Literal(value))),
+      reason: nonEmpty,
+      observations: Type.Array(Type.Object({
+        source_record_id: id, observed_subject_label: Type.String({ minLength: 1, maxLength: 512 }),
+        evidence_context: Type.Union([Type.Literal('financial_statement'), Type.Literal('identity_relationship')]),
+        subject_relation: Type.Union(GENERATION_ISSUER_SUBJECT_RELATIONS.map(value => Type.Literal(value))),
+        accounting_scope: Type.Union(GENERATION_ISSUER_ACCOUNTING_SCOPES.map(value => Type.Literal(value))),
+        relation_reason: nonEmpty,
+        source_identity_review_id: Type.Optional(Type.Union([id, Type.Null()])),
+      }, { additionalProperties: false }), { maxItems: 1000 }),
+    }, { additionalProperties: false }), { minItems: 1, maxItems: 100 }),
+    disputes: Type.Optional(Type.Array(dispute, { maxItems: 500 })),
+  }, { additionalProperties: false }),
+  GenerationIssuerBindingCreateResponse: Type.Object({
+    binding_ref: Type.Object({ binding_id: id, version: revision, content_sha256: hash }, { additionalProperties: false }),
+    status: Type.Union(GENERATION_ISSUER_BINDING_STATUSES.map(value => Type.Literal(value))), created: Type.Boolean(),
+  }, { additionalProperties: false }),
+  GenerationIssuerBindingReviewResponse: Type.Object({
+    review_id: id, status: Type.Union(GENERATION_ISSUER_BINDING_STATUSES.map(value => Type.Literal(value))),
+    replayed: Type.Boolean(),
+  }, { additionalProperties: false }),
+  GenerationIssuerBindingRefResponse: Type.Object({
+    binding_ref: Type.Object({ binding_id: id, version: revision, content_sha256: hash }, { additionalProperties: false }),
+    input_revision: revision, input_hash: hash, status: Type.Literal('approved'),
+  }, { additionalProperties: false, description: 'Owner-only exact approved ref; no source quotes or reviewer evidence.' }),
   GenerationIssuerBindingReviewRequest: Type.Object({
     request_id: id,
     action: Type.Union(GENERATION_ISSUER_BINDING_ACTIONS.map(value => Type.Literal(value))),

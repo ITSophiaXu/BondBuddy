@@ -11,6 +11,24 @@ const reason = Type.String({ pattern: '^[a-z][a-z0-9_]{0,63}$' });
 const basis = Type.String({ minLength: 1, maxLength: 512 });
 const observedHashes = { expected_content_sha256: hash, expected_snapshot_sha256: hash };
 export const issuerIdentityReviewSchemas = {
+  IssuerIdentityObservationProposalRequest: Type.Object({
+    request_id: id, evidence_record_id: id,
+    issuer_display_name: Type.String({ minLength: 1, maxLength: 512 }),
+    candidate_key: Type.String({ minLength: 1, maxLength: 128 }),
+  }, { additionalProperties: false, description: 'A reviewer proposal from one immutable parse anchor; never a verified identity.' }),
+  IssuerIdentityObservationProposalResponse: Type.Object({
+    source_record_id: id, identity_version: Type.Integer({ minimum: 1 }),
+    content_sha256: hash, snapshot_id: id, status: Type.Literal('needs_review'), replayed: Type.Boolean(),
+  }, { additionalProperties: false }),
+  IssuerIdentityObservationSummaryResponse: Type.Object({
+    project_id: id, material_id: id, material_version: Type.Integer({ minimum: 1 }),
+    status: Type.Union(ISSUER_IDENTITY_OBSERVATION_STATES.map(value => Type.Literal(value))),
+    items: Type.Array(Type.Object({
+      source_record_id: id, identity_version: Type.Integer({ minimum: 1 }),
+      status: Type.Union(ISSUER_IDENTITY_OBSERVATION_STATES.map(value => Type.Literal(value))),
+      verified_entity_id: Type.Union([Type.String({ pattern: VERIFIED_ISSUER_ENTITY_PATTERN }), Type.Null()]),
+    }, { additionalProperties: false })),
+  }, { additionalProperties: false, description: 'Owner status only; raw quotes, anchors, hashes and reviewer basis are restricted.' }),
   IssuerIdentityReviewRequest: Type.Union([
     Type.Object({ decision: Type.Literal('verified'), reason_code: reason, ...observedHashes,
       verified_entity_id: Type.String({ pattern: VERIFIED_ISSUER_ENTITY_PATTERN }),
