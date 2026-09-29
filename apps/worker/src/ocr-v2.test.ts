@@ -61,7 +61,7 @@ async function fixture(pool: Pool, blobs: PrivateBlobs, count: number) {
   const full: OcrV2Scope = { owner, projectId, materialId, version: 1, purpose: 'full_ocr', runId, leaseToken };
   const preflight: OcrV2Scope = { owner, projectId, materialId, version: 1, purpose: 'source_preflight' };
   const document: OcrDocumentIdentityV2 = {
-    owner_user_id: owner, project_id: projectId, page_count: count, processor_version: 'bondbuddy-ocr-2.0.0',
+    owner_user_id: owner, project_id: projectId, page_count: count, processor_version: 'bondbuddy-ocr-2.0.1',
     material: { material_id: materialId, material_version: 1, media_type: 'application/pdf', sha256: digest(source) },
     engine: { name: 'tesseract', version: 'synthetic-only', language: 'eng',
       language_data_sha256: { eng: 'a'.repeat(64) }, parameters_sha256: 'b'.repeat(64) },
@@ -122,6 +122,9 @@ test('v2 PostgreSQL physical-page resume, negative cache readback, retry and cos
   const { blobs, stored } = memoryBlobs();
   try {
     const { full, preflight, document } = await fixture(pool, blobs, 74);
+    await assert.rejects(processOcrV2(pool, blobs, full, runner({
+      ...document, processor_version: 'bondbuddy-ocr-2.0.0'
+    })), /OCR_INVALID_IDENTITY/);
     const first = runner(document, 74);
     const partial = await processOcrV2(pool, blobs, full, first);
     assert.deepEqual(first.calls.map(pages => [pages[0], pages.at(-1), pages.length]), [[1, 50, 50], [51, 74, 24]]);

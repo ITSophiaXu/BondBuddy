@@ -32,7 +32,7 @@
 | `ocr-response-v2` / `OcrBatchResponseV2` | request_id/document/context 必须与请求相同；page_results 与请求页列表逐项一致。成功项带 checkpoint 引用和 reused；失败项带 attempted（true/false/null）、retryable、非空 error、warnings |
 | `ocr-aggregate-v2` / `OcrAggregateV2` | document/context、严格递增的 successful_pages 引用和 coverage。只有逐页读回验证且精确覆盖物理 1..N 才是 complete；否则必须 partial 或 none |
 
-`parameters_sha256` 必须由受信执行端对实际使用的不可变、版本化配置清单计算，不能由浏览器传入或使用占位值。OCR 清单包含全部识别模式/参数、表格恢复策略与阈值；渲染清单包含颜色/缩放/裁剪/EXIF/旋转及方向置信阈值、编码参数和所有影响像素的依赖版本。方向模型如 `osd` 的真实内容摘要也必须登记。处理器变化必须新版本，不能把现行 `bondbuddy-ocr-1.0.0` 冒充已实现 v2。v2 Python 探针已按实际安装的引擎、模型、PDFium/Pillow 和参数推导并在执行时重验这些摘要；schema 本身不能证明调用端提供的配置摘要真实。
+`parameters_sha256` 必须由受信执行端对实际使用的不可变、版本化配置清单计算，不能由浏览器传入或使用占位值。OCR 清单包含全部识别模式/参数、表格恢复策略与阈值；渲染清单包含颜色/缩放/裁剪/EXIF/旋转及方向置信阈值、编码参数和所有影响像素的依赖版本。方向模型如 `osd` 的真实内容摘要也必须登记。处理器变化必须新版本，不能把现行 v1 `bondbuddy-ocr-1.0.1` 冒充已实现 v2。v2 Python 探针已按实际安装的引擎、模型、PDFium/Pillow 和参数推导并在执行时重验这些摘要；schema 本身不能证明调用端提供的配置摘要真实。
 
 ### 成功页验证与摘要
 

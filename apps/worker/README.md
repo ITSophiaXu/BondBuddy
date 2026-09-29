@@ -287,7 +287,7 @@ The parser identity comes from the shared `documentParserVersion()` setting
 used by parse jobs (`BB_DOCUMENT_PARSER_VERSION`, with its shared code
 default). Parse-enabled runtime startup requires `BB_PARSE_CACHE_OCR_VERSION`
 and `BB_PARSE_CACHE_BASIS_VERSION`. The deployment template starts with
-`bondbuddy-ocr-1.0.0` (the current OCR processor version) and
+`bondbuddy-ocr-1.0.1` (the current v1 OCR processor version) and
 `evidence-basis-v1`; bump these for OCR engine/language-data or evidence-basis
 logic changes. These versions are required because those components currently
 have no shared version configuration contract. Cache reads are bounded to the

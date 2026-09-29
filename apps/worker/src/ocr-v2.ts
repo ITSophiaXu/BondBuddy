@@ -82,7 +82,7 @@ function checkedProbe(raw: unknown, expected: Probe): OcrDocumentIdentityV2 {
   const document = raw.document;
   if (document.owner_user_id !== expected.owner_user_id || document.project_id !== expected.project_id ||
       !Value.Equal(document.material, expected.material) || document.engine.language !== expected.language ||
-      document.processor_version !== 'bondbuddy-ocr-2.0.0' || document.engine.name !== 'tesseract') throw new Error('OCR_INVALID_IDENTITY');
+      document.processor_version !== 'bondbuddy-ocr-2.0.1' || document.engine.name !== 'tesseract') throw new Error('OCR_INVALID_IDENTITY');
   return document;
 }
 
