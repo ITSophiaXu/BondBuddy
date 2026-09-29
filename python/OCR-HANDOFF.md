@@ -32,7 +32,7 @@
 | `ocr-response-v2` / `OcrBatchResponseV2` | request_id/document/context 必须与请求相同；page_results 与请求页列表逐项一致。成功项带 checkpoint 引用和 reused；失败项带 attempted（true/false/null）、retryable、非空 error、warnings |
 | `ocr-aggregate-v2` / `OcrAggregateV2` | document/context、严格递增的 successful_pages 引用和 coverage。只有逐页读回验证且精确覆盖物理 1..N 才是 complete；否则必须 partial 或 none |
 
-`parameters_sha256` 必须由受信执行端对实际使用的不可变、版本化配置清单计算，不能由浏览器传入或使用占位值。OCR 清单包含全部识别模式/参数、表格恢复策略与阈值；渲染清单包含颜色/缩放/裁剪/EXIF/旋转及方向置信阈值、编码参数和所有影响像素的依赖版本。方向模型如 `osd` 的真实内容摘要也必须登记。处理器变化必须新版本，不能把现行 `bondbuddy-ocr-1.0.0` 冒充已实现 v2。v2 Python 探针已按实际安装的引擎、模型、PDFium/Pillow 和参数推导并在执行时重验这些摘要；schema 本身不能证明调用端提供的配置摘要真实。
+`parameters_sha256` 必须由受信执行端对实际使用的不可变、版本化配置清单计算，不能由浏览器传入或使用占位值。OCR 清单包含全部识别模式/参数、表格恢复策略与阈值；渲染清单包含颜色/缩放/裁剪/EXIF/旋转及方向置信阈值、编码参数和所有影响像素的依赖版本。方向模型如 `osd` 的真实内容摘要也必须登记。处理器变化必须新版本，不能把现行 v1 `bondbuddy-ocr-1.0.1` 冒充已实现 v2。v2 Python 探针已按实际安装的引擎、模型、PDFium/Pillow 和参数推导并在执行时重验这些摘要；schema 本身不能证明调用端提供的配置摘要真实。
 
 ### 成功页验证与摘要
 
@@ -83,6 +83,7 @@ Python v2 协议、有界渲染及独立内部 worker/API 持久页路径已接�
 - OSD 仅在方向置信度达到阈值时旋转，并记录顺时针角度；不能可靠判定时保留方向并标 `orientation_unverified`。图片 EXIF 方向在派生图中应用，不改原件；这些坐标不能直接当作未旋转原件的坐标。
 - 保存处理器版本、真实 Tesseract 版本、语言包/方向模型 SHA-256、材料版本、原件 hash、每页图像 hash。结果和图片都存私有 Blob，写入后回读核验；数据库只存结果引用和版本关联。
 - 表格处理识别长横/竖线和交点，从封闭网格恢复矩形候选单元格、行列和 row/column span，逐格识别短表头/数字。原图保留边线，识别裁剪只去单元格边框。无完整网格、非矩形合并、跨页表头匹配和复杂结构不宣称已还原；整份结果仍需核对。
+- 自 `bondbuddy-ocr-1.0.1` / v2 `bondbuddy-ocr-2.0.1` 起，单元格识别裁剪在宽、高两个方向分别将最多 6px 的边框内缩限制为保留至少 1px 正面积；无效、越界或退化的原始框明确报 `OCR_INVALID_GEOMETRY`，窄而有效的框保留原页框与原图用于核对。v2 处理器版本及配置摘要随算法变化，旧身份的 checkpoint 不得按新身份复用；该修复不表示窄格的识别值已经核实。
 - `numeric.kind` 区分 number、blank、dash 和 unparsed。数值用十进制字符串；显式括号负数、千分位、小数和元/万元/亿元/% 单位保留，不从列头猜单位，不交换年序。未识别出的有墨迹单元格为 unparsed；短横线的形状辅助识别单独标记 `dash_shape_inferred`。
 - 所有 OCR 记录都含 uncertainty 且 `eligible_for_manuscript=false`，即使置信度高也不是核验事实。表格行列、期间、单位、主体口径必须继续经过 #15 的独立事实/来源核对。下游不得将这些记录包装成 native_text 或静默去掉门槛。
 - 用户校正追加 revision、原值、新值、说明、期间/单位/口径、服务端 actor 和时间；`status=user_asserted`，仍 `eligible_for_manuscript=false`。旧识别与旧校正不覆盖；新旧版本冲突返回 409，相同 request_id/payload 重放不重复写事件。
