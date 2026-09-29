@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { projectMessageSetRef, type GenerationIssuerBindingRef } from '@bondbuddy/contracts';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
-import { pdfSample, PDF } from './upload-safety.samples.js';
+import { pdfSample, xlsxSample, PDF, XLSX } from './upload-safety.samples.js';
 import {
   appendIssuerIdentitySourceRecord,
   authorizeIssuerIdentityReviewer,
@@ -46,8 +47,8 @@ function parseJar(response: { headers: Record<string, unknown> }): Record<string
   return Object.fromEntries(values.map((value) => value.split(';')[0]!.split('=') as [string, string]));
 }
 
-function makeHarness(pool: Pool) {
-  const blobs = azureBlobs(blobConnection!, `bb-chain-${randomUUID().replaceAll('-', '')}`);
+function makeHarness(pool: Pool, containerName = `bb-chain-${randomUUID().replaceAll('-', '')}`) {
+  const blobs = azureBlobs(blobConnection!, containerName);
   const app = createServer({ pool, blobs, allowedOrigin: origin, auth: { termsVersion, supportContact: 'synthetic-support' } });
   const send = (method: string, url: string, payload?: unknown, session?: Session) => app.inject({
     method: method as never, url,
@@ -68,11 +69,13 @@ function makeHarness(pool: Pool) {
     assert.equal(response.statusCode, 201, response.body);
     return response.json().project_id as string;
   };
-  const upload = async (projectId: string, session: Session, role: string, label: string): Promise<MaterialRef> => {
-    const bytes = pdfSample({ tag: `chain-${label}` });
+  const upload = async (projectId: string, session: Session, role: string, label: string,
+    source?: { bytes: Buffer; mediaType: string; extension: string }): Promise<MaterialRef> => {
+    const bytes = source?.bytes ?? pdfSample({ tag: `chain-${label}` });
+    const mediaType = source?.mediaType ?? PDF;
     const declaration = { byte_size: bytes.length, sha256: digest(bytes) };
     const created = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`,
-      { ...declaration, filename: `${label}.pdf`, media_type: PDF, role }, session);
+      { ...declaration, filename: `${label}.${source?.extension ?? 'pdf'}`, media_type: mediaType, role }, session);
     assert.equal(created.statusCode, 201, created.body);
     const uploadSession = created.json();
     const put = await send('PUT', uploadSession.upload_url as string, bytes, session);
@@ -81,7 +84,7 @@ function makeHarness(pool: Pool) {
     assert.equal(complete.statusCode, 200, complete.body);
     return { materialId: complete.json().material_id as string, sha256: declaration.sha256 };
   };
-  return { app, send, register, createGenerationProject, upload };
+  return { app, blobs, send, register, createGenerationProject, upload };
 }
 
 /** Fixture only: the real parser worker writes these rows; the API chain reads them as immutable evidence. */
@@ -379,5 +382,100 @@ test('HTTP chain: a withdrawn approved binding is refused for the lock and leave
         generation_issuer_binding_ref: chain.bindingRef, project_message_set_ref: chain.messageRef }, chain.owner);
       assert.equal(denied.statusCode, 409, denied.body);
       assert.deepEqual(await revisions(pool, chain.owner.userId, chain.projectId), before);
+    } finally { await harness.app.close(); await pool.end(); }
+  });
+
+test('HTTP chain: synthetic financial XLSX is durably parsed before scoped issuer review and successor admission',
+  { skip: !databaseUrl || !blobConnection || !process.env.BB_PYTHON?.trim() &&
+    'set BB_PYTHON to a Python parser environment with python/requirements.txt installed' }, async () => {
+    const parseConnection = await isolatedTestDatabase(undefined, 'generation-real-parse');
+    const pool = new Pool({ connectionString: parseConnection });
+    const harness = makeHarness(pool);
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 8);
+    try {
+      const owner = await harness.register('xlsown', suffix);
+      const reviewer = await harness.register('xlsrev', suffix);
+      const grantor = await harness.register('xlsgrt', suffix);
+      const projectId = await harness.createGenerationProject(owner);
+      const sheet = Buffer.from('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>合成发行人甲</t></is></c><c r="B1" t="inlineStr"><is><t>合并财务报表</t></is></c></row></sheetData></worksheet>');
+      const bytes = await xlsxSample(sheet);
+      const financial = await harness.upload(projectId, owner, 'financial', `financial-${suffix}`,
+        { bytes, mediaType: XLSX, extension: 'xlsx' });
+      const materials = [{ material_id: financial.materialId, material_version: 1 }];
+      const first = await harness.send('POST', `/api/v1/projects/${projectId}/input-revisions`,
+        { draft_revision: 1, requirement_message_ids: [], material_versions: materials }, owner);
+      assert.equal(first.statusCode, 201, first.body);
+      const parseJob = await pool.query(`SELECT id,state FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2
+        AND material_id=$3 AND job_type='parse'`, [owner.userId, projectId, financial.materialId]);
+      assert.equal(parseJob.rows.length, 1);
+      assert.equal(parseJob.rows[0].state, 'queued');
+
+      // The same uploaded private bytes are parsed by the actual durable worker and Python XLSX parser.
+      const worker = await import(new URL('../../worker/dist/material-parse-job.js', import.meta.url).href);
+      const parser = await import(new URL('../../worker/dist/document-parser.js', import.meta.url).href);
+      const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+      let parserFailure: string | null = null;
+      const outcome = await worker.runMaterialParseOnce({ pool, leaseSeconds: 300, material: { pool,
+        blobs: { getPrivate: (key: string) => harness.blobs.getIfExists(key),
+          readToFile: (key: string, path: string, max: number) => harness.blobs.readToFile!(key, path, max) },
+        parser: async (request: unknown) => {
+          try { return await parser.runDocumentParser(request, { pythonExecutable: process.env.BB_PYTHON?.trim() || 'python3', repoRoot }); }
+          catch (error) { parserFailure = error instanceof Error
+            ? `${error.message}: ${String((error as {diagnostic?:{excerpt?:string}}).diagnostic?.excerpt ?? '')}` : String(error); throw error; }
+        },
+      } });
+      const parseState = (await pool.query('SELECT state,error_code,stage FROM bb_jobs WHERE id=$1', [parseJob.rows[0].id])).rows[0];
+      const parseError = (await pool.query('SELECT code,category,stage FROM bb_observability_errors WHERE job_id=$1 ORDER BY created_at DESC LIMIT 1',
+        [parseJob.rows[0].id])).rows[0];
+      assert.equal(outcome, 'succeeded', `actual parser persists the immutable XLSX snapshot: ${JSON.stringify({parseState,parseError,parserFailure})}`);
+      assert.equal((await pool.query('SELECT state FROM bb_jobs WHERE id=$1', [parseJob.rows[0].id])).rows[0].state, 'succeeded');
+
+      const evidenceUrl = `/api/v1/reviewer/projects/${projectId}/materials/${financial.materialId}/versions/1/issuer-parse-evidence`;
+      assert.equal((await harness.send('GET', evidenceUrl, undefined, owner)).statusCode, 404);
+      await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+        VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [`xlsx-grant-${suffix}`, reviewer.userId, grantor.userId, owner.userId, projectId]);
+      const evidence = await harness.send('GET', evidenceUrl, undefined, reviewer);
+      assert.equal(evidence.statusCode, 200, evidence.body);
+      const anchor = (evidence.json().items as {record_id:string;literal_quote:string}[]).find(item => item.literal_quote.includes('合成发行人甲'));
+      assert.ok(anchor, 'the reviewer sees the issuer text from the actual XLSX parser');
+      const proposalUrl = `/api/v1/reviewer/projects/${projectId}/materials/${financial.materialId}/versions/1/issuer-identity/observations`;
+      const proposed = await harness.send('POST', proposalUrl, {
+        request_id: `xlsx-observation-${suffix}`, evidence_record_id: anchor.record_id,
+        issuer_display_name: '合成发行人甲', candidate_key: `issuer-name:v1:${sha('合成发行人甲').slice(0,32)}`,
+      }, reviewer);
+      assert.equal(proposed.statusCode, 201, proposed.body);
+      const observed = await harness.send('GET', proposalUrl, undefined, reviewer);
+      assert.equal(observed.statusCode, 200, observed.body);
+      const item = observed.json().items.find((row: {source_record_id:string}) => row.source_record_id === proposed.json().source_record_id);
+      assert.ok(item);
+      const reviewed = await harness.send('POST',
+        `/api/v1/projects/${projectId}/materials/${financial.materialId}/versions/1/issuer-identity/observations/${proposed.json().source_record_id}/review`,
+        { decision:'verified', reason_code:'synthetic_verified', expected_content_sha256:item.content_sha256,
+          expected_snapshot_sha256:item.snapshot_sha256, verified_entity_id:ENTITY,
+          entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic XLSX identity review' }, reviewer);
+      assert.equal(reviewed.statusCode, 201, reviewed.body);
+      const bindingUrl = `/api/v1/reviewer/projects/${projectId}/generation-issuer-bindings`;
+      const appended = await harness.send('POST', bindingUrl, {
+        request_id:`xlsx-binding-${suffix}`,input_revision:first.json().input_revision,input_hash:first.json().input_hash,
+        material_decisions:[{material_id:financial.materialId,material_version:1,disposition:'classified',reason:'合成财务表主体。',
+          observations:[{source_record_id:anchor.record_id,observed_subject_label:'合成发行人甲',
+            evidence_context:'financial_statement',subject_relation:'issuer_compiler',accounting_scope:'consolidated',
+            relation_reason:'合成财务表主体。',source_identity_review_id:reviewed.json().review_id}]}],
+      }, reviewer);
+      assert.equal(appended.statusCode, 201, appended.body);
+      const ref = appended.json().binding_ref as GenerationIssuerBindingRef;
+      const approval = await harness.send('POST', `${bindingUrl}/${ref.binding_id}/review`,
+        {request_id:`xlsx-approve-${suffix}`,action:'approve',expected_binding:ref,reason:'核对合成主体。'}, reviewer);
+      assert.equal(approval.statusCode, 201, approval.body);
+      assert.equal(approval.json().status, 'approved');
+      const successor = await harness.send('POST', `/api/v1/projects/${projectId}/input-revisions`,
+        {draft_revision:1,requirement_message_ids:[],material_versions:materials,generation_issuer_binding_ref:ref}, owner);
+      assert.equal(successor.statusCode, 201, successor.body);
+      const preflight = await harness.send('POST', `/api/v1/projects/${projectId}/preflight`,
+        {input_revision:successor.json().input_revision,input_hash:successor.json().input_hash}, owner);
+      assert.equal(preflight.statusCode, 200, preflight.body);
+      assert.equal(preflight.json().missing_inputs.includes('issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved'), false);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
+        [owner.userId,projectId])).rows[0].n, 0);
     } finally { await harness.app.close(); await pool.end(); }
   });
