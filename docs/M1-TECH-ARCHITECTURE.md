@@ -567,3 +567,13 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 ### #15 fact evidence reviewer read API
 
 `GET /api/v1/reviewer/projects/{project_id}/facts/candidates/{candidate_id}/evidence` is the separate sensitive source read for fact reviewers. It requires a live authenticated account and the exact active owner/project `fact_evidence_reviewer` grant. It selects only the latest server-derived context, revalidates the current input/material/parser snapshot and candidate value/identity/source, verifies the context-set hash and each selected native record, and fails closed on any mismatch or stale pin. The hashed context must carry a precise `candidate_value` pin (`value_kind`, decimal text, and text value); older contexts without it return stale and are not backfilled. It pages at most 50 body records with a context-bound cursor; auxiliary scope/part hashes and parser warnings are returned as evidence without being promoted to verified facts. Responses are private no-store, and successful-page outbox events contain record IDs/hashes but no quote text. The endpoint creates no decision and always reports `verification_effect: none`.
+
+### #31 消费 #15 证据审核记录（2026-09-29）
+
+历史稿生成从 #15 已持久化的完整 evidence-context set 读取精确引用，不代建审核。新 `historical_generation_input` 检查点包含 `historical-fact-reviews-v1`：每个候选的集合 ID/hash、输入/材料/解析身份及当前审核判定，显式保存“未有集合/审核”。准备时只查询同 owner/project/input revision/hash 的集合；恢复只重读固定 ID，不能自动改取最新审核或把旧检查点接到新策略。
+
+`historical-fact-reviews.ts` 使用 #439 的当前审核读取接口。已存在但撤回/失效、明确 needs_more_evidence 或 pin 不匹配的审核限制对应事实组；没有审核不构成新增上传前置。`offerableFacts` 仍要求整组符合既有原文来源、身份、口径与不确定性条件。audited 审核通过也不能清空原 warning/uncertainty、解开公式/OCR/缺源问题；external 只记录证据影响审核，继续保持 external/extracted，不能升级为审计事实。
+
+新准备哈希覆盖上述引用，私有模型 prompt 只附审核 ID/集合 hash/判定，不附审核理由正文或审核人身份。生成在每一块、原模型调用门（保留既有授权/规则复核）、返回结果后及确定性计划前重验；审核或引用改变以既有 DATA_UNAVAILABLE 失败并记录 UPDATE_FACT_EVIDENCE_REVIEW_CHANGED，不能将新决定静默套到旧模型结果。旧检查点缺少新字段时维持原哈希与路径，必须用新的准备输入才能使用本切片。
+
+无公共 DTO、枚举或数据库迁移；无页面/文案/用户操作变更。#441 的身份/规则/测试入口、#76 输入消费、真实逐值审核、模型/Word 与目标环境验收仍分别跟踪，不因该内部消费者工程交付关闭 #15/#31。

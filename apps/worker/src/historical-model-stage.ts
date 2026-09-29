@@ -73,6 +73,12 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
       material_role: input.locked.materials.find(m => m.materialId === f.provenance.materialId && m.materialVersion === f.provenance.materialVersion)?.role,
       status: f.provenance.status, evidence: f.provenance.evidence })),
     unavailable_candidate_count: input.facts.length - facts.length,
+    ...(input.evidenceReviews?.entries.some(e => e.pin) ? { evidence_reviews: input.evidenceReviews.entries.filter(e => e.pin).map(e => ({
+      candidate_id: e.candidateId, evidence_context_set_id: e.pin!.evidenceContextSetId,
+      evidence_set_sha256: e.pin!.evidenceSetSha256, review_id: e.determination?.reviewId ?? null,
+      outcome: e.determination?.outcome ?? null, current: e.determination?.reviewedAndCurrent ?? false,
+      verification_effect: 'none',
+    })) } : {}),
     fact_decisions: input.decisions.map(d => ({ identity: d.identity, version: d.decision?.version ?? 0,
       resolution: d.decision?.resolution ?? null, selected_candidate_id: d.decision?.selectedCandidateId ?? null })),
   };
@@ -121,6 +127,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       const parts: SemanticInventory[] = [];
       for (let i = 0; i < chunks.length; i++) {
         if (ctx.signal.aborted) return { kind: 'stopped' };
+        await input.revalidateEvidenceReviews?.();
         const records = chunks[i]!;
         // Preflight even during replay: do not silently bind a previous response to changed inputs.
         const prompt = historicalPrompt(input, records, i, chunks.length);
@@ -141,8 +148,13 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         const model = (options.model ?? codexModelStage)({ name, logicalCallId: `${template}-${i}`, config: options.config ?? loadCodexAdapterConfig,
           schema: historicalGenerationSchema, validate, resultSchemaVersion: HISTORICAL_GENERATION_VERSION,
           templateVersion: template, buildPrompt: async () => prompt });
-        const result = await model.run(ctx);
+        const modelContext: StageContext = { ...ctx, validateBeforeModelCall: async () => {
+          await input.revalidateEvidenceReviews?.();
+          return await ctx.validateBeforeModelCall?.() ?? null;
+        } };
+        const result = await model.run(modelContext);
         if (result.kind !== 'done') return result;
+        await input.revalidateEvidenceReviews?.();
         parts.push(inventoryOf(result.value));
         // Only counts/references enter queue events; full text stays in the private prompt/result journal.
         await checkpoint(ctx, 'historical_generation_progress', { completed_chunks: i + 1, total_chunks: chunks.length,
@@ -154,9 +166,11 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         ...(b.replaces ? [b.replaces] : []),
       ]).map(factIdentityKey));
       const selected = input.facts.filter(f => keys.has(factIdentityKey(f.candidate.identity)));
+      await input.revalidateEvidenceReviews?.();
       const plan = await (options.prepare ?? prepareHistoricalUpdate)({ pool: ctx.pool }, { ...input.locked, ...inventory,
         factCandidateIds: selected.map(f => f.candidate.candidateId), factsHash: historicalUpdateFactsHash(selected,
           input.decisions.filter(d => keys.has(factIdentityKey(d.identity)))) }, input.planReaders);
+      await input.revalidateEvidenceReviews?.();
       // A retained/placeholder-only file is not a completed update (UPD-GAP-01).
       if (!plan.replacements.length && !plan.columns.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' };
       const reviewNotes = inventory.coverage.filter(c => c.disposition === 'needs_evidence').map(c => ({ recordId: c.recordId, message: `待人工确认：${c.reason}` }));

@@ -16,6 +16,7 @@ import { historicalFactMatchesBaseline, historicalFactMatchesMaterial, isHistori
 import type { HistoricalCandidateRuleGuidance } from './historical-candidate-rule-context.js';
 import { loadAuthorizedHistoricalTestRuleGuidance } from './historical-test-rule-authorization.js';
 import { HISTORICAL_TEST_BASELINE_POLICY } from './historical-baseline-warnings.js';
+import { readHistoricalFactReviews, historicalReviewAllowsExistingFact, type HistoricalFactReviews } from './historical-fact-reviews.js';
 
 export const GENERATION_INPUT_CHECKPOINT = 'historical_generation_input';
 const detailsValidator = new Ajv({ strict: false }).compile(UpdateDetailsSchema);
@@ -28,6 +29,8 @@ export interface HistoricalGenerationInput {
   /** Includes every candidate, including conflicts and uncertainty, in the frozen material set. */
   facts: readonly StoredFactCandidate[];
   decisions: HistoricalUpdateDecisionSnapshot[];
+  evidenceReviews?: HistoricalFactReviews;
+  revalidateEvidenceReviews?: () => Promise<void>;
   planReaders: HistoricalUpdateReaders;
   details: UpdateDetails; issuerName: string; preparationHash: string;
   ruleGuidance: HistoricalRuleGuidance | HistoricalCandidateRuleGuidance;
@@ -38,6 +41,7 @@ interface PreparationPin {
   snapshot_id: string; profile_version: number; profile_hash: string;
   parser_version: string; parse_hash: string; issuer_entity_id: string;
   fact_ids: string[]; facts_hash: string;
+  fact_evidence_reviews?: HistoricalFactReviews;
   decisions: { identity_hash: string; version: number; decision_id: string | null; content_hash: string | null }[];
 }
 const frozenFactsHash = (facts: readonly StoredFactCandidate[]) => updateContentHash([...facts].sort((a,b) => a.candidate.candidateId.localeCompare(b.candidate.candidateId, 'en')));
@@ -49,6 +53,7 @@ export interface GenerationInputReaders {
   decision: (ctx: StageContext, identity: FactIdentity, version?: number) => Promise<StoredFactDecision | null>;
   checkpoint: (ctx: StageContext, pin: Record<string, unknown>) => Promise<void>;
   rules?: HistoricalRuleResolver;
+  evidenceReviews?: typeof readHistoricalFactReviews;
 }
 
 /** Freeze derived parse/profile/candidate references before the first provider intent, then reread exact IDs on recovery. */
@@ -148,11 +153,21 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     if (pin && updateContentHash(pin) !== updateContentHash(current)) throw new Error('UPDATE_FACT_DECISION_SNAPSHOT_CHANGED');
     decisions.push({ identity, decision }); decisionPins.push(current);
   }
+  const reviewScope = { ownerUserId: run.owner_user_id, projectId: run.project_id, inputRevision: run.input_revision, inputHash: run.input_hash.trim() };
+  const readReviews = readers.evidenceReviews ?? readHistoricalFactReviews;
+  // Do not retrofit an old run with a new model/input binding. New preparations always pin absence too.
+  const evidenceReviews = previous && previous.fact_evidence_reviews === undefined ? undefined
+    : await readReviews({ pool }, reviewScope, facts, previous?.fact_evidence_reviews);
+  const revalidateEvidenceReviews = evidenceReviews ? async () => {
+    const current = await readReviews({ pool }, reviewScope, facts, evidenceReviews);
+    if (updateContentHash(current) !== updateContentHash(evidenceReviews)) throw new Error('UPDATE_FACT_EVIDENCE_REVIEW_CHANGED');
+  } : undefined;
   const pin: PreparationPin = previous ?? { version: 'historical-generation-input-v1', input_hash: run.input_hash.trim(),
     ...(baselinePolicy ? { baseline_policy: baselinePolicy } : {}),
     snapshot_id: snapshot.snapshotId, profile_version: profile.profileVersion, profile_hash: updateContentHash(profile.recognition),
     parser_version: snapshot.parserVersion, parse_hash: snapshot.responseSha256, issuer_entity_id: entity,
-    fact_ids: facts.map(f => f.candidate.candidateId).sort(), facts_hash: frozenFactsHash(facts), decisions: decisionPins };
+    fact_ids: facts.map(f => f.candidate.candidateId).sort(), facts_hash: frozenFactsHash(facts), decisions: decisionPins,
+    fact_evidence_reviews: evidenceReviews };
   const locked: HistoricalGenerationInput['locked'] = { context: { ownerUserId: run.owner_user_id, projectId: run.project_id,
     issuerEntityId: entity, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), targetMarket: manifest.market,
     ...(baselinePolicy ? { baselineUse: 'non_production_working_draft' as const } : {}),
@@ -182,7 +197,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
       return found.decision;
     },
   };
-  return { locked, snapshot, profile, facts, decisions, planReaders, details, ruleGuidance, issuerName: manifest.issuer_name, preparationHash: updateContentHash(pin) };
+  return { locked, snapshot, profile, facts, decisions, evidenceReviews, revalidateEvidenceReviews, planReaders, details, ruleGuidance, issuerName: manifest.issuer_name, preparationHash: updateContentHash(pin) };
 }
 
 /** Never offer one clean member of a conflicted/uncertain identity while concealing the other candidates. */
@@ -195,7 +210,8 @@ export function offerableFacts(input: HistoricalGenerationInput): StoredFactCand
   }
   return [...groups.values()].filter(group => group.every(f => {
     const material = input.locked.materials.find(m => m.materialId === f.provenance.materialId && m.materialVersion === f.provenance.materialVersion);
-    return material && isHistoricalFactMaterial(material, input.locked.baseline) &&
+    return material && historicalReviewAllowsExistingFact(input.evidenceReviews, f.candidate.candidateId) &&
+      isHistoricalFactMaterial(material, input.locked.baseline) &&
       historicalFactMatchesMaterial(f, material) && f.provenance.uncertainty.length === 0 &&
       (material.role !== 'historical' || historicalFactMatchesBaseline(f, input.snapshot)) &&
       isUsableHistoricalFact(projectHistoricalFact(f));
