@@ -16,6 +16,7 @@ import { renderAccount, renderClosed, type AccountContext } from './account';
 import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
 import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USERNAME_PATTERN, validateRegister } from './register';
+import { referenceSnapshotResolver } from './reference';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
 import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
@@ -394,7 +395,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
   // No-history projects enter the controlled generation path with the same execution surface.
   if (project.kind === 'update' || project.kind === 'generation') {
-    projectExecution = new ProjectExecution(api, draft, projectConversation);
+    projectExecution = new ProjectExecution(api, draft, projectConversation, referenceSnapshotResolver((projectId, materialId) => api.material(projectId, materialId)));
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
