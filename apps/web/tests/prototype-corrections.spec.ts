@@ -8,6 +8,7 @@ import type { Dto } from '../src/api';
 
 // Synthetic HTTP boundary; no model, database, OCR or document acceptance.
 const now='2026-09-28T03:00:00Z', id='synthetic-quarter-project';
+const emptyMessages = { version: 1, content_sha256: createHash('sha256').update('bondbuddy:empty-project-messages').digest('hex'), message_ids: [] };
 const periods: NonNullable<Dto<'ProjectResponse'>['update_details']>['target_reporting_periods'] = [
   {start:'2024-01-01',end:'2024-12-31',period_kind:'annual',scope:'consolidated',status:'user_asserted',evidence_refs:[]},
   {start:null,end:'2025-06-30',period_kind:'interim',scope:null,status:'needs_confirmation',evidence_refs:[]}
@@ -37,6 +38,8 @@ async function install(page:Page,state=fixture()) {
     } else if(path===`/projects/${id}/events`) {
       if(state.materialReadFails){status=503;result={code:'DATA_UNAVAILABLE'};}
       else result={items:state.materials.map((m,i)=>({event_id:`event-${i}`,schema_version:1,trace_id:'trace',project_id:id,seq:i+1,occurred_at:now,type:'material.upload_progress',payload:{material_id:m.material_id}})),next_cursor:null};
+    } else if(path===`/projects/${id}/messages` && method==='GET') {
+      result={conversation_id:id,items:[],project_message_set_ref:emptyMessages,next_cursor:null,has_more:false};
     } else if(path===`/projects/${id}/materials/uploads`) {
       upload=body;result={upload_id:'upload-1',state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/upload-1/bytes`,expires_at:now,max_bytes:100*1024*1024};status=201;
     } else if(path.endsWith('/bytes')){await route.fulfill({status:204});return;}

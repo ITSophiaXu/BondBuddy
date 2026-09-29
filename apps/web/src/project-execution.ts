@@ -1,10 +1,11 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
-import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS } from '@bondbuddy/contracts';
+import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
 import { materialParseSnapshotId, selectedReference, userReferenceChoice, type ReferenceSnapshotResolver } from './reference';
+import type { ProjectConversation } from './project-conversation';
 import { date, esc } from './ui';
 import './project-execution.css';
 
@@ -95,6 +96,7 @@ export class ProjectExecution {
   private restoring = false;
   private offerSavedInput = false;
   private input?: Input;
+  private selectedMessages?: ProjectMessageSetRef;
   private starting = false;
   private nextRequested = false;
   private materialRun?: string;
@@ -125,7 +127,7 @@ export class ProjectExecution {
   private inputRejected = false;
   private referenceNote = '';
 
-  constructor(private api: ApiClient, private draft: Draft, private referenceSnapshots?: ReferenceSnapshotResolver) {}
+  constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation, private referenceSnapshots?: ReferenceSnapshotResolver) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   /** The persisted project kind decides the execution task kind; it is fixed at creation. */
@@ -136,7 +138,27 @@ export class ProjectExecution {
     actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message">开始更新 ${icon('arrow')}</button></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
-    this.button('select-saved-input').addEventListener('click', () => { this.selected = true; this.offerSavedInput = false; this.message = ''; void this.start(); });
+    this.button('select-saved-input').addEventListener('click', () => {
+      if (this.busy) return;
+      void (async () => {
+        this.busy = true; this.render();
+        try {
+          const ref = await this.conversation.currentRef();
+          if (!this.active) return;
+          if (ref.message_ids.length) {
+            this.offerSavedInput = false;
+            this.message = '已有已保存消息，不能继续未证明包含这些消息的旧输入；请重新开始以锁定新版本。';
+            return;
+          }
+          this.selectedMessages = ref; this.selected = true; this.offerSavedInput = false; this.message = '';
+        } catch (error) {
+          if (this.active) this.message = friendlyError(error);
+        } finally {
+          this.busy = false; this.render();
+        }
+        if (this.selected) void this.start();
+      })();
+    });
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
@@ -183,14 +205,16 @@ export class ProjectExecution {
     if (this.draft.state === 'conflict' || this.draft.state === 'error' || !this.draft.valid) return '项目信息尚未保存，请返回上一步处理。';
     if (!this.draft.fields.market || !this.draft.fields.offering) return '请在上一步选择发行市场和发行方式。';
     if (this.run && !this.nextRequested) return '需要再次修改时，请点击上方“继续修改”。';
+    if (this.conversation.blockReason) return this.conversation.blockReason;
     return '';
   }
   private invalidate() {
-    this.generation++; this.selected = false; this.preflight = undefined;
+    this.generation++; this.selected = false; this.selectedMessages = undefined; this.preflight = undefined;
     this.resumeVerified = false;
     this.inputRejected = false;
     this.render();
   }
+  conversationChanged() { if (this.active) this.invalidate(); }
   sync(materials: Material[], ready: boolean, materialMessage = '') {
     if (!this.active) return;
     const stamp = JSON.stringify([this.draft.fields, materials.map(m => [m.material_id, m.material_version]).sort()]);
@@ -216,7 +240,7 @@ export class ProjectExecution {
     this.node('#execution-message').textContent = [this.message, this.referenceNote].filter(Boolean).join(' ');
     this.button('refresh-execution').disabled = this.busy || this.starting;
     this.button('refresh-execution').hidden = !this.inputReadUncertain && !this.run && !this.progressMessage;
-    this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain;
+    this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain || !this.conversation.ready || this.conversation.hasMessages;
     this.button('select-saved-input').disabled = Boolean(blocked);
     const check = this.preflight;
     this.node('#execution-preflight').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
@@ -315,18 +339,28 @@ export class ProjectExecution {
       if (confirmedGeneration !== this.generation) { this.message = '保存期间目标或材料有变化，请重新核对目标。'; return; }
       const p = this.draft.project;
       if (!p.market || !p.offering) { this.message = '请先在项目表单选择目标市场和发行方式。'; return; }
+      const beforeMessages = this.generation;
+      const messages = await this.conversation.currentRef();
+      if (beforeMessages !== this.generation) { this.message = '消息列表已变化，请核对最新内容后再次开始。'; return; }
       const generation = this.generation;
       this.selected = false; this.preflight = undefined;
       const userReference = await this.referenceFor(p, selected);
       let result: Input;
       try {
         result = await this.api.createInputRevision(this.id, { draft_revision: p.draft_revision,
-          material_versions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })), requirement_message_ids: [],
+          material_versions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })),
+          requirement_message_ids: messages.message_ids, project_message_set_ref: messages,
           ...(userReference ? { user_reference: userReference } : {}),
           ...(this.input?.credit_facility_supplements?.length ? { credit_facility_supplements: this.input.credit_facility_supplements } : {}),
 
         }, this.controller.signal);
       } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          this.invalidate();
+          await this.conversation.refresh();
+          this.message = '消息或项目版本已变化；已重新读取消息，请核对后再次开始。';
+          return;
+        }
         // This POST has no idempotency key. Never blindly replay after a lost response.
         if (!(error instanceof ApiError) || error.status >= 500) {
           this.inputReadUncertain = true;
@@ -338,6 +372,7 @@ export class ProjectExecution {
       if (!this.active) return;
       if (result.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       this.input = result;
+      this.selectedMessages = messages;
       this.selected = generation === this.generation;
       this.message = this.selected ? '' : '保存期间有新的修改，请重新开始。';
     });
@@ -374,9 +409,15 @@ export class ProjectExecution {
     });
   }
   private async execute() {
-    if (!this.input || !this.preflight || !this.selected || this.draft.dirty) return;
+    if (!this.input || !this.preflight || !this.selected || this.draft.dirty || !this.selectedMessages) return;
     const input = this.input, generation = this.generation;
     await this.action(async () => {
+      const latestMessages = await this.conversation.currentRef();
+      const pinned = this.selectedMessages;
+      if (!pinned || pinned.version !== latestMessages.version || pinned.content_sha256 !== latestMessages.content_sha256 ||
+          JSON.stringify(pinned.message_ids) !== JSON.stringify(latestMessages.message_ids) || generation !== this.generation) {
+        this.invalidate(); this.message = '已保存的项目消息有变化，请核对后重新开始，新消息不会写入旧任务。'; return;
+      }
       const request = await executionRequest(input, this.taskKind);
       if (!this.active || generation !== this.generation) return;
       const run = await this.api.execute(request, this.controller.signal);
@@ -431,6 +472,8 @@ export class ProjectExecution {
         if (cursor) seen.add(cursor);
       } while (cursor);
       this.inputReadUncertain = false;
+      // InputRevisionResponse does not expose the message pin. Never execute a
+      // recovered snapshot when a nonempty message set could have changed since it was locked.
       this.offerSavedInput = Boolean(input && !this.run);
     });
     this.restoring = false; this.render();

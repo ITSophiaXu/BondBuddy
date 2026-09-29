@@ -4,13 +4,14 @@ import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
+import { ProjectConversation, newProjectConversation, bindConversationPrompts } from './project-conversation';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
-import { bindUpdateForm, readUpdateForm, supplementaryPanel, updateFormFields } from './update-form';
+import { bindUpdateForm, readUpdateForm, updateFormFields } from './update-form';
 import { renderAccount, renderClosed, type AccountContext } from './account';
 import { bindDeletionActions, renderDataPolicyPage, renderUploadPolicyNote } from './data-policy';
 import { date, esc, icon } from './ui';
@@ -39,6 +40,9 @@ let projectBrowser: ProjectBrowser | undefined;
 let dashboard: Dashboard | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
+let projectConversation: ProjectConversation | undefined;
+let newConversationDraft = '';
+let pendingNewMessage: { projectId: string; text: string } | undefined;
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
 type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
@@ -70,6 +74,8 @@ function clearPrivateState() {
   dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
+  projectConversation?.dispose(); projectConversation = undefined;
+  newConversationDraft = ''; pendingNewMessage = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
@@ -245,6 +251,7 @@ async function logout() {
   if (!button) return;
   if (creating) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
+  if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
   if (draft && (draft.dirty || draft.state === 'saving') && !await draft.save()) {
     if (!identity) return;
@@ -263,10 +270,14 @@ async function renderRoute() {
   if (!identity) return;
   const raw = location.hash.slice(1);
   const requested = !raw || raw === 'dashboard' ? '/dashboard' : raw === 'update' ? '/new' : raw.startsWith('tasks') ? '/' + raw.slice(5) : raw;
-  if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？'))) {
+  const nextRoute = requested.replace(/\?step=(details|materials)$/, '');
+  if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？')) ||
+      nextRoute !== currentRoute && projectConversation?.hasUnsent &&
+      !window.confirm('还有未发送或保存结果未确认的消息。离开后本页输入将无法恢复，是否继续？')) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
   newDirty = false;
+  if (currentRoute === '/new' && requested !== '/new' && !pendingNewMessage) newConversationDraft = '';
   const token = ++epoch;
   if (draft && (draft.dirty || draft.state === 'saving')) {
     const saved = await draft.save();
@@ -281,9 +292,10 @@ async function renderRoute() {
   dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
+  projectConversation?.dispose(); projectConversation = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
-  currentRoute = requested.replace(/\?step=(details|materials)$/, '');
+  currentRoute = nextRoute;
   if (requested === '/dashboard') { dashboard = new Dashboard(api, shell, () => token === epoch); await dashboard.render(); return; }
   if (['review','generate','qa','billing'].includes(requested)) {
     const labels: Record<string,string> = { review:'复核募集书',generate:'材料生成',qa:'项目问答',billing:'积分与充值' };
@@ -315,9 +327,14 @@ function renderNew() {
   const value = blankDraft();
   shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}
     <form id="create-form" class="update-form"><div class="workspace-layout"><section class="panel form-panel form-card">${updateFormFields(value)}
-    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section>${supplementaryPanel(value)}</div></form>`, 'new');
+    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section>${newProjectConversation(value, newConversationDraft)}</div></form>`, 'new');
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
   bindUpdateForm(form, () => { newDirty = true; }, value.update_details);
+  bindConversationPrompts(document.querySelector<HTMLElement>('.supplement-panel')!);
+  document.querySelector<HTMLTextAreaElement>('#project-message')!.addEventListener('input', event => {
+    if ((event as InputEvent).isComposing) return;
+    newConversationDraft = (event.target as HTMLTextAreaElement).value; newDirty = true;
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     const value = readUpdateForm(form); value.name = value.name.trim();
@@ -332,7 +349,9 @@ function renderNew() {
     try {
       const project = await api.create(value);
       if (token !== epoch) return;
-      newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
+      const text = document.querySelector<HTMLTextAreaElement>('#project-message')!.value;
+      pendingNewMessage = text.trim() ? { projectId: project.project_id, text } : undefined;
+      newConversationDraft = ''; newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
   });
@@ -357,7 +376,11 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section></details>
         <div id="execution-root"></div>
         <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
-      </div></div>${supplementaryPanel(value, 'draft-form')}</div>`, 'workspace');
+      </div></div><div id="project-conversation-root"></div></div>`, 'workspace');
+  const initialMessage = pendingNewMessage?.projectId === project.project_id ? pendingNewMessage.text : '';
+  pendingNewMessage = undefined;
+  projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), initialMessage);
+  projectConversation.mount(document.querySelector<HTMLElement>('#project-conversation-root')!, value);
   const setStep = async (next: 'details' | 'materials') => {
     if (next === 'materials' && !await draft?.save()) return;
     if (!document.querySelector('#draft-form')) return;
@@ -371,11 +394,11 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
   // No-history projects enter the controlled generation path with the same execution surface.
   if (project.kind === 'update' || project.kind === 'generation') {
-    projectExecution = new ProjectExecution(api, draft);
+    projectExecution = new ProjectExecution(api, draft, projectConversation);
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
-  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); updateMaterialWorkspace(project.project_id); }, value.update_details);
+  bindUpdateForm(form, value => { draft?.edit({ name: value.name, issuer_name: value.issuer_name ?? '', market: value.market, offering: value.offering, update_details: value.update_details! }); projectConversation?.setContext(value); updateMaterialWorkspace(project.project_id); }, value.update_details);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
   document.querySelector('#reload-draft')!.addEventListener('click', () => {
     if (!window.confirm('加载最新资料会放弃当前未保存的输入，是否继续？')) return;
@@ -395,6 +418,7 @@ function updateSaveState() {
   if (!draft) return;
   syncProjectExecution(draft.project.project_id);
   const context = document.querySelector('#cowork-issuer'); if (context) context.textContent = draft.fields.issuer_name || '待填写发行人';
+  projectConversation?.setContext({ ...draft.fields, kind: 'update', issuer_name: draft.fields.issuer_name || null });
   const labels = { saved: '已保存', dirty: '尚未保存', saving: '正在保存…', conflict: '有版本冲突', error: '保存未确认' };
   const badge = document.querySelector<HTMLElement>('#save-state');
   if (!badge) return;
@@ -798,7 +822,7 @@ document.querySelector('.skip-link')!.addEventListener('click', event => {
 });
 window.addEventListener('beforeunload', event => {
   const activeUploads = [...localUploads.values()].some(uploads => uploads.some(upload => ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase)));
-  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || activeUploads) { event.preventDefault(); event.returnValue = ''; }
+  if (newDirty || creating || draft?.dirty || draft?.state === 'saving' || projectConversation?.hasUnsent || activeUploads) { event.preventDefault(); event.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { materialProcessing?.setVisible(false); return; }

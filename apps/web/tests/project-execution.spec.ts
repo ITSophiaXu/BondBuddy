@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 const now = '2026-09-27T12:00:00Z';
 const id = 'synthetic-execution-project';
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+const emptyMessages = { version: 1, content_sha256: hash('bondbuddy:empty-project-messages'), message_ids: [] };
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 const periods: NonNullable<Dto<'InputRevisionCreateRequest'>['target_confirmation']>['target_reporting_periods'] = [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }];
 function fixture() {
@@ -54,6 +55,8 @@ async function setup(page: Page, state = fixture(), canStart = true) {
         latest_artifact: { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now } }], page: { next_cursor: skip ? 'page-two' : null, has_more: skip } });
     }
     if (path === `/projects/${id}/events`) return json(route, 200, { items: state.materials.map((m, i) => ({ event_id: `event-${i}`, schema_version: 1, project_id: id, trace_id: 'trace', seq: i + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: m.material_id } })), next_cursor: null });
+    if (path === `/projects/${id}/messages` && method === 'GET') return json(route, 200,
+      { conversation_id: id, items: [], project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
     if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
     if (path.endsWith('/parse-job')) {
       const material = state.materials.find(m => m.material_id === path.split('/').at(-2));
@@ -217,7 +220,9 @@ test('editing while preflight is pending discards that result; next action locks
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseCheck).toBe(true);
   await page.getByLabel('补充说明与写作要求').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
   await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#save-state')).toHaveText('已保存'); await prepare(page);
+  await expect(page.locator('#start-disabled-reason')).toContainText('尚未发送');
+  await page.getByLabel('补充说明与写作要求').fill('');
+  await prepare(page);
   expect(state.inputs).toHaveLength(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
@@ -225,7 +230,7 @@ test('editing while preflight is pending discards that result; next action locks
 
 test('409 preserves target input and never submits a run', async ({ page }) => {
   const state=await setup(page); state.conflictSave=true; await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('其他页面修改');
+  await expect(page.locator('#execution-message')).toContainText('版本已变化');
   expect(state.project.update_details!.reporting_cutoff).toBe('2025-12-31');
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
@@ -416,7 +421,10 @@ test('restored snapshot retains exact user assertion pins in a new version', asy
   const pin={supplement_id:'00000000-0000-4000-8000-000000000001',version:2,request_hash:'a'.repeat(64)};
   state.snapshots.get(1)!.credit_facility_supplements=[pin];
   await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
-  await page.getByLabel('补充说明与写作要求').fill('下一轮补充'); await expect(page.locator('#save-state')).toHaveText('已保存');
+  await page.getByRole('button',{name:'编辑项目信息'}).click();
+  await page.getByLabel('其他已知信息').fill('下一轮补充');
+  await expect(page.locator('#save-state')).toHaveText('已保存');
+  await page.getByRole('button',{name:'保存并继续'}).click();
   await prepare(page); expect(state.inputs[1].credit_facility_supplements).toEqual([pin]);
 });
 
