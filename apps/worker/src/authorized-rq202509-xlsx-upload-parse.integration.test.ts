@@ -204,9 +204,46 @@ test('authorized rq-202509-02 XLSX crosses public upload and durable PG16 parse 
     assert.equal(Number(stats.missing_cache_formula_records), document.missing_formula_results,
       'truly missing formula caches remain separately represented');
 
+    // The candidate producer binds the requirement set pinned by this immutable input revision, so the
+    // revision (with the reviewed issuer identity, and no project messages) must exist first.
+    const identityEvidence = await pool.query<{ record_id: string }>(`SELECT record_id FROM bb_parse_evidence
+      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1 AND snapshot_id=$4
+        AND literal_quote LIKE '%任丘市建设投资集团有限公司%' ORDER BY ordinal LIMIT 1`,
+    [owner, projectId, materialId, snapshotId]);
+    assert.equal(identityEvidence.rowCount, 1, 'the authorized report provides an exact issuer identity anchor');
+    const reviewerGrantId = randomUUID();
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants
+      (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'authorized_test','authorized rq Q3 formula candidate integration',$4,$5)`,
+    [reviewerGrantId, reviewerUserId, grantorUserId, owner, projectId]);
+    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerUserId, { ownerUserId: owner, projectId });
+    assert.ok(reviewer);
+    const observation = await appendIssuerIdentitySourceRecord({ pool }, {
+      ownerUserId: owner, projectId, materialId, materialVersion: 1,
+      requestId: `rq-q3-identity-${suffix}`, sourceRecordId: identityEvidence.rows[0]!.record_id,
+      issuerDisplayName: '任丘市建设投资集团有限公司', entityId: `rq-q3-observed-${suffix}`,
+    });
+    await reviewIssuerIdentitySourceRecord({ pool }, {
+      ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: observation.id,
+      reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
+      entityBasisKind: 'manual_attestation', entityBasisRef: 'authorized rq Q3 sample integration fixture',
+      reasonCode: 'authorized_test_fixture',
+    });
+    const verifiedIdentity = await loadVerifiedIssuerIdentitySourceRecord(pool, {
+      ownerUserId: owner, projectId, materialId, materialVersion: 1,
+    });
+    assert.ok(verifiedIdentity);
+    const inputHash = sha256(Buffer.from(`authorized rq Q3 input ${suffix}`));
+    await pool.query(`INSERT INTO bb_input_revisions
+      (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+      VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`, [projectId, owner, inputHash,
+      JSON.stringify({ issuer_identity: verifiedIssuerIdentityBinding(verifiedIdentity), issuer_entity_id: verifiedIdentity.entityId,
+        materials: [{ material_id: materialId, material_version: 1, role: 'interimFinancial', sha256: EXPECTED_SHA256 }] }),
+      JSON.stringify([{ material_id: materialId, material_version: 1 }])]);
+
     const candidateRequest = { ownerUserId: owner, projectId,
       selectedFinancialMaterials: [{ materialId, materialVersion: 1 }],
-      projectDraftRevision, reportingCutoff: '2025-09-30' };
+      projectDraftRevision, reportingCutoff: '2025-09-30', inputRevision: 1, inputHash };
     if (producerOptedIn) {
       // Exercise the real trusted producer against the just-persisted, authorized Python parse.
       // The manifest-confirmed target is used only as cutoff intent; no confirmation decision is written.
@@ -265,41 +302,6 @@ test('authorized rq-202509-02 XLSX crosses public upload and durable PG16 parse 
     assert.equal(independent.status, 0, 'independent openpyxl source check completes');
     assert.equal(JSON.parse(independent.stdout).manifest_quote_matches_source_cell, true,
       'persisted parser quote is independently recovered from its original workbook cell');
-
-    const identityEvidence = await pool.query<{ record_id: string }>(`SELECT record_id FROM bb_parse_evidence
-      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1 AND snapshot_id=$4
-        AND literal_quote LIKE '%任丘市建设投资集团有限公司%' ORDER BY ordinal LIMIT 1`,
-    [owner, projectId, materialId, snapshotId]);
-    assert.equal(identityEvidence.rowCount, 1, 'the authorized report provides an exact issuer identity anchor');
-    const reviewerGrantId = randomUUID();
-    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants
-      (id,user_id,role,granted_by,reason_code,authorization_basis,scope_owner_user_id,scope_project_id)
-      VALUES($1,$2,'issuer_identity_reviewer',$3,'authorized_test','authorized rq Q3 formula candidate integration',$4,$5)`,
-    [reviewerGrantId, reviewerUserId, grantorUserId, owner, projectId]);
-    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerUserId, { ownerUserId: owner, projectId });
-    assert.ok(reviewer);
-    const observation = await appendIssuerIdentitySourceRecord({ pool }, {
-      ownerUserId: owner, projectId, materialId, materialVersion: 1,
-      requestId: `rq-q3-identity-${suffix}`, sourceRecordId: identityEvidence.rows[0]!.record_id,
-      issuerDisplayName: '任丘市建设投资集团有限公司', entityId: `rq-q3-observed-${suffix}`,
-    });
-    await reviewIssuerIdentitySourceRecord({ pool }, {
-      ownerUserId: owner, projectId, materialId, materialVersion: 1, sourceRecordRowId: observation.id,
-      reviewer, decision: 'verified', verifiedEntityId: 'entity:11111111-1111-4111-8111-111111111111',
-      entityBasisKind: 'manual_attestation', entityBasisRef: 'authorized rq Q3 sample integration fixture',
-      reasonCode: 'authorized_test_fixture',
-    });
-    const verifiedIdentity = await loadVerifiedIssuerIdentitySourceRecord(pool, {
-      ownerUserId: owner, projectId, materialId, materialVersion: 1,
-    });
-    assert.ok(verifiedIdentity);
-    const inputHash = sha256(Buffer.from(`authorized rq Q3 input ${suffix}`));
-    await pool.query(`INSERT INTO bb_input_revisions
-      (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
-      VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`, [projectId, owner, inputHash,
-      JSON.stringify({ issuer_identity: verifiedIssuerIdentityBinding(verifiedIdentity), issuer_entity_id: verifiedIdentity.entityId,
-        materials: [{ material_id: materialId, material_version: 1, role: 'interimFinancial', sha256: EXPECTED_SHA256 }] }),
-      JSON.stringify([{ material_id: materialId, material_version: 1 }])]);
 
     const producer = createControlledNativeFactCandidateProducer({ pool });
     const productionContext = { ownerUserId: owner, projectId, inputRevision: 1, inputHash, materialId,
@@ -399,10 +401,20 @@ test('authorized rq-202509-02 XLSX crosses public upload and durable PG16 parse 
       });
       assert.equal(savedMessage.statusCode, 201);
       const currentDraft = changedDraft.json().draft_revision as number;
+      // The changed draft needs its own input revision. It has no pinned message set, so the newly
+      // saved non-empty requirement set must fail closed rather than be bound as an empty pin.
+      const changedInputHash = sha256(Buffer.from(`authorized rq Q3 changed-draft input ${suffix}`));
+      await pool.query(`INSERT INTO bb_input_revisions
+        (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,2,$2,$3,$4,$5::jsonb,$6::jsonb,'[]'::jsonb)`, [projectId, owner, currentDraft, changedInputHash,
+        JSON.stringify({ issuer_identity: verifiedIssuerIdentityBinding(verifiedIdentity), issuer_entity_id: verifiedIdentity.entityId,
+          materials: [{ material_id: materialId, material_version: 2, role: 'interimFinancial', sha256: EXPECTED_SHA256 }] }),
+        JSON.stringify([{ material_id: materialId, material_version: 2 }])]);
       await assert.rejects(produceTargetPeriodCandidateSnapshot({ pool, blobs }, {
-        ...candidateRequest, projectDraftRevision: currentDraft, reportingCutoff: '2025-06-30',
+        ownerUserId: owner, projectId, selectedFinancialMaterials: [{ materialId, materialVersion: 2 }],
+        projectDraftRevision: currentDraft, reportingCutoff: '2025-06-30', inputRevision: 2, inputHash: changedInputHash,
       }), /TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED/,
-      'owner/project-scoped project-message metadata blocks a candidate with an empty requirement pin');
+      'owner/project-scoped project-message metadata blocks a candidate with an unpinned requirement set');
     }
   } finally {
     activeOwner = owner;
