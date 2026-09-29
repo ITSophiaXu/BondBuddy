@@ -41,21 +41,42 @@ export function materialParseSnapshotId(material: Material): string | undefined 
 }
 
 /**
- * Resolves the owner-visible parse snapshot id for a saved reference material. The browser cannot
- * infer it: it is a server-generated identifier over the immutable material bytes. This seam must be
- * backed by an owner-scoped parse-snapshot read before a reference can be pinned; when absent, the
- * generation path runs without a user reference rather than guessing an id or bypassing the review.
+ * The re-read only counts when it is still the exact material version that was selected. A version
+ * bump between listing and submission must not be combined with a snapshot from the new version.
  */
-export type ReferenceSnapshotResolver = (projectId: string, material: Material) => Promise<string | undefined>;
+export function sameMaterialVersion(selected: Material, fresh: Material): boolean {
+  return selected.material_id === fresh.material_id
+    && selected.material_version === fresh.material_version
+    && selected.sha256 === fresh.sha256;
+}
+
+/**
+ * Decides the user reference pin from a fresh owner-scoped read taken right before submission. The
+ * read can be a newer version than the selected list entry, so its identity is re-checked. A changed
+ * version or an unfinished parse keeps the run unpinned (safe stop) and tells the user how to
+ * recover; a mixed pin (old version/hash + new snapshot) is never submitted.
+ */
+export function referencePin(selected: Material, fresh: Material, offering: Offering): { choice: UserReferenceChoice } | { note: string } {
+  if (!sameMaterialVersion(selected, fresh)) {
+    return { note: '用户指定参考稿在提交前已更新为新的版本，本次先按未指定参考提交；请刷新已保存材料并重新选择参考稿后再提交。' };
+  }
+  const parseSnapshotId = materialParseSnapshotId(fresh);
+  if (!parseSnapshotId) return { note: '用户指定参考稿的解析快照尚未就绪，本次先按未指定参考提交。' };
+  return { choice: userReferenceChoice(fresh, parseSnapshotId, offering) };
+}
 
 /** The owner-scoped material read used to re-check the current parse snapshot at pin time. */
 export type MaterialReader = (projectId: string, materialId: string) => Promise<Material>;
 
 /**
- * Builds the reference resolver over an owner-scoped material read. The recovered material list can
- * predate a completed parse, so the additive `parse_snapshot_id` is re-read for this exact material
- * version right before a run is submitted. A failed read stays unpinned instead of guessing an id.
+ * Re-reads the owner-visible material for a saved reference. The browser cannot infer the snapshot
+ * id: it is a server-generated identifier over the immutable material bytes, and the recovered list
+ * can predate a completed parse or a new version. This seam returns the freshly read material so the
+ * caller can re-check its identity before pinning a snapshot; a failed read stays unpinned rather
+ * than guessing an id or bypassing the review.
  */
+export type ReferenceSnapshotResolver = (projectId: string, material: Material) => Promise<Material>;
+
 export function referenceSnapshotResolver(reader: MaterialReader): ReferenceSnapshotResolver {
-  return async (projectId, material) => materialParseSnapshotId(await reader(projectId, material.material_id));
+  return (projectId, material) => reader(projectId, material.material_id);
 }
