@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Material } from '@bondbuddy/contracts';
-import { TARGET_DOCUMENT_STAGE, materialParseSnapshotId, selectedReference, userReferenceChoice } from './reference.js';
+import { TARGET_DOCUMENT_STAGE, materialParseSnapshotId, referenceSnapshotResolver, selectedReference, userReferenceChoice } from './reference.js';
 
 const reference: Material = { material_id: 'synthetic-reference', material_version: 2, upload_id: 'synthetic-upload',
   role: 'reference', filename: 'reference.docx', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -29,4 +29,20 @@ test('only a well-formed additive parse snapshot id is accepted; anything else s
   assert.equal(materialParseSnapshotId({ ...reference, parse_snapshot_id: '' } as Material), undefined);
   assert.equal(materialParseSnapshotId({ ...reference, parse_snapshot_id: 'x'.repeat(129) } as Material), undefined);
   assert.equal(materialParseSnapshotId({ ...reference, parse_snapshot_id: 7 } as unknown as Material), undefined);
+});
+
+test('the reference resolver re-reads the current snapshot instead of trusting a stale list entry', async () => {
+  const reads: Array<[string, string]> = [];
+  const resolve = referenceSnapshotResolver(async (projectId, materialId) => {
+    reads.push([projectId, materialId]);
+    return { ...reference, parse_snapshot_id: 'fresh-snapshot' } as Material;
+  });
+  // The recovered list entry has no snapshot yet; the owner-scoped read supplies the completed one.
+  assert.equal(await resolve('synthetic-project', reference), 'fresh-snapshot');
+  assert.deepEqual(reads, [['synthetic-project', 'synthetic-reference']]);
+});
+
+test('a reference that has not been parsed stays unpinned through the resolver', async () => {
+  const resolve = referenceSnapshotResolver(async () => reference);
+  assert.equal(await resolve('synthetic-project', reference), undefined);
 });

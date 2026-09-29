@@ -47,3 +47,15 @@ export function materialParseSnapshotId(material: Material): string | undefined 
  * generation path runs without a user reference rather than guessing an id or bypassing the review.
  */
 export type ReferenceSnapshotResolver = (projectId: string, material: Material) => Promise<string | undefined>;
+
+/** The owner-scoped material read used to re-check the current parse snapshot at pin time. */
+export type MaterialReader = (projectId: string, materialId: string) => Promise<Material>;
+
+/**
+ * Builds the reference resolver over an owner-scoped material read. The recovered material list can
+ * predate a completed parse, so the additive `parse_snapshot_id` is re-read for this exact material
+ * version right before a run is submitted. A failed read stays unpinned instead of guessing an id.
+ */
+export function referenceSnapshotResolver(reader: MaterialReader): ReferenceSnapshotResolver {
+  return async (projectId, material) => materialParseSnapshotId(await reader(projectId, material.material_id));
+}
