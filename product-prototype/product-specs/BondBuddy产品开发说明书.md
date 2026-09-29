@@ -582,6 +582,8 @@ UPD-01：用户提供既有募集书或仅提供发行人资料，系统依据�
 
 2026-09-28 #18 试用限制提示：后台因当日试用额度或服务停用将任务置于 `paused / trial_limit` 时，原工作区显示实际短原因及自动恢复提示，不要求用户重复点击“继续更新”。额度/服务恢复由后台继续同一个 run；运营拒绝仍按失败显示。该界面修复不新增收费步骤，不替代真实多轮对话或 Word 验收。
 
+2026-09-29 #18 消息后端切片：本人项目的补充原话及材料精确版本可按幂等键保存、按旧版本修订并分页恢复；编辑不回写旧执行输入，锁定新输入须引用最新精确消息集合。API 只承诺保存（`user_asserted`），未接右侧 UI、真实助手回答和明确执行意图路由；旧按钮/草稿不可冒充已保存多轮或自动启动全文更新。
+
 ### 5.2 表单字段
 
 所有选填分组默认展开。必填用于确定目标和开始任务，草稿允许未填。
@@ -685,7 +687,9 @@ UPD-SOURCE-01（M1-31）：用户选择“有”并上传历史募集书后，�
 
 从封面、发行概况、发行对象、报告期定义、财务章节与表头交叉核对，不能只读文件名或按正文第一个市场/品种关键词归类。标题为 DFI 的注册稿和仅引用 DFI 通知的中票发行稿须分别识别，仍沿用“交易商协会 → 发行方式”的界面层级。
 
-历史稿材料区展示“正在识别原稿信息 / 已识别 / 待确认 / 识别失败”，并列出原市场、原发行方式、原报告期，支持查看依据、校正和重试。“历史稿识别结果”与“本次拟更新目标”分别存储和展示：本次目标由项目表单确定，不被原稿自动覆盖。原稿不属于本发行人、报告期定义与表格冲突或小/大公募无法区分时，先展示差异并追问；不能静默按高难度档计价。
+历史稿识别结果和“本次拟更新目标”在后台分别存储、比较，来源字段保留原文锚点、版本及待确认状态，不覆盖目标。普通材料上传界面不展示技术识别详情或要求逐项校正。只有缺少执行所需的目标类型、历史稿整体不可读、发行人身份不符、结构映射不支持或材料/版本/授权门禁失败时，才按真实原因阻断启动；局部金额、条款、附注疑义交全文更新阶段按 UPD-GAP-01 处理。
+
+2026-09-28 阶段边界：上传/预检识别源与目标类型、报告期和材料工作量，形成带不确定状态的难度依据；不做正文内容缺口审核或要求用户预先确认金额/条款。全文执行阶段结合锁定的历史稿、财务材料和补充要求处理有依据的内容，并在 Word 对应位置与摘要保留具体待核标记。受控 `non_production_test` 可验证完整、有定位且与本次目标结构一致的待确认机器候选；候选仍保持原状态，不得作为已核验画像、确定难度/计价或合规结论。此测试路径不开放普通生产 run，不能替代生产规则发布、任务授权或专业验收。
 
 M1 生成版本化的 UpdateDifficultyInput：原市场/方式 → 目标市场/方式的迁移方向、原稿完整性、原报告期集合、目标期间与新材料支持范围，以及保留/新增/替换/实质重述期间、估计 N 和依据。保留年度不重复计期，同一截止日的三张报表、合并/母公司和重复材料不重复计数。上传预检只能给出估计分类，实际新增/重述与最终 N 由执行阶段核定；积分仍结合真实有效用量，不能仅凭“跨品种”或“新增几年”给一个固定整单价。
 
@@ -774,6 +778,8 @@ UPD-GAP-01：全文更新过程中，依据用户已提供的材料处理全部�
 开发实现状态（2026-09-25，#31 首个切片）：已有内部原文修改计划及 owner-scoped 读取入口，对已标注的全文引用做精确数值/报告期替换、简单表格新增期间列和证据记录；未改文字与旧年保留。该计划不等于最终 DOCX，所有输出均不可直接标记成功。完整语义遍历、既有修订的有效基线确认、PDF 重建、跨市场章节调整、真实任务/日志编排、Word/WPS 交付仍需后续验收。见 [#31 开发交接与边界](../../apps/worker/HISTORICAL-UPDATE-HANDOFF.md)。以下完整产品验收标准保持不变。
 
 开发实现状态（2026-09-25，#34 首个 DOCX 切片）：在当前 #31 的同市场同方式历史 DOCX 计划上，worker 生成有效基线、含原生修订的 DOCX 和清洁版；三份分别经交付检查与 Blob 读回。原有普通批注在未改位置保留，受影响锚点无法可靠映射则停止；局部待确认在修订/清洁版有正文标记及普通批注，成果元数据列出待确认项和三份下载 ID。范围、失败关闭和未验证事项见 [#34 开发交接](../../apps/worker/HISTORICAL-WORD-STAGE.md)。这不代替 Windows WPS/Word 实机矩阵，也不解除生产输入、事实、PDF/扫描、无历史稿与跨品种等剩余验收条件。
+
+2026-09-29 #34 只读历史接口增量：本人项目可分页发现当前仍可交付的成功 Word 运行及精确输入版本，三件套仅在同一运行的修订/清洁/有效基线均可获取时成组列出；新版失败不覆盖旧版。单文件旧成果不自动称为修订版。#85 同项目原型下的浏览器全量版本目录尚未接入，仍须等待 #384/#361/#18 浏览器工作合并后实现；现有成果页只接受已知 ID。
 
 | ID | 场景 | 预期 |
 |---|---|---|
@@ -1393,6 +1399,8 @@ CHAT-02：对话中的“发送”是用户请求执行本轮意图，不是单�
 
 消息对象保留 role、content、attachments、project_id、artifact_version、intent、fact_refs、created_at 和修订关系。编辑/删除先前说明只改变后续上下文，不改写已运行任务快照或账单。
 
+2026-09-29 工程切片边界：`POST /api/v1/projects/{project_id}/messages` 只保存已提交用户消息和受控材料版本，显式返回未分类/仅保存，不产出助手回复或执行任务；`GET .../messages` 分页返回本人项目的最新修订，`GET .../messages/{message_id}/versions/{version}` 可回查原文与来源。旧版与新版本均保留受控正文和访问审计，消息集合 pin 的 version 在修订时递增、hash 改变、原会话顺序不变；后续 input revision 需锁住精确引用。右侧真实模型多轮回复、意图路由、附件替换操作、流式中断及账务/用量仍未接线。
+
 新事实与结构化表单冲突时：
 
 1. 先区分新安排与旧事实、不同期间与不同主体。
@@ -1651,6 +1659,10 @@ OPS-01：普通用户没有募集书库入口。后台仅对授权运营、行�
 
 规则/模板发布建议双人复核；维护草稿与已发布版本分离，已启动任务锁定旧版本不随后台更新漂移。
 
+#19 生产规则发布的待审内容清单须同时固定规则包、章节模板、覆盖清单的 ID/版本/hash，完整来源核验与获授权真实样本验收引用及准确适用范围；行业与技术审核人须分别以本人认证身份对同一个内容 hash 追加签认，operator 只能引用有效签认发布，不得代填审核布尔值。行业、投资者、发行人维度分别显式表达 `reviewed_unrestricted`（逐维绑定证据 ID/版本/hash）、`explicit_codes`（非空代码集及字典版本）或 `needs_review`（明确原因、无 codes/unrestricted 声明）；空数组/“全码”不能伪装为未知或不限。`needs_review` 可保留为待补证内容，但行业 `approve` 必须拒绝任何含待审维度的清单。规则层 `special_feature_scope=reviewed_unrestricted` 只表示通用规则不额外限制该维度，不等于项目已核实无专项特征；项目事实仍须独立证据。来源法定生效日未知时保持 null；未确认法定生效日期的 binding rule 仍不可签为生产适用。每条来源另绑定审核适用性依据 ID/版本/hash、原文 hash、作为该 manifest 发布切片的精确范围快照、时间依据和定位（不宣称覆盖来源全部法律范围）；内部方法启用窗口仍单独保存。内容 hash 不包含签认或最终发布事件，任何引用集合/范围/内容变化均重新签认。来源撤回/现行状态及实际授权仍是运行时发布与选择门禁；现有工程契约和合成用例不构成具体规则包的专业签认或生产发布。
+
+来源修订、落款、官网发布日期、取得、法定生效/失效及过渡日期分别保存。只有原文明确自公布/发布施行且公布日期可靠时，才记录有定位的推导；解释或内部方法没有明确法定生效日时保留 null，内部方法可另记已批准启用区间。null 不代表永远有效，也不代表自动失效；日期冲突或适用依据不足时保持待核，不能填假日期通过门禁。
+
 M1 上线前后台须具备任务日志检索：按用户、项目、job/trace、时间、类型、状态、模型和错误筛选，查看阶段时间线、调用/token、成果与失败原因，详见第 16.9 节。日志元数据、prompt 正文、账务和库运营权限分别控制；查看 prompt 需要专门内容权限及访问理由，查阅/导出行为本身也留日志。提供成功/失败/取消/拒绝、token 完整度、耗时、错误分布及日志积压告警，不能只查看服务器控制台或仅保存最终成功任务。
 
 ### 15.2 内部相似募集书匹配
@@ -1726,6 +1738,14 @@ LIB-03：配置允许使用的公开披露/授权来源适配器，并保留人�
 
 运营页面提供待审、失败、陈旧条目、来源状态、各市场/方式/品种/三业务组合覆盖、未命中汇总及重跑/回滚入口，记录操作者和原因。未命中统计尽量只存标准业务代码及计数，项目名称、上传审计原件和公司敏感数据不得自动暴露给库运营。告警/维护任务均在后台，不让普通用户操作建库或更新索引。
 
+#### 15.2.4 无历史稿发行人身份绑定（#33，2026-09-28）
+
+无历史稿路径另有项目级 `generation-issuer-binding-v1`，用途是确定本次输入材料共同指向的法律发行人；它与年度主营业务画像、用户上传的相似稿、#77 候选企业身份分别管理。只纳入本次服务端选中的 `audit` / `financial` / `interimFinancial` / `notes` 材料，逐份锁材料版本/hash 和 parse snapshot/response hash，并为清单内每份材料保存显式 disposition：`classified`、`unrelated` 或 `pending`。不可只挑支持材料主体的文件；未选材料不扩入清单。每份可有多条主体观察，逐条保存原文 locator、record/hash、材料/解析 pin 和关系理由。
+
+`subject_relation` 表达主体关系（`issuer_compiler`、`component_subsidiary`、`unrelated`、`pending`），`accounting_scope` 独立表达财务口径（`consolidated`、`parent`、`not_applicable`、`pending`）。只有 `issuer_compiler` 观察参与唯一发行人判断，且必须链接现有 `issuer_identity_reviewer` 对同一来源的 verified identity review、主体 ID 和 hash。合并与母公司报表可共同指向同一法律主体，但各自的财务口径分别保存。附注中的子公司或无关主体须有原文位置、分类理由并进入同一项目组合审核；它们不必先逐条核验为发行人。不得用浏览器名称、参考稿发行人、年度营收画像或多数票确权。
+
+每份材料的全部主体观察均处理完毕、所有 issuer_compiler 唯一主体一致、身份覆盖完整且没有未解主体/解析/OCR疑义，才可进入组合 approve。原始解析 warning 全量保留；金额/公式 warning 不单独阻止身份绑定，身份相关不确定项单独列明并使状态 pending。binding_ref 固定 binding_id/version/content hash；撤回、授权撤销、换料或重解析均要求新版本重新审核，不自动跟随 latest。当前 `packages/contracts/src/generation-issuer-binding.ts` 只定义契约和纯语义校验；#17 的审核持久化及与 input_revision/input_hash 原子锁定、恢复重验接缝仍未接入，contract/schema 不表示可用生产路由或真实项目签认。
+
 ### 15.3 行业规则包
 
 RULE-01：十个具体首发市场×品种组合，以及 DFI 储架安排，均需有效规则和样本覆盖。现有主要知识集中在交易所尤其上交所私募；大公募不能直接复用小公募包，银行间不能用八条通用方法冒充正式规则库。
@@ -1742,6 +1762,8 @@ RULE-01：十个具体首发市场×品种组合，以及 DFI 储架安排，均
 | 验收 | 正例、反例、边界、来源冲突处理与专家确认 |
 
 法规、自律规则、参考模板、机构内部准入、专家方法、窗口指导、示例必须标明不同效力。来源含疑问、批注、机器转录或未核实阈值时只作研究线索，不直接启用硬拦截。
+
+日期分别记录原件明示的法定生效日、官方网页发布日期、获取/核验时间、失效日及过渡期，不以发布日期填补缺失的法定生效日。`explicit_text` 依据原文定位独立确认，可与网页发布日期不同；只有明确“公布/发布之日起施行”时，`publication_commencement` 才可由已核验的官方发布日期派生。`official_interpretation` 的法定日期未知、或 `internal_method` 没有明确法定生效日时保留 null；null 表示待核，不是自动通过或永久有效。0064 仅为数据库/校验准备态：生产选择仍 fail closed；可验证的本人双审记录和精确批准依据接线未完成。
 
 规则更新流程：发现官方变更 → 获取原文及指纹 → 判断差异和过渡期 → 专家复核 → 回归样本 → 发布签名包 → 通知受影响未执行项目。历史成果保留当时依据，不能后台改掉后假装一直使用新规则。
 
@@ -1888,6 +1910,10 @@ M1–M4 浏览器通过 HTTPS 调用 /api/v1，项目、上传材料、事实、
 
 分页使用 cursor；接口错误返回 code、message、retryable、field_errors、correlation_id。普通运行日志不带材料正文或访问令牌；用户已提交 prompt 必须保存于加密限权的 PromptSnapshot，通过引用与任务日志关联，不能用“日志无正文”省略用户要求的 prompt 记录。统一规范见 16.9。
 
+2026-09-29 #34 工程切片：`GET /api/v1/projects/{project_id}/artifacts` 提供本人项目已成功、当前可交付 Word 成果的有限分页元数据（默认 20、上限 50），包含 run、输入版本和同一 `word_delivery_pair` 的修订/清洁/有效基线标识；旧单文件成果不虚称三件套。游标固定第一页上界，新增成功不扰乱续页；撤销或过期成果会从后续读取中消失。列表不含私有对象键、prompt、短期 grant，也不代替按成果 ID 的校验与短期下载授权；#85 同项目浏览器版本目录仍待接入。此工程切片不改变 PDF/扫描或新稿生成范围。
+
+规则来源日期按不同事实分别保存：法定生效日、官方网页发布日期、核验/获取时间、失效日和过渡期不得互相代填。`explicit_text` 的法定日期可独立于网页发布日期；`publication_commencement` 才要求以已核验官方发布日期作为生效日。未知法定日期保持 null，不能因此通过生产选择或视作永久有效。迁移 0064 是准备态，来源本人双审的可验证记录与精确批准依据的生产 selector 接线仍未完成，不代表已有获批 null 日期来源可被选择。
+
 ### 16.2 核心对象
 
 | 对象 | 权威位置 | 必要字段/约束 |
@@ -1898,6 +1924,7 @@ M1–M4 浏览器通过 HTTPS 调用 /api/v1，项目、上传材料、事实、
 | Material / MaterialVersion | 本地 | role、真实格式、原名、大小、hash、原件相对句柄、页数、来源和导入状态 |
 | Evidence | 本地 | material_version、原文/定位、提取方法、置信、事实时点、获取时间 |
 | Fact / FactCandidate | 本地 | 实体/指标/期间/口径/币种/单位/版本、数值或文本、证据、验证状态 |
+| FactEvidenceContext / FactEvidenceReview | 平台数据库追加式 ledger；上下文是 worker 从当前候选和精确解析快照派生的不可变清单 | 上下文哈希覆盖候选身份、来源、状态、不确定性、置信度和 `candidate_value`（`value_kind`、规范化十进制文本/null、文本值/null），以及完整证据集合；审核必须匹配该 pin、全部上下文成员和当前授权。旧上下文缺少值 pin 时拒绝审核；审核/撤回不升级候选验证状态 |
 | HistoricalProspectusProfile | Web 平台 / M5 本地 | profile_id/version、owner/project/material_version、原市场/方式与原文、报告期集合/最新截止日、完整性、逐字段来源/置信/确认/校正记录、识别方法版本与状态 |
 | UpdateDifficultyInput | 平台校验，项目端可读 | profile_version、target_revision、financial_material_versions、源目标市场/方式、期间保留/新增/替换/重述集合、estimated_N、迁移方向、证据与分类状态；计价不信任客户端手填系数 |
 | Tranche / InstitutionRole | 本地 | 各档条款、继承关系；机构、角色及适用范围 |
@@ -1908,11 +1935,13 @@ M1–M4 浏览器通过 HTTPS 调用 /api/v1，项目、上传材料、事实、
 | RevisionBaseline / DocumentChange | Web 平台 / M5 本地 | 原材料版本/hash、有效基线/hash、原生/重建标记、原页/段落/单元格映射、既有修订处理、本轮 before/after、类型、证据、原因、修订/清洁成果关系 |
 | ReferenceDocumentVersion | 仅平台后台 | reference_id/version、issuer_id、来源及使用范围、原件/正文hash、market/offering/instrument/tags、DFI 阶段/覆盖与一期工具、报告期/披露日、审核/可用状态、替代关系 |
 | BusinessRevenueProfile | 库内画像在后台；项目画像按 owner 隔离 | profile/version、issuer、材料版本、完整年度/accounting_scope/revenue_basis/currency/unit、全量可比收入行及原名/标准代码/金额/占比/顺位/证据、前三集合、taxonomy_version、完整性与审核状态；自动匹配限定 consolidated + main_business_revenue |
+| GenerationIssuerBinding | 项目级 append-only 契约目标（当前仅有 #33 contracts slice） | binding/version/content hash、owner/project/input revision/hash、服务端选中身份材料完整清单、逐材料 disposition、逐观察来源/parse/review pin、关系与口径、组合 reviewer/grant/review、状态和撤回；不是 BusinessRevenueProfile |
 | ReferenceIndexRelease | 仅平台后台 | index_version、已发布文书/收入画像及词典版本清单、可用性过滤、发布时间、前版/回滚关系；正文/画像/索引原子一致 |
 | ReferenceSelection | 仅任务服务/授权审核 | run/input_revision、目标画像及规则、用户指定或内部匹配、候选/排除理由、选定参考/画像/词典/索引版本/hash；不得返回普通前台 |
 | LibrarySource / LibraryIngestionJob | 仅平台后台 | 来源配置/使用范围/周期/游标/最近成功、来源文件标识/hash、阶段、重试/错误、审核人/时间、发布记录和审计日志 |
 | Finding / CheckResult | 本地 | 维度、结论、优先级、位置、依据、差异、建议、覆盖状态 |
 | Template / RulePack | 平台或私有本地 | 版本、作用域、适用性、来源授权、审核状态、内容指纹 |
+| ProductionReviewManifest / Attestation / ReleaseEvent | 仅平台受控后台 | 内容清单固定规则包/模板/coverage ID、版本、hash，准确适用范围、来源日期与核验/真实样本记录 ID/hash。industry/investor/issuer 分别使用带证据 ID/version/hash 的 `reviewed_unrestricted`、带非空 codes/dictionary_version 的 `explicit_codes` 或带原因且不声称 codes/unrestricted 的 `needs_review`；`needs_review` 可保存/请求补证，但行业 approve helper 拒绝任何含待审维度的清单。空集合不表示未知或不限。规则层 special-feature 不额外限制与项目已审核无特征分开。来源无明确法定日期时仍为 null，并绑定逐来源适用依据、原文 hash、作为该发布切片的范围/时间依据和定位；内部方法窗口独立。行业/技术本人签认引用同一内容 hash，最终发布/撤回/回滚事件另行计算 hash 与追加审计。来源撤回和实际授权由运行时门禁检查；契约不等于签认 API、发布 writer 或专业批准 |
 | Wallet / CreditLot | 平台 | 可用/冻结派生值，初始/剩余、来源、到期、订单、成本比例 |
 | Reservation / Allocation | 平台 | run_id 唯一、B、批次分配、状态、A/P/释放、锁定快照 |
 | UsageEvent | 平台网关 | provider_request_id、成本事件 ID、阶段、token 明细、费率、可计费性及理由 |
@@ -1980,6 +2009,14 @@ M1 识别与差异比较不需要钱包，保存平台承担成本的预检事�
 
 #33 第一版目标画像须持久化并验证完整同年度收入行、同口径总额分母、taxonomy version、每行来源锚点及第三名并列集合；分母的年度、合并范围、主营收入基础、币种和单位必须与画像一致。服务端审核决策由当前登录 reviewer 和精确 owner/project grant 写入追加式 ledger，审批只作用于被 pin 的 profile/input/material/latest parse/evidence/hash/#15 身份版本；撤回、grant 撤销或新画像版本使 loader 返回待审核/null。`manual_source_evidence_review` 表示人工核过显示的原始证据与画像，不表示自动抽取事实已经行业验收或专业签认；pending、撤回、跨账号/年度或并列未决画像不能产生 exact 匹配资格。候选画像、商业授权及 #77 库发布仍属于 #77，不由此流程完成。
 
+#### 无历史稿发行人身份组合契约（#33，2026-09-28）
+
+无历史稿的法律发行人来源需要与收入画像分开审核。`GenerationIssuerBindingResponse` 以 `generation-issuer-binding-v1` 保存 binding id/version/content hash、owner/project、输入 revision/hash、完整 `selected_materials` 清单、`material_decisions`、disputes、`pending|approved|withdrawn` 状态、issuer_entity_id 和追加的 review events。每项 `selected_materials` 只包含服务端锁定输入中选中的 `audit` / `financial` / `interimFinancial` / `notes` 角色，逐项有 material version/SHA、parse snapshot/response SHA、原始 warning、身份覆盖和身份专属疑义。每个清单项必须有且仅有一个 disposition：`classified` / `unrelated` / `pending`；遗漏、增加、重复或 hash/parse 不一致都不能批准。浏览器不得指定预期材料清单；纯校验器要求调用方另给可信输入锁中的 expectedSelectedMaterials，并完整逐字段对比。
+
+每条 observation 保留 source record/hash、材料与 parse pin、原文 locator/quote、`subject_relation`、`accounting_scope` 和关系理由。两维不可合并：合并报表主体与母公司报表主体可经来源核验后确定同一 issuer_entity_id，但分别保留 `consolidated` / `parent`；`not_applicable` 只用于身份/关系而非财务报表口径。仅 `issuer_compiler` 参与唯一主体判断并必须绑定该来源的 `issuer_identity_reviewer` verified review/hash/entity；`component_subsidiary`、`unrelated` 由本次精确组合审核定位、说明及排除，无须逐条“核验成发行人”。没有主体、漏选文件、同名主体冲突、外链/OCR涉及主体、来源或解析变化与撤回均应 pending 或令旧 ref 失效，不按多数票裁决。非主体金额/公式 warning 保留但不单独阻止身份绑定。
+
+组合 review event 显式引用 `issuer_identity_reviewer` grant、binding version/content hash、reviewer 和时间；binding_ref 形状为 `{binding_id, version, content_sha256}`。撤回是追加事件；withdrawn ref 不能在同版本重新批准，新批准需新的 binding version。此条目前仅由 `packages/contracts/src/generation-issuer-binding.ts` 提供 schema、DTO 和纯语义检查，不代表审核 ledger、授权/撤权读时验证、revision 创建事务、input lock 或 worker 恢复 revalidation 已实现。纯 helper 还要求调用方提供可信 `owner/project/input_revision/input_hash` 与完整选中材料清单作比对，但自身不能证明该预期值来自当前服务端锁，也不能证明 source review/grant 仍有效；#17 必须在创建/恢复事务中重新验证当前来源及两类授权。#17 尚须确认将精确 binding_ref 与完整 binding/hash 和 `input_revision/input_hash` 原子固化并在恢复时核验的事务接缝；在该实现落地前继续 fail closed，#19 不从浏览器/参考稿/年度画像取主体。
+
 入库处理状态为 discovered → parsing → classifying → pending_review → published，另有 needs_evidence/failed；已发布版本可变为 superseded/withdrawn。正文或索引字段变化生成新版本，审核和发布操作带 revision 防止并发覆盖，发布时原子切换有效版本集合。只有 published 且使用范围有效、正文及三业务证据完整的条目可匹配。
 
 任务服务内部匹配返回 status（exact/needs_evidence/needs_review/no_match/unavailable）、候选与理由、选定文书/画像/词典/索引快照。用户端只得到正常编制进度和可操作缺口，不得到后台记录、文件名、候选清单或匹配分数。内部 reference_id 不可作为普通账号读取库文件的授权凭证。
@@ -1994,6 +2031,7 @@ M1 识别与差异比较不需要钱包，保存平台承担成本的预检事�
 | POST /auth/login | 用户名密码登录，返回受保护会话；错误不枚举账号 |
 | POST /auth/refresh；POST /auth/logout | 刷新或撤销会话 |
 | GET /me；GET /capabilities | 账号和实际已开放市场/文种/服务状态 |
+| GET /projects/{project_id}/facts/candidates/{candidate_id}/evidence-context；POST /projects/{project_id}/facts/evidence-reviews；POST /projects/{project_id}/facts/evidence-reviews/withdraw | 读取服务端派生的完整值锁定证据上下文；精确 reviewer grant 下追加审核或撤回。DTO 固定 `candidate_value` 形状并由共享十进制规范化规则固定；上下文缺值 pin 或当前候选值不匹配时 fail closed。审核不改变候选值、来源或验证状态 |
 | POST /projects；PATCH /projects/{id} | Web 服务端 / M5 本机创建或修改草稿，返回新 revision |
 | POST /projects/{id}/materials/uploads | Web 创建限权上传会话，返回文件限制与 upload_id；不接受客户端指定任意存储路径 |
 | POST /projects/{id}/materials/uploads/{upload_id}/complete | 服务端验证对象、字节数及哈希后登记材料；幂等，可恢复 |
@@ -2003,6 +2041,7 @@ M1 识别与差异比较不需要钱包，保存平台承担成本的预检事�
 | DELETE /projects/{id}/materials/{id} | 删除当前草稿引用，检查快照依赖 |
 | POST /projects/{id}/preflight | 免费预检，返回缺口、能力和版本化 UpdateDifficultyInput；源字段不确定返回待确认，不返回要求确认的报价 |
 | POST /conversations/{id}/messages | 保存并路由消息，返回 intent、reply/run_ref、来源 |
+| POST /projects/{id}/messages；GET /projects/{id}/messages；GET /projects/{id}/messages/{message_id}/versions/{version} | #18 第一切片：仅保存本人项目已提交的用户消息（编辑需精确预期版本、重复需同一幂等键），分页/精确旧版读取受控正文与来源。响应为 `user_asserted`、`not_classified`、`save_only`，没有模型回复、意图路由或执行。现有 `/conversations/{id}/messages` 仍不可用，不把其 `reply=null` 解释为已答复 |
 | POST /runs/execute | 平台校验输入清单、后台估计、原子冻结及提交任务 |
 | GET /runs/{id}；GET /runs/{id}/events | 状态与可恢复事件流 |
 | POST /runs/{id}/cancel | 原子取消，停止新调用、释放冻结 |
@@ -2034,6 +2073,8 @@ M1 识别与差异比较不需要钱包，保存平台承担成本的预检事�
 | GET /admin/observability/metrics | 版本化指标口径、token 完整度、成功/失败/拒绝/取消、耗时、错误及日志积压；不含 prompt 明文 |
 | POST /admin/observability/exports | 限权、范围限制、脱敏导出和到期下载；导出/访问均留审计记录 |
 
+2026-09-28 #76/#384 阶段边界：预检评估源/目标类型、期间和材料工作量，不运行正文缺口审核。`needs_confirmation` 的源画像仍以原状态、来源和材料版本保存；普通生产输入继续服从现有 preflight、材料、发行人、目标、授权及已发布规则门禁。仅经服务端 grant 绑定的 `non_production_test` 可将完整且可定位、与明确目标结构一致的待确认候选用于内部工作稿规划，并必须在计划/Word 留下待核说明，不将画像转为 `recognized`/`confirmed`、不生成正式难度/计价或生产资格。局部正文疑义由全文更新与 Word 待核标记承接。
+
 执行请求示例：
 
 ~~~json
@@ -2057,11 +2098,11 @@ M5 使用 storage_origin=local，附 device_id；旧 local_manifest_ref 通过�
 
 2026-09-28 #76 逐目标期间证据决定：`POST /api/v1/projects/{id}/target-period-evidence-decisions` 的审阅人身份来自登录会话，必须持有独立、精确到 owner/project 的 `target_financial_period_reviewer` grant。服务端由 input revision/hash 装配完整材料版本/SHA 集合和当前唯一历史稿画像 ID/版本/hash；请求不能选择 owner 或声明审核权限。已确认期间必须逐项引用同一原生解析或 OCR 快照的实际 parser/processor version、response hash、材料 SHA 及记录 hash，并含表头、主体、口径和日期锚点；OCR 另绑定页码及校验过的原页 SHA，并精确保留解析器 uncertainty。日期、主体或口径相关 OCR 疑点拒绝 `confirmed`；金额/公式 warning 不由该期间接口确认或清除。决定及撤回单独 append-only，重放只接受相同 request hash；更新难度装配仅接受当前材料集合、画像、解析/OCR 快照和未撤销 grant 均匹配的最新决定，并按期间独立应用，不确定的 sibling 不覆盖已确认期间但会令整体 N 为 null。缺失、冲突、撤回或换料回退 `needs_confirmation`/`N=null`。期间身份审核不代表金额/公式审核，也不把用户目标意图改成识别事实。接口及迁移不表示 #76 整体验收完成。
 
-2026-09-28 #76 版本化候选快照（契约第一版，待 API/DB 接线）：UI 只提供目标 `reporting_cutoff`、精确材料选择及补充要求；候选快照由可信生产者在锁前生成并不可变保存，含 owner/project/草稿修订、cutoff、补充要求版本与内容 hash、排序后的财务材料 ID/版本/SHA、每个来源解析/OCR snapshot ID/method/version/response hash/材料 pin/record ID+hash（OCR 另含页图 SHA）、候选期间及逐项引用锚点/不确定性。候选只可为 `needs_confirmation`，空集合须带 pending reason；候选不是用户目标，也不能直接充当 #57 的 `confirmed` 决定。目标 `target_confirmation`、候选来源证据和后续审核决定保持三类独立不可变记录；样本 manifest 已确认的目标集按原有机制绑定，不从候选重建。
+2026-09-28 #76 版本化候选快照：UI 只提供目标 `reporting_cutoff`、精确材料选择及补充要求；候选快照由可信生产者在锁前生成并不可变保存，含 owner/project/草稿修订、cutoff、补充要求版本与内容 hash、排序后的财务材料 ID/版本/SHA、每个来源解析/OCR snapshot ID/method/version/response hash/材料 pin/record ID+hash（OCR 另含页图 SHA）、候选期间及逐项引用锚点/不确定性。0066 新增 append-only 持久化表，内部 worker 仓储在新写事务中按项目→所选材料→来源的锁序重验当前最高有效材料版本、原生解析完整记录库存或 OCR 私有结果与全部页图字节 SHA，写入与 outbox 同事务；旧 request 精确重放保留历史审计语义，不得用新 request 为已被替换的旧材料创建候选。候选只可为 `needs_confirmation`，空集合须带 pending reason；候选不是用户目标，也不能直接充当 #57 的 `confirmed` 决定。目标 `target_confirmation`、候选来源证据和后续审核决定保持三类独立不可变记录；样本 manifest 已确认的目标集按原有机制绑定，不从候选重建。
 
 锁定时序：生产者先持久化候选快照；创建 input revision 的事务再按统一顺序锁项目草稿、候选快照、排序后的材料、解析/OCR快照及补充要求消息，逐项重验 owner/project、草稿修订/cutoff、材料角色/版本/SHA、快照 method/version/response hash、全部 record identity/hash、要求集合版本/content hash 和候选快照 canonical content hash。任一不匹配即冲突，不得“尽力采用”；事务在写入 input manifest/hash 时固定 `candidate_set_id/version/content_sha256` 引用。各写入路径需遵守兼容锁顺序避免死锁。锁后新材料、解析记录或要求产生后继候选/输入版本，历史 input/run 不变。
 
-当前 `validTargetPeriodEvidenceDecision` 的 `confirmed` 语义要求一个期间的四类锚点及其证据来自同一解析响应；候选快照允许逐项引用不同材料/响应，因此它不是该确认请求的可直接输入。后续审核消费契约/迁移必须明确候选集版本/hash、所选候选和跨来源证据一致性校验，再追加既有决定记录；不能把 `needs_confirmation` 快照映射为确认。现有 `bb_input_revisions.requirement_message_ids` 尚无可供 API 核验的不可变消息内容版本/hash，且创建接口当前拒绝非空要求 ID；#18 消息持久化和候选快照存储/锁事务是生产接线前置依赖。此契约/规格切片不宣称 DB/API 已实现。
+当前 `validTargetPeriodEvidenceDecision` 的 `confirmed` 语义要求一个期间的四类锚点及其证据来自同一解析响应；候选快照允许逐项引用不同材料/响应，因此它不是该确认请求的可直接输入。后续审核消费契约/迁移必须明确候选集版本/hash、所选候选和跨来源证据一致性校验，再追加既有决定记录；不能把 `needs_confirmation` 快照映射为确认。`bb_input_revisions.requirement_message_ids` 由当前项目精确消息集合 ref 校验并镜像，消息旧版本不改写旧 input；#18 保存 API 不等于助手对话或模型消费已接线。#76 target-period candidate 的消息 pin 消费独立校验，其他候选/专业事实消费仍按相应接缝验收。0066 仓储无公开 API/运行时调用，不能以 DB 行存在宣称已接入。
 
 ### 16.4 执行与账务状态
 
@@ -2355,6 +2396,8 @@ M1 保存 billable=false、cost_payer=platform、billing_mode=platform_trial 或
 
 专业标注保留原文件哈希、期望事实/问题、来源锚点、适用规则、专家意见及争议。人工构造案例必须标 synthetic，不能宣传为真实客户验收。
 
+#19 生产规则包的工程验收须有本人认证的行业/技术双签、相同待审内容 hash、不同真实审核人、精确 scope/grant、追加撤回及 release/outbox 事务证据；负例覆盖 operator 冒名、同人双角色、包/模板/coverage 或来源/样本引用漂移、日期未知/冲突、撤权、过期、并发发布及从旧不可变事件回滚。适用维度覆盖 unrestricted、explicit code、带原因的 needs_review 可保存/补证但 approve 必须失败、空代码拒绝、规则通用特征范围不得代替项目事实、无日期且无来源适用依据拒绝、来源依据 hash/scope 漂移。来源撤回及实际授权必须另由运行时门禁拒绝，纯内容校验不能证明其当前状态。来源现行效力、真实授权正反边界样本和逐项专业结论另行留证。契约/合成测试只证明形状与门禁，不代替真实签认，也不得因此开放生产 capability。
+
 2026-09-25 首批真实材料已由 ITSophiaXu 明确授权提交：见[测试材料目录](../../tests/samples/README.md)。本批为任丘建投六月/九月、杞县豫资多年更新、章丘控股年末四组，共 15 份原件；历史稿均初步核对为上交所普通私募公司债。逐文件类型、原报告期与本组目标截止日、来源锚点、SHA-256 及材料问题保存在清单中。任丘六月用于测试日期用途区分和用户确认前后处理：3月31日合并范围描述、4月20日批准报出日已确认保留，6月31日按6月30日更正，附注财务数据截至六月末已由用户确认。杞县混合扫描审计报告用于真实 OCR 验证。材料和逐项业务确认已提供；财务金标准、生产链路、成果行业验收和 WPS/Word 实测记录仍需按[验收记录模板](../../tests/samples/ACCEPTANCE-TEMPLATE.md)完成。样本不自动进入后台参考库，也不替代其他市场/发行方式及无历史稿场景验收。
 
 四组样本的目标市场、发行方式和完整期间已由用户确认，见[任务目标及执行口径](../../tests/samples/2026-09-25/TARGET-CONFIRMATIONS.md)。用户同时明确：执行时按现有材料全文更新，缺失材料和不确定条款标记待人工确认；不将此类局部缺口一律判为整单失败。验收应检查全部章节是否得到处理、待确认项是否准确定位并保留、已更新内容是否有依据；任务目标和处理策略确认不等于数字、规则或真实成果已验收。任丘六月的[日期原文及确认结论](../../tests/samples/2026-09-25/rq-202506/DATE-QUESTIONS.md)用于验证原始观察、用户确认和使用值分别保留，不将已确认保留的日期继续列为未答问题。
@@ -2381,6 +2424,7 @@ M1 保存 billable=false、cost_payer=platform、billing_mode=platform_trial 或
 | E2E-14 | 生成意见类文书但无程序记录 | 不虚构现场、函证、律师签署 |
 | E2E-15 | 募集书有修订删除旧数 | 生成材料只用有效正文 |
 | E2E-16 | 对话补事实→明确生成新版 | 先保存，执行时创建新快照与成果 |
+| E2E-16a | 连续提交/编辑同一项目的用户消息→刷新/重试/跨账号读取→锁定新输入 | 已提交正文与精确材料版本按 owner/project 恢复；同键重复不新增版本，修订保留原版和会话次序且更新 pin 的 version/hash；非空历史未精确 pin 或内容缺失 fail closed；只保存不触发生成，助手真实回答与路由另行验收 |
 | E2E-17 | 用户只问“怎么更新” | 仅 QA，不启动全文任务 |
 | E2E-18 | 输入与支付各重复点击 10 次 | 对应幂等域只形成一个有效执行/订单到账 |
 | E2E-19 | 冻结后进程被杀/网络断开 | 对账恢复，不重收已计量请求 |
@@ -2398,14 +2442,17 @@ M1 保存 billable=false、cost_payer=platform、billing_mode=platform_trial 或
 | E2E-31 | 选择 DFI→保存→重开→上传→执行→关联生成 | DFI 安排贯穿上下文，计费可执行，无注册模式问卷 |
 | E2E-32 | DFI 覆盖 MTN/CP/SCP，本期金额期限未定 | 注册阶段不造数、不重复收费；一期文件按实际工具核对 |
 | E2E-33 | DFI 文书引用复杂工具/缺现行规则 | 不绕过复杂工具能力门槛，不把未覆盖写成合规通过 |
-| E2E-34 | 选择有历史稿→上传→自动识别→校正→与目标比较→执行并计价 | 原市场、方式和年度/中期报告期有来源；源/目标分开；迁移及 N 进入同一版本计价，上传识别不扣积分 |
+| E2E-34 | 选择有历史稿→上传→后台识别→目标/工作量预检→全文更新 | 原市场、方式和年度/中期报告期保留来源与待确认状态；源/目标分开；正文疑义不要求上传阶段逐项校正，局部缺口由全文更新标记；上传识别不扣积分 |
 | E2E-35 | 原稿三年仅新增一年；同期跨市场；源信息与目标修改后重试 | 分别产生 N=1、N=0+结构迁移依据；旧估计失效且已运行快照不变，不重复计期或收预检费用 |
 | E2E-36 | 历史 DOCX 更新正文、财务表及跨品种章节，下载修订版/清洁版 | Word 接受全部本轮修订等于清洁版，拒绝全部回到有效基线；未改原文不被整篇替换，原文件保留 |
 
 2026-09-25 #34 首个联调切片增加有效基线、修订版和清洁版的逐份哈希/Blob 读回、原生修订与普通批注结构检查，以及待人工确认的正文标记、批注和应用摘要；只覆盖 #31 当前历史 DOCX 同市场同发行方式计划。#146 须用已记录完整 build 的 Windows 桌面 WPS 和对照 Word，对三份真实输出执行打开、显示修订、接受/拒绝、批注定位、保存重开及 WPS→Word→WPS 往返。结构检查和 LibreOffice 渲染不能替代此矩阵；未实测的版本标记未验证，损坏、金额错误、修订不可操作或批注错位阻断 #35 发布。
+
+2026-09-29 #34 历史发现接口增量验收：用 PG16 验证同项目至少三个成功 Word 运行、较新失败不遮蔽旧成功、三件套同 run/交付凭证一致、相同完成时刻游标无重复或漏项；撤销/质量失败/不可读字节不报可交付成功。账号、项目、测试授权隔离和未知项目 404、无效游标 422、缺失或损坏 Blob 503 分别验收。此测试用合成 Word 字节，不替代 #85 浏览器全量版本目录、#35 真实模型→Blob 及 #146 实机验收。
 | E2E-37 | 历史扫描 PDF 或带既有修订的 DOCX | 基线及原文定位可追溯；PDF 明示重建修订，既有删除值不误入新稿，关键 OCR 不确定先解决 |
 | E2E-38 | 无历史稿且无相似附件，双方按合并主营业务收入识别前三业务，目标为 A/B/C、库内为 C/A/B | 后台匹配可用参考并编制完整新稿；仅 A/B/D 或宽行业相同不能命中；用户不见库/候选/参考事实 |
 | E2E-46 | 双方均为营业收入，或一方为营业收入/母公司/混合/未知口径，即使前三业务代码相同 | 不返回 exact、不锁定参考稿；明确内部排除/待补证据原因，不把营业收入重标为主营业务收入；恢复时仍核验锁定的口径证据 |
+| E2E-47 | 无历史稿身份组合：合并表与同发行人母公司表；附注同时列发行人及子公司；子公司单独审计；同名异主体；缺主体/漏选本次材料；主体 OCR 疑义；换料/重解析/身份或组合审核撤回 | 只有完整服务端选中清单逐份 disposition、所有 issuer_compiler 有精确 verified source review 且 entity 唯一、子公司/无关项由当前组合 review 有据排除时可得到合成 approved DTO；其余保持 pending/旧 ref 失效。不采用多数票；金额/公式 warning 单独存在时身份可继续审核。此 contracts slice 仅做 synthetic schema/纯函数验收，不包含 #17 生产持久化或 input lock。#17 接线验收须由服务端重验可信 owner/project/input revision/hash、完整材料集、每项当前 source review 与 reviewer grant 未撤销，并在提交与 worker 恢复时核对同一 binding_ref；契约 helper 返回 true 不是执行授权 |
 | E2E-39 | 后台新增真实来源 → 解析分类 → 收入画像审核 → 发布 → 项目匹配 | 市场/方式/实际品种和前三业务都有原文证据；未审核不可用，正文和索引一致 |
 | E2E-40 | 新年度收入排名变化、重复采集、中断重试、旧版撤回及回滚 | 新画像重算，重复不增稿，中断可恢复，新匹配不选退役稿，运行快照不随普通更新漂移 |
 | E2E-41 | 普通账号访问库管理/原件接口，或上传私人相似稿 | 无权列库或下载原件，上传材料不跨账号入库，错误/成果/编制说明也不泄露内部库身份 |
@@ -2413,6 +2460,7 @@ M1 保存 billable=false、cost_payer=platform、billing_mode=platform_trial 或
 | E2E-43 | 模型超时重试、断流缺 usage、导出失败、取消与预检拒绝 | 原始失败消耗保留，未知不当 0；attempt 不等于新 job，终态/成功率与真实交付一致，拒绝也可查询 |
 | E2E-44 | prompt 编辑及多轮、缓存/推理 token 子集、网关重复上报 | 用户原话与实际模型请求分别追溯，版本不覆盖；子集不重复累加，同一调用不重复计量 |
 | E2E-45 | 日志服务断开、进程崩溃、outbox 重放、查阅越权及到期删除 | 可靠留证可重放不重计，无法持久化时不启动新外部调用；正文限权且访问审计，过期/删除内容不复活 |
+| E2E-47 | 已授权 `non_production_test` 的精确 DOCX/材料版本完整可读，源画像候选待确认但有干净定位且与明确目标同结构；另测冲突/缺定位/错主体/目标缺失、PDF、生产通道 | 仅受控测试保留候选原状态并出有正文修改的工作稿及 Word 待核说明；所有全局门禁仍拒绝，生产不会借用测试豁免，候选不成为 confirmed/recognized、计价或合规依据 |
 
 2026-09-27 #18 浏览器工程回归见 `apps/web/tests/project-execution.spec.ts`：覆盖目标及精确材料锁定、保存/预检不执行、blocked 原因展示、明确提交、重复点击/丢失响应/重开幂等、旧任务输入隔离、409、迟到响应及账号切换。该套 HTTP 为 synthetic，不替代 E2E-42 的真实模型/用量/Word 或连续会话验收；#35 须在部署后重跑完整浏览器路径。
 
@@ -2483,6 +2531,8 @@ M1 平台承担成本是排期默认，需要在受控试用配置和对外说�
 > 2026-09-24：M1 账号验收改用用户名密码；短信供应商不需要。找回流程属 #9，真实浏览器/TLS 验收仍需单独证据。
 
 2026-09-27 #20新增验收：用途分项精确合计、同币种单位/总额净额口径、逐项材料缺口、生产性支出简化不自动适用；负责人/联络人信息、任职禁止核验、未变更有效承诺无需重签、变更需本任实际承诺。生成接入需验证API pin读取、精确规则及来源、条件过滤、撤回/版本变化/超限和恢复不重复调用。合成工程通过与真实规则/财务/模型/Word/WPS验收分开登记，记录见[本轮验证与剩余依赖](../../docs/acceptance/issue-20-rule-integration-2026-09-27.md)。
+
+2026-09-28 #19 日期语义工程切片：迁移 0064 允许保留未知的 nullable 法定生效日并保存日期依据，但仅属准备态。显式原文生效日与官方网页发布日期相互独立；“公布/发布之日起施行”才可按核验发布日期派生。null 不得自动通过或表示永久有效，生产选择仍 fail closed；本人双审的权威记录及精确批准依据接线未完成，不视作生产验收或已启用来源。
 
 2026-09-27 #20关单按用户最新决定采用[三项交付关口](../../knowledge/exchange-bonds/drafts/sse-private/CLOSURE-CHECKLIST.md)：固定版本逐规则业务审核、规则与章节实现、本切片版本接入。31条[业务决定](../../knowledge/exchange-bonds/drafts/sse-private/BUSINESS-REVIEW-20260927.md)已按用户委托记录适用、例外和未覆盖。真实生成稿的规则与章节结果验收归独立[#332](https://github.com/ITSophiaXu/BondBuddy/issues/332)，不作为#20关闭前置。**Word/WPS桌面兼容性不阻断#20**，由#146独立跟踪，生成后有具体问题再提缺陷；不提前宣称兼容通过。完整行业码表须验证前导零、制造业辅助次类、合并单元格多码、固定来源hash与映射粒度；获得码表不自动批准具体行业。已有四组样本及A01–A06不重复索取；首个历史稿内部工作稿测试无需等全库配套核验、#77、完整兼容矩阵或整个M1。局部未核在相应结论标记；若现有入口只接受完整生产release，#19/#35须明确受控测试接缝及实现，不伪造发布、不以产出后验收循环阻断首次运行。
 

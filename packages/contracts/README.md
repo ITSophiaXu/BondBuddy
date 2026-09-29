@@ -1,5 +1,9 @@
 # M1 public contract (Issue #6)
 
+## #34 project Word history
+
+`ArtifactHistoryQuery` (`limit` 1–50, default 20; opaque `cursor`) and `ArtifactHistoryResponse` describe only successfully delivered, owner/project-scoped Word runs with an input revision and checked primary artifact. `word_delivery` is null for legacy single-file results or includes all three exact revision/clean/baseline references from one run; IDs and versions are metadata, **not grants**. `channel`/`state` distinguish authorized internal `non_production_test` / `test_completed` work from production successes. Unavailable/revoked results are excluded; missing or corrupted Blob bytes return 503. Call `GET /artifacts/{artifact_id}` for a fresh checked download grant. `examples/artifact-history.json` contains synthetic positive/negative DTOs; the OpenAPI route documents 404/422/503 and bounded cursor parameters. The browser version directory remains a #34 follow-up under #85, not a completed UI feature.
+
 ## #14 internal OCR v2 contract (runtime not implemented)
 
 `src/ocr.ts` adds independent physical-page batch, successful checkpoint/reference and aggregate schemas/types; `src/ocr-v2.ts` adds identity/result SHA-256 and semantic validators. Import both through `@bondbuddy/contracts`. These internal v2 schemas are not advertised in public OpenAPI and do not replace the v1 processor, API, correction schema or 50-page limit. A schema check alone does not prove matching identities, attempt accounting, page integrity or complete coverage; use the exported validators with trusted expected identities and an owner-authorized read-back callback.
