@@ -113,6 +113,27 @@ export type ReferenceOutlineLoader = (input: {
   readonly selection: NonNullable<LibrarySelectionSnapshot['selected']>;
 }) => Promise<ReferenceOutline | null>;
 
+/**
+ * A trusted, already-approved generation issuer binding resolved for this exact run input.
+ * The worker never derives the issuer subject from a browser name, reference document or the
+ * annual business profile; a missing or stale binding pauses the stage.
+ */
+export interface ApprovedGenerationIssuerBinding {
+  readonly ownerUserId: string;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly inputRevision: number;
+  readonly inputHash: string;
+  readonly bindingId: string;
+  readonly version: number;
+  readonly contentSha256: string;
+  readonly issuerEntityId: string;
+  readonly reviewEventId: string;
+  readonly reviewedAt: string;
+}
+
+export type ApprovedIssuerBindingLoader = (scope: NoHistoryRunScope) => Promise<ApprovedGenerationIssuerBinding | null>;
+
 export interface NoHistoryStageAdapters {
   readonly loadReviewedIssuerProfile: ReviewedIssuerAnnualProfileLoader;
   readonly loadTargetFacts: TargetFactsLoader;
@@ -120,6 +141,8 @@ export interface NoHistoryStageAdapters {
   /** Must use the internal #77 selector and persist the run-scoped selected version lock. */
   readonly selectReference: (input: NoHistoryLibrarySelectionInput) => Promise<LibrarySelectionSnapshot>;
   readonly loadReferenceOutline: ReferenceOutlineLoader;
+  /** #33 trusted issuer subject for this run input. Absent means fail closed with `issuer_identity_not_bound`. */
+  readonly loadApprovedIssuerBinding?: ApprovedIssuerBindingLoader;
   /** Defaults to the persisted owner/run scoped pin loader; tests may supply a deterministic boundary. */
   readonly loadUserReferenceOutline?: (scope: NoHistoryRunScope, ctx: StageContext) => Promise<UserReferenceLoad>;
   readonly codexConfig: CodexAdapterConfig | (() => CodexAdapterConfig);
@@ -155,6 +178,16 @@ function validRuleSelection(rule: TrustedRuleSelection, scope: NoHistoryRunScope
   return sameScope(rule, scope) && rule.status === 'eligible_for_evaluation' && !!rule.ruleVersion.trim()
     && !!rule.releaseId.trim() && rule.releaseChannel === 'production' && /^[a-f0-9]{64}$/.test(rule.contentHash)
     && rule.target.ruleVersion === rule.ruleVersion && rule.rules.length > 0;
+}
+
+function validApprovedIssuerBinding(
+  binding: ApprovedGenerationIssuerBinding | null | undefined,
+  scope: NoHistoryRunScope,
+): binding is ApprovedGenerationIssuerBinding {
+  return !!binding && sameScope(binding, scope) && /^[a-f0-9]{64}$/.test(binding.contentSha256)
+    && Number.isSafeInteger(binding.version) && binding.version >= 1
+    && !!binding.bindingId.trim() && !!binding.reviewEventId.trim() && !!binding.issuerEntityId.trim()
+    && !Number.isNaN(Date.parse(binding.reviewedAt));
 }
 
 function validTargetFacts(snapshot: TargetFactsSnapshot, scope: NoHistoryRunScope): boolean {
@@ -223,6 +256,10 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
     if (!profileRecord || !isReviewedProfile(profileRecord, scope)) throw new Error('NO_HISTORY_PROFILE_NEEDS_REVIEW');
     const rule = await adapters.loadTrustedRuleSelection(scope);
     if (!rule || !validRuleSelection(rule, scope)) throw new Error('NO_HISTORY_RULE_CAPABILITY_NOT_READY');
+    // #33: the legal issuer subject is only the trusted binding for this exact run input. When the
+    // adapter is absent (production default) or the binding is missing/withdrawn/stale, pause.
+    const issuerBinding = await adapters.loadApprovedIssuerBinding?.(scope);
+    if (!validApprovedIssuerBinding(issuerBinding, scope)) throw new Error('NO_HISTORY_ISSUER_BINDING_NOT_BOUND');
     // Resolve issuer facts before reference selection because exact reference selection may create
     // a durable lock, and missing issuer evidence must never consume one.
     const facts = await adapters.loadTargetFacts(scope);
@@ -275,6 +312,10 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
         return await model.run({ ...ctx, validateBeforeModelCall: async () => {
           const current = await ctx.validateBeforeModelCall?.();
           if (current) return current;
+          // A withdrawn, re-materialised or re-parsed binding must invalidate the subject before any model call.
+          const binding = await adapters.loadApprovedIssuerBinding?.(scopeOf(ctx));
+          if (!validApprovedIssuerBinding(binding, scopeOf(ctx)))
+            return { kind: 'pause' as const, stage: 'capability_not_ready' as const, reason: 'issuer_identity_not_bound' };
           if (prepared.userReferenceUsed) {
             const reference = await (adapters.loadUserReferenceOutline?.(scopeOf(ctx), ctx)
               ?? loadUserReferenceOutline(ctx.pool, scopeOf(ctx)));
@@ -287,6 +328,7 @@ export function noHistoryModelGenerationStage(adapters: NoHistoryStageAdapters):
         if (!(error instanceof Error)) throw error;
         if (error.message === 'NO_HISTORY_PROFILE_NEEDS_REVIEW') return pause('issuer_annual_business_profile_missing_or_unreviewed');
         if (error.message === 'NO_HISTORY_RULE_CAPABILITY_NOT_READY') return pause('target_rule_capability_not_ready');
+        if (error.message === 'NO_HISTORY_ISSUER_BINDING_NOT_BOUND') return pause('issuer_identity_not_bound');
         if (error.message.startsWith('NO_HISTORY_USER_REFERENCE_NEEDS_REVIEW'))
           return pause(`user_reference_${error.message.split(':')[1] ?? 'needs_review'}`);
         if (error.message.startsWith('NO_HISTORY_REFERENCE_NEEDS_REVIEW')) {

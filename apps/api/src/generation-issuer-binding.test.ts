@@ -15,6 +15,7 @@ import {
   type GenerationIssuerBindingDependencies,
   type GenerationIssuerBindingDecisionInput,
 } from './generation-issuer-binding.js';
+import { consumeGenerationIssuerBinding, type GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
 
 const databaseUrl = process.env.BB_TEST_DATABASE_URL;
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -490,6 +491,41 @@ test('synthetic PostgreSQL: an approved generation issuer binding fails closed o
               subject_relation: 'issuer_compiler', accounting_scope: 'parent', relation_reason: '另一主体。', source_identity_review_id: financialReview }] },
         ],
       }), /SUBJECT_CONFLICT/, 'compiler observations of distinct legal entities never resolve to one issuer');
+    } finally {
+      await connection.query('ROLLBACK');
+      connection.release();
+      await pool.end();
+    }
+  });
+
+test('synthetic PostgreSQL: generation issuer binding consumer uses only the exact approved subject',
+  { skip: !databaseUrl }, async () => {
+    const pool = new Pool({ connectionString: databaseUrl });
+    const connection = await pool.connect();
+    const scopedPool = savepointPool(connection);
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+    const seam: GenerationIssuerBindingSeam = { provider: { provide: async () => null } };
+    try {
+      await connection.query('BEGIN');
+      const state = await provisionApprovedBinding({ connection, scopedPool, suffix, label: 'consume' });
+      const approved = await consumeGenerationIssuerBinding(scopedPool, { ownerUserId: state.owner, projectId: state.projectId },
+        { provider: { provide: async () => state.ref } }, state.expectedInput);
+      assert.equal(approved.status, 'approved');
+      if (approved.status === 'approved') {
+        assert.equal(approved.issuer_entity_id, entityA);
+        assert.equal(approved.binding.content_sha256, state.ref.content_sha256);
+      }
+      // No explicit ref means fail closed, never a latest binding.
+      assert.equal((await consumeGenerationIssuerBinding(scopedPool, { ownerUserId: state.owner, projectId: state.projectId },
+        seam, state.expectedInput)).status, 'not_bound');
+      // The same ref never authorizes another owner/project scope.
+      assert.equal((await consumeGenerationIssuerBinding(scopedPool, { ownerUserId: `${state.owner}-foreign`, projectId: state.projectId },
+        { provider: { provide: async () => state.ref } }, state.expectedInput)).status, 'not_bound');
+      // Swapping or deleting a pinned material invalidates the consumed subject.
+      await connection.query(`UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=1`,
+        [state.owner, state.projectId, state.auditId]);
+      assert.equal((await consumeGenerationIssuerBinding(scopedPool, { ownerUserId: state.owner, projectId: state.projectId },
+        { provider: { provide: async () => state.ref } }, state.expectedInput)).status, 'not_bound');
     } finally {
       await connection.query('ROLLBACK');
       connection.release();

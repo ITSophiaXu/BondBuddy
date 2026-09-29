@@ -33,6 +33,7 @@ import { installCreditFacilitySupplementRoutes } from './credit-facility-supplem
 import { lockCreditFacilitySupplementPins } from './credit-facility-supplements-repository.js';
 import { authorizeIssuerIdentityReviewer, listIssuerIdentitySourceRecords, loadVerifiedIssuerIdentitySourceRecord, reviewIssuerIdentitySourceRecord } from './issuer-identity-source.js';
 import { issuerIdentityBindingMatches, isVerifiedIssuerIdentityBinding, pendingIssuerIdentityBinding, verifiedIssuerIdentityBinding } from './issuer-identity-binding.js';
+import { consumeGenerationIssuerBinding, type GenerationIssuerBindingSeam } from './generation-issuer-binding-consumer.js';
 import { inputManifestHash, lockProductionRulePack, revalidateStoredProductionRulePin, type ReviewedContextLoader, type RuleApplicabilityContextRef } from './production-rule-pin.js';
 import { confirmTargetIntent, loadTargetConfirmation, type TargetConfirmationRequest } from './target-confirmation.js';
 import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoice } from './user-reference-lock.js';
@@ -52,7 +53,7 @@ import { installProductionRulePackReleaseRoutes } from './production-rule-pack-r
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number };
+export type Settings = { pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** #33 guard seam: consume an explicitly provided, approved generation issuer binding. Absent keeps the current fail-closed generation gate. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -1195,6 +1196,14 @@ export function createServer(settings: Settings = {}) {
               if(!current||!issuerIdentityBindingMatches(binding,current))missingInputs.push(`issuer_identity_stale:${binding.material_id}:${binding.material_version}`);
             }
           }
+        }
+        // #33 guard seam: consumption is off unless #17 installs it, so production keeps its current
+        // `issuer_identity_not_bound` gate. When installed, an exact approved binding for this locked
+        // input is the only subject source; every failure keeps the stable not-bound code.
+        if(manifest.kind==='generation'&&settings.generationIssuerBinding){
+          const consumed=await consumeGenerationIssuerBinding(client,{ownerUserId:user,projectId:id},
+            settings.generationIssuerBinding,{owner_user_id:user,project_id:id,input_revision:b.input_revision,input_hash:b.input_hash});
+          if(consumed.status!=='approved')missingInputs.push('issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved');
         }
         const refs=input.material_versions as {material_id:string;material_version:number}[];
         if(!refs.length)missingInputs.push('material_versions');
