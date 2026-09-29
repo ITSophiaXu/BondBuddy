@@ -141,6 +141,10 @@ async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool:
   const firstManifest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
     [owner.userId, projectId, inputRevision])).rows[0].manifest as Record<string, unknown>;
   assert.equal(Object.hasOwn(firstManifest, 'generation_issuer_binding_ref'), false, 'the first lock never fabricates a binding pin');
+  const missingPreflight=await harness.send('POST',`/api/v1/projects/${projectId}/preflight`,
+    {input_revision:inputRevision,input_hash:inputHash},owner);
+  assert.equal(missingPreflight.statusCode,200,missingPreflight.body);
+  assert.ok(missingPreflight.json().missing_inputs.includes('issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved'));
 
   const parserVersion = `parser-chain-${suffix}`;
   const auditEvidence = `audit-evidence-${suffix}`, notesEvidence = `notes-evidence-${suffix}`;
@@ -161,14 +165,38 @@ async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool:
   assert.ok(reviewerContext, 'the exact project-scoped issuer identity grant authorizes the reviewer');
 
   const addReview = async (materialId: string, recordId: string) => {
-    const record = await appendIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {
-      ownerUserId: owner.userId, projectId, materialId, materialVersion: 1, requestId: `request-${recordId}`,
-      sourceRecordId: recordId, issuerDisplayName: '合成发行人甲', entityId: `issuer-name:v1:${sha('合成发行人甲').slice(0, 32)}`,
-    });
-    return (await reviewIssuerIdentitySourceRecord({ pool, newId: randomUUID }, {
-      ownerUserId: owner.userId, projectId, materialId, materialVersion: 1, sourceRecordRowId: record.id, reviewer: reviewerContext,
-      decision: 'verified', reasonCode: 'synthetic_verified', ...ENTITY_BASIS,
-    })).reviewId;
+    const reviewerBase=`/api/v1/reviewer/projects/${projectId}/materials/${materialId}/versions/1`;
+    const evidence=await harness.send('GET',`${reviewerBase}/issuer-parse-evidence`,undefined,reviewer);
+    assert.equal(evidence.statusCode,200,evidence.body);
+    assert.equal(evidence.json().items[0].record_id,recordId);
+    assert.equal((await harness.send('GET',`${reviewerBase}/issuer-parse-evidence`,undefined,factReviewer)).statusCode,404,
+      'another reviewer role cannot read issuer anchors');
+    const proposalUrl=`${reviewerBase}/issuer-identity/observations`;
+    const proposalBody={request_id:`request-${recordId}`,evidence_record_id:recordId,
+      issuer_display_name:'合成发行人甲',candidate_key:`issuer-name:v1:${sha('合成发行人甲').slice(0,32)}`};
+    const proposed=await harness.send('POST',proposalUrl,proposalBody,reviewer);
+    assert.equal(proposed.statusCode,201,proposed.body);
+    const proposalEvent=(await pool.query(`SELECT payload FROM bb_outbox WHERE owner_user_id=$1 AND aggregate_id=$2
+      AND event_type='issuer.identity_source.needs_review' AND payload->>'source_record_row_id'=$3`,
+    [owner.userId,projectId,proposed.json().source_record_id])).rows[0]?.payload;
+    assert.equal(proposalEvent?.proposed_by,reviewer.userId,'proposal audit identifies the authorized reviewer');
+    assert.equal(proposalEvent?.source_quote,undefined,'outbox does not copy source text');
+    assert.equal((await harness.send('POST',proposalUrl,proposalBody,reviewer)).json().replayed,true);
+    assert.equal((await harness.send('POST',proposalUrl,{...proposalBody,issuer_display_name:'另一合成主体'},reviewer)).statusCode,409,
+      'a reused request key cannot change the source observation');
+    const ownerRead=await harness.send('GET',`/api/v1/projects/${projectId}/materials/${materialId}/versions/1/issuer-identity/observations`,undefined,owner);
+    assert.equal(ownerRead.statusCode,200,ownerRead.body);
+    assert.equal(ownerRead.json().items[0].quote,undefined,'owner receives status without original quote');
+    const listed=await harness.send('GET',proposalUrl,undefined,reviewer);
+    assert.equal(listed.statusCode,200,listed.body);
+    const item=listed.json().items[0];
+    const reviewed=await harness.send('POST',`/api/v1/projects/${projectId}/materials/${materialId}/versions/1/issuer-identity/observations/${proposed.json().source_record_id}/review`,{
+      decision:'verified',reason_code:'synthetic_verified',expected_content_sha256:item.content_sha256,
+      expected_snapshot_sha256:item.snapshot_sha256,verified_entity_id:ENTITY,
+      entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic chain identity review',
+    },reviewer);
+    assert.equal(reviewed.statusCode,201,reviewed.body);
+    return reviewed.json().review_id as string;
   };
   const auditReview = await addReview(audit.materialId, auditEvidence);
   const notesReview = await addReview(notes.materialId, notesEvidence);
@@ -182,11 +210,34 @@ async function provisionHttpChain(harness: ReturnType<typeof makeHarness>, pool:
       observations: [{ source_record_id: notesEvidence, observed_subject_label: '合成发行人甲', evidence_context: 'identity_relationship',
         subject_relation: 'issuer_compiler', accounting_scope: 'not_applicable', relation_reason: '附注主体说明。', source_identity_review_id: notesReview }] },
   ];
-  const appended = await appendGenerationIssuerBinding(deps, {
-    ownerUserId: owner.userId, projectId, inputRevision, inputHash, requestId: `binding-${suffix}`, reviewer: reviewerContext, materialDecisions });
-  const bindingRef: GenerationIssuerBindingRef = { binding_id: appended.bindingId, version: appended.version, content_sha256: appended.contentSha256 };
-  await reviewGenerationIssuerBinding(deps, { ownerUserId: owner.userId, projectId, bindingId: bindingRef.binding_id, version: bindingRef.version,
-    contentSha256: bindingRef.content_sha256, requestId: `approve-${suffix}`, action: 'approve', reason: '逐项核验。', reviewer: reviewerContext });
+  const bindingUrl=`/api/v1/reviewer/projects/${projectId}/generation-issuer-bindings`;
+  assert.equal((await harness.send('GET',`/api/v1/reviewer/projects/${projectId}/materials/${audit.materialId}/versions/1/issuer-parse-evidence`,undefined,owner)).statusCode,404);
+  const bindingBody={request_id:`binding-${suffix}`,input_revision:inputRevision,input_hash:inputHash,material_decisions:materialDecisions};
+  assert.equal((await harness.send('POST',bindingUrl,bindingBody,owner)).statusCode,404,
+    'owner without a reviewer grant cannot append a binding');
+  const appended=await harness.send('POST',bindingUrl,bindingBody,reviewer);
+  assert.equal(appended.statusCode,201,appended.body);
+  const bindingRef=appended.json().binding_ref as GenerationIssuerBindingRef;
+  assert.equal((await harness.send('POST',bindingUrl,bindingBody,reviewer)).json().created,false);
+  assert.equal((await harness.send('POST',bindingUrl,{...bindingBody,input_hash:sha('different lock')},reviewer)).statusCode,409,
+    'a binding request key cannot be rebound to another input');
+  const refUrl=`/api/v1/projects/${projectId}/generation-issuer-bindings/${bindingRef.binding_id}/versions/${bindingRef.version}/approved-ref`;
+  assert.equal((await harness.send('GET',refUrl,undefined,owner)).statusCode,404,'pending binding has no owner ref');
+  assert.equal((await harness.send('POST',`${bindingUrl}/${bindingRef.binding_id}/review`,{
+    request_id:`unauthorized-${suffix}`,action:'approve',expected_binding:bindingRef,reason:'逐项核验。',
+  },owner)).statusCode,404,'owner cannot approve the binding');
+  const approved=await harness.send('POST',`${bindingUrl}/${bindingRef.binding_id}/review`,{
+    request_id:`approve-${suffix}`,action:'approve',expected_binding:bindingRef,reason:'逐项核验。',
+  },reviewer);
+  assert.equal(approved.statusCode,201,approved.body);
+  assert.equal(approved.json().status,'approved');
+  const readRef=await harness.send('GET',refUrl,undefined,owner);
+  assert.equal(readRef.statusCode,200,readRef.body);
+  assert.deepEqual(readRef.json().binding_ref,bindingRef);
+  assert.equal(readRef.json().selected_materials,undefined,'owner ref response excludes evidence');
+  assert.equal((await harness.send('GET',refUrl,undefined,reviewer)).statusCode,404,'reviewer cannot read an owner ref');
+  assert.equal((await harness.send('POST',bindingUrl,bindingBody,reviewer)).json().status,'approved',
+    'a replay returns the current reviewed status without creating another binding');
   assert.ok(await loadApprovedGenerationIssuerBindingForLock(pool, { ownerUserId: owner.userId, projectId }, bindingRef),
     'the approved binding re-verifies against the live anchors for the lock');
 
@@ -231,6 +282,15 @@ test('HTTP chain: register/session, project and upload drive a locked input revi
       assert.deepEqual(row.manifest.project_message_set_ref, chain.messageRef, 'the exact message-set aggregate ref is pinned');
       assert.deepEqual(row.requirement_message_ids, chain.messageRef.message_ids, 'the legacy requirement column mirrors the pinned set');
       assert.equal(inputManifestHash(row.manifest), String(row.input_hash).trim(), 'the stored input_hash commits to the pinned manifest');
+      const preflight=await harness.send('POST',`/api/v1/projects/${chain.projectId}/preflight`,
+        {input_revision:revision,input_hash:pinned.json().input_hash},chain.owner);
+      assert.equal(preflight.statusCode,200,preflight.body);
+      assert.equal(preflight.json().missing_inputs.includes('issuer_identity_not_bound:generation_issuer_binding_missing_or_unapproved'),false,
+        'the approved exact binding passes the issuer admission gate');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
+        [chain.owner.userId,chain.projectId])).rows[0].n,0,'preflight and rejected calls create no run');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts a JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.id=a.job_id WHERE a.owner_user_id=$1 AND j.project_id=$2',
+        [chain.owner.userId,chain.projectId])).rows[0].n,0,'no model attempt is created');
 
       // Replay idempotency: an identical draft and refs produce the same immutable input hash.
       const replayed = await harness.send('POST', `/api/v1/projects/${chain.projectId}/input-revisions`, {

@@ -37,6 +37,8 @@ export interface AppendIssuerIdentitySourceRecordInput extends IssuerIdentitySou
   readonly issuerDisplayName: string;
   /** Observation candidate key (stored in the legacy entity_id column), never a verified fact key. */
   readonly entityId: string;
+  /** Optional for internal parser proposals; mandatory for reviewer HTTP proposals. */
+  readonly reviewer?: TrustedIssuerIdentityReviewer;
 }
 
 export interface StoredIssuerIdentitySourceRecord extends IssuerIdentitySourceScope {
@@ -277,14 +279,26 @@ export async function appendIssuerIdentitySourceRecord(
   const requestHash = sha256(canonical({ ownerUserId: input.ownerUserId, projectId: input.projectId,
     materialId: input.materialId, materialVersion: input.materialVersion, requestId: input.requestId,
     sourceRecordId: input.sourceRecordId, issuerDisplayName: displayName, entityId: input.entityId,
+    ...(input.reviewer ? { proposedBy: input.reviewer.userId, reviewerGrantId: input.reviewer.grantId } : {}),
     ...(input.observationId ? { observationId: input.observationId } : {}) }));
   const db = await dependencies.pool.connect();
   const newId = dependencies.newId ?? randomUUID;
   try {
     await db.query('BEGIN');
+    if (input.reviewer) {
+      if (!isTrustedIssuerIdentityReviewer(input.reviewer) || input.reviewer.ownerUserId !== input.ownerUserId ||
+          input.reviewer.projectId !== input.projectId) throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
+      const grant = await db.query(`SELECT g.id FROM bb_issuer_identity_reviewer_grants g
+        JOIN bb_users u ON u.id=g.user_id AND u.status='active'
+        WHERE g.id=$1 AND g.user_id=$2 AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
+          AND g.scope_owner_user_id=$3 AND g.scope_project_id=$4 FOR SHARE OF g,u`,
+      [input.reviewer.grantId,input.reviewer.userId,input.ownerUserId,input.projectId]);
+      if(grant.rows.length!==1)throw fail('ISSUER_IDENTITY_REVIEWER_NOT_AUTHORIZED');
+    }
     const material = await db.query(
       `SELECT id FROM bb_material_versions
-        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND role <> 'reference'
+        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL
+          AND ${input.reviewer ? "role IN ('audit','financial','interimFinancial','notes')" : "role <> 'reference'"}
         FOR UPDATE`,
       [input.ownerUserId, input.projectId, input.materialId, input.materialVersion]);
     if (material.rows.length !== 1) throw fail('ISSUER_IDENTITY_MATERIAL_NOT_FOUND');
@@ -355,7 +369,8 @@ export async function appendIssuerIdentitySourceRecord(
        VALUES ($1,$2,'project',$3,'issuer.identity_source.needs_review',$4::jsonb)`,
       [newId(), input.ownerUserId, input.projectId, JSON.stringify({ material_id: input.materialId,
         material_version: input.materialVersion, source_record_row_id: mapped.id,
-        identity_version: identityVersion, content_sha256: contentHash, state: 'needs_review' })]);
+        identity_version: identityVersion, content_sha256: contentHash, state: 'needs_review',
+        ...(input.reviewer ? { proposed_by: input.reviewer.userId, reviewer_grant_id: input.reviewer.grantId } : {}) })]);
     await db.query('COMMIT');
     return mapped;
   } catch (error) {
@@ -456,12 +471,14 @@ export async function authorizeIssuerIdentityReviewer(
   if (!idPattern.test(authenticatedUserId) || (scope && (!idPattern.test(scope.ownerUserId) || !idPattern.test(scope.projectId))))
     throw fail('INVALID_ISSUER_IDENTITY_REVIEWER');
   const result = scope ? await pool.query(
-    `SELECT id, scope_owner_user_id, scope_project_id FROM bb_issuer_identity_reviewer_grants
-      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
-        AND scope_owner_user_id=$2 AND scope_project_id=$3`, [authenticatedUserId,scope.ownerUserId,scope.projectId]) : await pool.query(
-    `SELECT id, scope_owner_user_id, scope_project_id FROM bb_issuer_identity_reviewer_grants
-      WHERE user_id=$1 AND role='issuer_identity_reviewer' AND revoked_at IS NULL
-        AND scope_owner_user_id IS NOT NULL AND scope_project_id IS NOT NULL`, [authenticatedUserId]);
+    `SELECT g.id, g.scope_owner_user_id, g.scope_project_id FROM bb_issuer_identity_reviewer_grants g
+      JOIN bb_users u ON u.id=g.user_id AND u.status='active'
+      WHERE g.user_id=$1 AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
+        AND g.scope_owner_user_id=$2 AND g.scope_project_id=$3`, [authenticatedUserId,scope.ownerUserId,scope.projectId]) : await pool.query(
+    `SELECT g.id, g.scope_owner_user_id, g.scope_project_id FROM bb_issuer_identity_reviewer_grants g
+      JOIN bb_users u ON u.id=g.user_id AND u.status='active'
+      WHERE g.user_id=$1 AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
+        AND g.scope_owner_user_id IS NOT NULL AND g.scope_project_id IS NOT NULL`, [authenticatedUserId]);
   if (result.rows.length !== 1 || !idPattern.test(String(result.rows[0]?.id))) return null;
   const boundOwner = scope?.ownerUserId ?? String(result.rows[0]!.scope_owner_user_id ?? '');
   const boundProject = scope?.projectId ?? String(result.rows[0]!.scope_project_id ?? '');

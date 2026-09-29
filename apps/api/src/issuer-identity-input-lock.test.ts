@@ -169,16 +169,17 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       const listed = await send('GET', observationsUrl);
       assert.equal(listed.statusCode, 200, listed.body);
       assert.equal(listed.json().status, 'needs_review');
-      assert.equal(listed.json().items[0].evidence_record_id, sourceA.evidenceA);
-      assert.deepEqual(listed.json().items[0].locator, { page: 1, bbox: [0, 0, 1, 1] });
+      assert.equal(listed.json().items[0].source_record_id, observationA.id);
+      assert.equal(listed.json().items[0].locator, undefined, 'owner status excludes raw evidence');
+      assert.equal(listed.json().items[0].quote, undefined);
       const reviewerUrl = `/api/v1/reviewer/projects/${projectId}/materials/${historicalA}/versions/1/issuer-identity/observations`;
       activeOwner = foreignOwner;
       assert.equal((await send('GET', observationsUrl)).statusCode, 404, 'another account cannot inspect evidence');
       assert.equal((await send('GET', reviewerUrl)).statusCode, 404, 'unrelated account cannot use reviewer read');
       activeOwner = reviewerId;
       const reviewUrl = `${observationsUrl}/${observationA.id}/review`;
-      const observedHashes = {expected_content_sha256:listed.json().items[0].content_sha256,
-        expected_snapshot_sha256:listed.json().items[0].snapshot_sha256};
+      const observedHashes = {expected_content_sha256:observationA.contentSha256,
+        expected_snapshot_sha256:sha(`parse-response-${sourceA.snapshotId}`)};
       let reviewBody = {decision:'verified',reason_code:'synthetic_identity_verified',verified_entity_id:verifiedA,
         ...observedHashes,
         entity_basis_kind:'manual_attestation',entity_basis_ref:'synthetic identity review'};

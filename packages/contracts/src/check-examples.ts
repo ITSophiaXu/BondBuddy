@@ -67,7 +67,7 @@ assert.equal(validGenerationIssuerBindingApproval(generationIssuerBindingExample
   input_revision: generationIssuerBindingExample.binding.input_revision,
   input_hash: generationIssuerBindingExample.binding.input_hash,
 }, generationIssuerBindingExample.binding.selected_materials), true, 'complete synthetic binding: same issuer across consolidated/parent statements; subsidiary localized in notes');
-assert.ok(!Object.keys(openApiDocument().paths).some(path => path.includes('generation-issuer-binding')), 'contract slice adds no production route');
+assert.ok(Object.keys(openApiDocument().paths).some(path => path.includes('generation-issuer-bindings')), 'review routes are documented');
 const userReferenceReview = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/user-reference-review.json', import.meta.url)), 'utf8')) as {
   synthetic: boolean; snapshot: Parameters<typeof userReferenceParseReviewAccepted>[0];
   review: { confirmed_warning_codes: string[]; outline: unknown; signed_outline_sha256: string };
