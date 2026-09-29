@@ -25,6 +25,15 @@ const ids = Object.fromEntries(services.map(service => [service, required(`BB_DR
 const snapshot = (id) => JSON.parse(docker('inspect', id))[0];
 const short = (error) => error instanceof Error ? error.message.split('\n')[0].slice(0, 180) : 'unknown failure';
 const emit = (phase, value = {}) => { const record = { phase, at: new Date().toISOString(), ...value }; console.log(JSON.stringify(record)); return record; };
+const fatal = reason_code => {
+  const errors = activeState ? restore(activeState) : [];
+  const record = emit('fatal', { status: 'failed', reason_code, restore_errors: errors,
+    user_id: activeState?.user_id, project_id: activeState?.project_id, job_ids: activeState?.job_ids });
+  if (activeRecords) { activeRecords.push(record); persistEvidence(activeRecords); }
+  process.exit(1);
+};
+process.on('uncaughtException', () => fatal('preflight_or_runtime_error'));
+process.on('unhandledRejection', () => fatal('unhandled_rejection'));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sql = query => docker('exec', ids.postgres, 'psql', '-X', '-q', '-A', '-t', '-F', '\t', '-v', 'ON_ERROR_STOP=1', '-U', 'bondbuddy', '-d', 'bondbuddy', '-c', query);
 const rows = query => { const output = sql(query); return output ? output.split('\n').map(line => line.split('\t')) : []; };
@@ -63,7 +72,8 @@ function guard(state, phase) {
   // A historical failed observation or paused reconciliation has no in-flight supplier process.
   const activeCalls = rows(`SELECT a.id,j.id FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
     WHERE j.state='running' AND a.status='pending_reconcile' AND j.id NOT IN (${allowed}) ORDER BY a.id LIMIT 20`);
-  emit(phase, { active_job_ids: activeJobs.map(row => row[0]), active_call_ids: activeCalls.map(row => row[0]) });
+  const record = emit(phase, { active_job_ids: activeJobs.map(row => row[0]), active_call_ids: activeCalls.map(row => row[0]) });
+  if (activeRecords) activeRecords.push(record);
   if (activeJobs.length || activeCalls.length) throw new Error('Other active work appeared; injection refused');
 }
 
@@ -199,12 +209,13 @@ if (mode === 'recover') {
 } else {
   const records = [];
   const record = (phase, values) => records.push(emit(phase, values));
+  activeRecords = records;
   const preflight = checkServices();
   const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5000) });
   if (health.status !== 200) throw new Error('API health check failed');
   guard(null, 'preflight_guard');
   record('preflight', preflight);
-  if (mode === 'preflight') persistEvidence(records);
+  if (mode === 'preflight') { persistEvidence(records); activeRecords = null; }
   else {
     if (existsSync(stateFile)) throw new Error('Existing state requires recover before a new run');
     const state = { expected_sha: expectedSha, ids, username: `synthetic79_${randomBytes(6).toString('hex')}`,
@@ -216,7 +227,7 @@ if (mode === 'recover') {
     let succeeded = false;
     try {
       // D1: stop only the deployed scheduler, then use the deployed API to create scoped events.
-      guard(state, 'd1_guard'); pause('ops', state);
+      guard(state, 'd1_guard'); record('d1_before', { user_id: null, outbox_ids: [], pending: 0, receipt_ids: [], delivery_keys: [] }); pause('ops', state);
       const agreement = await request('GET', '/api/v1/auth/agreement');
       const account = await request('POST', '/api/v1/auth/register', { username: state.username, password: state.password, accepted_terms_version: agreement.terms_version });
       state.user_id = uuid(account.user_id); save(state);
@@ -254,7 +265,8 @@ if (mode === 'recover') {
       state.worker_killed = true; save(state); docker('kill', '-s', 'KILL', ids.worker);
       record('d2_during', jobSnapshot(d2Id));
       removeTrigger(state); record('d2_trigger_removed', { trigger_name: d2Trigger, job_id: d2Id });
-      restore(state);
+      const restarted = restore(state);
+      if (restarted.length) throw new Error('D2 worker restoration failed');
       const d2Done = await until(() => { const current = jobSnapshot(d2Id); return ['succeeded', 'failed', 'cancelled'].includes(current.state) ? current : null; }, 180000, 'D2 lease recovery');
       record('d2_after', d2Done);
       if (d2Done.state !== 'succeeded' || d2Done.attempts < 2 || d2Done.terminal_count !== 1) throw new Error('D2 recovery invariant failed');
@@ -270,7 +282,8 @@ if (mode === 'recover') {
       state.trigger_name = name; state.trigger_table = 'bb_outbox'; save(state); // recover can remove a trigger after SIGKILL.
       sql(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
         IF NEW.aggregate_type='material_parse_job' AND NEW.aggregate_id=${qid(d3Id)} AND NEW.event_type='material_parse.succeeded'
-          AND (SELECT attempts FROM bb_jobs WHERE id=${qid(d3Id)})=1 THEN
+          AND (SELECT attempts FROM bb_jobs WHERE id=${qid(d3Id)})<=2 THEN
+          IF (SELECT attempts FROM bb_jobs WHERE id=${qid(d3Id)})=2 THEN PERFORM pg_sleep(6); END IF;
           RAISE EXCEPTION 'synthetic transaction fault' USING ERRCODE='P0001'; END IF;
         RETURN NEW; END $$;
         CREATE TRIGGER ${name} BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION ${name}()`);
@@ -278,10 +291,13 @@ if (mode === 'recover') {
       guard(state, 'd3_fault_guard'); unpause('worker', state);
       const d3During = await until(() => { const current = jobSnapshot(d3Id); return current.attempts >= 2 || current.state === 'failed' ? current : null; }, 60000, 'D3 fault');
       record('d3_during', d3During);
+      if (d3During.terminal_count !== 0 || !d3During.job_event_types.includes('material_parse.retry_scheduled'))
+        throw new Error('D3 fault did not preserve a nonterminal retry');
+      guard(state, 'd3_recovery_guard');
       removeTrigger(state); record('d3_trigger_removed', { trigger_name: name, job_id: d3Id });
       const d3Done = await until(() => { const current = jobSnapshot(d3Id); return ['succeeded', 'failed', 'cancelled'].includes(current.state) ? current : null; }, 120000, 'D3 recovery');
       record('d3_after', d3Done);
-      if (d3Done.state !== 'succeeded' || d3Done.attempts < 2 || d3Done.terminal_count !== 1 ||
+      if (d3Done.state !== 'succeeded' || d3Done.attempts < 3 || d3Done.terminal_count !== 1 ||
           !d3Done.job_event_types.includes('material_parse.retry_scheduled')) throw new Error('D3 recovery invariant failed');
       const d3Logs = await waitJobLogs(d3Id);
       if (Object.values(sinkKeyCounts(d3Logs.delivery_keys)).some(count => count !== 1)) throw new Error('D3 sink key reconciliation failed');
