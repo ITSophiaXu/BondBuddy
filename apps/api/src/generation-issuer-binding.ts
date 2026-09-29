@@ -194,7 +194,14 @@ interface IdentityCoverage {
   readonly uncertainties: MaterialPin['identity_uncertainties'];
 }
 
-/** Current identity coverage for one material: any unresolved or revoked identity observation makes it incomplete. */
+/**
+ * Current identity coverage for one material. Identity observations are versioned per
+ * source record; only the highest identity_version for a source record is authoritative,
+ * mirroring the #15 profile/context loaders. Coverage is incomplete when the authoritative
+ * observation is unresolved/revoked, or when the same source record carries verified
+ * observations that disagree on the entity (a re-verification conflict is never silently
+ * superseded).
+ */
 async function currentIdentityCoverage(db: Pick<GenerationIssuerBindingClient, 'query'>, scope: GenerationIssuerBindingScope,
   materialId: string, materialVersion: number): Promise<IdentityCoverage> {
   const rows = (await db.query(`SELECT r.id, r.source_record_id, r.source_record_sha256, r.source_locator,
@@ -206,13 +213,42 @@ async function currentIdentityCoverage(db: Pick<GenerationIssuerBindingClient, '
       AND g.role='issuer_identity_reviewer' AND g.revoked_at IS NULL
       AND g.scope_owner_user_id=r.owner_user_id AND g.scope_project_id=r.project_id
     WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.material_id=$3 AND r.material_version=$4
-    ORDER BY r.identity_version`, [scope.ownerUserId, scope.projectId, materialId, materialVersion])).rows;
-  const uncertainties: MaterialPin['identity_uncertainties'] = [];
+    ORDER BY r.source_record_id, r.identity_version`, [scope.ownerUserId, scope.projectId, materialId, materialVersion])).rows;
+  const latestByRecord = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
+    const key = String(row.source_record_id);
+    const prior = latestByRecord.get(key);
+    if (!prior || Number(row.identity_version) > Number(prior.identity_version)) latestByRecord.set(key, row);
+  }
+  const uncertainties: MaterialPin['identity_uncertainties'] = [];
+  for (const row of latestByRecord.values()) {
     const decision = row.decision === null || row.decision === undefined ? null : String(row.decision);
     const verified = decision === 'verified' && row.active_grant_id !== null && validVerifiedBasis(row);
     const rejected = decision === 'rejected' && row.active_grant_id !== null;
-    if (verified || rejected) continue;
+    if (verified) {
+      // The latest verified observation of this source record must be resolvable to exactly the
+      // entities attested by every live version of the same record; a re-verified different entity
+      // is an unresolved subject conflict, not a silent supersession.
+      const entities = new Set<string>();
+      for (const candidate of rows) {
+        if (String(candidate.source_record_id) !== String(row.source_record_id)) continue;
+        const candidateDecision = candidate.decision === null || candidate.decision === undefined ? null : String(candidate.decision);
+        if (candidateDecision === 'verified' && candidate.active_grant_id !== null && validVerifiedBasis(candidate))
+          entities.add(String(candidate.verified_entity_id));
+      }
+      if (entities.size > 1) {
+        const locator = parseJson(row.source_locator);
+        uncertainties.push({
+          code: 'ISSUER_IDENTITY_OBSERVATION_UNRESOLVED',
+          source_record_id: String(row.source_record_id),
+          source_record_sha256: String(row.source_record_sha256).trim(),
+          locator: isRecord(locator) ? { type: 'parse_evidence', value: locator } : null,
+          reason: '同一主体观察存在多个已核验且不一致的实体，需人工确认。',
+        });
+      }
+      continue;
+    }
+    if (rejected) continue;
     const locator = parseJson(row.source_locator);
     uncertainties.push({
       code: 'ISSUER_IDENTITY_OBSERVATION_UNRESOLVED',
