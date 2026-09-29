@@ -73,6 +73,8 @@ services:
       BB_LOG_ARCHIVE_CONTAINER: ${BB_LOG_ARCHIVE_CONTAINER:-bondbuddy-private}
       BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
       BB_ALLOWED_ORIGIN: ${BB_PUBLIC_ORIGIN:?set in .env}
+      BB_UPLOAD_EXCEPTION_ENABLED: ${BB_UPLOAD_EXCEPTION_ENABLED:-0}
+      BB_UPLOAD_EXCEPTION_SCOPE: ${BB_UPLOAD_EXCEPTION_SCOPE:-}
       # #17: run submission commits durable jobs for the deployed WorkerRuntime to claim.
       BB_RUN_RUNTIME_ENABLED: '1'
       BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
