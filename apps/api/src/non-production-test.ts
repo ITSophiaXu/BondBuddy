@@ -73,7 +73,7 @@ async function assertWorkingDraftMaterials(db: PoolClient, scope: Omit<TestGrant
 export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
   input: LockedInput, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
   if (!record(input.manifest) || input.manifest.kind !== 'update') return null;
-  if (!workingDraftKeys.some(key => env[key] !== undefined)) return null;
+  if (!workingDraftKeys.some(key => env[key]?.trim())) return null;
   if (!testChannelEnabled(env)) throw new Problem(409, 'TEST_CHANNEL_DISABLED', 'Configured working draft channel is unavailable');
   const until = env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT;
   const expires = until ? new Date(until).getTime() : NaN;
