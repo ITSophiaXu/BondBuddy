@@ -3,7 +3,8 @@ import type { BlockDisposition, TableColumnRequest, UpdateBinding, UpdateOccurre
 import type { StoredFactCandidate } from './fact-repository.js';
 import type { DocumentParseRecord } from './document-parser.js';
 
-export const HISTORICAL_GENERATION_VERSION = 'historical-generation-v1';
+export const HISTORICAL_GENERATION_VERSION = 'historical-generation-v2';
+export const HISTORICAL_MAX_BLOCKS_PER_CALL = 512;
 const str = { type: 'string', minLength: 1, maxLength: 12000 };
 const id = { type: 'string', minLength: 1, maxLength: 256 };
 const explanation = { type: 'string', minLength: 1, maxLength: 1200, pattern: '\\S' };
@@ -18,10 +19,10 @@ const binding = { expression, reason: { enum: ['new_period', 'restatement', 'cor
 const change = object({ start: { type: 'integer', minimum: 0 }, end: { type: 'integer', minimum: 1 }, before: str, ...binding, display });
 export const historicalGenerationSchema = object({
   schema_version: { const: HISTORICAL_GENERATION_VERSION },
-  blocks: { type: 'array', minItems: 1, maxItems: 80, items: object({ record_id: id,
+  blocks: { type: 'array', minItems: 1, maxItems: HISTORICAL_MAX_BLOCKS_PER_CALL, items: object({ record_id: id,
     disposition: { enum: ['retain', 'update', 'needs_evidence'] }, reason: explanation,
     changes: { type: 'array', maxItems: 100, items: change } }) },
-  columns: { type: 'array', maxItems: 20, items: object({ cells: { type: 'array', minItems: 1, maxItems: 80,
+  columns: { type: 'array', maxItems: 20, items: object({ cells: { type: 'array', minItems: 1, maxItems: HISTORICAL_MAX_BLOCKS_PER_CALL,
     items: object({ after_record_id: id, expression, display }) } }) },
 });
 type Expression = { operation: 'fact' | 'sum' | 'ratio' | 'difference' | 'growth_percent'; candidate_ids: string[] };

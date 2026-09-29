@@ -36,7 +36,7 @@ test('output schema normalization covers historical nested const/enum nodes with
   assert.deepEqual(unresolved, []);
   const before = new Ajv({ strict: false }).compile(original);
   const after = new Ajv({ strict: false }).compile(normalized);
-  const good = { schema_version: 'historical-generation-v1', blocks: [{ record_id: 'r1', disposition: 'retain', reason: 'synthetic', changes: [] }], columns: [] };
+  const good = { schema_version: 'historical-generation-v2', blocks: [{ record_id: 'r1', disposition: 'retain', reason: 'synthetic', changes: [] }], columns: [] };
   for (const value of [good, { ...good, schema_version: 'wrong' }, { ...good, blocks: [{ ...good.blocks[0], disposition: 'wrong' }] }, { ...good, columns: [{ cells: [{ after_record_id: 'r1', expression: { operation: 'fact', candidate_ids: ['f1'] }, display: { kind: 'period', style: 'annual' } }] }] },
     { ...good, columns: [{ cells: [{ after_record_id: 'r1', expression: { operation: 'fact', candidate_ids: ['f1'] }, display: { kind: 'period', style: 'wrong' } }] }] }]) {
     assert.equal(before(value), after(value));
