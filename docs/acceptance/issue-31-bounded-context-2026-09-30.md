@@ -14,6 +14,7 @@
 
 - Windows、Node 22；完整 build 和 contracts 校验通过。历史模型阶段 **55/55**（启用原件只读解析，0 skip）：完整覆盖、遗漏/重复拒绝、未知事实拒绝、UTF-8 边界、撤权、精确恢复、后续块篡改、旧策略拒绝、容量超限零调用及 Word 待核说明传递。
 - 同一授权源 SHA-256 `51f77e36dcdc8b565f9a7b58ebf87cb6be4839a3444b8602df833e3fd61ef678` 从原 DOCX 重新解析，校验原件前后 hash；parser `bondbuddy-document-parser-1.0.7`，**9,690/9,690** 记录按原顺序恰好一次分配为 **24 块**。规则上下文由 169,529 字节无损编码为 147,745 字节，另预留 20KB 给其余输入和 256 字节表头预算。这是容量检查，不是目标服务器实际冻结事实集的模型调用数；目标环境须读取实际 batch plan。
+- 全部历史相关 worker 套件：160 pass / 2 个既有可选 skip / 0 fail。Windows 默认 Python 输出编码引起的合成 Word 用例失败，在显式设置 `PYTHONUTF8=1` 后通过；真实 Python writer 使用的是合成输入，并非客户成果。
 - JSON 输出 schema 标准化测试 **2/2**。尝试在 Windows 运行完整 adapter 套件时，既有 Linux 环境隔离与 SIGKILL 断言不适用，停止该运行；不声称完整 adapter/Linux 隔离通过，未修改这些断言。该 PR 未改 adapter 实现。
 - 未调用付费模型，未生成真实 Word，未上传客户原文/解析文本/生成成果。合成模型恢复与 Word stage 测试不代替真实验收。
 
