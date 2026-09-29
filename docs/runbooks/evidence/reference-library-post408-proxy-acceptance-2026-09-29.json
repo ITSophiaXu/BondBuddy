@@ -1,0 +1,189 @@
+{
+  "recorded_at_beijing": "2026-09-29 08:53:36 +08:00",
+  "base_commit": "33e9988bcb828a498d155a61f6745da31c6ee4a2",
+  "node_image_digest": "sha256:172de24259360e72fb96acd7c911e4115c86826a436703568178503d4d14d4ee",
+  "node_version": "v22.23.3",
+  "environment": {
+    "network": "Docker internal backend with no direct external route; allow-list CONNECT proxy also attached to external edge",
+    "proxy_allow": [
+      "query.sse.com.cn",
+      "static.sse.com.cn"
+    ],
+    "node_use_env_proxy": "1",
+    "https_proxy": "http://egress:3128",
+    "no_proxy": "local database and blob services, localhost",
+    "node_options": "--max-old-space-size=256",
+    "cgroup_memory_limit_bytes": 402653184,
+    "source_rights": "evaluation_only",
+    "test_storage": "isolated PostgreSQL 16 and Azurite 3.35 --skipApiVersionCheck"
+  },
+  "live_read_only_sample": {
+    "real_attempts": 2,
+    "scope": "one current project; first PDF of three matching files",
+    "request_status": [
+      {
+        "host": "query.sse.com.cn",
+        "status": 200,
+        "header_ms": 1071
+      },
+      {
+        "host": "query.sse.com.cn",
+        "status": 200,
+        "header_ms": 385
+      },
+      {
+        "host": "static.sse.com.cn",
+        "status": 200,
+        "header_ms": 1298
+      }
+    ],
+    "proxy_connects": [
+      {
+        "host": "query.sse.com.cn",
+        "result": "TCP_TUNNEL/200"
+      },
+      {
+        "host": "static.sse.com.cn",
+        "result": "TCP_TUNNEL/200"
+      },
+      {
+        "host": "query.sse.com.cn",
+        "result": "TCP_TUNNEL/200"
+      },
+      {
+        "host": "static.sse.com.cn",
+        "result": "TCP_TUNNEL/200"
+      }
+    ],
+    "pdf": {
+      "bytes": 5247897,
+      "sha256": "a2874fef3c97c30fa7cf3c617712185aef30ba52caa6d17217f11253d5048706",
+      "elapsed_ms": 4592
+    },
+    "sync_outcome": "succeeded",
+    "version_states": [
+      {
+        "state": "pending_review",
+        "count": 1
+      }
+    ],
+    "active_index_entries": 0,
+    "cgroup_memory_peak_bytes": 144592896,
+    "oom_observed": false,
+    "first_attempt": {
+      "sync_item": "new_document",
+      "cgroup_memory_peak_bytes": 144592896,
+      "processed_with_python_parser": true,
+      "request_spacing": "not measured; the gap between project detail and PDF was not explicitly throttled"
+    },
+    "second_attempt": {
+      "request_status": [
+        {
+          "host": "query.sse.com.cn",
+          "status": 200,
+          "header_ms": 1172,
+          "start_gap_ms": null
+        },
+        {
+          "host": "query.sse.com.cn",
+          "status": 200,
+          "header_ms": 412,
+          "start_gap_ms": 2776
+        },
+        {
+          "host": "static.sse.com.cn",
+          "status": 200,
+          "header_ms": 1672,
+          "start_gap_ms": 1212
+        }
+      ],
+      "pdf": {
+        "bytes": 5247897,
+        "sha256": "a2874fef3c97c30fa7cf3c617712185aef30ba52caa6d17217f11253d5048706",
+        "elapsed_ms": 5840
+      },
+      "sync_item": "unchanged",
+      "version_states": [
+        {
+          "state": "pending_review",
+          "count": 1
+        }
+      ],
+      "cgroup_memory_peak_bytes": 64393216,
+      "minimum_request_start_gap_ms": 1212
+    }
+  },
+  "fail_closed": {
+    "disallowed_domain": {
+      "result": "failed_closed",
+      "name": "TypeError",
+      "cause_code": 0,
+      "elapsed_ms": 18
+    },
+    "denied_connects": [
+      {
+        "host": "query.sse.com.cn",
+        "result": "TCP_DENIED/403"
+      }
+    ],
+    "unreachable_proxy": {
+      "result": "failed_closed",
+      "name": "TypeError",
+      "cause_code": "ECONNREFUSED",
+      "elapsed_ms": 10
+    },
+    "direct_from_internal_network": {
+      "result": "failed_closed",
+      "name": "TypeError",
+      "cause_code": "EAI_AGAIN",
+      "elapsed_ms": 31
+    }
+  },
+  "synthetic_body_and_alert_tests": {
+    "command": "node --test --test-concurrency=2 apps/worker/dist/library-sources.test.js apps/worker/dist/library.test.js apps/worker/dist/library-scheduler.test.js",
+    "result": {
+      "tests": 25,
+      "pass": 25,
+      "fail": 0,
+      "skipped": 0
+    },
+    "assertions": [
+      "JSON and PDF timeout covers response body",
+      "PDF stream stops on first chunk above 150 MiB",
+      "Timeouts map to LIBRARY_SOURCE_UNREACHABLE or LIBRARY_FETCH_FAILED; oversize maps to LIBRARY_BYTES_INVALID",
+      "unreachable proxy fails closed and NO_PROXY is honored",
+      "library_sync_failed is emitted and deduplicated",
+      "evaluation_only is excluded from candidate selection",
+      "v1.1 production lock gate remains closed"
+    ]
+  },
+  "synthetic_uncommitted_blob_fault": {
+    "injection": "SIGKILL immediately after Blob put returns, before document row or item checkpoint transaction",
+    "fault_exit_code": 137,
+    "recovery": {
+      "mode": "recover",
+      "before_versions": 0,
+      "blob_after_crash": true,
+      "after_versions": [
+        {
+          "state": "pending_review",
+          "version": 1,
+          "sha256": "8c700d1c82d9bf5ef92912092bedf6a58fa653d75478b5d243b92eca42cf7f34"
+        }
+      ],
+      "sync_items": 1,
+      "active_index_entries": 0,
+      "blob_after_recovery": true
+    },
+    "recovery_outcome": "succeeded",
+    "orphan_boundary": "A permanent failure after Blob put can leave an unreferenced library/ object. Current storage inventory does not scan library/; no automatic reclamation was demonstrated."
+  },
+  "limits": [
+    "No preproduction sync was enabled.",
+    "The real source remains evaluation_only and no version was approved or published.",
+    "The two one-file attempts do not prove full batches, sustained scheduling, commercial authorization, or professional review.",
+    "No real SSE over-size or timeout attack was sent; those cases used synthetic streams.",
+    "The first real attempt did not record or enforce the project-detail-to-PDF gap; the second attempt verified all start gaps above 700 ms.",
+    "The production adapter delayMs does not cover the discovery-to-PDF transition; this probe applied its own request-wide throttle. The normal scheduled path was not changed."
+  ]
+}
