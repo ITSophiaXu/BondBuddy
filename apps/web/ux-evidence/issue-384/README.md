@@ -2,7 +2,7 @@
 
 用户决定：[2026-09-28 07:53 UTC](https://github.com/ITSophiaXu/BondBuddy/issues/384#issuecomment-5865771819)。原型布局基线：`94e38fba9fcfd4c957fc8c352b69f72bb817c118` 的 `product-prototype/public/project-workspace.js`、`project-workspace.css` 及右侧补充区；本次不修改原型源码。
 
-首轮实现原 commit：`7fe55e29ac07a8b127c5dace779ce883da7409ec`，原基线 `develop@f2a9be5ed0da63c2a2ab5e18ce58134560d3a1f6`。2026-09-29 接续已重基线 `develop@35900e3`：首轮实现为 `44c1afa`，B05/B10 修正为 `889f460`、`c349fd4`、`fe0b6f7`，截图测试为 `b35a23e`。下列首轮材料截图/录屏来自首轮实现；新增阻断/暂停截图来自修正代码。所有截图、视频和接口数据均来自本地 Chromium + synthetic HTTP/文件，非客户材料、部署验证或模型/Word 成果。
+首轮实现原 commit：`7fe55e29ac07a8b127c5dace779ce883da7409ec`，原基线 `develop@f2a9be5ed0da63c2a2ab5e18ce58134560d3a1f6`。2026-09-29 接续已重基线 `develop@290d4c3`：首轮实现为 `406bfb1`，B05/B10 修正为 `41044c0`、`f6431ac`、`3f62a9b`，截图测试为 `7c91963`。下列首轮材料截图/录屏来自首轮实现；新增阻断/暂停截图来自修正代码。所有截图、视频和接口数据均来自本地 Chromium + synthetic HTTP/文件，非客户材料、部署验证或模型/Word 成果。
 
 ## 交付与边界
 
@@ -15,7 +15,7 @@
 
 ## 同尺寸视口对照与连续走查
 
-| 视口 | 原型（上述原型 commit） | 首轮实现（`44c1afa`） |
+| 视口 | 原型（上述原型 commit） | 首轮实现（`406bfb1`） |
 | --- | --- | --- |
 | 1440×960 | [桌面原型](reference-desktop.png) | [桌面实现](materials-desktop.png) |
 | 390×844 | [窄屏原型](reference-mobile.png) | [窄屏实现](materials-mobile.png) |
