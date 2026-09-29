@@ -136,6 +136,12 @@ test('persists authorized historical DOCX recognition and difficulty through the
       assert.ok(targetPeriods.length > 0, `${sample.case_id}: complete confirmed target periods are required`);
       assert.equal(targetPeriods.at(-1)!.end, sample.target_confirmation.latest_cutoff,
         `${sample.case_id}: target period set cutoff must match the confirmation record`);
+      const confirmedAt = `${sample.target_confirmation.confirmed_on}T00:00:00.000Z`;
+      const targetConfirmation = {
+        status: 'confirmed' as const, market: sample.target_confirmation.market, offering: sample.target_confirmation.offering,
+        document_purpose: null, as_of: null, target_reporting_periods: targetPeriods,
+        confirmed_by: sample.target_confirmation.confirmed_by!, confirmed_at: confirmedAt,
+      };
       const materialRefs = [
         { material_id: historicalMaterial, material_version: 1 },
         { material_id: financialMaterial, material_version: 1 },
@@ -147,7 +153,7 @@ test('persists authorized historical DOCX recognition and difficulty through the
       const manifestBody = {
         draft_revision: 1, name: `Authorized sample ${sample.case_id}`, kind: 'update',
         issuer_name: null, market: sample.target_confirmation.market, offering: sample.target_confirmation.offering,
-        update_details: { target_reporting_periods: targetPeriods }, materials,
+        update_details: { target_reporting_periods: targetPeriods }, target_confirmation: targetConfirmation, materials,
       };
       const manifestHash = sha256(Buffer.from(JSON.stringify(manifestBody)));
 
@@ -183,6 +189,10 @@ test('persists authorized historical DOCX recognition and difficulty through the
         await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
           VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
         [project, owner, manifestHash, JSON.stringify(manifestBody), JSON.stringify(materialRefs)]);
+        await client.query(`INSERT INTO bb_input_revision_target_confirmations(owner_user_id,project_id,input_revision,market,offering,document_purpose,as_of,target_reporting_periods,confirmed_by,confirmed_at)
+          VALUES($1,$2,1,$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+        [owner, project, sample.target_confirmation.market, sample.target_confirmation.offering, null, null,
+          JSON.stringify(targetPeriods), sample.target_confirmation.confirmed_by, confirmedAt]);
         await client.query('UPDATE bb_projects SET latest_input_revision=1 WHERE owner_user_id=$1 AND id=$2', [owner, project]);
         await client.query('COMMIT');
       } catch (error) {

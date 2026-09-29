@@ -167,9 +167,9 @@ test('authorized zq XLSX flows through the native producer into pending PG candi
 
     const issuerEvidence = parsed.records.find((record) => record.literal_quote.includes('济南章丘控股集团有限公司'));
     assert.ok(issuerEvidence, 'issuer identity test fixture must point to an actual workbook cell quote');
-    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code)
-      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test')`, [reviewerGrantId, reviewerId, grantorId]);
-    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId);
+    await pool.query(`INSERT INTO bb_issuer_identity_reviewer_grants(id,user_id,role,granted_by,reason_code,scope_owner_user_id,scope_project_id)
+      VALUES($1,$2,'issuer_identity_reviewer',$3,'synthetic_test',$4,$5)`, [reviewerGrantId, reviewerId, grantorId, owner, projectId]);
+    const reviewer = await authorizeIssuerIdentityReviewer(pool, reviewerId, { ownerUserId: owner, projectId });
     assert.ok(reviewer, 'synthetic fixture reviewer grant must authorize the repository review call');
     const observation = await appendIssuerIdentitySourceRecord({ pool }, {
       ownerUserId: owner, projectId, materialId: file.file_id, materialVersion: 1,
