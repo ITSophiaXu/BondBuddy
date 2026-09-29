@@ -1,0 +1,30 @@
+name: OCR worker image
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/ocr-worker-image.yml
+      - deploy/m1/Dockerfile
+      - deploy/m1/scripts/verify-ocr-runtime.sh
+      - deploy/m1/scripts/ocr-worker-image-smoke.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ocr-worker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the complete worker target
+        run: docker build -f deploy/m1/Dockerfile --target worker -t bondbuddy-ocr-worker:local .
+      - name: Offline synthetic Chinese/English PNG and PDF probe
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --cpus 0.75 --memory 512m --memory-swap 512m \
+            --pids-limit 64 --tmpfs /tmp:rw,nosuid,noexec,size=128m \
+            -e PYTHONPATH=/app/python --entrypoint /bin/sh bondbuddy-ocr-worker:local -c \
+            '/usr/local/bin/bb-verify-ocr-runtime && exec python /opt/bondbuddy/ocr-worker-image-smoke.py'

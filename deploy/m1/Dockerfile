@@ -83,8 +83,15 @@ CMD ["node","apps/api/dist/server.js"]
 
 FROM node-runtime AS worker
 ARG BB_RELEASE_SHA=unknown
-ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates util-linux \
+ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH \
+    TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
+# Bookworm OCR engine and language data are pinned independently; osd is used on every page.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-venv ca-certificates util-linux \
+      tesseract-ocr=5.3.0-2 \
+      tesseract-ocr-eng=1:4.1.0-2 \
+      tesseract-ocr-chi-sim=1:4.1.0-2 \
+      tesseract-ocr-osd=1:4.1.0-2 \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=codex --chown=root:root /opt/codex /opt/codex
 RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
@@ -93,6 +100,9 @@ RUN install -d -m 0755 /opt/bondbuddy
 COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
+COPY --chmod=0755 deploy/m1/scripts/verify-ocr-runtime.sh /usr/local/bin/bb-verify-ocr-runtime
+COPY --chmod=0644 deploy/m1/scripts/ocr-worker-image-smoke.py /opt/bondbuddy/ocr-worker-image-smoke.py
+RUN /usr/local/bin/bb-verify-ocr-runtime
 # Mount point for the ops scheduler's NDJSON log sink; a fresh named volume inherits this ownership.
 RUN mkdir -p /var/lib/bb-logs && chown node:node /var/lib/bb-logs && chmod 0700 /var/lib/bb-logs
 # #17 disk-backed parse staging (BB_PARSE_STAGING_DIR); also inherited by a fresh named volume.
@@ -100,7 +110,7 @@ RUN mkdir -p /var/lib/bondbuddy/parse-staging && chown node:node /var/lib/bondbu
 USER node
 # #17 long-lived WorkerRuntime: leased parse/run slots, sweep, heartbeat (readiness) and, only with
 # BB_PLATFORM_PROBE_ENABLED=1, the operator probe loop. PID 1 is node, so SIGTERM drains and releases leases.
-CMD ["node","apps/worker/dist/runtime.js"]
+CMD ["sh","-c","/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js"]
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html

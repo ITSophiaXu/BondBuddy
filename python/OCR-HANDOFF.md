@@ -30,7 +30,7 @@
 | `ocr-response-v2` / `OcrBatchResponseV2` | request_id/document/context 必须与请求相同；page_results 与请求页列表逐项一致。成功项带 checkpoint 引用和 reused；失败项带 attempted（true/false/null）、retryable、非空 error、warnings |
 | `ocr-aggregate-v2` / `OcrAggregateV2` | document/context、严格递增的 successful_pages 引用和 coverage。只有逐页读回验证且精确覆盖物理 1..N 才是 complete；否则必须 partial 或 none |
 
-`parameters_sha256` 必须由受信执行端对实际使用的不可变、版本化配置清单计算，不能由浏览器传入或使用占位值。OCR 清单包含全部识别模式/参数、表格恢复策略与阈值；渲染清单包含颜色/缩放/裁剪/EXIF/旋转及方向置信阈值、编码参数和所有影响像素的依赖版本。方向模型如 `osd` 的真实内容摘要也必须登记。处理器变化必须新版本，不能把现行 `bondbuddy-ocr-1.0.0` 冒充已实现 v2。配置清单的实际生成、锁定、保存和与运行参数一致性检查属于后续运行时接线；schema 不能证明调用端提供的配置摘要真实。
+`parameters_sha256` 必须由受信执行端对实际使用的不可变、版本化配置清单计算，不能由浏览器传入或使用占位值。OCR 清单包含全部识别模式/参数、表格恢复策略与阈值；渲染清单包含颜色/缩放/裁剪/EXIF/旋转及方向置信阈值、编码参数和所有影响像素的依赖版本。方向模型如 `osd` 的真实内容摘要也必须登记。处理器变化必须新版本，不能把现行 `bondbuddy-ocr-1.0.0` 冒充已实现 v2。v2 Python 探针已按实际安装的引擎、模型、PDFium/Pillow 和参数推导并在执行时重验这些摘要；schema 本身不能证明调用端提供的配置摘要真实。
 
 ### 成功页验证与摘要
 
@@ -65,7 +65,7 @@ npm run check:ocr-v2 -w @bondbuddy/contracts
 npm run check:contracts
 ```
 
-Python v2 协议、有界渲染及独立内部 worker/API 持久页路径已接入；后续需把这些内部页接入现有 #17 常驻调度及公开核对/校正版本与下游事实/profile 消费。现存 v1 snapshot 不原地改写、不自动转换为 v2 成功页；本次只新增独立 0080 迁移，不改既有部署镜像。Tesseract/chi_sim 部署、真实 74/70 页性能与财务金标准、Windows/Word 和专业验收仍未完成，不关闭 #14。
+Python v2 协议、有界渲染及独立内部 worker/API 持久页路径已接入；后续需把这些内部页接入现有 #17 常驻调度及公开核对/校正版本与下游事实/profile 消费。现存 v1 snapshot 不原地改写、不自动转换为 v2 成功页；本次只新增独立 0080 迁移。目标 worker 镜像的软件包已配置但仍需目标镜像实际构建/运行 smoke；真实 74/70 页性能与财务金标准、Windows/Word 和专业验收仍未完成，不关闭 #14。
 
 ## 运行边界
 
@@ -95,7 +95,7 @@ Python v2 协议、有界渲染及独立内部 worker/API 持久页路径已接�
 
 ## 安装与复现
 
-需要 Python 3.11+、Tesseract CLI、`eng`、`chi_sim` 和可选方向模型 `osd`。Python 依赖见 requirements-dev.txt；Pillow、NumPy 和 PDFium 用于图像/表格几何与渲染，没有新增模型供应商。
+需要 Python 3.11+、Tesseract CLI、`eng`、`chi_sim` 和方向模型 `osd`（处理每页方向时实际调用，不可省略）。Python 依赖见 requirements-dev.txt；Pillow、NumPy 和 PDFium 用于图像/表格几何与渲染，没有新增模型供应商。
 
 ```sh
 python3 -m venv .venv
@@ -105,7 +105,36 @@ npm run build
 npm run migrate:api
 ```
 
-语言包使用 Tesseract 官方 [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast)，存放在部署环境并用 `TESSDATA_PREFIX` 指定目录；不要把模型或客户材料提交到仓库。CLI 参数和 TSV 定义见 [Tesseract 命令行文档](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)。发布环境需要自行确认版本/资源上限。
+本地开发可使用 Tesseract 官方 [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast)，存放在开发环境并用 `TESSDATA_PREFIX` 指定目录；M1 worker 镜像改用下面明确锁定的 Debian 12 官方软件包，二者不是相同版本/摘要。不要把模型或客户材料提交到仓库。CLI 参数和 TSV 定义见 [Tesseract 命令行文档](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)。
+
+### M1 worker OCR 镜像（#14 独立部署切片）
+
+仅 `deploy/m1/Dockerfile` 的 `worker` stage 加装 Tesseract；`api`/`web`、旧 `deploy/vm` 不变。基础镜像仍是 `node:22-bookworm-slim`，Python 3.11/venv、非 root `node`、只读容器、现有 codex 固定包及 worker 启动命令保留。APT 在构建时精确要求 Bookworm `tesseract-ocr=5.3.0-2`、`tesseract-ocr-eng=1:4.1.0-2`、`tesseract-ocr-chi-sim=1:4.1.0-2`、`tesseract-ocr-osd=1:4.1.0-2`；无法获取这些版本即构建失败。依赖包继续由 Bookworm 仓库安全更新，并非整镜像或所有 Python wheel 的位级可复现锁定。`TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata`，不从网络下载运行时模型。
+
+从 Debian Bookworm `main/binary-amd64/Packages.xz` / `main/binary-arm64/Packages.xz` 的 SHA256 字段与相应官方 `.deb` 提取的**实际** `*.traineddata` 得到以下固定值（语言包为 architecture `all`）：
+
+| 包 | `.deb` SHA-256 | 安装后语言文件 SHA-256 |
+| --- | --- | --- |
+| `tesseract-ocr` amd64 | `311fed91c7311cfee54c28a0f21d700377b8131a9d114628d36d2563f99e1730` | `/usr/bin/tesseract`: `1e8c7ce7f27d2d1c902fb648efed443483f2a8fc7b60c48a5d3b61d647a2649e` |
+| `tesseract-ocr` arm64 | `b547619f12d974916322ca9a2c7628dff8fbcb4b097adc8e277891b03239a6c1` | `/usr/bin/tesseract`: `efbb3e85b26a370ad303539dd357fc1ead69f987de117e5bb8a95b422e8e21ee` |
+| `tesseract-ocr-eng` | `9242d054563262398f8cf41fbd96fcc72f9dde70db16de18539882a6cff74f9d` | `eng`: `7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2` |
+| `tesseract-ocr-chi-sim` | `035f20a3e317343c1b88f6db546225eda9b5857078729c009662e0b3e0fb5d57` | `chi_sim`: `a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730` |
+| `tesseract-ocr-osd` | `72cc0ba5a04e4d38e5d7901ae2f0319f4941fddaa4a77d1a86110909c036bacb` | `osd`: `9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff` |
+
+`deploy/m1/scripts/verify-ocr-runtime.sh` 在构建和**每次默认 worker 进程启动之前**检查已装包版本、对应架构的实际引擎文件 SHA-256、`/usr/bin/tesseract --version` 首行 `tesseract 5.3.0`、实际 `--list-langs` 读取目录和 `eng`/`chi_sim`/`osd` 名称及语言文件 SHA-256；任何缺失/不符均退出非零，worker 不领取任务。Python `ocr-identity-probe-v2` 随后从实际安装文件读取模型 SHA、真实引擎版本和 PDFium/参数摘要，`ocr-invocation-v2` 会再核对，运行时模型变更不复用旧 checkpoint。验收时在目标镜像执行**离线** synthetic PNG 与 PDF 的 `chi_sim+eng` 探针及物理页调用（不是用户材料、真实财务质量或 #14 整体验收）：
+
+```sh
+docker build -f deploy/m1/Dockerfile --target worker -t bondbuddy-ocr-worker:local .
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --cpus 0.75 --memory 512m --memory-swap 512m \
+  --pids-limit 64 --tmpfs /tmp:rw,nosuid,noexec,size=128m \
+  -e PYTHONPATH=/app/python --entrypoint /bin/sh bondbuddy-ocr-worker:local -c \
+  '/usr/local/bin/bb-verify-ocr-runtime && exec python /opt/bondbuddy/ocr-worker-image-smoke.py'
+```
+
+Smoke 要求两个素材各自 30 秒内探针、60 秒内完成一个真实识别页、`attempted_pages=1`、有原文记录、原页 PNG hash、语言实际 hash 以及 `needs_confirmation`/不可直接写稿。生产 compose 限制 worker 为 **0.75 CPU / 512 MiB**（普通 profile **1 CPU / 768 MiB**），`/tmp` 为内存 tmpfs；此单页约束下的结果不证明 v2 极限输入（100 MiB 原件、单页 2000 万像素、单批 50 页/128 MiB 图像）能在 512 MiB 内运行，也不覆盖与 parse/run 并发、真实 70/74 页 OCR 的时间/内存。大文件和并发调度应经独立 #17 性能验收，不能据单页 smoke 提高资源承诺。本镜像不启用常驻 #17 的 OCR v2 调度、不切换原 v1 hook/核对 API、不启动任何供应商调用。
+
+同一构建及探针也在 `.github/workflows/ocr-worker-image.yml` 的 Linux PR job 运行（只限 develop PR 的镜像/烟测文件变更，离线容器且无凭据或镜像发布）。工作流配置不等于执行通过；必须在目标 Docker runner 看到构建和两个素材的完整结果，才能声称镜像验收。没有可用 Docker/CI runner 时 PR 保持 Draft 并记录该缺口。
 
 已有真实 owner/project/material/version 后，在仓库根目录由受信运维/worker 运行：
 
