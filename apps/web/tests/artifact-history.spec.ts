@@ -64,7 +64,7 @@ async function install(page: Page, data: Scenario) {
     }
     if (path === '/runs/latest-failed') return reply(route, 200, { run_id: 'latest-failed', project_id: projectId,
       execution_request_id: 'synthetic-latest-execution', input_revision: 6, input_hash: digest,
-      state: data.latestRunState, stage: data.latestRunState === 'running' ? 'model_generation' : 'completed',
+      state: data.latestRunState, stage: 'model_generation',
       event_cursor: 0, channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: 'platform_trial',
       reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: when });
     const matchRun = path.match(/^\/runs\/(run-\d+)$/);
