@@ -301,6 +301,22 @@ test('working draft admission requires parsed owner materials and fails closed f
     const production=await send('/api/v1/runs/execute',request(valid));
     assert.equal(production.statusCode,202,production.body);
     assert.equal(production.json().channel,'production');
+    // Compose passes empty defaults to the API. They must behave like absent configuration.
+    const configNames=names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_') &&
+      name!=='BB_PREPROD_WORKING_DRAFT_SAMPLE_MANIFEST_SHA256');
+    process.env.BB_DEPLOYMENT_TIER='preprod';
+    for(const blank of ['', '  ']){
+      for(const name of configNames)process.env[name]=blank;
+      const emptyConfig=await send('/api/v1/runs/execute',request(valid));
+      assert.equal(emptyConfig.statusCode,202,emptyConfig.body);
+      assert.equal(emptyConfig.json().channel,'production');
+      assert.equal(emptyConfig.json().test_grant_id,null);
+    }
+    process.env.BB_PREPROD_WORKING_DRAFT_STAGE='issuance';
+    for(const response of [await check(valid),await send('/api/v1/runs/execute',request(valid))]){
+      assert.equal(response.statusCode,409,response.body);
+      assert.equal(response.json().code,'TEST_GRANT_INVALID');
+    }
   }finally{
     await app.close();await pool.end();
     names.forEach((name,index)=>{if(original[index]===undefined)delete process.env[name];else process.env[name]=original[index];});

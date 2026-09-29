@@ -24,6 +24,34 @@ The operator model probe remains disabled unless `BB_PLATFORM_PROBE_ENABLED=1`. 
 
 Staging limits are ceilings (postgres 768M, worker 768M, api 512M, azurite 256M, migrate 256M, web 128M, egress 96M). `compose.prod.yaml` is the small-host production profile (below): `postgres:16-alpine` with small buffers, capped Node heaps, no Azurite, and Blob traffic through the egress proxy.
 
+## Preproduction working draft window
+
+Leave `BB_DEPLOYMENT_TIER=production`, `BB_NON_PRODUCTION_TEST_CHANNEL=disabled`, and all five
+`BB_PREPROD_WORKING_DRAFT_*` values empty in the checked-in example and production configuration.
+For a controlled preproduction window, set `BB_DEPLOYMENT_TIER=preprod` and
+`BB_NON_PRODUCTION_TEST_CHANNEL=enabled` in the private deployment `.env`, then set **all five**:
+
+| Variable | Required value |
+|---|---|
+| `BB_PREPROD_WORKING_DRAFT_EXPIRES_AT` | Future ISO timestamp no more than seven days away |
+| `BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH` | Exact 64-character lowercase SHA-256 of the candidate taxonomy |
+| `BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH` | Exact 64-character lowercase SHA-256 of the candidate rule pack |
+| `BB_PREPROD_WORKING_DRAFT_STAGE` | `registration` or `issuance` |
+| `BB_PREPROD_WORKING_DRAFT_AS_OF` | Real rule evaluation date, `YYYY-MM-DD` |
+
+These values reach only the `api` service; the background service already receives the existing
+test-channel switch. The API checks the authenticated owner, locked materials and parse results
+before granting a working draft. A partially filled or invalid window rejects preflight and
+ordinary update submission; five empty or whitespace-only values preserve the normal route.
+Check the resolved API environment with `docker compose config` before applying the private
+configuration. Do not include private `.env` contents in release evidence.
+
+To roll back automatic admission, clear all five values in the private `.env` and recreate the
+API service with the usual deployment procedure. Disable `BB_NON_PRODUCTION_TEST_CHANNEL` as
+well if test artifacts must become unreadable and active test runs must pause; this switch also
+affects existing grants. Verify the resolved API environment, then retry an ordinary update and
+confirm it follows the normal production channel. Existing test runs do not convert channels.
+
 ## Target host requirements (measured in staging, 2026-09-25)
 
 Measured on the worker host with the release images and the full browser acceptance suite (synthetic, small files):
