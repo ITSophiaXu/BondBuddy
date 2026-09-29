@@ -431,6 +431,8 @@ This is contract and synthetic semantic validation only: no API route, migration
 
 Worker 消费接缝已接线（2026-09-29）：`apps/worker/src/generation-issuer-binding-loader.ts` 的 `loadPinnedApprovedGenerationIssuerBinding` 从锁定 input manifest 读取 `generation_issuer_binding_ref`/`generation_issuer_entity_id`，先要求 `bb_input_revisions.input_hash` 与 run 锁定 hash 一致且等于 manifest 的 canonical hash，再按精确 ref 走 trusted `loadApprovedGenerationIssuerBindingForLock`（其内部即 `loadApprovedGenerationIssuerBinding`，按 binding 自身存储的 input 重解析材料、最新解析快照、身份审核、授权和追加式审核历史），最后要求 binding 的 `selected_materials` 与本 run 锁定的 issuer-role 材料逐项一致、实体与 pin 一致。manifest 无 ref、ref 非法、撤回/换料/换解析/冲突/跨账号任一情况返回 null，`no-history` `model_generation` 阶段保持 `issuer_identity_not_bound` fail-closed；默认 `loadApprovedIssuerBinding` adapter 仍可注入，浏览器 `issuer_name`、参考稿主体和营收画像从不是身份来源。无迁移；单测覆盖锁定 manifest 读取与正反例。
 
+既有项目若保存了无历史稿意图但早期被建为 `update`，只能由本人明确调用转换接口。0081 追加不可变的转换请求收据；项目行锁内核对草稿、最新锁、历史材料、上传与所有 run，在同一事务中改为 `generation`、递增一次草稿版本并写 outbox。旧输入 revision/hash 保留供审计，预检和执行在同一项目行锁下拒绝跨类型锁；普通同类型旧锁仍按原规则处理。转换不会挑选财务材料、批准发行人身份或生成新输入；用户须重新按正常输入锁 API pin 材料、已批准绑定和可选参考稿。
+
 ## 5. 四人工作面与交接
 
 ### #20 SSE private documentary evidence overlay (2026-09-26)

@@ -552,6 +552,51 @@ export function createServer(settings: Settings = {}) {
       return projectDto(result.rows[0]);
     });
   });
+  app.post('/api/v1/projects/:project_id/convert-to-generation',{
+    schema:{body:schemas.ProjectKindConversionRequest,response:{200:schemas.ProjectKindConversionResponse}}
+  },async request=>{
+    const user=await owner(request),id=param(request,'project_id');
+    const b=body<{conversion_request_id:string;expected_draft_revision:number;expected_input_revision:number|null;expected_input_hash:string|null;no_historical_prospectus:true}>(request);
+    if((b.expected_input_revision===null)!==(b.expected_input_hash===null))
+      throw new Problem(422,'VALIDATION_FAILED','Expected input revision and hash must both be present or absent');
+    const requestHash=digest(canonical({project_id:id,...b}));
+    return transaction(db(),async client=>{
+      const p=await project(client,user,id,true);
+      // A business request ID is unique per owner, including across projects. The
+      // advisory lock makes a simultaneous reuse deterministic before inserting.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`project-kind:${user}:${b.conversion_request_id}`]);
+      const prior=(await client.query('SELECT * FROM bb_project_kind_conversions WHERE owner_user_id=$1 AND request_id=$2',[user,b.conversion_request_id])).rows[0];
+      if(prior){
+        if(prior.project_id!==id||prior.request_hash.trim()!==requestHash)
+          throw conflict('IDEMPOTENCY_CONFLICT','Conversion request ID was reused with different input');
+        return {conversion_request_id:b.conversion_request_id,project_id:id,from_kind:'update',to_kind:'generation',old_draft_revision:prior.old_draft_revision,draft_revision:prior.new_draft_revision,previous_input_revision:prior.latest_input_revision,previous_input_hash:prior.latest_input_hash?.trim()??null,converted_at:date(prior.created_at)};
+      }
+      if(p.kind!=='update'||p.update_details?.has_historical!==false)
+        throw conflict('INPUT_REVISION_CONFLICT','Project is not a no-history update draft');
+      if(p.draft_revision!==b.expected_draft_revision||p.latest_input_revision!==b.expected_input_revision||
+         (p.input_hash?.trim()??null)!==b.expected_input_hash)
+        throw conflict('INPUT_REVISION_CONFLICT','Project draft or latest input lock changed');
+      const historical=await client.query("SELECT 1 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role='historical' AND deleted_at IS NULL LIMIT 1",[user,id]);
+      const pendingHistorical=await client.query("SELECT 1 FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND role='historical' AND state IN ('uploading','received') LIMIT 1",[user,id]);
+      if(historical.rowCount||pendingHistorical.rowCount)
+        throw conflict('INPUT_REVISION_CONFLICT','Historical prospectus material or upload is still active');
+      const runs=await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 LIMIT 1',[user,id]);
+      const pending=await client.query(`SELECT 1 FROM bb_jobs j LEFT JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
+        WHERE j.owner_user_id=$1 AND COALESCE(j.project_id,r.project_id)=$2
+          AND j.job_type IN ('update','review','generation','qa') AND j.state IN ('queued','running','paused') LIMIT 1`,[user,id]);
+      if(runs.rowCount||pending.rowCount)
+        throw conflict('INPUT_REVISION_CONFLICT','Project has a run or pending execution work');
+      const changed=(await client.query("UPDATE bb_projects SET kind='generation',draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING draft_revision",[user,id])).rows[0];
+      const receipt=(await client.query(`INSERT INTO bb_project_kind_conversions
+        (id,owner_user_id,project_id,request_id,request_hash,from_kind,to_kind,old_draft_revision,new_draft_revision,latest_input_revision,latest_input_hash)
+        VALUES($1,$2,$3,$4,$5,'update','generation',$6,$7,$8,$9) RETURNING created_at`,
+        [uid(),user,id,b.conversion_request_id,requestHash,p.draft_revision,changed.draft_revision,p.latest_input_revision,p.input_hash??null])).rows[0];
+      await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',
+        [uid(),user,'project',id,'project.kind_converted',{project_id:id,conversion_request_id:b.conversion_request_id,from_kind:'update',to_kind:'generation',draft_revision:changed.draft_revision,latest_input_revision:p.latest_input_revision,latest_input_hash:p.input_hash?.trim()??null}]);
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_edit',status:'submitted'});
+      return {conversion_request_id:b.conversion_request_id,project_id:id,from_kind:'update',to_kind:'generation',old_draft_revision:p.draft_revision,draft_revision:changed.draft_revision,previous_input_revision:p.latest_input_revision,previous_input_hash:p.input_hash?.trim()??null,converted_at:date(receipt.created_at)};
+    });
+  });
   // #6: public, unauthenticated policy numbers rendered by the upload area and the data-policy page.
   app.get('/api/v1/data-policy',{schema:{response:{200:dataLifecycleSchemas.DataPolicyResponse}}},async (_request,reply)=>{
     let policy;
@@ -857,6 +902,11 @@ export function createServer(settings: Settings = {}) {
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
     await transaction(db(),async client=>{
+      await project(client,user,id,true);
+      if(b.role==='historical'){
+        const converted=await client.query('SELECT 1 FROM bb_project_kind_conversions WHERE owner_user_id=$1 AND project_id=$2',[user,id]);
+        if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted no-history project cannot accept historical prospectus material');
+      }
       await admitUploadCreate(client,trial,user,sourceHash(request.ip),b.byte_size);
       await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.created',{project_id:id}]);
@@ -1080,9 +1130,11 @@ export function createServer(settings: Settings = {}) {
         }
         const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
         if(prior.rows[0])return priorRejection(client,prior.rows[0]);
-        const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+        const owned=await client.query('SELECT kind FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',[user,b.project_id]);
         if(!owned.rowCount){await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});return {errorCode:'CAPABILITY_NOT_READY',httpStatus:501};}
         if(wideRevision){const logged=await recordLogicalJob(client,logical('VALIDATION_FAILED',422,'revision_out_of_range'));return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};}
+        const locked=await client.query('SELECT manifest->>\'kind\' AS kind FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[user,b.project_id,b.input_revision,b.input_hash]);
+        if(locked.rows[0]&&locked.rows[0].kind!==owned.rows[0].kind){const logged=await recordLogicalJob(client,logical('INPUT_REVISION_CONFLICT',409,'project_kind_changed'));return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};}
         const logged=await recordLogicalJob(client,logical('CAPABILITY_NOT_READY',501,'capability_not_ready'));
         return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
       });
@@ -1102,12 +1154,14 @@ export function createServer(settings: Settings = {}) {
       }
       const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
       if(prior.rows[0])return {rejection:await priorRejection(client,prior.rows[0])};
-      await project(client,user,b.project_id);
+      const currentProject=await project(client,user,b.project_id,true);
       if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
       if(!input.rows[0])throw missing();
       if(input.rows[0].input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
       const lockedKind=input.rows[0].manifest?.kind;
+      if(lockedKind!==currentProject.kind)
+        throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
       if((lockedKind==='generation'||b.task_kind==='generation')&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
       if(lockedKind==='generation'&&(b.test_grant_id||workingDraftConfigured()))await assertGenerationWorkingDraftInput(client,
@@ -1291,11 +1345,13 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request),id=param(request,'project_id'),b=body<{input_revision:number;input_hash:string;test_grant_id?:string}>(request),traceId=uid();
     try {
       return await transaction(db(),async client=>{
-        await project(client,user,id);
+        const currentProject=await project(client,user,id,true);
         if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
         const input=(await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,id,b.input_revision])).rows[0];
         if(!input)throw missing();
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
+        if(input.manifest?.kind!==currentProject.kind)
+          throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
         if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:id,
           inputRevision:b.input_revision,inputHash:b.input_hash});
         const missingInputs:string[]=[],uncertainty:string[]=[];
