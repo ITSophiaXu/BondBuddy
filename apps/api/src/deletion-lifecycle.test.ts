@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { Ajv } from 'ajv';
 import { Pool } from 'pg';
 import { dataLifecycleSchemas } from '@bondbuddy/contracts';
-import { azureBlobs, digest } from './data.js';
+import { azureBlobs, digest, type PrivateBlobs } from './data.js';
 import { createServer } from './server.js';
 import { dataPolicyFromEnv, runDeletedContentPurge, runUserDeletionLifecycle } from './deletion-lifecycle.js';
 import { PDF, pdfSample } from './upload-safety.samples.js';
@@ -54,6 +54,53 @@ test('GET /api/v1/data-policy is public and renders the server configuration', a
     Object.assign(process.env, saved);
     await app.close();
   }
+});
+
+test('PostgreSQL deletion receipts purge v2 page and checkpoint bytes without removing audit rows', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const owner = randomUUID(), project = randomUUID(), material = randomUUID(), upload = randomUUID();
+  const job = randomUUID(), batch = randomUUID(), hash = 'a'.repeat(64);
+  const original = `users/${owner}/projects/${project}/materials/${upload}`;
+  const prefix = `users/${owner}/projects/${project}/ocr-v2/${material}/1/${hash}/${hash}`;
+  const pageKey = `${prefix}.png`, checkpointKey = `${prefix}.json`;
+  const stored = new Map([[pageKey, Buffer.from('synthetic page')], [checkpointKey, Buffer.from('synthetic checkpoint')]]);
+  const blobs = {
+    delete: async (key: string) => { stored.delete(key); },
+    getIfExists: async (key: string) => stored.get(key) ?? null
+  } as PrivateBlobs;
+  try {
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `ocr${owner.replaceAll('-', '').slice(0, 25)}`]);
+    await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'synthetic lifecycle','update')", [project, owner]);
+    await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+      VALUES($1,$2,$3,'synthetic.pdf','application/pdf',1,$4,'audit',$5,now()+interval '1 hour','completed')`,
+    [upload, owner, project, hash, original]);
+    await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+      VALUES($1,1,$2,$3,$4,'audit','synthetic.pdf','application/pdf',1,$5,$6,'persisted')`,
+    [material, owner, project, upload, hash, original]);
+    await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,stage,project_id,material_id,material_version,material_sha256,parser_version,trace_id,max_attempts)
+      VALUES($1,$2,NULL,'parse','material_parse','queued','queued',$3,$4,1,$5,'synthetic-parser',$6,3)`,
+    [job, owner, project, material, hash, randomUUID()]);
+    await pool.query(`INSERT INTO bb_ocr_v2_batches(id,owner_user_id,project_id,material_id,material_version,document_identity,context,job_id,purpose,request,state)
+      VALUES($1,$2,$3,$4,1,$5,$6,$7,'source_preflight',$8,'started')`,
+    [batch, owner, project, material, { engine: { name: 'synthetic' } }, { purpose: 'source_preflight' }, job, { pages: [1] }]);
+    await pool.query(`INSERT INTO bb_ocr_v2_pages(owner_user_id,project_id,material_id,material_version,identity_sha256,result_sha256,source_request_id,page,checkpoint_key,checkpoint_blob_sha256,image_key,image_sha256)
+      VALUES($1,$2,$3,1,$4,$5,$6,1,$7,$5,$8,$5)`,
+    [owner, project, material, hash, hash, batch, checkpointKey, pageKey]);
+    await pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND id=$2', [owner, material]);
+    await pool.query(`UPDATE bb_storage_tombstones SET eligible_at=now()
+      WHERE owner_user_id=$1 AND material_id=$2`, [owner, material]);
+    await pool.query(`UPDATE bb_storage_tombstones SET state='claimed',attempts=1,claim_token=$3,lease_until=now()+interval '1 hour'
+      WHERE owner_user_id=$1 AND material_id=$2`, [owner, material, randomUUID()]);
+    await pool.query(`UPDATE bb_storage_tombstones SET state='purged',purged_at=now(),claim_token=NULL,lease_until=NULL
+      WHERE owner_user_id=$1 AND material_id=$2`, [owner, material]);
+    const first = await runDeletedContentPurge(pool, blobs, { ownerScope: owner, deletedContentPurgeDays: 0 });
+    assert.equal(first.materialsPurged, 1);
+    assert.equal(first.objectsDeleted, 2);
+    assert.equal(stored.size, 0);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_ocr_v2_pages WHERE owner_user_id=$1', [owner])).rows[0].n, 1);
+    const second = await runDeletedContentPurge(pool, blobs, { ownerScope: owner, deletedContentPurgeDays: 0 });
+    assert.equal(second.materialsPurged, 0);
+  } finally { await pool.end(); }
 });
 
 test('PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and derived content idempotently', { skip: !connection || !blobConnection }, async () => {

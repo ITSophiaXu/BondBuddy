@@ -231,6 +231,58 @@ def _validate_document_runtime(document: dict) -> tuple[str, dict[str, str]]:
     return engine_version, language_hashes
 
 
+def probe_v2_identity(envelope: dict) -> dict:
+    """Derive the immutable document identity from actual source bytes and installed tools."""
+    if not isinstance(envelope, dict) or set(envelope) != {"schema_version", "material_path", "owner_user_id", "project_id", "material", "language"}:
+        raise V2Failure("INVALID_OCR_INVOCATION")
+    material = envelope["material"]
+    if (envelope["schema_version"] != "ocr-identity-probe-v2"
+            or not _valid_id(envelope["owner_user_id"]) or not _valid_id(envelope["project_id"])
+            or not isinstance(material, dict) or set(material) != {"material_id", "material_version", "media_type", "sha256"}
+            or not _valid_id(material["material_id"]) or type(material["material_version"]) is not int
+            or material["material_version"] < 1 or material["media_type"] not in {"application/pdf", "image/png", "image/jpeg"}
+            or not isinstance(material["sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", material["sha256"])
+            or envelope["language"] not in {"eng", "chi_sim+eng"}):
+        raise V2Failure("INVALID_OCR_INVOCATION")
+    path = Path(envelope["material_path"])
+    if not path.is_absolute() or not path.is_file() or not 0 < path.stat().st_size <= MAX_SOURCE_BYTES:
+        raise V2Failure("OCR_INPUT_LIMIT")
+    if _sha256(path.read_bytes()) != material["sha256"]:
+        raise V2Failure("OCR_SOURCE_HASH_MISMATCH")
+    if material["media_type"] == "application/pdf":
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            raise V2Failure("MATERIAL_ENCRYPTED")
+        page_count = len(reader.pages)
+        pdf = pdfium.PdfDocument(path)
+        try:
+            if len(pdf) != page_count:
+                raise V2Failure("OCR_RUNTIME_IDENTITY_MISMATCH")
+        finally:
+            pdf.close()
+    else:
+        with Image.open(path) as image:
+            if image.format != ("PNG" if material["media_type"] == "image/png" else "JPEG") or getattr(image, "n_frames", 1) != 1:
+                raise V2Failure("MATERIAL_CONTENT_MISMATCH")
+        page_count = 1
+    if not 1 <= page_count <= 1500:
+        raise V2Failure("OCR_INPUT_LIMIT")
+    engine_version, language_hashes = _tesseract_runtime(envelope["language"])
+    document = {
+        "owner_user_id": envelope["owner_user_id"], "project_id": envelope["project_id"],
+        "material": material, "page_count": page_count, "processor_version": PROCESSOR_VERSION,
+        "engine": {"name": "tesseract", "version": engine_version, "language": envelope["language"],
+                   "language_data_sha256": language_hashes, "parameters_sha256": ""},
+        "rendering": {"renderer": "", "renderer_version": "", "dpi": 250,
+                      "max_page_pixels": 20_000_000, "parameters_sha256": ""},
+    }
+    renderer, renderer_version, engine_hash, rendering_hash = _expected_parameter_hashes(document, engine_version, language_hashes)
+    document["engine"]["parameters_sha256"] = engine_hash
+    document["rendering"].update(renderer=renderer, renderer_version=renderer_version, parameters_sha256=rendering_hash)
+    _validate_document_runtime(document)
+    return {"schema_version": "ocr-identity-probe-response-v2", "document": document}
+
+
 def _validate_request(request: dict) -> None:
     if set(request) != {"schema_version", "request_id", "document", "context", "pages", "reuse"}:
         raise V2Failure("INVALID_OCR_REQUEST")
