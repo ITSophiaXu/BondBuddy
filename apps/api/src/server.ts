@@ -1,5 +1,6 @@
 import { installAccountRecovery } from './account-recovery.js';
 import { listProjects, archiveProject } from './project-list.js';
+import { listArtifactHistory } from './artifact-history.js';
 import { readOcr, readOcrPage, correctOcr } from './ocr.js';
 import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
@@ -262,6 +263,12 @@ export function createServer(settings: Settings = {}) {
   installProductionRulePackReleaseRoutes(app,{db,actor:owner});
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
+  app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
+    reply.header('cache-control','private, no-store');
+    return listArtifactHistory(db(),await owner(request),param(request,'project_id'),
+      request.query as import('@sinclair/typebox').Static<typeof schemas.ArtifactHistoryQuery>,
+      testChannelEnabled(),verifiedArtifactBytes);
+  });
   app.post('/api/v1/projects/:project_id/archive',{schema:{body:schemas.ProjectArchiveRequest,response:{200:schemas.ProjectResponse}}},async request =>
     archiveProject(db(),await owner(request),param(request,'project_id'),body<{archived:boolean}>(request).archived,request.id));
   app.post('/api/v1/projects',{schema:{body:schemas.ProjectCreateRequest}},async (request,reply) => {

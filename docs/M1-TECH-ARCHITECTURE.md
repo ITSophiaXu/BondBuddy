@@ -1,5 +1,11 @@
 # M1 统一技术栈与四人协作基线
 
+## #34 已交付 Word 成果历史读取（2026-09-29）
+
+`GET /api/v1/projects/{project_id}/artifacts?limit=20&cursor=...` 在本人未删除项目下分页列出经过质量与交付凭证检查、当前 Blob 字节大小/hash 仍匹配的成功 Word run；不启动任务、模型、复制文件或签发下载 grant。默认每页 20、最多 50，按 run 完成时刻和 ID 降序；不透明游标绑定账号/项目、第一页上界和最后一项，新增成功不会挤入续页。撤权/过期/删除/质量失败的行会在下一页读时消失，不保证跨页保留已撤销内容。生产只列 `succeeded`+`available`；明确开启的预生产测试通道只列仍有有效精确 grant 的 `test_completed`+`test_only`，并显式标记 channel/state。旧单文件成果只给 `primary_artifact`，不虚称修订/清洁/基线。若 run 的 `word_delivery_pair` 存在，只在修订主件、清洁件、有效基线三份均属于同一 owner/run 且可交付时返回整组；否则不列该 run。私有 Blob 缺失/内容变化报可重试 503，不发部分成功目录；未知/外人项目报 404，非法游标报 422。每次下载仍按现有 `GET /artifacts/{artifact_id}` 重验并取得新短期 grant。
+
+#85 批准的同项目连续工作区下，#34 浏览器完整版本目录仍待 #384/#361/#18 的 UI 合并后接入此接口；本切片不修改网页。合成 PG16/Blob 夹具不能替代 #35 真实模型→Blob→本人下载，也不能替代 #146 Windows WPS/Word 实机修订/批注/往返验收，PDF/扫描、无历史稿、复杂表与跨品种仍为 #34 开放条件。
+
 ## #18 项目消息受控持久化第一切片（2026-09-29）
 
 `apps/api/src/project-messages.ts` 使用已有私有 prompt Blob、`bb_user_submission_versions`、提交意图和 `packages/contracts` 的 `ProjectMessageSetRef`。追加迁移 0077 保存精确修订来源并为 bounded 历史读取建索引；后端 `POST /projects/{id}/messages` 只保存用户原话和材料精确版本，不调用助手/模型或创建文书任务，返回 `user_asserted` / `not_classified` / `save_only`，不给 `reply=null` 包装伪成功。`GET /projects/{id}/messages` 和单版本读取按本人项目授权、校验私有正文哈希、读取前审计、分页；缺失/清理的正文明确失败。当前 set 的版本按最新一次消息提交单调变化，即使编辑已有消息亦递增；成员位置仍按首次提交顺序，hash 仍按 #76 的规范成员集合计算；老的 input revision 不改写。input-lock 继续在同事务重验完整集合，没有精确 ref 的非空历史拒绝。受控内部提交入口及旧会话回复接口不代表真实聊天已实现；网页原型草稿未接入此公开 API，真正的模型回复、意图路由、流式中断、问答 job/attempt/usage 仍待后续 #18/#79 联调。

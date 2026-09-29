@@ -38,6 +38,16 @@ data.cases.push(...agreementExamples.cases);
 const projectExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/project-list.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(projectExamples.synthetic, true);
 data.cases.push(...projectExamples.cases);
+const artifactHistoryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/artifact-history.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(artifactHistoryExamples.synthetic, true);
+data.cases.push(...artifactHistoryExamples.cases);
+const historyOperation = openApiDocument().paths['/api/v1/projects/{project_id}/artifacts']?.get as {
+  parameters: { name: string }[]; responses: Record<string, unknown>; 'x-implementation-status': string;
+};
+assert.ok(historyOperation);
+assert.deepEqual(historyOperation.parameters.filter(parameter => ['cursor', 'limit'].includes(parameter.name)).map(parameter => parameter.name), ['cursor', 'limit']);
+assert.ok(historyOperation.responses['404'] && historyOperation.responses['422'] && historyOperation.responses['503']);
+assert.match(historyOperation['x-implementation-status'], /implemented/);
 const recoveryExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/account-recovery.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(recoveryExamples.synthetic,true); data.cases.push(...recoveryExamples.cases);
 const issuerReviewExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/issuer-identity-review.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };

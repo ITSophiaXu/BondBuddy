@@ -1,0 +1,84 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "artifact-history-test-run-cannot-claim-production",
+      "schema": "ArtifactHistoryResponse",
+      "valid": false,
+      "value": {
+        "items": [{
+          "run_id": "synthetic-run-1",
+          "input_revision": 1,
+          "completed_at": "2026-09-28T02:00:00.000Z",
+          "state": "test_completed",
+          "channel": "production",
+          "primary_artifact": { "artifact_id": "synthetic-word-1", "version": 1 },
+          "word_delivery": null
+        }],
+        "page": { "has_more": false, "next_cursor": null }
+      }
+    },
+    {
+      "name": "artifact-history-bounded-query",
+      "schema": "ArtifactHistoryQuery",
+      "valid": true,
+      "value": { "limit": "2" }
+    },
+    {
+      "name": "artifact-history-excessive-page",
+      "schema": "ArtifactHistoryQuery",
+      "valid": false,
+      "value": { "limit": "51" }
+    },
+    {
+      "name": "artifact-history-checked-pair-and-legacy-single",
+      "schema": "ArtifactHistoryResponse",
+      "valid": true,
+      "value": {
+        "items": [
+          {
+            "run_id": "synthetic-run-2",
+            "input_revision": 2,
+            "completed_at": "2026-09-29T02:00:00.000Z",
+            "state": "succeeded",
+            "channel": "production",
+            "primary_artifact": { "artifact_id": "synthetic-revision-2", "version": 1 },
+            "word_delivery": {
+              "revision": { "artifact_id": "synthetic-revision-2", "version": 1 },
+              "clean": { "artifact_id": "synthetic-clean-2", "version": 1 },
+              "baseline": { "artifact_id": "synthetic-baseline-2", "version": 1 }
+            }
+          },
+          {
+            "run_id": "synthetic-run-1",
+            "input_revision": 1,
+            "completed_at": "2026-09-28T02:00:00.000Z",
+            "state": "test_completed",
+            "channel": "non_production_test",
+            "primary_artifact": { "artifact_id": "synthetic-word-1", "version": 1 },
+            "word_delivery": null
+          }
+        ],
+        "page": { "has_more": false, "next_cursor": null }
+      }
+    },
+    {
+      "name": "artifact-history-no-private-keys",
+      "schema": "ArtifactHistoryResponse",
+      "valid": false,
+      "value": {
+        "items": [{
+          "run_id": "synthetic-run-1",
+          "input_revision": 1,
+          "completed_at": "2026-09-28T02:00:00.000Z",
+          "state": "succeeded",
+          "channel": "production",
+          "primary_artifact": { "artifact_id": "synthetic-word-1", "version": 1 },
+          "word_delivery": null,
+          "object_key": "internal/private/path"
+        }],
+        "page": { "has_more": false, "next_cursor": null }
+      }
+    }
+  ]
+}
