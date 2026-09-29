@@ -110,6 +110,9 @@ services:
       BB_WORKER_CONCURRENCY: ${BB_WORKER_CONCURRENCY:-2}
       BB_WORKER_PARSE_SLOTS: ${BB_WORKER_PARSE_SLOTS:-1}
       BB_WORKER_DRAIN_MS: ${BB_WORKER_DRAIN_MS:-20000}
+      # #15/#31 fact evidence review guard: off unless explicitly enabled. When on, #31 generation
+      # consumes only exact current fact_evidence_reviewer decisions and excludes every other fact.
+      BB_FACT_EVIDENCE_REVIEW_GATE: ${BB_FACT_EVIDENCE_REVIEW_GATE:-0}
       BB_PARSE_CACHE_OCR_VERSION: ${BB_PARSE_CACHE_OCR_VERSION:?set in .env; see .env.example}
       BB_PARSE_CACHE_BASIS_VERSION: ${BB_PARSE_CACHE_BASIS_VERSION:?set in .env; see .env.example}
       # Only route out: the allow-list proxy. The backend network has no internet gateway.

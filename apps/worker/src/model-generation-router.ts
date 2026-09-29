@@ -2,6 +2,8 @@
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { noHistoryModelGenerationStage } from './no-history-model-stage.js';
 import { historicalModelGenerationStage } from './historical-model-stage.js';
+import { loadHistoricalGenerationInput } from './historical-generation-input.js';
+import { createFactEvidenceReviewGuardedLoader, type FactEvidenceReviewGateLoaderOptions } from './fact-evidence-review-gate.js';
 import type { RunStage } from './run-pipeline.js';
 
 export interface ModelGenerationRouterOptions {
@@ -9,6 +11,8 @@ export interface ModelGenerationRouterOptions {
   noHistoryAdapters?: NoHistoryStageAdapters;
   /** Internal seam for focused router tests; production defaults to the #31 implementation. */
   historicalStage?: RunStage;
+  /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
+  factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
 }
 
 function noHistoryCapabilityNotReady(): RunStage {
@@ -30,7 +34,9 @@ function noHistoryCapabilityNotReady(): RunStage {
  * before creating a prompt or contacting a model.
  */
 export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}): RunStage {
-  const update = options.historicalStage ?? historicalModelGenerationStage();
+  const update = options.historicalStage ?? historicalModelGenerationStage(options.factEvidenceReviewGate
+    ? { load: createFactEvidenceReviewGuardedLoader(loadHistoricalGenerationInput, options.factEvidenceReviewGate) }
+    : {});
   const generation = options.noHistoryAdapters
     ? noHistoryModelGenerationStage(options.noHistoryAdapters)
     : noHistoryCapabilityNotReady();
