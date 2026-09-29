@@ -577,9 +577,14 @@ export function createServer(settings: Settings = {}) {
          (p.input_hash?.trim()??null)!==b.expected_input_hash)
         throw conflict('INPUT_REVISION_CONFLICT','Project draft or latest input lock changed');
       const historical=await client.query("SELECT 1 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role='historical' AND deleted_at IS NULL LIMIT 1",[user,id]);
-      const pendingHistorical=await client.query("SELECT 1 FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND role='historical' AND state IN ('uploading','received') LIMIT 1",[user,id]);
+      const pendingHistorical=await client.query(`SELECT 1 FROM bb_uploads u
+        WHERE u.owner_user_id=$1 AND u.project_id=$2 AND u.role='historical'
+          AND (u.state IN ('uploading','received') OR (u.state='completed' AND NOT EXISTS (
+            SELECT 1 FROM bb_material_versions m WHERE m.owner_user_id=u.owner_user_id
+              AND m.project_id=u.project_id AND m.upload_id=u.id AND m.role='historical'
+          ))) LIMIT 1`,[user,id]);
       if(historical.rowCount||pendingHistorical.rowCount)
-        throw conflict('INPUT_REVISION_CONFLICT','Historical prospectus material or upload is still active');
+        throw conflict('INPUT_REVISION_CONFLICT','Historical prospectus material, unfinished upload, or completed upload without material blocks conversion');
       const runs=await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 LIMIT 1',[user,id]);
       const pending=await client.query(`SELECT 1 FROM bb_jobs j LEFT JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
         WHERE j.owner_user_id=$1 AND COALESCE(j.project_id,r.project_id)=$2

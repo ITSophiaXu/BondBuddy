@@ -140,3 +140,49 @@ test('conversion rejects historical material and terminal run, and serializes ag
     assert.notEqual(converted.statusCode === 200, submitted.statusCode === 202, 'conversion and execute cannot both commit');
   } finally { await app.close(); await pool.end(); }
 });
+
+test('conversion rejects a completed historical upload without a material version, but permits a deleted material', { skip: !connection }, async () => {
+  const pool = new Pool({ connectionString: connection! });
+  const owner = `synthetic-conversion-orphan-${randomUUID()}`;
+  const app = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }) });
+  const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
+  const create = async () => {
+    const response = await send('POST', '/api/v1/projects', { name: 'Synthetic no-history draft', kind: 'update', issuer_name: null, market: null, offering: null,
+      update_details: { ...emptyUpdateDetails(), has_historical: false } });
+    assert.equal(response.statusCode, 201, response.body);
+    const id = response.json().project_id as string;
+    const lock = await send('POST', `/api/v1/projects/${id}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
+    assert.equal(lock.statusCode, 201, lock.body);
+    return { id, request: { conversion_request_id: randomUUID(), expected_draft_revision: 1, expected_input_revision: 1,
+      expected_input_hash: lock.json().input_hash, no_historical_prospectus: true } };
+  };
+  const addCompletedUpload = async (projectId: string) => {
+    const uploadId = randomUUID();
+    await pool.query("INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state) VALUES($1,$2,$3,'synthetic.pdf','application/pdf',1,$4,'historical',$5,now() + interval '1 day','completed')",
+      [uploadId, owner, projectId, 'a'.repeat(64), `synthetic/upload/${uploadId}`]);
+    return uploadId;
+  };
+  try {
+    const orphan = await create();
+    await addCompletedUpload(orphan.id);
+    const before = (await pool.query('SELECT kind,draft_revision,latest_input_revision FROM bb_projects WHERE id=$1', [orphan.id])).rows[0];
+    const outboxBefore = (await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE aggregate_id=$1', [orphan.id])).rows[0].n;
+    const refused = await send('POST', `/api/v1/projects/${orphan.id}/convert-to-generation`, orphan.request);
+    assert.equal(refused.statusCode, 409, refused.body);
+    assert.equal(refused.json().code, 'INPUT_REVISION_CONFLICT');
+    assert.deepEqual((await pool.query('SELECT kind,draft_revision,latest_input_revision FROM bb_projects WHERE id=$1', [orphan.id])).rows[0], before);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_project_kind_conversions WHERE project_id=$1', [orphan.id])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_outbox WHERE aggregate_id=$1', [orphan.id])).rows[0].n, outboxBefore);
+
+    const deleted = await create();
+    const uploadId = await addCompletedUpload(deleted.id);
+    const materialId = randomUUID();
+    await pool.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,'historical','synthetic.pdf','application/pdf',1,$5,$6,'persisted')",
+      [materialId, owner, deleted.id, uploadId, 'a'.repeat(64), `users/${owner}/projects/${deleted.id}/materials/${materialId}`]);
+    const removal = await send('DELETE', `/api/v1/projects/${deleted.id}/materials/${materialId}`);
+    assert.equal(removal.statusCode, 204, removal.body);
+    assert.ok((await pool.query('SELECT deleted_at FROM bb_material_versions WHERE id=$1', [materialId])).rows[0].deleted_at);
+    const converted = await send('POST', `/api/v1/projects/${deleted.id}/convert-to-generation`, deleted.request);
+    assert.equal(converted.statusCode, 200, converted.body);
+  } finally { await app.close(); await pool.end(); }
+});
