@@ -12,7 +12,7 @@ that could not be measured after a failed subprocess remain `null`; price remain
 default parallel `node --test` (one process per file). Database-bound suites
 skip unless a migrated PostgreSQL 16 database is configured. Point
 `BB_TEST_DATABASE_URL` at a disposable, fully migrated database; it is used
-**only as a template**. Each test file clones it (`CREATE DATABASE … TEMPLATE`,
+**only as a template** and must not contain pre-existing run/job rows. Each test file clones it (`CREATE DATABASE … TEMPLATE`,
 see `src/test-database.ts`) and drops the clone with `WITH (FORCE)` when the file
 ends. Suites that assert global outbox/job counts or install `bb_outbox`
 triggers therefore cannot race each other. Requirements: the role needs
@@ -27,6 +27,37 @@ createdb bb_worker_template && DATABASE_URL=postgresql://…/bb_worker_template 
 BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
 BB_TEST_AZURITE_CONNECTION_STRING=UseDevelopmentStorage=true npm test -w @bondbuddy/worker
 ```
+
+### The template must be empty
+
+The template is a schema donor, not a shared test database. Its rows are copied
+into every clone, and the real run/parse claim loops select globally queued jobs,
+so a template that still holds rows (for example a database also used for local
+development or for another suite) leaks foreign runs into every clone. Global
+claim then returns a job for the wrong run: `runPipelineOnce` reports `idle`
+because `claim` paused a stale test run, a freshly submitted run stays `queued`,
+or `run-runtime` fails its first `active() === 0` check. These look like code
+regressions but are environment setup failures; the fix is a fresh template, not
+a code change. Do not run the API, migrations or other suites against it once it
+is migrated.
+
+```sh
+createdb bb_worker_template
+DATABASE_URL=postgresql://…/bb_worker_template npm run migrate:api
+psql postgresql://…/bb_worker_template -c 'SELECT count(*) FROM bb_runs'   # must be 0
+BB_TEST_DATABASE_URL=postgresql://…/bb_worker_template \
+BB_TEST_AZURITE_CONNECTION_STRING=UseDevelopmentStorage=true \
+node --test --test-concurrency=1 \
+  apps/worker/dist/test-channel-runtime.test.js \
+  apps/worker/dist/run-runtime.test.js \
+  apps/worker/dist/runtime-parse-slots.test.js
+```
+
+`test-channel-runtime` and `run-runtime` read `BB_TEST_CHANNEL_DATABASE_URL` and
+`BB_TEST_RUNTIME_DATABASE_URL` respectively, and `runtime-parse-slots` reads
+`BB_TEST_RUNTIME_DATABASE_URL`, but each falls back to `BB_TEST_DATABASE_URL`
+when its suite-specific variable is unset. Pointing that shared variable at a
+dirty database therefore affects all three.
 
 The #76 authorized PostgreSQL regression is separately opt-in. It reads only
 the four `historical` DOCX paths and one manifest-registered financial file per
