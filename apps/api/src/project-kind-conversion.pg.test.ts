@@ -107,6 +107,16 @@ test('conversion rejects historical material and terminal run, and serializes ag
     const run = await create();
     await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$5,'update',$6,'failed')", [randomUUID(),owner,run.id,run.hash,randomUUID(),'b'.repeat(64)]);
     assert.equal((await send('POST', `/api/v1/projects/${run.id}/convert-to-generation`, run.request)).statusCode, 409);
+    const pendingWork = await create();
+    const queueApp = createServer({ pool, allowedOrigin: origin, principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+    try {
+      const submitted = await queueApp.inject({ method: 'POST', url: '/api/v1/runs/execute', headers: { origin }, payload: {
+        execution_request_id: randomUUID(), project_id: pendingWork.id, input_revision: 1, input_hash: pendingWork.hash,
+        task_kind: 'update', input_manifest_ref: pendingWork.id, storage_origin: 'cloud', workspace_id: pendingWork.id } });
+      assert.equal(submitted.statusCode, 202, submitted.body);
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE run_id=$1 AND state='queued'", [submitted.json().run_id])).rows[0].n, 1);
+      assert.equal((await send('POST', `/api/v1/projects/${pendingWork.id}/convert-to-generation`, pendingWork.request)).statusCode, 409);
+    } finally { await queueApp.close(); }
     const race = await create();
     const [conversion, lock] = await Promise.all([
       send('POST', `/api/v1/projects/${race.id}/convert-to-generation`, race.request),
