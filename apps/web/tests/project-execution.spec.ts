@@ -266,7 +266,7 @@ test('temporary start failure retains support reference and does not claim missi
   const state=fixture(); state.checkStatus='ready';
   state.executeError={status:503,code:'DATA_UNAVAILABLE',correlation_id:'synthetic-start-unavailable'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('服务暂时无法确认操作结果');
+  await expect(page.locator('#execution-message')).toContainText('服务暂时无法完成操作，结果尚未确认');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-start-unavailable');
   await expect(page.locator('#execution-message')).not.toContainText('填写内容');
   expect(state.runs.size).toBe(0);

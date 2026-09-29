@@ -41,7 +41,7 @@ test('unknown start failures retain reference and distinguish transient from per
   const temporary = friendlyError(parseApiError(503, {
     code: 'DATA_UNAVAILABLE', retryable: true, correlation_id: 'synthetic-start-503',
   }));
-  assert.match(temporary, /刷新项目状态/);
+  assert.match(temporary, /结果尚未确认.*刷新项目状态/);
   assert.match(temporary, /错误编号：synthetic-start-503/);
   assert.doesNotMatch(temporary, /填写内容/);
   const permanent = friendlyError(parseApiError(409, { code: 'INPUT_REQUIRED', correlation_id: 'synthetic-start-409' }));

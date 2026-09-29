@@ -274,11 +274,9 @@ export class ProjectExecution {
         const inputMessage = operation === 'execute'
           ? executionInputError(error, this.draft.fields.update_details.has_historical, this.eligibleMaterials()) : undefined;
         this.inputRejected = Boolean(inputMessage);
-        this.message = operation === 'execute'
-        ? inputMessage ??
+        this.message = inputMessage ??
           (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
-            ? `当前环境尚未开放全文更新，请联系支持。${errorReference(error)}` : friendlyError(error))
-        : friendlyError(error);
+            ? `当前环境尚未开放全文更新，请联系支持。${errorReference(error)}` : friendlyError(error));
       }
     }
     finally { this.busy = false; this.render(); }

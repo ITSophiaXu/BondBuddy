@@ -56,7 +56,7 @@ export function friendlyError(error: unknown): string {
     case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
     case 'PROJECT_DELETE_BLOCKED': return '项目中还有任务尚未结束，暂时不能删除。';
     case 'DATA_UNAVAILABLE': return error.status >= 500
-      ? `服务暂时无法确认操作结果，请刷新项目状态；仍无法继续时联系支持。${reference}`
+      ? `服务暂时无法完成操作，结果尚未确认。请刷新项目状态；仍无法继续时联系支持。${reference}`
       : `当前结果无法核实，请刷新后联系支持。${reference}`;
     default: return error.details.retryable || error.status >= 500
       ? `操作结果尚未确认，请刷新项目状态后重试。${reference}`
