@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { appendIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
+import { isTestIssuerCandidate, testIssuerCandidateMatches } from '@bondbuddy/api/test-issuer-candidate';
 import type { PrivateBlobs } from '@bondbuddy/api/data';
 import { createMaterialsReadyStage, inputLockStage, runPipelineOnce, type RunStage } from './run-pipeline.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -11,7 +12,7 @@ import { isolatedTestDatabase } from './test-database.js';
 const databaseUrl=await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL','pending-issuer-working-draft');
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 
-test('a pinned unreviewed issuer reaches the test model gate; a second observation pauses before it',
+test('two identical unreviewed issuer anchors are pinned together; conflicts and drift fail closed',
   {skip:!databaseUrl},async()=>{
   const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
   process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
@@ -79,12 +80,75 @@ test('a pinned unreviewed issuer reaches the test model gate; a second observati
     assert.deepEqual(unparsedRun,{state:'paused',stage:'awaiting_materials'},
       'an unparsed material cannot yield a completed Word');
     const another=randomUUID();
-    await addEvidence(another,'合成发行人乙',1);
+    await addEvidence(another,'合成发行人甲',1);
     await appendIssuerIdentitySourceRecord({pool},{ownerUserId:owner,projectId:project,materialId:material,materialVersion:1,
-      requestId:`issuer-${another}`,sourceRecordId:another,issuerDisplayName:'合成发行人乙',entityId:`issuer-name:${sha('合成发行人乙').slice(0,32)}`});
+      requestId:`issuer-${another}`,sourceRecordId:another,issuerDisplayName:'合成发行人甲',entityId:`issuer-name:${sha('合成发行人甲').slice(0,32)}`});
     assert.equal((await submit()).statusCode,202);
     assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
     assert.equal(reached,1,'a changed issuer observation cannot pass the pinned test input');
+    const twoResponse=await send(`/api/v1/projects/${project}/input-revisions`,
+      {draft_revision:1,material_versions:[{material_id:material,material_version:1}],requirement_message_ids:[]});
+    assert.equal(twoResponse.statusCode,201,twoResponse.body);
+    const two=twoResponse.json();
+    const twoManifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=2',
+      [owner,project])).rows[0].manifest;
+    const candidate=twoManifest.test_issuer_candidate;
+    assert.ok(isTestIssuerCandidate(candidate));
+    assert.equal(candidate.status,'pending_test_candidate');
+    assert.ok(candidate.observations);
+    assert.ok(candidate.observations_sha256);
+    assert.equal(candidate.observations.length,2);
+    const pinnedIds=candidate.observations.map(item=>item.source_record_id);
+    assert.equal(new Set(pinnedIds).size,2);
+    assert.deepEqual(pinnedIds,[...pinnedIds].sort());
+    assert.equal(candidate.observations_sha256.length,64);
+    assert.equal(twoManifest.issuer_identity.status,'pending');
+    assert.equal(twoManifest.issuer_name,null);
+    assert.equal(twoManifest.issuer_entity_id,null);
+    assert.equal(await testIssuerCandidateMatches(pool,{ownerUserId:owner,projectId:project},candidate),true);
+    assert.equal(await testIssuerCandidateMatches(pool,{ownerUserId:owner,projectId:project},
+      {...candidate,source_content_sha256:'f'.repeat(64)}),false,'tampered material pin cannot pass');
+    assert.equal(isTestIssuerCandidate({...candidate,observations:[
+      {...candidate.observations[0]!,quote_sha256:'f'.repeat(64)},candidate.observations[1]!]}),false,
+      'one changed anchor invalidates the set hash');
+    await assert.rejects(testIssuerCandidateMatches(pool,{ownerUserId:`other-${owner}`,projectId:project},candidate),
+      'another owner cannot borrow source evidence');
+    const twoGrant=randomUUID();
+    await pool.query(`INSERT INTO bb_non_production_test_grants
+      (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+      VALUES($1,$2,$3,2,$4,$5,$6,$7,'synthetic-operator','synthetic',now()+interval '1 hour')`,
+    [twoGrant,owner,project,two.input_hash,sample,taxonomy,pack]);
+    const checked=await send(`/api/v1/projects/${project}/preflight`,{input_revision:2,input_hash:two.input_hash,
+      test_grant_id:twoGrant});
+    assert.equal(checked.statusCode,200,checked.body);
+    assert.ok(checked.json().advisory_inputs.includes('issuer_identity_not_bound:issuer_identity_source_missing_unreviewed_or_conflicting'));
+    assert.ok(!checked.json().blocking_inputs.some((reason:string)=>reason.startsWith('issuer_identity_not_bound:')));
+    const submitTwo=(grantId:string|null=twoGrant)=>send('/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,
+      input_revision:2,input_hash:two.input_hash,task_kind:'update',input_manifest_ref:'synthetic',
+      storage_origin:'cloud',workspace_id:'synthetic',...(grantId?{test_grant_id:grantId}:{})});
+    const twoRun=await submitTwo();
+    assert.equal(twoRun.statusCode,202,twoRun.body);
+    assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
+    assert.equal(reached,2,'the same-subject set passes the test input gate');
+    const production=await submitTwo(null);
+    assert.equal(production.statusCode,202,production.body);
+    assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
+    assert.equal(reached,2,'production remains closed to unreviewed identity');
+    const third=randomUUID();
+    await addEvidence(third,'合成发行人乙',2);
+    await appendIssuerIdentitySourceRecord({pool},{ownerUserId:owner,projectId:project,materialId:material,materialVersion:1,
+      requestId:`issuer-${third}`,sourceRecordId:third,issuerDisplayName:'合成发行人乙',entityId:`issuer-name:${sha('合成发行人乙').slice(0,32)}`});
+    assert.equal(await testIssuerCandidateMatches(pool,{ownerUserId:owner,projectId:project},candidate),false,
+      'a changed observation set invalidates every pinned anchor');
+    const stale=await submitTwo();assert.equal(stale.statusCode,202,stale.body);
+    assert.equal(await runPipelineOnce({pool,blobs:{} as PrivateBlobs,stages,testRuleCapabilityLoader:capability}),'paused');
+    assert.equal(reached,2,'new conflicting source does not reach the model');
+    const conflictInput=await send(`/api/v1/projects/${project}/input-revisions`,
+      {draft_revision:1,material_versions:[{material_id:material,material_version:1}],requirement_message_ids:[]});
+    assert.equal(conflictInput.statusCode,201,conflictInput.body);
+    const conflictManifest=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=3',
+      [owner,project])).rows[0].manifest;
+    assert.equal(conflictManifest.test_issuer_candidate,undefined,'a true issuer conflict has no candidate');
   }finally{
     await app.close();await pool.end();
     if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
