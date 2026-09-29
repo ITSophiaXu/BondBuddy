@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   canonicalTargetPeriodCandidateSnapshotContent,
+  validProjectMessageSetRef,
   validTargetPeriodCandidateSnapshot,
   type TargetPeriodCandidateSnapshot,
 } from '@bondbuddy/contracts';
@@ -40,6 +41,23 @@ function sha256(value: string): string { return createHash('sha256').update(valu
 function cmp(left: string, right: string): number { return left < right ? -1 : left > right ? 1 : 0; }
 function evidenceKey(value: { readonly snapshot_id: string; readonly record_id: string }): string {
   return `${value.snapshot_id}\0${value.record_id}`;
+}
+
+/**
+ * The bound supplementary-requirement set is the shared public message-set ref. A ref
+ * that lacks an exact content hash or carries duplicate/unsorted member IDs is not a
+ * set identity and fails closed; a bare version is never accepted.
+ */
+function supplementalRequirementsRef(
+  value: VersionedSupplementalRequirementsPin,
+): VersionedSupplementalRequirementsPin {
+  const ref = {
+    version: value.version,
+    content_sha256: value.content_sha256,
+    message_ids: [...value.message_ids].sort(),
+  };
+  if (!validProjectMessageSetRef(ref)) throw fail('TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED');
+  return ref;
 }
 
 function sourceState(pin: TargetPeriodCandidateSnapshotPin): 'available' | 'needs_confirmation' | 'failed' | 'partial_coverage' {
@@ -162,11 +180,7 @@ export function buildTargetPeriodCandidateSnapshot(input: BuildTargetPeriodCandi
     project_id: input.project_id,
     project_draft_revision: input.project_draft_revision,
     reporting_cutoff: input.reporting_cutoff,
-    supplemental_requirements: {
-      version: input.supplemental_requirements.version,
-      content_sha256: input.supplemental_requirements.content_sha256,
-      message_ids: [...input.supplemental_requirements.message_ids].sort(),
-    },
+    supplemental_requirements: supplementalRequirementsRef(input.supplemental_requirements),
     financial_materials: lockedMaterials.map(item => ({
       material_id: item.material_id,
       material_version: item.material_version,
