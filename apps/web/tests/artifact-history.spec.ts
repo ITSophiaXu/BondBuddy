@@ -14,9 +14,9 @@ const bytes = Buffer.from('synthetic checked Word bytes');
 const digest = createHash('sha256').update(bytes).digest('hex');
 const emptyMessages = { version: 1, content_sha256: createHash('sha256')
   .update(JSON.stringify({ hash_domain: PROJECT_MESSAGE_SET_HASH_DOMAIN, members: [] })).digest('hex'), message_ids: [] };
-const project = (id = projectId): Dto<'ProjectResponse'> => ({
+const project = (id = projectId, kind: 'update' | 'generation' = 'update'): Dto<'ProjectResponse'> => ({
   project_id: id, draft_revision: 1, input_revision: null, input_hash: null,
-  name: '合成历史项目', kind: 'update', issuer_name: '合成发行人',
+  name: '合成历史项目', kind, issuer_name: '合成发行人',
   market: 'sse', offering: 'private', updated_at: when
 });
 type Entry = Dto<'ArtifactHistoryResponse'>['items'][number];
@@ -33,10 +33,11 @@ type Scenario = {
   entries: Entry[]; requests: { method: string; path: string; query: string }[]; reads: Map<string, number>; grants: string[];
   historyStatus: number; downloadStatus: number; metadataStatus: number; badBytes: boolean; foreignRun: boolean;
   loggedOut: boolean; latestRunState: 'failed' | 'running'; holdHistory?: Promise<void>; historyRequested?: () => void;
-  malformedItems?: unknown[]; holdDownload?: Promise<void>; downloadRequested?: () => void;
+  malformedItems?: unknown[]; holdDownload?: Promise<void>; downloadRequested?: () => void; kind: 'update' | 'generation';
 };
 const scenario = (): Scenario => ({ entries: [...initial], requests: [], reads: new Map(), grants: [],
-  historyStatus: 200, downloadStatus: 200, metadataStatus: 200, badBytes: false, foreignRun: false, loggedOut: false, latestRunState: 'failed' });
+  historyStatus: 200, downloadStatus: 200, metadataStatus: 200, badBytes: false, foreignRun: false, loggedOut: false,
+  latestRunState: 'failed', kind: 'update' });
 const reply = (route: Route, status: number, data: unknown) => route.fulfill({
   status, contentType: 'application/json', body: JSON.stringify(data)
 });
@@ -49,13 +50,13 @@ async function install(page: Page, data: Scenario) {
     data.requests.push({ method, path, query: url.search });
     if (path === '/me') return reply(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
     if (path === '/auth/refresh' || data.loggedOut) return reply(route, 401, { code: 'UNAUTHENTICATED' });
-    if (path === `/projects/${otherProjectId}`) return reply(route, 200, project(otherProjectId));
-    if (path === `/projects/${projectId}`) return reply(route, 200, project());
+    if (path === `/projects/${otherProjectId}`) return reply(route, 200, project(otherProjectId, data.kind));
+    if (path === `/projects/${projectId}`) return reply(route, 200, project(projectId, data.kind));
     if (path === `/projects/${projectId}/messages` || path === `/projects/${otherProjectId}/messages`) {
       return reply(route, 200, { conversation_id: path.split('/')[2], items: [],
         project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
     }
-    if (path === '/projects') return reply(route, 200, { items: [{ ...project(), latest_run: { run_id: 'latest-failed',
+    if (path === '/projects') return reply(route, 200, { items: [{ ...project(projectId, data.kind), latest_run: { run_id: 'latest-failed',
       state: data.latestRunState, updated_at: when }, latest_artifact: { artifact_id: 'revision-3', run_id: 'run-3', version: 3, created_at: when } }],
       page: { has_more: false, next_cursor: null } });
     if (path.endsWith('/events')) return reply(route, 200, { items: [], next_cursor: null });
@@ -176,6 +177,15 @@ test('an active newer run leaves older checked versions downloadable on reload',
   await page.locator('.word-history-item').first().getByRole('button', { name: '下载清洁版' }).click();
   expect((await downloaded).suggestedFilename()).toBe('合成历史项目-输入5-clean-3-清洁版.docx');
   expect(data.requests.some(request => request.path === '/runs/execute')).toBe(false);
+});
+
+test('no-history generation work keeps its message/run UI without claiming the update-only history route covers it', async ({ page }) => {
+  const data = scenario(); data.kind = 'generation'; await install(page, data);
+  await page.goto(`/#/projects/${projectId}`);
+  await expect(page.locator('#execution-progress')).toContainText('任务失败');
+  await expect(page.locator('#conversation-status')).toContainText('已读取');
+  await expect(page.locator('.word-history')).toHaveCount(0);
+  expect(data.requests.some(request => request.path.endsWith('/artifacts'))).toBe(false);
 });
 
 test('pagination errors retain only the already loaded page, report incomplete history, and retry the same cursor', async ({ page }) => {

@@ -172,6 +172,8 @@ The live test requires the local HTTPS origin `https://127.0.0.1:5173` or an equ
 
 同一项目工作区的“历史成果”读取 `GET /api/v1/projects/{project_id}/artifacts?limit=20&cursor=...`，按服务端游标加载全部仍可获取的成功 Word 版本；新任务运行或失败不遮蔽旧成功成果。目录以输入版本、完成时间与任务编号区分每次执行；`primary_artifact.version` 只标为“文件版本”，不伪造项目级连续 vN（当前每次新 run 的文件版本通常均为 1），下载文件名带精确 artifact ID 防止不同运行互相覆盖。三件套分别列出修订版、清洁版和有效基线；旧单件成果只标“Word 成果”，不能推断为新稿或修订版。生产 `succeeded` 与持有有效授权的内部测试 `test_completed` 按公共契约明确标注不同通道，内部测试稿始终标注“未经专业审核·不得对外使用”。列表只提供已检查成果的元数据，每次点击先重读项目所属 run 和该成果，再取得新短期授权、校验文件字节；撤销、删除、哈希损坏、跨项目、会话失效与分页错误显示失败，不触发新的生成。列表刷新和切换项目会终止旧请求；浏览器不缓存 grant。
 
+目录 API 当前只列 `task_kind=update` 的成功 run，所以浏览器只在更新项目显示这份目录；#18/#33 的无历史新编项目继续保留消息、执行与当前成果区，不把更新目录的空结果误说成新编没有成果。无历史新编的完整历史发现属于后续 API/生成范围。
+
 本目录在 [#85 连续项目工作区](../../product-prototype/design-previews/update-workspace.fragment.html)的进度与成果位置增加历史版本卡片；#85 完成态本身只展示当前 vN 成果，**目录是需产品负责人确认的布局补充**，不能以测试通过替代确认。桌面与窄屏同尺寸截图、源 commit 和逐项偏离见 [#34 对照记录](ux-evidence/issue-34-history/README.md)。
 
 验证命令（干净工作区先完成依赖包构建，已有浏览器集成测试依赖 API 的 dist）：

@@ -161,8 +161,10 @@ export class ProjectExecution {
       })();
     });
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
-    this.history = new ArtifactHistory(this.api, this.id, () => this.draft.project.name, host.querySelector<HTMLElement>('#execution-history')!);
-    this.history.mount();
+    if (this.draft.project.kind === 'update') {
+      this.history = new ArtifactHistory(this.api, this.id, () => this.draft.project.name, host.querySelector<HTMLElement>('#execution-history')!);
+      this.history.mount();
+    }
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
   }
