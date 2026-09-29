@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, statSync, chmodSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { assertHealthIdentity, assertProxyTarget, assertServiceIdentity, assertWebPort, closeSyntheticAccount } from './deployed-recovery-safety.mjs';
 
 const mode = process.argv[2];
 if (!['run', 'recover', 'preflight'].includes(mode)) throw new Error('usage: deployed-recovery-drill.mjs preflight|run|recover');
@@ -12,6 +13,8 @@ const required = (key) => { const value = process.env[key]; if (!value) throw ne
 const uuid = (value) => { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value ?? '')) throw new Error('Invalid scoped UUID'); return value; };
 const expectedSha = required('BB_DRILL_EXPECTED_SHA');
 if (!/^[0-9a-f]{40}$/.test(expectedSha)) throw new Error('Expected full commit SHA');
+if (execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() !== expectedSha)
+  throw new Error('Checkout does not match expected deployed commit');
 const envFile = resolve(required('BB_DRILL_ENV_FILE'));
 const stateFile = resolve(required('BB_DRILL_STATE_FILE'));
 const evidenceFile = resolve(required('BB_DRILL_EVIDENCE_FILE'));
@@ -20,7 +23,7 @@ const envStat = statSync(envFile);
 if ((envStat.mode & 0o077) !== 0) throw new Error('Compose env file must be private');
 const compose = (...args) => execFileSync('docker', ['compose', '--project-directory', resolve('deploy/m1'), '-f', resolve('deploy/m1/compose.yaml'), '--env-file', envFile, ...args], { encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-const services = ['api', 'worker', 'ops', 'postgres'];
+const services = ['api', 'worker', 'ops', 'postgres', 'web'];
 const ids = Object.fromEntries(services.map(service => [service, required(`BB_DRILL_${service.toUpperCase()}_ID`)]));
 const snapshot = (id) => JSON.parse(docker('inspect', id))[0];
 const short = (error) => error instanceof Error ? error.message.split('\n')[0].slice(0, 180) : 'unknown failure';
@@ -45,14 +48,8 @@ const persistEvidence = records => { writeFileSync(evidenceFile, `${records.map(
 function checkServices() {
   for (const service of services) {
     const actual = compose('ps', '-q', service);
-    if (actual !== ids[service]) throw new Error(`${service} ID does not match the specified running service`);
     const container = snapshot(actual);
-    if (container.State.Status !== 'running' || container.State.Paused) throw new Error(`${service} is not ready`);
-    if (container.Config.Labels?.['com.docker.compose.service'] !== service) throw new Error(`${service} Compose label mismatch`);
-    if (service !== 'postgres') {
-      const expected = `bondbuddy-m1-${service === 'ops' ? 'worker' : service}:${expectedSha.slice(0, 12)}`;
-      if (container.Config.Image !== expected || !container.Config.Env.includes(`BB_RELEASE_SHA=${expectedSha}`)) throw new Error(`${service} image commit mismatch`);
-    } else if (!container.Config.Image.startsWith('postgres:16')) throw new Error('PostgreSQL is not version 16');
+    assertServiceIdentity(service, actual, ids[service], container, expectedSha);
   }
   const api = snapshot(ids.api), ops = snapshot(ids.ops), worker = snapshot(ids.worker);
   const value = (container, key) => container.Config.Env.find(item => item.startsWith(`${key}=`))?.slice(key.length + 1);
@@ -66,6 +63,25 @@ function checkServices() {
   const gate = rows('SELECT state,seq FROM bb_evidence_gate_events ORDER BY seq DESC LIMIT 1')[0] ?? ['open', '0'];
   return { image_sha: expectedSha, migrations: migrations.length, latest_migration: migrations.at(-1), gate_state: gate[0],
     gate_seq: Number(gate[1]), staging_directories: stagingNames().length, service_ids: ids };
+}
+
+async function checkApiHealth() {
+  assertWebPort(base, snapshot(ids.web).NetworkSettings.Ports?.['8080/tcp']);
+  // The web image must contain the route that proxies /healthz to the named API.
+  const expectedConfigHash = createHash('sha256').update(readFileSync('deploy/m1/nginx/default.conf')).digest('hex');
+  const actualConfigHash = docker('exec', ids.web, 'sha256sum', '/etc/nginx/conf.d/default.conf').split(/\s+/)[0];
+  const apiNetworks = snapshot(ids.api).NetworkSettings.Networks;
+  const webNetworks = snapshot(ids.web).NetworkSettings.Networks;
+  const sharedIps = Object.keys(apiNetworks).filter(name => webNetworks[name]).map(name => apiNetworks[name].IPAddress);
+  const resolvedApiIp = docker('exec', ids.web, 'getent', 'hosts', 'api').split(/\s+/)[0];
+  assertProxyTarget(actualConfigHash, expectedConfigHash, resolvedApiIp, sharedIps);
+  const probe = `const r=await fetch('http://127.0.0.1:3000/health',{signal:AbortSignal.timeout(5000)});
+    console.log(JSON.stringify({status:r.status,contentType:r.headers.get('content-type'),body:await r.text()}));`;
+  const direct = JSON.parse(docker('exec', ids.api, 'node', '-e', probe));
+  const response = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(5000) });
+  const proxied = { status: response.status, contentType: response.headers.get('content-type'), body: await response.text() };
+  assertHealthIdentity(direct, proxied);
+  return { direct_status: direct.status, proxied_status: proxied.status, service: 'bondbuddy-m1-api-skeleton', api_id: ids.api, web_id: ids.web };
 }
 
 function guard(state, phase) {
@@ -202,29 +218,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
   process.exit(signal === 'SIGINT' ? 130 : 143);
 });
 
-async function cleanupSynthetic(state, record) {
-  if (!state.user_id && /^[a-z][a-z0-9_]{2,31}$/.test(state.username)) {
-    const found = rows(`SELECT id FROM bb_users WHERE username='${state.username}'`);
-    if (found[0]) { state.user_id = uuid(found[0][0]); save(state); }
-  }
-  if (state.user_id && !state.project_id) {
-    const found = rows(`SELECT id FROM bb_projects WHERE owner_user_id=${qid(state.user_id)} AND name='SYNTHETIC recovery drill' ORDER BY created_at DESC LIMIT 1`);
-    if (found[0]) { state.project_id = uuid(found[0][0]); save(state); }
-  }
-  if (!state.user_id || !state.project_id) return true;
-  try {
-    const existing = rows(`SELECT status FROM bb_users WHERE id=${qid(state.user_id)}`)[0];
-    if (existing?.[0] === 'closed') { record('cleanup', { user_id: state.user_id, project_id: state.project_id, status: 'already_closed' }); return true; }
-    await login(state);
-    await request('DELETE', `/api/v1/projects/${uuid(state.project_id)}`);
-    await request('POST', '/api/v1/account/closure', { password: state.password, confirm_username: state.username });
-    record('cleanup', { user_id: state.user_id, project_id: state.project_id, status: 'closed' });
-    return true;
-  } catch (error) {
-    record('cleanup', { user_id: state.user_id, project_id: state.project_id, status: 'manual_recovery_required', reason: short(error) });
-    return false;
-  }
-}
+const cleanupSynthetic = (state, record) => closeSyntheticAccount(state, { rows, qid, uuid, save, login, request, record, short });
 
 if (mode === 'recover') {
   if (!existsSync(stateFile)) throw new Error('No saved drill state');
@@ -242,8 +236,7 @@ if (mode === 'recover') {
   const record = (phase, values) => records.push(emit(phase, values));
   activeRecords = records;
   const preflight = checkServices();
-  const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5000) });
-  if (health.status !== 200) throw new Error('API health check failed');
+  record('api_health', await checkApiHealth());
   guard(null, 'preflight_guard');
   record('preflight', preflight);
   if (mode === 'preflight') { persistEvidence(records); activeRecords = null; }
