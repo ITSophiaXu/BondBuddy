@@ -3,7 +3,8 @@ import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from '../src/api';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 // Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
@@ -24,13 +25,16 @@ function fixture() {
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    parseSucceeded: false,
     runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
     runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
     eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
+    eventHistory: [] as { seq: number; state: Dto<'RunResponse'>['state']; stage: string; reason: string }[],
     runActions: [] as string[],
-    checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required' };
+    checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
+    blockers: undefined as string[] | undefined };
 }
-async function setup(page: Page, state = fixture()) {
+async function setup(page: Page, state = fixture(), canStart = true) {
   await page.context().route('**/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/v1', '');
     const method = request.method();
@@ -49,7 +53,16 @@ async function setup(page: Page, state = fixture()) {
         latest_artifact: { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now } }], page: { next_cursor: skip ? 'page-two' : null, has_more: skip } });
     }
     if (path === `/projects/${id}/events`) return json(route, 200, { items: state.materials.map((m, i) => ({ event_id: `event-${i}`, schema_version: 1, project_id: id, trace_id: 'trace', seq: i + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: m.material_id } })), next_cursor: null });
-    if (path.endsWith('/parse-job')) return json(route, 404, { code: 'NOT_FOUND' });
+    if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
+    if (path.endsWith('/parse-job')) {
+      const material = state.materials.find(m => m.material_id === path.split('/').at(-2));
+      if (!state.parseSucceeded || !material) return json(route, 404, { code: 'NOT_FOUND' });
+      return json(route, 200, { job_id: `job-${material.material_id}`, job_type: 'parse', subtype: 'material_parse', project_id: id,
+        material_id: material.material_id, material_version: material.material_version, material_sha256: material.sha256,
+        parser_version: 'synthetic-v1', state: 'succeeded', stage: 'succeeded', completed_stages: ['parse_evidence'],
+        attempts: 1, max_attempts: 3, error_code: null, outcome: 'needs_confirmation', parse_status: 'needs_confirmation',
+        profile_version: material.role === 'historical' ? 1 : null, pending_capabilities: [], updated_at: now });
+    }
     const material = state.materials.find(m => path === `/projects/${id}/materials/${m.material_id}`);
     if (material) return json(route, 200, material);
     if (path === `/projects/${id}/input-revisions` && method === 'POST') {
@@ -71,8 +84,9 @@ async function setup(page: Page, state = fixture()) {
       const body = request.postDataJSON();
       state.preflights.push(body);
       if (state.holdCheck) await new Promise<void>(resolve => { state.releaseCheck = resolve; });
-      return json(route, 200, { project_id: id, ...body, status: state.checkStatus, missing_inputs: state.checkStatus === 'blocked' ? [state.reason] : [],
-        uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: 'platform_trial' });
+      const blocking = state.checkStatus === 'blocked' ? state.blockers ?? [state.reason] : [];
+      return json(route, 200, { project_id: id, ...body, status: state.checkStatus, missing_inputs: blocking,
+        blocking_inputs: blocking, advisory_inputs: [], uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: 'platform_trial' });
     }
     if (path === '/runs/execute') {
       const body = request.postDataJSON();
@@ -98,6 +112,10 @@ async function setup(page: Page, state = fixture()) {
         const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
         const more = state.paginate && cursor === '0';
         if (state.failEvents) return json(route, 503, { code: 'DATA_UNAVAILABLE' });
+        if (state.eventHistory.length) return json(route, 200, { items: state.eventHistory.filter(event => event.seq > Number(cursor)).map(event => ({
+          event_id: `run-event-${event.seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq: event.seq,
+          occurred_at: now, stage: event.stage, type: 'run.state_changed', state: event.state, payload: { reason: event.reason }
+        })), next_cursor: null });
         const seq = more ? 1 : state.eventSeq;
         return json(route, 200, { items: Number(cursor) >= state.eventSeq ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
           occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
@@ -110,7 +128,8 @@ async function setup(page: Page, state = fixture()) {
   });
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  else await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeDisabled();
   return state;
 }
 async function prepare(page: Page) {
@@ -130,20 +149,38 @@ test('ready input saves, preflights and executes through one explicit action', a
   await expect(page.getByRole('button',{name:'检查已保存版本'})).toHaveCount(0);
 });
 
-test('actual preflight gaps are shown once before submission, then refresh recovers without a new task', async ({ page }) => {
-  const state=await setup(page); await prepare(page);
+test('blocked preflight keeps backend gates and does not turn five diagnostics into user tasks or runs', async ({ page }) => {
+  const state=fixture(); state.parseSucceeded=true; state.blockers=['rule_pack:rule_applicability_overall_review_required',
+    'issuer_identity_not_bound:issuer_identity_source_missing_unreviewed_or_conflicting',
+    'material_needs_confirmation:synthetic-audit:1','source_profile_missing:synthetic-history:1','update_difficulty_pending:target_confirmation_required'];
+  await setup(page,state); await prepare(page);
   expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#execution-preflight')).toContainText('等待规则适用性审核');
-  await page.getByRole('button',{name:'继续提交并等待处理'}).click();
+  await expect(page.locator('#execution-preflight')).toContainText('当前处理条件尚未就绪');
+  await expect(page.locator('#execution-preflight')).not.toContainText(/规则适用性审核|发行人身份|报告期|待确认内容|source_profile/);
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await expect(page.getByRole('button',{name:'继续提交并等待处理'})).toHaveCount(0);
+  await page.locator('#recheck-input').click();
+  expect(state.preflights).toHaveLength(2); expect(state.executes).toHaveLength(0); expect(state.inputs).toHaveLength(1);
+  if (process.env.BB_UX_EVIDENCE_DIR) {
+    const output = resolve(process.env.BB_UX_EVIDENCE_DIR); await mkdir(output, { recursive: true });
+    for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
+      await page.screenshot({ path: join(output, `blocked-${label}.png`), fullPage: true });
+    }
+  }
+  state.checkStatus='ready'; await page.locator('#recheck-input').click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  await expect(page.getByRole('link',{name:'查看此前成功成果'})).toBeVisible();
+  expect(state.executes).toHaveLength(1); expect(state.inputs).toHaveLength(1);
   await page.reload(); await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  expect(state.executes).toHaveLength(1); await expect(page.locator('.project-cowork')).toBeVisible();
-  expect(state.snapshots.size).toBe(1);
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  expect(state.executes).toHaveLength(1);
 });
 
 test('lost execute response retries the same key; reload restores the actual task', async ({ page }) => {
-  const state=await setup(page); await prepare(page); state.dropExecute=true;
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.dropExecute=true;
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('连接中断');
   await page.locator('#execute-input').click();
@@ -165,7 +202,7 @@ test('lost snapshot response requires readback and explicit selection, without a
 });
 
 test('double click and edits during submission preserve the locked request', async ({ page }) => {
-  const state=await setup(page); await prepare(page); state.holdExecute=true;
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
   await expect(page.locator('#execute-input')).toBeDisabled();
   await page.getByLabel('补充说明与写作要求').fill('下一轮的补充'); state.releaseExecute!();
@@ -179,7 +216,8 @@ test('editing while preflight is pending discards that result; next action locks
   await page.getByLabel('补充说明与写作要求').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
   await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
   await expect(page.locator('#save-state')).toHaveText('已保存'); await prepare(page);
-  expect(state.inputs).toHaveLength(2); await page.locator('#execute-input').click();
+  expect(state.inputs).toHaveLength(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
+  await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
 });
 
@@ -200,19 +238,61 @@ test('current historical choice excludes reference-only materials without a seco
 });
 
 test('paginated recovery and real task actions keep one run', async ({ page }) => {
-  const state=await setup(page); await prepare(page); await page.locator('#execute-input').click();
+  const state=fixture(); state.parseSucceeded=true; state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   state.paginate=true; state.eventPages=[]; state.listPages=[]; await page.reload();
-  await expect(page.locator('#execution-progress')).toContainText('等待规则适用性审核');
+  await expect(page.locator('#execution-progress')).toContainText('适用规则的处理条件尚未就绪');
   expect(state.listPages).toContain('page-two'); expect(state.eventPages).toContain('1');
+  state.checkStatus='blocked'; await page.locator('#recheck-paused').click();
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  await expect(page.locator('#recheck-paused')).toBeEnabled();
+  expect(state.runActions).toHaveLength(0);
+  if (process.env.BB_UX_EVIDENCE_DIR) {
+    const output = resolve(process.env.BB_UX_EVIDENCE_DIR); await mkdir(output, { recursive: true });
+    for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
+      await page.screenshot({ path: join(output, `paused-${label}.png`), fullPage: true });
+    }
+  }
+  state.checkStatus='ready'; await page.locator('#recheck-paused').click();
   await page.getByRole('button',{name:'继续更新',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('处理中');
+  const run=[...state.runs.values()][0]; run.state='paused'; state.eventSeq=4;
+  state.eventHistory=[
+    {seq:2,state:'paused',stage:'capability_not_ready',reason:state.runReason},
+    {seq:3,state:'queued',stage:'queued',reason:'user_resumed'},
+    {seq:4,state:'paused',stage:'capability_not_ready',reason:state.runReason}
+  ];
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  await expect(page.locator('#recheck-paused')).toHaveCount(0);
+  await expect(page.locator('.execution-summary')).toContainText('重复继续不会推进');
+  state.eventHistory = [
+    ...state.eventHistory.slice(0, 2),
+    ...Array.from({ length: 14 }, (_, i) => ({
+      seq: i + 4, state: 'running' as const, stage: 'model_generation', reason: 'progress'
+    })),
+    { ...state.eventHistory[2], seq: 18 }
+  ];
+  state.eventSeq = 18;
+  await page.reload();
+  await expect(page.locator('.execution-summary')).toContainText('重复继续不会推进');
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  state.eventHistory.push({seq:19,state:'paused',stage:'capability_not_ready',reason:'issuer_material_missing'});
+  state.eventSeq=19;
+  await page.reload();
+  await expect(page.locator('#recheck-paused')).toBeVisible();
+  expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
+  run.state='running';
+  await expect(page.locator('#cancel-run')).toBeVisible({ timeout: 10000 });
   await page.getByRole('button',{name:'停止更新',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已取消'); expect(state.runs.size).toBe(1);
 });
 
 test('account switch ignores an in-flight execute result', async ({ page }) => {
-  const state=await setup(page); await prepare(page); state.holdExecute=true;
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
   await page.evaluate(()=>{const channel=new BroadcastChannel('bondbuddy-session');channel.postMessage('changed');channel.close();});
   await expect(page.getByLabel('用户名',{exact:true})).toBeVisible(); state.releaseExecute!();
@@ -220,7 +300,7 @@ test('account switch ignores an in-flight execute result', async ({ page }) => {
 });
 
 test('foreign execute response is rejected', async ({ page }) => {
-  const state=await setup(page); await prepare(page); state.lateRunForeign=true;
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.lateRunForeign=true;
   await page.locator('#execute-input').click(); await expect(page.locator('#execution-message')).not.toBeEmpty();
   await expect(page.locator('#execution-progress')).not.toContainText('任务已暂停');
 });
@@ -234,8 +314,9 @@ test('unknown blockers remain explicit; prototype workspace captures all states 
   await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),'bb361-project-details-desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'保存并继续'}).click(); await prepare(page);
-  await expect(page.locator('#execution-preflight')).toContainText('待处理条件');
+  await expect(page.locator('#execution-preflight')).toContainText('当前处理条件尚未就绪');
   await expect(page.locator('#execution-preflight img')).toHaveCount(0);
+  state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click(); await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),'bb361-paused-desktop.png'),fullPage:true});
@@ -272,7 +353,7 @@ test('failed task recovery cannot enable a new snapshot until the server record 
 });
 
 test('a test terminal state in the production channel never exposes a deliverable',async({page})=>{
-  const state=await setup(page); await prepare(page); await page.locator('#execute-input').click();
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   const run=[...state.runs.values()][0];run.state='test_completed';run.artifact_id='invalid-artifact';
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
@@ -281,13 +362,13 @@ test('a test terminal state in the production channel never exposes a deliverabl
 });
 
 test('continuing after completion creates a new input and retains the preceding successful artifact without reload',async({page})=>{
-  const state=await setup(page); await prepare(page); await page.locator('#execute-input').click();
+  const state=fixture(); state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   const first=[...state.runs.values()][0]; first.state='succeeded'; first.artifact_id='first-successful-artifact';
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已生成');
   await page.getByRole('button',{name:'继续修改',exact:true}).click();
-  await prepare(page); await page.locator('#execute-input').click();
+  await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('使用材料版本 2');
   await expect(page.getByRole('link',{name:'查看此前成功成果'})).toHaveAttribute('href','#/artifacts/first-successful-artifact');
   expect(state.runs.size).toBe(2);
@@ -338,8 +419,11 @@ test('trial stage stays honest without events; a different paused stage discards
   const run = [...state.runs.values()][0];
   run.stage = 'capability_not_ready'; state.eventSeq++; state.eventStage = 'trial_limit';
   // A delayed event for the previous paused stage must not describe the new pause.
-  await expect(page.locator('#resume-run')).toBeVisible({ timeout: 10000 });
-  await expect(page.locator('.execution-summary')).toHaveCount(0);
+  await expect(page.locator('#recheck-paused')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  await expect(page.locator('.execution-summary')).toContainText('处理条件尚未就绪');
+  await page.locator('#recheck-paused').click();
+  await expect(page.locator('#resume-run')).toBeVisible();
   await page.locator('#resume-run').click();
   await expect(page.locator('#execution-progress')).toContainText('任务状态：处理中');
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
@@ -356,3 +440,84 @@ test('operator denial remains a failed task without automatic-recovery guidance'
   await expect(page.locator('#resume-run')).toHaveCount(0);
   expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
 });
+
+
+for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
+  test(`material workflow ${label}: upload, retry, pending evidence, one-click execution and reopen`, async ({ page, context }) => {
+    const state = fixture(); state.materials = []; state.checkStatus = 'needs_confirmation';
+    state.runState = 'running'; state.runStage = 'model_generation'; state.runReason = '';
+    const uploads = new Map<string, { filename: string; role: string; media_type: Dto<'MaterialResponse'>['media_type'] }>();
+    const unexpected: string[] = []; let failAudit = true, completed = false;
+    let releaseSave: (() => void) | undefined;
+    await page.setViewportSize({ width, height });
+    await context.route('**/api/v1/**/materials/**', async route => {
+      const request = route.request(), path = new URL(request.url()).pathname;
+      if (path.endsWith('/source-profile') || path.endsWith('/ocr')) { unexpected.push(path); return json(route, 500, { code: 'UNEXPECTED_REVIEW_REQUEST' }); }
+      if (path.endsWith('/materials/uploads')) {
+        const uploadId = `synthetic-upload-${uploads.size + 1}`;
+        uploads.set(uploadId, request.postDataJSON());
+        return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: now, max_bytes: 100_000_000 });
+      }
+      if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
+      if (path.endsWith('/complete')) {
+        const uploadId = path.split('/').at(-2)!, upload = uploads.get(uploadId)!;
+        if (upload.role === 'audit' && failAudit) { failAudit = false; return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' }); }
+        if (upload.role === 'historical' && !releaseSave) await new Promise<void>(resolve => { releaseSave = resolve; });
+        const body = request.postDataJSON();
+        const material: Dto<'MaterialResponse'> = { material_id: `material-${uploadId}`, material_version: 1, upload_id: uploadId,
+          role: upload.role as Dto<'MaterialResponse'>['role'], filename: upload.filename, media_type: upload.media_type,
+          byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
+        state.materials.push(material); return json(route, 200, material);
+      }
+      if (path.endsWith('/parse-job')) {
+        const material = state.materials.find(m => m.material_id === path.split('/').at(-2))!;
+        return json(route, 200, { job_id: `job-${material.material_id}`, job_type: 'parse', subtype: 'material_parse', project_id: id,
+          material_id: material.material_id, material_version: 1, material_sha256: material.sha256, parser_version: 'synthetic-v1',
+          state: completed ? 'succeeded' : 'running', stage: completed ? 'succeeded' : 'historical_profile',
+          completed_stages: ['parse_evidence'], attempts: 1, max_attempts: 3, error_code: null,
+          outcome: completed ? 'needs_confirmation' : null, parse_status: completed ? 'needs_confirmation' : null,
+          profile_version: completed && material.role === 'historical' ? 1 : null, pending_capabilities: [], updated_at: now });
+      }
+      return route.fallback();
+    });
+    // setup's catch-all was registered last; it must fall back to the material fixture above.
+    await setup(page, state, false);
+    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
+    const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
+    await expect(history).toContainText('正在保存和核验');
+    expect(releaseSave).toBeDefined(); releaseSave!();
+    await expect(history).toContainText('处理中');
+    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
+    const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
+    await expect(financial.getByRole('button', { name: '重试此文件' })).toBeVisible();
+    await expect(history).toContainText('服务器已确认保存');
+    await financial.getByRole('button', { name: '重试此文件' }).click();
+    await expect(financial).toContainText('服务器已确认保存');
+    completed = true;
+    await page.getByRole('button', { name: '刷新已保存材料' }).click();
+    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
+    await expect(page.locator('.source-profile, [data-source-correction], a[href$="/ocr"], .workspace-evidence, .fact-review')).toHaveCount(0);
+    await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|历史稿信息|核对识别内容|待确认项/);
+    expect(state.materials).toHaveLength(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    if (process.env.BB_UX_EVIDENCE_DIR) {
+      const output = resolve(process.env.BB_UX_EVIDENCE_DIR); await mkdir(output, { recursive: true });
+      await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
+      await page.screenshot({ path: join(output, `materials-${label}.png`), fullPage: true });
+    }
+    await page.getByRole('button', { name: '开始更新', exact: true }).click();
+    await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
+    await expect(page.locator('#execution-preflight')).toBeHidden();
+    await expect(page.getByRole('button', { name: '保留待确认项并开始更新' })).toHaveCount(0);
+    expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
+    expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
+    expect(state.inputs[0].material_versions).toEqual(state.materials.map(m => ({ material_id: m.material_id, material_version: 1 })));
+    const locked = structuredClone(state.executes[0]);
+    await page.reload(); await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
+    const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
+    await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
+    await page.getByRole('button', { name: '查看与补充材料' }).click();
+    await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
+    expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
+  });
+}

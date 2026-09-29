@@ -48,14 +48,17 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
     await page.getByLabel('为本企业历史募集书选择文件').setInputFiles(filename);
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('服务器已确认保存', { timeout: 15000 });
     const saved = await savedResponse; expect(saved.status()).toBe(200); const material = await saved.json();
-    await expect(page.locator('.material-processing')).toContainText('等待解析');
+    await expect(page.locator('.material-processing')).toContainText('等待处理');
     await expect(page.locator('.source-profile')).toHaveCount(0);
     const route = page.url(); await page.close(); page = await context.newPage(); await page.goto(route);
-    await expect(page.locator('.material-processing')).toContainText('等待解析');
+    await expect(page.locator('.material-processing')).toContainText('等待处理');
     expect(await worker()).toBe('succeeded');
-    await expect(page.locator('.source-profile')).toContainText('上交所', { timeout: 20000 });
-    await expect(page.locator('.source-profile')).toContainText('普通私募公司债');
-    await expect(page.locator('.source-profile')).toContainText('2024-12-31');
+    await expect(page.locator('.material-processing')).toContainText('处理完成', { timeout: 20000 });
+    await expect(page.locator('.source-profile, [data-source-correction]')).toHaveCount(0);
+    const profile = await page.evaluate(async path => (await fetch(path)).json(), `/api/v1/projects/${projectId}/materials/${material.material_id}/source-profile`);
+    expect(profile.source_market.value).toBe('sse');
+    expect(profile.source_offering.value).toBe('private');
+    expect(profile.latest_reporting_cutoff.value).toBe('2024-12-31');
     await expect(page.getByLabel('发行市场', { exact: true })).toHaveValue('nafmii');
     await expect(page.getByLabel('发行方式', { exact: true })).toHaveValue('mtn');
     await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: 'renamed-history.docx', mimeType: material.media_type, buffer: readFileSync(filename) });
@@ -69,10 +72,11 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
     const scanResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'synthetic-scan.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
     expect((await scanResponse).status()).toBe(200); expect(await worker()).toBe('paused');
-    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-scan.png' })).toContainText('等待文字识别（OCR）', { timeout: 20000 });
+    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-scan.png' })).toContainText('处理暂缓', { timeout: 20000 });
     await page.getByRole('button', { name: '退出', exact: true }).click(); await login(page, user); await page.goto(route);
-    await expect(page.locator('.source-profile')).toContainText('2024-12-31');
-    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-scan.png' })).toContainText('等待文字识别（OCR）');
+    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('处理完成');
+    await expect(page.locator('.source-profile')).toHaveCount(0);
+    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-scan.png' })).toContainText('处理暂缓');
     await page.getByRole('button', { name: '退出', exact: true }).click(); await login(page, foreign); await page.goto(route);
     await expect(page.getByText('无法访问这个项目，它可能已移除或不属于当前账号。')).toBeVisible();
     for (const suffix of ['parse-job', 'source-profile']) {

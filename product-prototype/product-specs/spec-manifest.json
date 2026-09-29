@@ -1,7 +1,7 @@
 {
   "spec_version": "1.2",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-29T14:28:49.397Z",
+  "assembled_at": "2026-09-29T14:38:16.300Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
@@ -28,12 +28,12 @@
     {
       "file": "04-材料导入与证据处理.md",
       "title": "04 材料导入与证据处理",
-      "sha256": "4e8edaff31bf4792cb2dfd4e0d42994a8ce1394c645803cda72082a1681007ea"
+      "sha256": "c758799865c462f6eab074d608aae0a632ba436d96158bf955d520a03ecc4f65"
     },
     {
       "file": "05-更新募集书.md",
       "title": "05 更新募集书",
-      "sha256": "7bfb84ae837c764c2bc039bcee01299f884711fc67209eb8e8ff683742fb8b0a"
+      "sha256": "757ab44d7bdfe11454dbf22dbdae5dd51924481163d8dba312d3c0faeb4389f7"
     },
     {
       "file": "06-复核募集书.md",
@@ -88,12 +88,12 @@
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "dd50f00903e25a8a281ee9ee078b075b2b3cae9a01c28e459030a7296085ec8c"
+      "sha256": "3d89a6b3758203471d44099da38795a906e07f2096dad78ef2a9e0023e3f8dc7"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "e7ad35284a074532d4d0adea06ff72f92b19994a02ba85c8ceeeb18049aeabf6"
+      "sha256": "68984d282dc3a2213f2e9db65103e1dae1b910b18648d0e3ab7e90df7d7199ce"
     },
     {
       "file": "18-当前实现与来源索引.md",
@@ -105,52 +105,52 @@
     {
       "relative_path": "product-prototype/product-specs/references/BondBuddy详细积分方案-v1.1-来源快照.md",
       "sha256": "76ff33f66847742d330189708ebca104d5e55e958f0546795a5ce33a56482066",
-      "observed_mtime": "2026-09-29T14:15:44.665Z"
+      "observed_mtime": "2026-09-29T12:31:11.626Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/积分参数-v1.1-来源快照.json",
       "sha256": "db50cd1335c5dd6112e661e514ae25c31b5af84a94edf6e22e4768308123b787",
-      "observed_mtime": "2026-09-29T14:15:44.665Z"
+      "observed_mtime": "2026-09-29T12:31:11.626Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/本地规格来源指纹-v1.1.json",
       "sha256": "51b69c0545b1b9ce4a2ea7687827a9ce20a36587998df65c5d0458977c4b3d01",
-      "observed_mtime": "2026-09-29T14:15:44.665Z"
+      "observed_mtime": "2026-09-29T12:31:11.626Z"
     },
     {
       "relative_path": "product-prototype/package.json",
       "sha256": "e6a87f3059c91a4d44a02cbb21b97c4f90e2e433bfdd327c46963a640740b207",
-      "observed_mtime": "2026-09-29T14:15:44.652Z"
+      "observed_mtime": "2026-09-29T12:31:11.613Z"
     },
     {
       "relative_path": "product-prototype/server.mjs",
       "sha256": "bfcb8bbfbbd8d4a83e9e9460dcfdb9f6939163742a9dc60acc71271ad5191126",
-      "observed_mtime": "2026-09-29T14:15:44.672Z"
+      "observed_mtime": "2026-09-29T12:31:11.634Z"
     },
     {
       "relative_path": "product-prototype/docs/PROJECT-WORKSPACE.md",
       "sha256": "ad3749f5d10c3016c447f7fd2fcd3bc19029b1c323fb486b0b8dd71a52daf2f0",
-      "observed_mtime": "2026-09-29T14:15:44.640Z"
+      "observed_mtime": "2026-09-29T12:31:11.599Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-pricing.mjs",
       "sha256": "74e0522fb7bfc32e3f69531b33294355b629ccf57d7e319382b824981e2c9d58",
-      "observed_mtime": "2026-09-29T14:15:44.650Z"
+      "observed_mtime": "2026-09-29T12:31:11.610Z"
     },
     {
       "relative_path": "product-prototype/public/markets.js",
       "sha256": "3fca04f84b188ae2f72964d82a0d9761e82e31ccb8955afac2df3b05560ffbed",
-      "observed_mtime": "2026-09-29T14:15:44.667Z"
+      "observed_mtime": "2026-09-29T12:31:11.628Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-wallet.mjs",
       "sha256": "da3419577e8d2943935593decf33a126c531877f00053d304f7a3a24f09b7a7b",
-      "observed_mtime": "2026-09-29T14:15:44.651Z"
+      "observed_mtime": "2026-09-29T12:31:11.611Z"
     },
     {
       "relative_path": "product-prototype/public/credit-account.js",
       "sha256": "07585ff9a2daeebb834dd7b581604fbf9a038b06248f30af58c9099828ac86ad",
-      "observed_mtime": "2026-09-29T14:15:44.666Z"
+      "observed_mtime": "2026-09-29T12:31:11.627Z"
     }
   ],
   "acceptance_ids": [
@@ -351,7 +351,7 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 73285,
+    "han_characters": 74709,
     "local_links_checked": 214,
     "tables_checked": 135,
     "json_examples_checked": 4,
