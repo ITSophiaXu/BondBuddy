@@ -5,7 +5,8 @@ import {Pool} from 'pg';
 import {createServer} from './server.js';
 import {executionKeyHash} from './observability.js';
 
-const connection=process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection=await isolatedTestDatabase();
 test('contract-valid revision beyond PostgreSQL integer range has owned atomic rejection evidence', {skip:!connection},async()=>{
   const pool=new Pool({connectionString:connection});
   const first=`revision-${randomUUID()}`,second=`revision-${randomUUID()}`;

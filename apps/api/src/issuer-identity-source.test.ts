@@ -249,7 +249,8 @@ test('observation and review outbox append atomically; evidence or outbox failur
   assert.equal(client.reviews.length, 0); assert.equal(await loadVerifiedIssuerIdentitySourceRecord(client, scope), null);
 });
 
-const databaseUrl = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const databaseUrl = await isolatedTestDatabase();
 test('PostgreSQL 16: owner/evidence binding, privileged review, append-only versions, conflict gate and hash verification',
   { skip: !databaseUrl }, async () => {
     const pool = new Pool({ connectionString: databaseUrl });

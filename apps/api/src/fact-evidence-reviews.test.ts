@@ -6,7 +6,8 @@ import { appendFactEvidenceReview, changeFactEvidenceReviewerGrant, withdrawFact
 import type { FactEvidenceReviewRequest } from '@bondbuddy/contracts';
 
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
-const testUrl=process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const testUrl=await isolatedTestDatabase();
 
 test('fact evidence reviewer ledger is exact, append-only, external-safe, and fail-closed (PostgreSQL 16)',{skip:!testUrl&&'set BB_TEST_DATABASE_URL to a disposable PostgreSQL 16 database migrated through 0065'},async()=>{
   const db=new Pool({connectionString:testUrl});

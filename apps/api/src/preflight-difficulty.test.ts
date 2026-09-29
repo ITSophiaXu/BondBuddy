@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
 
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const origin = 'https://synthetic.example';
 const historyMedia = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 

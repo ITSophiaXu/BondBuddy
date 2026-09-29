@@ -10,7 +10,8 @@ import { dataPolicyFromEnv, runDeletedContentPurge, runUserDeletionLifecycle } f
 import { PDF, pdfSample } from './upload-safety.samples.js';
 
 // Synthetic data only. Integration tests need a migrated PostgreSQL 16 and Azurite; otherwise they skip.
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const origin = 'http://bondbuddy.test';
 const DAY = 86_400_000;

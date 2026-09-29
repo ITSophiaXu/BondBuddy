@@ -12,7 +12,8 @@ import { grantOperator } from './log-ops.js';
 import { checkTrialHealth, configureTrialGuard, recordWorkerHeartbeat, trialConfigFromEnv, type TrialConfig } from './trial-guard.js';
 
 // #35 trial guard. Synthetic data only: no real provider, credential or customer material.
-const connection = process.env.BB_TEST_DATABASE_URL;
+import { isolatedTestDatabase } from './test-database.js';
+const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
