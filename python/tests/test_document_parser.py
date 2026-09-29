@@ -811,6 +811,121 @@ class DocumentParserTests(unittest.TestCase):
         self.assertNotIn("end", [event["type"] for event in sink.events])
         self.assertEqual(sink.events[-1]["response"]["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
 
+    def test_streamed_pdf_fail_closed_for_encrypted_damaged_over_page_and_blank(self):
+        # Streaming must never emit an end summary or records for a PDF it cannot fully cover.
+        source = self.root / "stream-plain.pdf"
+        pdf = canvas.Canvas(str(source), pagesize=(300, 300))
+        pdf.drawString(50, 250, "Synthetic streamed amount 123")
+        pdf.showPage()
+        pdf.save()
+        encrypted = self.root / "stream-encrypted.pdf"
+        writer = PdfWriter()
+        for page in PdfReader(source).pages:
+            writer.add_page(page)
+        writer.encrypt("synthetic-password")
+        with encrypted.open("wb") as stream:
+            writer.write(stream)
+        damaged = self.root / "stream-damaged.pdf"
+        damaged.write_bytes(b"%PDF-1.4\ntruncated synthetic body")
+
+        for path, code in ((encrypted, "MATERIAL_ENCRYPTED"), (damaged, "MATERIAL_UNREADABLE")):
+            sink = EventSink()
+            stream_parse_request(self.request_payload(path, MEDIA_PDF), sink)
+            self.assertEqual([event["type"] for event in sink.events], ["failure"])
+            self.assertEqual(sink.events[-1]["response"]["error"]["code"], code)
+            self.assertEqual(sink.events[-1]["response"]["records"], [])
+            self.assertEqual(sink.records, [])
+
+        over_page = self.root / "stream-two-pages.pdf"
+        pdf = canvas.Canvas(str(over_page), pagesize=(300, 300))
+        for value in ("page one", "page two"):
+            pdf.drawString(50, 250, value)
+            pdf.showPage()
+        pdf.save()
+        sink = EventSink()
+        stream_parse_request(self.request_payload(over_page, MEDIA_PDF, max_pages=1), sink)
+        self.assertEqual(sink.events[-1]["type"], "failure")
+        self.assertEqual(sink.events[-1]["response"]["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+        self.assertEqual(sink.records, [])
+        self.assertNotIn("end", [event["type"] for event in sink.events])
+
+        blank = self.root / "stream-blank.pdf"
+        pdf = canvas.Canvas(str(blank), pagesize=(300, 300))
+        pdf.showPage()
+        pdf.save()
+        sink = EventSink()
+        stream_parse_request(self.request_payload(blank, MEDIA_PDF), sink)
+        # A stream that initialized its header but found no native text is still terminal, not partial success.
+        self.assertEqual(sink.events[0]["type"], "start")
+        self.assertEqual(sink.events[-1]["type"], "failure")
+        self.assertEqual(sink.events[-1]["response"]["error"]["code"], "MATERIAL_UNREADABLE")
+        self.assertEqual(sink.records, [])
+        self.assertNotIn("end", [event["type"] for event in sink.events])
+
+    def test_text_and_office_byte_limits_fail_closed_without_partial_records(self):
+        text_path = self.root / "byte-limit.txt"
+        text_path.write_text("synthetic line\n", encoding="utf-8")
+        with patch.object(parser_module, "MAX_TEXT_BYTES", 4):
+            direct = self.request(text_path, MEDIA_TEXT)
+            self.assertEqual(direct["status"], "failed")
+            self.assertEqual(direct["records"], [])
+            self.assertEqual(direct["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+            sink = EventSink()
+            stream_parse_request(self.request_payload(text_path, MEDIA_TEXT), sink)
+            self.assertEqual(sink.events[-1]["type"], "failure")
+            self.assertEqual(sink.events[-1]["response"]["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+            self.assertEqual(sink.records, [])
+            self.assertNotIn("end", [event["type"] for event in sink.events])
+
+        docx_path = self.root / "byte-limit.docx"
+        document = Document()
+        document.add_paragraph("Synthetic body")
+        document.save(docx_path)
+        with patch.object(parser_module, "MAX_UNCOMPRESSED_OFFICE_BYTES", 1):
+            office = self.request(docx_path, MEDIA_DOCX)
+        self.assertEqual(office["status"], "failed")
+        self.assertEqual(office["records"], [])
+        self.assertEqual(office["error"]["code"], "MATERIAL_LIMIT_EXCEEDED")
+
+    def test_xlsx_hidden_sheet_is_parsed_and_requires_confirmation(self):
+        path = self.root / "hidden-sheet.xlsx"
+        book = Workbook()
+        visible = book.active
+        visible.title = "Visible"
+        visible.append(["项目", "金额"])
+        visible.append(["营业收入", 100])
+        hidden = book.create_sheet("HiddenNotes")
+        hidden.append(["隐藏附注", 7])
+        hidden.sheet_state = "hidden"
+        book.save(path)
+
+        result = self.request(path, MEDIA_XLSX)
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertTrue(any(warning["code"] == "XLSX_HIDDEN_SHEET" for warning in result["warnings"]))
+        hidden_records = [record for record in result["records"] if record["locator"]["sheet"] == "HiddenNotes"]
+        self.assertEqual([record["literal_quote"] for record in hidden_records], ["隐藏附注", "7"])
+        self.assertTrue(all(record["formatting"]["sheet_state"] == "hidden" for record in hidden_records))
+
+    def test_docx_page_breaks_do_not_fabricate_static_page_numbers(self):
+        path = self.root / "page-break.docx"
+        document = Document()
+        first = document.add_paragraph("第一页资产总额 120")
+        page_break = OxmlElement("w:br")
+        page_break.set(qn("w:type"), "page")
+        first.add_run()._r.append(page_break)
+        second = document.add_paragraph("第二页资产总额 130")
+        second.add_run()._r.append(OxmlElement("w:lastRenderedPageBreak"))
+        document.save(path)
+
+        result = self.request(path, MEDIA_DOCX)
+        self.assertIsNone(result["document"]["page_count"])
+        self.assertTrue(result["records"])
+        for record in result["records"]:
+            self.assertEqual(record["locator_type"], "docx_block")
+            self.assertNotIn("page", record["locator"])
+            self.assertNotIn("bbox", record["locator"])
+            self.assertTrue(record["locator"]["stable_ref"].startswith("docx:"))
+
     def test_pdf_with_unreadable_page_requires_confirmation(self):
         path = self.root / "text-and-blank.pdf"
         pdf = canvas.Canvas(str(path), pagesize=(300, 300))

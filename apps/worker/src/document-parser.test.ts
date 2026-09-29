@@ -369,3 +369,24 @@ test('#17 NDJSON parser bridge spools complete PDF evidence and rejects inconsis
   await assert.rejects(runDocumentParserToFile(pdfRequest,limitedPath,{pythonExecutable:fake,repoRoot:root,maxOutputBytes:1_024}),/DOCUMENT_PARSER_OUTPUT_LIMIT/);
   assert.equal(existsSync(limitedPath),false,'an over-budget stream cannot leave partial evidence behind');
 });
+
+// Emits start plus many real-looking text records so the worker's cumulative text budget trips first.
+const textBudgetGenerator=[
+  '#!/usr/bin/env node',
+  "let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{",
+  'const req=JSON.parse(input);const m=req.material;const pad="x".repeat(16000);',
+  'const emit=o=>process.stdout.write(JSON.stringify(o)+"\\n");',
+  'emit({type:"start",schema_version:"document-parse-stream-v1",request_id:req.request_id,parser_version:"bondbuddy-document-parser-1.0.7",material:{material_id:m.material_id,material_version:m.material_version,sha256:m.sha256,media_type:m.media_type},document:{page_count:null,encoding:"utf-8"}});',
+  'for(let i=1;i<=1200;i++)emit({type:"record",record:{record_id:"evidence-"+String(i).padStart(6,"0"),material_id:m.material_id,material_version:m.material_version,content_hash:m.sha256,locator_type:"text_line",locator:{line:i,stable_ref:"text:l"+String(i).padStart(6,"0")},literal_quote:pad,context:"",extraction_method:"native_text",extractor_version:"bondbuddy-document-parser-1.0.7",confidence:null,uncertainty:[],formatting:{}}});',
+  '});',
+].join('\n');
+
+test('#17 streamed text beyond the 16 MiB evidence budget is terminal and leaves no partial spool',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'bb-parser-text-budget-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const fake=join(root,'python3');
+  await writeFile(fake,textBudgetGenerator,{mode:0o700});
+  const recordsPath=join(root,'records.ndjson');
+  await assert.rejects(runDocumentParserToFile(request,recordsPath,{pythonExecutable:fake,repoRoot:root}),/DOCUMENT_PARSER_TEXT_LIMIT/);
+  assert.equal(existsSync(recordsPath),false,'an over-text-budget stream cannot leave partial evidence behind');
+});
