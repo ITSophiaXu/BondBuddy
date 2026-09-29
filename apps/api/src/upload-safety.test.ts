@@ -46,7 +46,7 @@ test('preprod exact-byte exception saves one otherwise rejected XLSX and audits 
   const send = (app: ReturnType<typeof createServer>, method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
     method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
   });
-  const linkXml = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/><externalBook r:id="rId1"/></externalLink>';
+  const linkXml = '<invalidRoot xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"/><externalBook r:id="rId1"/></invalidRoot>';
   const bytes = await externalLinkPartXlsxSample({ linkXml });
   await expectStructureDetail(bytes, 'external_link_invalid');
   const setupApp = createServer(settings);
@@ -87,7 +87,7 @@ test('preprod exact-byte exception saves one otherwise rejected XLSX and audits 
     const other = await begin(otherProject.json().project_id, bytes);
     assert.equal(other.statusCode, 201, other.body);
     assert.equal((await send(app, 'PUT', other.json().upload_url, bytes, 'application/octet-stream')).statusCode, 422);
-    const differentBytes = await externalLinkPartXlsxSample({ linkXml: linkXml.replace('rId1"/></externalLink>', 'rId2"/></externalLink>') });
+    const differentBytes = await externalLinkPartXlsxSample({ linkXml: linkXml.replace('rId1"/></invalidRoot>', 'rId2"/></invalidRoot>') });
     assert.notEqual(digest(differentBytes), digest(bytes));
     const different = await begin(projectId, differentBytes);
     assert.equal(different.statusCode, 201, different.body);
@@ -254,7 +254,124 @@ test('externalLink extension lists and markup compatibility branches remain pass
   await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic">${deep}</ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `<!DOCTYPE externalLink [<!ENTITY boom "unsafe">]>${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:n>&boom;</x:n></ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"><extLst><ext uri="urn:synthetic"><x:script/></ext></extLst></externalBook></externalLink>` }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
-  await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"/><externalBook r:id="rId1"/></externalLink>` }), 'external_link_invalid');
+  assert.equal(await verifiedMedia(await externalLinkPartXlsxSample({ linkXml: `${prefix}<externalBook r:id="rId1"/><externalBook r:id="rId1"/></externalLink>` }), XLSX), XLSX);
+});
+
+test('passive XLSX alternate URLs and multiple external link paths are accepted without resolving targets', async () => {
+  const linkXml = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"><alternateUrls><alternateUrl r:id="rId2"/></alternateUrls><relativeUrl r:id="rId2"/></externalBook></externalLink>';
+  const linkRelsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/source.xlsx" TargetMode="External"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="https://example.invalid/alternate.xlsx" TargetMode="External"/></Relationships>';
+  const bytes = await externalLinkPartXlsxSample({ linkXml, linkRelsXml });
+  assert.equal(await verifiedMedia(bytes, XLSX), XLSX);
+  assert.equal(await spooled(bytes, path => verifiedMediaFile(path, bytes.length, XLSX)), XLSX);
+  const activeRels = linkRelsXml.replace('relationships/externalLinkPath" Target="https:', 'relationships/oleObject" Target="https:');
+  await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml, linkRelsXml: activeRels }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
+});
+
+const externalLinkPrefix = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+const alternateBook = '<mc:AlternateContent><mc:Choice Requires="x"><externalBook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" r:id="rId1"/></mc:Choice></mc:AlternateContent>';
+const wrongRootNamespace = `<x:externalLink xmlns:x="urn:unrelated" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${alternateBook}</x:externalLink>`;
+const missingRootNamespace = `<externalLink xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${alternateBook}</externalLink>`;
+
+async function invalidPassiveLinkSamples(): Promise<Array<{ name: string; bytes: Buffer }>> {
+  return [
+    { name: 'empty link', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}</externalLink>` }) },
+    { name: 'missing relationships part', bytes: await externalLinkPartXlsxSample({ omitLinkRels: true }) },
+    { name: 'dangling externalBook id', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}<externalBook r:id="missing"/></externalLink>` }) },
+    { name: 'dangling alternateUrl id', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}<externalBook r:id="rId1"><alternateUrls><alternateUrl r:id="missing"/></alternateUrls></externalBook></externalLink>` }) },
+    { name: 'dangling relativeUrl id', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}<externalBook r:id="rId1"><alternateUrls><relativeUrl r:id="missing"/></alternateUrls></externalBook></externalLink>` }) },
+    { name: 'wrong root namespace with compatible choice', bytes: await externalLinkPartXlsxSample({ linkXml: wrongRootNamespace }) },
+    { name: 'missing root namespace with compatible choice', bytes: await externalLinkPartXlsxSample({ linkXml: missingRootNamespace }) },
+  ];
+}
+
+test('XLSX external workbook parts require a book, its relationships part and every referenced passive path', async () => {
+  for (const { name, bytes } of await invalidPassiveLinkSamples()) {
+    await expectStructureDetail(bytes, 'external_link_invalid');
+  }
+  const alias = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:rel="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook rel:id="rId1"/></externalLink>';
+  assert.equal(await verifiedMedia(await externalLinkPartXlsxSample({ linkXml: alias }), XLSX), XLSX);
+  const prefixedRoot = '<s:externalLink xmlns:s="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s:externalBook r:id="rId1"/></s:externalLink>';
+  assert.equal(await verifiedMedia(await externalLinkPartXlsxSample({ linkXml: prefixedRoot }), XLSX), XLSX);
+  assert.equal(await verifiedMedia(await externalLinkPartXlsxSample(), XLSX), XLSX);
+  const wrongNamespace = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="urn:unrelated"><externalBook r:id="rId1"/></externalLink>';
+  await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: wrongNamespace }), 'external_link_invalid');
+  const duplicateAliases = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:rel="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1" rel:id="rId1"/></externalLink>';
+  await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: duplicateAliases }), 'external_link_invalid');
+  const duplicateRels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/a.xlsx" TargetMode="External"/><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/b.xlsx" TargetMode="External"/></Relationships>';
+  await expectStructureDetail(await externalLinkPartXlsxSample({ linkRelsXml: duplicateRels }), 'external_link_invalid');
+});
+
+test('rejected passive-link structures create no material or Blob object', { skip: !connection || !blobConnection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const containerName = `bb-passive-negative-${randomUUID().replaceAll('-', '')}`;
+  const blobs = azureBlobs(blobConnection!, containerName);
+  const ownerId = `passive-negative-${randomUUID()}`;
+  const app = createServer({ pool, blobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin });
+  const send = (method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
+    method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
+  });
+  try {
+    const project = await send('POST', '/api/v1/projects', { name: 'Synthetic invalid passive links', kind: 'update', issuer_name: null, market: null, offering: null });
+    assert.equal(project.statusCode, 201, project.body);
+    const projectId = project.json().project_id;
+    for (const { name, bytes } of await invalidPassiveLinkSamples()) {
+      const started = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
+        filename: 'synthetic.xlsx', media_type: XLSX, byte_size: bytes.length, sha256: digest(bytes), role: 'audit'
+      });
+      assert.equal(started.statusCode, 201, `${name}: ${started.body}`);
+      const upload = started.json();
+      const put = await send('PUT', upload.upload_url, bytes, 'application/octet-stream');
+      assert.equal(put.statusCode, 422, `${name}: ${put.body}`);
+      assert.equal(put.json().code, 'MATERIAL_UNREADABLE', name);
+      assert.ok(put.json().correlation_id, name);
+      assert.equal((await pool.query('SELECT 1 FROM bb_material_versions WHERE upload_id=$1', [upload.upload_id])).rowCount, 0, name);
+      assert.equal(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${upload.upload_id}`), null, name);
+    }
+  } finally {
+    await app.close();
+    await pool.end();
+    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
+  }
+});
+
+test('passive alternate XLSX paths persist one material and queue one parse job without an exception scope', { skip: !connection || !blobConnection }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const containerName = `bb-passive-links-${randomUUID().replaceAll('-', '')}`;
+  const blobs = azureBlobs(blobConnection!, containerName);
+  const ownerId = `passive-${randomUUID()}`;
+  let actingOwner = ownerId;
+  const app = createServer({ pool, blobs, principal: async () => ({ userId: actingOwner, csrfVerified: true }), allowedOrigin: origin });
+  const send = (method: string, url: string, payload?: unknown, contentType = 'application/json') => app.inject({
+    method: method as any, url, headers: { origin, 'content-type': contentType }, payload: payload as any
+  });
+  const linkXml = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1"><alternateUrls><alternateUrl r:id="rId2"/></alternateUrls><relativeUrl r:id="rId2"/></externalBook></externalLink>';
+  const linkRelsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="file:///synthetic/source.xlsx" TargetMode="External"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath" Target="https://example.invalid/alternate.xlsx" TargetMode="External"/></Relationships>';
+  const bytes = await externalLinkPartXlsxSample({ linkXml, linkRelsXml });
+  try {
+    const project = await send('POST', '/api/v1/projects', { name: 'Synthetic passive links', kind: 'update', issuer_name: null, market: null, offering: null });
+    assert.equal(project.statusCode, 201, project.body);
+    const projectId = project.json().project_id;
+    const declaration = { filename: 'synthetic.xlsx', media_type: XLSX, byte_size: bytes.length, sha256: digest(bytes), role: 'audit' };
+    const started = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, declaration);
+    assert.equal(started.statusCode, 201, started.body);
+    const upload = started.json();
+    actingOwner = `foreign-${randomUUID()}`;
+    assert.equal((await send('PUT', upload.upload_url, bytes, 'application/octet-stream')).statusCode, 404);
+    actingOwner = ownerId;
+    assert.equal((await send('PUT', upload.upload_url, bytes, 'application/octet-stream')).statusCode, 204);
+    const completed = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${upload.upload_id}/complete`, { byte_size: bytes.length, sha256: digest(bytes) });
+    assert.equal(completed.statusCode, 200, completed.body);
+    assert.equal(completed.json().sha256, digest(bytes));
+    assert.equal(completed.json().material_version, 1);
+    const material = await pool.query('SELECT state,sha256 FROM bb_material_versions WHERE id=$1 AND owner_user_id=$2', [completed.json().material_id, ownerId]);
+    assert.equal(material.rows[0]?.state, 'persisted');
+    assert.equal(material.rows[0]?.sha256.trim(), digest(bytes));
+    assert.equal((await pool.query("SELECT 1 FROM bb_jobs WHERE material_id=$1 AND job_type='parse'", [completed.json().material_id])).rowCount, 1);
+  } finally {
+    await app.close();
+    await pool.end();
+    await BlobServiceClient.fromConnectionString(blobConnection!).getContainerClient(containerName).deleteIfExists();
+  }
 });
 
 test('internal relationship targets resolve from package root or source directory without escaping', async () => {
@@ -370,7 +487,7 @@ test('structural details distinguish ZIP header mismatch, expanded CRC, and XML 
 
 test('XLSX external links never grant DDE, OLE, macros or malformed XML a path through inspection', async () => {
   const wrapper = (body: string) => `<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${body}</externalLink>`;
-  for (const tag of ['ddeLink', 'oleLink']) {
+  for (const tag of ['ddeLink', 'oleLink', 'oleObject', 'iframe']) {
     await expectInspectionFailure(await externalLinkPartXlsxSample({ linkXml: wrapper(`<${tag}/>`)}), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
   }
   await expectInspectionFailure(await externalLinkPartXlsxSample({ extraParts: [{ name: 'xl/vbaProject.bin', contents: Buffer.from('synthetic macro') }] }), XLSX, 415, 'MATERIAL_FORMAT_UNSUPPORTED');

@@ -54,7 +54,9 @@ const XLSX_EXTERNAL_LINK_RELS = /^xl\/externalLinks\/_rels\/externalLink[1-9][0-
 const XLSX_EXTERNAL_LINK_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.externallink+xml';
 const XLSX_EXTERNAL_LINK_RELATIONSHIP = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink';
 const XLSX_EXTERNAL_LINK_PATH_RELATIONSHIP = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath';
-const XLSX_EXTERNAL_BOOK_ELEMENTS = new Set(['externallink', 'externalbook', 'sheetnames', 'sheetname', 'definednames', 'definedname', 'sheetdataset', 'sheetdata', 'row', 'cell', 'v']);
+const XLSX_MAIN_NAMESPACE = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+const OFFICE_RELATIONSHIP_NAMESPACE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const MARKUP_COMPATIBILITY_NAMESPACE = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 const UNSAFE_OFFICE_MEDIA_TYPES = new Set([
   'image/svg+xml',
   'text/html',
@@ -647,7 +649,7 @@ type OfficeState = {
   files: Set<string>;
   contentTypes: ContentTypes | null;
   relationships: Map<string, Relationship[]>;
-  externalBookRelationshipIds: Map<string, string>;
+  externalLinkRelationshipIds: Map<string, Set<string>>;
   workbookExternalReferenceIds: Set<string>;
   payloadHazards: Map<string, 'active' | 'markup'>;
   rootDocumentTarget: string | null;
@@ -788,10 +790,9 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
   let depth = 0;
   const externalLinkPart = XLSX_EXTERNAL_LINK_PART.test(name);
   let externalBookCount = 0;
-  let directExternalBookCount = 0;
-  let externalBookRelationshipId: string | null = null;
-  let extensionDepth: number | null = null;
-  const xmlElements: string[] = [];
+  const externalLinkRelationshipIds = new Set<string>();
+  const externalLinkElements: Array<{ local: string; namespace: string | null }> = [];
+  const externalLinkNamespaces: Map<string, string>[] = [];
   let capture: { kind: 'formula' | 'instruction'; depth: number; value: string } | null = null;
   const relationships: Relationship[] = [];
   const contentTypes: ContentTypes = { defaults: new Map(), overrides: new Map() };
@@ -804,8 +805,39 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     if (thisDepth >= MAX_XML_DEPTH) unsupported('Office XML nesting exceeds the inspection limit');
     if (thisDepth === 0) root = tag.name;
     const local = localName(tag.name);
-    const parent = xmlElements.at(-1);
     const attrs = tag.attributes as Record<string, unknown>;
+    if (externalLinkPart) {
+      const namespaces = new Map(externalLinkNamespaces.at(-1));
+      for (const [attrName, value] of Object.entries(attrs)) {
+        if (attrName === 'xmlns' && typeof value === 'string') namespaces.set('', value);
+        else if (attrName.startsWith('xmlns:') && typeof value === 'string') namespaces.set(attrName.slice(6), value);
+      }
+      const prefix = tag.name.includes(':') ? tag.name.split(':', 1)[0]! : '';
+      const namespace = namespaces.get(prefix) ?? null;
+      if (thisDepth === 0 && (local !== 'externallink' || namespace !== XLSX_MAIN_NAMESPACE)) {
+        unreadable('external_link_invalid');
+      }
+      const parent = externalLinkElements.at(-1);
+      const grandparent = externalLinkElements.at(-2);
+      const directBook = thisDepth === 1 && parent?.local === 'externallink' && parent.namespace === XLSX_MAIN_NAMESPACE;
+      const alternativeBook = thisDepth === 3 && (parent?.local === 'choice' || parent?.local === 'fallback') &&
+        parent.namespace === MARKUP_COMPATIBILITY_NAMESPACE && grandparent?.local === 'alternatecontent' &&
+        grandparent.namespace === MARKUP_COMPATIBILITY_NAMESPACE;
+      let relationshipIdCount = 0;
+      for (const [attrName, value] of Object.entries(attrs)) {
+        const separator = attrName.indexOf(':');
+        if (separator < 0 || localName(attrName) !== 'id' ||
+            namespaces.get(attrName.slice(0, separator)) !== OFFICE_RELATIONSHIP_NAMESPACE) continue;
+        if (++relationshipIdCount > 1 || typeof value !== 'string' || !value) unreadable('external_link_invalid');
+        externalLinkRelationshipIds.add(value as string);
+      }
+      if (local === 'externalbook' && namespace === XLSX_MAIN_NAMESPACE && (directBook || alternativeBook)) {
+        if (relationshipIdCount !== 1) unreadable('external_link_invalid');
+        externalBookCount++;
+      }
+      externalLinkNamespaces.push(namespaces);
+      externalLinkElements.push({ local, namespace });
+    }
     for (const [attrName, rawValue] of Object.entries(attrs)) {
       if (/^on[a-z]+$/i.test(attrName) && typeof rawValue === 'string') unsupported('Office XML contains an active event attribute');
       if ((localName(attrName) === 'href' || localName(attrName) === 'src') && typeof rawValue === 'string' && rawValue && !rawValue.startsWith('#')) {
@@ -813,31 +845,21 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
       }
     }
     if (local === 'script' || local === 'altchunk') unsupported('Office XML contains active or externally loaded content');
-    if (externalLinkPart && (local === 'ddelink' || local === 'olelink')) unsupported('Office external link contains DDE or OLE content');
-    if (externalLinkPart && extensionDepth === null) {
-      const mcElement = tag.name === 'mc:AlternateContent' || tag.name === 'mc:Choice' || tag.name === 'mc:Fallback';
-      const alternate = tag.name === 'mc:AlternateContent' && (parent === 'externalLink' || parent === 'externalBook');
-      const branch = (tag.name === 'mc:Choice' || tag.name === 'mc:Fallback') && parent === 'mc:AlternateContent';
-      const extensionList = local === 'extlst' && (parent === 'externalLink' || parent === 'externalBook');
-      const extension = local === 'ext' && parent?.toLowerCase() === 'extlst';
-      if (mcElement && !alternate && !branch || !mcElement && !extensionList && !extension && !XLSX_EXTERNAL_BOOK_ELEMENTS.has(local)) unreadable('external_link_invalid');
-      if (extension) extensionDepth = thisDepth;
+    if (externalLinkPart && /^(?:ddelink|ddeitem|ddevalues?|olelink|oleobject|activex|script|iframe|object|embed|foreignobject)$/.test(local)) {
+      unsupported('Office external link contains active content');
     }
-    if (externalLinkPart && (parent === 'externalLink' || parent === 'mc:Choice' || parent === 'mc:Fallback') && extensionDepth === null && local === 'externalbook') {
-      externalBookCount++;
-      if (parent === 'externalLink' && ++directExternalBookCount > 1) unreadable('external_link_invalid');
-      const relationshipId = attribute(attrs, 'Id');
-      if (!relationshipId || externalBookRelationshipId !== null && externalBookRelationshipId !== relationshipId) return unreadable('external_link_invalid');
-      externalBookRelationshipId = relationshipId;
-      state.externalBookRelationshipIds.set(name, relationshipId);
-    }
-    if (externalLinkPart && thisDepth === 1 && local !== 'externalbook' && local !== 'extlst' && tag.name !== 'mc:AlternateContent') unreadable('external_link_invalid');
+    // External workbook metadata varies between Excel and WPS (including alternateUrls and
+    // relativeUrl). It is never evaluated or dereferenced here. Keep the XML/resource bounds
+    // and the active-content checks above, then validate relationship types separately.
     if (name === 'xl/workbook.xml' && local === 'externalreference') {
       const relationshipId = attribute(attrs, 'Id');
       if (!relationshipId || state.workbookExternalReferenceIds.has(relationshipId)) return unreadable('external_link_invalid');
       state.workbookExternalReferenceIds.add(relationshipId);
     }
     if (local === 'relationship') {
+      if (XLSX_EXTERNAL_LINK_RELS.test(name) &&
+          (Object.keys(attrs).filter(key => localName(key) === 'id').length !== 1 ||
+           typeof attrs.Id !== 'string' || !attrs.Id)) unreadable('external_link_invalid');
       const id = attribute(attrs, 'Id');
       const targetMode = attribute(attrs, 'TargetMode');
       const target = attribute(attrs, 'Target');
@@ -873,7 +895,6 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
       const instruction = attribute(attrs, 'instr');
       if (instruction && unsafeWordInstruction(instruction)) unsupported('Word fields contain an external or active instruction');
     }
-    xmlElements.push(tag.name);
     depth++;
   });
   const appendCapturedText = (value: string) => {
@@ -885,8 +906,10 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
   parser.on('cdata', appendCapturedText);
   parser.on('closetag', tag => {
     depth--;
-    if (extensionDepth === depth) extensionDepth = null;
-    xmlElements.pop();
+    if (externalLinkPart) {
+      externalLinkElements.pop();
+      externalLinkNamespaces.pop();
+    }
     if (capture && capture.depth === depth && localName(tag.name) === (capture.kind === 'formula' ? 'f' : 'instrtext')) {
       if (capture.kind === 'formula' && unsafeSpreadsheetFormula(capture.value, state.files)) unsupported('Spreadsheet formula contains an external or active function');
       if (capture.kind === 'instruction' && unsafeWordInstruction(capture.value)) unsupported('Word fields contain an external or active instruction');
@@ -900,7 +923,10 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
     unreadable('xml_parse_error');
   }
   if (!root || depth !== 0 || capture) unreadable('xml_parse_error');
-  if (externalLinkPart && (localName(root) !== 'externallink' || externalBookCount < 1)) unreadable('external_link_invalid');
+  if (externalLinkPart) {
+    if (localName(root) !== 'externallink' || externalBookCount < 1) unreadable('external_link_invalid');
+    state.externalLinkRelationshipIds.set(name, externalLinkRelationshipIds);
+  }
 
   if (name === '[Content_Types].xml') {
     if (localName(root) !== 'types') unreadable('xml_root_unexpected');
@@ -986,13 +1012,16 @@ function verifyOfficeRelationships(state: OfficeState, declared: string): void {
     const source = relationshipSource(relsPath);
     if (source === null) return unreadable('relationship_invalid');
     const externalLinkRels = XLSX_EXTERNAL_LINK_RELS.test(relsPath);
-    if (externalLinkRels && (declared !== XLSX_MIME || !state.files.has(source) || relationships.length !== 1)) {
+    if (externalLinkRels && (declared !== XLSX_MIME || !state.files.has(source))) {
       unsupported('Office external link relationships are not a workbook reference');
     }
+    const seenExternalLinkIds = new Set<string>();
     for (const relationship of relationships) {
       if (externalLinkRels) {
+        const id = relationship.id;
+        if (!id || seenExternalLinkIds.has(id)) unreadable('external_link_invalid');
+        seenExternalLinkIds.add(id!);
         if (!relationship.external || relationship.type !== XLSX_EXTERNAL_LINK_PATH_RELATIONSHIP ||
-            relationship.id !== state.externalBookRelationshipIds.get(source) ||
             relationship.target.length > 2048 || /[\x00-\x1f\x7f]/.test(relationship.target)) {
           unsupported('Office external link relationships are not a workbook reference');
         }
@@ -1034,6 +1063,9 @@ function verifyOfficeRelationships(state: OfficeState, declared: string): void {
         }
       }
     }
+    if (externalLinkRels && [...(state.externalLinkRelationshipIds.get(source) ?? [])].some(id => !seenExternalLinkIds.has(id))) {
+      unreadable('external_link_invalid');
+    }
   }
   if (state.workbookExternalReferenceIds.size !== referencedLinks.size ||
       [...state.files].some(name => XLSX_EXTERNAL_LINK_PART.test(name) && !referencedLinks.has(name))) unreadable('external_link_invalid');
@@ -1055,7 +1087,7 @@ async function inspectOffice(source: ZipSource, declared: string): Promise<void>
   if (!startsWith(signature, [0x50, 0x4b, 0x03, 0x04])) mismatch();
 
   const entries = parseZip(source);
-  const state: OfficeState = { files: new Set(), contentTypes: null, relationships: new Map(), externalBookRelationshipIds: new Map(), workbookExternalReferenceIds: new Set(), payloadHazards: new Map(), rootDocumentTarget: null, mainPartRoot: null };
+  const state: OfficeState = { files: new Set(), contentTypes: null, relationships: new Map(), externalLinkRelationshipIds: new Map(), workbookExternalReferenceIds: new Set(), payloadHazards: new Map(), rootDocumentTarget: null, mainPartRoot: null };
   for (const entry of entries) if (!entry.directory) state.files.add(entry.name);
   for (const name of state.files) {
     if (/(?:^|\/)externallinks(?:\/|$)/i.test(name) &&
