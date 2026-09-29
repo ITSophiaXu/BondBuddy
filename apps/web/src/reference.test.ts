@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Material } from '@bondbuddy/contracts';
-import { TARGET_DOCUMENT_STAGE, materialParseSnapshotId, referenceSnapshotResolver, selectedReference, userReferenceChoice } from './reference.js';
+import { TARGET_DOCUMENT_STAGE, materialParseSnapshotId, referencePin, referenceSnapshotResolver, sameMaterialVersion, selectedReference, userReferenceChoice } from './reference.js';
 
 const reference: Material = { material_id: 'synthetic-reference', material_version: 2, upload_id: 'synthetic-upload',
   role: 'reference', filename: 'reference.docx', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -31,18 +31,40 @@ test('only a well-formed additive parse snapshot id is accepted; anything else s
   assert.equal(materialParseSnapshotId({ ...reference, parse_snapshot_id: 7 } as unknown as Material), undefined);
 });
 
-test('the reference resolver re-reads the current snapshot instead of trusting a stale list entry', async () => {
+test('the reference resolver re-reads the owner-scoped material instead of trusting a stale list entry', async () => {
   const reads: Array<[string, string]> = [];
+  const fresh: Material = { ...reference, material_version: 3, sha256: 'c'.repeat(64), parse_snapshot_id: 'fresh-snapshot' };
   const resolve = referenceSnapshotResolver(async (projectId, materialId) => {
     reads.push([projectId, materialId]);
-    return { ...reference, parse_snapshot_id: 'fresh-snapshot' } as Material;
+    return fresh;
   });
-  // The recovered list entry has no snapshot yet; the owner-scoped read supplies the completed one.
-  assert.equal(await resolve('synthetic-project', reference), 'fresh-snapshot');
+  // The recovered list entry may predate a completed parse or a new version; the read is returned as-is.
+  assert.deepEqual(await resolve('synthetic-project', reference), fresh);
   assert.deepEqual(reads, [['synthetic-project', 'synthetic-reference']]);
 });
 
-test('a reference that has not been parsed stays unpinned through the resolver', async () => {
-  const resolve = referenceSnapshotResolver(async () => reference);
-  assert.equal(await resolve('synthetic-project', reference), undefined);
+test('a failed owner-scoped read rejects so the caller keeps the run unpinned', async () => {
+  const resolve = referenceSnapshotResolver(async () => { throw new Error('synthetic read failure'); });
+  await assert.rejects(() => resolve('synthetic-project', reference));
+});
+
+test('a re-read only counts when id, version and hash are unchanged', () => {
+  assert.equal(sameMaterialVersion(reference, { ...reference }), true);
+  assert.equal(sameMaterialVersion(reference, { ...reference, material_version: 3 }), false);
+  assert.equal(sameMaterialVersion(reference, { ...reference, sha256: 'c'.repeat(64) }), false);
+  assert.equal(sameMaterialVersion(reference, { ...reference, material_id: 'synthetic-other' }), false);
+});
+
+test('list v1 -> GET v2 is a safe stop: no mixed pin is submitted', () => {
+  const v2: Material = { ...reference, material_version: 3, sha256: 'c'.repeat(64), parse_snapshot_id: 'snapshot-v2' };
+  assert.deepEqual(referencePin(reference, v2, 'private'),
+    { note: '用户指定参考稿在提交前已更新为新的版本，本次先按未指定参考提交；请刷新已保存材料并重新选择参考稿后再提交。' });
+});
+
+test('the same version can be pinned, and a still-unparsed version stays unpinned', () => {
+  const fresh: Material = { ...reference, parse_snapshot_id: 'fresh-snapshot' };
+  assert.deepEqual(referencePin(reference, fresh, 'private'),
+    { choice: userReferenceChoice(fresh, 'fresh-snapshot', 'private') });
+  assert.deepEqual(referencePin(reference, reference, 'private'),
+    { note: '用户指定参考稿的解析快照尚未就绪，本次先按未指定参考提交。' });
 });

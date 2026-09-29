@@ -4,7 +4,7 @@ import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type Pr
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
-import { materialParseSnapshotId, selectedReference, userReferenceChoice, type ReferenceSnapshotResolver } from './reference';
+import { referencePin, selectedReference, type ReferenceSnapshotResolver } from './reference';
 import type { ProjectConversation } from './project-conversation';
 import { date, esc } from './ui';
 import './project-execution.css';
@@ -170,8 +170,10 @@ export class ProjectExecution {
   }
   /**
    * Pins a user-specified structural reference for a no-history generation project. The parse
-   * snapshot id is owner-visible only through a backend seam; without it the run proceeds with no
-   * reference rather than guessing an id, and the preflight/worker keep the review gate closed.
+   * snapshot id is owner-visible only through a backend seam, and the selected version is re-checked
+   * against the fresh read first; a version change or a missing snapshot keeps the run unpinned
+   * rather than guessing an id or mixing versions, and the preflight/worker keep the review gate
+   * closed.
    */
   private async referenceFor(project: Dto<'ProjectResponse'>, selected: readonly Material[]): Promise<Dto<'InputRevisionCreateRequest'>['user_reference']> {
     this.referenceNote = '';
@@ -183,11 +185,10 @@ export class ProjectExecution {
       return undefined;
     }
     try {
-      const parseSnapshotId = this.referenceSnapshots
-        ? await this.referenceSnapshots(this.id, reference)
-        : materialParseSnapshotId(reference);
-      if (!parseSnapshotId) { this.referenceNote = '用户指定参考稿的解析快照尚未就绪，本次先按未指定参考提交。'; return undefined; }
-      return userReferenceChoice(reference, parseSnapshotId, project.offering);
+      const fresh = this.referenceSnapshots ? await this.referenceSnapshots(this.id, reference) : reference;
+      const resolved = referencePin(reference, fresh, project.offering);
+      if ('note' in resolved) { this.referenceNote = resolved.note; return undefined; }
+      return resolved.choice;
     } catch {
       this.referenceNote = '用户指定参考稿信息暂时无法读取，本次先按未指定参考提交。';
       return undefined;
