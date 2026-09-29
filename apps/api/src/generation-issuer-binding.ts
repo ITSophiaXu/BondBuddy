@@ -705,3 +705,30 @@ export async function loadApprovedGenerationIssuerBinding(
     };
   } catch { return null; }
 }
+
+/**
+ * #17 input-lock consumption: re-verify an explicitly supplied ref against this exact stored
+ * binding and its own locked input, re-resolving every current material, parse, identity review
+ * and grant anchor before returning it. It never selects a latest binding and never falls back to
+ * a browser name; every failure returns null. The caller must additionally require the returned
+ * `selected_materials` to equal the newly locked input's issuer-role materials before pinning the
+ * ref, so a re-materialised or re-parsed issuer set stays fail closed.
+ */
+export async function loadApprovedGenerationIssuerBindingForLock(
+  db: Pick<GenerationIssuerBindingClient, 'query'>,
+  scope: GenerationIssuerBindingScope,
+  ref: GenerationIssuerBindingRef,
+): Promise<GenerationIssuerBindingResponse | null> {
+  if (![scope.ownerUserId, scope.projectId, ref.binding_id].every(value => idPattern.test(value)) ||
+      !Number.isSafeInteger(ref.version) || ref.version < 1 || !shaPattern.test(ref.content_sha256)) return null;
+  try {
+    const row = (await db.query(`SELECT input_revision, input_hash FROM bb_generation_issuer_bindings
+      WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND content_sha256=$5`,
+    [scope.ownerUserId, scope.projectId, ref.binding_id, ref.version, ref.content_sha256])).rows[0];
+    if (!row) return null;
+    return await loadApprovedGenerationIssuerBinding(db, scope, ref, {
+      owner_user_id: scope.ownerUserId, project_id: scope.projectId,
+      input_revision: Number(row.input_revision), input_hash: String(row.input_hash).trim(),
+    });
+  } catch { return null; }
+}
