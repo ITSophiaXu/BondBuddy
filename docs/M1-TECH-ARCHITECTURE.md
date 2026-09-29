@@ -123,6 +123,8 @@ deploy/              # Compose、Nginx、部署与回滚
 
 #6 契约修订采用规格 04 的七类普通材料格式及现有 `project-fields.js` 的 M1 更新材料分区；声明 MIME 不可信，服务端核对真实内容。历史稿识别响应逐字段保留来源、不确定性和报告期集合；公开的项目材料 `ProjectEvent`、运行 `RunEvent` 与仅供受信服务使用的 `InternalObservabilityEvent` 分开。草稿 PATCH 在服务端合并旧值后校验市场/发行方式组合，不能只校验局部 JSON。具体值、错误码与交接说明仍以 `packages/contracts/` 为唯一公共定义；#79 的日志持久化不因本次 DTO 定义而视为完成。
 
+#420 的签名 PDF 入口仍在上传检查隔离线程中。PDF.js 高层页面检查之外，`apps/api/src/signed-pdf-profile.ts` 对最多 16 MiB、单页单 Sig Widget、单 classic xref 修订的原始对象与 `/Contents` 词法位置做独立核验；对象流、混合 xref、多签或多修订无法满足此版本时返回 415。该 TypeScript 检查器随 API 镜像构建，不引入外部二进制。`PUT` 在 Blob 写入前检查；`complete` 对 Blob 原字节、SHA 和结构重检，在同一事务写入材料版本、nullable `signature_assessment` 与持久解析任务。唯一公共 DTO 在 `packages/contracts`，旧材料该字段为 null，不能解释成无签名或已验签。`signature_unverified` 只表示结构放行，不改变解析 `needs_confirmation` 或 CMS/证书真实性结论。完整允许结构与威胁边界见 `apps/api/UPLOAD-SAFETY.md`。
+
 ### #6 用户删除与数据说明（2026-09-25）
 
 保存与删除期限只有一个来源：服务器配置 `BB_STORAGE_MATERIAL_RETENTION_DAYS`（删除后清理天数）、`BB_STORAGE_ORPHAN_GRACE_HOURS`、`BB_LOG_CONTENT_RETENTION_DAYS` 和部署负责的 `BB_BACKUP_RETENTION_DAYS`。清理任务读取这些变量，公开的 `GET /api/v1/data-policy`（`DataPolicyResponse`，定义在 `packages/contracts/src/data-lifecycle.ts`）也从同一组变量生成；未配置时返回 `null`，不写成 0。上传区和 `#/data-policy` 页面只根据这个接口渲染文案，不会声称原件只存在浏览器里。

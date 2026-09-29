@@ -91,6 +91,8 @@ export function pdfWidgetSample(options: {
   pageExtra?: string;
   widgetExtra?: string;
   appendRevision?: boolean;
+  appearanceResources?: string;
+  extraObject?: string;
 } = {}): Buffer {
   const fieldType = options.fieldType ?? 'Sig';
   const populated = options.populated ?? true;
@@ -103,8 +105,9 @@ export function pdfWidgetSample(options: {
     `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> /Contents 4 0 R /Annots [5 0 R] ${options.pageExtra ?? ''} >>\nendobj\n`,
     '4 0 obj\n<< /Length 0 >>\nstream\n\nendstream\nendobj\n',
     `5 0 obj\n<< /Type /Annot /Subtype /Widget /FT /${fieldType} /T (syntheticField) /Rect [0 0 1 1] /P 3 0 R /F 4${fieldValue} /AP << /N 6 0 R >> ${options.widgetExtra ?? ''} >>\nendobj\n`,
-    '6 0 obj\n<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >> /Length 0 >>\nstream\n\nendstream\nendobj\n'
+    `6 0 obj\n<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources ${options.appearanceResources ?? '<< >>'} /Length 0 >>\nstream\n\nendstream\nendobj\n`
   ];
+  if (options.extraObject) objects.push(`7 0 obj\n${options.extraObject}\nendobj\n`);
 
   let document = '%PDF-1.4\n% synthetic Widget negative fixture\n';
   const offsets = [0];

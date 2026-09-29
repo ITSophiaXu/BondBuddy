@@ -7,10 +7,11 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
-import { azureBlobs, digest, verifiedMedia, verifiedMediaFile } from './data.js';
+import { azureBlobs, digest, verifiedMedia, verifiedMediaFile, verifiedMediaFileDetailed } from './data.js';
 import { createServer } from './server.js';
-import { runInspectionWorker } from './upload-safety.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
+import { inspectMaterialUploadDetailed, runInspectionWorker } from './upload-safety.js';
+import { MAX_SIGNED_PDF_BYTES, SignedPdfProfileError, validateSignedPdfProfile } from './signed-pdf-profile.js';
 import {
   activeDocxSample, activeSvgDocxSample, compressedBombSample, csvFormulaSample, csvSample, DOCX, docxSample,
   encryptedOfficeSample, encryptedZipSample, entryCountBombSample, expandedSizeBombSample, externalLinkPartXlsxSample, externalRelationshipDocxSample, externalRelationshipXlsxSample, JPEG, jpegSample, CSV,
@@ -93,11 +94,14 @@ test('preprod exact-byte exception saves one otherwise rejected XLSX and audits 
     const differentPut = await send(app, 'PUT', different.json().upload_url, differentBytes, 'application/octet-stream');
     assert.equal(differentPut.statusCode, 422);
     assert.equal(differentPut.json().code, 'MATERIAL_UNREADABLE');
+    assert.equal(await blobs.getIfExists(`users/${ownerId}/projects/${projectId}/uploads/${different.json().upload_id}`), null,
+      'a different SHA cannot reach private Blob storage');
     assert.equal((await send(app, 'PUT', start.json().upload_url, bytes, 'application/octet-stream')).statusCode, 204);
     const complete = await send(app, 'POST', `/api/v1/projects/${projectId}/materials/uploads/${uploadId}/complete`, { byte_size: bytes.length, sha256: digest(bytes) });
     assert.equal(complete.statusCode, 200, complete.body);
     assert.equal(complete.json().material_version, 1);
     assert.equal(complete.json().sha256, digest(bytes));
+    assert.equal(complete.json().signature_assessment, null, 'the XLSX exception has no PDF signature assessment');
     const material = await pool.query('SELECT state,byte_size,sha256 FROM bb_material_versions WHERE id=$1 AND owner_user_id=$2', [complete.json().material_id, ownerId]);
     assert.equal(material.rowCount, 1);
     assert.equal(material.rows[0].state, 'persisted');
@@ -473,7 +477,7 @@ test('upload inspection rejects encryption, corrupt structures, active content, 
   await expectInspectionFailure(Buffer.from([0xc3, 0x28]), TEXT, 422, 'MATERIAL_CONTENT_MISMATCH', 'content_mismatch');
 });
 
-test('PDF upload rejects populated signature, blank signature, and non-Sig Widgets', async () => {
+test('PDF upload admits only the restricted filled Sig fixture and rejects other Widgets', async () => {
   // The placeholder /Contents is not CMS data and makes no validity claim.
   const populatedSigOnly = pdfWidgetSample({ fieldType: 'Sig', populated: true });
   const blankSig = pdfWidgetSample({ fieldType: 'Sig', populated: false });
@@ -491,7 +495,6 @@ test('PDF upload rejects populated signature, blank signature, and non-Sig Widge
   };
 
   for (const [name, bytes, expectedFieldType, expectedFieldValue] of [
-    ['populated Sig-only Widget', populatedSigOnly, 'Sig', null],
     ['blank Sig Widget', blankSig, 'Sig', null],
     ['non-Sig text Widget', populatedTextWidget, 'Tx', 'Synthetic text'],
   ] as const) {
@@ -512,6 +515,10 @@ test('PDF upload rejects populated signature, blank signature, and non-Sig Widge
       return failure.status === 415 && failure.code === 'MATERIAL_FORMAT_UNSUPPORTED';
     }, `${name} must never be accepted by upload inspection`);
   }
+  const expected = { mediaType: PDF, signatureAssessment: { status: 'signature_unverified', profile_version: 'signed-pdf-classic-v1', signature_count: 1 } };
+  assert.deepEqual(await inspectMaterialUploadDetailed(populatedSigOnly, PDF), expected);
+  assert.deepEqual(await spooled(populatedSigOnly, path => verifiedMediaFileDetailed(path, populatedSigOnly.length, PDF)), expected);
+  assert.equal(digest(populatedSigOnly), createHash('sha256').update(populatedSigOnly).digest('hex'));
   assert.match(populatedSigOnly.toString('ascii'), /\/V << \/Type \/Sig /,
     'the populated Sig fixture has a value dictionary, without claiming its CMS validity');
 });
@@ -525,6 +532,7 @@ test('signed PDF risk controls remain fail-closed on both inspection paths', asy
     ['overlapping byte range', pdfWidgetSample({ signatureValue: sig('<01>', '[0 10 9 10]') })],
     ['out-of-bounds byte range', pdfWidgetSample({ signatureValue: sig('<01>', '[0 10 9999999999 10]') })],
     ['empty contents', pdfWidgetSample({ signatureValue: sig('<>') })],
+    ['zero-filled contents', Buffer.from(pdfWidgetSample().toString('ascii').replace('/Contents <01>', '/Contents <00>'), 'ascii')],
     ['non-hex contents', pdfWidgetSample({ signatureValue: sig('<GG>') })],
     ['incremental revision after signature', pdfWidgetSample({ appendRevision: true })],
     ['choice widget', pdfWidgetSample({ fieldType: 'Ch' })],
@@ -534,12 +542,36 @@ test('signed PDF risk controls remain fail-closed on both inspection paths', asy
     ['XFA', pdfWidgetSample({ catalogExtra: '/XFA (synthetic)' })],
     ['embedded files', pdfWidgetSample({ catalogExtra: '/Names << /EmbeddedFiles << /Names [] >> >>' })],
     ['RichMedia', pdfWidgetSample({ widgetExtra: '/RichMedia << >>' })],
-    ['external action', pdfWidgetSample({ pageExtra: '/AA << /O << /S /URI /URI (https://example.invalid) >> >>' })]
+    ['external action', pdfWidgetSample({ pageExtra: '/AA << /O << /S /URI /URI (https://example.invalid) >> >>' })],
+    ['duplicate field key', pdfWidgetSample({ widgetExtra: '/FT /Sig' })],
+    ['escaped active name', pdfWidgetSample({ widgetExtra: '/J#53 (synthetic)' })],
+    ['hidden indexed object', pdfWidgetSample({ extraObject: '<< /Type /Action /S /JavaScript >>' })],
+    ['recursive appearance resource', pdfWidgetSample({ appearanceResources: '<< /XObject << /Self 6 0 R >> >>' })]
   ];
   for (const [name, bytes] of cases) {
     await expectInspectionFailure(bytes, PDF, 415, 'MATERIAL_FORMAT_UNSUPPORTED');
     assert.ok(bytes.length < 10_000, `${name} is a small synthetic control`);
   }
+  assert.throws(() => validateSignedPdfProfile(Buffer.alloc(MAX_SIGNED_PDF_BYTES + 1)), SignedPdfProfileError, 'restricted profile has a bounded byte budget');
+});
+
+test('authorized qx signed PDF retains its registered hash and stays outside the one-Widget profile', async () => {
+  const sampleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/samples/2026-09-25');
+  const manifest = JSON.parse(await readFile(join(sampleRoot, 'manifest.json'), 'utf8')) as {
+    cases: Array<{ case_id: string; files: Array<{ file_id: string; path: string; bytes: number; sha256: string }> }>;
+  };
+  const entry = manifest.cases.find(item => item.case_id === 'qx-202606')?.files.find(item => item.file_id === 'qx-202606-02');
+  assert.ok(entry);
+  assert.equal(entry.sha256, 'f6ab6dae2d70f09390915ea9d3eeb7a755df51d3307f1eb204ae1243ed971844');
+  const path = join(sampleRoot, entry.path);
+  const bytes = await readFile(path);
+  assert.equal(bytes.length, entry.bytes);
+  assert.equal(digest(bytes), entry.sha256);
+  await assert.rejects(verifiedMediaFile(path, bytes.length, PDF), (error: unknown) => {
+    const failure = error as { status?: number; code?: string };
+    return failure.status === 415 && failure.code === 'MATERIAL_FORMAT_UNSUPPORTED';
+  });
+  assert.throws(() => validateSignedPdfProfile(bytes), SignedPdfProfileError);
 });
 
 test('inspection infrastructure and size rejections expose fixed internal reasons', async () => {
@@ -609,6 +641,33 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
     const replay = await send('POST', completeUrl, { byte_size: pdf.length, sha256: digest(pdf) });
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(replay.json().material_id, complete.json().material_id);
+    assert.equal(complete.json().signature_assessment, null, 'ordinary PDF is not given a signature claim');
+
+    const signed = pdfWidgetSample();
+    const signedStart = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
+      filename: 'synthetic-filled-sig.pdf', media_type: PDF, byte_size: signed.length, sha256: digest(signed), role: 'audit'
+    });
+    assert.equal(signedStart.statusCode, 201, signedStart.body);
+    assert.equal((await send('PUT', signedStart.json().upload_url, signed, 'application/octet-stream')).statusCode, 204);
+    const signedCompleteUrl = `/api/v1/projects/${projectId}/materials/uploads/${signedStart.json().upload_id}/complete`;
+    const signedComplete = await send('POST', signedCompleteUrl, { byte_size: signed.length, sha256: digest(signed) });
+    assert.equal(signedComplete.statusCode, 200, signedComplete.body);
+    const signedMaterial = signedComplete.json();
+    assert.deepEqual(signedMaterial.signature_assessment, { status: 'signature_unverified', profile_version: 'signed-pdf-classic-v1', signature_count: 1 });
+    assert.equal(signedMaterial.sha256, digest(signed));
+    assert.equal((await send('POST', signedCompleteUrl, { byte_size: signed.length, sha256: digest(signed) })).json().material_id, signedMaterial.material_id);
+    const signedKey = `users/${ownerId}/projects/${projectId}/uploads/${signedStart.json().upload_id}`;
+    assert.deepEqual(await blobs.getIfExists(signedKey), signed, 'private Blob retains exact signed bytes');
+    const signedRow = await pool.query('SELECT sha256,signature_assessment FROM bb_material_versions WHERE owner_user_id=$1 AND id=$2', [ownerId, signedMaterial.material_id]);
+    assert.equal(signedRow.rows[0].sha256.trim(), digest(signed));
+    assert.deepEqual(signedRow.rows[0].signature_assessment, signedMaterial.signature_assessment);
+    await assert.rejects(pool.query('UPDATE bb_material_versions SET sha256=$1 WHERE owner_user_id=$2 AND id=$3', ['d'.repeat(64), ownerId, signedMaterial.material_id]),
+      (error: unknown) => (error as { code?: string }).code === '23514', 'assessed material hash is immutable');
+    await assert.rejects(pool.query('UPDATE bb_material_versions SET signature_assessment=NULL WHERE owner_user_id=$1 AND id=$2', [ownerId, signedMaterial.material_id]),
+      (error: unknown) => (error as { code?: string }).code === '23514', 'stored assessment is immutable');
+    const signedJobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND job_type='parse'", [ownerId, projectId, signedMaterial.material_id]);
+    assert.equal(signedJobs.rows[0].count, 1, 'accepted signed PDF has one durable parse job');
+    assert.deepEqual((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).json().signature_assessment, signedMaterial.signature_assessment);
 
     const bad = await docxSample();
     bad.writeUInt32LE(0, bad.length - 22); // Corrupt the end-of-central-directory signature while keeping the request structurally plausible.
@@ -632,8 +691,11 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
 
     for (const [name, bytes] of [
       ['blank signature', pdfWidgetSample({ populated: false })],
+      ['zero-filled signature contents', Buffer.from(pdfWidgetSample().toString('ascii').replace('/Contents <01>', '/Contents <00>'), 'ascii')],
       ['additional revision', pdfWidgetSample({ appendRevision: true })],
-      ['active widget', pdfWidgetSample({ widgetExtra: '/AA << /U << /S /JavaScript /JS (synthetic) >> >>' })]
+      ['active widget', pdfWidgetSample({ widgetExtra: '/AA << /U << /S /JavaScript /JS (synthetic) >> >>' })],
+      ['duplicate key', pdfWidgetSample({ widgetExtra: '/FT /Sig' })],
+      ['hidden object', pdfWidgetSample({ extraObject: '<< /Type /Action /S /JavaScript >>' })]
     ] as const) {
       const start = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, {
         filename: 'synthetic-signed.pdf', media_type: PDF, byte_size: bytes.length, sha256: digest(bytes), role: 'audit'
@@ -647,12 +709,15 @@ test('PostgreSQL/Azurite upload scan runs before Blob receipt and preserves owne
       const persisted = await pool.query('SELECT count(*)::int AS count FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2', [ownerId, start.json().upload_id]);
       assert.equal(persisted.rows[0].count, 0, `${name}: no material version`);
       const parseJobs = await pool.query("SELECT count(*)::int AS count FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND job_type='parse'", [ownerId, projectId]);
-      assert.equal(parseJobs.rows[0].count, 1, `${name}: only the earlier accepted PDF has a parse job`);
+      assert.equal(parseJobs.rows[0].count, 2, `${name}: only the earlier accepted PDFs have parse jobs`);
     }
 
     ownerId = `upload-other-${randomUUID()}`;
     assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${complete.json().material_id}`)).statusCode, 404);
     assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${complete.json().material_id}/download`)).statusCode, 404);
+    assert.equal((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).statusCode, 404);
+    ownerId = originalOwnerId;
+    assert.deepEqual((await send('GET', `/api/v1/projects/${projectId}/materials/${signedMaterial.material_id}`)).json().signature_assessment, signedMaterial.signature_assessment, 'owner read after session change retains assessment');
   } finally {
     if (projectId) {
       // The completed material now has a retained parse job and append-only #79 operation rows,

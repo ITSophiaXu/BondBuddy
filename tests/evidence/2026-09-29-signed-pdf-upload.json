@@ -1,0 +1,24 @@
+{
+  "issue": 420,
+  "source": {
+    "base_commit": "33e9988bcb828a498d155a61f6745da31c6ee4a2",
+    "upload_safety_test_sha256": "698a19d931d9cbe620f34bdbdf0f84bea890d6acdb448ab9a04d9260f6576f59",
+    "signed_pdf_profile_sha256": "61da8ac00bb1d6b4cac7a346e24d0ef4114cdd59d0fd8228ac2bf54e8e726648"
+  },
+  "verification": [
+    { "command": "npm run build", "result": "pass" },
+    { "command": "npm run check:contracts", "result": "pass", "synthetic_examples": 147 },
+    { "command": "node db/migrate.mjs (empty PostgreSQL 16 database)", "result": "pass", "migration_count": 76 },
+    { "command": "node db/migrate.mjs (PostgreSQL 16 database through 0075, then 0076)", "result": "pass", "before": 75, "after": 76 },
+    { "command": "node --test --test-concurrency=2 apps/api/dist/upload-safety.test.js (PostgreSQL 16 and Azurite 3.35 with --skipApiVersionCheck)", "result": "pass", "tests": 24, "passed": 24, "failed": 0, "skipped": 0 },
+    { "command": "git diff --check", "result": "pass" }
+  ],
+  "authorized_sample": {
+    "file_id": "qx-202606-02",
+    "bytes": 6960431,
+    "sha256": "f6ab6dae2d70f09390915ea9d3eeb7a755df51d3307f1eb204ae1243ed971844",
+    "public_upload_result": "415 MATERIAL_FORMAT_UNSUPPORTED",
+    "revision_graph": "not established by the restricted profile"
+  },
+  "signature_validity": "not assessed"
+}

@@ -108,6 +108,13 @@ const TargetConfirmationSchema = Type.Union([
 ], { description: 'User-declared target intent only; neither source fact nor professional review.' });
 const runState = enumOf(RUN_STATES);
 const materialState = enumOf(MATERIAL_STATES);
+export const SIGNED_PDF_PROFILE_VERSION = 'signed-pdf-classic-v1' as const;
+export const SignatureAssessmentSchema = obj({
+  status: Type.Literal('signature_unverified'),
+  profile_version: Type.Literal(SIGNED_PDF_PROFILE_VERSION),
+  signature_count: Type.Literal(1)
+});
+export type SignatureAssessment = Static<typeof SignatureAssessmentSchema>;
 const profileState = enumOf(PROFILE_STATES);
 const errorCode = enumOf(ERROR_CODES);
 const projectEventType = enumOf(PROJECT_EVENT_TYPES);
@@ -189,7 +196,7 @@ export const schemas = {
   UploadCreateRequest: Type.Object({ filename: Type.String({ minLength: 1 }), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, role: materialRole }, { additionalProperties: false, if: { properties: { role: { enum: ['historical', 'reference'] } } }, then: { properties: { media_type: { enum: [M1_UPLOAD_MIME_TYPES[0], M1_UPLOAD_MIME_TYPES[1]] } } } }),
   UploadSessionResponse: obj({ upload_id: id, state: Type.Literal('uploading'), upload_url: Type.String({ description: 'Short-lived, scoped URL; never store or log it.' }), expires_at: utc, max_bytes: Type.Integer({ minimum: 1 }) }),
   UploadCompleteRequest: obj({ byte_size: Type.Integer({ minimum: 1 }), sha256: hash }),
-  MaterialResponse: obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()) }),
+  MaterialResponse: obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)) }),
   RecognitionResponse: obj({ material_id: id, material_version: revision, profile_version: revision, state: profileState, source_market: recognizedField(market), source_offering: recognizedField(offering), reporting_periods: Type.Array(ReportingPeriodSchema), latest_reporting_cutoff: recognizedField(date) }),
   RecognitionPatchRequest: Type.Object({
     profile_version: revision,
