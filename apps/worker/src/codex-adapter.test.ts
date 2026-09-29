@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ajv } from 'ajv';
 import { schemas } from '@bondbuddy/contracts';
-import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
+import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
 
@@ -76,6 +76,42 @@ test('usage normalizer follows observed Codex semantics and never double-adds', 
   const missing = normalizeCodexUsage(undefined);
   assert.equal(missing.status, 'unknown');
   assert.ok([missing.input_tokens, missing.output_tokens, missing.total_tokens].every(v => v === null), 'missing usage is never 0');
+});
+
+test('Copilot command auth is explicit, bounded and rejects incomplete or mixed configuration', () => {
+  const env = { BB_CODEX_AUTH_MODE: 'copilot_enterprise', BB_COPILOT_OAUTH_FILE: '/run/secrets/bb-copilot-oauth',
+    BB_CODEX_PROVIDER: 'copilot_enterprise', BB_CODEX_MODEL: 'gpt-6-sol', BB_CODEX_BASE_URL: 'https://api.enterprise.githubcopilot.com',
+    BB_CODEX_REASONING_EFFORT: 'max', BB_CODEX_CONFIG_VERSION: 'copilot-gpt6-v1' };
+  const config = loadCodexAdapterConfig(env);
+  assert.equal(config.credential.kind, 'command');
+  const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
+  assert.ok(args.includes('model_providers.copilot_enterprise.auth.command="/usr/local/bin/bb-copilot-token"'));
+  assert.ok(args.includes('model_providers.copilot_enterprise.requires_openai_auth=false'));
+  assert.ok(args.includes('model_context_window=1000000'));
+  assert.ok(args.includes('model_auto_compact_token_limit=800000'));
+  assert.ok(!args.some(a => /Bearer |gho_|DEEPSEEK_API_KEY/.test(a)));
+  for (const override of [{ BB_COPILOT_OAUTH_FILE: '/dev/null' }, { BB_COPILOT_OAUTH_FILE: 'relative' },
+    { BB_CODEX_MODEL: 'deepseek-flash' }, { BB_CODEX_REASONING_EFFORT: 'medium' },
+    { BB_CODEX_CONFIG_VERSION: '' }, { BB_CODEX_CREDENTIAL_ENV: 'DEEPSEEK_API_KEY' }, { BB_CODEX_AUTH_FILE: '/tmp/auth.json' }])
+    assert.throws(() => loadCodexAdapterConfig({ ...env, ...override }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+});
+
+test('Copilot child receives the credential file path but no ambient provider secret', async () => {
+  const { config, cleanup } = await setup({ model_id: 'gpt-6-sol', model_provider: 'copilot_enterprise',
+    base_url: 'https://api.enterprise.githubcopilot.com', reasoning_effort: 'max',
+    credential: { kind: 'command', path: '/usr/local/bin/bb-copilot-token', oauth_file: '/run/secrets/bb-copilot-oauth' } });
+  const previous = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = 'synthetic-secret-that-must-stay-out';
+  try {
+    const t = traces();
+    const result = await runContainedModelCall(call('SCENARIO:structured return JSON', { onEvent: t.onEvent }), new MemoryCodexJournal(), config);
+    assert.equal(result.status, 'completed');
+    const trace = t.seen[0] as { argv: string[]; env_keys: string[] };
+    assert.ok(trace.env_keys.includes('BB_COPILOT_OAUTH_FILE'));
+    assert.ok(trace.env_keys.includes('NODE_USE_ENV_PROXY'));
+    assert.ok(!trace.env_keys.includes('DEEPSEEK_API_KEY'));
+    assert.ok(!trace.argv.join(' ').includes('synthetic-secret-that-must-stay-out'));
+  } finally { if (previous === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = previous; await cleanup(); }
 });
 
 test('invocation is contained: read-only, tools disabled, no danger-full-access, own config only', async () => {

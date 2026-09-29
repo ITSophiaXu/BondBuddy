@@ -39,7 +39,8 @@ test('proxy variables reach codex; proxy userinfo and auth.json mode are refused
     assert.deepEqual(codexProxyEnv({ HTTPS_PROXY: 'http://egress:3128', https_proxy: 'http://egress:3128', HTTP_PROXY: 'x', DEEPSEEK_API_KEY: 'never' }), { HTTPS_PROXY: 'http://egress:3128', https_proxy: 'http://egress:3128' });
     assert.throws(() => assertCodexConfig({ ...config, proxy_env: { HTTPS_PROXY: 'http://user:pw@egress:3128' } }));
     assert.throws(() => assertCodexConfig({ ...config, proxy_env: { DEEPSEEK_API_KEY: 'x' } }));
-    assert.throws(() => assertProbeConfig({ ...config, credential: { kind: 'auth_file', path: '/tmp/auth.json' } }, {}), /env credential mode/);
+    assert.throws(() => assertProbeConfig({ ...config, credential: { kind: 'auth_file', path: '/tmp/auth.json' } }, {}), /auth.json/);
+    assert.doesNotThrow(() => assertProbeConfig({ ...config, credential: { kind: 'command', path: '/usr/local/bin/bb-copilot-token', oauth_file: '/run/secrets/bb-copilot-oauth' } }, {}));
     assert.throws(() => assertProbeConfig(config, {}), /is not set/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

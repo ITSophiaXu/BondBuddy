@@ -100,7 +100,7 @@ git fetch origin && ./scripts/deploy.sh origin/master   # only where the target 
 
 Production must use a reviewed `develop` → `master` PR and the resulting exact `master` commit. On openclaw-vm there is no repository deploy key: master sends that commit through a verified git bundle over its existing SSH route, and the target deploys the bundled commit. Do not substitute a local `develop` checkout for a production release.
 
-The model credential is passed only through the adapter's env credential mode: `BB_CODEX_CREDENTIAL_ENV` names the variable (default `DEEPSEEK_API_KEY`) and its value lives in `.env` or a host-mounted env file. `auth.json` credential files are not used. Leave the key empty to keep model calls disabled.
+The DeepSeek rollback configuration uses `BB_CODEX_CREDENTIAL_ENV` (default `DEEPSEEK_API_KEY`); `auth.json` is not used. The explicit Copilot Enterprise switch and its read-only OAuth file mount are documented in [copilot-model-provider.md](copilot-model-provider.md). Leave model credentials unavailable to keep model calls disabled.
 
 ## Deploy
 

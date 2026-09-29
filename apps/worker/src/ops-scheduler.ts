@@ -115,7 +115,7 @@ export function tasksFromEnv(pool: Pool, env: NodeJS.ProcessEnv = process.env, b
   libraryAdapters?: (blobs: PrivateBlobs) => Record<string, LibrarySourceAdapter>): ScheduledTask[] {
   const seconds = (name: string, fallback: number) => intEnv(env, name, fallback, 5, 86400 * 7) * 1000;
   const tasks: ScheduledTask[] = [];
-  if (!off(env.BB_OPS_PROVIDER_BALANCE) && env.DEEPSEEK_API_KEY) {
+  if (!off(env.BB_OPS_PROVIDER_BALANCE) && env.BB_CODEX_AUTH_MODE !== 'copilot_enterprise' && env.BB_CODEX_PROVIDER !== 'copilot_enterprise' && env.DEEPSEEK_API_KEY) {
     const threshold = Number(env.BB_PROVIDER_BALANCE_THRESHOLD_USD ?? '1');
     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1000000) throw new Error('Invalid BB_PROVIDER_BALANCE_THRESHOLD_USD');
     tasks.push({ name: 'provider_balance', intervalMs: seconds('BB_OPS_PROVIDER_BALANCE_SECONDS', 300), leaseMs: 30000,

@@ -11,7 +11,7 @@ Code: `apps/api/src/platform-probe.ts` (route and enqueue), `apps/worker/src/pla
 - **Guards.** Enqueue checks the kill switch, deny override and daily token quota of the platform principal. The worker checks them again, plus the evidence gate, before it records the call intent. A probe that is rejected there fails with the guard's code, for example `MODEL_CALLS_SUSPENDED`, and has no attempt row. A queued probe counts toward `BB_TRIAL_GLOBAL_ACTIVE_RUNS`.
 - **Separate claim.** The run pipeline never claims a probe, and the probe worker never claims a user run.
 - **Success.** A probe run is `succeeded` without a Word artifact only if it has a completed attempt with a stored result and measured usage. Migration 0027 enforces this. User runs still need verified Word delivery.
-- **Credentials.** The worker only supports env credential mode (`BB_CODEX_CREDENTIAL_ENV`, default `DEEPSEEK_API_KEY`). It refuses to start when `BB_CODEX_AUTH_FILE` is set or the credential variable is empty, and it never reads, prints or stores the value. auth.json is not used.
+- **Credentials.** DeepSeek uses env credential mode (`BB_CODEX_CREDENTIAL_ENV`, default `DEEPSEEK_API_KEY`). The explicit Copilot Enterprise command mode uses the read-only OAuth mount described in [copilot-model-provider.md](copilot-model-provider.md). The probe rejects `auth.json`; neither mode prints or stores credential values.
 - **No user route.** There is no browser or user-facing route. Without a `log_operator` grant, `POST /api/v1/admin/probes/model` returns the same owner-safe 404 as an unknown resource.
 
 ## Egress
