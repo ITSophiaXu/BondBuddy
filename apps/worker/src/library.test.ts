@@ -245,9 +245,17 @@ test('conservative classifier leaves the business profile incomplete; approval n
     t.source.add('H', 2, 'h2');
     await enqueueLibrarySync(t.pool, t.sourceId); await t.drain();
     assert.deepEqual([(await t.versionOf('H', 1)).state, (await t.versionOf('H', 2)).state], ['superseded', 'pending_review']);
+    const sourceBeforeRerun = (await t.pool.query('SELECT cursor,last_success_at FROM bb_library_sources WHERE id=$1', [t.sourceId])).rows[0];
     await enqueueLibraryRecordRerun(t.pool, (await t.versionOf('F', 1)).id, 'operator-syn');
-    await t.drain();
+    const rerun = (await t.drain())[0]!;
     assert.equal((await t.versionOf('F', 1)).state, 'pending_review');
+    const rerunSummary = await syncRunSummary(t.pool, rerun.syncRunId!);
+    assert.equal(rerunSummary.mode, 'record_rerun');
+    assert.equal(rerunSummary.state, 'succeeded');
+    assert.ok(rerunSummary.finished_at);
+    assert.deepEqual(rerunSummary.outcomes, { unchanged: 1 });
+    const sourceAfterRerun = (await t.pool.query('SELECT cursor,last_success_at FROM bb_library_sources WHERE id=$1', [t.sourceId])).rows[0];
+    assert.deepEqual(sourceAfterRerun, sourceBeforeRerun, 'record reruns do not advance source sync state');
   } finally { await t.pool.end(); }
 });
 

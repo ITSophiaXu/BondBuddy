@@ -131,7 +131,9 @@ export async function runLibraryOnce(deps: LibraryPipelineDependencies): Promise
       const sync = await startSyncRun(pool, lease, 'record_rerun');
       const finalState = await processLibraryVersion(deps, lease.versionId!, meta);
       await recordSyncItem(pool, sync.syncRunId, `rerun:${lease.versionId}`, finalState === 'failed' ? 'failed' : 'unchanged', { versionId: lease.versionId, errorCode: finalState === 'failed' ? 'LIBRARY_PARSE_FAILED' : undefined });
-      await succeedLibraryJob(pool, lease, { final_state: finalState });
+      await succeedLibraryJob(pool, lease, { final_state: finalState }, {
+        syncRunId: sync.syncRunId, cursorAfter: sync.cursorBefore, partial: finalState === 'failed',
+      });
       return { outcome: 'succeeded', jobId: lease.jobId, syncRunId: sync.syncRunId };
     }
     const adapter = deps.adapters[lease.sourceId];

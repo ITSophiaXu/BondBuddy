@@ -228,12 +228,14 @@ export async function succeedLibraryJob(pool: Pool, lease: LibraryLease, result:
     const job = await lockedJob(client, lease);
     const updated = (await client.query("UPDATE bb_jobs SET state='succeeded',stage='succeeded',result=$2,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 RETURNING *", [job.id, result])).rows[0];
     if (sync) {
-      // Cursor and last-success advance only in the same transaction that closes the job.
+      // Close the run with its job. A per-record rerun must not advance the source cursor or success clock.
       await client.query("UPDATE bb_library_sync_runs SET state=$2,cursor_after=$3,finished_at=now() WHERE id=$1", [sync.syncRunId, sync.partial ? 'partial' : 'succeeded', sync.cursorAfter]);
-      await client.query(`UPDATE bb_library_sources SET cursor=$2, last_success_at=CASE WHEN $3 THEN last_success_at ELSE now() END,
-        last_error_code=CASE WHEN $3 THEN 'LIBRARY_FETCH_FAILED' ELSE NULL END, consecutive_failures=CASE WHEN $3 THEN consecutive_failures ELSE 0 END,
-        updated_at=now() WHERE id=$1`, [lease.sourceId, sync.cursorAfter, sync.partial]);
-      if (sync.partial) await recordSourceSyncFailure(client, lease.sourceId, 'LIBRARY_FETCH_FAILED');
+      if (lease.subtype === 'library_sync') {
+        await client.query(`UPDATE bb_library_sources SET cursor=$2, last_success_at=CASE WHEN $3 THEN last_success_at ELSE now() END,
+          last_error_code=CASE WHEN $3 THEN 'LIBRARY_FETCH_FAILED' ELSE NULL END, consecutive_failures=CASE WHEN $3 THEN consecutive_failures ELSE 0 END,
+          updated_at=now() WHERE id=$1`, [lease.sourceId, sync.cursorAfter, sync.partial]);
+        if (sync.partial) await recordSourceSyncFailure(client, lease.sourceId, 'LIBRARY_FETCH_FAILED');
+      }
     }
     await jobEvent(client, updated, 'library.job_succeeded', 'succeeded', 'succeeded', { partial: sync?.partial ?? false });
   });
