@@ -102,8 +102,9 @@ export class ArtifactHistory {
         <button class="text-button" type="button" data-history-refresh ${this.loading ? 'disabled' : ''}>重新读取历史成果</button></div>
       ${this.error ? `<p class="word-history-error" role="alert">${esc(this.error)}${this.entries.length ? ' 已加载的版本可逐份重新核验；目录可能不完整。' : ''}</p>` : ''}
       ${this.entries.length ? `<ol class="word-history-list">${this.entries.map((entry, index) => `<li class="word-history-item ${entry.channel === 'non_production_test' ? 'word-history-test' : ''}">
-        <div class="word-history-row"><div><h3>募集说明书 · ${entry.word_delivery ? '更新稿' : 'Word 成果'} · v${entry.primary_artifact.version}</h3>
-        <p class="muted">输入版本 ${entry.input_revision} · ${esc(date(entry.completed_at))} · ${entry.channel === 'production' ? '正式通道 · 已通过交付检查' : '内部测试工作稿 · 未经专业审核 · 不得对外使用'}</p></div>
+        <div class="word-history-row"><div><h3>募集说明书 · ${entry.word_delivery ? '更新稿' : 'Word 成果'}</h3>
+        <p class="muted">输入版本 ${entry.input_revision} · 文件版本 ${entry.primary_artifact.version} · ${esc(date(entry.completed_at))}</p>
+        <p class="muted">任务编号 ${esc(entry.run_id)} · ${entry.channel === 'production' ? '正式通道 · 已通过交付检查' : '内部测试工作稿 · 未经专业审核 · 不得对外使用'}</p></div>
         <div class="word-history-actions">${filesFor(entry).map((file, fileIndex) => `<button class="button ${fileIndex === 0 ? 'primary' : 'secondary'}" type="button" data-history-file="${index}:${fileIndex}" ${this.pendingRows.has(entry.run_id) ? 'disabled' : ''}>下载${file.label}</button>`).join('')}</div></div>
         ${!entry.word_delivery ? '<p class="muted">此历史成果未提供修订、清洁版和有效基线的分类信息。</p>' : ''}
         <p class="word-history-download-status" data-history-status="${index}" role="status">${esc(this.statuses.get(entry.run_id) ?? '')}</p></li>`).join('')}</ol>` :
@@ -144,7 +145,7 @@ export class ArtifactHistory {
           artifact.word_delivery.baseline_artifact_id !== delivery.baseline.artifact_id : artifact.word_delivery !== undefined)) throw new ApiError(0, 'DATA_UNAVAILABLE');
       const bytes = await this.api.artifactBytes(artifact, signal);
       if (generation !== this.generation || signal.aborted) return;
-      this.downloads.save(bytes, `${this.projectName()}-v${file.version}-${file.label}.docx`);
+      this.downloads.save(bytes, `${this.projectName().slice(0, 16)}-输入${entry.input_revision}-${file.artifact_id}-${file.label}.docx`);
       this.statuses.set(entry.run_id, '文件已交给浏览器下载，请在浏览器下载列表中查看。');
     } catch (error) {
       if (generation === this.generation && !signal.aborted) this.statuses.set(entry.run_id, artifactError(error));

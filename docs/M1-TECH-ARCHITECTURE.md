@@ -8,7 +8,7 @@
 
 ## #34 同项目浏览器版本目录（2026-09-29，接续切片）
 
-`apps/web/src/artifact-history.ts` 从 `packages/contracts` 使用 `ArtifactHistoryResponse`，通过现有 `api.ts` 在项目工作区的进度/成果区域分页列出检查过的 Word 版本。它不创建新导航或任务；旧版在后续执行中、失败后仍可直接重新读取下载。旧单件只给通用 Word 名称；生产与有效测试授权下的工作稿逐行标明不同通道。点击逐份读取 owner/project/run 和成果，重新取得 grant，再复用现有同源、完整字节及 SHA-256 校验；账号/项目切换和列表刷新取消在途读取，不持久化授权。404/422/503、撤销及校验失败明确显示失败而非空目录成功。无公共 DTO、状态枚举、数据库迁移或收费变化；#85 无目录，布局补充须按 [同尺寸对照](../apps/web/ux-evidence/issue-34-history/README.md)取得产品负责人确认后才可合入。
+`apps/web/src/artifact-history.ts` 从 `packages/contracts` 使用 `ArtifactHistoryResponse`，通过现有 `api.ts` 在项目工作区的进度/成果区域分页列出检查过的 Word 版本。它不创建新导航或任务；旧版在后续执行中、失败后仍可直接重新读取下载。列表以输入版本、完成时间及 run ID 区分运行；`artifact.version` 是文件本身版本（当前新 run 通常均为 1），不得当作项目级 vN。旧单件只给通用 Word 名称；生产与有效测试授权下的工作稿逐行标明不同通道。点击逐份读取 owner/project/run 和成果，重新取得 grant，再复用现有同源、完整字节及 SHA-256 校验；账号/项目切换和列表刷新取消在途读取，不持久化授权。404/422/503、撤销及校验失败明确显示失败而非空目录成功。无公共 DTO、状态枚举、数据库迁移或收费变化；#85 无目录，布局补充须按 [同尺寸对照](../apps/web/ux-evidence/issue-34-history/README.md)取得产品负责人确认后才可合入。
 
 ## #18 项目消息受控持久化第一切片（2026-09-29）
 

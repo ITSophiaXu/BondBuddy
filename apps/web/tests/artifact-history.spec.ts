@@ -132,7 +132,7 @@ test('API client paginates checked versions in the same project, keeps old succe
   for (const [index, name] of [[0, '修订版'], [1, '清洁版'], [2, '有效基线']] as const) {
     const downloaded = page.waitForEvent('download');
     await page.locator('.word-history-item').first().getByRole('button', { name: `下载${name}` }).click();
-    expect((await downloaded).suggestedFilename()).toBe(`合成历史项目-v3-${name}.docx`);
+    expect((await downloaded).suggestedFilename()).toBe(`合成历史项目-输入5-${['revision-3', 'clean-3', 'baseline-3'][index]}-${name}.docx`);
     expect(data.reads.get(['revision-3','clean-3','baseline-3'][index])).toBe(1);
   }
   const again = page.waitForEvent('download');
@@ -166,7 +166,7 @@ test('an active newer run leaves older checked versions downloadable on reload',
   await expect(page.locator('.word-history-item')).toHaveCount(2);
   const downloaded = page.waitForEvent('download');
   await page.locator('.word-history-item').first().getByRole('button', { name: '下载清洁版' }).click();
-  expect((await downloaded).suggestedFilename()).toBe('合成历史项目-v3-清洁版.docx');
+  expect((await downloaded).suggestedFilename()).toBe('合成历史项目-输入5-clean-3-清洁版.docx');
   expect(data.requests.some(request => request.path === '/runs/execute')).toBe(false);
 });
 
