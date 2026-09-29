@@ -42,6 +42,8 @@ export type FetchLike = (url: string, init?: { headers?: Record<string, string>;
 
 export type SseOptions = {
   fetch?: FetchLike; maxProjects?: number; maxPages?: number; pageSize?: number; delayMs?: number; timeoutMs?: number;
+  /** Deterministic clock for request-spacing tests; production uses a monotonic clock and timer. */
+  clock?: { now(): number; sleep(ms: number): Promise<void> };
   /** bond_type filter. ABS (2) is not a prospectus target; non-public projects (1,6) expose no files on the platform (observed 2026-09-25). */
   bondTypes?: string;
 };
@@ -50,18 +52,35 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
   readonly sourceId = SSE_BOND_SOURCE.id;
   readonly mode = 'scheduled' as const;
   private readonly http: FetchLike;
+  private requestTail: Promise<void> = Promise.resolve();
+  private lastRequestStart: number | undefined;
   constructor(private readonly options: SseOptions = {}) { this.http = options.fetch ?? (globalThis.fetch as unknown as FetchLike); }
-  private async pause() { if (this.options.delayMs ?? 700) await new Promise(r => setTimeout(r, this.options.delayMs ?? 700)); }
   private async get<T>(url: string, consume: (response: Awaited<ReturnType<FetchLike>>) => Promise<T>): Promise<T> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 180_000);
+    // Hold the slot through body consumption, so concurrent discover/fetch calls and retries cannot
+    // race the spacing clock. A failed request still advances it; waiting does not consume body time.
+    const prior = this.requestTail;
+    let release!: () => void;
+    this.requestTail = new Promise<void>(resolve => { release = resolve; });
+    await prior;
     try {
-      const response = await this.http(url, { headers: { 'User-Agent': 'BondBuddy-reference-library/0.1 (+ops contact in runbook)', Referer: 'https://bond.sse.com.cn/' }, signal: controller.signal });
-      return await consume(response);
-    } catch (error) {
-      if (controller.signal.aborted) throw Object.assign(new Error('SSE request timed out'), { name: 'TimeoutError' });
-      throw error;
-    } finally { clearTimeout(timer); }
+      const clock = this.options.clock ?? { now: () => performance.now(), sleep: (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)) };
+      const requested = this.options.delayMs;
+      const spacing = requested !== undefined && Number.isFinite(requested) ? Math.max(700, requested) : 700;
+      if (this.lastRequestStart !== undefined) {
+        const remaining = spacing - (clock.now() - this.lastRequestStart);
+        if (remaining > 0) await clock.sleep(remaining);
+      }
+      this.lastRequestStart = clock.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 180_000);
+      try {
+        const response = await this.http(url, { headers: { 'User-Agent': 'BondBuddy-reference-library/0.1 (+ops contact in runbook)', Referer: 'https://bond.sse.com.cn/' }, signal: controller.signal });
+        return await consume(response);
+      } catch (error) {
+        if (controller.signal.aborted) throw Object.assign(new Error('SSE request timed out'), { name: 'TimeoutError' });
+        throw error;
+      } finally { clearTimeout(timer); }
+    } finally { release(); }
   }
   private async query(params: Record<string, string>) {
     const url = `${SSE_QUERY}?${new URLSearchParams(params)}`;
@@ -97,11 +116,9 @@ export class SseBondProjectAdapter implements LibrarySourceAdapter {
         if (projects.length >= maxProjects) break;
       }
       if (reachedCursor) break;
-      await this.pause();
     }
     const items: DiscoveredItem[] = [];
     for (const project of projects) {
-      await this.pause();
       const body = await this.query({ isPagination: 'false', sqlId: 'ZQ_GGJG', bond_type: '0,1,2,3,5,6,7', audit_id: String(project.BOND_NUM) });
       const files: any[] = (body?.result ?? []).filter((f: any) => Number(f.FILE_TYPE) === PROSPECTUS_FILE_TYPE && /募集说明书/.test(String(f.FILE_TITLE)) && /\.pdf$/i.test(String(f.FILE_PATH)));
       // FILE_VERSION restarts per upload batch (seen live: two different "v1" files), so the revision

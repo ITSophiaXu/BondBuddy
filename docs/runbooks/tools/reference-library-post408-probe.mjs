@@ -7,12 +7,14 @@ import { azureBlobs } from '/app/apps/api/dist/data.js';
 import { enqueueLibrarySync, registerLibrarySource } from '/app/apps/api/dist/library.js';
 import { runLibraryOnce } from '/app/apps/worker/dist/library-pipeline.js';
 import { SSE_BOND_SOURCE, SseBondProjectAdapter } from '/app/apps/worker/dist/library-sources.js';
+import { assertProbeDatabase, validateProbeConfiguration } from './reference-library-probe-safety.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const memoryPeak = () => Number(readFileSync('/sys/fs/cgroup/memory.peak', 'utf8').trim());
+const mode = process.argv[2];
+const { database } = validateProbeConfiguration(process.env, mode);
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const realBlobs = azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING, 'bondbuddy-private');
-const mode = process.argv[2];
 const syntheticSource = {
   id: 'synthetic_uncommitted_blob_fault', kind: 'public_disclosure', market: 'sse',
   displayName: 'Synthetic fault fixture', authorizationBasis: 'synthetic local test',
@@ -42,21 +44,19 @@ const parser = async request => ({
 });
 
 try {
+  await assertProbeDatabase(pool, database, mode);
   if (mode === 'live') {
     await registerLibrarySource(pool, SSE_BOND_SOURCE);
     const requests = [];
-    let lastHeaderDoneAt = 0;
     let lastRequestStartAt = 0;
     const adapter = new SseBondProjectAdapter({ maxProjects: 1, maxPages: 1, pageSize: 10, delayMs: 800,
       fetch: async (url, init) => {
         const host = new URL(url).hostname;
-        if (lastHeaderDoneAt) await new Promise(resolve => setTimeout(resolve, Math.max(0, 800 - (Date.now() - lastHeaderDoneAt))));
         const requestStartAt = Date.now();
         const startGapMs = lastRequestStartAt ? requestStartAt - lastRequestStartAt : null;
         lastRequestStartAt = requestStartAt;
         const start = performance.now();
         const response = await fetch(url, init);
-        lastHeaderDoneAt = Date.now();
         requests.push({ host, status: response.status, header_ms: Math.round(performance.now() - start), start_gap_ms: startGapMs });
         return response;
       },
@@ -91,6 +91,8 @@ try {
       versions: state.rows, active_index_entries: published.rows[0].count,
       cgroup_peak_bytes: memoryPeak(), cgroup_limit_bytes: Number(readFileSync('/sys/fs/cgroup/memory.max', 'utf8').trim()) })}\n`);
   } else if (mode === 'fault') {
+    const prior = await pool.query('SELECT count(*)::int AS count FROM bb_library_sources WHERE id=$1', [syntheticSource.id]);
+    if (prior.rows[0].count !== 0) throw new Error('PROBE_FAULT_SOURCE_NOT_EMPTY');
     await registerLibrarySource(pool, syntheticSource);
     await enqueueLibrarySync(pool, syntheticSource.id);
     const killingBlobs = { ...realBlobs, put: async (...args) => {
@@ -106,8 +108,10 @@ try {
     const before = await pool.query(`SELECT count(*)::int AS count FROM bb_library_document_versions v
       JOIN bb_library_documents d ON d.id=v.document_id WHERE d.source_id=$1`, [syntheticSource.id]);
     const blobAfterCrash = await realBlobs.exists(blobKey);
-    await pool.query(`UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE job_type='library'
-      AND id IN (SELECT job_id FROM bb_library_sync_runs WHERE source_id=$1) AND state='running'`, [syntheticSource.id]);
+    if (before.rows[0].count !== 0 || !blobAfterCrash) throw new Error('PROBE_FAULT_STATE_INVALID');
+    const lease = await pool.query(`UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE job_type='library'
+      AND id IN (SELECT job_id FROM bb_library_sync_runs WHERE source_id=$1) AND state='running' RETURNING id`, [syntheticSource.id]);
+    if (lease.rowCount !== 1) throw new Error('PROBE_FAULT_LEASE_INVALID');
     const outcome = await runLibraryOnce({ pool, blobs: realBlobs, adapters: { [syntheticSource.id]: fake }, parser, fetchAttempts: 1 });
     const after = await pool.query(`SELECT v.state, v.version, v.sha256 FROM bb_library_document_versions v
       JOIN bb_library_documents d ON d.id=v.document_id WHERE d.source_id=$1`, [syntheticSource.id]);

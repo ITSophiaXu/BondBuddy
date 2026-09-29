@@ -133,7 +133,15 @@ POST /api/v1/admin/library/sources/sse_bond_project_platform/rights
 
 故障复验使用隔离 PostgreSQL 16 与 Azurite 3.35（`--skipApiVersionCheck`），在测试对象的 Blob `put` 返回后、文书行及条目检查点提交前对进程注入 SIGKILL。进程须以 `docker run --init` 启动，使被注入的 Node 进程不是容器 PID 1。故障后 Blob 存在而版本数为 0；租约过期后重领并处理同一对象，结果为唯一版本 1、一个同步条目、`pending_review`、活动索引 0。对象采用内容哈希键，恢复时被引用；若此处永久失败，仍可能遗留未引用的 `library/` 对象。现有存储盘点不扫描该前缀，本次未证明自动回收，运营不得仅凭无数据库行就手动删除对象。
 
-复验工具为 `docs/runbooks/tools/reference-library-post408-probe.mjs`（`live`、`fault`、`recover`）及 `reference-library-egress-fail-probe.mjs`。在独立迁移的数据库、测试 Blob、内部网络与精确放行代理上挂载这两个只读脚本后运行；本次 `live` 调用两次，每次限制一个项目与一份 PDF，探针在每次实际请求前等待前次响应头后至少 800 毫秒。常规适配器的 `delayMs` 只在发现流程内等待，发现结束后流水线会立即开始文件下载；若常规同步也要求逐请求至少 700 毫秒，仍需在适配器或流水线补统一限速，本次未改变生产行为。`fault`/`recover` 只处理合成对象。运行完成后删除临时数据库、对象、代理与容器，原 PDF 不入库。上述工程证据不代表预发布持续同步已开启，也不替代 #77 的授权、商用来源和专业验收；`evaluation_only` 与 v1.1 生产锁定门禁保持原样。
+上述旧基线的探针曾自行等待，而常规适配器的 `delayMs` 只在发现流程内等待，发现结束后流水线会立即开始文件下载。该缺口由下一节修复并以适配器自身请求时间复验。旧证据保留为旧基线记录，不作为新实现的限速证明。`fault`/`recover` 只处理合成对象。上述工程证据不代表预发布持续同步已开启，也不替代 #77 的授权、商用来源和专业验收；`evaluation_only` 与 v1.1 生产锁定门禁保持原样。
+
+### 6.2 统一请求间隔与隔离探针
+
+SSE 适配器在实际请求入口对同一实例的列表、详情、PDF 和重试统一排队；请求起点至少相隔 700 毫秒，ops 配置为 800 毫秒。失败同样占用一次请求时隙。队列等待结束后才开始 180 秒正文超时计时，150 MiB 流式上限不变。适配器实例各自限速；多实例或多容器共用一个来源时，仍须由来源租约和部署配置约束并发，不把单实例间隔当成全局限流。
+
+`docs/runbooks/tools/reference-library-post408-probe.mjs` 的 `live` 模式只记录真实适配器调用 `fetch` 的时间，不再自行等待。运行前必须显式设置 `BB_REFERENCE_PROBE_ENV=isolated`、`BB_REFERENCE_PROBE_DB_HOST`，并提供名称以 `bb_ref_probe_` 开头的专用 PostgreSQL 数据库及 `http` Azurite 端点（测试账号名以 `bbprobe` 开头）。程序核对实际数据库名，拒绝已有个人用户、项目、run、无关来源/任务或已发布库版本的数据库；`live`/`fault` 还要求库内没有既有参考库来源、文书或任务。迁移 0027 固定创建的禁用合成平台探针用户和项目是唯一例外。配置不满足时在任何写入前报错。`recover` 还要求 `BB_REFERENCE_PROBE_RECOVER=synthetic_uncommitted_blob_fault`，并只在合成 Blob 已存在、版本尚未提交且恰有一个运行中的对应任务时修改该任务租约。[定向复验证据](evidence/reference-library-request-spacing-2026-09-29.json)列出隔离环境与拒绝样例。配置和空库检查是必要门禁，不授权接入生产数据库或存储。
+
+只读盘点使用 `docs/runbooks/tools/reference-library-blob-inventory.mjs <source_id>`，只枚举该来源 `library/<source_id>/` 下的原件对象，并用数据库中相同 `blob_key` 做精确相等比较；输出对象键的 SHA-256、字节数和是否被版本引用，不输出原对象名或正文。盘点限制 1000 个对象，出现 `truncated=true` 时不能据此得出全量结论。故障后先查看任务状态、租约、检查点和 Blob 哈希；租约到期后通过原同步任务恢复，再复核版本唯一性、哈希读回及索引状态。对永久失败且无版本行的对象，只记录盘点结果与任务证据，交由后续保留/回收策略处理。Blob 写入与数据库提交跨系统，短时间没有版本行可能表示未提交的有效任务；现行 `storage-inventory` 不扫描 `library/`，因此不得以“无行”为删除依据，也不得称自动回收已实现。
 
 ## 7. 任务侧契约（内部 v1）
 

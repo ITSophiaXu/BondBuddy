@@ -54,6 +54,52 @@ test('SSE PDF stops reading on first chunk beyond 150 MiB', async () => {
   assert.equal(cancelled, true);
 });
 
+test('SSE spaces list, detail, PDF and retry requests with one clock', async () => {
+  let now = 0;
+  const starts: number[] = [];
+  const sleeps: number[] = [];
+  const clock = { now: () => now, sleep: async (ms: number) => { sleeps.push(ms); now += ms; } };
+  const pdf = () => new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) { controller.enqueue(new TextEncoder().encode('%PDF-1.7 synthetic')); controller.close(); } });
+  let failPdf = true;
+  const adapter = new SseBondProjectAdapter({ maxProjects: 1, maxPages: 1, delayMs: 0, clock,
+    fetch: async url => {
+      starts.push(now);
+      if (url.includes('sqlId=ZQ_XMLB')) return { ok: true, status: 200, body: null, json: async () => ({ pageHelp: { data: [{ BOND_NUM: 'synthetic', PUBLISH_DATE: '2026-09-29', FULL_NAME: 'synthetic issuer', AUDIT_NAME: 'synthetic prospectus' }] } }) };
+      if (url.includes('sqlId=ZQ_GGJG')) return { ok: true, status: 200, body: null, json: async () => ({ result: [{ FILE_TYPE: 11, FILE_TITLE: '募集说明书', FILE_PATH: '/synthetic.pdf', FILE_TIME: '2026-09-29', FILE_VERSION: 1 }] }) };
+      if (failPdf) { failPdf = false; throw new Error('synthetic network failure'); }
+      return { ok: true, status: 200, body: pdf(), json: async () => ({}) };
+    },
+  });
+  const found = await adapter.discover({}, {});
+  assert.equal(found.items.length, 1);
+  await assert.rejects(adapter.fetch(found.items[0]!), { code: 'LIBRARY_FETCH_FAILED' });
+  assert.equal((await adapter.fetch(found.items[0]!)).subarray(0, 5).toString(), '%PDF-');
+  assert.deepEqual(starts, [0, 700, 1400, 2100], 'retry follows the same minimum gap, including after failure');
+  assert.deepEqual(sleeps, [700, 700, 700], 'no extra discovery-only delay remains');
+});
+
+test('SSE serializes concurrent fetches through body completion before granting the next slot', async () => {
+  let now = 0;
+  const starts: number[] = [];
+  let releaseFirst!: () => void;
+  const firstBody = new Promise<void>(resolve => { releaseFirst = resolve; });
+  const body = () => new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) { controller.enqueue(new TextEncoder().encode('%PDF-1.7 synthetic')); controller.close(); } });
+  const adapter = new SseBondProjectAdapter({ clock: { now: () => now, sleep: async ms => { now += ms; } },
+    fetch: async () => {
+      starts.push(now);
+      if (starts.length === 1) await firstBody;
+      return { ok: true, status: 200, body: body(), json: async () => ({}) };
+    },
+  });
+  const first = adapter.fetch(pdfItem);
+  const second = adapter.fetch(pdfItem);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(starts, [0], 'second request waits while first has not returned a body');
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.deepEqual(starts, [0, 700]);
+});
+
 function childFetch(url: string, env: Record<string, string>): Promise<{ ok: boolean; output: string }> {
   return new Promise(resolve => {
     const child = spawn(process.execPath, ['-e', `fetch(${JSON.stringify(url)}).then(r => process.stdout.write(String(r.status)), e => { process.stderr.write(e.name); process.exitCode = 1; })`], {
