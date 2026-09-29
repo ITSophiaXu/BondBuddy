@@ -225,6 +225,19 @@ test('approved generation input with parsed audit enters the controlled channel 
         input_revision: referenced.input_revision, input_hash: referenced.input_hash });
       assert.equal(referenceRun.statusCode, 202, referenceRun.body);
       assert.equal(referenceRun.json().channel, 'non_production_test');
+      const referenceWithoutBinding = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
+        draft_revision: 1, material_versions: [fixture.auditId, fixture.notesId, referenceId]
+          .map(material_id => ({ material_id, material_version: 1 })), requirement_message_ids: [],
+        user_reference: { material_id: referenceId, material_version: 1, material_sha256: referenceHash,
+          parse_snapshot_id: referenceSnapshot, target_product: product, target_document_stage: stage },
+      });
+      assert.equal(referenceWithoutBinding.statusCode, 201, referenceWithoutBinding.body);
+      const unboundReference = referenceWithoutBinding.json() as { input_revision: number; input_hash: string };
+      assert.equal((await post(`/api/v1/projects/${fixture.projectId}/preflight`, {
+        input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash,
+      })).json().code, 'INPUT_REQUIRED');
+      assert.equal((await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
+        input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash })).json().code, 'INPUT_REQUIRED');
       await pool.query('UPDATE bb_user_reference_reviewer_grants SET revoked_at=now() WHERE id=$1', [referenceGrant]);
       assert.equal((await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
         input_revision: referenced.input_revision, input_hash: referenced.input_hash })).json().code, 'INPUT_REQUIRED');
