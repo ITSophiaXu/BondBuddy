@@ -814,6 +814,9 @@ function parsePackageXml(name: string, bytes: Buffer, state: OfficeState): void 
       }
       const prefix = tag.name.includes(':') ? tag.name.split(':', 1)[0]! : '';
       const namespace = namespaces.get(prefix) ?? null;
+      if (thisDepth === 0 && (local !== 'externallink' || namespace !== XLSX_MAIN_NAMESPACE)) {
+        unreadable('external_link_invalid');
+      }
       const parent = externalLinkElements.at(-1);
       const grandparent = externalLinkElements.at(-2);
       const directBook = thisDepth === 1 && parent?.local === 'externallink' && parent.namespace === XLSX_MAIN_NAMESPACE;

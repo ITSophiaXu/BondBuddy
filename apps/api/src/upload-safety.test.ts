@@ -268,6 +268,9 @@ test('passive XLSX alternate URLs and multiple external link paths are accepted 
 });
 
 const externalLinkPrefix = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+const alternateBook = '<mc:AlternateContent><mc:Choice Requires="x"><externalBook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" r:id="rId1"/></mc:Choice></mc:AlternateContent>';
+const wrongRootNamespace = `<x:externalLink xmlns:x="urn:unrelated" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${alternateBook}</x:externalLink>`;
+const missingRootNamespace = `<externalLink xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${alternateBook}</externalLink>`;
 
 async function invalidPassiveLinkSamples(): Promise<Array<{ name: string; bytes: Buffer }>> {
   return [
@@ -276,6 +279,8 @@ async function invalidPassiveLinkSamples(): Promise<Array<{ name: string; bytes:
     { name: 'dangling externalBook id', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}<externalBook r:id="missing"/></externalLink>` }) },
     { name: 'dangling alternateUrl id', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}<externalBook r:id="rId1"><alternateUrls><alternateUrl r:id="missing"/></alternateUrls></externalBook></externalLink>` }) },
     { name: 'dangling relativeUrl id', bytes: await externalLinkPartXlsxSample({ linkXml: `${externalLinkPrefix}<externalBook r:id="rId1"><alternateUrls><relativeUrl r:id="missing"/></alternateUrls></externalBook></externalLink>` }) },
+    { name: 'wrong root namespace with compatible choice', bytes: await externalLinkPartXlsxSample({ linkXml: wrongRootNamespace }) },
+    { name: 'missing root namespace with compatible choice', bytes: await externalLinkPartXlsxSample({ linkXml: missingRootNamespace }) },
   ];
 }
 
@@ -285,6 +290,9 @@ test('XLSX external workbook parts require a book, its relationships part and ev
   }
   const alias = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:rel="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook rel:id="rId1"/></externalLink>';
   assert.equal(await verifiedMedia(await externalLinkPartXlsxSample({ linkXml: alias }), XLSX), XLSX);
+  const prefixedRoot = '<s:externalLink xmlns:s="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s:externalBook r:id="rId1"/></s:externalLink>';
+  assert.equal(await verifiedMedia(await externalLinkPartXlsxSample({ linkXml: prefixedRoot }), XLSX), XLSX);
+  assert.equal(await verifiedMedia(await externalLinkPartXlsxSample(), XLSX), XLSX);
   const wrongNamespace = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="urn:unrelated"><externalBook r:id="rId1"/></externalLink>';
   await expectStructureDetail(await externalLinkPartXlsxSample({ linkXml: wrongNamespace }), 'external_link_invalid');
   const duplicateAliases = '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:rel="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><externalBook r:id="rId1" rel:id="rId1"/></externalLink>';
