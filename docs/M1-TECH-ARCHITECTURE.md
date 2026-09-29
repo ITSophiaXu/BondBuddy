@@ -155,6 +155,14 @@ deploy/              # Compose、Nginx、部署与回滚
 
 This slice supplies the contract, extractor/builder, durable repository, synthetic checks and an opt-in authorized XLSX regression. The XLSX path proposes from visible financial worksheets; all parser record hashes, including hidden records, remain pinned for provenance. Repository tests cover PostgreSQL 16, native/OCR source verification, stale replacement rejection and historical request replay. The worker producer call, lock-transaction consumer, reviewer binding, concurrent upload/lock integration, N integration and professional acceptance remain #76/platform work. Existing confirmed-period decisions require all four anchors from one parse response, so multi-source proposals cannot pass straight into that API. Nonempty supplementary messages need #18 immutable message content/version/hash storage; current creation rejects those IDs. Runtime checks must verify raw token-to-period meaning and current source/grant status against trusted stored evidence. This does not add a target-period form or change UPD-GAP-01 for authorized internal drafts, and parser regression is not industry acceptance or Word delivery.
 
+### #76 公共消息集合 pin 契约（2026-09-29）
+
+`packages/contracts/src/project-message-set-pin.ts` 以 additive 方式定义 #18/#397 活跃项目消息集合的公共 pin，无 HTTP DTO、无迁移。有序成员身份 `{version, content_sha256, members:[{message_id, message_version, submission_id, content_sha256}]}` 保留首次提交的会话顺序，不做字典序重排；每个 `message_id` 只取最新已保存 `message_version`，旧版本继续保留审计。`content_sha256` 为域名分隔 canonical JSON（`bondbuddy:project-message-set:v1`，对象键排序、数组顺序保留）的 SHA-256。聚合引用 `{version, content_sha256, message_ids}`（`message_ids` 仅作字典序投影）是写入不可变 input/candidate 快照的绑定形状，空集合仍有显式 `version=1` 与哈希。纯函数 `canonicalProjectMessageSetContent`、`validProjectMessageSetPin`、`validProjectMessageSetRef`、`projectMessageSetRef`、`projectMessageSetRefMatches` 与合成样例由 `check:contracts` 覆盖。仅有 version 的“裸 max(version)”不是集合身份：缺少成员正文 hash 的引用无法通过 schema，匹配始终按重算的成员身份比对，不能只凭 version 通过。
+
+worker 内部 `apps/worker/src/project-message-set-pin.ts` 改为复用上述公共类型与纯函数，只保留 owner/project 限定的不可变元数据装载与规范化；`TargetPeriodCandidateSnapshot.content.supplemental_requirements` 直接复用公共 `ProjectMessageSetRef`，producer/repository 仍在事务内按精确成员身份重算并比对，集合不完整、缺正文 hash 或不可复现时以 `TARGET_PERIOD_CANDIDATE_REQUIREMENTS_STORE_REQUIRED` 关闭。
+
+仍未完成的消费者是 `#17` 负责的 input-lock 事务：它尚未把该集合 ref pin 进不可变 input manifest/`input_hash`，也未在锁内重验精确成员身份。在 `#17` 接线前，本契约只是可验证内部交接，不代表消息已进入执行输入；本切片不改变用户可见状态、错误文案或需要的操作。
+
 
 ### #76 locked target-input assembly for update difficulty
 

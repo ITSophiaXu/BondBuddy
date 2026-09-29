@@ -3,6 +3,7 @@ import { Value } from '@sinclair/typebox/value';
 import { TargetReportingPeriodSchema } from './update-project.js';
 import { M1_MATERIAL_PARTITIONS } from './material-partitions.js';
 import { TARGET_PERIOD_EVIDENCE_ANCHOR_KINDS, TARGET_PERIOD_EVIDENCE_METHODS } from './target-period-evidence.js';
+import { ProjectMessageSetRefSchema } from './project-message-set-pin.js';
 
 const id = Type.String({ minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' });
 const hash = Type.String({ pattern: '^[a-f0-9]{64}$' });
@@ -81,11 +82,10 @@ const candidate = Type.Object({
   pending_reasons: Type.Array(evidenceText, { minItems: 1, maxItems: 100 }),
 }, { additionalProperties: false, description: 'A source-derived proposal, never recognized, confirmed, approved, or treated as user target intent.' });
 
-const requirementsPin = Type.Object({
-  version: revision,
-  content_sha256: hash,
-  message_ids: Type.Array(id, { maxItems: 500 }),
-}, { additionalProperties: false, description: 'Exact selected supplementary-requirement set; an empty set still has an explicit version and hash.' });
+// The bound supplementary-requirement set is the shared public message-set ref
+// (`packages/contracts/src/project-message-set-pin.ts`); its `version`/`content_sha256`
+// must equal the verifiable ordered active message set.
+const requirementsPin = ProjectMessageSetRefSchema;
 
 const snapshotContent = Type.Object({
   schema_version: Type.Literal(TARGET_PERIOD_CANDIDATE_SNAPSHOT_VERSION),

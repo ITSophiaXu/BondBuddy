@@ -1,0 +1,223 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "project-message-set-pin-conversation-order-valid",
+      "schema": "ProjectMessageSetPin",
+      "valid": true,
+      "value": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+          { "message_id": "message-b", "message_version": 1, "submission_id": "submission-b1", "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      }
+    },
+    {
+      "name": "project-message-set-pin-empty-valid",
+      "schema": "ProjectMessageSetPin",
+      "valid": true,
+      "value": {
+        "version": 1,
+        "content_sha256": "a8bfe75149b734f32a9c5284bb6ed1adc2360775f2e65f11b4b8717e4f75cd68",
+        "members": [],
+        "message_ids": []
+      }
+    },
+    {
+      "name": "project-message-set-pin-empty-nonbaseline-version-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": {
+        "version": 2,
+        "content_sha256": "a8bfe75149b734f32a9c5284bb6ed1adc2360775f2e65f11b4b8717e4f75cd68",
+        "members": [],
+        "message_ids": []
+      }
+    },
+    {
+      "name": "project-message-set-pin-duplicate-message-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": {
+        "version": 2,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 1, "submission_id": "submission-a1", "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }
+        ],
+        "message_ids": ["message-a"]
+      }
+    },
+    {
+      "name": "project-message-set-pin-duplicate-submission-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": {
+        "version": 2,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 1, "submission_id": "submission-1", "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          { "message_id": "message-b", "message_version": 1, "submission_id": "submission-1", "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      }
+    },
+    {
+      "name": "project-message-set-pin-projection-drift-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      }
+    },
+    {
+      "name": "project-message-set-pin-missing-body-hash-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": {
+        "version": 1,
+        "content_sha256": "a8bfe75149b734f32a9c5284bb6ed1adc2360775f2e65f11b4b8717e4f75cd68",
+        "members": [
+          { "message_id": "message-a", "message_version": 1, "submission_id": "submission-a1" }
+        ],
+        "message_ids": ["message-a"]
+      }
+    },
+    {
+      "name": "project-message-set-pin-unknown-property-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": {
+        "version": 1,
+        "content_sha256": "a8bfe75149b734f32a9c5284bb6ed1adc2360775f2e65f11b4b8717e4f75cd68",
+        "members": [],
+        "message_ids": [],
+        "body": "not allowed"
+      }
+    },
+    {
+      "name": "project-message-set-pin-bare-version-invalid",
+      "schema": "ProjectMessageSetPin",
+      "valid": false,
+      "value": { "version": 4 }
+    },
+    {
+      "name": "project-message-set-ref-valid",
+      "schema": "ProjectMessageSetRef",
+      "valid": true,
+      "value": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "message_ids": ["message-a", "message-b"]
+      }
+    },
+    {
+      "name": "project-message-set-ref-empty-valid",
+      "schema": "ProjectMessageSetRef",
+      "valid": true,
+      "value": {
+        "version": 1,
+        "content_sha256": "a8bfe75149b734f32a9c5284bb6ed1adc2360775f2e65f11b4b8717e4f75cd68",
+        "message_ids": []
+      }
+    },
+    {
+      "name": "project-message-set-ref-unsorted-ids-invalid",
+      "schema": "ProjectMessageSetRef",
+      "valid": false,
+      "value": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "message_ids": ["message-b", "message-a"]
+      }
+    },
+    {
+      "name": "project-message-set-ref-bare-version-invalid",
+      "schema": "ProjectMessageSetRef",
+      "valid": false,
+      "value": { "version": 4 }
+    }
+  ],
+  "matches": [
+    {
+      "name": "project-message-set-match-exact-valid",
+      "expected": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+          { "message_id": "message-b", "message_version": 1, "submission_id": "submission-b1", "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      },
+      "ref": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "message_ids": ["message-a", "message-b"]
+      },
+      "match": true
+    },
+    {
+      "name": "project-message-set-match-version-only-projection-invalid",
+      "expected": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+          { "message_id": "message-b", "message_version": 1, "submission_id": "submission-b1", "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      },
+      "ref": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "message_ids": []
+      },
+      "match": false
+    },
+    {
+      "name": "project-message-set-match-hash-drift-invalid",
+      "expected": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+          { "message_id": "message-b", "message_version": 1, "submission_id": "submission-b1", "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      },
+      "ref": {
+        "version": 4,
+        "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "message_ids": ["message-a", "message-b"]
+      },
+      "match": false
+    },
+    {
+      "name": "project-message-set-match-set-version-drift-invalid",
+      "expected": {
+        "version": 4,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "members": [
+          { "message_id": "message-a", "message_version": 2, "submission_id": "submission-a2", "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+          { "message_id": "message-b", "message_version": 1, "submission_id": "submission-b1", "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+        ],
+        "message_ids": ["message-a", "message-b"]
+      },
+      "ref": {
+        "version": 5,
+        "content_sha256": "f396e843293ccfc15e9e78c4f324487084d6b7e18f368046ea6d82d0049182ec",
+        "message_ids": ["message-a", "message-b"]
+      },
+      "match": false
+    }
+  ]
+}

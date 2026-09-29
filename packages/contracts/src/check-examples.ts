@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, validProductionReviewManifestContent, validProductionReviewAttestationBinding, validGenerationIssuerBindingApproval, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProductionReviewManifest, type ProductionReviewAttestationRequest, type GenerationIssuerBindingResponse } from './index.js';
+import { isMarketOffering, M1_MATERIAL_PARTITIONS, M1_UPLOAD_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, openApiDocument, platformProcessingCostSchemas, referenceLibrarySchemas, schemas, userReferenceParseReviewAccepted, validUserReferenceOutline, validTargetPeriodEvidenceDecision, targetPeriodCandidateSchemas, validTargetPeriodCandidateSnapshot, canonicalTargetPeriodCandidateSnapshotContent, projectMessageSetSchemas, validProjectMessageSetPin, validProjectMessageSetRef, canonicalProjectMessageSetContent, projectMessageSetRef, projectMessageSetRefMatches, validProductionReviewManifestContent, validProductionReviewAttestationBinding, validGenerationIssuerBindingApproval, type SchemaName, type TargetPeriodEvidenceDecisionRequest, type TargetPeriodCandidateSnapshot, type ProjectMessageSetPin, type ProjectMessageSetRef, type ProductionReviewManifest, type ProductionReviewAttestationRequest, type GenerationIssuerBindingResponse } from './index.js';
 
 type Example = { name: string; schema: SchemaName; valid: boolean; http_status?: number; value: Record<string, unknown> };
 const file = fileURLToPath(new URL('../examples/synthetic.json', import.meta.url));
@@ -142,6 +142,54 @@ const pollutedTargetIntent = structuredClone(candidateManifest) as any;
 pollutedTargetIntent.content.target_reporting_periods = [];
 assert.equal(candidateAjv.validate(targetPeriodCandidateSchemas.TargetPeriodCandidateSnapshot, pollutedTargetIntent), false, 'candidate snapshot cannot replace user target intent');
 assert.ok(!JSON.stringify(openApiDocument()).includes('TargetPeriodCandidateSnapshot'), 'pre-lock candidate handoff is not an HTTP endpoint contract yet');
+// #76 active project-message set pin: additive public contract, no HTTP DTO.
+const messageSetExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/project-message-set-pin.json', import.meta.url)), 'utf8')) as {
+  synthetic: boolean;
+  cases: Array<{ name: string; schema: keyof typeof projectMessageSetSchemas; valid: boolean; value: unknown }>;
+  matches: Array<{ name: string; expected: ProjectMessageSetPin; ref: ProjectMessageSetRef; match: boolean }>;
+};
+assert.equal(messageSetExamples.synthetic, true);
+{
+  const messageSetAjv = new Ajv({ allErrors: true, strict: true });
+  for (const example of messageSetExamples.cases) {
+    const schemaValid = messageSetAjv.validate(projectMessageSetSchemas[example.schema], example.value);
+    const semanticValid = example.schema === 'ProjectMessageSetPin'
+      ? schemaValid && validProjectMessageSetPin(example.value)
+      : schemaValid && validProjectMessageSetRef(example.value);
+    assert.equal(semanticValid, example.valid, `${example.name}: ${messageSetAjv.errorsText(messageSetAjv.errors)}`);
+  }
+  const pinBaseline = messageSetExamples.cases.find(example => example.name === 'project-message-set-pin-conversation-order-valid');
+  assert.ok(pinBaseline, 'synthetic message-set pin baseline exists');
+  const pin = pinBaseline.value as ProjectMessageSetPin;
+  assert.equal(pin.content_sha256, createHash('sha256').update(canonicalProjectMessageSetContent(pin), 'utf8').digest('hex'),
+    'pin fixture content hash matches the declared domain-separated canonical members');
+  const emptyPin = messageSetExamples.cases.find(example => example.name === 'project-message-set-pin-empty-valid')!.value as ProjectMessageSetPin;
+  assert.equal(emptyPin.content_sha256, createHash('sha256').update(canonicalProjectMessageSetContent(emptyPin), 'utf8').digest('hex'),
+    'an empty active set still has an explicit deterministic hash');
+  assert.notEqual(emptyPin.content_sha256, pin.content_sha256, 'empty and nonempty set identities stay distinct');
+  const reordered = structuredClone(pin);
+  reordered.members = [...reordered.members].reverse();
+  assert.notEqual(canonicalProjectMessageSetContent(reordered), canonicalProjectMessageSetContent(pin),
+    'conversation order is part of the hash; lexicographic message-id order is not');
+  const edited = structuredClone(pin);
+  edited.members[0]!.message_version = 3;
+  edited.members[0]!.content_sha256 = 'e'.repeat(64);
+  assert.notEqual(createHash('sha256').update(canonicalProjectMessageSetContent(edited), 'utf8').digest('hex'), pin.content_sha256,
+    'a saved edit produces a different set hash');
+  assert.equal(edited.version, pin.version, 'a saved edit keeps the first-submission set version');
+  assert.deepEqual(projectMessageSetRef(pin), { version: pin.version, content_sha256: pin.content_sha256, message_ids: ['message-a', 'message-b'] },
+    'the aggregate ref projects strictly sorted message IDs');
+  const bareVersion = { version: pin.version } as unknown as ProjectMessageSetRef;
+  assert.equal(projectMessageSetRefMatches(pin, bareVersion), false, 'a bare version is never a set identity');
+  for (const entry of messageSetExamples.matches) {
+    assert.equal(projectMessageSetRefMatches(entry.expected, entry.ref), entry.match, entry.name);
+  }
+  const publicDocument = JSON.stringify(openApiDocument());
+  for (const name of Object.keys(projectMessageSetSchemas)) {
+    assert.ok(!publicDocument.includes(name), `internal ${name} leaked into public OpenAPI`);
+    assert.ok(!Object.keys(schemas).some(key => key.startsWith('ProjectMessageSet')), `${name} is not a public HTTP schema`);
+  }
+}
 const byName = new Map<string, Example>();
 for (const example of data.cases) {
   assert.ok(!byName.has(example.name), `duplicate example ${example.name}`);
