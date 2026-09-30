@@ -141,7 +141,7 @@ export async function admitRunSubmit(client: PoolClient, config: TrialConfig, us
       const since = await dayStart(client, config.day_time_zone);
       const today = (await client.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND created_at>=$2', [userId, since])).rows[0].n;
       if (today >= config.runs_per_user_per_day) throw exceeded('runs_per_user_per_day');
-      if (await tokensSince(client, config, userId, since) >= config.model_tokens_per_user_per_day) throw exceeded('model_tokens_per_user_per_day');
+      if (config.model_tokens_per_user_per_day > 0 && await tokensSince(client, config, userId, since) >= config.model_tokens_per_user_per_day) throw exceeded('model_tokens_per_user_per_day');
     }
   }
   await admit(client, userId, 'run_submit', source);
@@ -152,7 +152,7 @@ export async function assertModelCallAllowed(client: PoolClient, config: TrialCo
   if ((await killSwitchState(client, config)).engaged) throw new TrialLimitProblem(503, 'MODEL_CALLS_SUSPENDED', 'kill_switch');
   const effect = await activeOverride(client, userId);
   if (effect === 'deny') throw new TrialLimitProblem(403, 'TRIAL_ACCESS_DENIED', 'operator_deny');
-  if (config.enabled && effect !== 'allow' && await tokensSince(client, config, userId, await dayStart(client, config.day_time_zone)) >= config.model_tokens_per_user_per_day)
+  if (config.enabled && effect !== 'allow' && config.model_tokens_per_user_per_day > 0 && await tokensSince(client, config, userId, await dayStart(client, config.day_time_zone)) >= config.model_tokens_per_user_per_day)
     throw exceeded('model_tokens_per_user_per_day');
 }
 

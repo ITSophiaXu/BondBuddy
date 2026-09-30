@@ -4,7 +4,7 @@ The M1 trial is controlled, and the platform pays for it. Users are never charge
 
 ## Configuration
 
-Limits are server configuration and apply to both the API and the worker, so set the same values in both containers. A value of `0` blocks that action entirely.
+Limits are server configuration and apply to both the API and the worker, so set the same values in both containers. A value of `0` blocks an action, except for `BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY`: `0` disables only that daily token check. Model calls and usage remain recorded; the other limits and emergency kill switch stay active.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -13,7 +13,7 @@ Limits are server configuration and apply to both the API and the worker, so set
 | `BB_TRIAL_ACTIVE_RUNS_PER_USER` | 2 | Runs in `preparing/queued/running/validating/delivering`. Paused runs and runs awaiting input do not count |
 | `BB_TRIAL_RUNS_PER_USER_PER_DAY` | 10 | Runs created on the current day |
 | `BB_TRIAL_UPLOAD_BYTES_PER_USER_PER_DAY` | 1 GiB | Declared bytes of the upload sessions created on the current day |
-| `BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY` | 2 000 000 | Input + output tokens of the day's supplier attempts (see "Token counting") |
+| `BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY` | 2 000 000 | Input + output tokens of the day's supplier attempts (see "Token counting"); set `0` to remove the daily model-token cap |
 | `BB_TRIAL_UNKNOWN_USAGE_TOKENS_PER_ATTEMPT` | 200 000 | Conservative charge for every sent attempt whose usage is not `measured` |
 | `BB_TRIAL_GLOBAL_ACTIVE_RUNS` | 4 | Active runs across all users. An allow override does not bypass it |
 | `BB_TRIAL_PROJECTS_PER_USER_PER_DAY` | 20 | Project creations per account |
