@@ -1,19 +1,40 @@
 # #34 同项目 Word 版本目录 · 原型对照
 
-依据：`product-prototype/design-previews/update-workspace.fragment.html` 与导出页 `product-prototype/public/previews/update-workspace.html`，#85 head `46764161565027f332bdf28f8b335620bd035018`，完成态 `completeView()`；原有真实应用来源为 `product-prototype/public/project-workspace.js` 和 `apps/web/src/project-execution.ts`。当前实现使用 #471 的 `ArtifactHistoryResponse`（merge `290d4c34368f86885ac6b009edca0262afc10e4d`）。实现截图的代码 head 为 `c954327`（以含 #388/#467/#475/#477/#478 的 `develop` merge `16340bb` 为基线）；若合并前再次改变 UI，则更新 head 和截图。
+原型：#85 `product-prototype/design-previews/update-workspace.fragment.html` 的 `completeView()` 与导出页 `product-prototype/public/previews/update-workspace.html`，head `46764161565027f332bdf28f8b335620bd035018`。原型截图保持该准确版本。实现基于 `develop@bd442bdd971abd4a4f8532d26c75c4f56cf9b3db`，代码 commit `73cb646097ea25974e87cddf2b383ea6970f1d95`，包括 #475 的持久消息区；对应 PR #474 仍为 Draft。
 
-截图均为 Chromium 同尺寸**视口**截图（非全页），桌面 1440×960、手机 390×844。原型使用 #85 独立预览页并点选“已完成”；实现使用合成 HTTP/Word 字节模拟本项目已有三个成功版本且新任务失败，滚动至目录。截图是交互对照，不是真实模型、Blob、授权客户成果或 Word/WPS 实机验收。
+按 [产品负责人 2026-09-29 的反馈](https://github.com/ITSophiaXu/BondBuddy/pull/474#issuecomment-5894113011) 补齐同一“已完成”状态，并独立保留新任务失败仍能找回旧稿的场景。截图均为真实 Chromium 的同尺寸视口截图：桌面 1440×960、手机 390×844。HTTP、账号、材料信息和下载字节均为 **synthetic**，不是实际客户、模型、Blob、Word/WPS 或产品批准证据。
 
-| 视口 | #85 原型完成态 | #34 实现旧版保留态 |
-|---|---|---|
-| 1440×960 | [原型](prototype-desktop.png) | [实现](implementation-desktop.png) |
-| 390×844 | [原型](prototype-mobile.png) | [实现](implementation-mobile.png) |
+| 视口 | #85 原型已完成 | 实现已完成工作区 | 同完成态的历史目录 |
+| --- | --- | --- | --- |
+| 1440×960 | [原型](prototype-desktop.png) | [工作区](workspace-complete-desktop.png) | [目录](implementation-complete-desktop.png) |
+| 390×844 | [原型](prototype-mobile.png) | [工作区](workspace-complete-mobile.png) | [目录](implementation-complete-mobile.png) |
 
-| 与 #85 原型的差异 | 原因与影响 | 产品确认 |
-|---|---|---|
-| 原型完成卡仅展示当前 vN 的修订/清洁下载及“下一轮生成新版本，保留当前稿”；实现于**同一项目结果区**增加独立“历史成果”卡，列出所有仍可获取版本和三件套或旧单件 | #34 明确要求能找回多次成功交付，后续任务失败不能遮蔽旧稿；保持既有左右布局、右侧项目协作、导航与主操作不变，不增加新页面 | **待产品负责人确认；未确认前保持草稿，不合并** |
-| 原型用演示完成状态和下载提示；实现使用真实分页列表、当前运行状态及每个文件的授权读取；“文件版本”不是项目级 vN | 只读接口返回当前检查通过的结果；实际新 run 通常各自产生文件版本 1，因此按输入版本、完成时刻及任务编号识别历史运行，文件名含唯一 artifact ID；不把演示下载、存疑 Word 或测试稿展示成生产成果 | 既有 API/运行边界，无新增交互确认 |
-| 原型右侧有模拟助手回复；实现右侧为 #475 已合并的用户消息保存/版本读取，无伪造回复 | 历史目录与 #18 的 composer、消息列表和输入 pin 并存；合成截图显示零条已保存消息 | #18 独立交付；不作为目录的新流程 |
-| 截图原型为成功、实现为较新任务失败 | 特意展示历史目录在新任务失败后仍可见；已完成态保留既有成果详情卡，目录仍在同一工作区 | 属于功能验收场景，不是原型状态文案的替换 |
+| 独立回归场景 | 工作区 | 历史目录 |
+| --- | --- | --- |
+| 新任务失败，旧成功稿仍可下载 · 1440×960 | [失败态](workspace-failed-desktop.png) | [旧成果](implementation-failed-desktop.png) |
+| 新任务失败，旧成功稿仍可下载 · 390×844 | [失败态](workspace-failed-mobile.png) | [旧成果](implementation-failed-mobile.png) |
 
-上述截图已基于 #384、#361、#18 的合并版本重新获取；后续 UI 若再改变工作区布局、协作区或操作文案，合并前重新截取/对照。这些合成截图不代表 #35 模型→Blob→授权下载或 #146 WPS/Word 兼容性已验收；#34 保持开放。
+两组实现同时保留右侧 #475 的用户消息保存与版本读取。成功场景保留原成果摘要/下载；目录不启动 execute/resume，不因新运行失败而清除旧成功稿。原型的助手演示不能替代尚未接通的真实 #18 助手；实现不伪造答复。
+
+| 与 #85 原型的具体差异 | 原因与影响 | 产品确认 |
+| --- | --- | --- |
+| 在同一项目左侧成果/进度区下方增加独立“历史成果”卡 | #34 要求找回多个旧成功成果；无新增页面或导航，但这是原型没有的布局增量 | **未批准；需确认卡片位置与文案，保持 Draft** |
+| 每行显示“项目资料版本 N 的成果”和完成时间 | N 是真实 input revision，不是项目成果 vN；不再同时显示文件版本、内部任务编号、“正式通道”或“已通过交付检查”。不会因每个新 run 的文件版本通常为 1 而误称项目成果版本相同 | 与上述卡片文案一起待确认 |
+| 三件套行有下载修订版、清洁版、有效基线三个动作；有效基线为第三个次要按钮 | #85 原型只有修订/清洁下载；基线供对照，读下载仍有权限/hash 检查 | **第三个按钮的存在、位置和层级须单独确认；不当作原型已批准** |
+| 内部测试稿保留“内部测试工作稿 · 未经专业审核 · 不得对外使用”；旧单件仅称 Word 成果 | 必要的使用边界提示，避免把测试稿、旧未分类成果当生产修订成果；删除后台通道/交付过程文案 | 与版本卡具体文案一并待确认 |
+| 既有完成摘要和右侧消息区仍与 #85 演示有差异 | 是当前 develop 的 #34/#18 实现与真实能力边界；本次同状态截图展示实际差异，不把接口成功当 UX 批准 | #361/#18 继续分别验收，不据本目录解除 |
+
+旧 `implementation-desktop.png` / `implementation-mobile.png` 留作此前失败态的历史记录，不代表当前代码或本轮已完成态对照。
+
+复现（先启动来自本工作区的独立服务，避免复用其他工作区）：
+
+```sh
+npm run build
+npm run check:contracts
+npm run test:unit -w @bondbuddy/web
+npm run dev -w @bondbuddy/web -- --port 5364 --strictPort
+BB_E2E_BASE_URL=http://127.0.0.1:5364 BB_34_HISTORY_EVIDENCE_DIR="$PWD/apps/web/ux-evidence/issue-34-history" npm test -w @bondbuddy/web -- tests/artifact-history.spec.ts --output=/tmp/bondbuddy-history-web-results
+BB_E2E_BASE_URL=http://127.0.0.1:5364 npm test -w @bondbuddy/web -- --reporter=dot --output=/tmp/bondbuddy-history-web-results
+```
+
+Linux / Node 22.23.3 / Playwright Chromium；全仓 build、contracts、Web 单元 43/43 通过，历史目录 Chromium 13/13 通过。完整浏览器结果在 PR #474 中回填。无 DTO、枚举、迁移、writer、计费或原型修改。工程验证和新截图均不能解除产品负责人明确要求的布局确认；#34 保持开放，#35 真实交付/下载与 #146 Windows WPS/Word 仍为独立验收。
