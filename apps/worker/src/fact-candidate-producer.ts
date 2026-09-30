@@ -397,7 +397,9 @@ export async function produceParsedFactCandidates(
       throw fail('FACT_EXTRACTION_MATERIAL_ROLE_CHANGED');
     }
     for (const fact of result.facts) {
-      if ((fact.source_kind === 'audited') !== (lockedMaterial.rows[0]!.role === 'audit')) {
+      // The material role permits an audited assertion; it does not verify every
+      // extracted value. Keep external candidates from audit files unverified.
+      if (fact.source_kind === 'audited' && lockedRole !== 'audit') {
         throw fail('FACT_EXTRACTION_SOURCE_ROLE_MISMATCH');
       }
     }
