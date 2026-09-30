@@ -1,7 +1,7 @@
 import { Value } from '@sinclair/typebox/value';
 import { schemas, ERROR_CODES, ERROR_CATEGORIES, type InternalObservabilityEvent } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
-import { digest, missing, transaction, uid, type PrivateBlobs } from './data.js';
+import { digest, isAutoTestExecutionKeyStorage, missing, transaction, uid, type PrivateBlobs } from './data.js';
 import { guardEvidenceWrite } from './evidence-gate.js';
 import type { UploadRejectionReason, UploadStructureDetail } from './upload-safety.js';
 import { errorDiagnostic, type RecoveryOutcome } from './error-diagnostics.js';
@@ -14,11 +14,14 @@ export const isPgInputRevision=(value:unknown):value is number=>typeof value==='
 export const executionKeyHash=(value:string)=>digest(Buffer.from(value,'utf16le'));
 export async function emitInternal(client:PoolClient,event:InternalObservabilityEvent) {
   if(!Value.Check(schemas.InternalObservabilityEvent,event))throw new Error('Invalid internal observability event');
-  const {event_id,user_id,project_id,job_id,run_id,trace_id,kind}=event;
+  const {event_id,user_id,project_id,job_id,run_id,trace_id,kind,operation_id}=event;
   if(!user_id)throw new Error('Owned event required');
   await client.query(`INSERT INTO bb_observability_events(id,owner_user_id,project_id,job_id,run_id,trace_id,kind,event,channel)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE((SELECT channel FROM bb_runs WHERE id=$5),(SELECT channel FROM bb_jobs WHERE id=$4),'production'))`,
-    [event_id,user_id,project_id,job_id,run_id,trace_id,kind,event]);
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE(
+      (SELECT channel FROM bb_runs WHERE id=$5 AND owner_user_id=$2),
+      (SELECT channel FROM bb_jobs WHERE id=$4 AND owner_user_id=$2),
+      (SELECT channel FROM bb_operations WHERE id=$9 AND owner_user_id=$2),'production'))`,
+    [event_id,user_id,project_id,job_id,run_id,trace_id,kind,event,operation_id]);
   await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user_id,'observability',event_id,kind,{event_id,schema_version:1}]);
 }
 export function internalEvent(input:{kind:InternalObservabilityEvent['kind'];owner:string;actorType?:InternalObservabilityEvent['actor_type'];projectId?:string|null;runId?:string|null;jobId?:string|null;traceId:string;operationId?:string;requestId?:string;status?:InternalObservabilityEvent['status'];stage?:string|null;error?:InternalObservabilityEvent['error'];usage?:InternalObservabilityEvent['usage'];logicalCallId?:string|null;attemptNo?:number|null;promptSnapshotRef?:string|null;jobKind?:InternalObservabilityEvent['job_kind']}):InternalObservabilityEvent {
@@ -54,7 +57,8 @@ export async function recordLogicalJob(client:PoolClient,input:{owner:string;pro
        : input.inputRevision===undefined||input.inputHash===undefined||
          (input.kind==='preflight')!==(input.jobType==='preflight')||
          (input.kind==='execute' ? !input.executionRequestId||!/^[a-f0-9]{64}$/.test(input.requestHash??'')||!Number.isInteger(input.httpStatus)||(input.httpStatus??0)<400||(input.httpStatus??0)>599 : input.executionRequestId!==undefined||input.requestHash!==undefined||input.httpStatus!==undefined))||
-     (input.executionRequestId!==undefined&&!validExecutionKey(input.executionRequestId)))throw new Error('Invalid logical job');
+     (input.executionRequestId!==undefined&&!validExecutionKey(input.executionRequestId)&&
+       !isAutoTestExecutionKeyStorage(input.executionRequestId)))throw new Error('Invalid logical job');
   const subtype=input.schemaRejected?(input.kind==='execute'?'execute_schema_rejected':'preflight_schema_rejected'):
     input.kind==='execute'?'execute_rejected':input.status==='rejected'?'preflight_rejected':'free_preflight';
   // Execute shares #17's per-owner business key; preflight has no public idempotency key.

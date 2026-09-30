@@ -6,6 +6,7 @@ import { createServer } from './server.js';
 import { claim } from './queue.js';
 import { assertTestGrant } from './non-production-test.js';
 import { digest, type PrivateBlobs } from './data.js';
+import { executionKeyHash } from './observability.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { documentParserVersion } from './material-jobs.js';
 import { inputManifestHash } from './production-rule-pin.js';
@@ -13,6 +14,91 @@ import { inputManifestHash } from './production-rule-pin.js';
 const databaseUrl=await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL');
 const origin='http://bondbuddy.test';
 const sha=(letter:string)=>letter.repeat(64);
+
+test('test submissions cannot reserve the exact browser update key', {skip:!databaseUrl}, async()=>{
+  const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
+  process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
+  const pool=new Pool({connectionString:databaseUrl});
+  const user=`synthetic-owner-${randomUUID()}`;
+  try{
+    for(const staging of [true,false]){
+      const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true}),enableRunStaging:staging});
+      const send=async(payload:unknown)=>await app.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},payload:payload as any});
+      try{
+        const created=await app.inject({method:'POST',url:'/api/v1/projects',headers:{origin},payload:{name:'Synthetic key guard',kind:'update',issuer_name:null,market:null,offering:null}});
+        assert.equal(created.statusCode,201,created.body);
+        const project=created.json().project_id as string;
+        const locked=await app.inject({method:'POST',url:`/api/v1/projects/${project}/input-revisions`,headers:{origin},payload:{draft_revision:1,material_versions:[],requirement_message_ids:[]}});
+        assert.equal(locked.statusCode,201,locked.body);
+        const input=locked.json(),grantId=randomUUID();
+        await pool.query(`INSERT INTO bb_non_production_test_grants
+          (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+          VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic test',now()+interval '1 hour')`,
+          [grantId,user,project,input.input_hash,sha('a'),sha('b'),sha('c')]);
+        const browserKey=`web-update-${digest(JSON.stringify([project,1,input.input_hash]))}`;
+        const request={execution_request_id:browserKey,project_id:project,input_revision:1,input_hash:input.input_hash,
+          task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',test_grant_id:grantId};
+        for(const payload of [request,{...request,workspace_id:undefined},{...request,test_grant_id:'invalid grant'}]){
+          const rejected=await send(payload);
+          assert.equal(rejected.statusCode,422,rejected.body);
+          assert.equal(rejected.json().code,'VALIDATION_FAILED');
+        }
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,browserKey])).rows[0].n,0);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',[user,executionKeyHash(browserKey)])).rows[0].n,0);
+        const audits=(await pool.query(`SELECT project_id,channel,error_code FROM bb_operations
+          WHERE owner_user_id=$1 AND project_id=$2 AND operation_kind='execute' AND status='rejected' ORDER BY created_at DESC LIMIT 3`,[user,project])).rows;
+        assert.equal(audits.length,3);
+        assert.ok(audits.every((audit:any)=>audit.project_id===project&&audit.channel==='non_production_test'&&audit.error_code==='VALIDATION_FAILED'));
+
+        const ordinary=await send({...request,execution_request_id:`synthetic-test-${randomUUID()}`});
+        const nearBrowserKey=`${browserKey.slice(0,-1)}${browserKey.endsWith('0')?'1':'0'}`;
+        const nearBrowser=await send({...request,execution_request_id:nearBrowserKey});
+        if(staging){
+          assert.equal(ordinary.statusCode,202,ordinary.body);
+          assert.equal(ordinary.json().channel,'non_production_test');
+          assert.equal(nearBrowser.statusCode,202,nearBrowser.body);
+          assert.equal(nearBrowser.json().channel,'non_production_test');
+          const production=await send({...request,test_grant_id:undefined});
+          assert.equal(production.statusCode,202,production.body);
+          assert.equal(production.json().channel,'production');
+          assert.equal(production.json().execution_request_id,browserKey);
+        }else{
+          assert.equal(ordinary.statusCode,501,ordinary.body);
+          assert.equal(nearBrowser.statusCode,501,nearBrowser.body);
+          const production=await send({...request,test_grant_id:undefined});
+          assert.equal(production.statusCode,501,production.body);
+          assert.equal(production.json().code,'CAPABILITY_NOT_READY');
+        }
+        // A run created before this guard remains replayable with its original test key.
+        const legacyProject=(await app.inject({method:'POST',url:'/api/v1/projects',headers:{origin},
+          payload:{name:'Synthetic prior run',kind:'update',issuer_name:null,market:null,offering:null}})).json().project_id as string;
+        const legacyInput=(await app.inject({method:'POST',url:`/api/v1/projects/${legacyProject}/input-revisions`,headers:{origin},
+          payload:{draft_revision:1,material_versions:[],requirement_message_ids:[]}})).json();
+        const legacyGrant=randomUUID(),legacyRun=randomUUID();
+        await pool.query(`INSERT INTO bb_non_production_test_grants
+          (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+          VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic test',now()+interval '1 hour')`,
+          [legacyGrant,user,legacyProject,legacyInput.input_hash,sha('a'),sha('b'),sha('c')]);
+        const legacyKey=`web-update-${digest(JSON.stringify([legacyProject,1,legacyInput.input_hash]))}`;
+        const legacyRequest={...request,project_id:legacyProject,input_hash:legacyInput.input_hash,
+          execution_request_id:legacyKey,test_grant_id:legacyGrant};
+        const legacyHash=digest(JSON.stringify({project_id:legacyProject,input_revision:1,input_hash:legacyInput.input_hash,
+          task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',
+          channel:'non_production_test',test_grant_id:legacyGrant}));
+        await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,
+          task_kind,request_hash,state,channel,test_grant_id) VALUES($1,$2,$3,1,$4,$5,'update',$6,'paused','non_production_test',$7)`,
+          [legacyRun,user,legacyProject,legacyInput.input_hash,legacyKey,legacyHash,legacyGrant]);
+        const replay=await send(legacyRequest);
+        assert.equal(replay.statusCode,202,replay.body);
+        assert.equal(replay.json().run_id,legacyRun);
+      }finally{await app.close();}
+    }
+  }finally{
+    await pool.end();
+    if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
+    if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
+  }
+});
 
 test('scoped test grants reject invalid submissions, preserve idempotency and pause revoked runs',
   {skip:!databaseUrl},async()=>{
