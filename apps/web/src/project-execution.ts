@@ -336,7 +336,7 @@ export class ProjectExecution {
           (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
         this.message = inputMessage ??
           (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
-            ? operation === 'preflight'
+            ? operation === 'preflight' && error.status === 409
               ? `材料或处理条件尚未就绪，请稍后重新检查；持续未恢复时联系支持。${errorReference(error)}`
               : `当前环境尚未开放全文更新，请联系支持。${errorReference(error)}` : friendlyError(error));
       }
