@@ -55,6 +55,12 @@
 
 `apps/web/src/artifact-page.ts` 通过现有 `ArtifactResponse` → `RunResponse` → 本人项目读取路径展示成果摘要、待人工确认项与修订/清洁/有效基线下载，不新增契约、迁移或运行状态。项目列表沿用最新成功成果引用，后续 run 失败不覆盖该入口；同一成果 URL 可在刷新后恢复。成果页和列表快捷下载均重新获得短期授权，核对成果与成功 run 的关联，由公共 API client 验证同源精确成果路径、完整响应和 SHA-256，并处理会话、取消和失败；两处共用临时下载文件的释放逻辑。没有 `word_delivery` 的旧成果保持通用文件展示；不推断其修订或无历史稿身份。完整项目成果历史目录缺少公开列表接口，未在此实现。浏览器合成验收不替代 #35 真实交付与 #146 Office 实机矩阵，详见 `apps/web/README.md`。
 
+## #35 待核事实原文工作稿（2026-09-30）
+
+非生产历史稿任务完成全部原文模型规划、没有可信替换或新增列且可用财务事实为空时，可交付明确标注的原文工作稿。只有同归属、同发行人、锁定材料版本/hash 且有定位证据的财务候选可以提供期间依据；存疑数值继续不可用于财务表达式。期间冲突仍暂停，用户明确目标优先于临时期间，所有候选状态、证据和不确定性保持冻结。内部计划的 `pendingOriginalDraft` 与 preparation hash、持久化检查点及全文逐段待核注释一起校验；缺失或漂移拒绝交付。
+
+Python 写入器保留完整原文、旧数值和辅助对象，修订/清洁/有效基线均加入加粗的报告期间及财务事实待核提示；修订/清洁稿附原文定位批注。三份文件继续经过现有 Word 结构检查、私有 Blob hash 回读与归属授权，终态为 `test_completed`、成果为 `test_only`，不代表已完成可信事实更新或批准生产规则。生产零受支持改动仍暂停。没有公共 DTO、枚举或数据库迁移变化；现有成果摘要的待核清单与 Word 注释呈现限制。合成模型响应和实际 Python DOCX 测试不证明供应商接入、桌面兼容性或线上项目验收。
+
 ## #34 历史 DOCX Word 交付切片（2026-09-25）
 
 worker 将 #31 锁定的 `historical-update-plan-v1` 交给 Python OOXML writer，产出原稿有效基线、真实修订版与清洁版；原上传材料保持不变。三份成果各自复用现有 `promoteWordArtifact` 检查和 Blob 读回，全部通过后才结束 run。`ArtifactResponse.word_delivery` 可选字段包含三份成果 ID、源和基线 hash、writer 版本、变更计数及局部待确认摘要；公开下载仍使用原有 owner-scoped 临时 grant。没有新增迁移或公开写接口。writer 只处理 #31 当前有历史 DOCX 的上交所普通私募计划；其他场景继续按能力门槛停下，Windows WPS/Word 操作兼容性由 #146 实机验收。
@@ -134,13 +140,13 @@ deploy/              # Compose、Nginx、部署与回滚
 
 `0056_m1_non_production_test_grants.sql` 在 #319 的 0055 之后追加精确 user/project/input revision/hash、样本 manifest SHA-256、候选 taxonomy 与 rule-pack hash、期限和授权理由。授权记录不可改；撤销只能一次性填写 `revoked_at/by/reason`。运维通过 `deploy/m1/scripts/non-production-test-grant.sh` 在 ops 服务中执行 `create`、`revoke`、`list`，创建和撤销各自与 outbox 事件同事务提交。无公开授权路由。部署必须显式设置 `BB_DEPLOYMENT_TIER=preprod` 和 `BB_NON_PRODUCTION_TEST_CHANNEL=enabled`；其他组合拒绝测试提交，生产层开启测试开关时部署脚本直接拒绝。
 
-`ExecuteRequest.test_grant_id` 可选。预发布服务另可限时自动为普通页面的更新或无历史稿生成输入创建精确授权：必须同时配置 `BB_DEPLOYMENT_TIER=preprod`、`BB_NON_PRODUCTION_TEST_CHANNEL=enabled`、未来七天内的 `BB_PREPROD_WORKING_DRAFT_EXPIRES_AT`、候选 taxonomy 与 rule-pack SHA-256，以及 `BB_PREPROD_WORKING_DRAFT_STAGE`（registration/issuance）和 `BB_PREPROD_WORKING_DRAFT_AS_OF`（规则评估日）。服务从已认证 owner 和不可变输入取得项目、版本、hash；自动授权前在同一事务中复核输入 manifest/hash、非空锁定材料、至少一份财务材料、活动材料的归属/版本/角色/SHA，以及当前解析器的成功解析记录；更新仍要求唯一历史稿。解析是否成功以绑定同一 owner/项目/材料版本/SHA、且 outcome 为 `parsed` 或 `needs_confirmation` 的成功解析任务为准；上传完成后的材料元数据仍可为 `persisted`，它不代表解析失败，也不把待确认内容升级为已核验。已配置的工作稿通道若时间窗无效或过期，预检与提交均明确拒绝，不回落正式运行；仅完全未配置时保留原有正式通道行为。授权原因钉住待核阶段与评估日，材料范围标识固定为 `OWNER_MATERIAL_SCOPE_SHA256`。同一输入复用，撤销或过期后拒绝再次提交，不自动重建或回落正式通道。关闭配置即关闭自动选择；正式部署不启用。授权不推断目标市场或发行方式：现有历史稿生成器只支持用户明确设置的上交所普通私募同结构目标；缺目标时准确暂停，其他范围不会被自动当作上交所私募。请求指纹按原始浏览器请求保持稳定，重复请求返回已存 run，提交后的 run channel/grant 不可变。显式传入 grant 时仍按原有精确规则核验。`RunResponse` 增加 `channel`、`test_grant_id` 和 `uncovered_items[]`，其唯一 schema/type/运行校验在 `packages/contracts/src/test-coverage.ts`。`kind=coverage_gap` 固定 `manifest_id/manifest_version/item_id/candidate_asset_sha256`，保留 `disposition=uncovered`、area、rationale、source_ref_ids 和可为空的 rule_ids；`kind=rule_check` 保留真实 rule_id 及 source_ref_ids；二者都有 reason_code 和可空 evidence_ref。不能用 item_id 冒充 rule_id 或猜测同名映射。`not_applicable` 保留在锁定的覆盖评估与候选指导中，不进入缺口列表；worker 的纯投影 `toTestCoverageGap` 会拒绝将它改写成缺口，不赋予适用性/执行权限。job、操作记录和模型尝试保留 channel。worker 领取、阶段门禁、模型调用前和终态前重新核验授权；失效时暂停，不转入生产规则选择。#19 候选能力接缝需返回匹配的三个 hash 及逐项未覆盖清单；未安装时明确暂停为 `test_rule_capability_not_ready`，绝不使用生产 registry/loader 代替。
+`ExecuteRequest.test_grant_id` 可选。预发布服务可为普通页面的更新或无历史稿生成输入创建精确工作稿授权，部署必须设置 `BB_DEPLOYMENT_TIER=preprod` 和 `BB_NON_PRODUCTION_TEST_CHANNEL=enabled`。自动选择由 `BB_PREPROD_WORKING_DRAFT_*` 配置触发，旧 `BB_PREPROD_WORKING_DRAFT_EXPIRES_AT` 不再限制任务创建；服务授权无时间截止且可撤销，绑定已认证 owner、project、不可变 revision/hash，材料范围固定为 `OWNER_MATERIAL_SCOPE_SHA256`。API 在同一事务核对 manifest/hash 与材料的归属、版本、角色和 SHA，不将材料数量、解析、报告期或审核缺口作为准入门槛。缺失候选 taxonomy/rule-pack hash 使用明确的 unknown 占位摘要；完整 stage/as-of 配置钉住待核假设，否则记录目标待确认，不能作为正式规则。旧 finite 授权保留，新政策可创建新服务授权；已撤销授权仍拒绝。完全未配置时保持正式通道；显式授权仍按原有精确规则检查期限及撤销。重复请求返回已存 run，提交后的 channel/grant 不可变。关闭配置关闭自动选择，正式部署不启用工作稿通道。`RunResponse` 增加 `channel`、`test_grant_id` 和 `uncovered_items[]`，其唯一 schema/type/运行校验在 `packages/contracts/src/test-coverage.ts`。`kind=coverage_gap` 固定 `manifest_id/manifest_version/item_id/candidate_asset_sha256`，保留 `disposition=uncovered`、area、rationale、source_ref_ids 和可为空的 rule_ids；`kind=rule_check` 保留真实 rule_id 及 source_ref_ids；二者都有 reason_code 和可空 evidence_ref。不能用 item_id 冒充 rule_id 或猜测同名映射。`not_applicable` 保留在锁定的覆盖评估与候选指导中，不进入缺口列表；worker 的纯投影 `toTestCoverageGap` 会拒绝将它改写成缺口，不赋予适用性/执行权限。job、操作记录和模型尝试保留 channel。worker 领取、阶段门禁、模型调用前和终态前重新核验授权；失效时暂停，不转入生产规则选择。#19 候选能力接缝需返回匹配的三个 hash 及逐项未覆盖清单；未安装时明确暂停为 `test_rule_capability_not_ready`，绝不使用生产 registry/loader 代替。
 
-无历史稿生成的自动授权还要求锁定输入显式钉住现行批准的 `generation_issuer_binding_ref` 和一致的发行人实体；API 在预检和提交时按精确引用复核绑定的归属、发行人材料集合、解析快照与最新审核/撤回状态。受控通道中缺失或过期返回明确错误，不创建授权或 run；未配置通道的原生产提交路径保持原有行为，执行阶段仍会复核身份。可选相似企业参考材料只能由现有 `user_reference_pin` 的当前接受审核使用，不提供发行人身份或财务事实。执行请求的 `task_kind` 必须与生成输入一致，更新准入和生产规则门禁保持原条件。`createProductionServer()` 当前未安装可选的 `settings.generationIssuerBinding` 提供器；本准入直接使用输入锁中的引用及可信加载器，完整绑定创建/选择入口仍由 #17/#33 补齐。此处仅覆盖 API 准入；任务执行阶段的材料成员资格、规则和模型门禁仍独立核验，不代表原项目 Word 已交付。
+无历史稿生成输入仍须满足任务类型、归属与不可变材料/hash 一致；发行人绑定和可选参考稿审核缺口可先进入持久任务，由执行阶段核验并保留待处理状态。参考材料不提供发行人身份或财务事实。绑定创建/选择入口及生成链路仍由 #17/#33 补齐；API 准入不代表 Word 已交付。
 
 测试通道输入锁可接受 `InputRevisionCreateRequest.test_rule_applicability_context_ref` 作为精确审核引用断言，仅在 preprod 且测试开关启用时处理。API 核对同 owner/project 的来源 input revision/hash、完整材料 ID/版本/角色/SHA、当前材料、主体身份、审核状态及 context 内容 hash；只有全部通过才把同形状的 `test_rule_applicability_ref` 写进不可变 manifest，由 `input_hash` 覆盖。正式 taxonomy 尚未发布只阻止生产规则选择，不否定已审核 context 的测试引用；其他审核或来源失败仍拒绝引用，并把稳定 `test_rule_applicability_block_reason` 锁入 manifest。测试授权须绑定该 revision/hash；生产规则 pin 和选择流程不读取测试字段。
 
-内部工作稿可在没有专业适用性审核引用时使用候选规则；候选指导始终标记 `research_reference_only`、适用性待核和非合规结论。一个与历史材料及解析快照精确关联、没有审核决定且无冲突的发行人观察可作为独立的 `test_issuer_candidate` 锁入输入；正式 `issuer_identity`、`issuer_name`、`issuer_entity_id` 仍保持待核或空值。测试事实候选使用该观察键；数值/证据本身的不确定性仍按原来源保留，主体身份的不确定性独立锁在输入中，并在模型上下文和每处工作稿改动的待核批注中标明。生产输入无法消费该候选。未确认目标时，仅自动授权中固定的阶段和评估日用于候选规则工作稿，仍记录 `pending_test_assumption`；生产目标确认不被伪造。worker 检查不可变 manifest、精确测试授权、锁定材料集合、候选资产 hash、发行人证据及目标后，在每个阶段和模型调用前重新检查。人工创建的样本授权继续要求固定样本清单；预发布服务授权允许新上传的本人材料，逐项核对 owner、项目、版本、角色和 SHA，且必须有唯一历史稿及至少一份财务材料；旧服务授权以同一规则验真。此成员资格只允许排队，材料字节、安全检查、解析快照与事实证据仍由后续阶段真实验证。显式提交但无效、已撤回或来源漂移的审核引用仍暂停。`PreflightRequest.test_grant_id` 或有效自动授权把专业待确认项列入 `advisory_inputs`；原 `missing_inputs` 与 `uncertainty` 不删改，`blocking_inputs` 单列技术阻断。材料解析失败、输入或材料版本漂移仍阻断；缺历史稿或历史稿选择不明也不列为待确认。预检状态只描述能否提交受控测试，不承诺能完成执行。
+内部工作稿可在没有专业适用性审核引用时使用候选规则；候选指导始终标记 `research_reference_only`、适用性待核和非合规结论。一个与历史材料及解析快照精确关联、没有审核决定且无冲突的发行人观察可作为独立的 `test_issuer_candidate` 锁入输入；正式 `issuer_identity`、`issuer_name`、`issuer_entity_id` 仍保持待核或空值。测试事实候选使用该观察键；数值/证据本身的不确定性仍按原来源保留，主体身份的不确定性独立锁在输入中，并在模型上下文和每处工作稿改动的待核批注中标明。生产输入无法消费该候选。未确认目标时，仅自动授权中固定的阶段和评估日用于候选规则工作稿，仍记录 `pending_test_assumption`；生产目标确认不被伪造。worker 检查不可变 manifest、精确测试授权、锁定材料集合、候选资产 hash、发行人证据及目标后，在每个阶段和模型调用前重新检查。人工创建的样本授权继续要求固定样本清单；预发布服务授权允许新上传的本人材料，逐项核对 owner、项目、版本、角色和 SHA；数量和业务完整性在持久任务中处理。此成员资格只允许排队，材料字节、安全检查、解析快照与事实证据仍由后续阶段真实验证。显式提交但无效、已撤回或来源漂移的审核引用仍暂停。预检将所有业务待确认项列入 `advisory_inputs`；原 `missing_inputs` 与 `uncertainty` 不删改，`blocking_inputs` 仅列执行能力未启用。输入或材料版本漂移、权限和显式授权失效仍拒绝请求。材料解析失败、缺历史稿或历史稿选择不明进入业务诊断。预检状态只描述能否提交受控测试，不承诺能完成执行。
 
 同一历史材料的解析器可能为同一发行人保存多个原文锚点。测试候选只在全部未审核观察的规范化全称、候选键、解析快照、材料 SHA 和引文摘要一致时成立；多个锚点按来源记录 ID 排序，连同各自的版本、记录/快照/材料/引文 SHA 和集合 SHA 锁入私有输入。阶段门禁与模型调用前重新读取完整集合，新增、撤回、审核或任一锚点变化即暂停。名称或键不一致是真实冲突，不能取第一项；正式身份字段仍为空，Word 改动继续标记主体待人工确认。此私有 pin 不改变公开 DTO 或生产规则入口。
 
@@ -400,7 +406,7 @@ A user-initiated update submits ready/needs_confirmation preflight results witho
 
 1. 用户完成用户名密码登录，API 建立会话；前端创建项目草稿并按 revision 保存。
 2. 上传经 API 创建受限会话，Blob 接收字节；API 核对 hash 后登记不可变材料版本，worker 解析/OCR 并登记证据锚点。
-3. 用户预检和执行时，API 校验 owner、材料、目标市场/品种、规则能力与输入版本；事务内写 run、首次 job event 和 outbox。M1 标记 `billing_mode=platform_trial`。
+3. 用户预检和执行时，API 校验身份、归属及不可变输入；业务缺口作为预检诊断，执行事务写 run、首次 job event 和 outbox 后由后台任务处理。M1 标记 `billing_mode=platform_trial`。
 4. worker 领取任务，保存每阶段检查点；读取锁定的材料、规则、参考库版本；执行 Codex/DeepSeek；每次模型尝试写可追溯 usage 或 `unknown`。
 5. Python 生成 Word 修订/清洁版，worker 检查文件完整性、来源和交付清单，再写成果版本与终态。浏览器关闭不改变 run；重开后用 `GET /runs/{id}` 和事件游标恢复。
 6. 外部模型、存储或日志故障时，按同一 run 和检查点恢复。已经发出的模型请求先对账，不能直接重发；无法持久化关键事件时停止新的外部调用并告警。
@@ -637,3 +643,15 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 用户已明确取消独立财务数据提取服务。原始材料与用户声明/要求的不可变输入交 worker（Codex + DeepSeek），由其在更新任务中按需调用文件读取、OCR、计算和 Word 工具。API 管归属、版本、持久任务和成果访问，不要求上传后先生成完整财务事实库再准入。旧 parser/事实缓存是可复用内部模块，不是独立强制前置。#13/#14/#15/#17/#31/#33/#35 联合迁移输入锁、预检及恢复；用户界面不新增读取审核/财务确认步骤。
 
 此为实现目标，未宣称现有 worker、供应商接口或部署已支持所有格式。全文覆盖、数值/单位/期间核对、真实调用日志、Word 交付和不确定性标记仍需验证。
+
+
+### #35 先持久化执行，再处理业务缺口（2026-09-30）
+
+预检的材料解析、报告截止日、发行人审核、参考稿审核和规则缺口全部为 advisory；执行能力未启用时仍诚实返回 blocked。`needs_confirmation` 与既有“开始更新”调用兼容，允许一次点击继续 execute。execute 校验登录、项目归属、任务类型、锁定 manifest/hash、精确材料版本及幂等键；不要求先完成业务审核或解析缓存。创建 run、排队事件及 outbox 保持同事务，旧 schema/权限/输入/幂等冲突拒绝仍按原逻辑重放；准确匹配的旧业务准入拒绝可按新政策建 run，原拒绝记录不改写，后续重试返回同一 run。
+
+预发自动工作稿授权限定 owner/project/revision/hash，不再使用旧环境截止时间拒绝创建任务。新服务授权无时间截止，可撤销；旧授权及审计不改写，显式提供的操作授权仍核对期限、归属和撤销。未配置规则 hash 使用明确的 unknown 占位摘要；缺少目标假设保留 `direct_working_draft:target_unconfirmed`，不得作为已安装规则证据。独立测试通道和浏览器逻辑键隔离保持；正式成果必须通过 Word 交付检查。
+
+此次覆盖准入迁移与非生产工作稿的空截止日接缝。现有后台 `input_lock` 的发行人绑定校验及候选规则能力加载仍可能暂停新建任务：空材料输入实测原因 `historical_material_not_selected`；缺少发行人观察、规则摘要或目标时分别在身份绑定、候选资产摘要比较和目标解析停下。`historical-generation-input.ts` 对无效截止日、正式通道空截止日，以及没有合格财务期间证据的工作稿仍返回 `historical_target_period_required`；`materials_ready` 在存在财务材料但全部抽取结果的候选数为零时仍返回 `fact_candidates_unavailable`，未安装事实生产器时返回 `fact_candidate_producer_unavailable`。这些是持久化之后的下游暂停条件，财务候选生产逻辑仍需独立变更处理。#31/#33 的生成链路需继续将这些缺口转为正文待确认内容，并迁移 `materialsReadiness` 对预解析/事实快照的依赖；本节不宣称真实模型调用或 Word 已生成。
+
+
+非生产历史工作稿的空截止日可从同 owner、同发行人及已锁定财务材料的有位置证据的事实候选期间推导临时边界，不读取文件名、不使用当前日期或固定日期，不覆盖显式用户截止日或正式通道。候选须通过来源、owner/project/entity、锁定材料版本/hash 和位置证据校验，并排除证据审核不允许使用的条目；不能用历史稿、参考资料、其他主体或用户陈述推导。待核或冲突的数值可提供临时期间证据，但保留其不确定性，绝不因此进入可用财务数值集合。合格候选须具有唯一一致截止日，竞争日期返回 `historical_target_period_ambiguous`，不任意选最新日期。截止日、候选 ID、状态、不确定性和位置证据冻结到 `historical_generation_input` 检查点并纳入 preparation hash，恢复时核对。原 manifest/hash 不改写；模型上下文保留 `needs_confirmation` 来源，Word 修订计划必有“财务截止日未由用户确认”的待核批注，列出候选与定位、不确定性，并明确其数值未因此核验。缺少合格证据仍暂停；只有待核数值且无受支持改动时，`historicalModelGenerationStage` 仍在规划后返回 `historical_no_supported_changes`，需要后续接入原始材料全文修订能力，不能靠放宽财务数值可信度解决。这不补齐零候选抽取，也不证明真实模型调用或 Word 交付完成。

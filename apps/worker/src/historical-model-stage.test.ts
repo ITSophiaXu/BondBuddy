@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServer } from '@bondbuddy/api';
+import { transaction } from '@bondbuddy/api/data';
+import { enqueue, claim, promoteWordArtifact, finish, checkpointStage } from '@bondbuddy/api/queue';
+import { isolatedTestDatabase } from './test-database.js';
+import { markTestWord } from './test-word-marking.js';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { Pool } from 'pg';
 import { fileURLToPath } from 'node:url';
-import { emptyUpdateDetails } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, type UpdateDetails } from '@bondbuddy/contracts';
 import { scrubSecrets } from '@bondbuddy/api/log-ops';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { azureBlobs, digest, uid } from '@bondbuddy/api/data';
@@ -818,4 +826,359 @@ test('a later batch input mutation is rejected before replaying even the first c
   input.snapshot.response.records[512]!.literal_quote='changed';
   assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
   assert.equal(calls,1);
+});
+
+
+async function withCutoffDraftTest(run: () => Promise<void>) {
+  const saved = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try { await run(); } finally {
+    for (const [index, name] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (saved[index] === undefined) delete process.env[name]; else process.env[name] = saved[index];
+    }
+  }
+}
+function missingCutoffFixture() {
+  const s = fixture(true);
+  (s.manifest.update_details as UpdateDetails).reporting_cutoff = null;
+  s.row.input_hash = inputManifestHash(s.manifest);
+  s.ctx.run.input_hash = s.row.input_hash; s.grant.input_hash = s.row.input_hash;
+  return s;
+}
+
+test('missing draft cutoff uses frozen owned financial periods and adds a deterministic pending Word note', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = missingCutoffFixture();
+    const manifestBefore = structuredClone(s.manifest);
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.details.reporting_cutoff, '2024-12-31');
+    assert.deepEqual(input.reportingCutoffBasis, { source: 'locked_financial_fact_period', status: 'needs_confirmation',
+      cutoff: '2024-12-31', candidate_ids: ['revenue-2024'], candidate_provenance: [{
+        candidate_id: 'revenue-2024', status: s.facts[0]!.provenance.status, candidate_uncertainty: s.facts[0]!.candidate.uncertainty ?? null,
+        uncertainty: [], evidence: s.facts[0]!.provenance.evidence }] });
+    assert.deepEqual(s.manifest, manifestBefore, 'derived boundary must not change the immutable manifest');
+    assert.deepEqual((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, input.reportingCutoffBasis);
+    const prompt = historicalPrompt(input, input.snapshot.response.records, 0, 1);
+    assert.match(prompt, /reporting_cutoff_basis/); assert.match(prompt, /不是用户确认的目标期间/);
+    assert.match(prompt, /"reporting_cutoff":null/, 'provisional cutoff must not be labeled user asserted');
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'done', JSON.stringify(result));
+    if (result.kind === 'done') assert.ok((result.value as HistoricalGenerationPlan).reviewNotes.some(note =>
+      note.message.includes('财务截止日未由用户确认') && note.message.includes('2024-12-31')));
+    const recovered = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(recovered.preparationHash, input.preparationHash);
+    (s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis.cutoff = '2025-06-30';
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /UPDATE_REPORTING_CUTOFF_SNAPSHOT_CHANGED/);
+  });
+});
+
+test('draft cutoff bridge refuses unlocated, user-stated, invalid or historical-only period evidence', async () => {
+  await withCutoffDraftTest(async () => {
+    for (const mutate of [
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate as any).source.kind = 'user_statement'; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance.evidence[0] as any).locator = {}; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance.evidence[0] as any).literal_quote = ''; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance.evidence[0] as any).evidence_id = ''; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).period.end = '2024-02-30'; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).period.asOf = '2025-06-30'; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).entityId = 'subsidiary'; },
+    ]) {
+      const s = missingCutoffFixture(); mutate(s);
+      await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_required|historical_issuer_identity_not_bound/);
+      assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
+    }
+    const historical = missingCutoffFixture();
+    (historical.facts[0]!.provenance as any).materialId = historical.manifest.materials[0]!.material_id;
+    (historical.facts[0]!.provenance as any).evidence = historical.facts[0]!.provenance.evidence.map(anchor => ({ ...anchor,
+      material_id: historical.manifest.materials[0]!.material_id, content_hash: historical.manifest.materials[0]!.sha256 }));
+    await assert.rejects(loadHistoricalGenerationInput(historical.ctx, historical.readers), /historical_target_period_required/);
+    const foreign = missingCutoffFixture();
+    (foreign.facts[0]!.candidate.identity as any).accountId = 'foreign-owner';
+    await assert.rejects(loadHistoricalGenerationInput(foreign.ctx, foreign.readers), /UPDATE_FACT_MATERIAL_MISMATCH/);
+  });
+});
+
+test('cutoff bridge preserves explicit target intent and production missing-cutoff rejection', async () => {
+  const production = fixture(); (production.manifest.update_details as UpdateDetails).reporting_cutoff = null;
+  await assert.rejects(loadHistoricalGenerationInput(production.ctx, production.readers), /historical_target_period_required/);
+  await withCutoffDraftTest(async () => {
+    const explicit = fixture(true);
+    explicit.manifest.update_details.reporting_cutoff = '2023-12-31';
+    explicit.row.input_hash = inputManifestHash(explicit.manifest);
+    explicit.ctx.run.input_hash = explicit.row.input_hash; explicit.grant.input_hash = explicit.row.input_hash;
+    const input = await loadHistoricalGenerationInput(explicit.ctx, explicit.readers);
+    assert.equal(input.details.reporting_cutoff, '2023-12-31'); assert.equal(input.reportingCutoffBasis, undefined);
+    assert.equal((explicit.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, undefined);
+  });
+});
+
+
+test('draft cutoff rejects competing issuer periods and excludes other entities', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = missingCutoffFixture();
+    const newer = structuredClone(s.facts[0]!);
+    (newer.candidate as any).candidateId = 'revenue-2025';
+    (newer.candidate.identity as any).period = { start: '2025-01-01', end: '2025-06-30' };
+    const foreignEntity = structuredClone(newer);
+    (foreignEntity.candidate as any).candidateId = 'other-2026';
+    (foreignEntity.candidate.identity as any).entityId = 'subsidiary';
+    (foreignEntity.candidate.identity as any).period = { start: '2026-01-01', end: '2026-06-30' };
+    s.facts.push(newer, foreignEntity);
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_ambiguous/);
+    s.facts.splice(0, 1);
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.details.reporting_cutoff, '2025-06-30');
+    assert.deepEqual(input.reportingCutoffBasis!.candidate_ids, ['revenue-2025']);
+  });
+});
+
+// Synthetic reproduction: uncertain amounts can identify a provisional period without becoming usable amounts.
+function fourPendingAuditFixture() {
+  const s = missingCutoffFixture();
+  const original = structuredClone(s.facts[0]!);
+  s.facts.splice(0, s.facts.length, ...Array.from({ length: 4 }, (_, i) => {
+    const f = structuredClone(original);
+    (f.candidate as any).candidateId = `pending-audit-${i + 1}`;
+    (f.candidate.identity as any).metric = `pending-metric-${i + 1}`;
+    (f.candidate.identity as any).period = { start: '2025-01-01', end: '2025-09-30' };
+    (f.candidate as any).uncertainty = `amount awaiting confirmation ${i + 1}`;
+    (f.provenance as any).status = 'needs_confirmation';
+    (f.provenance as any).uncertainty = [`numerical value pending ${i + 1}`];
+    for (const a of f.provenance.evidence) {
+      (a as any).evidence_id = `pending-audit-evidence-${i + 1}`;
+      (a as any).literal_quote = `合成财务材料：2025年1月1日至2025年9月30日，项目${i + 1}数值待核。`;
+    }
+    return f;
+  }));
+  return s;
+}
+
+test('four pending audit amounts freeze one provisional period without offering their values', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    const before = structuredClone({ manifest: s.manifest, facts: s.facts });
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.details.reporting_cutoff, '2025-09-30');
+    assert.equal(input.reportingCutoffBasis!.status, 'needs_confirmation');
+    assert.deepEqual(input.reportingCutoffBasis!.candidate_ids, s.facts.map(f => f.candidate.candidateId));
+    assert.deepEqual(offerableFacts(input), [], 'pending amounts must never become trusted financial inputs');
+    const basis = input.reportingCutoffBasis as any;
+    assert.deepEqual(basis.candidate_provenance, s.facts.map(f => ({ candidate_id: f.candidate.candidateId,
+      status: f.provenance.status, candidate_uncertainty: f.candidate.uncertainty ?? null,
+      uncertainty: f.provenance.uncertainty, evidence: f.provenance.evidence })));
+    assert.deepEqual((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, basis);
+    assert.deepEqual({ manifest: s.manifest, facts: s.facts }, before);
+    const prompt = historicalPrompt(input, input.snapshot.response.records, 0, 1);
+    for (const f of s.facts) {
+      assert.ok(prompt.includes(f.candidate.candidateId));
+      assert.ok(prompt.includes(f.provenance.uncertainty[0]!));
+    }
+    assert.equal((await loadHistoricalGenerationInput(s.ctx, s.readers)).preparationHash, input.preparationHash);
+    basis.candidate_provenance[0].uncertainty.push('changed provenance');
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /UPDATE_REPORTING_CUTOFF_SNAPSHOT_CHANGED/);
+  });
+});
+
+test('competing pending audit periods pause with a specific ambiguity reason', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    (s.facts[3]!.candidate.identity as any).period.end = '2025-06-30';
+    (s.facts[3]!.provenance.evidence[0] as any).literal_quote = '合成财务材料：2025年1月1日至2025年6月30日，数值待核。';
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_ambiguous/);
+    assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'pause');
+    if (result.kind === 'pause') assert.equal(result.reason, 'historical_target_period_ambiguous');
+  });
+});
+
+
+test('provisional pending audit provenance reaches deterministic Word notes without promoting numbers', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    // An independent clean fact permits one supported change; pending amounts remain excluded.
+    const clean = structuredClone(fixture(true).facts[0]!);
+    for (const f of s.facts) {
+      (f.candidate.identity as any).period = structuredClone(clean.candidate.identity.period);
+      for (const a of f.provenance.evidence) (a as any).literal_quote = '合成财务材料：2024年度，数值待核。';
+    }
+    s.facts.push(clean);
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'done', JSON.stringify(result));
+    if (result.kind !== 'done') return;
+    const plan = result.value as HistoricalGenerationPlan;
+    const note = plan.reviewNotes.map(n => n.message).join('\n');
+    for (const f of s.facts.slice(0, 4)) {
+      assert.ok(note.includes(f.candidate.candidateId));
+      assert.ok(note.includes(f.provenance.uncertainty[0]!));
+      assert.ok(note.includes(JSON.stringify(f.provenance.evidence[0]!.locator)));
+    }
+    assert.match(note, /待核候选数值未因此核验/);
+    assert.deepEqual(offerableFacts(await loadHistoricalGenerationInput(s.ctx, s.readers)).map(f => f.candidate.candidateId), ['revenue-2024']);
+  });
+});
+
+
+test('four pending audit facts produce a labeled original-only plan without verified replacements', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    for (const b of s.answer.blocks) { b.changes = []; b.disposition = 'needs_evidence'; b.reason = '合成数值待核'; }
+    s.answer.columns = [];
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'done', JSON.stringify(result));
+    if (result.kind !== 'done') return;
+    const plan = result.value as HistoricalGenerationPlan;
+    assert.deepEqual(plan.replacements, []); assert.deepEqual(plan.columns, []);
+    assert.equal(plan.pendingOriginalDraft?.mode, 'non_production_pending_original');
+    assert.equal(plan.pendingOriginalDraft?.reportingCutoff, '2025-09-30');
+    assert.ok(plan.textPreview.every(p => p.before === p.after && plan.reviewNotes.some(n => n.recordId === p.recordId)));
+    assert.equal((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis.cutoff, '2025-09-30');
+  });
+});
+
+test('pending period evidence cannot bypass locked owner, material version, hash or location', async () => {
+  await withCutoffDraftTest(async () => {
+    for (const [mutate, reason] of [
+      [(f: StoredFactCandidate) => { (f.candidate.identity as any).accountId = 'other-owner'; }, /UPDATE_FACT_MATERIAL_MISMATCH/],
+      [(f: StoredFactCandidate) => { (f.candidate.identity as any).entityId = 'foreign-issuer'; }, /historical_issuer_identity_not_bound/],
+      [(f: StoredFactCandidate) => { (f.provenance as any).materialVersion = 2; }, /historical_fact_inventory_missing/],
+      [(f: StoredFactCandidate) => { (f.provenance.evidence[0] as any).content_hash = 'd'.repeat(64); }, /UPDATE_FACT_MATERIAL_MISMATCH/],
+      [(f: StoredFactCandidate) => { (f.provenance.evidence[0] as any).locator = {}; }, /historical_target_period_required/],
+      [(f: StoredFactCandidate) => { (f.provenance.evidence[0] as any).extraction_version = ''; }, /historical_target_period_required/],
+    ] as const) {
+      const s = fourPendingAuditFixture(); s.facts.forEach(mutate);
+      await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), reason);
+      assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
+    }
+  });
+});
+
+// Complete synthetic plan -> real Python -> PG/Blob quality evidence -> authorized download.
+const pendingDraftDatabase = await isolatedTestDatabase(undefined, 'pending-original-word');
+test('four pending audit facts deliver complete original Python Word with quality and owner authorization', {
+  skip: !pendingDraftDatabase || !process.env.BB_TEST_AZURITE_CONNECTION_STRING || !process.env.BONDBUDDY_TEST_PYTHON,
+}, async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    const directory = await mkdtemp(join(tmpdir(), 'bb-pending-original-'));
+    const pool = new Pool({ connectionString: pendingDraftDatabase });
+    const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!, `bb-pending-${randomUUID()}`);
+    let principal = 'owner-1';
+    const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: principal, csrfVerified: true }) });
+    try {
+      const sourcePath = join(directory, 'source.docx');
+      const py = process.env.BONDBUDDY_TEST_PYTHON!;
+      const generated = spawnSync(py, ['-c', `import json,sys
+from docx import Document
+d=Document(); blocks=json.load(sys.stdin); t=None
+for b in blocks:
+ p=b['locator']['path'][0]
+ if 'table' in p:
+  if t is None:t=d.add_table(rows=2,cols=3)
+  t.cell(p['row']-1,p['column']-1).text=b['text']
+ else:d.add_paragraph(b['text'])
+d.save(sys.argv[1])`, sourcePath],
+        { input: JSON.stringify(s.source.baseline.blocks), encoding: 'utf8', timeout: 30000 });
+      assert.equal(generated.status, 0, generated.stderr);
+      const source = await readFile(sourcePath), sourceHash = digest(source);
+      if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,'pending-original-source.docx'),source,{mode:0o600});
+      s.snapshot.contentSha256 = sourceHash; s.snapshot.response.material!.sha256 = sourceHash;
+      s.snapshot.response.records.forEach(r => r.content_hash = sourceHash);
+      const { request_id: _, ...stable } = s.snapshot.response; s.snapshot.responseSha256 = updateContentHash(stable);
+      s.manifest.materials[0]!.sha256 = sourceHash;
+      s.row.input_hash = inputManifestHash(s.manifest); s.ctx.run.input_hash = s.row.input_hash; s.grant.input_hash = s.row.input_hash;
+      s.ctx.run.id = randomUUID(); s.ctx.run.test_grant_id = randomUUID();
+      for (const b of s.answer.blocks) { b.changes = []; b.disposition = 'needs_evidence'; b.reason = '锁定审计候选金额待人工核验，保留原文'; }
+      s.answer.columns = [];
+      const before = structuredClone(s.facts);
+      await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES('project-1','owner-1','Synthetic pending original','update')");
+      const objectKey = 'synthetic/locked/original.docx';
+      const uploadId = randomUUID();
+      await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+        VALUES($1,'owner-1','project-1','synthetic.docx',$2,$3,$4,'historical',$5,now()+interval '1 hour','completed')`,
+        [uploadId,s.snapshot.response.material!.media_type,source.length,sourceHash,objectKey]);
+      await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+        VALUES('history-1',1,'owner-1','project-1',$1,'historical','synthetic.docx',$2,$3,$4,$5,'parsed')`,
+        [uploadId,s.snapshot.response.material!.media_type,source.length,sourceHash,objectKey]);
+      await blobs.put(objectKey,source,s.snapshot.response.material!.media_type);
+      await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES('project-1',1,'owner-1',1,$1,$2,$3,'[]')`, [s.row.input_hash,s.manifest,JSON.stringify(s.row.material_versions)]);
+      await pool.query(`INSERT INTO bb_non_production_test_grants(grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+        VALUES($1,'owner-1','project-1',1,$2,$3,$4,$5,'synthetic','synthetic evidence',now()+interval '1 hour')`,
+        [s.ctx.run.test_grant_id,s.row.input_hash,s.grant.sample_manifest_sha256,s.grant.taxonomy_hash,s.grant.rule_pack_hash]);
+      await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,channel,test_grant_id)
+        VALUES($1,'owner-1','project-1',1,$2,$3,'update',$2,'preparing','non_production_test',$4)`,
+        [s.ctx.run.id,s.row.input_hash,randomUUID(),s.ctx.run.test_grant_id]);
+      await transaction(pool, c => enqueue(c,s.ctx.run));
+      const lease = await claim(pool,120); assert.ok(lease);
+      // Generation uses synthetic scoped repository adapters and a synthetic model; checkpoint/audit persistence is real.
+      s.readers.checkpoint = async (c,pin) => { await checkpointStage(pool,lease,GENERATION_INPUT_CHECKPOINT,pin as unknown as Record<string,unknown>); c.checkpoint[GENERATION_INPUT_CHECKPOINT]=pin as unknown as Record<string,unknown>; };
+      s.options.checkpoint = async (c,name,data) => { await checkpointStage(pool,lease,name,data); c.checkpoint[name]=data; };
+      const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+      assert.equal(result.kind,'done',JSON.stringify(result)); if(result.kind!=='done')return;
+      const plan = result.value as HistoricalGenerationPlan;
+      assert.deepEqual(offerableFacts(await loadHistoricalGenerationInput(s.ctx,s.readers)),[]);
+      assert.deepEqual(s.facts,before); assert.deepEqual(plan.replacements,[]); assert.deepEqual(plan.columns,[]);
+      const ctx = { ...s.ctx,pool,blobs,lease,values:new Map([['model_generation',plan]]) };
+      const delivered = await historicalWordDeliveryStage().run(ctx);
+      assert.equal(delivered.kind,'deliver',JSON.stringify(delivered)); if(delivered.kind!=='deliver')return;
+      const inspect = (bytes:Buffer) => {
+        const r=spawnSync(py,['-c', `import io,json,sys,zipfile
+from lxml import etree
+z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}; root=etree.fromstring(z.read('word/document.xml')); print(json.dumps({'paragraphs':[''.join(p.xpath('.//w:t/text()',namespaces=ns)) for p in root.xpath('.//w:p',namespaces=ns)],'comments':z.read('word/comments.xml').decode() if 'word/comments.xml' in z.namelist() else '','insertions':[''.join(n.xpath('.//w:t/text()',namespaces=ns)) for n in root.xpath('.//w:ins',namespaces=ns)]},ensure_ascii=False))`],{input:bytes,encoding:'utf8',timeout:30000});
+        assert.equal(r.status,0,r.stderr); return JSON.parse(r.stdout);
+      };
+      const evidence:Record<string,unknown>={synthetic:true, supplier_calls:0, usable_facts:0, replacements:0, columns:0, pending_candidates:before};
+      let revision:Awaited<ReturnType<typeof promoteWordArtifact>>|undefined;
+      const artifactIds:Record<string,string>={};
+      for(const [variant,bytes] of [['baseline',delivered.baselineBytes!],['clean',delivered.cleanBytes!],['revision',delivered.bytes]] as const){
+        const xml=inspect(bytes);
+        assert.match(xml.paragraphs[0],/临时原文工作稿.*报告期间及财务事实待人工核验/);
+        assert.deepEqual(xml.paragraphs.slice(1).map((p:string)=>p.replace(/【待人工确认】/g,'')),s.source.baseline.blocks.map(b=>b.text),'all original text including old numbers is retained');
+        if(variant!=='baseline')for(const f of before){assert.ok(xml.comments.includes(f.candidate.candidateId));assert.ok(xml.comments.includes(f.provenance.uncertainty[0]!));}
+        assert.ok(xml.insertions.every((text:string)=>text==='【待人工确认】'),'tracked insertions contain pending labels only, never numbers');
+        const marked=await markTestWord(bytes,[]);
+        const promoted=await promoteWordArtifact(pool,lease,marked,blobs); assert.equal(promoted.status,'available');
+        artifactIds[variant]=promoted.artifactId;
+        if(variant==='revision')revision=promoted;
+        evidence[variant]={sha256:digest(marked),bytes:marked.length,inspection:promoted.inspection,writer_inspection:xml};
+        if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR){
+          await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`pending-original-${variant}-writer.docx`),bytes,{mode:0o600});
+          await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`pending-original-${variant}.docx`),marked,{mode:0o600});
+        }
+      }
+      assert.ok(revision);
+      await checkpointStage(pool,lease,'word_delivery_pair',{...delivered.wordSummary,revision_artifact_id:artifactIds.revision,clean_artifact_id:artifactIds.clean,baseline_artifact_id:artifactIds.baseline});
+      assert.equal((await pool.query("SELECT checkpoint->'stages'->'historical_generation_input'->'reporting_cutoff_basis'->>'status' AS status FROM bb_jobs WHERE id=$1",[lease.jobId])).rows[0].status,'needs_confirmation');
+      await finish(pool,lease,'test_completed',{artifactId:revision.artifactId,artifactVersion:revision.artifactVersion,blobs});
+      assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[s.ctx.run.id])).rows[0].state,'test_completed');
+      const metadata=await app.inject({method:'GET',url:`/api/v1/artifacts/${revision.artifactId}`}); assert.equal(metadata.statusCode,200,metadata.body);
+      assert.equal(metadata.json().delivery_status,'test_only');
+      assert.equal(metadata.json().word_delivery.replacements,0); assert.equal(metadata.json().word_delivery.columns,0);
+      assert.deepEqual(metadata.json().word_delivery.pending_review,delivered.wordSummary!.pending_review);
+      const download=await app.inject({method:'GET',url:metadata.json().download_url}); assert.equal(download.statusCode,200); assert.equal(digest(download.rawPayload),revision.sha256);
+      principal='foreign-owner';
+      assert.equal((await app.inject({method:'GET',url:`/api/v1/artifacts/${revision.artifactId}`})).statusCode,404);
+      assert.equal((await app.inject({method:'GET',url:metadata.json().download_url})).statusCode,404);
+      const tampered=structuredClone(plan); tampered.pendingOriginalDraft!.reportingCutoff='2025-06-30';
+      const {planHash:ignored,...rest}=tampered; tampered.planHash=updateContentHash(rest);
+      assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,values:new Map([['model_generation',tampered]])}),{kind:'fail',code:'VALIDATION_FAILED'});
+      assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,run:{...ctx.run,channel:'production'}}),{kind:'fail',code:'VALIDATION_FAILED'});
+      evidence.plan=plan; evidence.word_summary=delivered.wordSummary; evidence.state='test_completed'; evidence.owner_download='passed'; evidence.foreign_download='404';
+      if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,'pending-original-evidence.json'),JSON.stringify(evidence,null,2),{mode:0o600});
+    } finally { await app.close(); await pool.end(); await rm(directory,{recursive:true,force:true}); }
+  });
+});
+
+test('pending-only delivery respects explicit targets and production zero-change guard',async()=>{
+  await withCutoffDraftTest(async()=>{
+    const s=fourPendingAuditFixture();
+    s.manifest.update_details.reporting_cutoff='2025-12-31'; s.row.input_hash=inputManifestHash(s.manifest);
+    s.ctx.run.input_hash=s.row.input_hash; s.grant.input_hash=s.row.input_hash;
+    for(const b of s.answer.blocks){b.changes=[];b.disposition='needs_evidence';b.reason='合成待核事实';} s.answer.columns=[];
+    const result=await historicalModelGenerationStage(s.options).run(s.ctx);assert.equal(result.kind,'done');
+    if(result.kind==='done'){const plan=result.value as HistoricalGenerationPlan;assert.equal(plan.pendingOriginalDraft!.targetSource,'user_asserted');assert.equal(plan.pendingOriginalDraft!.reportingCutoff,'2025-12-31');assert.equal(plan.pendingOriginalDraft!.periodEvidence.cutoff,'2025-09-30');}
+    const prod=fixture(); prod.facts.forEach(f=>{(f.provenance as any).status='needs_confirmation'; (f.provenance as any).uncertainty=['synthetic pending amount'];}); for(const b of prod.answer.blocks){b.changes=[];b.disposition='needs_evidence';b.reason='合成待核事实';} prod.answer.columns=[];
+    assert.deepEqual(await historicalModelGenerationStage(prod.options).run(prod.ctx),{kind:'pause',stage:'capability_not_ready',reason:'historical_no_supported_changes'});
+  });
 });

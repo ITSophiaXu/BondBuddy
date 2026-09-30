@@ -33,12 +33,59 @@ export interface HistoricalGenerationInput {
   evidenceReviews?: HistoricalFactReviews;
   revalidateEvidenceReviews?: () => Promise<void>;
   planReaders: HistoricalUpdateReaders;
+  reportingCutoffBasis?: WorkingDraftReportingCutoff;
   details: UpdateDetails; issuerName: string; issuerIdentityPending: boolean; preparationHash: string;
   ruleGuidance: HistoricalRuleGuidance | HistoricalCandidateRuleGuidance;
 }
+export interface WorkingDraftReportingCutoff {
+  source: 'locked_financial_fact_period'; status: 'needs_confirmation';
+  cutoff: string; candidate_ids: string[];
+  /** Period evidence only: no candidate values or verification effect. */
+  candidate_provenance: {
+    candidate_id: string; status: StoredFactCandidate['provenance']['status'];
+    candidate_uncertainty: string | null; uncertainty: readonly string[];
+    evidence: StoredFactCandidate['provenance']['evidence'];
+  }[];
+}
+const validDay = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
+
+/** A draft boundary from owned financial evidence, never a confirmed user target or arbitrary calendar date. */
+export function deriveWorkingDraftReportingCutoff(owner: string, entity: string,
+  materials: LockedHistoricalUpdate['materials'], facts: readonly StoredFactCandidate[]): WorkingDraftReportingCutoff | undefined {
+  const eligible = facts.flatMap(f => {
+    const material = materials.find(m => m.materialId === f.provenance.materialId && m.materialVersion === f.provenance.materialVersion);
+    const period = f.candidate.identity.period;
+    const cutoff = period.asOf ?? period.end;
+    if (f.candidate.identity.accountId !== owner || f.candidate.identity.entityId !== entity ||
+        !material || !['audit','financial','interimFinancial','notes'].includes(material.role) ||
+        !historicalFactMatchesMaterial(f, material) ||
+        !['audited', 'external'].includes(f.candidate.source.kind) ||
+        !['extracted', 'verified', 'needs_confirmation', 'conflicted'].includes(f.provenance.status) ||
+        !f.provenance.evidence.every(a => a.evidence_id.trim() && a.locator_type.trim() &&
+          a.locator && !Array.isArray(a.locator) && Object.keys(a.locator).length > 0 &&
+          a.literal_quote.trim() && a.extraction_method.trim() && a.extraction_version.trim()) ||
+        !validDay(cutoff) ||
+        (period.start !== undefined && (!validDay(period.start) || period.start > cutoff)) ||
+        (period.asOf !== undefined && period.end !== undefined && period.asOf !== period.end)) return [];
+    return [{ cutoff, id: f.candidate.candidateId, provenance: {
+      candidate_id: f.candidate.candidateId, status: f.provenance.status,
+      candidate_uncertainty: f.candidate.uncertainty ?? null,
+      uncertainty: f.provenance.uncertainty, evidence: f.provenance.evidence,
+    } }];
+  });
+  const cutoffs = new Set(eligible.map(f => f.cutoff));
+  if (cutoffs.size > 1) unavailable('historical_target_period_ambiguous');
+  const cutoff = eligible[0]?.cutoff;
+  return cutoff ? structuredClone({ source: 'locked_financial_fact_period' as const, status: 'needs_confirmation' as const, cutoff,
+    candidate_ids: [...new Set(eligible.map(f => f.id))].sort(),
+    candidate_provenance: eligible.sort((a,b) => a.id.localeCompare(b.id, 'en')).map(f => f.provenance) }) : undefined;
+}
+
 interface PreparationPin {
   version: 'historical-generation-input-v1'; input_hash: string;
   baseline_policy?: typeof HISTORICAL_TEST_BASELINE_POLICY;
+  reporting_cutoff_basis?: WorkingDraftReportingCutoff;
   snapshot_id: string; profile_version: number; profile_hash: string;
   parser_version: string; parse_hash: string; issuer_entity_id: string;
   fact_ids: string[]; facts_hash: string;
@@ -66,11 +113,11 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   if (!input || String(input.input_hash).trim() !== run.input_hash.trim()) throw new Error('UPDATE_INPUT_LOCK_MISMATCH');
   const manifest = input.manifest;
   if (!manifest || typeof manifest !== 'object' || !detailsValidator(manifest.update_details)) throw new Error('UPDATE_INVALID_INPUT_MANIFEST');
-  const details = manifest.update_details as UpdateDetails;
+  let details = manifest.update_details as UpdateDetails;
+  const deriveCutoff = run.channel === 'non_production_test' && details.reporting_cutoff === null;
   if (details.has_historical !== true) unavailable('historical_update_requires_history');
   if (manifest.market !== 'sse' || manifest.offering !== 'private') unavailable('historical_update_scope_not_installed');
-  if (!details.reporting_cutoff || !Number.isFinite(Date.parse(details.reporting_cutoff)) ||
-    new Date(details.reporting_cutoff).toISOString().slice(0,10) !== details.reporting_cutoff) unavailable('historical_target_period_required');
+  if (!deriveCutoff && !validDay(details.reporting_cutoff)) unavailable('historical_target_period_required');
   let rule: { packId: string; version: string; contentHash: string };
   let ruleGuidance: HistoricalGenerationInput['ruleGuidance'];
   if (run.channel === 'non_production_test') {
@@ -164,6 +211,13 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
   // Do not retrofit an old run with a new model/input binding. New preparations always pin absence too.
   const evidenceReviews = previous && previous.fact_evidence_reviews === undefined ? undefined
     : await readReviews({ pool }, reviewScope, facts, previous?.fact_evidence_reviews);
+  const reportingCutoffBasis = deriveCutoff ? deriveWorkingDraftReportingCutoff(run.owner_user_id, entity, materials, facts.filter(f => historicalReviewAllowsExistingFact(evidenceReviews, f.candidate.candidateId))) : undefined;
+  if (deriveCutoff) {
+    if (!reportingCutoffBasis) unavailable('historical_target_period_required');
+    details = { ...details, reporting_cutoff: reportingCutoffBasis.cutoff };
+  }
+  if (previous && updateContentHash(previous.reporting_cutoff_basis ?? null) !== updateContentHash(reportingCutoffBasis ?? null))
+    throw new Error('UPDATE_REPORTING_CUTOFF_SNAPSHOT_CHANGED');
   const revalidateEvidenceReviews = evidenceReviews ? async () => {
     const current = await readReviews({ pool }, reviewScope, facts, evidenceReviews);
     if (updateContentHash(current) !== updateContentHash(evidenceReviews)) throw new Error('UPDATE_FACT_EVIDENCE_REVIEW_CHANGED');
@@ -173,7 +227,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     snapshot_id: snapshot.snapshotId, profile_version: profile.profileVersion, profile_hash: updateContentHash(profile.recognition),
     parser_version: snapshot.parserVersion, parse_hash: snapshot.responseSha256, issuer_entity_id: entity,
     fact_ids: facts.map(f => f.candidate.candidateId).sort(), facts_hash: frozenFactsHash(facts), decisions: decisionPins,
-    fact_evidence_reviews: evidenceReviews };
+    fact_evidence_reviews: evidenceReviews, ...(reportingCutoffBasis ? { reporting_cutoff_basis: reportingCutoffBasis } : {}) };
   const locked: HistoricalGenerationInput['locked'] = { context: { ownerUserId: run.owner_user_id, projectId: run.project_id,
     issuerEntityId: entity, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), targetMarket: manifest.market,
     ...(baselinePolicy ? { baselineUse: 'non_production_working_draft' as const } : {}),
@@ -204,7 +258,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     },
   };
   return { locked, snapshot, profile, facts, decisions, evidenceReviews, revalidateEvidenceReviews, planReaders, details, ruleGuidance,
-    issuerName, issuerIdentityPending:!!testCandidate, preparationHash: updateContentHash(pin) };
+    issuerName, issuerIdentityPending:!!testCandidate, ...(reportingCutoffBasis ? { reportingCutoffBasis } : {}), preparationHash: updateContentHash(pin) };
 }
 
 /** Never offer one clean member of a conflicted/uncertain identity while concealing the other candidates. */

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
+import { inputManifestHash } from './production-rule-pin.js';
 
 import { isolatedTestDatabase } from './test-database.js';
 const connection = await isolatedTestDatabase();
@@ -54,7 +55,7 @@ test('HTTP update preflight returns conservative, owner-scoped immutable difficu
       update_details: invalid ? null : { target_reporting_periods: periods }, target_confirmation: confirmed ? targetConfirmation : {
         status: 'unconfirmed', market: null, offering: null, document_purpose: null, as_of: null,
         target_reporting_periods: [], confirmed_by: null, confirmed_at: null } };
-    const inputHash = hash({ revision, manifest });
+    const inputHash = inputManifestHash(manifest);
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'[]'::jsonb)`,
     [project, revision, owner, draftRevision, inputHash, JSON.stringify(manifest),
@@ -139,7 +140,7 @@ test('HTTP update preflight returns conservative, owner-scoped immutable difficu
     const reviewProject = `preflight-review-${suffix}`;
     await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,market,offering) VALUES($1,$2,'synthetic review','review','sse','private')", [reviewProject, owner]);
     const reviewManifest = { kind: 'review', draft_revision: 1, materials: [] };
-    const reviewHash = hash(reviewManifest);
+    const reviewHash = inputManifestHash(reviewManifest);
     await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,1,$2,1,$3,$4::jsonb,'[]'::jsonb,'[]'::jsonb)`, [reviewProject, owner, reviewHash, JSON.stringify(reviewManifest)]);
     await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE owner_user_id=$1 AND id=$2', [owner, reviewProject]);

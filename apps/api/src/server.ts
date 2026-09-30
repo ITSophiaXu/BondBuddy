@@ -43,7 +43,7 @@ import { insertUserReferencePin, resolveUserReferencePin, type UserReferenceChoi
 import { classifyUpdateDifficultyFailure, ensureCurrentUpdateDifficultySnapshotWithClient, type StoredUpdateDifficultySnapshot } from './update-difficulty-repository.js';
 import { createRuleApplicabilityContextDraft, loadReviewedRuleApplicabilityContext, readRuleApplicabilityContextDraftRef } from '@bondbuddy/rule-applicability-context';
 import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOverallReviewInput } from './rule-applicability-overall-reviews.js';
-import { assertGenerationIssuerBinding, assertGenerationWorkingDraftInput, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
+import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
@@ -1302,7 +1302,7 @@ export function createServer(settings: Settings = {}) {
           await recordOperation(client,{owner:user,projectId:old.project_id,runId:old.id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
           return same?{run:visibleRunDto(old)}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
         }
-        const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash]);
+        const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage,subtype FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash]);
         if(prior.rows[0])return priorRejection(client,prior.rows[0]);
         const owned=await client.query('SELECT kind FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',[user,b.project_id]);
         if(!owned.rowCount){await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});return {errorCode:'CAPABILITY_NOT_READY',httpStatus:501};}
@@ -1325,8 +1325,16 @@ export function createServer(settings: Settings = {}) {
         await recordOperation(client,{owner:user,projectId:old.project_id,runId:old.id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
         return same?visibleRunDto(old):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
       }
-      const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash]);
-      if(prior.rows[0])return {rejection:await priorRejection(client,prior.rows[0])};
+      const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage,subtype FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash]);
+      const rejected=prior.rows[0];
+      // A policy change may admit the exact input previously rejected by the
+      // retired business gates. Keep that logical rejection immutable; a new run
+      // takes precedence on every subsequent replay. Schema/key conflicts remain terminal.
+      const retiredBusinessRejection=rejected?.subtype==='execute_rejected' &&
+        rejected.stage==='submission_rejected' && rejected.request_hash.trim()===requestHash &&
+        !b.test_grant_id && workingDraftConfigured() &&
+        ['TEST_GRANT_EXPIRED','TEST_GRANT_INVALID','INPUT_REQUIRED','CAPABILITY_NOT_READY','MATERIAL_UNREADABLE'].includes(rejected.error_code);
+      if(rejected&&!retiredBusinessRejection)return {rejection:await priorRejection(client,rejected)};
       const currentProject=await project(client,user,b.project_id,true);
       if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
       const input=await client.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[user,b.project_id,b.input_revision]);
@@ -1337,8 +1345,7 @@ export function createServer(settings: Settings = {}) {
         throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
       if((lockedKind==='generation'||b.task_kind==='generation')&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
-      if(lockedKind==='generation'&&(b.test_grant_id||workingDraftConfigured()))await assertGenerationWorkingDraftInput(client,
-        {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
+      await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
@@ -1525,6 +1532,7 @@ export function createServer(settings: Settings = {}) {
         if(input.input_hash.trim()!==b.input_hash)throw conflict('INPUT_REVISION_CONFLICT','Input hash changed');
         if(input.manifest?.kind!==currentProject.kind)
           throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
+        await assertLockedInputIntegrity(client,{userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},input);
         if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:id,
           inputRevision:b.input_revision,inputHash:b.input_hash});
         const missingInputs:string[]=[],uncertainty:string[]=[];
@@ -1633,8 +1641,8 @@ export function createServer(settings: Settings = {}) {
             const classified=classifyUpdateDifficultyFailure(error);
             if(classified.category==='pending_input') missingInputs.push(`update_difficulty_pending:${classified.code.toLowerCase()}`);
             else if(classified.category==='stale_input') missingInputs.push(`update_difficulty_stale:${classified.code.toLowerCase()}`);
-            else if(classified.category==='not_found') throw missing();
-            else if(classified.category==='invalid_request') throw new Problem(422,'VALIDATION_FAILED','Invalid preflight input');
+            else if(classified.category==='not_found') missingInputs.push('update_difficulty_evidence_missing');
+            else if(classified.category==='invalid_request') missingInputs.push(`update_difficulty_invalid:${classified.code.toLowerCase()}`);
             else throw new Problem(503,'DATA_UNAVAILABLE','Update difficulty snapshot could not be verified');
           }
         }

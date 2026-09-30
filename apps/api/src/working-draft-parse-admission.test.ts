@@ -12,7 +12,7 @@ const databaseUrl = await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL', '
 const origin = 'http://bondbuddy.test';
 const sha = (letter: string) => letter.repeat(64);
 
-test('persisted material with an exact successful needs-confirmation parse enters only the controlled draft channel',
+test('locked materials enter the draft queue before parsing and business review; security pins and channel isolation remain enforced',
   { skip: !databaseUrl }, async () => {
     const names = ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL', 'BB_PREPROD_WORKING_DRAFT_EXPIRES_AT',
       'BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH', 'BB_PREPROD_WORKING_DRAFT_RULE_PACK_HASH',
@@ -87,6 +87,7 @@ test('persisted material with an exact successful needs-confirmation parse enter
           ON e.owner_user_id=o.owner_user_id AND e.event->>'operation_id'=o.id
         WHERE o.owner_user_id=$1 AND o.request_id=$2 AND e.kind='operation.rejected'`,
         [owner,requestId])).rows[0];
+      let accepted = 0;
       const historical = await add('historical', sha('c'));
       for (const [label, hashLetter, state, parser, code, message] of [
         ['missing', '3', 'absent', documentParserVersion(), 'INPUT_REQUIRED', /complete its saved upload again/i],
@@ -99,26 +100,27 @@ test('persisted material with an exact successful needs-confirmation parse enter
         const financial = await add('interimFinancial', sha(hashLetter), state, parser);
         const input = await lock([historical, financial]);
         const checked = await preflight(input), submitted = await execute(input);
-        for (const response of [checked, submitted]) {
-          assert.equal(response.statusCode, 409, `${label}: ${response.body}`);
-          assert.equal(response.json().code, code, `${label}: ${response.body}`);
-          assert.match(response.json().message, message, `${label}: ${response.body}`);
-        }
-        assert.deepEqual(await counts(), [0, 0, 0], label);
+        assert.equal(checked.statusCode, 200, `${label}: ${checked.body}`);
+        assert.notEqual(checked.json().status, 'blocked');
+        assert.equal(submitted.statusCode, 202, `${label}: ${submitted.body}`);
+        accepted++;
+        assert.deepEqual(await counts(), [accepted, accepted, accepted], label);
       }
+
       const wrongHash = await add('interimFinancial', sha('e'));
       await pool.query('UPDATE bb_material_versions SET sha256=$2 WHERE id=$1', [wrongHash.material_id, sha('f')]);
       const wrongHashInput = await lock([historical, wrongHash]);
-      assert.equal((await preflight(wrongHashInput)).json().code, 'MATERIAL_UNREADABLE');
-      assert.equal((await execute(wrongHashInput)).json().code, 'MATERIAL_UNREADABLE');
-      assert.deepEqual(await counts(), [0, 0, 0]);
+      assert.equal((await preflight(wrongHashInput)).statusCode, 200);
+      assert.equal((await execute(wrongHashInput)).statusCode, 202);
+      accepted++;
+      assert.deepEqual(await counts(), [accepted, accepted, accepted]);
 
       const financial = await add('interimFinancial', sha('1'));
       const deletedInput = await lock([historical, financial]);
       await pool.query('UPDATE bb_material_versions SET deleted_at=now() WHERE id=$1', [financial.material_id]);
       assert.equal((await preflight(deletedInput)).json().code, 'INPUT_REVISION_CONFLICT');
       assert.equal((await execute(deletedInput)).json().code, 'INPUT_REVISION_CONFLICT');
-      assert.deepEqual(await counts(), [0, 0, 0]);
+      assert.deepEqual(await counts(), [accepted, accepted, accepted]);
 
       const otherProjectResponse = await post('/api/v1/projects',
         { name: 'Synthetic other project', kind: 'update', issuer_name: null, market: null, offering: null });
@@ -140,7 +142,7 @@ test('persisted material with an exact successful needs-confirmation parse enter
         { draft_revision: 1, material_versions: [historical, { material_id: foreignMaterial, material_version: 1 }],
           requirement_message_ids: [] });
       assert.equal(foreignLock.statusCode, 404, foreignLock.body);
-      assert.deepEqual(await counts(), [0, 0, 0]);
+      assert.deepEqual(await counts(), [accepted, accepted, accepted]);
 
       const active = await add('interimFinancial', sha('2'));
       const input = await lock([historical, active]);
@@ -148,7 +150,7 @@ test('persisted material with an exact successful needs-confirmation parse enter
       assert.equal((await preflight(input)).statusCode, 404);
       assert.equal((await execute(input)).statusCode, 404);
       owner = (await pool.query('SELECT owner_user_id FROM bb_projects WHERE id=$1', [project])).rows[0].owner_user_id;
-      assert.deepEqual(await counts(), [0, 0, 0]);
+      assert.deepEqual(await counts(), [accepted, accepted, accepted]);
       const states = await pool.query('SELECT state FROM bb_material_versions WHERE id=ANY($1)', [[historical.material_id, active.material_id]]);
       assert.deepEqual(states.rows.map(row => row.state), ['persisted', 'persisted']);
       const checked = await preflight(input);
@@ -180,7 +182,7 @@ test('persisted material with an exact successful needs-confirmation parse enter
         [owner,browserKey])).rows[0].n,0);
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
         [owner,executionKeyHash(browserKey)])).rows[0].n,0);
-      assert.deepEqual(await counts(), [1, 1, 1]);
+      assert.deepEqual(await counts(), [accepted + 1, accepted + 1, accepted + 1]);
 
       const rejectedCreated=await post('/api/v1/projects',
         {name:'Synthetic missing locked materials',kind:'update',issuer_name:null,market:null,offering:null});
@@ -194,30 +196,14 @@ test('persisted material with an exact successful needs-confirmation parse enter
       const rejectedRequest={...browserRequest,project_id:rejectedProject,input_revision:1,
         input_hash:rejectedInput.input_hash,execution_request_id:rejectedKey};
       const missingMaterials=await post('/api/v1/runs/execute',rejectedRequest);
-      assert.equal(missingMaterials.statusCode,409,missingMaterials.body);
-      assert.equal(missingMaterials.json().code,'INPUT_REQUIRED');
-      assert.deepEqual(await rejectionAudit(missingMaterials.json().correlation_id),{
-        owner_user_id:owner,project_id:rejectedProject,operation_channel:'non_production_test',
-        event_channel:'non_production_test',error_code:'INPUT_REQUIRED'});
-      const rejectedJob=(await pool.query(`SELECT id,channel,test_grant_id,state,project_id FROM bb_jobs
-        WHERE owner_user_id=$1 AND execution_request_key_hash=$2`,
-        [owner,executionKeyHash(autoTestExecutionKeyStorage(rejectedKey))])).rows[0];
-      assert.equal(rejectedJob.channel,'non_production_test');
-      assert.equal(rejectedJob.test_grant_id,null);
-      assert.equal(rejectedJob.state,'rejected');
-      assert.equal(rejectedJob.project_id,rejectedProject);
-      await assert.rejects(pool.query("UPDATE bb_jobs SET state='queued' WHERE id=$1",[rejectedJob.id]),
-        (error:any)=>/terminal logical job is immutable/.test(error.message));
+      assert.equal(missingMaterials.statusCode,202,missingMaterials.body);
+      assert.equal(missingMaterials.json().state,'queued');
+      assert.equal(missingMaterials.json().channel,'non_production_test');
+      const missingReplay=await post('/api/v1/runs/execute',rejectedRequest);
+      assert.equal(missingReplay.statusCode,202,missingReplay.body);
+      assert.equal(missingReplay.json().run_id,missingMaterials.json().run_id);
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
         [owner,executionKeyHash(rejectedKey)])).rows[0].n,0);
-      const rejectedReplay=await post('/api/v1/runs/execute',rejectedRequest);
-      assert.equal(rejectedReplay.statusCode,409,rejectedReplay.body);
-      assert.equal(rejectedReplay.json().code,'INPUT_REQUIRED');
-      assert.equal((await pool.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
-        [owner,executionKeyHash(autoTestExecutionKeyStorage(rejectedKey))])).rows[0].id,rejectedJob.id);
-      assert.deepEqual(await rejectionAudit(rejectedReplay.json().correlation_id),{
-        owner_user_id:owner,project_id:rejectedProject,operation_channel:'non_production_test',
-        event_channel:'non_production_test',error_code:'INPUT_REQUIRED'});
 
       const legacyCreated=await post('/api/v1/projects',
         {name:'Synthetic existing raw test run',kind:'update',issuer_name:null,market:null,offering:null});

@@ -656,7 +656,7 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
     const sourceManifest = { kind: 'synthetic_rule_source', draft_revision: 1, materials: [] };
     const sourceHash = inputManifestHash(sourceManifest);
     await client.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,market,offering,update_details)
-      VALUES($1,$2,'Synthetic rule pin','update','sse','public_all','{}')`, [projectId, operator]);
+      VALUES($1,$2,'Synthetic rule pin','review','sse','public_all','{}')`, [projectId, operator]);
     await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
       VALUES($1,1,$2,1,$3,$4,'[]','[]')`, [projectId, operator, sourceHash, sourceManifest]);
     const contextPin = { schema_version: 'synthetic-reviewed-context-v1', source_input_revision: 1, source_input_hash: sourceHash,
@@ -781,8 +781,14 @@ test('live PostgreSQL 16 accepts an isolated synthetic release and revalidates i
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version)
         VALUES($1,4,$2,2,$3,$4,'[]','[]',$5,$6)`,
       [projectId, operator, inputHash, manifest, locked.pin.version, locked.pin.templateVersion]);
-      assert.ok((await preflightRuleReasons(client, operator, projectId, inputHash,
-        selectionRequest, contextPin, 4)).includes('rule_pack:rule_pack_pin_mismatch'));
+      const driftApp = createServer({ pool: transactionalPool(client), allowedOrigin: 'http://bondbuddy.test',
+        principal: async () => ({ userId: operator, csrfVerified: true }) });
+      try {
+        const driftPreflight = await driftApp.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/preflight`,
+          headers: { origin: 'http://bondbuddy.test' }, payload: { input_revision: 4, input_hash: inputHash } });
+        assert.equal(driftPreflight.statusCode, 409, driftPreflight.body);
+        assert.equal(driftPreflight.json().code, 'INPUT_REVISION_CONFLICT', 'advisory business readiness cannot bypass the immutable draft pin');
+      } finally { await driftApp.close(); }
       const driftGate = await inputLockStage.run({ ...ctx, run: { ...run, input_revision: 4 } });
       assert.deepEqual(driftGate, { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' });
       let driftPromptBuilt = false;

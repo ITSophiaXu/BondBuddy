@@ -147,13 +147,12 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     const checked=await send('POST',`/api/v1/projects/${project}/preflight`,preflightPayload);
     assert.equal(checked.statusCode,200,checked.body);
     assert.ok(checked.json().missing_inputs.includes('rule_pack:issuer_identity_not_bound'));
-    assert.ok(checked.json().blocking_inputs.includes('rule_pack:issuer_identity_not_bound'),
-      'an input without an issuer source observation remains technically blocked');
-    assert.ok(checked.json().blocking_inputs.includes('material_versions'),
-      'missing material bytes are still blocking');
+    assert.deepEqual(checked.json().blocking_inputs,[]);
+    assert.ok(checked.json().advisory_inputs.includes('rule_pack:issuer_identity_not_bound'));
+    assert.ok(checked.json().advisory_inputs.includes('material_versions'));
     const preflightAudit=(await pool.query("SELECT channel,test_grant_id,stage FROM bb_jobs WHERE owner_user_id=$1 AND project_id=$2 AND subtype='free_preflight' ORDER BY created_at DESC LIMIT 1",
       [user,project])).rows[0];
-    assert.deepEqual(preflightAudit,{channel:'non_production_test',test_grant_id:grantId,stage:'blocked'});
+    assert.deepEqual(preflightAudit,{channel:'non_production_test',test_grant_id:grantId,stage:'needs_confirmation'});
     const wrongPreflight=await send('POST',`/api/v1/projects/${project}/preflight`,
       {...preflightPayload,input_hash:sha('d')});
     assert.equal(wrongPreflight.statusCode,409,wrongPreflight.body);
@@ -250,7 +249,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
   }
 });
 
-test('working draft admission requires a successful parse job and fails closed for invalid windows',
+test('working draft admission defers parse and business gaps while retaining ownership, pin and revocation checks',
   {skip:!databaseUrl},async()=>{
   const names=['BB_DEPLOYMENT_TIER','BB_NON_PRODUCTION_TEST_CHANNEL','BB_PREPROD_WORKING_DRAFT_EXPIRES_AT',
     'BB_PREPROD_WORKING_DRAFT_SAMPLE_MANIFEST_SHA256','BB_PREPROD_WORKING_DRAFT_TAXONOMY_HASH',
@@ -291,9 +290,9 @@ test('working draft admission requires a successful parse job and fails closed f
       runs:Number((await pool.query('SELECT count(*) AS n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].n)
     });
     const empty=await locked([]);
-    assert.equal((await check(empty)).json().code,'INPUT_REQUIRED');
-    assert.equal((await send('/api/v1/runs/execute',request(empty))).json().code,'INPUT_REQUIRED');
-    assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
+    assert.equal((await check(empty)).statusCode,200);
+    assert.equal((await send('/api/v1/runs/execute',request(empty))).statusCode,202);
+    assert.deepEqual(await counts(),{grants:1,grantEvents:1,runs:1});
 
     const addMaterial=async(role:'historical'|'financial',hash:string,withParse=true)=>{
       const id=randomUUID(),uploadId=randomUUID();
@@ -314,9 +313,9 @@ test('working draft admission requires a successful parse job and fails closed f
     };
     const financial=await addMaterial('financial',sha('f'));
     const onlyFinancial=await locked([financial]);
-    assert.equal((await check(onlyFinancial)).json().code,'INPUT_REQUIRED');
-    assert.equal((await send('/api/v1/runs/execute',request(onlyFinancial))).json().code,'INPUT_REQUIRED');
-    assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
+    assert.equal((await check(onlyFinancial)).statusCode,200);
+    assert.equal((await send('/api/v1/runs/execute',request(onlyFinancial))).statusCode,202);
+    assert.deepEqual(await counts(),{grants:2,grantEvents:2,runs:2});
     const historical=await addMaterial('historical',sha('e'));
     const valid=await locked([historical,financial]);
     const validRequest=request(valid);
@@ -326,7 +325,7 @@ test('working draft admission requires a successful parse job and fails closed f
     assert.equal((await check(valid)).statusCode,404);
     assert.equal((await send('/api/v1/runs/execute',request(valid))).statusCode,404);
     owner=(await pool.query('SELECT owner_user_id FROM bb_projects WHERE id=$1',[project])).rows[0].owner_user_id;
-    assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
+    assert.deepEqual(await counts(),{grants:2,grantEvents:2,runs:2});
 
     const changed=await addMaterial('financial',sha('b'));
     const changedInput=await locked([historical,changed]);
@@ -352,11 +351,7 @@ test('working draft admission requires a successful parse job and fails closed f
     assert.equal((await send('/api/v1/runs/execute',request(removedInput))).json().code,'INPUT_REVISION_CONFLICT');
     const unreadable=await addMaterial('financial',sha('1'),false);
     const unreadableInput=await locked([historical,unreadable]);
-    for(const response of [await check(unreadableInput),await send('/api/v1/runs/execute',request(unreadableInput))]){
-      assert.equal(response.statusCode,409,response.body);
-      assert.equal(response.json().code,'INPUT_REQUIRED');
-      assert.match(response.json().message,/complete its saved upload again/i);
-    }
+    assert.equal((await check(unreadableInput)).statusCode,200);
     const parseJob=randomUUID();
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
       material_sha256,parser_version,trace_id,max_attempts,error_code,result)
@@ -364,13 +359,11 @@ test('working draft admission requires a successful parse job and fails closed f
     [parseJob,owner,project,unreadable.material_id,sha('1'),documentParserVersion(),randomUUID()]);
     for(const state of ['queued','running']){
       await pool.query('UPDATE bb_jobs SET state=$2 WHERE id=$1',[parseJob,state]);
-      assert.equal((await check(unreadableInput)).json().code,'CAPABILITY_NOT_READY');
-      assert.equal((await send('/api/v1/runs/execute',request(unreadableInput))).json().code,'CAPABILITY_NOT_READY');
+      assert.equal((await check(unreadableInput)).statusCode,200);
     }
     await pool.query("UPDATE bb_jobs SET state='failed',error_code='MATERIAL_UNREADABLE',result=$2 WHERE id=$1",
       [parseJob,{outcome:'failed',parse_status:'failed',profile_version:null,pending_capabilities:[]}]);
-    assert.equal((await check(unreadableInput)).json().code,'MATERIAL_UNREADABLE');
-    assert.equal((await send('/api/v1/runs/execute',request(unreadableInput))).json().code,'MATERIAL_UNREADABLE');
+    assert.equal((await check(unreadableInput)).statusCode,200);
     const corrupt=await addMaterial('financial',sha('3'),false);
     const corruptInput=await locked([historical,corrupt]);
     await pool.query(`INSERT INTO bb_jobs(id,owner_user_id,run_id,job_type,subtype,state,project_id,material_id,material_version,
@@ -378,21 +371,14 @@ test('working draft admission requires a successful parse job and fails closed f
       VALUES($1,$2,NULL,'parse','material_parse','succeeded',$3,$4,1,$5,$6,$7,3,$8)`,
     [randomUUID(),owner,project,corrupt.material_id,sha('3'),documentParserVersion(),randomUUID(),
       {outcome:'failed',parse_status:'failed',profile_version:null,pending_capabilities:[]}]);
-    assert.equal((await check(corruptInput)).json().code,'MATERIAL_UNREADABLE',
-      'a success state with a failed parse result is still unreadable');
-    assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
+    assert.equal((await check(corruptInput)).statusCode,200);
+    assert.deepEqual(await counts(),{grants:4,grantEvents:4,runs:2});
 
-    process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT='invalid';
-    for(const response of [await check(valid),await send('/api/v1/runs/execute',request(valid))]){
-      assert.equal(response.statusCode,409,response.body);
-      assert.equal(response.json().code,'TEST_GRANT_INVALID');
+    // An expired or malformed legacy deadline is no longer an admission gate.
+    for (const deadline of ['invalid',new Date(Date.now()-3_600_000).toISOString()]) {
+      process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT=deadline;
+      assert.equal((await check(valid)).statusCode,200);
     }
-    process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT=new Date(Date.now()-3_600_000).toISOString();
-    assert.equal((await check(valid)).json().code,'TEST_GRANT_EXPIRED');
-    assert.equal((await send('/api/v1/runs/execute',request(valid))).json().code,'TEST_GRANT_EXPIRED');
-    assert.deepEqual(await counts(),{grants:0,grantEvents:0,runs:0});
-
-    process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT=new Date(Date.now()+3_600_000).toISOString();
     const preflight=await check(valid);
     assert.equal(preflight.statusCode,200,preflight.body);
     const submitted=await send('/api/v1/runs/execute',validRequest);
@@ -400,12 +386,12 @@ test('working draft admission requires a successful parse job and fails closed f
     assert.equal(submitted.json().channel,'non_production_test');
     const grantId=submitted.json().test_grant_id as string;
     assert.equal((await send('/api/v1/runs/execute',validRequest)).json().run_id,submitted.json().run_id);
-    assert.deepEqual(await counts(),{grants:1,grantEvents:1,runs:1});
+    assert.deepEqual(await counts(),{grants:5,grantEvents:5,runs:3});
     await pool.query(`UPDATE bb_non_production_test_grants SET revoked_at=now(),revoked_by='synthetic-operator',
       revoked_reason='synthetic_revoke' WHERE grant_id=$1`,[grantId]);
     assert.equal((await check(valid)).json().code,'TEST_GRANT_REVOKED');
     assert.equal((await send('/api/v1/runs/execute',request(valid))).json().code,'TEST_GRANT_REVOKED');
-    assert.deepEqual(await counts(),{grants:1,grantEvents:1,runs:1});
+    assert.deepEqual(await counts(),{grants:5,grantEvents:5,runs:3});
     process.env.BB_DEPLOYMENT_TIER='production';
     assert.equal((await send('/api/v1/runs/execute',request(valid))).json().code,'TEST_CHANNEL_DISABLED');
     for(const name of names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_')))delete process.env[name];
@@ -424,9 +410,9 @@ test('working draft admission requires a successful parse job and fails closed f
       assert.equal(emptyConfig.json().test_grant_id,null);
     }
     process.env.BB_PREPROD_WORKING_DRAFT_STAGE='issuance';
-    for(const response of [await check(valid),await send('/api/v1/runs/execute',request(valid))]){
-      assert.equal(response.statusCode,409,response.body);
-      assert.equal(response.json().code,'TEST_GRANT_INVALID');
+    const partialConfigInput=await locked([financial]);
+    for(const response of [await check(partialConfigInput),await send('/api/v1/runs/execute',request(partialConfigInput))]){
+      assert.ok([200,202].includes(response.statusCode),response.body);
     }
   }finally{
     await app.close();await pool.end();
