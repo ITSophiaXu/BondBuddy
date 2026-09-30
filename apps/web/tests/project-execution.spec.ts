@@ -25,6 +25,7 @@ function fixture() {
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
+    holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
     parseSucceeded: false,
     runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
@@ -32,6 +33,7 @@ function fixture() {
     eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
     eventHistory: [] as { seq: number; state: Dto<'RunResponse'>['state']; stage: string; reason: string }[],
     executeError: undefined as { status: number; code: string; correlation_id: string } | undefined,
+    preflightError: undefined as { status: number; code: string; correlation_id: string } | undefined,
     runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
     blockers: undefined as string[] | undefined };
@@ -87,6 +89,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path === `/projects/${id}/preflight`) {
       const body = request.postDataJSON();
       state.preflights.push(body);
+      if (state.preflightError) return json(route, state.preflightError.status, state.preflightError);
       if (state.holdCheck) await new Promise<void>(resolve => { state.releaseCheck = resolve; });
       const blocking = state.checkStatus === 'blocked' ? state.blockers ?? [state.reason] : [];
       return json(route, 200, { project_id: id, ...body, status: state.checkStatus, missing_inputs: blocking,
@@ -126,7 +129,13 @@ async function setup(page: Page, state = fixture(), canStart = true) {
           occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
           payload: more ? {} : { ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
       }
-      return json(route, 200, run);
+      state.runReads++;
+      const snapshot={...structuredClone(run),event_cursor:state.eventSeq};
+      if (state.holdRunRead) {
+        state.holdRunRead=false;
+        await new Promise<void>(resolve=>{state.releaseRunRead=resolve;});
+      }
+      return json(route, 200, snapshot);
     }
     if (path.endsWith('/facts/candidates')) return json(route, 200, { items: [], page: { next_cursor: null, has_more: false } });
     return json(route, 404, { code: 'NOT_FOUND' });
@@ -245,14 +254,16 @@ test('input error identifies the missing historical draft without blaming saved 
   expect(state.materials).toHaveLength(1); expect(state.runs.size).toBe(0);
 });
 
-test('reference + audit without historical is not relabeled or reuploaded on INPUT_REQUIRED', async ({ page }) => {
+test('an existing update project with reference + audit explains classification before suggesting a new draft', async ({ page }) => {
   const state=fixture(); state.project.update_details!.has_historical=false;
   Object.assign(state.materials[0], { role: 'reference', parse_snapshot_id: 'synthetic-snapshot' });
   state.checkStatus='ready';
   state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-required'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('当前新稿入口未能处理');
-  await expect(page.locator('#execution-message')).toContainText('不要把相似稿改作本发行人历史稿');
+  await expect(page.locator('#execution-message')).toContainText('已上传募集书被登记为参考稿');
+  await expect(page.locator('#execution-message')).toContainText('若该文件是本发行人的历史募集书');
+  await expect(page.locator('#execution-message')).toContainText('保留原文件并更正分类');
+  await expect(page.locator('#execution-message')).toContainText('若确实没有本发行人历史稿');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-generation-required');
   await expect(page.locator('#execute-input')).toBeDisabled();
   if (process.env.BB_361_ERROR_EVIDENCE_DIR) {
@@ -266,6 +277,89 @@ test('reference + audit without historical is not relabeled or reuploaded on INP
   expect(state.runs.size).toBe(0);
   await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
   expect(state.project.update_details!.has_historical).toBe(false);
+});
+
+test('a preflight INPUT_REQUIRED shows reference classification and rechecks the same immutable input', async ({ page }) => {
+  const state=fixture(); state.project.update_details!.has_historical=false;
+  Object.assign(state.materials[0], { role:'reference' });
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-preflight-role'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('已上传募集书被登记为参考稿');
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-preflight-role');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await expect(page.locator('#recheck-input')).toBeVisible();
+  await page.locator('#recheck-input').click();
+  await expect.poll(()=>state.preflights.length).toBe(2);
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  expect(state.preflights[0]).toEqual(state.preflights[1]);
+  if (process.env.BB_361_START_EVIDENCE_DIR) {
+    const output=resolve(process.env.BB_361_START_EVIDENCE_DIR); await mkdir(output,{recursive:true});
+    for (const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.locator('#execution-message').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`reference-role-${device}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+  }
+  state.preflightError=undefined;
+  state.checkStatus='blocked'; state.blockers=['issuer_identity_not_bound:historical_material_not_selected'];
+  await page.locator('#recheck-input').click();
+  await expect(page.locator('#execution-preflight')).toContainText('发行人身份核验尚未完成');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  expect(state.materials.map(m=>m.role)).toEqual(['reference','audit']);
+});
+
+test('the historical choice still sees a misclassified reference excluded from execution inputs', async ({ page }) => {
+  const state=fixture(); state.materials[0].role='reference';
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-excluded-reference'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('已上传募集书被登记为参考稿');
+  expect(state.inputs[0].material_versions).toEqual([{material_id:'synthetic-audit',material_version:1}]);
+  await page.reload(); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('保留原文件并更正分类');
+  expect(state.materials[0].role).toBe('reference'); expect(state.executes).toHaveLength(0);
+});
+
+test('a generation rejection keeps structural reference separate from issuer verification', async ({ page }) => {
+  const state=fixture(); state.project.kind='generation'; state.project.update_details!.has_historical=false;
+  Object.assign(state.materials[0], {role:'reference',parse_snapshot_id:'synthetic-snapshot'});
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-preflight'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('新稿尚未满足执行条件');
+  await expect(page.locator('#execution-message')).toContainText('身份核验及新稿处理条件');
+  await expect(page.locator('#execution-message')).toContainText('不要把相似稿改作本发行人历史稿');
+  await expect(page.locator('#execution-message')).not.toContainText('更正分类');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  state.preflightError=undefined; state.checkStatus='ready';
+  await page.locator('#recheck-input').click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
+  expect(state.executes[0].task_kind).toBe('generation');
+});
+
+test('preflight processing wait checks the same input without calling the file damaged or generation unavailable', async ({ page }) => {
+  const state=fixture();
+  state.preflightError={status:409,code:'CAPABILITY_NOT_READY',correlation_id:'synthetic-processing-wait'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('材料或处理条件尚未就绪');
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-processing-wait');
+  await expect(page.locator('#execution-message')).not.toContainText(/损坏|尚未开放全文更新/);
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await page.locator('#recheck-input').click();
+  await expect.poll(()=>state.preflights.length).toBe(2);
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  expect(state.preflights[1]).toEqual(state.preflights[0]);
+  state.preflightError=undefined; state.checkStatus='ready';
+  await page.locator('#recheck-input').click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
 });
 
 test('temporary start failure retains support reference and does not claim missing materials', async ({ page }) => {
@@ -344,6 +438,24 @@ test('list v1 -> GET v2 before start stops without creating an input or run', as
   // The page stays on the project and the action remains available for a refreshed re-selection.
   await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
   await expect(page.getByRole('heading',{name:'合成任务项目',exact:true})).toBeVisible();
+});
+
+test('manual task refresh invalidates a late paused poll without replaying task actions', async ({ page }) => {
+  // Freeze the scheduled five-second poll so only explicit refreshes can change the state.
+  await page.clock.install({time:new Date(now)});
+  await page.clock.pauseAt(new Date(Date.parse(now)+1000));
+  const state=fixture(); state.checkStatus='ready'; state.holdRunRead=true;
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect.poll(()=>Boolean(state.releaseRunRead)).toBe(true);
+  const run=[...state.runs.values()][0]; run.state='running';
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  state.releaseRunRead!();
+  await expect.poll(()=>state.runReads).toBeGreaterThanOrEqual(3);
+  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  await expect(page.locator('#recheck-paused')).toHaveCount(0);
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
+  expect(state.runActions).toHaveLength(0); expect(state.runs.size).toBe(1);
 });
 
 test('paginated recovery and real task actions keep one run', async ({ page }) => {
