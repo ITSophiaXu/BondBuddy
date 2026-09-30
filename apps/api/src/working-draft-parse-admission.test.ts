@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
+import { autoTestExecutionKeyStorage, digest } from './data.js';
+import { executionKeyHash } from './observability.js';
 import { documentParserVersion } from './material-jobs.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -147,11 +149,96 @@ test('persisted material with an exact successful needs-confirmation parse enter
       assert.equal(checked.statusCode, 200, checked.body);
       assert.ok(checked.json().uncertainty.some((item: string) => item.startsWith('material_needs_confirmation:')),
         'a successful parse with unresolved content remains explicitly uncertain');
-      const submitted = await execute(input);
+      const browserKey=`web-update-${digest(JSON.stringify([project,input.input_revision,input.input_hash]))}`;
+      const browserRequest={execution_request_id:browserKey,project_id:project,
+        input_revision:input.input_revision,input_hash:input.input_hash,task_kind:'update',
+        input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
+      const schemaRejected=await post('/api/v1/runs/execute',{...browserRequest,workspace_id:undefined});
+      assert.equal(schemaRejected.statusCode,422,schemaRejected.body);
+      const submitted = await post('/api/v1/runs/execute',browserRequest);
       assert.equal(submitted.statusCode, 202, submitted.body);
       assert.equal(submitted.json().channel, 'non_production_test');
       assert.ok(submitted.json().test_grant_id);
+      assert.equal(submitted.json().execution_request_id,browserKey);
+      assert.equal((await pool.query('SELECT execution_request_id FROM bb_runs WHERE id=$1',[submitted.json().run_id])).rows[0].execution_request_id,
+        autoTestExecutionKeyStorage(browserKey));
+      const replay=await post('/api/v1/runs/execute',browserRequest);
+      assert.equal(replay.statusCode,202,replay.body);
+      assert.equal(replay.json().run_id,submitted.json().run_id);
+      const explicit=await post('/api/v1/runs/execute',{...browserRequest,test_grant_id:submitted.json().test_grant_id});
+      assert.equal(explicit.statusCode,422,explicit.body);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',
+        [owner,browserKey])).rows[0].n,0);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
+        [owner,executionKeyHash(browserKey)])).rows[0].n,0);
       assert.deepEqual(await counts(), [1, 1, 1]);
+
+      const legacyCreated=await post('/api/v1/projects',
+        {name:'Synthetic existing raw test run',kind:'update',issuer_name:null,market:null,offering:null});
+      assert.equal(legacyCreated.statusCode,201,legacyCreated.body);
+      const legacyProject=legacyCreated.json().project_id as string;
+      const legacyLocked=await post(`/api/v1/projects/${legacyProject}/input-revisions`,
+        {draft_revision:1,material_versions:[],requirement_message_ids:[]});
+      assert.equal(legacyLocked.statusCode,201,legacyLocked.body);
+      const legacyInput=legacyLocked.json();
+      const legacyGrant=randomUUID(),legacyRun=randomUUID();
+      await pool.query(`INSERT INTO bb_non_production_test_grants
+        (grant_id,user_id,project_id,input_revision,input_hash,sample_manifest_sha256,taxonomy_hash,rule_pack_hash,granted_by,reason,expires_at)
+        VALUES($1,$2,$3,1,$4,$5,$6,$7,'synthetic-operator','synthetic test',now()+interval '1 hour')`,
+        [legacyGrant,owner,legacyProject,legacyInput.input_hash,sha('a'),sha('b'),sha('c')]);
+      const legacyKey=`web-update-${digest(JSON.stringify([legacyProject,1,legacyInput.input_hash]))}`;
+      const legacyRequest={...browserRequest,project_id:legacyProject,input_revision:1,
+        input_hash:legacyInput.input_hash,execution_request_id:legacyKey};
+      const legacyHash=digest(JSON.stringify({project_id:legacyProject,input_revision:1,
+        input_hash:legacyInput.input_hash,task_kind:'update',input_manifest_ref:'synthetic',
+        storage_origin:'cloud',workspace_id:'synthetic'}));
+      await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,
+        task_kind,request_hash,state,channel,test_grant_id) VALUES($1,$2,$3,1,$4,$5,'update',$6,'paused','non_production_test',$7)`,
+        [legacyRun,owner,legacyProject,legacyInput.input_hash,legacyKey,legacyHash,legacyGrant]);
+      const legacyReplay=await post('/api/v1/runs/execute',legacyRequest);
+      assert.equal(legacyReplay.statusCode,202,legacyReplay.body);
+      assert.equal(legacyReplay.json().run_id,legacyRun);
+
+      const disabledCreated=await post('/api/v1/projects',
+        {name:'Synthetic staging disabled',kind:'update',issuer_name:null,market:null,offering:null});
+      assert.equal(disabledCreated.statusCode,201,disabledCreated.body);
+      const disabledProject=disabledCreated.json().project_id as string;
+      const disabledLocked=await post(`/api/v1/projects/${disabledProject}/input-revisions`,
+        {draft_revision:1,material_versions:[],requirement_message_ids:[]});
+      assert.equal(disabledLocked.statusCode,201,disabledLocked.body);
+      const disabledInput=disabledLocked.json();
+      const disabledKey=`web-update-${digest(JSON.stringify([disabledProject,1,disabledInput.input_hash]))}`;
+      const disabledRequest={...browserRequest,project_id:disabledProject,input_revision:1,
+        input_hash:disabledInput.input_hash,execution_request_id:disabledKey};
+      const stagingOff=createServer({pool,allowedOrigin:origin,
+        principal:async()=>({userId:owner,csrfVerified:true}),enableRunStaging:false});
+      try{
+        const invalid=await stagingOff.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},
+          payload:{...disabledRequest,workspace_id:undefined}});
+        assert.equal(invalid.statusCode,422,invalid.body);
+        const unavailable=await stagingOff.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},
+          payload:disabledRequest});
+        assert.equal(unavailable.statusCode,501,unavailable.body);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
+          [owner,executionKeyHash(disabledKey)])).rows[0].n,0);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
+          [owner,executionKeyHash(autoTestExecutionKeyStorage(disabledKey))])).rows[0].n,1);
+      }finally{await stagingOff.close();}
+
+      for(const name of names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_')))delete process.env[name];
+      const production=await post('/api/v1/runs/execute',browserRequest);
+      assert.equal(production.statusCode,202,production.body);
+      assert.equal(production.json().channel,'production');
+      assert.equal(production.json().execution_request_id,browserKey);
+      assert.notEqual(production.json().run_id,submitted.json().run_id);
+      const crossChannel=await post('/api/v1/runs/execute',legacyRequest);
+      assert.equal(crossChannel.statusCode,409,crossChannel.body);
+      assert.equal(crossChannel.json().code,'IDEMPOTENCY_CONFLICT');
+      owner=`foreign-${randomUUID()}`;
+      for(const runId of [submitted.json().run_id,production.json().run_id]){
+        const read=await app.inject({method:'GET',url:`/api/v1/runs/${runId}`,headers:{origin}});
+        assert.equal(read.statusCode,404,read.body);
+      }
     } finally {
       await app.close();
       await pool.end();

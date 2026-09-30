@@ -8,7 +8,7 @@ import {
   type OcrPageCheckpointV2
 } from '@bondbuddy/contracts';
 import { authorizeOcrMaterial } from './ocr.js';
-import { digest, missing, Problem, project, transaction, uid, type PrivateBlobs } from './data.js';
+import { digest, executionKeyFromStorage, missing, Problem, project, transaction, uid, type PrivateBlobs } from './data.js';
 
 export type OcrV2Scope = {
   owner: string; projectId: string; materialId: string; version: number;
@@ -48,7 +48,7 @@ export async function authorizeOcrV2(pool: Pool | PoolClient, scope: OcrV2Scope,
   if (!run.rows[0]) throw new Problem(409, 'CAPABILITY_NOT_READY', 'Full OCR requires an active run and locked material');
   const row = run.rows[0];
   return { jobId: row.job_id as string, context: {
-    purpose: 'full_ocr', run: { run_id: row.id as string, execution_request_id: row.execution_request_id as string,
+    purpose: 'full_ocr', run: { run_id: row.id as string, execution_request_id: executionKeyFromStorage(row.execution_request_id as string),
       input_revision: row.input_revision as number, input_hash: (row.input_hash as string).trim() },
     billable: false, cost_payer: 'platform'
   } as const };

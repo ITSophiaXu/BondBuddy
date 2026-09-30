@@ -12,11 +12,21 @@ export const digest = (bytes: Buffer | string) => createHash('sha256').update(by
 export const canonical = (value: unknown): string => JSON.stringify(value);
 // Longer than any contract-valid key, so the encoded namespace cannot alias a legacy raw key.
 const encodedExecutionKeyPrefix=`${'~'.repeat(129)}v2:`;
+// Outside the public 128-character key space. A controlled automatic test run
+// retains the browser key in its DTO without claiming the production DB key.
+const autoTestExecutionKeyPrefix=`${'~'.repeat(129)}auto-test:`;
+export const autoTestExecutionKeyStorage=(value:string):string=>{
+  if(!/^web-update-[a-f0-9]{64}$/.test(value))throw new Error('Invalid browser update key');
+  return autoTestExecutionKeyPrefix+value;
+};
+export const isAutoTestExecutionKeyStorage=(value:string):boolean=>
+  value.startsWith(autoTestExecutionKeyPrefix)&&/^web-update-[a-f0-9]{64}$/.test(value.slice(autoTestExecutionKeyPrefix.length));
 export const executionKeyStorage=(value:string):string=>
   value.includes('\0')||Buffer.from(value,'utf8').toString('utf8')!==value
     ? encodedExecutionKeyPrefix+Buffer.from(value,'utf16le').toString('hex')
     : value;
 export const executionKeyFromStorage=(value:string):string=>{
+  if(isAutoTestExecutionKeyStorage(value))return value.slice(autoTestExecutionKeyPrefix.length);
   if(!value.startsWith(encodedExecutionKeyPrefix))return value;
   const hex=value.slice(encodedExecutionKeyPrefix.length);
   return hex.length>0&&hex.length%4===0&&/^[a-f0-9]+$/.test(hex)

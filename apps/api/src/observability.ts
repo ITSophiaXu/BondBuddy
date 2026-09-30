@@ -1,7 +1,7 @@
 import { Value } from '@sinclair/typebox/value';
 import { schemas, ERROR_CODES, ERROR_CATEGORIES, type InternalObservabilityEvent } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
-import { digest, missing, transaction, uid, type PrivateBlobs } from './data.js';
+import { digest, isAutoTestExecutionKeyStorage, missing, transaction, uid, type PrivateBlobs } from './data.js';
 import { guardEvidenceWrite } from './evidence-gate.js';
 import type { UploadRejectionReason, UploadStructureDetail } from './upload-safety.js';
 import { errorDiagnostic, type RecoveryOutcome } from './error-diagnostics.js';
@@ -54,7 +54,8 @@ export async function recordLogicalJob(client:PoolClient,input:{owner:string;pro
        : input.inputRevision===undefined||input.inputHash===undefined||
          (input.kind==='preflight')!==(input.jobType==='preflight')||
          (input.kind==='execute' ? !input.executionRequestId||!/^[a-f0-9]{64}$/.test(input.requestHash??'')||!Number.isInteger(input.httpStatus)||(input.httpStatus??0)<400||(input.httpStatus??0)>599 : input.executionRequestId!==undefined||input.requestHash!==undefined||input.httpStatus!==undefined))||
-     (input.executionRequestId!==undefined&&!validExecutionKey(input.executionRequestId)))throw new Error('Invalid logical job');
+     (input.executionRequestId!==undefined&&!validExecutionKey(input.executionRequestId)&&
+       !isAutoTestExecutionKeyStorage(input.executionRequestId)))throw new Error('Invalid logical job');
   const subtype=input.schemaRejected?(input.kind==='execute'?'execute_schema_rejected':'preflight_schema_rejected'):
     input.kind==='execute'?'execute_rejected':input.status==='rejected'?'preflight_rejected':'free_preflight';
   // Execute shares #17's per-owner business key; preflight has no public idempotency key.

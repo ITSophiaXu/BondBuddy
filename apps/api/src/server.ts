@@ -6,7 +6,7 @@ import type { OcrCorrectionRequest } from '@bondbuddy/contracts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
-import { azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
+import { autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
 import { clearSpoolDirectory, discardSpool, reserveSpool, spoolDirectory, spoolStream, type Spooled } from './upload-spool.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -1234,10 +1234,26 @@ export function createServer(settings: Settings = {}) {
     const b=body<{execution_request_id:string;project_id:string;input_revision:number;input_hash:string;task_kind:string;input_manifest_ref:string;storage_origin:string;workspace_id:string;test_grant_id?:string;user_prompt?:string}>(request);
     const traceId=uid();
     const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.user_prompt?{user_prompt_sha256:digest(b.user_prompt)}:{}),...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
-    const storedExecutionKey=executionKeyStorage(b.execution_request_id);
+    const rawExecutionKey=executionKeyStorage(b.execution_request_id);
     const wideRevision=!isPgInputRevision(b.input_revision);
-    const browserTestKey=(!!b.test_grant_id||workingDraftConfigured()) &&
-      isBrowserUpdateKey(b.execution_request_id,b.project_id,b.input_revision,b.input_hash);
+    const browserKey=isBrowserUpdateKey(b.execution_request_id,b.project_id,b.input_revision,b.input_hash);
+    const browserTestKey=!!b.test_grant_id&&browserKey;
+    const autoBrowserTestKey=!b.test_grant_id&&workingDraftConfigured()&&browserKey;
+    const storedExecutionKey=autoBrowserTestKey?autoTestExecutionKeyStorage(b.execution_request_id):rawExecutionKey;
+    const logicalExecutionKey=autoBrowserTestKey?storedExecutionKey:b.execution_request_id;
+    const logicalKeyHash=executionKeyHash(logicalExecutionKey);
+    const expectedChannel=b.test_grant_id||workingDraftConfigured()?'non_production_test':'production';
+    const existingRun=async(client:PoolClient)=>{
+      // Old automatic test runs used the raw browser key. Honor an exact replay
+      // before looking for a new channel-scoped run, without crossing channels.
+      if(autoBrowserTestKey){
+        const legacy=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,rawExecutionKey]);
+        if(legacy.rows[0])return legacy.rows[0];
+      }
+      const found=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
+      return found.rows[0];
+    };
+    const sameRun=(old:any)=>old.request_hash.trim()===requestHash&&old.channel===expectedChannel;
     const rejectBrowserTestKey=async(client:PoolClient)=>{
       const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
       await recordOperation(client,{owner:user,projectId:owned.rowCount?b.project_id:null,
@@ -1249,9 +1265,9 @@ export function createServer(settings: Settings = {}) {
     if(browserTestKey){
       const response=await transaction(db(),async client=>{
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
-        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
+        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,rawExecutionKey]);
         if(old.rows[0]){
-          const same=old.rows[0].request_hash.trim()===requestHash;
+          const same=sameRun(old.rows[0]);
           await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,
             requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',
             errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,
@@ -1263,7 +1279,7 @@ export function createServer(settings: Settings = {}) {
       if('run' in response)return reply.code(202).send(response.run);
       throw new Problem(response.httpStatus,response.errorCode,'Execution request was rejected');
     }
-    const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:b.test_grant_id?'non_production_test' as const:'production' as const,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
+    const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:b.test_grant_id?'non_production_test' as const:'production' as const,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:logicalExecutionKey,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
     const priorRejection=async(client:PoolClient,prior:any)=>{
       if(wideRevision){
         const same=prior.request_hash.trim()===requestHash;
@@ -1276,13 +1292,13 @@ export function createServer(settings: Settings = {}) {
     if(!settings.enableRunStaging && !queueEnabled){
       const response=await transaction(db(),async client=>{
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
-        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
-        if(old.rows[0]){
-          const same=old.rows[0].request_hash.trim()===requestHash;
-          await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
-          return same?{run:visibleRunDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
+        const old=await existingRun(client);
+        if(old){
+          const same=sameRun(old);
+          await recordOperation(client,{owner:user,projectId:old.project_id,runId:old.id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
+          return same?{run:visibleRunDto(old)}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
         }
-        const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
+        const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash]);
         if(prior.rows[0])return priorRejection(client,prior.rows[0]);
         const owned=await client.query('SELECT kind FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',[user,b.project_id]);
         if(!owned.rowCount){await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});return {errorCode:'CAPABILITY_NOT_READY',httpStatus:501};}
@@ -1300,13 +1316,13 @@ export function createServer(settings: Settings = {}) {
     let result;
     try {result=await transaction(db(),async client=>{
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
-      const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
-      if(old.rows[0]){
-        const same=old.rows[0].request_hash.trim()===requestHash;
-        await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
-        return same?visibleRunDto(old.rows[0]):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
+      const old=await existingRun(client);
+      if(old){
+        const same=sameRun(old);
+        await recordOperation(client,{owner:user,projectId:old.project_id,runId:old.id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
+        return same?visibleRunDto(old):{rejection:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409}};
       }
-      const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,executionKeyHash(b.execution_request_id)]);
+      const prior=await client.query("SELECT id,project_id,request_hash,error_code,rejection_http_status,stage FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash]);
       if(prior.rows[0])return {rejection:await priorRejection(client,prior.rows[0])};
       const currentProject=await project(client,user,b.project_id,true);
       if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
@@ -1323,6 +1339,7 @@ export function createServer(settings: Settings = {}) {
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
+      if(autoBrowserTestKey&&!testGrantId)throw new Problem(409,'TEST_GRANT_INVALID','Automatic test grant was not issued');
       await admitRunSubmit(client,trial,user,sourceHash(request.ip));
       const runId=uid(),trace=uid(),eventId=uid();
       const q=await client.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state,event_cursor,channel,test_grant_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11) RETURNING *",[runId,user,b.project_id,b.input_revision,b.input_hash,storedExecutionKey,b.task_kind,requestHash,queueEnabled?'queued':'paused',testGrantId?'non_production_test':'production',testGrantId]);
@@ -1342,11 +1359,11 @@ export function createServer(settings: Settings = {}) {
           // The validation transaction released its lock on rollback. Recheck under
           // the same business-key lock before recording a terminal rejection.
           await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
-          const priorRun=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
-          if(priorRun.rows[0]){
-            const same=priorRun.rows[0].request_hash.trim()===requestHash;
-            await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
-            return same?{run:visibleRunDto(priorRun.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
+          const priorRun=await existingRun(client);
+          if(priorRun){
+            const same=sameRun(priorRun);
+            await recordOperation(client,{owner:user,projectId:priorRun.project_id,runId:priorRun.id,requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,inputHash:same?b.input_hash:undefined});
+            return same?{run:visibleRunDto(priorRun)}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
           }
           const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
           if(owned.rowCount){
