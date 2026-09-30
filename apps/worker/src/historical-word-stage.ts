@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { updateContentHash } from '@bondbuddy/domain/historical-update';
-import { type HistoricalGenerationPlan } from './historical-model-stage.js';
+import { PENDING_ORIGINAL_NOTICE, type HistoricalGenerationPlan } from './historical-model-stage.js';
 import { type RunStage, type StageContext } from './run-pipeline.js';
 
 const runFile = promisify(execFile);
@@ -89,11 +89,21 @@ export function historicalWordDeliveryStage(options: { writer?: typeof writeHist
       plan.reviewNotes.length > HISTORICAL_REVIEW_NOTE_MAX_COUNT || plan.reviewNotes.some(note => !note || typeof note.recordId !== 'string' ||
         !note.recordId || typeof note.message !== 'string' || !note.message.trim() || note.message.length > HISTORICAL_REVIEW_NOTE_MAX_LENGTH) ||
       !Array.isArray(plan.replacements) || !Array.isArray(plan.columns) ||
-      plan.replacements.length + plan.columns.length === 0 ||
+
       plan.context?.ownerUserId !== ctx.run.owner_user_id || plan.context?.projectId !== ctx.run.project_id ||
       plan.context?.inputRevision !== ctx.run.input_revision || plan.context?.inputHash !== ctx.run.input_hash.trim()) {
       return { kind: 'fail', code: 'VALIDATION_FAILED' };
     }
+    if (plan.pendingOriginalDraft) {
+      const draft = plan.pendingOriginalDraft;
+      if (ctx.run.channel !== 'non_production_test' || draft.mode !== 'non_production_pending_original' ||
+        !ctx.checkpoint?.historical_pending_original || draft.status !== 'needs_confirmation' || draft.notice !== PENDING_ORIGINAL_NOTICE ||
+        plan.replacements.length + plan.columns.length !== 0 || !plan.textPreview?.length || plan.generation.reviewedBlocks !== plan.textPreview.length ||
+        !ctx.checkpoint.historical_generation_input || updateContentHash(ctx.checkpoint.historical_generation_input) !== plan.generation.preparationHash ||
+        plan.textPreview.some(p => p.before !== p.after || !plan.reviewNotes.some(n => n.recordId === p.recordId)) ||
+        updateContentHash(ctx.checkpoint.historical_pending_original) !== updateContentHash({
+          preparation_hash: plan.generation.preparationHash, draft })) return { kind: 'fail', code: 'VALIDATION_FAILED' };
+    } else if (plan.replacements.length + plan.columns.length === 0) return { kind: 'fail', code: 'VALIDATION_FAILED' };
     const { planHash, ...content } = plan;
     if (updateContentHash(content) !== planHash) return { kind: 'fail', code: 'VALIDATION_FAILED' };
     if (plan.findings.some(finding => finding.recordIds.some(id =>
@@ -101,7 +111,7 @@ export function historicalWordDeliveryStage(options: { writer?: typeof writeHist
     try {
       const generated = await (options.writer ?? writeHistoricalWord)(ctx, plan);
       return { kind: 'deliver', bytes: generated.revision, cleanBytes: generated.clean, baselineBytes: generated.baseline,
-        wordSummary: { ...generated.summary, pending_review: plan.reviewNotes.map(note => ({ record_id: note.recordId, message: note.message })) } };
+        wordSummary: { ...generated.summary, ...(plan.pendingOriginalDraft ? { pending_original_draft: plan.pendingOriginalDraft } : {}), pending_review: plan.reviewNotes.map(note => ({ record_id: note.recordId, message: note.message })) } };
     } catch (error) {
       if (ctx.signal.aborted) return { kind: 'stopped' };
       const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';

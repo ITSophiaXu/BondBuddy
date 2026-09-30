@@ -5,14 +5,22 @@ import { updateContentHash, type HistoricalUpdatePlan } from '@bondbuddy/domain/
 import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { historicalUpdateFactsHash, prepareHistoricalUpdate } from './historical-update.js';
-import { HistoricalGenerationUnavailable, loadHistoricalGenerationInput, offerableFacts, type HistoricalGenerationInput } from './historical-generation-input.js';
+import { HistoricalGenerationUnavailable, deriveWorkingDraftReportingCutoff, loadHistoricalGenerationInput, offerableFacts, type WorkingDraftReportingCutoff, type HistoricalGenerationInput } from './historical-generation-input.js';
 import { HISTORICAL_GENERATION_VERSION, HISTORICAL_MAX_BLOCKS_PER_CALL, historicalGenerationSchema, mergeInventories, semanticInventory, type SemanticInventory } from './historical-generation-schema.js';
+import { historicalReviewAllowsExistingFact } from './historical-fact-reviews.js';
 import type { DocumentParseRecord } from './document-parser.js';
 import { HistoricalRulesUnavailable } from './historical-rule-context.js';
 import { splitHistoricalReviewNotes, HISTORICAL_REVIEW_NOTE_MAX_COUNT } from './historical-review-notes.js';
 
+export const PENDING_ORIGINAL_NOTICE = '临时原文工作稿：报告期间及财务事实待人工核验；未执行可信财务数值替换，完整原文仅供复核，不代表事实更新完成或已批准生产规则。';
+export interface PendingOriginalDraft {
+  mode: 'non_production_pending_original'; status: 'needs_confirmation';
+  reportingCutoff: string; targetSource: 'user_asserted' | 'provisional_evidence';
+  periodEvidence: WorkingDraftReportingCutoff; notice: typeof PENDING_ORIGINAL_NOTICE;
+}
 export interface HistoricalGenerationPlan extends HistoricalUpdatePlan {
   /** #34 renders these as visible pending-confirmation comments/markers, never confirmed replacement text. */
+  pendingOriginalDraft?: PendingOriginalDraft;
   reviewNotes: { recordId: string; message: string }[];
   generation: { version: string; preparationHash: string; chunks: number; reviewedBlocks: number };
 }
@@ -199,8 +207,25 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         factCandidateIds: selected.map(f => f.candidate.candidateId), factsHash: historicalUpdateFactsHash(selected,
           input.decisions.filter(d => keys.has(factIdentityKey(d.identity)))) }, input.planReaders);
       await input.revalidateEvidenceReviews?.();
-      // A retained/placeholder-only file is not a completed update (UPD-GAP-01).
-      if (!plan.replacements.length && !plan.columns.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' };
+      // A preserved original can be delivered only as a clearly pending test artifact.
+      // Never admit zero supported changes as a completed production update.
+      let pendingOriginalDraft: PendingOriginalDraft | undefined;
+      if (!plan.replacements.length && !plan.columns.length) {
+        const periodEvidence = ctx.run.channel === 'non_production_test' && facts.length === 0
+          ? input.reportingCutoffBasis ?? deriveWorkingDraftReportingCutoff(ctx.run.owner_user_id,
+            input.locked.context.issuerEntityId, input.locked.materials, input.facts.filter(f =>
+              // Period evidence labels source uncertainty; it cannot redefine an explicit user target.
+              historicalReviewAllowsExistingFact(input.evidenceReviews, f.candidate.candidateId)))
+          : undefined;
+        if (!periodEvidence) return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' };
+        pendingOriginalDraft = { mode: 'non_production_pending_original', status: 'needs_confirmation',
+          reportingCutoff: input.details.reporting_cutoff!, targetSource: input.reportingCutoffBasis ? 'provisional_evidence' : 'user_asserted',
+          periodEvidence, notice: PENDING_ORIGINAL_NOTICE };
+        const previous = ctx.checkpoint.historical_pending_original;
+        const pin = { preparation_hash: input.preparationHash, draft: pendingOriginalDraft };
+        if (previous && updateContentHash(previous) !== updateContentHash(pin)) throw new Error('UPDATE_GENERATION_INPUT_CHANGED');
+        if (!previous) await checkpoint(ctx, 'historical_pending_original', pin);
+      }
       const reviewNotes = inventory.coverage.filter(c => c.disposition === 'needs_evidence').map(c => ({ recordId: c.recordId, message: `待人工确认：${c.reason}` }));
       for (const finding of plan.findings) for (const recordId of finding.recordIds) {
         if (finding.code === 'UPDATE_NON_AUDIT_SOURCE_USED') {
@@ -236,10 +261,20 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         if (note) note.message += `；${message}`;
         else reviewNotes.push({ recordId, message: `待人工确认：${message}` });
       }
+      if (pendingOriginalDraft) {
+        for (const record of input.snapshot.response.records) {
+          const message = `原文保留待核：${PENDING_ORIGINAL_NOTICE}${record.uncertainty.length ? ` 原文解析不确定性：${record.uncertainty.join('、')}` : ''}`;
+          const note = reviewNotes.find(n => n.recordId === record.record_id);
+          if (note) note.message += `；${message}`; else reviewNotes.push({ recordId: record.record_id, message });
+        }
+        // Explicit user targets also need source uncertainty provenance in the delivered annotations.
+        if (!input.reportingCutoffBasis) reviewNotes.push({ recordId: input.snapshot.response.records[0]!.record_id,
+          message: `待人工确认：目标期间 ${pendingOriginalDraft.reportingCutoff} 由用户指定；财务期间证据（不含可信数值）：${JSON.stringify(pendingOriginalDraft.periodEvidence)}` });
+      }
       const boundedNotes = splitHistoricalReviewNotes(reviewNotes);
       if (boundedNotes.length > HISTORICAL_REVIEW_NOTE_MAX_COUNT) throw new HistoricalGenerationUnavailable('historical_review_notes_exceed_limit');
       const { planHash: _originalPlanHash, ...base } = plan;
-      const content = { ...base, reviewNotes: boundedNotes, generation: { version: HISTORICAL_GENERATION_VERSION,
+      const content = { ...base, ...(pendingOriginalDraft ? { pendingOriginalDraft } : {}), reviewNotes: boundedNotes, generation: { version: HISTORICAL_GENERATION_VERSION,
         preparationHash: input.preparationHash, chunks: chunks.length, reviewedBlocks: inventory.coverage.length } };
       const result: HistoricalGenerationPlan = { ...content, planHash: updateContentHash(content) };
       return { kind: 'done', value: result, checkpoint: { plan_hash: result.planHash, preparation_hash: input.preparationHash,

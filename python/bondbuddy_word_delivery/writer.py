@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import json
 import sys
 import zipfile
@@ -505,6 +506,31 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
         reject_own_revisions(rejected, plan["columns"])
         if document_signature(rejected) != baseline_signature:
             fail("WORD_REJECT_BASELINE_MISMATCH")
+    draft = plan.get("pendingOriginalDraft")
+    if draft is not None:
+        if (draft.get("mode") != "non_production_pending_original" or draft.get("status") != "needs_confirmation"
+                or plan["replacements"] or plan["columns"] or not notes or not isinstance(draft.get("notice"), str)):
+            fail("WORD_PENDING_ORIGINAL_INVALID")
+        # Apply the same visible notice after source/accept/reject checks to all three outputs.
+        # This is metadata, not a claimed factual edit; original text and OOXML parts stay intact.
+        for output in (revision_path, clean_path, baseline_path):
+            if output is None:
+                continue
+            with zipfile.ZipFile(output) as generated:
+                marked = {name: generated.read(name) for name in generated.namelist()}
+                root = parse_xml(marked["word/document.xml"])
+                notice = etree.Element(Q("p"))
+                run = make_run(draft["notice"])
+                properties = etree.Element(Q("rPr"))
+                properties.append(etree.Element(Q("b")))
+                run.insert(0, properties)
+                notice.append(run)
+                root.find(Q("body")).insert(0, notice)
+                marked["word/document.xml"] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
+                # Avoid writing to the archive while it is still open.
+                archive = io.BytesIO(Path(output).read_bytes())
+            with zipfile.ZipFile(archive) as generated:
+                write_zip(output, generated, marked)
     return {"writer_version": WRITER_VERSION, "source_sha256": hashlib.sha256(source).hexdigest(), "baseline_hash": plan["baselineHash"],
             "plan_hash": plan["planHash"], "replacements": len(plan["replacements"]), "columns": len(plan["columns"]),
             "pending": len(notes), "revision_sha256": hashlib.sha256(Path(revision_path).read_bytes()).hexdigest(),
