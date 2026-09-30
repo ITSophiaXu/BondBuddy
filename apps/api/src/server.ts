@@ -919,11 +919,117 @@ export function createServer(settings: Settings = {}) {
     }).catch(async error=>{await trialRejected(error,user,'upload_create',id,request.id);throw error;});
     return reply.code(201).send({upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:expires.toISOString(),max_bytes:MAX_BYTES});
   });
+  app.post('/api/v1/projects/:project_id/materials/role-copies',{schema:{body:schemas.MaterialRoleCopyRequest}},async (request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id');
+    const b=body<{request_key:string;source_material_id:string;source_material_version:number;source_sha256:string;source_media_type:string;target_role:'historical'}>(request);
+    const requestHash=digest(stableJson(b)),traceId=uid();
+    const freshUpload=async(client:PoolClient,source:any)=>{
+      const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`;
+      await client.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,'historical',$8,now()+interval '15 minutes')`,
+        [uploadId,user,id,source.filename,source.media_type,source.byte_size,b.source_sha256,key]);
+      return uploadId;
+    };
+    // Commit a discoverable upload reservation before writing any Blob bytes. A crash after
+    // this point leaves an ordinary orphan upload for the existing storage lifecycle.
+    await transaction(db(),async client=>{
+      const p=await project(client,user,id,true);
+      const prior=await client.query(`SELECT * FROM bb_material_role_copy_receipts
+        WHERE owner_user_id=$1 AND project_id=$2 AND request_key=$3 FOR UPDATE`,[user,id,b.request_key]);
+      if(prior.rows[0]){
+        if(prior.rows[0].request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Request key is bound to another source');
+        return;
+      }
+      if(p.kind!=='update')throw conflict('INPUT_REVISION_CONFLICT','Historical material requires an update project');
+      const converted=await client.query('SELECT 1 FROM bb_project_kind_conversions WHERE owner_user_id=$1 AND project_id=$2',[user,id]);
+      if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted project cannot accept historical material');
+      const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
+        AND id=$3 AND version=$4 AND deleted_at IS NULL FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
+      if(!source)throw missing();
+      if(source.role!=='reference'||!['application/pdf',DOCX_MEDIA_TYPE].includes(source.media_type)||
+        source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type||
+        !Number.isSafeInteger(Number(source.byte_size))||Number(source.byte_size)>MAX_BYTES)
+        throw conflict('MATERIAL_CONTENT_MISMATCH','Source identity, format or bytes differ');
+      const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
+        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL`,[user,id])).rows[0];
+      if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
+        throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
+      const uploadId=await freshUpload(client,source);
+      await client.query(`INSERT INTO bb_material_role_copy_receipts
+        (id,owner_user_id,project_id,request_key,request_hash,source_material_id,source_material_version,source_sha256,target_role,upload_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'historical',$9)`,
+        [uid(),user,id,b.request_key,requestHash,b.source_material_id,b.source_material_version,b.source_sha256,uploadId]);
+    });
+    const result=await transaction(db(),async client=>{
+      await project(client,user,id,true);
+      const receipt=(await client.query(`SELECT * FROM bb_material_role_copy_receipts
+        WHERE owner_user_id=$1 AND project_id=$2 AND request_key=$3 FOR UPDATE`,[user,id,b.request_key])).rows[0];
+      if(!receipt)throw missing();
+      if(receipt.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','Request key is bound to another source');
+      if(receipt.material_id){
+        const saved=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
+          AND id=$3 AND deleted_at IS NULL`,[user,id,receipt.material_id])).rows[0];
+        if(!saved)throw missing();
+        const verified=await readBlobToFile(blob(),saved.object_key,null,Number(saved.byte_size));
+        if(!verified||verified.byteSize!==Number(saved.byte_size)||verified.sha256!==saved.sha256.trim())
+          throw new Problem(503,'DATA_UNAVAILABLE','Copied material bytes are unavailable');
+        return {receipt_id:receipt.id,source_material_id:receipt.source_material_id,source_material_version:receipt.source_material_version,material:materialDto(saved)};
+      }
+      const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
+        AND id=$3 AND version=$4 AND deleted_at IS NULL FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
+      if(!source||source.role!=='reference'||source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type)throw missing();
+      let upload=(await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,receipt.upload_id])).rows[0];
+      if(upload.state==='deleting'||upload.state==='purged'){
+        const replacement=await freshUpload(client,source);
+        await client.query('UPDATE bb_material_role_copy_receipts SET upload_id=$2 WHERE id=$1',[receipt.id,replacement]);
+        upload=(await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,replacement])).rows[0];
+      }
+      if(upload.state!=='uploading'&&upload.state!=='received')throw conflict('IDEMPOTENCY_CONFLICT','Copy reservation is no longer writable');
+      const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
+        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL`,[user,id])).rows[0];
+      if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
+        throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
+      const release=reserveSpool(Number(source.byte_size)),copy=join(spoolDirectory(),`${uid()}.blob`);
+      let signatureAssessment:unknown=null;
+      try{
+        await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
+        const bytes=await readBlobToFile(blob(),source.object_key,copy,MAX_BYTES);
+        if(!bytes||bytes.byteSize!==Number(source.byte_size)||bytes.sha256!==b.source_sha256)
+          throw new Problem(503,'DATA_UNAVAILABLE','Source bytes failed integrity check');
+        const inspection=await verifiedMediaFileDetailed(copy,bytes.byteSize,source.media_type);
+        if(inspection.mediaType!==source.media_type)throw conflict('MATERIAL_CONTENT_MISMATCH','Source media type changed');
+        signatureAssessment=inspection.signatureAssessment;
+        await putBlobFile(blob(),upload.object_key,copy,source.media_type);
+        const target=await readBlobToFile(blob(),upload.object_key,null,Number(source.byte_size));
+        if(!target||target.byteSize!==Number(source.byte_size)||target.sha256!==b.source_sha256)
+          throw new Problem(503,'DATA_UNAVAILABLE','Copied bytes failed integrity check');
+      }finally{await discardSpool(copy);release();}
+      const materialId=uid();
+      await client.query("UPDATE bb_uploads SET state='received',received_sha256=$2,received_bytes=$3 WHERE id=$1",
+        [upload.id,b.source_sha256,source.byte_size]);
+      const saved=(await client.query(`INSERT INTO bb_material_versions
+        (id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state,signature_assessment)
+        VALUES($1,1,$2,$3,$4,'historical',$5,$6,$7,$8,$9,'persisted',$10::jsonb) RETURNING *`,
+        [materialId,user,id,upload.id,source.filename,source.media_type,source.byte_size,b.source_sha256,upload.object_key,
+          signatureAssessment===null?null:JSON.stringify(signatureAssessment)])).rows[0];
+      await client.query("UPDATE bb_uploads SET state='completed' WHERE id=$1",[upload.id]);
+      await client.query('UPDATE bb_material_role_copy_receipts SET material_id=$2,completed_at=now() WHERE id=$1',[receipt.id,materialId]);
+      await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
+        VALUES($1,$2,'material',$3,'material.role_copied',$4)`,
+        [uid(),user,materialId,{project_id:id,source_material_id:source.id,source_material_version:source.version,material_id:materialId,material_version:1,receipt_id:receipt.id}]);
+      await appendProjectMaterialEvent(client,user,id,materialId,Number(source.byte_size));
+      await enqueueMaterialParse(client,{owner:user,projectId:id,materialId,materialVersion:1,sha256:b.source_sha256,traceId});
+      await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_role_copy',status:'submitted'});
+      return {receipt_id:receipt.id,source_material_id:source.id,source_material_version:source.version,material:materialDto(saved)};
+    });
+    return reply.code(201).send(result);
+  });
   app.put('/api/v1/projects/:project_id/materials/uploads/:upload_id/bytes',async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');await project(db(),user,id);
     const stream=request.body as Readable|undefined;if(!stream||typeof stream.pipe!=='function')throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
     // Reject unknown, finished or expired uploads before accepting any bytes; the locked re-check below stays authoritative.
     const pre=(await db().query('SELECT state,byte_size,expires_at FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
+    if((await db().query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
     if(!pre)throw missing();
     if(pre.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
     if(pre.state!=='uploading'&&pre.state!=='received')throw missing();
@@ -937,6 +1043,7 @@ export function createServer(settings: Settings = {}) {
       const bytes=spooled;
       await transaction(db(),async client=>{
         const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
+        if((await client.query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
         if((await client.query('SELECT 1 FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND upload_id=$2',[user,uploadId])).rowCount)throw conflict('IDEMPOTENCY_CONFLICT','Upload already resolved; retry completion');
         if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
         if(u.state!=='uploading'&&u.state!=='received')throw missing();
@@ -983,6 +1090,7 @@ export function createServer(settings: Settings = {}) {
       // Same lock order as deletion/snapshot creation; concurrent equal uploads resolve once.
       await project(client,user,id,true);
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
+      if((await client.query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
       const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
       let excepted=false;
