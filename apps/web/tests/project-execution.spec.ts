@@ -23,6 +23,7 @@ function fixture() {
     media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, sha256: hash(name), state: 'persisted', persisted_at: now, error: null }));
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
+    nextInputRevision: undefined as number | undefined,
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
@@ -76,7 +77,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       expect(Value.Check(schemas.InputRevisionCreateRequest, body)).toBe(true);
       state.inputs.push(body);
       if (state.conflictSave) return json(route, 409, { code: 'INPUT_REVISION_CONFLICT' });
-      const revision = state.snapshots.size + 1;
+      const revision = state.nextInputRevision ?? state.snapshots.size + 1;
       const snapshot: Dto<'InputRevisionResponse'> = { project_id: id, input_revision: revision, input_hash: hash(JSON.stringify(body)),
         material_versions: body.material_versions, ...(body.credit_facility_supplements ? { credit_facility_supplements: body.credit_facility_supplements } : {}), target_confirmation: {status:'unconfirmed',market:null,offering:null,as_of:null,document_purpose:null,target_reporting_periods:[],confirmed_at:null,confirmed_by:null},
         rule_pack_version: null, template_version: null, reference_release: null, created_at: now };
@@ -174,7 +175,8 @@ test('blocked preflight keeps backend gates and does not turn five diagnostics i
   await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.getByRole('button',{name:'继续提交并等待处理'})).toHaveCount(0);
   await page.locator('#recheck-input').click();
-  expect(state.preflights).toHaveLength(2); expect(state.executes).toHaveLength(0); expect(state.inputs).toHaveLength(1);
+  await expect.poll(()=>state.preflights.length).toBe(2);
+  expect(state.executes).toHaveLength(0); expect(state.inputs).toHaveLength(1);
   if (process.env.BB_UX_EVIDENCE_DIR) {
     const output = resolve(process.env.BB_UX_EVIDENCE_DIR); await mkdir(output, { recursive: true });
     for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844]] as const) {
@@ -309,6 +311,77 @@ test('a preflight INPUT_REQUIRED shows reference classification and rechecks the
   await expect(page.locator('#execute-input')).toBeDisabled();
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
   expect(state.materials.map(m=>m.role)).toEqual(['reference','audit']);
+});
+
+test('recheck replaces rejected input v3 with current v7 materials without submitting a run', async ({ page }) => {
+  const state=fixture(); state.nextInputRevision=3;
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-stale-input'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-stale-input');
+  expect(state.preflights[0].input_revision).toBe(3);
+
+  state.project.draft_revision=4;
+  state.project.input_revision=7;
+  state.project.input_hash=hash('synthetic-current-v7');
+  state.materials.push({...state.materials[0],material_id:'synthetic-current-history',material_version:2,filename:'current-history.docx'});
+  state.snapshots.set(7,{...state.snapshots.get(3)!,input_revision:7,input_hash:state.project.input_hash,
+    material_versions:state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version}))});
+  await page.locator('#recheck-input').click();
+  await expect(page.locator('#execution-message')).toContainText('项目已保存更新的输入版本');
+  await expect(page.locator('#workspace-material-count')).toContainText('3 份已保存材料');
+  await expect(page.locator('#material-partitions')).toContainText('current-history.docx');
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await expect(page.locator('#select-saved-input')).toBeHidden();
+  if (process.env.BB_489_STALE_EVIDENCE_DIR) {
+    const output=resolve(process.env.BB_489_STALE_EVIDENCE_DIR); await mkdir(output,{recursive:true});
+    for (const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.locator('#execution-message').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`stale-input-${device}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+  }
+  expect(state.preflights).toHaveLength(1);
+  expect(state.executes).toHaveLength(0);
+  expect(state.runActions).toHaveLength(0);
+  expect(state.inputs).toHaveLength(1);
+});
+
+test('stale input recheck restores a failed run without replay or resume', async ({ page }) => {
+  const state=fixture(); state.nextInputRevision=3;
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-stale-failed-run'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-stale-failed-run');
+  const old=state.snapshots.get(3)!;
+  state.project.input_revision=7; state.project.input_hash=hash('synthetic-failed-v7');
+  state.snapshots.set(7,{...old,input_revision:7,input_hash:state.project.input_hash});
+  state.runs.set('synthetic-existing-request',{run_id:'synthetic-existing-failed-run',execution_request_id:'synthetic-existing-request',
+    project_id:id,input_revision:7,input_hash:state.project.input_hash,channel:'non_production_test',test_grant_id:'synthetic-test-grant',uncovered_items:[],
+    state:'failed',stage:'materials_ready',event_cursor:2,billing_mode:'platform_trial',reservation_id:null,
+    artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
+  await page.locator('#recheck-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务状态：任务失败');
+  await expect(page.locator('#execution-progress')).toContainText('这是内部测试任务');
+  await expect(page.locator('#execution-progress')).toContainText('正式更新需保存新输入版本');
+  expect(state.preflights).toHaveLength(1);
+  expect(state.executes).toHaveLength(0);
+  expect(state.runActions).toHaveLength(0);
+  await expect(page.locator('#resume-run')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'下载修订版',exact:true})).toHaveCount(0);
+});
+
+test('recheck rejects an inconsistent latest input without retrying the old revision', async ({ page }) => {
+  const state=fixture(); state.nextInputRevision=3;
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-stale-mismatch'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-stale-mismatch');
+  state.project.input_revision=7; state.project.input_hash=hash('synthetic-expected-v7');
+  state.snapshots.set(7,{...state.snapshots.get(3)!,input_revision:7,input_hash:hash('synthetic-wrong-v7')});
+  await page.locator('#recheck-input').click();
+  await expect(page.locator('#execution-message')).toContainText('当前结果无法核实');
+  expect(state.preflights).toHaveLength(1);
+  expect(state.executes).toHaveLength(0);
+  await expect(page.locator('#execute-input')).toBeDisabled();
 });
 
 test('the historical choice still sees a misclassified reference excluded from execution inputs', async ({ page }) => {

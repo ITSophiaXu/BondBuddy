@@ -41,6 +41,7 @@ let projectBrowser: ProjectBrowser | undefined;
 let dashboard: Dashboard | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
+let staleInputNotice = false;
 let projectConversation: ProjectConversation | undefined;
 let newConversationDraft = '';
 let pendingNewMessage: { projectId: string; text: string } | undefined;
@@ -77,6 +78,7 @@ function clearPrivateState() {
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
   newConversationDraft = ''; pendingNewMessage = undefined;
+  staleInputNotice = false;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
@@ -395,7 +397,11 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
   // No-history projects enter the controlled generation path with the same execution surface.
   if (project.kind === 'update' || project.kind === 'generation') {
-    projectExecution = new ProjectExecution(api, draft, projectConversation, referenceSnapshotResolver((projectId, materialId) => api.material(projectId, materialId)));
+    projectExecution = new ProjectExecution(api, draft, projectConversation,
+      referenceSnapshotResolver((projectId, materialId) => api.material(projectId, materialId)),
+      () => { staleInputNotice = true; void renderRoute(); },
+      staleInputNotice ? '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。' : '');
+    staleInputNotice = false;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;

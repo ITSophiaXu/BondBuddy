@@ -131,7 +131,9 @@ export class ProjectExecution {
   private generation = 0;
   private inputRejected = false;
 
-  constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation, private referenceSnapshots?: ReferenceSnapshotResolver) {}
+  constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
+    private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
+    private initialNotice = '') {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   /** The persisted project kind decides the task kind, including an explicit server-side conversion. */
@@ -256,7 +258,8 @@ export class ProjectExecution {
     const progressHost = document.querySelector('#workspace-progress');
     if (run && progressHost && this.host.parentElement !== progressHost) progressHost.append(this.host);
     if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = false; } this.materialRun = run.run_id; }
-    const testCompleted = run?.state === 'test_completed' && run.channel === 'non_production_test';
+    const testRun = run?.channel === 'non_production_test';
+    const testCompleted = run?.state === 'test_completed' && testRun;
     const automaticPause = automaticPauseMessage(run);
     const repeatedPause = run?.state === 'paused' && this.samePauseAfterResume(run);
     // The current run stage is authoritative even when event history is late or unavailable.
@@ -268,7 +271,7 @@ export class ProjectExecution {
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对先前模型调用，请联系支持处理。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
-    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}
+    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
       <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
@@ -406,6 +409,34 @@ export class ProjectExecution {
   }
   private async recheck() {
     if (!this.input || !this.selected || !(this.inputRejected || this.preflight?.status === 'blocked')) return;
+    const selected = this.input;
+    const wasRejected = this.inputRejected;
+    let verified = false;
+    let stale = false;
+    await this.action(async () => {
+      const project = await this.api.project(this.id, this.controller.signal);
+      if (!this.active) return;
+      if (project.project_id !== this.id || !project.input_revision || !project.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      const latest = await this.api.inputRevision(this.id, project.input_revision, this.controller.signal);
+      if (!this.active) return;
+      if (latest.project_id !== this.id || latest.input_revision !== project.input_revision ||
+          latest.input_hash !== project.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      verified = true;
+      stale = latest.input_revision !== selected.input_revision || latest.input_hash !== selected.input_hash;
+      if (stale) {
+        this.input = undefined;
+        this.offerSavedInput = false;
+        this.invalidate();
+        this.message = '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。';
+        this.onStaleInput?.();
+      }
+    });
+    if (!verified) {
+      this.inputRejected = wasRejected;
+      this.render();
+      return;
+    }
+    if (stale || !this.active) return;
     await this.check();
     if (this.active && this.preflight?.status === 'blocked') this.message = blockedMessage(this.preflight);
   }
@@ -469,7 +500,9 @@ export class ProjectExecution {
       if (!this.active) return;
       if (input && (input.project_id !== this.id || input.input_revision !== project.input_revision || input.input_hash !== project.input_hash)) throw new ApiError(0, 'DATA_UNAVAILABLE');
       this.input = input;
-      this.message = '';
+      const staleNotice = Boolean(this.initialNotice);
+      this.message = this.initialNotice;
+      this.initialNotice = '';
       let cursor: string | undefined;
       const seen = new Set<string>();
       do {
@@ -493,7 +526,7 @@ export class ProjectExecution {
       this.inputReadUncertain = false;
       // InputRevisionResponse does not expose the message pin. Never execute a
       // recovered snapshot when a nonempty message set could have changed since it was locked.
-      this.offerSavedInput = Boolean(input && !this.run);
+      this.offerSavedInput = Boolean(input && !this.run && !staleNotice);
     });
     this.restoring = false; this.render();
     if (this.active && this.run) void this.poll();
