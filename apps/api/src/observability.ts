@@ -14,11 +14,14 @@ export const isPgInputRevision=(value:unknown):value is number=>typeof value==='
 export const executionKeyHash=(value:string)=>digest(Buffer.from(value,'utf16le'));
 export async function emitInternal(client:PoolClient,event:InternalObservabilityEvent) {
   if(!Value.Check(schemas.InternalObservabilityEvent,event))throw new Error('Invalid internal observability event');
-  const {event_id,user_id,project_id,job_id,run_id,trace_id,kind}=event;
+  const {event_id,user_id,project_id,job_id,run_id,trace_id,kind,operation_id}=event;
   if(!user_id)throw new Error('Owned event required');
   await client.query(`INSERT INTO bb_observability_events(id,owner_user_id,project_id,job_id,run_id,trace_id,kind,event,channel)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE((SELECT channel FROM bb_runs WHERE id=$5),(SELECT channel FROM bb_jobs WHERE id=$4),'production'))`,
-    [event_id,user_id,project_id,job_id,run_id,trace_id,kind,event]);
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE(
+      (SELECT channel FROM bb_runs WHERE id=$5 AND owner_user_id=$2),
+      (SELECT channel FROM bb_jobs WHERE id=$4 AND owner_user_id=$2),
+      (SELECT channel FROM bb_operations WHERE id=$9 AND owner_user_id=$2),'production'))`,
+    [event_id,user_id,project_id,job_id,run_id,trace_id,kind,event,operation_id]);
   await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user_id,'observability',event_id,kind,{event_id,schema_version:1}]);
 }
 export function internalEvent(input:{kind:InternalObservabilityEvent['kind'];owner:string;actorType?:InternalObservabilityEvent['actor_type'];projectId?:string|null;runId?:string|null;jobId?:string|null;traceId:string;operationId?:string;requestId?:string;status?:InternalObservabilityEvent['status'];stage?:string|null;error?:InternalObservabilityEvent['error'];usage?:InternalObservabilityEvent['usage'];logicalCallId?:string|null;attemptNo?:number|null;promptSnapshotRef?:string|null;jobKind?:InternalObservabilityEvent['job_kind']}):InternalObservabilityEvent {

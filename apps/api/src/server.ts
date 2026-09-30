@@ -1242,7 +1242,7 @@ export function createServer(settings: Settings = {}) {
     const storedExecutionKey=autoBrowserTestKey?autoTestExecutionKeyStorage(b.execution_request_id):rawExecutionKey;
     const logicalExecutionKey=autoBrowserTestKey?storedExecutionKey:b.execution_request_id;
     const logicalKeyHash=executionKeyHash(logicalExecutionKey);
-    const expectedChannel=b.test_grant_id||workingDraftConfigured()?'non_production_test':'production';
+    const expectedChannel:'non_production_test'|'production'=b.test_grant_id||workingDraftConfigured()?'non_production_test':'production';
     const existingRun=async(client:PoolClient)=>{
       // Old automatic test runs used the raw browser key. Honor an exact replay
       // before looking for a new channel-scoped run, without crossing channels.
@@ -1279,7 +1279,11 @@ export function createServer(settings: Settings = {}) {
       if('run' in response)return reply.code(202).send(response.run);
       throw new Problem(response.httpStatus,response.errorCode,'Execution request was rejected');
     }
-    const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:b.test_grant_id?'non_production_test' as const:'production' as const,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:logicalExecutionKey,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
+    const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:expectedChannel,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:logicalExecutionKey,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
+    const recordExecuteRejection=async(client:PoolClient,errorCode:string,httpStatus:number,stage:string)=>{
+      const logged=await recordLogicalJob(client,logical(errorCode,httpStatus,stage));
+      return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!,replay:logged.replay};
+    };
     const priorRejection=async(client:PoolClient,prior:any)=>{
       if(wideRevision){
         const same=prior.request_hash.trim()===requestHash;
@@ -1302,11 +1306,10 @@ export function createServer(settings: Settings = {}) {
         if(prior.rows[0])return priorRejection(client,prior.rows[0]);
         const owned=await client.query('SELECT kind FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',[user,b.project_id]);
         if(!owned.rowCount){await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'CAPABILITY_NOT_READY'});return {errorCode:'CAPABILITY_NOT_READY',httpStatus:501};}
-        if(wideRevision){const logged=await recordLogicalJob(client,logical('VALIDATION_FAILED',422,'revision_out_of_range'));return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};}
+        if(wideRevision)return recordExecuteRejection(client,'VALIDATION_FAILED',422,'revision_out_of_range');
         const locked=await client.query('SELECT manifest->>\'kind\' AS kind FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[user,b.project_id,b.input_revision,b.input_hash]);
-        if(locked.rows[0]&&locked.rows[0].kind!==owned.rows[0].kind){const logged=await recordLogicalJob(client,logical('INPUT_REVISION_CONFLICT',409,'project_kind_changed'));return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};}
-        const logged=await recordLogicalJob(client,logical('CAPABILITY_NOT_READY',501,'capability_not_ready'));
-        return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!};
+        if(locked.rows[0]&&locked.rows[0].kind!==owned.rows[0].kind)return recordExecuteRejection(client,'INPUT_REVISION_CONFLICT',409,'project_kind_changed');
+        return recordExecuteRejection(client,'CAPABILITY_NOT_READY',501,'capability_not_ready');
       });
       if('run' in response)return reply.code(202).send(response.run);
       throw new Problem(response.httpStatus,response.errorCode,'Execution request was rejected');
@@ -1367,8 +1370,7 @@ export function createServer(settings: Settings = {}) {
           }
           const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
           if(owned.rowCount){
-            const logged=await recordLogicalJob(client,logical(error.code,error.status,wideRevision?'revision_out_of_range':'submission_rejected'));
-            return {errorCode:logged.errorCode!,httpStatus:logged.httpStatus!,replay:logged.replay};
+            return recordExecuteRejection(client,error.code,error.status,wideRevision?'revision_out_of_range':'submission_rejected');
           }
           await recordOperation(client,{owner:user,projectId:null,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
           return {errorCode:error.code,httpStatus:error.status,replay:false};

@@ -81,6 +81,12 @@ test('persisted material with an exact successful needs-confirmation parse enter
         ]);
         return [grants.rows[0].n, events.rows[0].n, runs.rows[0].n];
       };
+      const rejectionAudit=async(requestId:string)=>(await pool.query(`SELECT o.owner_user_id,o.project_id,
+        o.channel AS operation_channel,e.channel AS event_channel,o.error_code
+        FROM bb_operations o JOIN bb_observability_events e
+          ON e.owner_user_id=o.owner_user_id AND e.event->>'operation_id'=o.id
+        WHERE o.owner_user_id=$1 AND o.request_id=$2 AND e.kind='operation.rejected'`,
+        [owner,requestId])).rows[0];
       const historical = await add('historical', sha('c'));
       for (const [label, hashLetter, state, parser, code, message] of [
         ['missing', '3', 'absent', documentParserVersion(), 'INPUT_REQUIRED', /complete its saved upload again/i],
@@ -155,6 +161,9 @@ test('persisted material with an exact successful needs-confirmation parse enter
         input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
       const schemaRejected=await post('/api/v1/runs/execute',{...browserRequest,workspace_id:undefined});
       assert.equal(schemaRejected.statusCode,422,schemaRejected.body);
+      assert.deepEqual(await rejectionAudit(schemaRejected.json().correlation_id),{
+        owner_user_id:owner,project_id:project,operation_channel:'non_production_test',
+        event_channel:'non_production_test',error_code:'VALIDATION_FAILED'});
       const submitted = await post('/api/v1/runs/execute',browserRequest);
       assert.equal(submitted.statusCode, 202, submitted.body);
       assert.equal(submitted.json().channel, 'non_production_test');
@@ -172,6 +181,43 @@ test('persisted material with an exact successful needs-confirmation parse enter
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
         [owner,executionKeyHash(browserKey)])).rows[0].n,0);
       assert.deepEqual(await counts(), [1, 1, 1]);
+
+      const rejectedCreated=await post('/api/v1/projects',
+        {name:'Synthetic missing locked materials',kind:'update',issuer_name:null,market:null,offering:null});
+      assert.equal(rejectedCreated.statusCode,201,rejectedCreated.body);
+      const rejectedProject=rejectedCreated.json().project_id as string;
+      const rejectedLocked=await post(`/api/v1/projects/${rejectedProject}/input-revisions`,
+        {draft_revision:1,material_versions:[],requirement_message_ids:[]});
+      assert.equal(rejectedLocked.statusCode,201,rejectedLocked.body);
+      const rejectedInput=rejectedLocked.json();
+      const rejectedKey=`web-update-${digest(JSON.stringify([rejectedProject,1,rejectedInput.input_hash]))}`;
+      const rejectedRequest={...browserRequest,project_id:rejectedProject,input_revision:1,
+        input_hash:rejectedInput.input_hash,execution_request_id:rejectedKey};
+      const missingMaterials=await post('/api/v1/runs/execute',rejectedRequest);
+      assert.equal(missingMaterials.statusCode,409,missingMaterials.body);
+      assert.equal(missingMaterials.json().code,'INPUT_REQUIRED');
+      assert.deepEqual(await rejectionAudit(missingMaterials.json().correlation_id),{
+        owner_user_id:owner,project_id:rejectedProject,operation_channel:'non_production_test',
+        event_channel:'non_production_test',error_code:'INPUT_REQUIRED'});
+      const rejectedJob=(await pool.query(`SELECT id,channel,test_grant_id,state,project_id FROM bb_jobs
+        WHERE owner_user_id=$1 AND execution_request_key_hash=$2`,
+        [owner,executionKeyHash(autoTestExecutionKeyStorage(rejectedKey))])).rows[0];
+      assert.equal(rejectedJob.channel,'non_production_test');
+      assert.equal(rejectedJob.test_grant_id,null);
+      assert.equal(rejectedJob.state,'rejected');
+      assert.equal(rejectedJob.project_id,rejectedProject);
+      await assert.rejects(pool.query("UPDATE bb_jobs SET state='queued' WHERE id=$1",[rejectedJob.id]),
+        (error:any)=>/terminal logical job is immutable/.test(error.message));
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
+        [owner,executionKeyHash(rejectedKey)])).rows[0].n,0);
+      const rejectedReplay=await post('/api/v1/runs/execute',rejectedRequest);
+      assert.equal(rejectedReplay.statusCode,409,rejectedReplay.body);
+      assert.equal(rejectedReplay.json().code,'INPUT_REQUIRED');
+      assert.equal((await pool.query('SELECT id FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
+        [owner,executionKeyHash(autoTestExecutionKeyStorage(rejectedKey))])).rows[0].id,rejectedJob.id);
+      assert.deepEqual(await rejectionAudit(rejectedReplay.json().correlation_id),{
+        owner_user_id:owner,project_id:rejectedProject,operation_channel:'non_production_test',
+        event_channel:'non_production_test',error_code:'INPUT_REQUIRED'});
 
       const legacyCreated=await post('/api/v1/projects',
         {name:'Synthetic existing raw test run',kind:'update',issuer_name:null,market:null,offering:null});
@@ -221,8 +267,14 @@ test('persisted material with an exact successful needs-confirmation parse enter
         assert.equal(unavailable.statusCode,501,unavailable.body);
         assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
           [owner,executionKeyHash(disabledKey)])).rows[0].n,0);
-        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2',
-          [owner,executionKeyHash(autoTestExecutionKeyStorage(disabledKey))])).rows[0].n,1);
+        const disabledJob=(await pool.query(`SELECT channel,test_grant_id,state,project_id FROM bb_jobs
+          WHERE owner_user_id=$1 AND execution_request_key_hash=$2`,
+          [owner,executionKeyHash(autoTestExecutionKeyStorage(disabledKey))])).rows[0];
+        assert.deepEqual(disabledJob,{channel:'non_production_test',test_grant_id:null,
+          state:'rejected',project_id:disabledProject});
+        assert.deepEqual(await rejectionAudit(unavailable.json().correlation_id),{
+          owner_user_id:owner,project_id:disabledProject,operation_channel:'non_production_test',
+          event_channel:'non_production_test',error_code:'CAPABILITY_NOT_READY'});
       }finally{await stagingOff.close();}
 
       for(const name of names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_')))delete process.env[name];
@@ -231,6 +283,9 @@ test('persisted material with an exact successful needs-confirmation parse enter
       assert.equal(production.json().channel,'production');
       assert.equal(production.json().execution_request_id,browserKey);
       assert.notEqual(production.json().run_id,submitted.json().run_id);
+      const productionAfterRejection=await post('/api/v1/runs/execute',rejectedRequest);
+      assert.equal(productionAfterRejection.statusCode,202,productionAfterRejection.body);
+      assert.equal(productionAfterRejection.json().channel,'production');
       const crossChannel=await post('/api/v1/runs/execute',legacyRequest);
       assert.equal(crossChannel.statusCode,409,crossChannel.body);
       assert.equal(crossChannel.json().code,'IDEMPOTENCY_CONFLICT');
