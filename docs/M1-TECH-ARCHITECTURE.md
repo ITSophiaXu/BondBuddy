@@ -400,7 +400,7 @@ A user-initiated update submits ready/needs_confirmation preflight results witho
 
 1. 用户完成用户名密码登录，API 建立会话；前端创建项目草稿并按 revision 保存。
 2. 上传经 API 创建受限会话，Blob 接收字节；API 核对 hash 后登记不可变材料版本，worker 解析/OCR 并登记证据锚点。
-3. 用户预检和执行时，API 校验 owner、材料、目标市场/品种、规则能力与输入版本；事务内写 run、首次 job event 和 outbox。M1 标记 `billing_mode=platform_trial`。
+3. 用户预检和执行时，API 校验身份、归属及不可变输入；业务缺口作为预检诊断，执行事务写 run、首次 job event 和 outbox 后由后台任务处理。M1 标记 `billing_mode=platform_trial`。
 4. worker 领取任务，保存每阶段检查点；读取锁定的材料、规则、参考库版本；执行 Codex/DeepSeek；每次模型尝试写可追溯 usage 或 `unknown`。
 5. Python 生成 Word 修订/清洁版，worker 检查文件完整性、来源和交付清单，再写成果版本与终态。浏览器关闭不改变 run；重开后用 `GET /runs/{id}` 和事件游标恢复。
 6. 外部模型、存储或日志故障时，按同一 run 和检查点恢复。已经发出的模型请求先对账，不能直接重发；无法持久化关键事件时停止新的外部调用并告警。
@@ -637,3 +637,12 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 用户已明确取消独立财务数据提取服务。原始材料与用户声明/要求的不可变输入交 worker（Codex + DeepSeek），由其在更新任务中按需调用文件读取、OCR、计算和 Word 工具。API 管归属、版本、持久任务和成果访问，不要求上传后先生成完整财务事实库再准入。旧 parser/事实缓存是可复用内部模块，不是独立强制前置。#13/#14/#15/#17/#31/#33/#35 联合迁移输入锁、预检及恢复；用户界面不新增读取审核/财务确认步骤。
 
 此为实现目标，未宣称现有 worker、供应商接口或部署已支持所有格式。全文覆盖、数值/单位/期间核对、真实调用日志、Word 交付和不确定性标记仍需验证。
+
+
+### #35 先持久化执行，再处理业务缺口（2026-09-30）
+
+预检的材料解析、报告截止日、发行人审核、参考稿审核和规则缺口全部为 advisory；执行能力未启用时仍诚实返回 blocked。`needs_confirmation` 与既有“开始更新”调用兼容，允许一次点击继续 execute。execute 校验登录、项目归属、任务类型、锁定 manifest/hash、精确材料版本及幂等键；不要求先完成业务审核或解析缓存。创建 run、排队事件及 outbox 保持同事务，旧 schema/权限/输入/幂等冲突拒绝仍按原逻辑重放；准确匹配的旧业务准入拒绝可按新政策建 run，原拒绝记录不改写，后续重试返回同一 run。
+
+预发自动工作稿授权限定 owner/project/revision/hash，不再使用旧环境截止时间拒绝创建任务。新服务授权无时间截止，可撤销；旧授权及审计不改写，显式提供的操作授权仍核对期限、归属和撤销。未配置规则 hash 使用明确的 unknown 占位摘要；缺少目标假设保留 `direct_working_draft:target_unconfirmed`，不得作为已安装规则证据。独立测试通道和浏览器逻辑键隔离保持；正式成果必须通过 Word 交付检查。
+
+这次仅完成准入迁移。现有后台 `input_lock` 的发行人绑定校验及候选规则能力加载仍可能暂停新建任务：空材料输入实测原因 `historical_material_not_selected`；缺少发行人观察、规则摘要或目标时分别在身份绑定、候选资产摘要比较和目标解析停下。`historical-generation-input.ts` 对空或无效 `reporting_cutoff` 仍返回 `historical_target_period_required`；`materials_ready` 在存在财务材料但全部抽取结果的候选数为零时仍返回 `fact_candidates_unavailable`，未安装事实生产器时返回 `fact_candidate_producer_unavailable`。这些是持久化之后的下游暂停条件，需由生成路径的独立变更处理。#31/#33 的生成链路需继续将这些缺口转为正文待确认内容，并迁移 `materialsReadiness` 对预解析/事实快照的依赖；本节不宣称真实模型调用或 Word 已生成。

@@ -392,8 +392,8 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       const staleMaterial = await send('POST', `/api/v1/projects/${projectId}/preflight`, {
         input_revision: verifiedInputB.input_revision, input_hash: verifiedInputB.input_hash,
       });
-      assert.equal(staleMaterial.statusCode, 200, staleMaterial.body);
-      assert.ok(staleMaterial.json().missing_inputs.includes(`issuer_material_stale:${historicalB}:1`));
+      assert.equal(staleMaterial.statusCode, 409, staleMaterial.body);
+      assert.equal(staleMaterial.json().code,'INPUT_REVISION_CONFLICT');
 
       const nonUpdate = await lockInput(reviewProjectId, [{ material_id: auditMaterial, material_version: 1 }]);
       assert.equal(nonUpdate.manifest.kind, 'review');

@@ -275,12 +275,12 @@ test('approved generation input with parsed audit enters the controlled channel 
       const unboundReference = referenceWithoutBinding.json() as { input_revision: number; input_hash: string };
       assert.equal((await post(`/api/v1/projects/${fixture.projectId}/preflight`, {
         input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash,
-      })).json().code, 'INPUT_REQUIRED');
+      })).statusCode, 200);
       assert.equal((await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
-        input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash })).json().code, 'INPUT_REQUIRED');
+        input_revision: unboundReference.input_revision, input_hash: unboundReference.input_hash })).statusCode, 202);
       await pool.query('UPDATE bb_user_reference_reviewer_grants SET revoked_at=now() WHERE id=$1', [referenceGrant]);
       assert.equal((await post('/api/v1/runs/execute', { ...request, execution_request_id: randomUUID(),
-        input_revision: referenced.input_revision, input_hash: referenced.input_hash })).json().code, 'INPUT_REQUIRED');
+        input_revision: referenced.input_revision, input_hash: referenced.input_hash })).statusCode, 202);
       const execute = (changes: Record<string, unknown> = {}) => post('/api/v1/runs/execute',
         { ...request, execution_request_id: randomUUID(), ...changes });
       const preflightAgain = () => post(`/api/v1/projects/${fixture.projectId}/preflight`,
@@ -291,29 +291,29 @@ test('approved generation input with parsed audit enters the controlled channel 
       assert.equal((await execute()).json().code, 'TEST_CHANNEL_DISABLED');
       process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
       process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT = new Date(Date.now() - 3_600_000).toISOString();
-      assert.equal((await execute()).json().code, 'TEST_GRANT_EXPIRED');
+      assert.equal((await execute()).statusCode, 202);
       process.env.BB_PREPROD_WORKING_DRAFT_EXPIRES_AT = new Date(Date.now() + 3_600_000).toISOString();
       await fixture.withdraw();
-      assert.equal((await preflightAgain()).json().code, 'INPUT_REQUIRED');
-      assert.equal((await execute()).json().code, 'INPUT_REQUIRED');
+      assert.equal((await preflightAgain()).statusCode, 200);
+      assert.equal((await execute()).statusCode, 202);
       assert.equal((await post('/api/v1/runs/execute', request)).json().run_id, submitted.json().run_id,
         'same execution request remains bound to its original run');
       const after = await pool.query('SELECT count(*)::int AS n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
         [fixture.owner, fixture.projectId]);
-      assert.equal(after.rows[0].n, 2);
+      assert.equal(after.rows[0].n, 6);
       const noBinding = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
         draft_revision: 1, material_versions: [fixture.auditId, fixture.notesId].map(material_id => ({ material_id, material_version: 1 })),
         requirement_message_ids: [],
       });
       assert.equal(noBinding.statusCode, 201, noBinding.body);
       const unboundInput = noBinding.json() as { input_revision: number; input_hash: string };
-      assert.equal((await execute({ input_revision: unboundInput.input_revision, input_hash: unboundInput.input_hash })).json().code, 'INPUT_REQUIRED');
+      assert.equal((await execute({ input_revision: unboundInput.input_revision, input_hash: unboundInput.input_hash })).statusCode, 202);
       const empty = await post(`/api/v1/projects/${fixture.projectId}/input-revisions`, {
         draft_revision: 1, material_versions: [], requirement_message_ids: [],
       });
       assert.equal(empty.statusCode, 201, empty.body);
       const emptyInput = empty.json() as { input_revision: number; input_hash: string };
-      assert.equal((await execute({ input_revision: emptyInput.input_revision, input_hash: emptyInput.input_hash })).json().code, 'INPUT_REQUIRED');
+      assert.equal((await execute({ input_revision: emptyInput.input_revision, input_hash: emptyInput.input_hash })).statusCode, 202);
       const pending = await provisionApprovedBinding(pool, randomUUID().replaceAll('-', '').slice(0, 10), 'pending');
       await pending.approve();
       activeOwner = pending.owner;
@@ -333,10 +333,10 @@ test('approved generation input with parsed audit enters the controlled channel 
       assert.equal(pendingLock.statusCode, 201, pendingLock.body);
       const pendingInput = pendingLock.json() as { input_revision: number; input_hash: string };
       assert.equal((await post(`/api/v1/projects/${pending.projectId}/preflight`,
-        { input_revision: pendingInput.input_revision, input_hash: pendingInput.input_hash })).json().code, 'CAPABILITY_NOT_READY');
+        { input_revision: pendingInput.input_revision, input_hash: pendingInput.input_hash })).statusCode, 200);
       assert.equal((await post('/api/v1/runs/execute', { ...request, project_id: pending.projectId,
         input_revision: pendingInput.input_revision, input_hash: pendingInput.input_hash,
-        execution_request_id: randomUUID() })).json().code, 'CAPABILITY_NOT_READY');
+        execution_request_id: randomUUID() })).statusCode, 202);
     } finally {
       await app.close(); await pool.end();
       names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; });
