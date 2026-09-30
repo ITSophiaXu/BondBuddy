@@ -1,5 +1,7 @@
 # 募集书 Cowork
 
+> 2026-09-30 [最新产品范围](docs/product-decisions/2026-09-30-m1-simplification.md)：M1 两类自带稿＋手填原市场/品类/报告期＋末尾补充要求；M2 仅增加相关付费且无余额退款/用户消费记录页；库推荐/维护归 M3。旧聊天、自动源识别及库依赖须迁移，正文工程历史不代表新范围已实现。进度/成果展示方案待布局确认。
+
 > M1 网页版项目工作台：见 [apps/web 启动与交接说明](apps/web/README.md)。这是接真实 `/api/v1` 的 #10 首个切片，与下文旧 Cowork 应用独立。
 
 > 新产品设计交接：请查看 [设计目录导航](DESIGN.md)、[BondBuddy 新产品原型](product-prototype/HANDOFF.md) 和 [BondBuddy Landing Page](landing-page/README.md)。下文描述仓库原有的线上 Cowork 应用。
