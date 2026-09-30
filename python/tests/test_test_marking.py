@@ -87,3 +87,22 @@ class TestWordMarking(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "TEST_UNCOVERED_ITEMS_INVALID"):
                 mark(str(source), str(manifest), str(target))
             self.assertFalse(target.exists())
+
+
+    def test_copy_only_marking_keeps_auxiliary_bytes_and_visible_body_banner(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, manifest, target = (root / name for name in ('source.docx', 'manifest.json', 'target.docx'))
+            doc = Document()
+            doc.add_paragraph('合成原文100万元')
+            doc.sections[0].header.paragraphs[0].text = '原页眉2023年'
+            doc.sections[0].footer.paragraphs[0].text = '原页脚'
+            doc.save(source)
+            manifest.write_text('[]', encoding='utf-8')
+            mark(str(source), str(manifest), str(target), preserve_auxiliary=True)
+            with zipfile.ZipFile(source) as original, zipfile.ZipFile(target) as marked:
+                for name in original.namelist():
+                    if name.startswith(('word/header', 'word/footer', 'word/media/', 'word/_rels/')):
+                        self.assertEqual(original.read(name), marked.read(name), name)
+                self.assertIn(MARK, marked.read('word/document.xml').decode())
+                self.assertIn('合成原文100万元', marked.read('word/document.xml').decode())

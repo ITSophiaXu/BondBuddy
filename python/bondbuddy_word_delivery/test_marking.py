@@ -48,7 +48,7 @@ def item_note(item: dict) -> tuple[str, str]:
     return label, f"{detail}；来源 {', '.join(sources) or '未提供'}"
 
 
-def mark(source: str, manifest: str, target: str) -> None:
+def mark(source: str, manifest: str, target: str, preserve_auxiliary: bool = False) -> None:
     uncovered = json.loads(Path(manifest).read_text(encoding="utf-8"))
     if not isinstance(uncovered, list) or len(uncovered) > 200:
         raise ValueError("TEST_UNCOVERED_ITEMS_INVALID")
@@ -82,11 +82,11 @@ def mark(source: str, manifest: str, target: str) -> None:
         rels_name = "word/_rels/document.xml.rels"
         rels = parse_xml(parts[rels_name]) if rels_name in parts else etree.Element(f"{{{R}}}Relationships", nsmap={None: R})
         header_names = [name for name in parts if name.startswith("word/header") and name.endswith(".xml")]
-        for name in header_names:
+        for name in [] if preserve_auxiliary else header_names:
             header = parse_xml(parts[name])
             header.insert(0, paragraph(MARK))
             parts[name] = etree.tostring(header, encoding="UTF-8", xml_declaration=True)
-        if not header_names:
+        if not header_names and not preserve_auxiliary:
             name = "word/headerBondBuddyTest.xml"
             if name in parts:
                 raise ValueError("TEST_HEADER_COLLISION")
@@ -113,12 +113,13 @@ def mark(source: str, manifest: str, target: str) -> None:
             types = parse_xml(parts["[Content_Types].xml"])
             etree.SubElement(types, f"{{{CT}}}Override", PartName="/" + name, ContentType=HEADER_CT)
             parts["[Content_Types].xml"] = etree.tostring(types, encoding="UTF-8", xml_declaration=True)
-        parts[rels_name] = etree.tostring(rels, encoding="UTF-8", xml_declaration=True)
+        if not preserve_auxiliary:
+            parts[rels_name] = etree.tostring(rels, encoding="UTF-8", xml_declaration=True)
         parts["word/document.xml"] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
         write_zip(target, original, parts)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5) or len(sys.argv) == 5 and sys.argv[4] != "--preserve-auxiliary":
         raise SystemExit("usage: test_marking.py source manifest target")
-    mark(*sys.argv[1:])
+    mark(*sys.argv[1:4], preserve_auxiliary=len(sys.argv) == 5)

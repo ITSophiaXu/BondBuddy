@@ -194,7 +194,7 @@ export async function prepareHistoricalUpdate(
     ...scope, contentHash: historical.contentHash, snapshotId: snapshot.snapshotId, parserVersion: snapshot.parserVersion,
     parseResultHash: snapshot.responseSha256, format: response.material.media_type === docx ? 'docx_effective' : 'pdf_requires_reconstruction',
     parseStatus: response.status, warnings: response.warnings.map(warning => warning.code),
-    ...(context.baselineUse === 'non_production_working_draft' ? { localizedWarnings: localizedHistoricalWarnings(response) } : {}),
+    ...(context.baselineUse ? { localizedWarnings: localizedHistoricalWarnings(response) } : {}),
     priorRevisions: { insertions: Number(revisionSummary?.insertions ?? 0), deletions: Number(revisionSummary?.deletions ?? 0) },
     blocks, profile: profile.recognition,
   } });

@@ -100,7 +100,11 @@ export function historicalWordDeliveryStage(options: { writer?: typeof writeHist
         !ctx.checkpoint?.historical_pending_original || draft.status !== 'needs_confirmation' || draft.notice !== PENDING_ORIGINAL_NOTICE ||
         plan.replacements.length + plan.columns.length !== 0 || !plan.textPreview?.length || plan.generation.reviewedBlocks !== plan.textPreview.length ||
         !ctx.checkpoint.historical_generation_input || updateContentHash(ctx.checkpoint.historical_generation_input) !== plan.generation.preparationHash ||
-        plan.textPreview.some(p => p.before !== p.after || !plan.reviewNotes.some(n => n.recordId === p.recordId)) ||
+        (draft.reviewScope === 'whole_document' && (plan.context.baselineUse !== 'non_production_pending_original' ||
+          ctx.checkpoint.historical_generation_input.pending_original_only !== true || plan.generation.chunks !== 0 ||
+          !plan.reviewNotes.some(n => n.recordId === plan.textPreview[0]!.recordId)) ||
+          (plan.context.baselineUse === 'non_production_pending_original' && draft.reviewScope !== 'whole_document')) ||
+        plan.textPreview.some(p => p.before !== p.after || draft.reviewScope !== 'whole_document' && !plan.reviewNotes.some(n => n.recordId === p.recordId)) ||
         updateContentHash(ctx.checkpoint.historical_pending_original) !== updateContentHash({
           preparation_hash: plan.generation.preparationHash, draft })) return { kind: 'fail', code: 'VALIDATION_FAILED' };
     } else if (plan.replacements.length + plan.columns.length === 0) return { kind: 'fail', code: 'VALIDATION_FAILED' };

@@ -144,5 +144,47 @@ class HistoricalWordWriterTest(unittest.TestCase):
         self.assertIn('末列', visible(self.xml(self.clean)))
 
 
+    def pending_original_plan(self):
+        plan = self.plan()
+        plan['context'] = {'baselineUse': 'non_production_pending_original'}
+        plan['pendingOriginalDraft'] = {'mode': 'non_production_pending_original', 'status': 'needs_confirmation',
+                                       'reviewScope': 'whole_document', 'notice': '合成原文工作稿待人工核验'}
+        plan['replacements'] = []
+        plan['columns'] = []
+        for preview in plan['textPreview']:
+            preview['after'] = preview['before']
+        _, _, metadata = _parse_docx(self.source, {})
+        plan['findings'] = [{'auxiliaryTargets': metadata['auxiliary_targets']}]
+        return plan
+
+    def test_copy_only_auxiliary_hash_mismatch_is_rejected(self):
+        doc = Document(self.source)
+        doc.sections[0].header.paragraphs[0].text = '合成页眉原字节'
+        doc.save(self.source)
+        plan = self.pending_original_plan()
+        plan['findings'][0]['auxiliaryTargets'][0]['part_sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'WORD_AUXILIARY_SOURCE_HASH_MISMATCH'):
+            build(self.source, plan, self.tracked, self.clean)
+        self.assertFalse(self.tracked.exists())
+
+    def test_copy_only_refuses_to_normalize_auxiliary_revisions(self):
+        doc = Document(self.source)
+        doc.sections[0].header.paragraphs[0].text = '合成页眉'
+        doc.save(self.source)
+        def revise(parts, _root):
+            header = etree.fromstring(parts['word/header1.xml'])
+            paragraph = header.find(Q('p'))
+            insertion = etree.SubElement(paragraph, Q('ins'))
+            insertion.set(Q('id'), '77')
+            insertion.set(Q('author'), 'Original')
+            run = etree.SubElement(insertion, Q('r'))
+            etree.SubElement(run, Q('t')).text = '未确认既有修订'
+            parts['word/header1.xml'] = etree.tostring(header)
+        self.rewrite_source(revise)
+        with self.assertRaisesRegex(ValueError, 'WORD_PENDING_AUXILIARY_REVISION_UNSUPPORTED'):
+            build(self.source, self.pending_original_plan(), self.tracked, self.clean)
+        self.assertFalse(self.tracked.exists())
+
+
 if __name__ == '__main__':
     unittest.main()

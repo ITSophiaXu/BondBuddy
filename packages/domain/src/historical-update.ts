@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { isMarketOffering, type Market, type Offering, type Recognition } from '@bondbuddy/contracts';
 import { factCandidateStatus, factIdentityKey, type FactCandidate, type FactIdentity, type FactPeriod, type FactStatus } from './facts.js';
 import * as arithmetic from './update-arithmetic.js';
+import { parseHistoricalNativeExtractorVersion } from './historical-native-extractor-version.js';
 
 /** Internal #31 → #34 handoff, not a public API or permission to publish a Word artifact. */
 export const HISTORICAL_UPDATE_VERSION = 'historical-update-plan-v1' as const;
@@ -37,7 +38,7 @@ export interface UpdateContext {
   inputRevision: number; inputHash: string;
   targetMarket: Market; targetOffering: Offering;
   /** Server selected only after non-production execution authorization. Never a public input. */
-  baselineUse?: 'non_production_working_draft';
+  baselineUse?: 'non_production_working_draft' | 'non_production_pending_original';
   /** A versioned reference, not an assertion that a rule pack has passed production review. */
   ruleSnapshot: { packId: string; version: string; contentHash: string };
 }
@@ -263,6 +264,36 @@ function simpleCell(block: BaselineBlock): { table: number; row: number; column:
   return [table, row, column].every(n => Number.isInteger(n) && n > 0) ? { table, row, column } : null;
 }
 
+/** Finite native recognition gaps may be copied, never resolved or used for arithmetic. */
+function canPreserveIncompleteHistoricalProfile(baseline: HistoricalBaseline, context: UpdateContext): boolean {
+  const profile = baseline.profile;
+  const fields = [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods];
+  const ids = new Set(baseline.blocks.map(b => b.recordId));
+  const conflict = /冲突|矛盾|多个候选|不一致|同一证据同时|不同报表口径|conflict|ambiguous|contradict|multiple candidates/i;
+  const anchored = (field: typeof fields[number], allowMissing: boolean) =>
+    field.provenance.material_id === baseline.materialId && field.provenance.material_version === baseline.materialVersion &&
+    field.provenance.method === 'native_text' &&
+    parseHistoricalNativeExtractorVersion(field.provenance.extractor_version)?.parserVersion === baseline.parserVersion &&
+    (field.provenance.evidence_refs.length > 0 || allowMissing && field.status === 'needs_confirmation') &&
+    field.provenance.evidence_refs.every(id => ids.has(id)) &&
+    (field.status === 'recognized' && field.uncertainty.length === 0 ||
+      field.status === 'needs_confirmation' && field.uncertainty.length > 0) && !field.uncertainty.some(reason => conflict.test(reason));
+  return baseline.format === 'docx_effective' && profile.state === 'needs_confirmation' &&
+    profile.source_market.value === context.targetMarket && profile.source_offering.value === context.targetOffering &&
+    anchored(profile.source_market, false) && anchored(profile.source_offering, false) &&
+    anchored(profile.latest_reporting_cutoff, profile.latest_reporting_cutoff.value === null) &&
+    (profile.latest_reporting_cutoff.value === null && profile.latest_reporting_cutoff.status === 'needs_confirmation' ||
+      profile.latest_reporting_cutoff.value !== null && date(profile.latest_reporting_cutoff.value)) &&
+    (profile.latest_reporting_cutoff.value === null || profile.reporting_periods.every(period =>
+      period.end === null || period.end <= profile.latest_reporting_cutoff.value!)) &&
+    profile.reporting_periods.every(period => anchored(period, period.start === null && period.end === null) &&
+      (period.start === null || date(period.start)) && (period.end === null || date(period.end)) &&
+      (period.start === null || period.end === null || period.start <= period.end) &&
+      ([period.start, period.end, period.period_kind, period.scope].every(value => value !== null) || period.status === 'needs_confirmation')) &&
+    (profile.latest_reporting_cutoff.value === null || !profile.reporting_periods.length ||
+      profile.reporting_periods.some(period => [period.start, period.end, period.period_kind, period.scope].some(value => value === null)));
+}
+
 /** Makes no model calls, writes no database state, and never upgrades facts or a run to success. */
 export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUpdatePlan {
   // Clone so inputs, old artifacts, and a returned plan never share mutable objects.
@@ -286,7 +317,10 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   if (profile.material_id !== baseline.materialId || profile.material_version !== baseline.materialVersion) throw new Error('UPDATE_PROFILE_BASELINE_MISMATCH');
   if (baseline.format !== 'docx_effective') flag('UPDATE_PDF_RECONSTRUCTION_REQUIRED');
   const uncertainBlocks = baseline.blocks.filter(block => block.uncertainty.length > 0);
-  const testDraft = context.baselineUse === 'non_production_working_draft';
+  const pendingOriginalOnly = context.baselineUse === 'non_production_pending_original';
+  if (pendingOriginalOnly && (facts.length || bindings.length || occurrences.length || columns.length || coverage.some(c => c.disposition === 'update')))
+    throw new Error('UPDATE_PENDING_ORIGINAL_MUTATION_FORBIDDEN');
+  const testDraft = context.baselineUse === 'non_production_working_draft' || pendingOriginalOnly;
   const localizedWarnings = baseline.localizedWarnings ?? [];
   const localizedCodes = new Set(localizedWarnings.map(item => item.code));
   const warningsLocalized = testDraft && baseline.warnings.length > 0 && localizedWarnings.length > 0 &&
@@ -336,12 +370,16 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
       (field.status === 'recognized' && field.uncertainty.length === 0 ||
         field.status === 'needs_confirmation' && field.uncertainty.length > 0 &&
         !field.uncertainty.some(reason => /冲突|矛盾|多个候选|不一致|同一证据同时|不同报表口径|conflict|ambiguous|contradict|multiple candidates/i.test(reason))));
-  if (profileShapeInvalid || (!reviewedProfile && !assertedDraftProfile && !candidatePendingProfile)) flag('UPDATE_PROFILE_UNCONFIRMED');
+  const incompleteOriginalProfile = pendingOriginalOnly && canPreserveIncompleteHistoricalProfile(baseline, context);
+  if (!incompleteOriginalProfile && (profileShapeInvalid || (!reviewedProfile && !assertedDraftProfile && !candidatePendingProfile))) flag('UPDATE_PROFILE_UNCONFIRMED');
+  if (incompleteOriginalProfile) findings.push({ code: 'UPDATE_PROFILE_INCOMPLETE_PENDING',
+    recordIds: [...new Set([baseline.blocks[0]!.recordId, ...sourceFields.flatMap(field => field.provenance.evidence_refs)])], bindingIds: [],
+    message: `整份原稿仅原文复制，尚未完成语义更新或事实核验。原稿市场及发行方式仍为待核候选；原稿最新截止日${profile.latest_reporting_cutoff.value ?? '缺失'}，${profile.reporting_periods.length}项原稿报告期间含有限未知，完整画像附于锁定计划。缺失期间及口径未推断、未用于计算；请人工核对原文与本期目标。` });
   if (profile.source_market.value !== context.targetMarket || profile.source_offering.value !== context.targetOffering) flag('UPDATE_STRUCTURE_MAPPING_REQUIRED');
   if (candidatePendingProfile && !reviewedProfile) findings.push({ code: 'UPDATE_PROFILE_CANDIDATE_PENDING',
     recordIds: [...new Set(sourceFields.flatMap(field => field.provenance.evidence_refs))], bindingIds: [],
     message: '历史稿类型或报告期包含有原文定位的待确认机器候选；本次仅在已锁定材料及明确目标范围内编制非生产工作稿，未确认为已核画像，也不能用于确定难度、计价或合规结论。' });
-  const globalBlocked = findings.some(finding => finding.code !== 'UPDATE_PROFILE_CANDIDATE_PENDING');
+  const globalBlocked = findings.some(finding => !['UPDATE_PROFILE_CANDIDATE_PENDING', 'UPDATE_PROFILE_INCOMPLETE_PENDING'].includes(finding.code));
   if (warningsLocalized) for (const item of localizedWarnings) findings.push({
     code: 'UPDATE_BASELINE_AUXILIARY_PENDING', recordIds: item.recordIds, bindingIds: [],
     message: item.message, auxiliaryTargets: item.targets,
@@ -368,7 +406,7 @@ export function planHistoricalUpdate(input: HistoricalUpdateInput): HistoricalUp
   const reviews = new Map(coverage.map(item => [item.recordId, item]));
   if (reviews.size !== coverage.length || coverage.some(item => !blockById.has(item.recordId) || !item.reason.trim() || !['retain', 'update', 'needs_evidence'].includes(item.disposition))) throw new Error('UPDATE_INVALID_COVERAGE');
   const pendingRecords = new Set<string>();
-  for (const finding of findings) if (['UPDATE_BASELINE_AUXILIARY_PENDING', 'UPDATE_PROFILE_USER_ASSERTED_PENDING', 'UPDATE_PROFILE_CANDIDATE_PENDING'].includes(finding.code))
+  for (const finding of findings) if (['UPDATE_BASELINE_AUXILIARY_PENDING', 'UPDATE_PROFILE_USER_ASSERTED_PENDING', 'UPDATE_PROFILE_CANDIDATE_PENDING', 'UPDATE_PROFILE_INCOMPLETE_PENDING'].includes(finding.code))
     finding.recordIds.forEach(id => pendingRecords.add(id));
   for (const recordId of localizedUncertainRecordIds) pendingRecords.add(recordId);
   for (const block of baseline.blocks) {
