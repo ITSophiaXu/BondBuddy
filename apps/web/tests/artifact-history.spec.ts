@@ -1,7 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { PROJECT_MESSAGE_SET_HASH_DOMAIN } from '@bondbuddy/contracts';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import type { Dto } from '../src/api';
 
@@ -32,7 +33,7 @@ const initial = [entry(3), entry(2), entry(1, 'production', false)];
 type Scenario = {
   entries: Entry[]; requests: { method: string; path: string; query: string }[]; reads: Map<string, number>; grants: string[];
   historyStatus: number; downloadStatus: number; metadataStatus: number; badBytes: boolean; foreignRun: boolean;
-  loggedOut: boolean; latestRunState: 'failed' | 'running'; holdHistory?: Promise<void>; historyRequested?: () => void;
+  loggedOut: boolean; latestRunState: 'failed' | 'running' | 'succeeded'; holdHistory?: Promise<void>; historyRequested?: () => void;
   malformedItems?: unknown[]; holdDownload?: Promise<void>; downloadRequested?: () => void; kind: 'update' | 'generation';
 };
 const scenario = (): Scenario => ({ entries: [...initial], requests: [], reads: new Map(), grants: [],
@@ -56,7 +57,7 @@ async function install(page: Page, data: Scenario) {
       return reply(route, 200, { conversation_id: path.split('/')[2], items: [],
         project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
     }
-    if (path === '/projects') return reply(route, 200, { items: [{ ...project(projectId, data.kind), latest_run: { run_id: 'latest-failed',
+    if (path === '/projects') return reply(route, 200, { items: [{ ...project(projectId, data.kind), latest_run: { run_id: data.latestRunState === 'succeeded' ? 'run-3' : 'latest-failed',
       state: data.latestRunState, updated_at: when }, latest_artifact: { artifact_id: 'revision-3', run_id: 'run-3', version: 3, created_at: when } }],
       page: { has_more: false, next_cursor: null } });
     if (path.endsWith('/events')) return reply(route, 200, { items: [], next_cursor: null });
@@ -119,6 +120,20 @@ async function open(page: Page, data: Scenario) {
   await expect(page.locator('.word-history-item')).toHaveCount(Math.min(data.entries.length, 2));
 }
 
+async function capture(page: Page, state: 'complete' | 'failed') {
+  const output=process.env.BB_34_HISTORY_EVIDENCE_DIR;
+  if (!output) return;
+  await mkdir(resolve(output),{recursive:true});
+  for (const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+    await page.setViewportSize({width,height});
+    await page.locator('#workspace-progress').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(resolve(output),`workspace-${state}-${device}.png`)});
+    await page.locator('#word-history-title').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(resolve(output),`implementation-${state}-${device}.png`)});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
+}
+
 test('API client paginates checked versions in the same project, keeps old successes after a newer failed run, and downloads each variant with a fresh grant', async ({ page }) => {
   const data = scenario(); await open(page, data);
   await expect(page.locator('#execution-progress')).toContainText('任务失败');
@@ -126,6 +141,7 @@ test('API client paginates checked versions in the same project, keeps old succe
   await page.getByRole('button', { name: '加载更多版本' }).click();
   await expect(page.locator('.word-history-item')).toHaveCount(3);
   await expect(page.locator('#conversation-status')).toContainText('已读取');
+  await capture(page,'failed');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.locator('#word-history-title').scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(tmpdir(), 'bb34-history-implementation-desktop.png') });
@@ -150,6 +166,18 @@ test('API client paginates checked versions in the same project, keeps old succe
   await expect(page.locator('.word-history-item').last()).toContainText('此历史成果未提供修订、清洁版和有效基线');
   await expect(page.locator('.word-history-item').last().getByRole('button', { name: /^下载/ })).toHaveCount(1);
   expect(data.requests.every(request => request.method === 'GET')).toBe(true);
+});
+
+test('completed workspace retains the message pane and distinguishes source version from file version without internal status copy', async ({ page }) => {
+  const data=scenario(); data.latestRunState='succeeded'; await open(page,data);
+  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await expect(page.locator('#artifact-summary')).toBeVisible();
+  await expect(page.locator('#conversation-status')).toContainText('已读取');
+  await expect(page.locator('.word-history-item').first()).toContainText('项目资料版本 5 的成果');
+  await expect(page.locator('.word-history')).not.toContainText(/正式通道|已通过交付检查|任务编号|文件版本|输入版本/);
+  await expect(page.locator('.word-history-item').first().getByRole('button',{name:'下载有效基线'})).toBeVisible();
+  await capture(page,'complete');
+  expect(data.requests.every(request=>request.method==='GET')).toBe(true);
 });
 
 test('empty project and foreign/deleted history are not shown as successful results', async ({ page }) => {
