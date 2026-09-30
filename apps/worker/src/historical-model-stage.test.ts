@@ -1211,6 +1211,20 @@ z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); ns={'w':'http://schemas.
       assert.equal(metadata.json().word_delivery.replacements,0); assert.equal(metadata.json().word_delivery.columns,0);
       assert.deepEqual(metadata.json().word_delivery.pending_review,delivered.wordSummary!.pending_review);
       const download=await app.inject({method:'GET',url:metadata.json().download_url}); assert.equal(download.statusCode,200); assert.equal(digest(download.rawPayload),revision.sha256);
+      const downloads:Record<string,string>={};
+      for(const [variant,artifactId] of Object.entries(artifactIds)){
+        principal='owner-1';
+        const owned=await app.inject({method:'GET',url:`/api/v1/artifacts/${artifactId}`});
+        assert.equal(owned.statusCode,200,owned.body);
+        const bytes=await app.inject({method:'GET',url:owned.json().download_url});
+        assert.equal(bytes.statusCode,200);
+        assert.equal(digest(bytes.rawPayload),(evidence[variant] as {sha256:string}).sha256);
+        principal='foreign-owner';
+        assert.equal((await app.inject({method:'GET',url:`/api/v1/artifacts/${artifactId}`})).statusCode,404);
+        assert.equal((await app.inject({method:'GET',url:owned.json().download_url})).statusCode,404);
+        downloads[variant]='owner hash matched; foreign metadata/download 404';
+      }
+      evidence.downloads=downloads;
       principal='foreign-owner';
       assert.equal((await app.inject({method:'GET',url:`/api/v1/artifacts/${revision.artifactId}`})).statusCode,404);
       assert.equal((await app.inject({method:'GET',url:metadata.json().download_url})).statusCode,404);
