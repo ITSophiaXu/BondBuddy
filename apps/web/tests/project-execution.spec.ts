@@ -25,6 +25,7 @@ function fixture() {
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
+    holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
     listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
     parseSucceeded: false,
     runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
@@ -128,7 +129,13 @@ async function setup(page: Page, state = fixture(), canStart = true) {
           occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
           payload: more ? {} : { ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
       }
-      return json(route, 200, run);
+      state.runReads++;
+      const snapshot={...structuredClone(run),event_cursor:state.eventSeq};
+      if (state.holdRunRead) {
+        state.holdRunRead=false;
+        await new Promise<void>(resolve=>{state.releaseRunRead=resolve;});
+      }
+      return json(route, 200, snapshot);
     }
     if (path.endsWith('/facts/candidates')) return json(route, 200, { items: [], page: { next_cursor: null, has_more: false } });
     return json(route, 404, { code: 'NOT_FOUND' });
@@ -431,6 +438,24 @@ test('list v1 -> GET v2 before start stops without creating an input or run', as
   // The page stays on the project and the action remains available for a refreshed re-selection.
   await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
   await expect(page.getByRole('heading',{name:'合成任务项目',exact:true})).toBeVisible();
+});
+
+test('manual task refresh invalidates a late paused poll without replaying task actions', async ({ page }) => {
+  // Freeze the scheduled five-second poll so only explicit refreshes can change the state.
+  await page.clock.install({time:new Date(now)});
+  await page.clock.pauseAt(new Date(Date.parse(now)+1000));
+  const state=fixture(); state.checkStatus='ready'; state.holdRunRead=true;
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect.poll(()=>Boolean(state.releaseRunRead)).toBe(true);
+  const run=[...state.runs.values()][0]; run.state='running';
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  state.releaseRunRead!();
+  await expect.poll(()=>state.runReads).toBeGreaterThanOrEqual(3);
+  await expect(page.locator('#execution-progress')).toContainText('处理中');
+  await expect(page.locator('#recheck-paused')).toHaveCount(0);
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
+  expect(state.runActions).toHaveLength(0); expect(state.runs.size).toBe(1);
 });
 
 test('paginated recovery and real task actions keep one run', async ({ page }) => {

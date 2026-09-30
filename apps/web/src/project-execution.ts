@@ -115,6 +115,7 @@ export class ProjectExecution {
   private eventCursor = 0;
   private timer?: ReturnType<typeof setTimeout>;
   private polling = false;
+  private runReadVersion = 0;
   private busy = false;
   private inputReadUncertain = false;
   private resumeVerified = false;
@@ -306,12 +307,13 @@ export class ProjectExecution {
   private async changeRun(action: 'cancel' | 'resume') {
     if (!this.run || action === 'resume' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     const runId = this.run.run_id;
+    const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
     await this.action(async () => {
       const run = await this.api.runAction(runId, action, this.controller.signal);
       if (!this.active) return;
       if (run.run_id !== runId || run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
-      if (action === 'resume') this.resumedPause = { runId, stage: this.run?.stage ?? null, reason: this.reason };
+      if (action === 'resume') this.resumedPause = pause;
       this.acceptRun(run); void this.poll();
     });
   }
@@ -442,6 +444,7 @@ export class ProjectExecution {
     }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    this.runReadVersion++;
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
     if (this.run?.run_id !== run.run_id) {
@@ -454,6 +457,8 @@ export class ProjectExecution {
   }
   private async restore() {
     if (this.busy) return;
+    this.runReadVersion++;
+    clearTimeout(this.timer);
     this.restoring = true;
     await this.action(async () => {
       this.inputReadUncertain = true;
@@ -491,15 +496,17 @@ export class ProjectExecution {
       this.offerSavedInput = Boolean(input && !this.run);
     });
     this.restoring = false; this.render();
+    if (this.active && this.run) void this.poll();
   }
   private async poll() {
     clearTimeout(this.timer);
     if (!this.run || !this.active || this.polling) return;
     this.polling = true;
     const id = this.run.run_id;
+    const readVersion = this.runReadVersion;
     try {
       const run = await this.api.run(id, this.controller.signal);
-      if (!this.active || this.run?.run_id !== id) return;
+      if (!this.active || readVersion !== this.runReadVersion || this.run?.run_id !== id) return;
       if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
@@ -508,7 +515,7 @@ export class ProjectExecution {
       let cursor = this.eventCursor;
       for (;;) {
         const page = await this.api.runEvents(id, cursor, this.controller.signal);
-        if (!this.active || this.run?.run_id !== id) return;
+        if (!this.active || readVersion !== this.runReadVersion || this.run?.run_id !== id) return;
         for (const event of page.items) {
           if (event.run_id !== id || event.seq <= this.eventCursor) continue;
           this.eventCursor = event.seq;
@@ -527,13 +534,24 @@ export class ProjectExecution {
         if (page.next_cursor === null || page.next_cursor <= cursor) break;
         cursor = page.next_cursor;
       }
+      // An event can arrive while the run read still describes its preceding state.
+      // Reuse the matching cached event once a newer run read reaches that cursor.
+      const currentCursor = run.event_cursor ?? 0;
+      const currentEvent = this.events.slice().reverse().find(event => event.seq <= currentCursor &&
+        event.state === run.state && event.stage === run.stage);
+      const reason = currentEvent?.payload.reason ?? currentEvent?.payload.error_code;
+      if (this.reason !== reason) this.resumeVerified = false;
+      this.reason = reason;
       this.progressMessage = '';
     } catch (error) {
-      if (this.active) this.progressMessage = `任务状态暂未更新。${friendlyError(error)}`;
+      if (this.active && readVersion === this.runReadVersion) this.progressMessage = `任务状态暂未更新。${friendlyError(error)}`;
     } finally {
       this.polling = false; this.render();
-      if (this.active && this.run && !['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'].includes(this.run.state))
-        this.timer = setTimeout(() => { void this.poll(); }, 5000);
+      if (this.active && this.run && !['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'].includes(this.run.state)) {
+        if (readVersion !== this.runReadVersion) {
+          if (!this.restoring) void this.poll();
+        } else this.timer = setTimeout(() => { void this.poll(); }, 5000);
+      }
     }
   }
   dispose() { this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
