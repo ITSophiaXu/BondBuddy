@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { Pool } from 'pg';
 import { fileURLToPath } from 'node:url';
-import { emptyUpdateDetails } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, type UpdateDetails } from '@bondbuddy/contracts';
 import { scrubSecrets } from '@bondbuddy/api/log-ops';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { azureBlobs, digest, uid } from '@bondbuddy/api/data';
@@ -818,4 +818,101 @@ test('a later batch input mutation is rejected before replaying even the first c
   input.snapshot.response.records[512]!.literal_quote='changed';
   assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),{kind:'fail',code:'DATA_UNAVAILABLE'});
   assert.equal(calls,1);
+});
+
+
+async function withCutoffDraftTest(run: () => Promise<void>) {
+  const saved = [process.env.BB_DEPLOYMENT_TIER, process.env.BB_NON_PRODUCTION_TEST_CHANNEL];
+  process.env.BB_DEPLOYMENT_TIER = 'preprod'; process.env.BB_NON_PRODUCTION_TEST_CHANNEL = 'enabled';
+  try { await run(); } finally {
+    for (const [index, name] of ['BB_DEPLOYMENT_TIER', 'BB_NON_PRODUCTION_TEST_CHANNEL'].entries()) {
+      if (saved[index] === undefined) delete process.env[name]; else process.env[name] = saved[index];
+    }
+  }
+}
+function missingCutoffFixture() {
+  const s = fixture(true);
+  (s.manifest.update_details as UpdateDetails).reporting_cutoff = null;
+  s.row.input_hash = inputManifestHash(s.manifest);
+  s.ctx.run.input_hash = s.row.input_hash; s.grant.input_hash = s.row.input_hash;
+  return s;
+}
+
+test('missing draft cutoff uses frozen owned financial periods and adds a deterministic pending Word note', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = missingCutoffFixture();
+    const manifestBefore = structuredClone(s.manifest);
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.details.reporting_cutoff, '2024-12-31');
+    assert.deepEqual(input.reportingCutoffBasis, { source: 'locked_financial_fact_period', status: 'needs_confirmation',
+      cutoff: '2024-12-31', candidate_ids: ['revenue-2024'] });
+    assert.deepEqual(s.manifest, manifestBefore, 'derived boundary must not change the immutable manifest');
+    assert.deepEqual((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, input.reportingCutoffBasis);
+    const prompt = historicalPrompt(input, input.snapshot.response.records, 0, 1);
+    assert.match(prompt, /reporting_cutoff_basis/); assert.match(prompt, /不是用户确认的目标期间/);
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'done', JSON.stringify(result));
+    if (result.kind === 'done') assert.ok((result.value as HistoricalGenerationPlan).reviewNotes.some(note =>
+      note.message.includes('财务截止日未由用户确认') && note.message.includes('2024-12-31')));
+    const recovered = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(recovered.preparationHash, input.preparationHash);
+    (s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis.cutoff = '2025-06-30';
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /UPDATE_REPORTING_CUTOFF_SNAPSHOT_CHANGED/);
+  });
+});
+
+test('draft cutoff bridge refuses uncertain, user-stated, invalid or historical-only period evidence', async () => {
+  await withCutoffDraftTest(async () => {
+    for (const mutate of [
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate as any).source.kind = 'user_statement'; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance as any).uncertainty = ['period uncertain']; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).period.end = '2024-02-30'; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).period.asOf = '2025-06-30'; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).entityId = 'subsidiary'; },
+    ]) {
+      const s = missingCutoffFixture(); mutate(s);
+      await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_required|historical_issuer_identity_not_bound/);
+      assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
+    }
+    const historical = missingCutoffFixture();
+    (historical.facts[0]!.provenance as any).materialId = historical.manifest.materials[0]!.material_id;
+    (historical.facts[0]!.provenance as any).evidence = historical.facts[0]!.provenance.evidence.map(anchor => ({ ...anchor,
+      material_id: historical.manifest.materials[0]!.material_id, content_hash: historical.manifest.materials[0]!.sha256 }));
+    await assert.rejects(loadHistoricalGenerationInput(historical.ctx, historical.readers), /historical_target_period_required/);
+    const foreign = missingCutoffFixture();
+    (foreign.facts[0]!.candidate.identity as any).accountId = 'foreign-owner';
+    await assert.rejects(loadHistoricalGenerationInput(foreign.ctx, foreign.readers), /UPDATE_FACT_MATERIAL_MISMATCH/);
+  });
+});
+
+test('cutoff bridge preserves explicit target intent and production missing-cutoff rejection', async () => {
+  const production = fixture(); (production.manifest.update_details as UpdateDetails).reporting_cutoff = null;
+  await assert.rejects(loadHistoricalGenerationInput(production.ctx, production.readers), /historical_target_period_required/);
+  await withCutoffDraftTest(async () => {
+    const explicit = fixture(true);
+    explicit.manifest.update_details.reporting_cutoff = '2023-12-31';
+    explicit.row.input_hash = inputManifestHash(explicit.manifest);
+    explicit.ctx.run.input_hash = explicit.row.input_hash; explicit.grant.input_hash = explicit.row.input_hash;
+    const input = await loadHistoricalGenerationInput(explicit.ctx, explicit.readers);
+    assert.equal(input.details.reporting_cutoff, '2023-12-31'); assert.equal(input.reportingCutoffBasis, undefined);
+    assert.equal((explicit.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, undefined);
+  });
+});
+
+
+test('draft cutoff chooses the latest eligible issuer financial period, excluding other entities', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = missingCutoffFixture();
+    const newer = structuredClone(s.facts[0]!);
+    (newer.candidate as any).candidateId = 'revenue-2025';
+    (newer.candidate.identity as any).period = { start: '2025-01-01', end: '2025-06-30' };
+    const foreignEntity = structuredClone(newer);
+    (foreignEntity.candidate as any).candidateId = 'other-2026';
+    (foreignEntity.candidate.identity as any).entityId = 'subsidiary';
+    (foreignEntity.candidate.identity as any).period = { start: '2026-01-01', end: '2026-06-30' };
+    s.facts.push(newer, foreignEntity);
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.details.reporting_cutoff, '2025-06-30');
+    assert.deepEqual(input.reportingCutoffBasis!.candidate_ids, ['revenue-2025']);
+  });
 });
