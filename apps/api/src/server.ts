@@ -80,6 +80,14 @@ function stableJson(value:unknown):string {
   return encoded;
 }
 
+// Keep this in step with the browser's update request key. Only the exact key
+// for the submitted immutable input is reserved for a production click.
+function isBrowserUpdateKey(value:unknown, projectId:unknown, revision:unknown, inputHash:unknown):boolean {
+  return typeof value==='string' && typeof projectId==='string' &&
+    isPgInputRevision(revision) && typeof inputHash==='string' && /^[a-f0-9]{64}$/.test(inputHash) &&
+    value===`web-update-${digest(JSON.stringify([projectId,revision,inputHash]))}`;
+}
+
 async function appendProjectMaterialEvent(client: PoolClient, ownerId: string, projectId: string, materialId: string, byteSize: number) {
   const allocated = await client.query('UPDATE bb_projects SET event_cursor=event_cursor+1 WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING event_cursor', [ownerId, projectId]);
   if (!allocated.rows[0]) throw missing();
@@ -214,6 +222,12 @@ export function createServer(settings: Settings = {}) {
           await recordOperation(client,{owner:user,projectId:priorRun.rows[0].project_id,runId:priorRun.rows[0].id,requestId,traceId,kind,status:'rejected',errorCode:'IDEMPOTENCY_CONFLICT'});
           return {status:409,code:'IDEMPOTENCY_CONFLICT'};
         }
+      }
+      if((submitted.test_grant_id!==undefined||workingDraftConfigured()) &&
+          isBrowserUpdateKey(executionRequestId,projectId,submitted.input_revision,submitted.input_hash)){
+        await recordOperation(client,{owner:user,projectId,requestId,traceId,kind,status:'rejected',
+          errorCode:'VALIDATION_FAILED',inputRevision,inputHash,channel:'non_production_test'});
+        return {status:422,code:'VALIDATION_FAILED'};
       }
       const logged=await recordLogicalJob(client,{owner:user,projectId,requestId,traceId,kind,jobType:'submission',status:'rejected',errorCode:'VALIDATION_FAILED',inputRevision,inputHash,stage:'schema_validation',executionRequestId,requestHash,httpStatus:422,schemaRejected:true,channel,testGrantId});
       return {status:logged.httpStatus!,code:logged.errorCode!};
@@ -1222,6 +1236,33 @@ export function createServer(settings: Settings = {}) {
     const requestHash=digest(canonical({project_id:b.project_id,input_revision:b.input_revision,input_hash:b.input_hash,task_kind:b.task_kind,input_manifest_ref:b.input_manifest_ref,storage_origin:b.storage_origin,workspace_id:b.workspace_id,...(b.user_prompt?{user_prompt_sha256:digest(b.user_prompt)}:{}),...(b.test_grant_id?{channel:'non_production_test',test_grant_id:b.test_grant_id}:{})}));
     const storedExecutionKey=executionKeyStorage(b.execution_request_id);
     const wideRevision=!isPgInputRevision(b.input_revision);
+    const browserTestKey=(!!b.test_grant_id||workingDraftConfigured()) &&
+      isBrowserUpdateKey(b.execution_request_id,b.project_id,b.input_revision,b.input_hash);
+    const rejectBrowserTestKey=async(client:PoolClient)=>{
+      const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+      await recordOperation(client,{owner:user,projectId:owned.rowCount?b.project_id:null,
+        requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:'VALIDATION_FAILED',
+        inputRevision:owned.rowCount?b.input_revision:undefined,inputHash:owned.rowCount?b.input_hash:undefined,
+        channel:'non_production_test'});
+      return {errorCode:'VALIDATION_FAILED',httpStatus:422};
+    };
+    if(browserTestKey){
+      const response=await transaction(db(),async client=>{
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${user}:${executionKeyHash(b.execution_request_id)}`]);
+        const old=await client.query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,storedExecutionKey]);
+        if(old.rows[0]){
+          const same=old.rows[0].request_hash.trim()===requestHash;
+          await recordOperation(client,{owner:user,projectId:old.rows[0].project_id,runId:old.rows[0].id,
+            requestId:request.id,traceId,kind:'execute',status:same?'submitted':'rejected',
+            errorCode:same?undefined:'IDEMPOTENCY_CONFLICT',inputRevision:same?b.input_revision:undefined,
+            inputHash:same?b.input_hash:undefined});
+          return same?{run:visibleRunDto(old.rows[0])}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409};
+        }
+        return rejectBrowserTestKey(client);
+      });
+      if('run' in response)return reply.code(202).send(response.run);
+      throw new Problem(response.httpStatus,response.errorCode,'Execution request was rejected');
+    }
     const logical=(errorCode:string,httpStatus:number,stage:string)=>({channel:b.test_grant_id?'non_production_test' as const:'production' as const,testGrantId:b.test_grant_id,owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute' as const,jobType:b.task_kind as 'update'|'review'|'generation'|'qa',status:'rejected' as const,errorCode,inputRevision:wideRevision?undefined:b.input_revision,inputHash:wideRevision?undefined:b.input_hash,stage,executionRequestId:b.execution_request_id,requestHash,httpStatus,revisionRejected:wideRevision&&stage==='revision_out_of_range'});
     const priorRejection=async(client:PoolClient,prior:any)=>{
       if(wideRevision){
