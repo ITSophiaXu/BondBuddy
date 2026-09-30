@@ -129,7 +129,8 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     const preflightBody = { input_revision: 1, input_hash: lockedInput.json().input_hash };
     const pendingPreflight = await send('POST', `/api/v1/projects/${projectId}/preflight`, preflightBody);
     assert.equal(pendingPreflight.statusCode, 200, pendingPreflight.body);
-    assert.equal(pendingPreflight.json().status, 'blocked');
+    assert.equal(pendingPreflight.json().status, 'blocked', 'execution capability remains disabled in this server');
+    assert.deepEqual(pendingPreflight.json().blocking_inputs, ['execution_capability_not_ready']);
     const issuerBlock = (pendingPreflight.json().missing_inputs as string[]).find(input => input.startsWith('issuer_identity_not_bound:'));
     assert.ok(issuerBlock, 'parsing a historical material does not supply a reviewed issuer identity');
     assert.deepEqual(pendingPreflight.json().missing_inputs, ['rule_pack:issuer_identity_not_bound', 'target_market_offering_required', issuerBlock,
@@ -176,7 +177,7 @@ test('PostgreSQL/Azurite durable material parse hook: enqueue, resume, retry, ca
     assert.deepEqual(readyPreflight.json().missing_inputs, ['rule_pack:issuer_identity_not_bound', 'target_market_offering_required', issuerBlock,
       'update_difficulty_pending:financial_materials_required'],
       'parse completion clears material pending, but cannot verify issuer identity');
-    assert.equal(readyPreflight.json().status, 'blocked');
+    assert.equal(readyPreflight.json().status, 'needs_confirmation', 'remaining issuer and rule gaps stay visible without blocking admission');
     assert.equal((await operations('preflight', 'submitted')).length, 2);
 
     const producerProject = await send('POST','/api/v1/projects',{name:'Synthetic issuer producer',kind:'update',issuer_name:null,market:null,offering:null});
