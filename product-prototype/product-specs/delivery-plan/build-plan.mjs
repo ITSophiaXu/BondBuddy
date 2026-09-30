@@ -1,9 +1,10 @@
 import fs from 'node:fs';
+import { applyScope20260930 } from './scope-20260930.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const out=path.dirname(fileURLToPath(import.meta.url));
 const namespace='bondbuddy-web-first-20260922';
-const branch='feat/review-classification-optimization';
+const branch='develop';
 // Change only after the user confirms what their third milestone means.
 const milestone3Confirmed=true;
 const publicationPath=path.join(out,'published.json');
@@ -237,6 +238,8 @@ task('M5-07','qa','完成 Windows 安装、升级、安全与业务发布验收'
  'Windows 干净环境验证全部四类业务与账号/积分链路|覆盖安装、升级中断、长路径、磁盘不足、托盘、断网、崩溃和迁移|根据实测宣布系统架构支持范围，发布签名安装包及恢复说明',
  '无需开发工具即可完成扫描材料到 Word 的全流程|Windows 与 Web 关键业务结果/计价一致，文件保持个人隔离|无重复扣费、跨账号泄漏、虚构签署或损坏交付阻断，回滚可执行');
 
+applyScope20260930(tasks, milestones);
+
 const roles={web:'前端工程师',platform:'服务端工程师',security:'服务端/安全工程师',document:'文档处理工程师',ai:'AI 工程师',rules:'行业专家 + AI/文档工程师',billing:'服务端/支付工程师（财务参与验收）',data:'数据接入工程师（商务/行业参与验收）',qa:'测试工程师 + 对应领域审核人',desktop:'Windows 客户端工程师'};
 const labels=[{name:'type:milestone',color:'5319E7',description:'里程碑跟踪，不直接认领实现'},{name:'type:task',color:'0E8A16',description:'可认领开发子任务'},...Object.keys(roles).map(area=>({name:'area:'+area,color:'1D76DB',description:roles[area]})),{name:'priority:P0',color:'B60205',description:'关键路径、合规、数据或账务正确性'},{name:'priority:P1',color:'FBCA04',description:'同里程碑内的正常交付任务'}];
 const byId=new Map(tasks.map(t=>[t.id,t]));
@@ -245,7 +248,7 @@ const visiting=new Set(),visited=new Set();
 function visit(id){if(visiting.has(id))throw Error('Dependency cycle '+id);if(visited.has(id))return;const t=byId.get(id);if(!t)throw Error('Unknown dependency '+id);visiting.add(id);for(const d of t.dependsOn)visit(d);visiting.delete(id);visited.add(id);}
 for(const task of tasks){visit(task.id);for(const n of task.specChapters)if(!specs(n))throw Error('Missing chapter '+n);if(task.scope.length<3||task.acceptance.length<3)throw Error('Insufficient task detail '+task.id);}
 const allTasksPublished=publication?.verified && [...milestones,...tasks].every(t=>publication.issues[t.id]);
-const plan={version:'1.2-web-first',namespace,repository:'ITSophiaXu/BondBuddy',branch,milestone3Confirmed,publicationState:allTasksPublished?'verified':publication?'in_progress':'not_created',milestones,labels,tasks:tasks.map(t=>({...t,role:roles[t.area],labels:['type:task','area:'+t.area,'priority:'+t.priority],specFiles:t.specChapters.map(specs)}))};
+const plan={version:'1.3-scope-20260930',namespace,repository:'ITSophiaXu/BondBuddy',branch,milestone3Confirmed,publicationState:allTasksPublished?'verified':publication?'in_progress':'not_created',milestones,labels,tasks:tasks.map(t=>({...t,role:roles[t.area],labels:['type:task','area:'+t.area,'priority:'+t.priority],specFiles:t.specChapters.map(specs)}))};
 fs.writeFileSync(path.join(out,'plan.json'),JSON.stringify(plan,null,2)+'\n');
 fs.mkdirSync(path.join(out,'issues'),{recursive:true});
 const refs=ids=>ids.length?ids.map(id=>`{{${id}}}`).join('、'):'无硬依赖，可先认领';
@@ -259,17 +262,17 @@ for(const m of milestones){const children=plan.tasks.filter(t=>t.milestone===m.i
 const counts=milestones.map(m=>({milestone:m.id,tasks:plan.tasks.filter(t=>t.milestone===m.id).length}));
 fs.writeFileSync(path.join(out,'README.md'),[
  '# BondBuddy 开发任务拆解：先 Web，后 Windows','',
- `需求基线：2026-09-22。完整计划包含 **${milestones.length} 个 milestone、${milestones.length} 个跟踪 issue、${tasks.length} 个可认领子任务**。`+(publication?.verified?`最近核对发布 ${Object.keys(publication.milestones).length} 个 milestone、${Object.keys(publication.issues).length} 个 issue，见 [GitHub 发布索引](GitHub发布索引.md)。`:'本目录当前为发布草案；远端创建完成后提供实际链接索引。'),
- '', milestone3Confirmed?'第三里程碑已确认指募集书复核，复用第二阶段的积分和付费能力。':'第三里程碑“募集书付费功能”与第二项付费重复，暂拟为募集书复核，等待用户确认；确认前发布器禁止创建该组。其他四组可先发布，尚未发布的依赖保留草案链接。',
+ `范围修订：2026-09-30（用户确认两类自带稿）。完整计划包含 **${milestones.length} 个 milestone、${milestones.length} 个跟踪 issue、${tasks.length} 个可认领子任务**。`+(publication?.verified?`最近核对发布 ${Object.keys(publication.milestones).length} 个 milestone、${Object.keys(publication.issues).length} 个 issue，见 [GitHub 发布索引](GitHub发布索引.md)。`:'本目录当前为发布草案；远端创建完成后提供实际链接索引。'),
+ '', milestone3Confirmed?'第三里程碑保留募集书付费复核，增加参考库推荐及持续维护；沿用 M1-32/33 永久 ID，按 milestone 字段归属，不按 ID 前缀误判。':'第三里程碑“募集书付费功能”与第二项付费重复，暂拟为募集书复核，等待用户确认；确认前发布器禁止创建该组。其他四组可先发布，尚未发布的依赖保留草案链接。',
  '', '## 分阶段上线','', '| 阶段 | 目标 | 子任务 |', '|---|---|---:|',...milestones.map(m=>`| ${m.id} | ${m.title.replace(/^M\d · /,'')} | ${counts.find(c=>c.milestone===m.id).tasks} |`),
- '', 'M1 为受控试用、平台承担成本（排期默认，不是长期免费承诺）；M2 接入真实积分付费并覆盖已上线的募集书更新；'+(milestone3Confirmed?'M3 上线复核；':'M3 暂拟复核；')+'M4 上线材料生成和独立 QA；M5 才开发并发布 Windows 客户端。阶段按用户顺序上线，工程可按依赖提前并行。M1 的项目对话已包含真实追问与补充；M4 扩展独立专业 QA 与其他文书对话。',
+ '', 'M1 为受控试用、平台承担成本（排期默认，不是长期免费承诺）；M2 接入真实积分付费并覆盖已上线的募集书更新；'+(milestone3Confirmed?'M3 上线复核；':'M3 暂拟复核；')+'M4 上线材料生成和独立 QA；M5 才开发并发布 Windows 客户端。阶段按用户顺序上线，工程可按依赖提前并行。M1 使用手填源信息和表单末尾补充要求，不要求多轮聊天；M2 不含余额现金退款或用户消费记录页；M3/M4 对话按各自范围交付。',
  '', '## Web 与 Windows 的边界','', 'Web 阶段无需安装本地服务：材料必须经明确上传才能由服务端处理，按账号隔离、权限控制、加密与保留/删除策略保存工作副本。关闭浏览器不取消服务端任务；恢复登录可查看。具体保存期限与服务商保留条款在 M1-01 交付设计中落实。',
  '', 'M5 原文件、解析、缓存和任务检查点主要保存在本机，必要内容经平台网关发模型。Web 项目迁移为用户显式操作，不默认全量同步或删除云端副本。平台账号、钱包和账务一直作为统一权威。',
  '', '## 认领与依赖','', '每条 issue 包含目标、范围、依赖、建议角色、可验证验收、交付物和规格链接。所有任务默认未指派；成员自行设置 assignee，权限不足可评论认领并由维护者分配。没有虚构工期和到期日。规则包按 11 个市场/品种或 DFI 安排分别拆分，方便行业专家与工程师并行；工程规则包的拆分不对应额外的用户入口。',
- '', '建议首批并行认领：M1-01 架构、M1-02 短信、M1-08 文档解析、M1-11 模型接入、M1-14 规则发布规范、M1-34 统一日志契约及接入、M3-04 数据采购与适配契约。M1-34 为 P0 基础设施，设计从第一批启动，随模型/队列/对话同步实现；交付验收依赖相关链路完成，首个用户更新任务开放前必须 ready。M2-03 复用其用量证据作收费归因，不延迟采集。M1-31 上传后识别历史稿市场/方式/报告期并输出难度依据，M2-02 的计价验收依赖该结果；公式与接口设计可以提前。M1-32 建设后台募集书库、分类索引和首批可用数据，M1-33 交付持续增量更新；M1-28 无历史稿自动匹配依赖 M1-32。M1-26/29 明确基于历史原文交付真实修订。现有任务不重编号，M1-30 发布验收包含 M1-31/32/33/34。上线顺序仍遵循五个里程碑。',
+ '', '原始任务索引（现有 assignee 以 GitHub 为准）：M1-01 架构、M1-02 账号、M1-08 文档解析、M1-11 模型接入、M1-14 规则发布规范、M1-34 统一日志契约及接入、M3-04 数据采购与适配契约。M1-34 为 P0 基础设施，设计从第一批启动，随模型/队列/已保存补充要求同步实现；交付验收依赖相关链路完成，首个用户更新任务开放前必须 ready。M2-03 复用其用量证据作收费归因，不延迟采集。M1-31 保存用户填写的原稿市场/品类/报告期及更新难度依据，M1-13 改为补充要求，M1-28 支持自带相似稿；M1-32/33 建库推荐与维护移入 M3，M1-30 不再依赖。M1-26/29 保留真实修订/新稿交付。所有材料直接交 worker，财务读取核对在任务内进行，不要求独立财务提取服务。上线顺序仍遵循五个里程碑。',
  '', '## 完整清单','', '| ID | 可认领任务 | 角色 | 硬依赖 |', '|---|---|---|---|', ...plan.tasks.map(t=>`| [${t.id}](issues/${t.id}.md) | ${t.title} | ${t.role} | ${t.dependsOn.length?t.dependsOn.join('、'):'可先认领'} |`),
- '', '## 发布与维护','', '源数据及文档生成逻辑在 build-plan.mjs；修改后运行 `node build-plan.mjs`，将生成 plan.json 与 issues/ 正文。`node publish-issues.mjs --check` 仅作本地校验；不带参数仅远端读取与预览；`--apply` 才执行已获授权的发布。M3 未确认时必须显式选择 `--milestones=M1,M2,M4,M5`。发布前先将规格与任务草案推送到同一分支，发布器会读取全部现有 milestones/issues 排重。',
+ '', '## 发布与维护','', '原始任务及当前范围覆盖位于 build-plan.mjs 和 scope-20260930.mjs；修改后运行 `node build-plan.mjs`，将生成 plan.json 与 issues/ 正文。`node publish-issues.mjs --check` 仅作本地校验；不带参数仅远端读取与预览；`--apply` 才执行已获授权的发布。M3 未确认时必须显式选择 `--milestones=M1,M2,M4,M5`。发布前先将规格与任务草案推送到同一分支，发布器会读取全部现有 milestones/issues 排重。',
  '', 'GitHub 发布使用官方 gh 已登录账号，按稳定隐藏标识识别本批任务，创建原生父子 issue 关系并保存 published.json。每次变更后保存远端映射，最终核对全部标签、里程碑、正文和父子关系。不自动指派、不发额外邀请、不覆盖已有人工内容。网络/权限/审批失败时停止；不盲重试创建，重新发现远端标识后继续。',
- '', '该清单补充并优先于 v1.1 的 Windows 首发安排；产品业务约束、大公募与 DFI、私有券商模板以及指定积分方案保持。', ''
+ '', '本清单按 2026-09-30 用户决定修订；旧发版历史不等于当前任务已完成。它补充并优先于 v1.1 的 Windows 首发安排；产品业务约束、大公募与 DFI、私有券商模板以及指定积分方案保持。', ''
 ].join('\n'));
 console.log(JSON.stringify({milestones:milestones.length,trackingIssues:milestones.length,subtasks:tasks.length,counts,dependencyGraph:'acyclic',milestone3Confirmed:plan.milestone3Confirmed},null,2));
