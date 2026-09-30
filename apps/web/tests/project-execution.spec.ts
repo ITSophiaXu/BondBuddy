@@ -23,7 +23,8 @@ function fixture() {
     media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, sha256: hash(name), state: 'persisted', persisted_at: now, error: null }));
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
-    nextInputRevision: undefined as number | undefined,
+    nextInputRevision: undefined as number | undefined, patchRequests: 0,
+    holdProjectRead: false, releaseProjectRead: undefined as (() => void) | undefined,
     loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
     releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
     holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
@@ -47,7 +48,11 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (state.loggedOut) return json(route, 401, { code: 'UNAUTHENTICATED' });
     if (path === '/me') return json(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
     if (path === `/projects/${id}`) {
-      if (method === 'PATCH') Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 });
+      if (method === 'PATCH') { state.patchRequests++; Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 }); }
+      if (method === 'GET' && state.holdProjectRead) {
+        state.holdProjectRead=false;
+        await new Promise<void>(resolve=>{state.releaseProjectRead=resolve;});
+      }
       return json(route, 200, state.project);
     }
     if (path === '/projects') {
@@ -347,16 +352,17 @@ test('recheck replaces rejected input v3 with current v7 materials without submi
   expect(state.inputs).toHaveLength(1);
 });
 
-test('stale input recheck restores a failed run without replay or resume', async ({ page }) => {
+test('v3 recheck restores failed test run v8; explicit new input v9 uses a distinct production key', async ({ page }) => {
   const state=fixture(); state.nextInputRevision=3;
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-stale-failed-run'};
   await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-stale-failed-run');
   const old=state.snapshots.get(3)!;
-  state.project.input_revision=7; state.project.input_hash=hash('synthetic-failed-v7');
-  state.snapshots.set(7,{...old,input_revision:7,input_hash:state.project.input_hash});
-  state.runs.set('synthetic-existing-request',{run_id:'synthetic-existing-failed-run',execution_request_id:'synthetic-existing-request',
-    project_id:id,input_revision:7,input_hash:state.project.input_hash,channel:'non_production_test',test_grant_id:'synthetic-test-grant',uncovered_items:[],
+  state.project.input_revision=8; state.project.input_hash=hash('synthetic-failed-v8');
+  state.snapshots.set(8,{...old,input_revision:8,input_hash:state.project.input_hash});
+  const occupiedKey=`web-update-${hash(JSON.stringify([id,8,state.project.input_hash]))}`;
+  state.runs.set(occupiedKey,{run_id:'synthetic-existing-failed-run',execution_request_id:occupiedKey,
+    project_id:id,input_revision:8,input_hash:state.project.input_hash,channel:'non_production_test',test_grant_id:'synthetic-test-grant',uncovered_items:[],
     state:'failed',stage:'materials_ready',event_cursor:2,billing_mode:'platform_trial',reservation_id:null,
     artifact_id:null,prompt_snapshot_ref:null,updated_at:now});
   await page.locator('#recheck-input').click();
@@ -368,6 +374,66 @@ test('stale input recheck restores a failed run without replay or resume', async
   expect(state.runActions).toHaveLength(0);
   await expect(page.locator('#resume-run')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'下载修订版',exact:true})).toHaveCount(0);
+  if (process.env.BB_489_STALE_EVIDENCE_DIR) {
+    const output=resolve(process.env.BB_489_STALE_EVIDENCE_DIR); await mkdir(output,{recursive:true});
+    for (const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`stale-test-run-${device}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+  }
+  state.preflightError=undefined; state.checkStatus='ready'; state.nextInputRevision=9;
+  await page.getByRole('button',{name:'继续修改',exact:true}).click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.executes.length).toBe(1);
+  const fresh=state.snapshots.get(9)!;
+  const productionKey=`web-update-${hash(JSON.stringify([id,9,fresh.input_hash]))}`;
+  expect(state.inputs).toHaveLength(2);
+  expect(state.project.input_revision).toBe(9);
+  expect(state.preflights.at(-1)).toEqual({input_revision:9,input_hash:fresh.input_hash});
+  expect(state.executes[0].execution_request_id).toBe(productionKey);
+  expect(productionKey).not.toBe(occupiedKey);
+  expect(state.executes[0]).not.toHaveProperty('test_grant_id');
+  expect(state.runs.get(occupiedKey)?.state).toBe('failed');
+  expect(state.runs.get(productionKey)?.channel).toBe('production');
+  expect(state.runActions).toHaveLength(0);
+});
+
+test('stale recheck with a dirty local draft stops without writing it over the fresh project', async ({ page }) => {
+  const state=fixture(); state.nextInputRevision=3;
+  state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-dirty-stale'};
+  await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-dirty-stale');
+  state.project.draft_revision=4; state.project.input_revision=8; state.project.input_hash=hash('synthetic-dirty-v8');
+  state.snapshots.set(8,{...state.snapshots.get(3)!,input_revision:8,input_hash:state.project.input_hash});
+  state.holdProjectRead=true;
+  await page.locator('#recheck-input').click();
+  await expect.poll(()=>Boolean(state.releaseProjectRead)).toBe(true);
+  await page.locator('#edit-project-details').click();
+  await page.locator('#name').fill('未保存的旧草稿名称');
+  state.releaseProjectRead?.();
+  await expect(page.locator('#conflict-panel')).toBeVisible();
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  if (process.env.BB_489_STALE_EVIDENCE_DIR) {
+    const output=resolve(process.env.BB_489_STALE_EVIDENCE_DIR); await mkdir(output,{recursive:true});
+    for (const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.locator('#conflict-panel').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`stale-dirty-${device}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+  }
+  await page.waitForTimeout(900);
+  expect(state.patchRequests).toBe(0);
+  expect(state.project.name).toBe('合成任务项目');
+  page.once('dialog', dialog=>{ void dialog.accept(); });
+  await page.locator('#reload-draft').click();
+  await expect(page.locator('#execution-message')).toContainText('项目已保存更新的输入版本');
+  await expect(page.locator('#name')).toHaveValue('合成任务项目');
+  expect(state.patchRequests).toBe(0);
+  expect(state.executes).toHaveLength(0);
 });
 
 test('recheck rejects an inconsistent latest input without retrying the old revision', async ({ page }) => {

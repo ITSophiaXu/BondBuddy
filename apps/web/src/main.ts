@@ -41,7 +41,7 @@ let projectBrowser: ProjectBrowser | undefined;
 let dashboard: Dashboard | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
-let staleInputNotice = false;
+let staleInputNoticeProjectId: string | undefined;
 let projectConversation: ProjectConversation | undefined;
 let newConversationDraft = '';
 let pendingNewMessage: { projectId: string; text: string } | undefined;
@@ -78,7 +78,7 @@ function clearPrivateState() {
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
   newConversationDraft = ''; pendingNewMessage = undefined;
-  staleInputNotice = false;
+  staleInputNoticeProjectId = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
   for (const uploads of localUploads.values()) for (const upload of uploads) upload.controller?.abort();
@@ -399,9 +399,22 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   if (project.kind === 'update' || project.kind === 'generation') {
     projectExecution = new ProjectExecution(api, draft, projectConversation,
       referenceSnapshotResolver((projectId, materialId) => api.material(projectId, materialId)),
-      () => { staleInputNotice = true; void renderRoute(); },
-      staleInputNotice ? '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。' : '');
-    staleInputNotice = false;
+      () => {
+        staleInputNoticeProjectId = project.project_id;
+        if (draft?.dirty || draft?.state === 'saving') {
+          // The ordinary route refresh saves dirty drafts. A stale input must never
+          // turn that old local draft into a write against the refreshed project.
+          draft.dispose();
+          draft.state = 'conflict';
+          updateSaveState();
+          document.querySelector('#conflict-panel p')!.textContent =
+            '项目已保存更新的版本，当前未保存内容不会自动写回。请复制需要保留的文字，再加载最新资料。';
+          return;
+        }
+        void renderRoute();
+      },
+      staleInputNoticeProjectId === project.project_id ? '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。' : '');
+    if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
