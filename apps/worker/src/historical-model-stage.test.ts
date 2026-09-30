@@ -936,6 +936,10 @@ function fourPendingAuditFixture() {
     (f.candidate as any).uncertainty = `amount awaiting confirmation ${i + 1}`;
     (f.provenance as any).status = 'needs_confirmation';
     (f.provenance as any).uncertainty = [`numerical value pending ${i + 1}`];
+    for (const a of f.provenance.evidence) {
+      (a as any).evidence_id = `pending-audit-evidence-${i + 1}`;
+      (a as any).literal_quote = `合成财务材料：2025年1月1日至2025年9月30日，项目${i + 1}数值待核。`;
+    }
     return f;
   }));
   return s;
@@ -971,6 +975,7 @@ test('competing pending audit periods pause with a specific ambiguity reason', a
   await withCutoffDraftTest(async () => {
     const s = fourPendingAuditFixture();
     (s.facts[3]!.candidate.identity as any).period.end = '2025-06-30';
+    (s.facts[3]!.provenance.evidence[0] as any).literal_quote = '合成财务材料：2025年1月1日至2025年6月30日，数值待核。';
     await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_ambiguous/);
     assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
     const result = await historicalModelGenerationStage(s.options).run(s.ctx);
@@ -985,7 +990,10 @@ test('provisional pending audit provenance reaches deterministic Word notes with
     const s = fourPendingAuditFixture();
     // An independent clean fact permits one supported change; pending amounts remain excluded.
     const clean = structuredClone(fixture(true).facts[0]!);
-    for (const f of s.facts) (f.candidate.identity as any).period = structuredClone(clean.candidate.identity.period);
+    for (const f of s.facts) {
+      (f.candidate.identity as any).period = structuredClone(clean.candidate.identity.period);
+      for (const a of f.provenance.evidence) (a as any).literal_quote = '合成财务材料：2024年度，数值待核。';
+    }
     s.facts.push(clean);
     const result = await historicalModelGenerationStage(s.options).run(s.ctx);
     assert.equal(result.kind, 'done', JSON.stringify(result));
