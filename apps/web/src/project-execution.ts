@@ -47,20 +47,24 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
   if (reason === 'material_versions') return '请先添加并保存本次需要的材料。';
   if (reason.startsWith('material_parse_failed:') || reason.startsWith('material_parse_cancelled:')) return '有文件处理未完成，请查看材料区的失败原因。';
   if (reason.startsWith('material_parse_') || reason.startsWith('ocr_pending:')) return '材料正在处理，请稍后重新检查。';
+  if (reason.startsWith('issuer_identity_') || reason.startsWith('issuer_material_')) return '发行人身份核验尚未完成，请联系支持核对已保存的发行人材料；核验完成后重新检查。无需重复上传或反复继续。';
   if (reason.startsWith('user_reference_') || reason.startsWith('reference_selection_') || reason === 'reference_structure_unavailable') return readinessMessage(reason);
   return pendingConditions;
 }
 
-export function executionInputError(error: unknown, hasHistorical: boolean | null, materials: readonly Material[]): string | undefined {
+export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>['kind'], hasHistorical: boolean | null, materials: readonly Material[]): string | undefined {
   if (!(error instanceof ApiError) || error.code !== 'INPUT_REQUIRED' || error.status !== 409) return undefined;
   const reference = errorReference(error);
+  if (kind === 'update' && !materials.some(material => material.role === 'historical') &&
+      materials.some(material => material.role === 'reference'))
+    return `已上传募集书被登记为参考稿。更新需本发行人历史稿及身份核验；若该文件是本发行人的历史募集书，请联系支持保留原文件并更正分类后重新锁定输入。若确实没有本发行人历史稿，请联系支持转为新稿；无需重传。${reference}`;
   if (hasHistorical === true && !materials.some(material => material.role === 'historical'))
     return `本项目选择了有历史稿，但尚未添加本发行人历史募集书。请在历史稿分区添加对应文件。${reference}`;
   if (hasHistorical === true && !materials.some(material => ['audit', 'financial', 'interimFinancial', 'notes'].includes(material.role)))
     return `本项目还没有已保存的审计报告或财务报表，请在现有财务材料分区添加。${reference}`;
   if (hasHistorical === false && materials.some(material => material.role === 'reference') &&
       materials.some(material => ['audit', 'financial', 'interimFinancial', 'notes'].includes(material.role)))
-    return `无本发行人历史稿、已有相似稿及财务材料，但当前新稿入口未能处理这组输入。请保留材料并联系支持，不要把相似稿改作本发行人历史稿。${reference}`;
+    return `新稿尚未满足执行条件。请联系支持核对已保存财务材料的发行人身份核验及新稿处理条件；相似稿仅作参考，不要把相似稿改作本发行人历史稿。无需重传。${reference}`;
   return undefined;
 }
 
@@ -111,6 +115,7 @@ export class ProjectExecution {
   private eventCursor = 0;
   private timer?: ReturnType<typeof setTimeout>;
   private polling = false;
+  private runReadVersion = 0;
   private busy = false;
   private inputReadUncertain = false;
   private resumeVerified = false;
@@ -126,10 +131,12 @@ export class ProjectExecution {
   private generation = 0;
   private inputRejected = false;
 
-  constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation, private referenceSnapshots?: ReferenceSnapshotResolver) {}
+  constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
+    private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
+    private initialNotice = '') {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
-  /** The persisted project kind decides the execution task kind; it is fixed at creation. */
+  /** The persisted project kind decides the task kind, including an explicit server-side conversion. */
   private get taskKind(): ExecutionTaskKind { return executionTaskKind(this.draft.project.kind); }
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
@@ -244,14 +251,15 @@ export class ProjectExecution {
     const check = this.preflight;
     this.node('#execution-preflight').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
     this.node('#execution-preflight').textContent = check?.status === 'blocked' && !activeRun ? blockedMessage(check) : '';
-    this.button('recheck-input').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
+    this.button('recheck-input').hidden = !(check?.status === 'blocked' || this.inputRejected && this.selected && this.input) || Boolean(activeRun);
     this.button('recheck-input').disabled = this.busy || this.starting || !this.selected || this.inputReadUncertain;
     const run = this.run;
     this.node('#run-panel').hidden = !run;
     const progressHost = document.querySelector('#workspace-progress');
     if (run && progressHost && this.host.parentElement !== progressHost) progressHost.append(this.host);
     if (run && this.materialRun !== run.run_id) { const details = document.querySelector<HTMLDetailsElement>('#project-materials-details'); if (details) { details.classList.add('has-run'); details.open = false; } this.materialRun = run.run_id; }
-    const testCompleted = run?.state === 'test_completed' && run.channel === 'non_production_test';
+    const testRun = run?.channel === 'non_production_test';
+    const testCompleted = run?.state === 'test_completed' && testRun;
     const automaticPause = automaticPauseMessage(run);
     const repeatedPause = run?.state === 'paused' && this.samePauseAfterResume(run);
     // The current run stage is authoritative even when event history is late or unavailable.
@@ -263,7 +271,7 @@ export class ProjectExecution {
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对先前模型调用，请联系支持处理。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
-    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : ''}
+    this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
       <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
@@ -302,28 +310,32 @@ export class ProjectExecution {
   private async changeRun(action: 'cancel' | 'resume') {
     if (!this.run || action === 'resume' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     const runId = this.run.run_id;
+    const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
     await this.action(async () => {
       const run = await this.api.runAction(runId, action, this.controller.signal);
       if (!this.active) return;
       if (run.run_id !== runId || run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
-      if (action === 'resume') this.resumedPause = { runId, stage: this.run?.stage ?? null, reason: this.reason };
+      if (action === 'resume') this.resumedPause = pause;
       this.acceptRun(run); void this.poll();
     });
   }
 
-  private async action(work: () => Promise<void>, operation: 'execute' | 'other' = 'other') {
+  private async action(work: () => Promise<void>, operation: 'preflight' | 'execute' | 'other' = 'other') {
     if (this.busy || !this.active) return;
     this.busy = true; this.message = ''; this.render();
     try { await work(); }
     catch (error) {
       if (this.active) {
-        const inputMessage = operation === 'execute'
-          ? executionInputError(error, this.draft.fields.update_details.has_historical, this.eligibleMaterials()) : undefined;
-        this.inputRejected = Boolean(inputMessage);
+        const inputMessage = operation !== 'other'
+          ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials) : undefined;
+        this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
+          (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
         this.message = inputMessage ??
           (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
-            ? `当前环境尚未开放全文更新，请联系支持。${errorReference(error)}` : friendlyError(error));
+            ? operation === 'preflight' && error.status === 409
+              ? `材料或处理条件尚未就绪，请稍后重新检查；持续未恢复时联系支持。${errorReference(error)}`
+              : `当前环境尚未开放全文更新，请联系支持。${errorReference(error)}` : friendlyError(error));
       }
     }
     finally { this.busy = false; this.render(); }
@@ -391,10 +403,40 @@ export class ProjectExecution {
       if (!this.active || generation !== this.generation) return;
       if (result.project_id !== this.id || result.input_revision !== input.input_revision || result.input_hash !== input.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
       this.preflight = result;
-    });
+      this.inputRejected = false;
+      this.message = '';
+    }, 'preflight');
   }
   private async recheck() {
-    if (!this.input || !this.selected || this.preflight?.status !== 'blocked') return;
+    if (!this.input || !this.selected || !(this.inputRejected || this.preflight?.status === 'blocked')) return;
+    const selected = this.input;
+    const wasRejected = this.inputRejected;
+    let verified = false;
+    let stale = false;
+    await this.action(async () => {
+      const project = await this.api.project(this.id, this.controller.signal);
+      if (!this.active) return;
+      if (project.project_id !== this.id || !project.input_revision || !project.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      const latest = await this.api.inputRevision(this.id, project.input_revision, this.controller.signal);
+      if (!this.active) return;
+      if (latest.project_id !== this.id || latest.input_revision !== project.input_revision ||
+          latest.input_hash !== project.input_hash) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      verified = true;
+      stale = latest.input_revision !== selected.input_revision || latest.input_hash !== selected.input_hash;
+      if (stale) {
+        this.input = undefined;
+        this.offerSavedInput = false;
+        this.invalidate();
+        this.message = '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。';
+        this.onStaleInput?.();
+      }
+    });
+    if (!verified) {
+      this.inputRejected = wasRejected;
+      this.render();
+      return;
+    }
+    if (stale || !this.active) return;
     await this.check();
     if (this.active && this.preflight?.status === 'blocked') this.message = blockedMessage(this.preflight);
   }
@@ -433,6 +475,7 @@ export class ProjectExecution {
     }, 'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    this.runReadVersion++;
     if (this.run?.state === 'succeeded' && this.run.artifact_id) this.latestArtifact = this.run.artifact_id;
     if (this.run?.state !== run.state || this.run?.stage !== run.stage) this.reason = undefined;
     if (this.run?.run_id !== run.run_id) {
@@ -445,6 +488,8 @@ export class ProjectExecution {
   }
   private async restore() {
     if (this.busy) return;
+    this.runReadVersion++;
+    clearTimeout(this.timer);
     this.restoring = true;
     await this.action(async () => {
       this.inputReadUncertain = true;
@@ -455,7 +500,9 @@ export class ProjectExecution {
       if (!this.active) return;
       if (input && (input.project_id !== this.id || input.input_revision !== project.input_revision || input.input_hash !== project.input_hash)) throw new ApiError(0, 'DATA_UNAVAILABLE');
       this.input = input;
-      this.message = '';
+      const staleNotice = Boolean(this.initialNotice);
+      this.message = this.initialNotice;
+      this.initialNotice = '';
       let cursor: string | undefined;
       const seen = new Set<string>();
       do {
@@ -479,18 +526,20 @@ export class ProjectExecution {
       this.inputReadUncertain = false;
       // InputRevisionResponse does not expose the message pin. Never execute a
       // recovered snapshot when a nonempty message set could have changed since it was locked.
-      this.offerSavedInput = Boolean(input && !this.run);
+      this.offerSavedInput = Boolean(input && !this.run && !staleNotice);
     });
     this.restoring = false; this.render();
+    if (this.active && this.run) void this.poll();
   }
   private async poll() {
     clearTimeout(this.timer);
     if (!this.run || !this.active || this.polling) return;
     this.polling = true;
     const id = this.run.run_id;
+    const readVersion = this.runReadVersion;
     try {
       const run = await this.api.run(id, this.controller.signal);
-      if (!this.active || this.run?.run_id !== id) return;
+      if (!this.active || readVersion !== this.runReadVersion || this.run?.run_id !== id) return;
       if (run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
@@ -499,7 +548,7 @@ export class ProjectExecution {
       let cursor = this.eventCursor;
       for (;;) {
         const page = await this.api.runEvents(id, cursor, this.controller.signal);
-        if (!this.active || this.run?.run_id !== id) return;
+        if (!this.active || readVersion !== this.runReadVersion || this.run?.run_id !== id) return;
         for (const event of page.items) {
           if (event.run_id !== id || event.seq <= this.eventCursor) continue;
           this.eventCursor = event.seq;
@@ -518,13 +567,24 @@ export class ProjectExecution {
         if (page.next_cursor === null || page.next_cursor <= cursor) break;
         cursor = page.next_cursor;
       }
+      // An event can arrive while the run read still describes its preceding state.
+      // Reuse the matching cached event once a newer run read reaches that cursor.
+      const currentCursor = run.event_cursor ?? 0;
+      const currentEvent = this.events.slice().reverse().find(event => event.seq <= currentCursor &&
+        event.state === run.state && event.stage === run.stage);
+      const reason = currentEvent?.payload.reason ?? currentEvent?.payload.error_code;
+      if (this.reason !== reason) this.resumeVerified = false;
+      this.reason = reason;
       this.progressMessage = '';
     } catch (error) {
-      if (this.active) this.progressMessage = `任务状态暂未更新。${friendlyError(error)}`;
+      if (this.active && readVersion === this.runReadVersion) this.progressMessage = `任务状态暂未更新。${friendlyError(error)}`;
     } finally {
       this.polling = false; this.render();
-      if (this.active && this.run && !['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'].includes(this.run.state))
-        this.timer = setTimeout(() => { void this.poll(); }, 5000);
+      if (this.active && this.run && !['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'].includes(this.run.state)) {
+        if (readVersion !== this.runReadVersion) {
+          if (!this.restoring) void this.poll();
+        } else this.timer = setTimeout(() => { void this.poll(); }, 5000);
+      }
     }
   }
   dispose() { this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
