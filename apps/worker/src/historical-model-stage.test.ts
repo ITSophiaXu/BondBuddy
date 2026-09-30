@@ -845,11 +845,14 @@ test('missing draft cutoff uses frozen owned financial periods and adds a determ
     const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
     assert.equal(input.details.reporting_cutoff, '2024-12-31');
     assert.deepEqual(input.reportingCutoffBasis, { source: 'locked_financial_fact_period', status: 'needs_confirmation',
-      cutoff: '2024-12-31', candidate_ids: ['revenue-2024'] });
+      cutoff: '2024-12-31', candidate_ids: ['revenue-2024'], candidate_provenance: [{
+        candidate_id: 'revenue-2024', status: s.facts[0]!.provenance.status, candidate_uncertainty: s.facts[0]!.candidate.uncertainty ?? null,
+        uncertainty: [], evidence: s.facts[0]!.provenance.evidence }] });
     assert.deepEqual(s.manifest, manifestBefore, 'derived boundary must not change the immutable manifest');
     assert.deepEqual((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, input.reportingCutoffBasis);
     const prompt = historicalPrompt(input, input.snapshot.response.records, 0, 1);
     assert.match(prompt, /reporting_cutoff_basis/); assert.match(prompt, /不是用户确认的目标期间/);
+    assert.match(prompt, /"reporting_cutoff":null/, 'provisional cutoff must not be labeled user asserted');
     const result = await historicalModelGenerationStage(s.options).run(s.ctx);
     assert.equal(result.kind, 'done', JSON.stringify(result));
     if (result.kind === 'done') assert.ok((result.value as HistoricalGenerationPlan).reviewNotes.some(note =>
@@ -861,11 +864,13 @@ test('missing draft cutoff uses frozen owned financial periods and adds a determ
   });
 });
 
-test('draft cutoff bridge refuses uncertain, user-stated, invalid or historical-only period evidence', async () => {
+test('draft cutoff bridge refuses unlocated, user-stated, invalid or historical-only period evidence', async () => {
   await withCutoffDraftTest(async () => {
     for (const mutate of [
       (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate as any).source.kind = 'user_statement'; },
-      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance as any).uncertainty = ['period uncertain']; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance.evidence[0] as any).locator = {}; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance.evidence[0] as any).literal_quote = ''; },
+      (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.provenance.evidence[0] as any).evidence_id = ''; },
       (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).period.end = '2024-02-30'; },
       (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).period.asOf = '2025-06-30'; },
       (s: ReturnType<typeof missingCutoffFixture>) => { (s.facts[0]!.candidate.identity as any).entityId = 'subsidiary'; },
@@ -900,7 +905,7 @@ test('cutoff bridge preserves explicit target intent and production missing-cuto
 });
 
 
-test('draft cutoff chooses the latest eligible issuer financial period, excluding other entities', async () => {
+test('draft cutoff rejects competing issuer periods and excludes other entities', async () => {
   await withCutoffDraftTest(async () => {
     const s = missingCutoffFixture();
     const newer = structuredClone(s.facts[0]!);
@@ -911,8 +916,116 @@ test('draft cutoff chooses the latest eligible issuer financial period, excludin
     (foreignEntity.candidate.identity as any).entityId = 'subsidiary';
     (foreignEntity.candidate.identity as any).period = { start: '2026-01-01', end: '2026-06-30' };
     s.facts.push(newer, foreignEntity);
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_ambiguous/);
+    s.facts.splice(0, 1);
     const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
     assert.equal(input.details.reporting_cutoff, '2025-06-30');
     assert.deepEqual(input.reportingCutoffBasis!.candidate_ids, ['revenue-2025']);
+  });
+});
+
+// Synthetic reproduction: uncertain amounts can identify a provisional period without becoming usable amounts.
+function fourPendingAuditFixture() {
+  const s = missingCutoffFixture();
+  const original = structuredClone(s.facts[0]!);
+  s.facts.splice(0, s.facts.length, ...Array.from({ length: 4 }, (_, i) => {
+    const f = structuredClone(original);
+    (f.candidate as any).candidateId = `pending-audit-${i + 1}`;
+    (f.candidate.identity as any).metric = `pending-metric-${i + 1}`;
+    (f.candidate.identity as any).period = { start: '2025-01-01', end: '2025-09-30' };
+    (f.candidate as any).uncertainty = `amount awaiting confirmation ${i + 1}`;
+    (f.provenance as any).status = 'needs_confirmation';
+    (f.provenance as any).uncertainty = [`numerical value pending ${i + 1}`];
+    return f;
+  }));
+  return s;
+}
+
+test('four pending audit amounts freeze one provisional period without offering their values', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    const before = structuredClone({ manifest: s.manifest, facts: s.facts });
+    const input = await loadHistoricalGenerationInput(s.ctx, s.readers);
+    assert.equal(input.details.reporting_cutoff, '2025-09-30');
+    assert.equal(input.reportingCutoffBasis!.status, 'needs_confirmation');
+    assert.deepEqual(input.reportingCutoffBasis!.candidate_ids, s.facts.map(f => f.candidate.candidateId));
+    assert.deepEqual(offerableFacts(input), [], 'pending amounts must never become trusted financial inputs');
+    const basis = input.reportingCutoffBasis as any;
+    assert.deepEqual(basis.candidate_provenance, s.facts.map(f => ({ candidate_id: f.candidate.candidateId,
+      status: f.provenance.status, candidate_uncertainty: f.candidate.uncertainty ?? null,
+      uncertainty: f.provenance.uncertainty, evidence: f.provenance.evidence })));
+    assert.deepEqual((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis, basis);
+    assert.deepEqual({ manifest: s.manifest, facts: s.facts }, before);
+    const prompt = historicalPrompt(input, input.snapshot.response.records, 0, 1);
+    for (const f of s.facts) {
+      assert.ok(prompt.includes(f.candidate.candidateId));
+      assert.ok(prompt.includes(f.provenance.uncertainty[0]!));
+    }
+    assert.equal((await loadHistoricalGenerationInput(s.ctx, s.readers)).preparationHash, input.preparationHash);
+    basis.candidate_provenance[0].uncertainty.push('changed provenance');
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /UPDATE_REPORTING_CUTOFF_SNAPSHOT_CHANGED/);
+  });
+});
+
+test('competing pending audit periods pause with a specific ambiguity reason', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    (s.facts[3]!.candidate.identity as any).period.end = '2025-06-30';
+    await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), /historical_target_period_ambiguous/);
+    assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'pause');
+    if (result.kind === 'pause') assert.equal(result.reason, 'historical_target_period_ambiguous');
+  });
+});
+
+
+test('provisional pending audit provenance reaches deterministic Word notes without promoting numbers', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    // An independent clean fact permits one supported change; pending amounts remain excluded.
+    const clean = structuredClone(fixture(true).facts[0]!);
+    for (const f of s.facts) (f.candidate.identity as any).period = structuredClone(clean.candidate.identity.period);
+    s.facts.push(clean);
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind, 'done', JSON.stringify(result));
+    if (result.kind !== 'done') return;
+    const plan = result.value as HistoricalGenerationPlan;
+    const note = plan.reviewNotes.map(n => n.message).join('\n');
+    for (const f of s.facts.slice(0, 4)) {
+      assert.ok(note.includes(f.candidate.candidateId));
+      assert.ok(note.includes(f.provenance.uncertainty[0]!));
+      assert.ok(note.includes(JSON.stringify(f.provenance.evidence[0]!.locator)));
+    }
+    assert.match(note, /待核候选数值未因此核验/);
+    assert.deepEqual(offerableFacts(await loadHistoricalGenerationInput(s.ctx, s.readers)).map(f => f.candidate.candidateId), ['revenue-2024']);
+  });
+});
+
+
+test('four pending audit facts pass cutoff preparation but retain the unsupported-change delivery gate', async () => {
+  await withCutoffDraftTest(async () => {
+    const s = fourPendingAuditFixture();
+    for (const b of s.answer.blocks) { b.changes = []; b.disposition = 'needs_evidence'; b.reason = '合成数值待核'; }
+    s.answer.columns = [];
+    const result = await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.deepEqual(result, { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' });
+    assert.equal((s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT] as any).reporting_cutoff_basis.cutoff, '2025-09-30');
+  });
+});
+
+test('pending period evidence cannot bypass locked owner, material version, hash or location', async () => {
+  await withCutoffDraftTest(async () => {
+    for (const [mutate, reason] of [
+      [(f: StoredFactCandidate) => { (f.candidate.identity as any).accountId = 'other-owner'; }, /UPDATE_FACT_MATERIAL_MISMATCH/],
+      [(f: StoredFactCandidate) => { (f.provenance as any).materialVersion = 2; }, /historical_fact_inventory_missing/],
+      [(f: StoredFactCandidate) => { (f.provenance.evidence[0] as any).content_hash = 'd'.repeat(64); }, /UPDATE_FACT_MATERIAL_MISMATCH/],
+      [(f: StoredFactCandidate) => { (f.provenance.evidence[0] as any).locator = {}; }, /historical_target_period_required/],
+      [(f: StoredFactCandidate) => { (f.provenance.evidence[0] as any).extraction_version = ''; }, /historical_target_period_required/],
+    ] as const) {
+      const s = fourPendingAuditFixture(); s.facts.forEach(mutate);
+      await assert.rejects(loadHistoricalGenerationInput(s.ctx, s.readers), reason);
+      assert.equal(s.ctx.checkpoint[GENERATION_INPUT_CHECKPOINT], undefined);
+    }
   });
 });

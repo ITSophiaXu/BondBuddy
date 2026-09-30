@@ -68,7 +68,7 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
   const payload = {
     issuer: input.issuerName, issuer_identity_status: input.issuerIdentityPending?'pending_test_candidate':'verified',
     market: input.locked.context.targetMarket, offering: input.locked.context.targetOffering,
-    target_details_user_asserted: input.details,
+    target_details_user_asserted: input.reportingCutoffBasis ? { ...input.details, reporting_cutoff: null } : input.details,
     ...(input.reportingCutoffBasis ? { reporting_cutoff_basis: input.reportingCutoffBasis } : {}), original_profile: input.profile.recognition,
     rule_reference: input.locked.context.ruleSnapshot, chunk: index + 1, chunks: total,
     rule_guidance: historicalRulePrompt(input.ruleGuidance),
@@ -104,7 +104,7 @@ export function historicalPrompt(input: HistoricalGenerationInput, records: read
       'original_profile 中 user_asserted 是用户校正的原稿信息，仍待人工核验；不可描述为已确认画像或用于确定扣费。原稿图片、页眉页脚等辅助对象保持原样，另有待核清单；未解析图片或辅助内容不能作为事实来源。',
       '所有规则的 applicability、边界和例外均待核，不得据此声称合规通过或替发行人新增未经证实的义务。相关缺口标 needs_evidence；outside_declared_interval 来源不得作为本期义务依据。coverage 的 not_applicable 是范围排除记录，不应当作用户缺少材料。',
     ] : []),
-    ...(input.reportingCutoffBasis ? ['财务截止日仅从已锁定财务材料的候选期间推导为工作稿边界，status=needs_confirmation，不是用户确认的目标期间；须人工确认，不得宣称期间完整或已核验。'] : []),
+    ...(input.reportingCutoffBasis ? ['财务截止日仅从已锁定财务材料的候选期间推导为工作稿边界，status=needs_confirmation，不是用户确认的目标期间；须人工确认，不得宣称期间完整或已核验。candidate_provenance 保留待核候选与证据的不确定性，仅供期间定位，不得使用其待核数值；只有 candidate_facts 可用于财务表达式。'] : []),
     ...(input.issuerIdentityPending ? ['历史稿发行人仅为定位到原解析证据的待审核候选。所有改动都必须在 Word 标明发行人身份待人工确认，不得称为已核验主体。'] : []),
     '资金用途及分项规模、披露负责人和联络人、真实签署承诺等缺少本期依据时，标 needs_evidence 并定位待人工确认。不能因参考条款存在就替用户添加承诺；负责人未变更且有效既有承诺可复用时不机械要求重签。',
     '本切片仅能回写已支持且有证据的修改；需要法律条款改写或目录结构重组而当前表达式无法表达时，明确标 needs_evidence，不用 retain 掩盖未完成事项。',
@@ -226,7 +226,12 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       }
       if (input.reportingCutoffBasis) {
         const recordId = input.snapshot.response.records[0]!.record_id;
-        const message = `财务截止日未由用户确认；暂按锁定财务材料候选期间 ${input.reportingCutoffBasis.cutoff} 生成工作稿，请人工确认目标期间及材料完整性。`;
+        const provenance = input.reportingCutoffBasis.candidate_provenance.map(p => {
+          const uncertainty = [p.candidate_uncertainty, ...p.uncertainty, ...p.evidence.flatMap(a => a.uncertainty)].filter(Boolean);
+          const anchors = p.evidence.map(a => `${a.material_id}@${a.material_version}/${a.evidence_id} ${a.locator_type}:${JSON.stringify(a.locator)}`).join('、');
+          return `${p.candidate_id}（${p.status}；证据 ${anchors}；${uncertainty.length ? uncertainty.join('、') : '期间仍待确认'}）`;
+        }).join('；');
+        const message = `财务截止日未由用户确认；暂按锁定财务材料候选期间 ${input.reportingCutoffBasis.cutoff} 生成工作稿，请人工确认目标期间及材料完整性。期间依据：${provenance}。待核候选数值未因此核验，不得作为可信财务事实。`;
         const note = reviewNotes.find(item => item.recordId === recordId);
         if (note) note.message += `；${message}`;
         else reviewNotes.push({ recordId, message: `待人工确认：${message}` });

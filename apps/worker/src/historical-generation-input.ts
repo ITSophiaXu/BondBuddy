@@ -40,6 +40,12 @@ export interface HistoricalGenerationInput {
 export interface WorkingDraftReportingCutoff {
   source: 'locked_financial_fact_period'; status: 'needs_confirmation';
   cutoff: string; candidate_ids: string[];
+  /** Period evidence only: no candidate values or verification effect. */
+  candidate_provenance: {
+    candidate_id: string; status: StoredFactCandidate['provenance']['status'];
+    candidate_uncertainty: string | null; uncertainty: readonly string[];
+    evidence: StoredFactCandidate['provenance']['evidence'];
+  }[];
 }
 const validDay = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
   Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
@@ -53,15 +59,27 @@ export function deriveWorkingDraftReportingCutoff(owner: string, entity: string,
     const cutoff = period.asOf ?? period.end;
     if (f.candidate.identity.accountId !== owner || f.candidate.identity.entityId !== entity ||
         !material || !['audit','financial','interimFinancial','notes'].includes(material.role) ||
-        !historicalFactMatchesMaterial(f, material) || f.provenance.uncertainty.length ||
-        !isUsableHistoricalFact(projectHistoricalFact(f)) || !validDay(cutoff) ||
+        !historicalFactMatchesMaterial(f, material) ||
+        !['audited', 'external'].includes(f.candidate.source.kind) ||
+        !['extracted', 'verified', 'needs_confirmation', 'conflicted'].includes(f.provenance.status) ||
+        !f.provenance.evidence.every(a => a.evidence_id.trim() && a.locator_type.trim() &&
+          a.locator && !Array.isArray(a.locator) && Object.keys(a.locator).length > 0 &&
+          a.literal_quote.trim() && a.extraction_method.trim() && a.extraction_version.trim()) ||
+        !validDay(cutoff) ||
         (period.start !== undefined && (!validDay(period.start) || period.start > cutoff)) ||
         (period.asOf !== undefined && period.end !== undefined && period.asOf !== period.end)) return [];
-    return [{ cutoff, id: f.candidate.candidateId }];
+    return [{ cutoff, id: f.candidate.candidateId, provenance: {
+      candidate_id: f.candidate.candidateId, status: f.provenance.status,
+      candidate_uncertainty: f.candidate.uncertainty ?? null,
+      uncertainty: f.provenance.uncertainty, evidence: f.provenance.evidence,
+    } }];
   });
-  const cutoff = eligible.map(f => f.cutoff).sort().at(-1);
-  return cutoff ? { source: 'locked_financial_fact_period', status: 'needs_confirmation', cutoff,
-    candidate_ids: [...new Set(eligible.filter(f => f.cutoff === cutoff).map(f => f.id))].sort() } : undefined;
+  const cutoffs = new Set(eligible.map(f => f.cutoff));
+  if (cutoffs.size > 1) unavailable('historical_target_period_ambiguous');
+  const cutoff = eligible[0]?.cutoff;
+  return cutoff ? structuredClone({ source: 'locked_financial_fact_period' as const, status: 'needs_confirmation' as const, cutoff,
+    candidate_ids: [...new Set(eligible.map(f => f.id))].sort(),
+    candidate_provenance: eligible.sort((a,b) => a.id.localeCompare(b.id, 'en')).map(f => f.provenance) }) : undefined;
 }
 
 interface PreparationPin {
