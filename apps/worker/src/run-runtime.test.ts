@@ -608,7 +608,7 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const secondModel = codexModelStage({ name: 'second_model_generation', logicalCallId: 'second-update-generation', config, schema,
       validate: isAnswer, resultSchemaVersion: 'answer-v1', buildPrompt: async ctx => `SYNTHETIC second prompt for run ${ctx.run.id}. SCENARIO:structured` });
     const twoCalls = [syntheticInputLockStage, materialsReadyStage, model(), secondModel, word()];
-    const trialConfig = { ...trialConfigFromEnv({}), enabled: true, model_tokens_per_user_per_day: 0 };
+    const trialConfig = { ...trialConfigFromEnv({}), enabled: true, model_tokens_per_user_per_day: 1 };
     const trialProject = await project('trial limit runtime');
     const quotaRun = (await execute(trialProject)).json().run_id as string;
     assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls, afterStage: async stage => {

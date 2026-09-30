@@ -14,6 +14,7 @@ x-bb-policy-env: &bb-policy-env
   BB_TRIAL_SOURCE_SALT: ${BB_TRIAL_SOURCE_SALT:?set a random per-environment value in .env}
   BB_TRIAL_KILL_SWITCH: ${BB_TRIAL_KILL_SWITCH:-}
   BB_TRIAL_DAY_TIME_ZONE: ${BB_TRIAL_DAY_TIME_ZONE:-Asia/Shanghai}
+  BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY: ${BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY:-2000000}
   # Data lifecycle (#6, #79). The values are the published M1 trial policy; see docs/acceptance/M1-01.md.
   BB_STORAGE_PURGE_ENABLED: ${BB_STORAGE_PURGE_ENABLED:-true}
   BB_STORAGE_MATERIAL_RETENTION_DAYS: ${BB_STORAGE_MATERIAL_RETENTION_DAYS:-7}

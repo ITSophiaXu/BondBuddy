@@ -212,6 +212,28 @@ test('token quota counts unknown usage conservatively at submit and before every
   } finally { configureTrialGuard(null); await pool.end(); }
 });
 
+test('zero disables only the daily model-token cap while retaining other trial limits', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const config = base({ active_runs_per_user: 1, runs_per_user_per_day: 10, model_tokens_per_user_per_day: 0 });
+  configureTrialGuard(config);
+  try {
+    await openGate(pool);
+    const h = harness(pool, config);
+    const owner = await user(pool, 'trial-unlimited-tokens');
+    const { projectId, inputHash } = await h.ready(owner);
+    const accepted = await h.submit(owner, projectId, inputHash);
+    assert.equal(accepted.statusCode, 202);
+    const lease = await h.leaseFor(owner, accepted.json().run_id);
+    const first = await recordPotentialCall(pool, lease, 'synthetic-unlimited-first', 1);
+    await observeUsage(pool, { owner, attemptId: first, source: 'provider', sourceEventId: `usage-${uid()}`, status: 'measured', inputTokens: 2_000_001, outputTokens: 1 });
+    await recordPotentialCall(pool, lease, 'synthetic-unlimited-second', 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 2);
+    const blockedByOtherLimit = await h.submit(owner, projectId, inputHash);
+    assert.equal(blockedByOtherLimit.statusCode, 429);
+    assert.match(blockedByOtherLimit.json().message, /active_runs_per_user/);
+  } finally { configureTrialGuard(null); await pool.end(); }
+});
+
 test('platform cost is attributed once per supplier attempt using exact verified rates', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const config = base({ active_runs_per_user: 10, runs_per_user_per_day: 10, model_tokens_per_user_per_day: 10_000_000 });
