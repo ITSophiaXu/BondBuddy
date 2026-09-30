@@ -22,7 +22,9 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
     const owner = `fact-ingest-owner-${suffix}`, reviewerId = `fact-ingest-reviewer-${suffix}`;
     const grantorId = `fact-ingest-grantor-${suffix}`, projectId = `fact-ingest-project-${suffix}`;
     const historical = `fact-ingest-history-${suffix}`, finance = `fact-ingest-finance-${suffix}`;
+    const nonAuditFinance = `fact-ingest-non-audit-finance-${suffix}`;
     const historicalUpload = `fact-ingest-history-upload-${suffix}`, financeUpload = `fact-ingest-finance-upload-${suffix}`;
+    const nonAuditFinanceUpload = `fact-ingest-non-audit-finance-upload-${suffix}`;
     const historicalV2Upload = `fact-ingest-history-v2-upload-${suffix}`;
     const historicalHash = sha(`synthetic historical issuer identity ${suffix}`);
     const historicalV2Hash = sha(`synthetic corrected issuer identity ${suffix}`);
@@ -30,9 +32,11 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
     const historicalSnapshotId = `fact-ingest-history-snapshot-${suffix}`;
     const historicalV2SnapshotId = `fact-ingest-history-v2-snapshot-${suffix}`;
     const financeSnapshotId = `fact-ingest-finance-snapshot-${suffix}`;
+    const nonAuditFinanceSnapshotId = `fact-ingest-non-audit-finance-snapshot-${suffix}`;
     const historicalRecordId = `fact-ingest-history-evidence-${suffix}`;
     const historicalV2RecordId = `fact-ingest-history-v2-evidence-${suffix}`;
     const financeRecordId = `fact-ingest-finance-evidence-${suffix}`;
+    const nonAuditFinanceRecordId = `fact-ingest-non-audit-finance-evidence-${suffix}`;
     const reviewerGrantId = `fact-ingest-grant-${suffix}`;
     const parserVersion = `synthetic-parser-${suffix}`;
     const inputHash = sha(`synthetic pinned input revision ${suffix}`);
@@ -61,6 +65,7 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic fact ingestion','update')`, [projectId, owner]);
       for (const [uploadId, materialId, hash, role] of [
         [historicalUpload, historical, historicalHash, 'historical'], [financeUpload, finance, financeHash, 'audit'],
+        [nonAuditFinanceUpload, nonAuditFinance, financeHash, 'financial'],
       ]) {
         await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state,received_sha256,received_bytes)
           VALUES($1,$2,$3,$4,'text/plain',32,$5,$6,$7,now()+interval '1 hour','completed',$5,32)`,
@@ -78,6 +83,7 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       await makeSnapshot(historical, historicalHash, historicalSnapshotId, historicalRecordId, '合成发行人名称');
       await makeSnapshot(historical, historicalV2Hash, historicalV2SnapshotId, historicalV2RecordId, '更正后的合成发行人名称', 2);
       const financeEvidence = await makeSnapshot(finance, financeHash, financeSnapshotId, financeRecordId, '营业收入 123.45 万元');
+      await makeSnapshot(nonAuditFinance, financeHash, nonAuditFinanceSnapshotId, nonAuditFinanceRecordId, '合成财务数据 123.45 万元');
       const observation = await appendIssuerIdentitySourceRecord({ pool }, { ownerUserId: owner, projectId,
         materialId: historical, materialVersion: 1, requestId: `identity-request-${suffix}`,
         sourceRecordId: historicalRecordId, issuerDisplayName: '合成发行人', entityId: `issuer-${suffix}` });
@@ -107,23 +113,27 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
         materials: [
           { material_id: historical, material_version: 1, role: 'historical', sha256: historicalHash },
           { material_id: finance, material_version: 1, role: 'audit', sha256: financeHash },
+          { material_id: nonAuditFinance, material_version: 1, role: 'financial', sha256: financeHash },
         ] };
       await pool.query(`INSERT INTO bb_input_revisions
         (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
         VALUES($1,1,$2,1,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
       [projectId, owner, inputHash, JSON.stringify(manifest), JSON.stringify([
         { material_id: historical, material_version: 1 }, { material_id: finance, material_version: 1 },
+        { material_id: nonAuditFinance, material_version: 1 },
       ])]);
       const correctedManifest = { issuer_identity: verifiedIssuerIdentityBinding(correctedIdentityRecord),
         issuer_entity_id: correctedIdentityRecord.entityId, materials: [
           { material_id: historical, material_version: 2, role: 'historical', sha256: historicalV2Hash },
           { material_id: finance, material_version: 1, role: 'audit', sha256: financeHash },
+          { material_id: nonAuditFinance, material_version: 1, role: 'financial', sha256: financeHash },
         ] };
       await pool.query(`INSERT INTO bb_input_revisions
         (project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
         VALUES($1,2,$2,2,$3,$4::jsonb,$5::jsonb,'[]'::jsonb)`,
       [projectId, owner, inputHashV2, JSON.stringify(correctedManifest), JSON.stringify([
         { material_id: historical, material_version: 2 }, { material_id: finance, material_version: 1 },
+        { material_id: nonAuditFinance, material_version: 1 },
       ])]);
 
       let extractionCalls = 0;
@@ -295,9 +305,39 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       const externalFromAuditMaterial = { id: 'synthetic-financial-fields', version: '1.0.2', extract: async (request: Parameters<typeof extractor.extract>[0]) => {
         const result = await extractor.extract(request) as SemanticFactExtractionResult;
         return { ...result, extractor: { id: 'synthetic-financial-fields', version: '1.0.2' },
-          facts: result.facts.map(fact => ({ ...fact, extraction_id: `${fact.extraction_id}-external`, source_kind: 'external' as const })) };
+          facts: result.facts.map(fact => ({ ...fact, extraction_id: `${fact.extraction_id}-external`, source_kind: 'external' as const,
+            uncertainty: ['SYNTHETIC_SOURCE_NOT_VERIFIED'], confidence: 0.5 })) };
       } };
-      await assert.rejects(produceParsedFactCandidates({ pool, extractor: externalFromAuditMaterial }, context),
+      const external = await produceParsedFactCandidates({ pool, extractor: externalFromAuditMaterial }, context);
+      assert.equal(external.inserted.length, 2);
+      assert.deepEqual(external.needsReview, [{ evidence_refs: [financeRecordId], reason_code: 'UNSUPPORTED_ADJACENT_LABEL' }]);
+      for (const item of external.inserted) {
+        assert.equal(item.candidate.source.kind, 'external');
+        assert.equal(item.provenance.status, 'needs_confirmation');
+        assert.equal(item.candidate.auditCheck, null);
+        assert.equal(item.candidate.confidence, 0.5);
+        assert.deepEqual(item.provenance.uncertainty, ['SYNTHETIC_SOURCE_NOT_VERIFIED']);
+        assert.deepEqual(item.provenance.evidence.map(evidence => evidence.evidence_id), [financeRecordId]);
+      }
+      const externalLedger = await pool.query(`SELECT candidate_ids,needs_review FROM bb_fact_extraction_runs WHERE id=$1`, [external.extractionRunId]);
+      assert.equal(externalLedger.rowCount, 1);
+      assert.deepEqual(externalLedger.rows[0]!.candidate_ids, external.inserted.map(item => item.candidate.candidateId));
+      assert.deepEqual(externalLedger.rows[0]!.needs_review, external.needsReview);
+      const externalReplay = await produceParsedFactCandidates({ pool, extractor: externalFromAuditMaterial }, context);
+      assert.equal(externalReplay.inserted.length, 0);
+      assert.deepEqual(externalReplay.replayed.map(item => item.candidate.candidateId), externalLedger.rows[0]!.candidate_ids);
+      assert.deepEqual(externalReplay.needsReview, external.needsReview);
+
+      const auditedFromNonAuditMaterial = { id: 'synthetic-financial-fields', version: '1.0.6', extract: async (request: Parameters<typeof extractor.extract>[0]) => {
+        const result = await extractor.extract({ ...request, material_id: finance, parse_snapshot_id: financeSnapshotId,
+          parse_response_sha256: financeEvidence.responseHash }) as SemanticFactExtractionResult;
+        return { ...result, extractor: { id: 'synthetic-financial-fields', version: '1.0.6' },
+          parse_snapshot: { ...result.parse_snapshot, snapshot_id: nonAuditFinanceSnapshotId,
+            response_sha256: request.parse_response_sha256, material_id: nonAuditFinance },
+          facts: result.facts.map(fact => ({ ...fact, evidence_refs: [nonAuditFinanceRecordId] })), needs_review: [] };
+      } };
+      const nonAuditContext = { ...context, materialId: nonAuditFinance, snapshotId: nonAuditFinanceSnapshotId };
+      await assert.rejects(produceParsedFactCandidates({ pool, extractor: auditedFromNonAuditMaterial }, nonAuditContext),
         /FACT_EXTRACTION_SOURCE_ROLE_MISMATCH/);
       await pool.query(`CREATE FUNCTION bb_test_fail_fact_extraction_outbox() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN IF NEW.event_type='fact.extraction.completed' THEN RAISE EXCEPTION 'forced fact outbox failure'; END IF; RETURN NEW; END $$`);
@@ -311,8 +351,8 @@ test('semantic producer binds reviewed issuer and exact parse evidence, replays 
       await assert.rejects(produceParsedFactCandidates({ pool, extractor: forcedOutboxFailure }, context), /forced fact outbox failure/);
       await pool.query(`DROP TRIGGER bb_test_fail_fact_extraction_outbox ON bb_outbox`);
       await pool.query(`DROP FUNCTION bb_test_fail_fact_extraction_outbox()`);
-      assert.equal((await listFactCandidates({ pool }, ownerScope)).length, 8);
-      assert.equal((await pool.query(`SELECT id FROM bb_fact_extraction_runs WHERE owner_user_id=$1 AND project_id=$2`, [owner, projectId])).rowCount, 4);
+      assert.equal((await listFactCandidates({ pool }, ownerScope)).length, 10);
+      assert.equal((await pool.query(`SELECT id FROM bb_fact_extraction_runs WHERE owner_user_id=$1 AND project_id=$2`, [owner, projectId])).rowCount, 5);
       await pool.query(`UPDATE bb_issuer_identity_reviewer_grants SET revoked_at=now(),revoked_by=$2,revocation_reason_code='synthetic_test',revocation_basis='synthetic test' WHERE id=$1`, [reviewerGrantId, grantorId]);
       await assert.rejects(produceParsedFactCandidates({ pool, extractor: { ...extractor, version: '1.0.3' } }, context),
         /FACT_EXTRACTION_ISSUER_IDENTITY_STALE/);

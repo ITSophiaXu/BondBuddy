@@ -337,7 +337,8 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
           content_sha256: request.material_sha256 },
         facts: [{ extraction_id: 'synthetic-revenue', identity: { scope: 'consolidated', metric: 'operating_revenue',
           period: { start: '2024-01-01', end: '2024-12-31' }, currency: 'CNY', unit: 'yuan', basis: 'reported_financial_statement' },
-          value: { kind: 'known', decimalOrText: '123.45' }, source_kind: 'audited', confidence: 1, uncertainty: [],
+          value: { kind: 'known', decimalOrText: '123.45' }, source_kind: 'external', confidence: 1,
+          uncertainty: ['SYNTHETIC_SOURCE_NOT_VERIFIED'],
           evidence_refs: [evidence.record_id] }],
         needs_review: [{ evidence_refs: [evidence.record_id], reason_code: 'SYNTHETIC_ADJACENT_GAP' }] };
     } };
@@ -377,6 +378,13 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal(factCheckpoint.extractions.length, 1);
     assert.equal(factCheckpoint.extractions[0].candidate_count, 1);
     assert.equal(factCheckpoint.extractions[0].needs_review_count, 1);
+    const persistedFact = (await pool.query(`SELECT source_kind,status,uncertainty,evidence FROM bb_fact_candidates
+      WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3`, [alice, p7Project, m.material_id])).rows;
+    assert.equal(persistedFact.length, 1);
+    assert.equal(persistedFact[0]!.source_kind, 'external');
+    assert.equal(persistedFact[0]!.status, 'needs_confirmation');
+    assert.ok(persistedFact[0]!.uncertainty.includes('SYNTHETIC_SOURCE_NOT_VERIFIED'));
+    assert.equal(persistedFact[0]!.evidence.length, 1);
     assert.equal(factExtractCalls, 1);
     assert.equal((await materialStage.run({ ...materialContext, checkpoint: { materials_ready: factCheckpoint } })).kind, 'done');
     assert.deepEqual(await materialStage.run({ ...materialContext, checkpoint: { materials_ready: {
