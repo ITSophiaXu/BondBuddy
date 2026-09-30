@@ -1,6 +1,6 @@
 # #34 同项目 Word 版本目录 · 原型对照
 
-原型：#85 `product-prototype/design-previews/update-workspace.fragment.html` 的 `completeView()` 与导出页 `product-prototype/public/previews/update-workspace.html`，head `46764161565027f332bdf28f8b335620bd035018`。原型截图保持该准确版本。实现基于 `develop@bd442bdd971abd4a4f8532d26c75c4f56cf9b3db`，代码 commit `73cb646097ea25974e87cddf2b383ea6970f1d95`，包括 #475 的持久消息区；对应 PR #474 仍为 Draft。
+原型：#85 `product-prototype/design-previews/update-workspace.fragment.html` 的 `completeView()` 与导出页 `product-prototype/public/previews/update-workspace.html`，head `46764161565027f332bdf28f8b335620bd035018`。原型截图保持该准确版本。实现基于 `develop@391e006d9a12a8af17a3eecf5aeddecd06cbb2ff`，代码 commit `73cb646097ea25974e87cddf2b383ea6970f1d95`，包括 #475 的持久消息区；对应 PR #474 仍为 Draft。
 
 按 [产品负责人 2026-09-29 的反馈](https://github.com/ITSophiaXu/BondBuddy/pull/474#issuecomment-5894113011) 补齐同一“已完成”状态，并独立保留新任务失败仍能找回旧稿的场景。截图均为真实 Chromium 的同尺寸视口截图：桌面 1440×960、手机 390×844。HTTP、账号、材料信息和下载字节均为 **synthetic**，不是实际客户、模型、Blob、Word/WPS 或产品批准证据。
 
@@ -37,4 +37,6 @@ BB_E2E_BASE_URL=http://127.0.0.1:5364 BB_34_HISTORY_EVIDENCE_DIR="$PWD/apps/web/
 BB_E2E_BASE_URL=http://127.0.0.1:5364 npm test -w @bondbuddy/web -- --reporter=dot --output=/tmp/bondbuddy-history-web-results
 ```
 
-Linux / Node 22.23.3 / Playwright Chromium；全仓 build、contracts、Web 单元 43/43 通过，历史目录 Chromium 13/13 通过。完整浏览器结果在 PR #474 中回填。无 DTO、枚举、迁移、writer、计费或原型修改。工程验证和新截图均不能解除产品负责人明确要求的布局确认；#34 保持开放，#35 真实交付/下载与 #146 Windows WPS/Word 仍为独立验收。
+Linux / Node 22.23.3 / Playwright Chromium；全仓 build、contracts、Web 单元 43/43 通过，历史目录 Chromium 13/13 通过。整合代码的完整浏览器 **135/135 通过、15 个 opt-in 集成测试跳过、0 失败**（共 150 项）通过。最终冷启动整套包括全部 #361 前置恢复回归。无 DTO、枚举、迁移、writer、计费或原型修改。工程验证和新截图均不能解除产品负责人明确要求的布局确认；#34 保持开放，#35 真实交付/下载与 #146 Windows WPS/Word 仍为独立验收。
+
+本轮完整初验为 129 通过、15 跳过、1 失败：既有分页恢复测试暴露 run 旧响应/事件缓存竞态，属于 #361/#384 的恢复路径。已合入前置分支 `fix/361-start-input-guidance` 的同一实现（`b27245c`），合成夹具保持当前 run 的真实事件游标；合并冲突保留目录刷新和 run 读取版本校验两项能力。本 PR 须在该前置修复合入 develop 后再合并，不平行实现它。最终固定代码、冷启动独立服务的整合回归 135 通过、15 跳过、0 失败。
