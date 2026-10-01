@@ -58,6 +58,7 @@ const scope=d=>`${d.exchange}-${d.offering}`;
 const input=(name,label,value,placeholder='',required=false)=>`<div class="field"><label for="${name}">${label}${required?'<span class="required">*</span>':''}</label><input id="${name}" name="${name}" value="${esc(value)}" placeholder="${placeholder}" ${required?'required':''} maxlength="${name==='title'?150:500}"></div>`;
 function reportingPreview(d,compact=false){
   const window=reportingPeriods(`${d.year}-${d.quarter}`,d.offering);
+  if(compact==='simple')return `<p class="field-hint">报告期：${window.periods.map(p=>p.type==='annual'?`${p.end.slice(0,4)}年`:`${p.end.slice(0,4)}年1—${Number(p.end.slice(5,7))}月`).join('、')}</p>`;
   return `<div class="reporting-window ${compact?'compact':''}" aria-live="polite"><div class="reporting-window-title"><strong>本次覆盖报告期</strong><span>${window.basis}</span></div><ol>${window.periods.map((p,i)=>`<li class="${i===window.periods.length-1?'latest':''}"><strong>${p.label}</strong>${compact?'':`<small>截至 ${p.end.replaceAll('-','.')}</small>`}</li>`).join('')}</ol>${compact?'':`<p>${window.note}</p>`}</div>`;
 }
 function reportingLabel(context){try{return reportingPeriods(context.periods,context.scope.split('-')[1]).label;}catch{return context.periods||'';}}
