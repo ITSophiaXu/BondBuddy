@@ -15,4 +15,4 @@
 
 沿用的已确认差异：真实 M1 允许未填全草稿，保留上传重试/材料细分/数据政策入口，真实额度为单份100MB、每项目500MB；原型旧演示限额不进入生产。实现显示保存版本与必要失败/重读反馈，空说明不能点保存；原型演示按钮未接真实消息账本。本轮布局依据为用户直接决定，没有增加业务面板。
 
-本地证据：Windows / Node22.14 / Playwright Chromium；全仓 build、contracts 通过，Web单元44/44、worker定向8/8、浏览器13/13。均为 synthetic 数据。运行恢复与真实部署、隔离 Word 集成结果另在 PR/issue 回填。截图不是客户材料；没有把合成模型或UI结果称为原项目 Word/专业验收。
+本地证据：Windows / Node22.14 / Playwright Chromium；全仓 build、contracts 通过，Web单元44/44、worker定向8/8、浏览器13/13。均为 synthetic 数据。Linux隔离 PostgreSQL/Azurite/真实解析及Word写入集成（合成模型）连同定向单元9/9通过，87.7秒；首次180秒超时，加入阶段标记复跑通过，未放宽检查或延长时限，首轮原因未证实。运行恢复与真实部署另在 PR/issue 回填。截图不是客户材料；没有把合成模型或UI结果称为原项目 Word/专业验收。
