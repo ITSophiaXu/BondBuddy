@@ -18,7 +18,7 @@ import { scrubSecrets } from '@bondbuddy/api/log-ops';
 import { savePromptSnapshot } from '@bondbuddy/api/log-ops';
 import { azureBlobs, digest, uid } from '@bondbuddy/api/data';
 import { factIdentityKey } from '@bondbuddy/domain/facts';
-import { updateContentHash, type HistoricalUpdateInput } from '@bondbuddy/domain/historical-update';
+import { planHistoricalUpdate, updateContentHash, type HistoricalUpdateInput } from '@bondbuddy/domain/historical-update';
 import { prepareHistoricalUpdate, type HistoricalUpdateReaders } from './historical-update.js';
 import { GENERATION_INPUT_CHECKPOINT, loadHistoricalGenerationInput, offerableFacts, type GenerationInputReaders } from './historical-generation-input.js';
 import { promptTable, historicalRulePrompt } from './historical-prompt-tables.js';
@@ -36,6 +36,7 @@ import { SSE_PRIVATE_CANDIDATE_ASSET_PIN as candidatePin } from './sse-private-c
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import { applyHistoricalProfileCorrection } from '@bondbuddy/domain/historical-profile-correction';
 import { localizedHistoricalWarnings } from './historical-baseline-warnings.js';
+import { recognizeHistoricalNativeText } from './historical-native-recognition.js';
 import { DOCX_AUXILIARY_TARGETS_PARSER_VERSION, type DocxAuxiliaryTarget } from './document-parser.js';
 
 // Synthetic component evidence. No real model, billing, cloud storage or industry acceptance is claimed.
@@ -701,6 +702,27 @@ test('authorized Renqiu September DOCX parses into complete bounded model chunks
   assert.ok(chunks.every(c=>c.length<=512));
   assert.ok(chunks.length<=32);
   assert.equal(response.records.length,9690);
+  const profile = recognizeHistoricalNativeText(response, {profileVersion:1});
+  assert.equal(profile.state,'needs_confirmation');
+  assert.equal(profile.source_market.status,'needs_confirmation');
+  assert.equal(profile.source_offering.status,'needs_confirmation');
+  assert.equal(profile.latest_reporting_cutoff.value,null);
+  assert.equal(profile.reporting_periods.length,15);
+  assert.equal(profile.reporting_periods.filter(p=>[p.start,p.end,p.period_kind,p.scope].includes(null)).length,6);
+  const baseline = fixture(true).source;
+  baseline.facts=[]; baseline.bindings=[]; baseline.occurrences=[]; baseline.columns=[];
+  baseline.baseline={...baseline.baseline,materialId:response.material!.material_id,contentHash:response.material!.sha256,
+    parserVersion:response.parser_version,parseResultHash:updateContentHash(response),parseStatus:response.status,
+    warnings:response.warnings.map(w=>w.code),profile,
+    blocks:response.records.map(r=>({recordId:r.record_id,text:r.literal_quote,locatorType:'docx_block',
+      locator:r.locator,formatting:r.formatting,uncertainty:r.uncertainty}))};
+  baseline.coverage=response.records.map(r=>({recordId:r.record_id,disposition:'retain',reason:'Copy validation only'}));
+  const findings=(input:HistoricalUpdateInput)=>[...new Set(planHistoricalUpdate(input).findings.map(f=>f.code))];
+  assert.deepEqual(findings(baseline),['UPDATE_BASELINE_UNCERTAIN','UPDATE_PROFILE_UNCONFIRMED']);
+  baseline.context.baselineUse='non_production_working_draft';baseline.baseline.localizedWarnings=pending;
+  assert.deepEqual(findings(baseline),['UPDATE_PROFILE_UNCONFIRMED','UPDATE_BASELINE_AUXILIARY_PENDING']);
+  baseline.context.baselineUse='non_production_pending_original';
+  assert.deepEqual(findings(baseline),['UPDATE_PROFILE_INCOMPLETE_PENDING','UPDATE_BASELINE_AUXILIARY_PENDING']);
   t.diagnostic(`${response.records.length} original blocks / ${chunks.length} chunks; ${referenceBytes} reference bytes, 20KB reserved for other inputs; no provider call`);
 });
 
@@ -1054,14 +1076,14 @@ test('pending period evidence cannot bypass locked owner, material version, hash
 });
 
 // Complete synthetic plan -> real Python -> PG/Blob quality evidence -> authorized download.
-const pendingDraftDatabase = await isolatedTestDatabase(undefined, 'pending-original-word');
-test('four pending audit facts deliver complete original Python Word with quality and owner authorization', {
-  skip: !pendingDraftDatabase || !process.env.BB_TEST_AZURITE_CONNECTION_STRING || !process.env.BONDBUDDY_TEST_PYTHON,
+
+for (const incomplete of [false, true]) test(`${incomplete ? 'v13 incomplete baseline' : 'four pending audit facts'} deliver complete original Python Word with quality and owner authorization`, {
+  skip: !process.env.BB_TEST_DATABASE_URL || !process.env.BB_TEST_AZURITE_CONNECTION_STRING || !process.env.BONDBUDDY_TEST_PYTHON,
 }, async () => {
   await withCutoffDraftTest(async () => {
-    const s = fourPendingAuditFixture();
+    const s = incomplete ? incompleteBaselineFixture() : fourPendingAuditFixture();
     const directory = await mkdtemp(join(tmpdir(), 'bb-pending-original-'));
-    const pool = new Pool({ connectionString: pendingDraftDatabase });
+    const pool = new Pool({ connectionString: await isolatedTestDatabase(undefined, `pending-original-word-${incomplete}`) });
     const blobs = azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!, `bb-pending-${randomUUID()}`);
     let principal = 'owner-1';
     const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: principal, csrfVerified: true }) });
@@ -1077,11 +1099,33 @@ for b in blocks:
   if t is None:t=d.add_table(rows=2,cols=3)
   t.cell(p['row']-1,p['column']-1).text=b['text']
  else:d.add_paragraph(b['text'])
-d.save(sys.argv[1])`, sourcePath],
+if len(sys.argv)>2:
+ import io,base64
+ d.sections[0].header.paragraphs[0].text='Synthetic header 2023-12-31 pending'
+ d.sections[0].footer.paragraphs[0].text='Synthetic footer pending'
+ image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGZkAAAAASUVORK5CYII=')
+ for i in range(5):d.paragraphs[0].add_run().add_picture(io.BytesIO(image))
+ for i in range(9690-len(blocks)):d.add_paragraph('Synthetic original '+str(i)+' amount 100, no verified update.')
+d.save(sys.argv[1])`, sourcePath, ...(incomplete ? ['v13'] : [])],
         { input: JSON.stringify(s.source.baseline.blocks), encoding: 'utf8', timeout: 30000 });
       assert.equal(generated.status, 0, generated.stderr);
       const source = await readFile(sourcePath), sourceHash = digest(source);
-      if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,'pending-original-source.docx'),source,{mode:0o600});
+      if (incomplete) {
+        const parsed = spawnSync(py, ['-c', `import json,sys,hashlib
+from bondbuddy_document_parser.parser import parse_request
+p=sys.argv[1]; print(json.dumps(parse_request({'schema_version':'document-parse-request-v1','request_id':'synthetic-v13','material':{'material_id':'history-1','material_version':1,'media_type':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','sha256':hashlib.sha256(open(p,'rb').read()).hexdigest(),'authorized_local_path':p},'options':{}}),ensure_ascii=False))`,sourcePath],
+          {encoding:'utf8',env:{...process.env,PYTHONPATH:fileURLToPath(new URL('../../../python',import.meta.url))},maxBuffer:64*1024*1024,timeout:120000});
+        assert.equal(parsed.status,0,parsed.stderr);
+        s.snapshot.response=JSON.parse(parsed.stdout);s.snapshot.parserVersion=s.snapshot.response.parser_version;
+        s.snapshot.evidence=s.snapshot.response.records;
+        assert.equal(s.snapshot.response.records.length,9690);
+        assert.deepEqual(s.snapshot.response.warnings.map(w=>w.code).sort(),['DOCX_AUXILIARY_PARTS','DOCX_DRAWINGS']);
+        assert.equal(s.snapshot.response.document.auxiliary_targets!.filter(t=>t.kind==='drawing').length,5);
+        const anchor=s.snapshot.response.records[0]!.record_id;
+        for(const f of [s.profile.recognition.source_market,s.profile.recognition.source_offering,s.profile.recognition.latest_reporting_cutoff,...s.profile.recognition.reporting_periods])f.provenance.evidence_refs=[anchor];
+        s.options.model=()=>{throw new Error('No model calls in copy-only mode');};
+      }
+      if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`${incomplete?'v13':'pending-original'}-source.docx`),source,{mode:0o600});
       s.snapshot.contentSha256 = sourceHash; s.snapshot.response.material!.sha256 = sourceHash;
       s.snapshot.response.records.forEach(r => r.content_hash = sourceHash);
       const { request_id: _, ...stable } = s.snapshot.response; s.snapshot.responseSha256 = updateContentHash(stable);
@@ -1128,28 +1172,38 @@ from lxml import etree
 z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}; root=etree.fromstring(z.read('word/document.xml')); print(json.dumps({'paragraphs':[''.join(p.xpath('.//w:t/text()',namespaces=ns)) for p in root.xpath('.//w:p',namespaces=ns)],'comments':z.read('word/comments.xml').decode() if 'word/comments.xml' in z.namelist() else '','insertions':[''.join(n.xpath('.//w:t/text()',namespaces=ns)) for n in root.xpath('.//w:ins',namespaces=ns)]},ensure_ascii=False))`],{input:bytes,encoding:'utf8',timeout:30000});
         assert.equal(r.status,0,r.stderr); return JSON.parse(r.stdout);
       };
-      const evidence:Record<string,unknown>={synthetic:true, supplier_calls:0, usable_facts:0, replacements:0, columns:0, pending_candidates:before};
+      const evidence:Record<string,unknown>={synthetic:true, incomplete_baseline:incomplete, supplier_calls:0, usable_facts:0, replacements:0, columns:0, pending_candidates:before};
       let revision:Awaited<ReturnType<typeof promoteWordArtifact>>|undefined;
       const artifactIds:Record<string,string>={};
       for(const [variant,bytes] of [['baseline',delivered.baselineBytes!],['clean',delivered.cleanBytes!],['revision',delivered.bytes]] as const){
         const xml=inspect(bytes);
         assert.match(xml.paragraphs[0],/临时原文工作稿.*报告期间及财务事实待人工核验/);
-        assert.deepEqual(xml.paragraphs.slice(1).map((p:string)=>p.replace(/【待人工确认】/g,'')),s.source.baseline.blocks.map(b=>b.text),'all original text including old numbers is retained');
-        if(variant!=='baseline')for(const f of before){assert.ok(xml.comments.includes(f.candidate.candidateId));assert.ok(xml.comments.includes(f.provenance.uncertainty[0]!));}
+        assert.deepEqual(xml.paragraphs.slice(1).map((p:string)=>p.replace(/【待人工确认】/g,'')),s.snapshot.response.records.map(b=>b.literal_quote),'all original text including old numbers is retained');
+        if(incomplete){
+          const preserved=spawnSync(py,['-c',"import io,sys,zipfile;from lxml import etree;s=zipfile.ZipFile(sys.argv[1]);z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read()));names=[n for n in s.namelist() if n.startswith(('word/header','word/footer','word/media/'))];assert len(names)>=3;assert all(s.read(n)==z.read(n) for n in names),'auxiliary bytes changed';ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'};draw=lambda a:[etree.tostring(n,method='c14n') for n in etree.fromstring(a.read('word/document.xml')).findall('.//w:drawing',ns)];assert draw(s)==draw(z);print(len(names))",sourcePath],{input:bytes,encoding:'utf8',timeout:30000});
+          assert.equal(preserved.status,0,preserved.stderr);evidence.auxiliary_bytes_preserved=true;
+          if(variant!=='baseline')assert.match(xml.comments,/15项原稿报告期间/);
+        }
+        if(!incomplete && variant!=='baseline')for(const f of before){assert.ok(xml.comments.includes(f.candidate.candidateId));assert.ok(xml.comments.includes(f.provenance.uncertainty[0]!));}
         assert.ok(xml.insertions.every((text:string)=>text==='【待人工确认】'),'tracked insertions contain pending labels only, never numbers');
-        const marked=await markTestWord(bytes,[]);
+        const marked=await markTestWord(bytes,[],incomplete);
         const promoted=await promoteWordArtifact(pool,lease,marked,blobs); assert.equal(promoted.status,'available');
+        if(incomplete){
+          const finalBytes=spawnSync(py,['-c',"import io,sys,zipfile;s=zipfile.ZipFile(sys.argv[1]);z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read()));names=[n for n in s.namelist() if n.startswith(('word/header','word/footer','word/media/'))];assert all(s.read(n)==z.read(n) for n in names),'final auxiliary bytes changed'",sourcePath],{input:marked,encoding:'utf8',timeout:30000});
+          assert.equal(finalBytes.status,0,finalBytes.stderr);
+          assert.match(inspect(marked).paragraphs[0],/内部测试工作稿/);
+        }
         artifactIds[variant]=promoted.artifactId;
         if(variant==='revision')revision=promoted;
         evidence[variant]={sha256:digest(marked),bytes:marked.length,inspection:promoted.inspection,writer_inspection:xml};
         if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR){
-          await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`pending-original-${variant}-writer.docx`),bytes,{mode:0o600});
-          await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`pending-original-${variant}.docx`),marked,{mode:0o600});
+          await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`${incomplete?'v13':'pending-original'}-${variant}-writer.docx`),bytes,{mode:0o600});
+          await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`${incomplete?'v13':'pending-original'}-${variant}.docx`),marked,{mode:0o600});
         }
       }
       assert.ok(revision);
       await checkpointStage(pool,lease,'word_delivery_pair',{...delivered.wordSummary,revision_artifact_id:artifactIds.revision,clean_artifact_id:artifactIds.clean,baseline_artifact_id:artifactIds.baseline});
-      assert.equal((await pool.query("SELECT checkpoint->'stages'->'historical_generation_input'->'reporting_cutoff_basis'->>'status' AS status FROM bb_jobs WHERE id=$1",[lease.jobId])).rows[0].status,'needs_confirmation');
+      if(!incomplete)assert.equal((await pool.query("SELECT checkpoint->'stages'->'historical_generation_input'->'reporting_cutoff_basis'->>'status' AS status FROM bb_jobs WHERE id=$1",[lease.jobId])).rows[0].status,'needs_confirmation');
       await finish(pool,lease,'test_completed',{artifactId:revision.artifactId,artifactVersion:revision.artifactVersion,blobs});
       assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[s.ctx.run.id])).rows[0].state,'test_completed');
       const metadata=await app.inject({method:'GET',url:`/api/v1/artifacts/${revision.artifactId}`}); assert.equal(metadata.statusCode,200,metadata.body);
@@ -1157,6 +1211,20 @@ z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); ns={'w':'http://schemas.
       assert.equal(metadata.json().word_delivery.replacements,0); assert.equal(metadata.json().word_delivery.columns,0);
       assert.deepEqual(metadata.json().word_delivery.pending_review,delivered.wordSummary!.pending_review);
       const download=await app.inject({method:'GET',url:metadata.json().download_url}); assert.equal(download.statusCode,200); assert.equal(digest(download.rawPayload),revision.sha256);
+      const downloads:Record<string,string>={};
+      for(const [variant,artifactId] of Object.entries(artifactIds)){
+        principal='owner-1';
+        const owned=await app.inject({method:'GET',url:`/api/v1/artifacts/${artifactId}`});
+        assert.equal(owned.statusCode,200,owned.body);
+        const bytes=await app.inject({method:'GET',url:owned.json().download_url});
+        assert.equal(bytes.statusCode,200);
+        assert.equal(digest(bytes.rawPayload),(evidence[variant] as {sha256:string}).sha256);
+        principal='foreign-owner';
+        assert.equal((await app.inject({method:'GET',url:`/api/v1/artifacts/${artifactId}`})).statusCode,404);
+        assert.equal((await app.inject({method:'GET',url:owned.json().download_url})).statusCode,404);
+        downloads[variant]='owner hash matched; foreign metadata/download 404';
+      }
+      evidence.downloads=downloads;
       principal='foreign-owner';
       assert.equal((await app.inject({method:'GET',url:`/api/v1/artifacts/${revision.artifactId}`})).statusCode,404);
       assert.equal((await app.inject({method:'GET',url:metadata.json().download_url})).statusCode,404);
@@ -1165,7 +1233,7 @@ z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); ns={'w':'http://schemas.
       assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,values:new Map([['model_generation',tampered]])}),{kind:'fail',code:'VALIDATION_FAILED'});
       assert.deepEqual(await historicalWordDeliveryStage().run({...ctx,run:{...ctx.run,channel:'production'}}),{kind:'fail',code:'VALIDATION_FAILED'});
       evidence.plan=plan; evidence.word_summary=delivered.wordSummary; evidence.state='test_completed'; evidence.owner_download='passed'; evidence.foreign_download='404';
-      if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,'pending-original-evidence.json'),JSON.stringify(evidence,null,2),{mode:0o600});
+      if(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR)await writeFile(join(process.env.BB_SYNTHETIC_WORD_EVIDENCE_DIR,`${incomplete?'v13':'pending-original'}-evidence.json`),JSON.stringify(evidence,null,2),{mode:0o600});
     } finally { await app.close(); await pool.end(); await rm(directory,{recursive:true,force:true}); }
   });
 });
@@ -1180,5 +1248,84 @@ test('pending-only delivery respects explicit targets and production zero-change
     if(result.kind==='done'){const plan=result.value as HistoricalGenerationPlan;assert.equal(plan.pendingOriginalDraft!.targetSource,'user_asserted');assert.equal(plan.pendingOriginalDraft!.reportingCutoff,'2025-12-31');assert.equal(plan.pendingOriginalDraft!.periodEvidence.cutoff,'2025-09-30');}
     const prod=fixture(); prod.facts.forEach(f=>{(f.provenance as any).status='needs_confirmation'; (f.provenance as any).uncertainty=['synthetic pending amount'];}); for(const b of prod.answer.blocks){b.changes=[];b.disposition='needs_evidence';b.reason='合成待核事实';} prod.answer.columns=[];
     assert.deepEqual(await historicalModelGenerationStage(prod.options).run(prod.ctx),{kind:'pause',stage:'capability_not_ready',reason:'historical_no_supported_changes'});
+  });
+});
+
+
+/** Synthetic reproduction of v13 metadata; no customer content or live run is read. */
+function incompleteBaselineFixture(testChannel = true, recordCount?: number) {
+  const s = pendingBaselineFixture(testChannel);
+  s.profile.profileVersion = 1;
+  const profile = s.profile.recognition;
+  profile.profile_version = 1; profile.state = 'needs_confirmation';
+  profile.reporting_periods = Array.from({ length: 15 }, (_, i) => ({ ...structuredClone(profile.reporting_periods[0]!),
+    start: i % 2 ? null : '2023-01-01', end: i % 3 ? null : '2023-12-31', scope: null,
+    status: 'needs_confirmation' as const, uncertainty: ['未能从原文确定完整报告期及报表口径'] }));
+  profile.latest_reporting_cutoff.value = null;
+  for (const field of [profile.source_market, profile.source_offering, profile.latest_reporting_cutoff, ...profile.reporting_periods]) {
+    field.status = 'needs_confirmation'; field.uncertainty = ['解析器标记材料仍需确认，native_text 子集不覆盖全部识别要求'];
+    field.provenance.method = 'native_text';
+    field.provenance.extractor_version = `historical-native-recognition-v2/${s.snapshot.parserVersion}`;
+  }
+  const drawing: DocxAuxiliaryTarget = { target_id: `aux-${'3'.repeat(64)}`, kind: 'drawing', part_name: 'word/document.xml',
+    locator: { part_name: 'word/document.xml', drawing_index: 1, parent_stable_ref: 'docx:p0001', drawing_ids: ['77'] },
+    part_sha256: '4'.repeat(64), target_sha256: '5'.repeat(64), locator_resolved: true, parseable: false,
+    parse_status: 'not_extracted', text_summary: null,
+    scope: { kind: 'drawing_relationship', status: 'unknown', relationship_part_sha256: 'a'.repeat(64),
+      relationships: [], section_references: [], unknown_sections: [], body_references: [],
+      reason: 'drawing_relationship_targets_not_extracted', truncated: false } };
+  s.snapshot.response.document.auxiliary_targets!.push(...Array.from({length:5},(_,i)=>({ ...structuredClone(drawing),
+    target_id: `aux-${String(i+1).repeat(64)}`, locator: {...drawing.locator,drawing_index:i+1} })));
+  s.snapshot.response.warnings.push({code:'DOCX_DRAWINGS',message:'Synthetic five drawings not extracted'});
+  if (recordCount) {
+    const first = s.snapshot.response.records[0]!;
+    s.snapshot.response.records = Array.from({length:recordCount},(_,i)=>({...structuredClone(first),
+      record_id:i===0?first.record_id:`v13-${i}`, locator:{path:[{paragraph:i+1}],stable_ref:`docx:p${String(i+1).padStart(4,'0')}`}}));
+  }
+  s.snapshot.evidence = s.snapshot.response.records;
+  s.refreshHash();
+  return s;
+}
+
+test('v13 incomplete source periods preserve all 9690 blocks as pending original without model capacity or comment overflow',async()=>{
+  await withCutoffDraftTest(async()=>{
+    const s=incompleteBaselineFixture(true,9690);let calls=0;
+    s.options.model=()=>{calls++;throw new Error('Incomplete baseline cannot enter a model or numerical update');};
+    const before=structuredClone(s.profile.recognition);
+    const result=await historicalModelGenerationStage(s.options).run(s.ctx);
+    assert.equal(result.kind,'done',JSON.stringify(result));if(result.kind!=='done')return;
+    const plan=result.value as HistoricalGenerationPlan;
+    assert.equal(calls,0);assert.equal(plan.textPreview.length,9690);
+    assert.ok(plan.textPreview.every(p=>p.before===p.after));
+    assert.deepEqual(plan.replacements,[]);assert.deepEqual(plan.columns,[]);
+    assert.equal(plan.pendingOriginalDraft?.reviewScope,'whole_document');
+    assert.ok(plan.reviewNotes.length<1000);
+    assert.deepEqual(plan.sourceProfile,before);assert.equal(plan.sourceProfile.latest_reporting_cutoff.value,null);
+    assert.ok(plan.findings.some(f=>f.code==='UPDATE_PROFILE_INCOMPLETE_PENDING'));
+    assert.ok(plan.findings.some(f=>f.code==='UPDATE_BASELINE_AUXILIARY_PENDING'));
+    assert.match(plan.reviewNotes.map(n=>n.message).join(''),/15.*原稿.*期间|原稿.*期间.*15/);
+    assert.deepEqual(await historicalModelGenerationStage(s.options).run(s.ctx),result);
+  });
+});
+
+test('incomplete source profile remains blocked in production and with conflicting, unlocated or unsafe evidence',async()=>{
+  await withCutoffDraftTest(async()=>{
+    for(const change of ['production','conflict','provenance','anchor','drawing','warning','failed','structure','date','revoked'] as const){
+      const s=incompleteBaselineFixture(change!=='production');let calls=0;
+      s.options.model=()=>{calls++;throw new Error('Blocked before model');};
+      if(change==='conflict')s.profile.recognition.reporting_periods[0]!.uncertainty=['同一证据同时出现合并与母公司口径'];
+      if(change==='provenance')s.profile.recognition.reporting_periods[0]!.provenance.extractor_version='other/parser';
+      if(change==='anchor')s.profile.recognition.source_market.provenance.evidence_refs=['missing-record'];
+      if(change==='drawing')s.snapshot.response.document.auxiliary_targets![1]!.locator_resolved=false;
+      if(change==='warning')s.snapshot.response.warnings.push({code:'DOCX_UNSUPPORTED_REVISION_MARKERS',message:'unsafe revision'});
+      if(change==='failed')s.profile.recognition.state='failed';
+      if(change==='structure')s.profile.recognition.source_market.value='szse';
+      if(change==='date')s.profile.recognition.reporting_periods[0]!.end='2023-02-31';
+      if(change==='revoked')s.grant.revoked_at=new Date();
+      s.refreshHash();
+      if(change==='drawing') { await assert.rejects(historicalModelGenerationStage(s.options).run(s.ctx), /INVALID_PARSE_RESPONSE/); continue; }
+      const result=await historicalModelGenerationStage(s.options).run(s.ctx);
+      assert.notEqual(result.kind,'done',change);assert.equal(calls,0,change);
+    }
   });
 });

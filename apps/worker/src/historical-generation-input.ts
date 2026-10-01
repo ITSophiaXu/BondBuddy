@@ -86,6 +86,7 @@ interface PreparationPin {
   version: 'historical-generation-input-v1'; input_hash: string;
   baseline_policy?: typeof HISTORICAL_TEST_BASELINE_POLICY;
   reporting_cutoff_basis?: WorkingDraftReportingCutoff;
+  pending_original_only?: true;
   snapshot_id: string; profile_version: number; profile_hash: string;
   parser_version: string; parse_hash: string; issuer_entity_id: string;
   fact_ids: string[]; facts_hash: string;
@@ -235,7 +236,15 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
     materials, baseline: { materialId: baseline.materialId, materialVersion: baseline.materialVersion, snapshotId: snapshot.snapshotId, profileVersion: profile.profileVersion },
     factCandidateIds: [], factsHash: historicalUpdateFactsHash([]) };
   // Reuse the #31 material, effective-baseline, parser and profile integrity gates before any model call.
-  const baselineReview = await (readers.prepare ?? prepareHistoricalUpdate)({ pool }, { ...locked, bindings: [], occurrences: [], columns: [], coverage: [] });
+  let baselineReview = await (readers.prepare ?? prepareHistoricalUpdate)({ pool }, { ...locked, bindings: [], occurrences: [], columns: [], coverage: [] });
+  if (baselinePolicy && baselineReview.findings.some(f => f.code === 'UPDATE_PROFILE_UNCONFIRMED')) {
+    // Retry the same integrity checks in a copy-only mode, with no facts or edit bindings.
+    locked.context.baselineUse = 'non_production_pending_original';
+    baselineReview = await (readers.prepare ?? prepareHistoricalUpdate)({ pool }, { ...locked, bindings: [], occurrences: [], columns: [], coverage: [] });
+  }
+  const pendingOriginalOnly = locked.context.baselineUse === 'non_production_pending_original';
+  if (previous && Boolean(previous.pending_original_only) !== pendingOriginalOnly) throw new Error('UPDATE_BASELINE_POLICY_CHANGED');
+  if (pendingOriginalOnly) pin.pending_original_only = true;
   const pendingProfileCandidate = baselineReview.findings.some(f => f.code === 'UPDATE_PROFILE_CANDIDATE_PENDING');
   if ((pendingProfileCandidate && !baselinePolicy) || baselineReview.findings.some(f => [
     'UPDATE_BASELINE_UNCERTAIN', 'UPDATE_PROFILE_UNCONFIRMED', 'UPDATE_PDF_RECONSTRUCTION_REQUIRED',
@@ -263,6 +272,7 @@ export async function loadHistoricalGenerationInput(ctx: StageContext, readers: 
 
 /** Never offer one clean member of a conflicted/uncertain identity while concealing the other candidates. */
 export function offerableFacts(input: HistoricalGenerationInput): StoredFactCandidate[] {
+  if (input.locked.context.baselineUse === 'non_production_pending_original') return [];
   const groups = new Map<string, StoredFactCandidate[]>();
   for (const f of input.facts) {
     if (f.candidate.identity.accountId !== input.locked.context.ownerUserId ||

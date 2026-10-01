@@ -16,7 +16,9 @@ export const PENDING_ORIGINAL_NOTICE = '临时原文工作稿：报告期间及�
 export interface PendingOriginalDraft {
   mode: 'non_production_pending_original'; status: 'needs_confirmation';
   reportingCutoff: string; targetSource: 'user_asserted' | 'provisional_evidence';
-  periodEvidence: WorkingDraftReportingCutoff; notice: typeof PENDING_ORIGINAL_NOTICE;
+  periodEvidence: WorkingDraftReportingCutoff;
+  /** Copy validation covers the entire document; annotations identify gaps, not a semantic review of each paragraph. */
+  reviewScope?: 'whole_document'; notice: typeof PENDING_ORIGINAL_NOTICE;
 }
 export interface HistoricalGenerationPlan extends HistoricalUpdatePlan {
   /** #34 renders these as visible pending-confirmation comments/markers, never confirmed replacement text. */
@@ -137,8 +139,9 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         input.locked.context.inputRevision !== ctx.run.input_revision || input.locked.context.inputHash !== ctx.run.input_hash.trim()) throw new Error('UPDATE_INPUT_LOCK_MISMATCH');
       // Budget UTF-8 bytes after complete rules/facts, not just source character count.
       // Use the longest valid chunk indices so later chunks cannot overflow on digit growth.
-      const fixedBytes = Buffer.byteLength(historicalPrompt(input, [], MAX_CHUNKS - 1, MAX_CHUNKS), 'utf8');
-      const chunks = historicalChunks(input.snapshot.response.records, MAX_PROMPT_BYTES - fixedBytes - 256);
+      const pendingOriginalOnly = ctx.run.channel === 'non_production_test' && input.locked.context.baselineUse === 'non_production_pending_original';
+      const fixedBytes = pendingOriginalOnly ? 0 : Buffer.byteLength(historicalPrompt(input, [], MAX_CHUNKS - 1, MAX_CHUNKS), 'utf8');
+      const chunks = pendingOriginalOnly ? [] : historicalChunks(input.snapshot.response.records, MAX_PROMPT_BYTES - fixedBytes - 256);
       if (chunks.length > HISTORICAL_MAX_LOGICAL_CALLS) {
         await checkpoint(ctx, 'historical_generation_capacity', { policy: 'historical-batch-plan-v2', planned_calls: chunks.length,
           max_logical_calls: HISTORICAL_MAX_LOGICAL_CALLS, total_blocks: input.snapshot.response.records.length });
@@ -147,7 +150,8 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       // Plan the entire traversal before the first paid intent. Never discover an oversized
       // final chunk after partially processing a document, or silently repartition an old run.
       const batches = chunks.map((records, i) => ({ records, prompt: historicalPrompt(input, records, i, chunks.length) }));
-      const manifest = { version: 'historical-batch-plan-v2', template, preparation_hash: input.preparationHash,
+      const manifest = { version: 'historical-batch-plan-v2', template,
+        ...(pendingOriginalOnly ? { mode: 'pending_original_copy_only' } : {}), preparation_hash: input.preparationHash,
         result_schema: HISTORICAL_GENERATION_VERSION, max_logical_calls: HISTORICAL_MAX_LOGICAL_CALLS,
         // The existing adapter permits at most three schema re-asks; unknown attempts never restart.
         max_schema_reasks_per_call: 3, automatic_attempt_upper_bound: chunks.length * 4,
@@ -160,7 +164,9 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
       if (!prior) await checkpoint(ctx, 'historical_generation_batch_plan', { hash: manifestHash, ...manifest,
         total_prompt_bytes: manifest.batches.reduce((n, b) => n + b.prompt_bytes, 0) });
       const facts = offerableFacts(input);
-      const parts: SemanticInventory[] = [];
+      const parts: SemanticInventory[] = pendingOriginalOnly ? [{ bindings: [], occurrences: [], columns: [],
+        coverage: input.snapshot.response.records.map(r => ({ recordId: r.record_id, disposition: 'retain' as const,
+          reason: '仅校验原文复制，整份文书未完成语义更新及事实核验' })) }] : [];
       for (let i = 0; i < chunks.length; i++) {
         if (ctx.signal.aborted) return { kind: 'stopped' };
         await input.revalidateEvidenceReviews?.();
@@ -220,7 +226,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         if (!periodEvidence) return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_no_supported_changes' };
         pendingOriginalDraft = { mode: 'non_production_pending_original', status: 'needs_confirmation',
           reportingCutoff: input.details.reporting_cutoff!, targetSource: input.reportingCutoffBasis ? 'provisional_evidence' : 'user_asserted',
-          periodEvidence, notice: PENDING_ORIGINAL_NOTICE };
+          periodEvidence, ...(pendingOriginalOnly ? { reviewScope: 'whole_document' as const } : {}), notice: PENDING_ORIGINAL_NOTICE };
         const previous = ctx.checkpoint.historical_pending_original;
         const pin = { preparation_hash: input.preparationHash, draft: pendingOriginalDraft };
         if (previous && updateContentHash(previous) !== updateContentHash(pin)) throw new Error('UPDATE_GENERATION_INPUT_CHANGED');
@@ -262,7 +268,7 @@ export function historicalModelGenerationStage(options: HistoricalModelStageOpti
         else reviewNotes.push({ recordId, message: `待人工确认：${message}` });
       }
       if (pendingOriginalDraft) {
-        for (const record of input.snapshot.response.records) {
+        for (const record of pendingOriginalOnly ? input.snapshot.response.records.slice(0, 1) : input.snapshot.response.records) {
           const message = `原文保留待核：${PENDING_ORIGINAL_NOTICE}${record.uncertainty.length ? ` 原文解析不确定性：${record.uncertainty.join('、')}` : ''}`;
           const note = reviewNotes.find(n => n.recordId === record.record_id);
           if (note) note.message += `；${message}`; else reviewNotes.push({ recordId: record.record_id, message });

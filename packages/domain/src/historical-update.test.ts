@@ -315,3 +315,17 @@ test('does not invent explanations: source text must literally occur in supporti
   input.occurrences = [{ ...input.occurrences[0]!, display: { kind: 'source_text' } }];
   code(input, 'UPDATE_TEXT_REQUIRES_SOURCE');
 });
+
+
+test('pending original mode rejects all numerical facts and edit requests even with reviewed source metadata', () => {
+  for (const request of ['facts', 'bindings', 'occurrences', 'columns', 'coverage'] as const) {
+    const input = fixture();
+    const requested = input[request];
+    input.context.baselineUse = 'non_production_pending_original';
+    input.facts = []; input.bindings = []; input.occurrences = []; input.columns = [];
+    input.coverage = input.baseline.blocks.map(b => ({recordId:b.recordId,disposition:'retain',reason:'Copy validation only'}));
+    // Restoring any original mutation request must fail before evaluating expressions.
+    Object.assign(input, {[request]: requested});
+    assert.throws(() => planHistoricalUpdate(input), /UPDATE_PENDING_ORIGINAL_MUTATION_FORBIDDEN/, request);
+  }
+});

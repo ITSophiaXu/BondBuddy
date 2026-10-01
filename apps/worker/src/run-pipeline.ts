@@ -578,7 +578,9 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       const uncovered:TestUncoveredItem[]=run.channel==='non_production_test'
         ? (await pool.query('SELECT uncovered_items FROM bb_runs WHERE id=$1 AND owner_user_id=$2',[run.id,run.owner_user_id])).rows[0]?.uncovered_items ?? []
         : [];
-      const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
+      const pendingDraft = outcome.wordSummary?.pending_original_draft as { reviewScope?: string } | undefined;
+      const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'
+        ?markTestWord(bytes,uncovered,pendingDraft?.reviewScope==='whole_document'):Promise.resolve(bytes);
       if (outcome.baselineBytes) {
         const baseline = await promoteWordArtifact(pool, lease, await wordBytes(outcome.baselineBytes), blobs);
         if (baseline.status !== 'available') {

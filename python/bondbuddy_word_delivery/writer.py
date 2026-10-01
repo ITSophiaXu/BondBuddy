@@ -419,8 +419,27 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
                            for node in parse_xml(base_parts[name]).iter()
                            if node.tag in (Q("commentReference"), Q("commentRangeStart"), Q("commentRangeEnd")))
         original_comments = comment_references()
+        copy_only = plan.get("context", {}).get("baselineUse") == "non_production_pending_original"
+        if copy_only:
+            draft = plan.get("pendingOriginalDraft", {})
+            if draft.get("reviewScope") != "whole_document" or plan["replacements"] or plan["columns"]:
+                fail("WORD_PENDING_ORIGINAL_INVALID")
+            # A validated parser location is not permission to silently normalize an auxiliary part.
+            # Copy those bytes exactly, and independently bind them to the locked parser evidence.
+            for finding in plan.get("findings", []):
+                for target in finding.get("auxiliaryTargets", []):
+                    name = target["part_name"]
+                    if name not in base_parts or hashlib.sha256(base_parts[name]).hexdigest() != target["part_sha256"]:
+                        fail("WORD_AUXILIARY_SOURCE_HASH_MISMATCH")
         for name in revised_names:
             root = parse_xml(base_parts[name])
+            if copy_only and name != "word/document.xml":
+                # Refuse rather than alter original revisions in an auxiliary object.
+                normalized = copy.deepcopy(root)
+                normalize_old_revisions(normalized)
+                if etree.tostring(normalized) != etree.tostring(root):
+                    fail("WORD_PENDING_AUXILIARY_REVISION_UNSUPPORTED")
+                continue
             normalize_old_revisions(root)
             base_parts[name] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
             if name == "word/document.xml":
