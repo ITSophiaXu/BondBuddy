@@ -1,0 +1,143 @@
+{
+  "schema_version": "capability-coverage-v1",
+  "manifest_id": "nafmii-ppn-coverage",
+  "version": "2026.09.27-draft.1",
+  "rule_pack_id": "nafmii-ppn",
+  "assessed_at": "2026-09-27T10:00:00Z",
+  "items": [
+    {
+      "item_id": "ppn-scope",
+      "area": "定向投资者、披露渠道及转让范围",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na044-page001-d411d11a"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-route",
+      "area": "定向募集说明书与定向协议分支",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na042-p00088-b5893f5d"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-financial",
+      "area": "财务期间、口径及定向例外",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na041-page002-7fb8820f"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-financial-detail",
+      "area": "财务分析、业务及科目变动证据",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na042-p00610-ea51e700"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-refresh",
+      "area": "发行前刷报及重要事项",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na042-p00307-0adf260c"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-funds",
+      "area": "募集资金用途、项目材料与账户",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na042-p00548-d27ca5fd"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-trustee",
+      "area": "受托管理、评级和保护安排",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na044-page002-e01f4b6d"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-timing",
+      "area": "发行前、结果及存续披露",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na044-page009-36723e05"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    },
+    {
+      "item_id": "ppn-changes",
+      "area": "版本变化、定向事项与授权边界",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "na044-page006-bcea40bd"
+      ],
+      "rationale": "已补原文/输入/例外和人工审核规范；未完成自动checker、真实项目验收和发布。"
+    }
+  ],
+  "open_blockers": [
+    {
+      "blocker_id": "rule-consumer",
+      "description": "#19生产规则导入/审核发布及实际工具组合待联调；不在此资产脚本复制公共契约。",
+      "required_evidence": "@loooo139 明确消费者版本、导入和项目适用性证据。"
+    },
+    {
+      "blocker_id": "authorized-real",
+      "description": "本批为规则，无PPN/DFI授权真实项目及成果；现有四组沪深私募测试稿不能替代。",
+      "required_evidence": "@ITSophiaXu 提供相应注册/发行材料及目标；产出后做行业验收。"
+    },
+    {
+      "blocker_id": "companion-source",
+      "description": "2025第146号承销通知、PPN2020年12月修订发布依据及过渡等精确缺口见交接。",
+      "required_evidence": "按缺口逐条核对，不把局部问题当全部工作稿无法运行。"
+    }
+  ]
+}

@@ -1,0 +1,2250 @@
+{
+  "version": "2026.09.27-draft.6",
+  "status": "research_only",
+  "rules": [
+    {
+      "rule_id": "sse-private-source-authority",
+      "title": "逐字段来源与冲突处理",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "required_inputs": [
+        "field_type",
+        "source_versions",
+        "evidence_anchors"
+      ],
+      "source_ref_ids": [
+        "ex038-p00082",
+        "ex017-p00151",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-disclosure-2023-p00024"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00093",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "逐字段证据优先级为内部方法；官方来源没有规定一个适用于全部事实的文件排名。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#source-authority"
+      }
+    },
+    {
+      "rule_id": "sse-private-period-window",
+      "title": "目标报告期及滚动窗口",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "required_inputs": [
+        "historical_periods",
+        "target_periods",
+        "statement_dates",
+        "document_stage"
+      ],
+      "source_ref_ids": [
+        "ex017-p00209",
+        "ex017-p00210",
+        "ex001-p00443",
+        "ex038-p00617",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00443",
+        "ov-sse-application-2023-p00453",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00186"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00440",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00453",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00183",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00186",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "8.1.4是财务材料两年及一期要求，不自动缩短业务、评级、重组等独立回溯期间；年末、成立不足两年及豁免按证据判断。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#period-window"
+      }
+    },
+    {
+      "rule_id": "sse-private-evidence-state",
+      "title": "空值、用户陈述与待确认信息",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "required_inputs": [
+        "user_assertions",
+        "fact_status",
+        "source_evidence"
+      ],
+      "source_ref_ids": [
+        "ex017-p00845",
+        "ex038-p00622",
+        "ex038-p00647",
+        "ov-sse-disclosure-2023-p00024"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "用户陈述、OCR置信度与待确认标记是产品事实状态；不能因有用户输入就声明审计或公开核验通过。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#evidence-state"
+      }
+    },
+    {
+      "rule_id": "sse-private-identity",
+      "title": "发行主体、口径与单位一致",
+      "chapter_ids": [
+        "front",
+        "issuer",
+        "financial"
+      ],
+      "required_inputs": [
+        "entity",
+        "consolidation_scope",
+        "currency",
+        "unit",
+        "period"
+      ],
+      "source_ref_ids": [
+        "ex038-p00617",
+        "ex038-p00621",
+        "ex038-p00595",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-application-2023-p00094",
+        "ov-sse-application-2023-p00200"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00093",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00094",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "实体、合并/母公司、币种、单位、期间逐项绑定；地方国有企业不能据名称自动认定城建类。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#identity"
+      }
+    },
+    {
+      "rule_id": "sse-private-private-investors",
+      "title": "私募发行对象与人数限制",
+      "chapter_ids": [
+        "front",
+        "terms"
+      ],
+      "required_inputs": [
+        "investor_scope",
+        "investor_count",
+        "distribution_arrangement"
+      ],
+      "source_ref_ids": [
+        "ex035-page011",
+        "ex035-page012",
+        "ov-csrc-measures-2023-page011",
+        "ov-csrc-measures-2023-page012",
+        "ov-sse-private-listing-2023-p00011",
+        "ov-sse-private-listing-2023-p00025"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "csrc-measures-2023",
+          "locator": "PAGE011",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "csrc-measures-2023",
+          "locator": "PAGE012",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00011",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00025",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "200人分别检查发行及同次债券转让后持有人；机构适当性分类、穿透或例外仍需投资者适当性完整规则。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#private-investors"
+      }
+    },
+    {
+      "rule_id": "sse-private-financial-validity-sse",
+      "title": "上交所财务有效期",
+      "chapter_ids": [
+        "financial",
+        "reference"
+      ],
+      "required_inputs": [
+        "latest_cutoff",
+        "submission_date",
+        "extension_approval"
+      ],
+      "source_ref_ids": [
+        "ex001-p00195",
+        "ex001-p00446",
+        "ov-sse-application-2023-p00445",
+        "ov-sse-application-2023-p00446",
+        "ov-sse-application-2023-p00447",
+        "ov-sse-application-2023-p00452"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00445",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00446",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00447",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00452",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "有效期截止日后新申报应更新材料；在审封卷延期不是自动宽限，须申请和交易所同意。缺申报日/批准证据不能判通过。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#financial-validity-sse"
+      }
+    },
+    {
+      "rule_id": "sse-private-current-terms",
+      "title": "本期条款、多品种及机构联动",
+      "chapter_ids": [
+        "front",
+        "terms",
+        "institutions",
+        "declarations"
+      ],
+      "required_inputs": [
+        "issue_plan",
+        "approvals",
+        "tranches",
+        "institutions"
+      ],
+      "source_ref_ids": [
+        "ex038-p00471",
+        "ex038-p00475",
+        "ex017-p00173",
+        "ov-sse-private-listing-2023-p00022",
+        "ov-sse-private-listing-2023-p00038",
+        "ov-sse-private-listing-2023-p00018"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00022",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00038",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00018",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "挂牌条件确认不能写成证监会公募注册。发行批文、规模、期限、机构变化均需本期依据；不推定全部条款不变。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#current-terms"
+      }
+    },
+    {
+      "rule_id": "sse-private-funds-use-evidence",
+      "title": "组合资金用途与配套材料",
+      "chapter_ids": [
+        "funds"
+      ],
+      "required_inputs": [
+        "funds_use_items",
+        "net_proceeds",
+        "project_files",
+        "debt_schedule",
+        "investment_documents"
+      ],
+      "source_ref_ids": [
+        "ex038-p00512",
+        "ov-sse-proceeds-2026-p00009",
+        "ov-sse-proceeds-2026-p00010",
+        "ov-sse-proceeds-2026-p00011",
+        "ov-sse-proceeds-2026-p00014",
+        "ov-sse-proceeds-2026-p00018"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00009",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00010",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00011",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00014",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00018",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#funds-use-evidence"
+      }
+    },
+    {
+      "rule_id": "sse-private-private-use-change",
+      "title": "私募资金用途与约定变更程序",
+      "chapter_ids": [
+        "funds",
+        "holders",
+        "trustee"
+      ],
+      "required_inputs": [
+        "funds_use",
+        "internal_authorities",
+        "change_procedure",
+        "trust_agreement"
+      ],
+      "source_ref_ids": [
+        "ex035-page004",
+        "ex001-p00458",
+        "ex038-p00539",
+        "ov-sse-application-2023-p00458",
+        "ov-sse-application-2023-p00459",
+        "ov-sse-proceeds-2026-p00028",
+        "ov-sse-proceeds-2026-p00029",
+        "ov-sse-proceeds-2026-p00030",
+        "ov-sse-proceeds-2026-p00031",
+        "ov-sse-proceeds-2026-p00032",
+        "ov-sse-proceeds-2026-p00033"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00458",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00459",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00028",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00029",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00030",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00031",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00032",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00033",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "3.2中公募跨用途类别的会议要求不直接变成所有私募要求；私募仍受8.4.1的未约定/重大影响和3.1限定偿债限制。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#private-use-change"
+      }
+    },
+    {
+      "rule_id": "sse-private-funds-simulation",
+      "title": "发行后模拟及前次资金使用",
+      "chapter_ids": [
+        "funds",
+        "financial"
+      ],
+      "required_inputs": [
+        "baseline_balance_sheet",
+        "net_proceeds",
+        "funds_use",
+        "previous_use_ledger"
+      ],
+      "source_ref_ids": [
+        "ex038-p00546",
+        "ex038-p00554",
+        "ov-sse-proceeds-2026-p00035",
+        "ov-sse-proceeds-2026-p00036",
+        "ov-sse-proceeds-2026-p00037",
+        "ov-sse-proceeds-2026-p00038",
+        "ov-sse-proceeds-2026-p00039",
+        "ov-sse-proceeds-2026-p00040",
+        "ov-sse-proceeds-2026-p00041"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00035",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00036",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00037",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00038",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00039",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00040",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00041",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "发行后模拟公式是待验收内部方法。前次资金用途整改记录、台账和专户凭证缺失，不伪造已整改/合规意见。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#funds-simulation"
+      }
+    },
+    {
+      "rule_id": "sse-private-issuer-governance",
+      "title": "主体、控制链、董监高与重组",
+      "chapter_ids": [
+        "issuer",
+        "declarations"
+      ],
+      "required_inputs": [
+        "registry",
+        "articles",
+        "appointments",
+        "consolidation_notes",
+        "restructuring_documents"
+      ],
+      "source_ref_ids": [
+        "ex038-p00559",
+        "ex038-p00565",
+        "ex038-p00566",
+        "ov-sse-application-2023-p00171",
+        "ov-sse-application-2023-p00175",
+        "ov-sse-application-2023-p00177",
+        "ov-sse-application-2023-p00178",
+        "ov-sse-application-2023-p00179",
+        "ov-sse-application-2023-p00186",
+        "ov-sse-application-2023-p00187"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00171",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00175",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00177",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00178",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00179",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00186",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00187",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "重大重组按引用的现行重组规则判断，单一50%启发式不作为已确认事实；公司法任职/监事安排仍须当期核验。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#issuer-governance"
+      }
+    },
+    {
+      "rule_id": "sse-private-business-revenue",
+      "title": "业务板块与收入成本毛利",
+      "chapter_ids": [
+        "issuer",
+        "financial",
+        "risk"
+      ],
+      "required_inputs": [
+        "segment_revenue",
+        "segment_cost",
+        "business_taxonomy",
+        "reporting_periods"
+      ],
+      "source_ref_ids": [
+        "ex001-p00181",
+        "ex038-p00596",
+        "ov-sse-application-2023-p00181",
+        "ov-sse-application-2023-p00182",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00184"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00181",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00182",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00183",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00184",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "一般10%以上主要板块是披露要求；后台前三合并主营业务收入匹配不替代全文披露。并列、分类变动和非可比期间须保留。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#business-revenue"
+      }
+    },
+    {
+      "rule_id": "sse-private-audit-opinion",
+      "title": "审计意见及非标补充说明",
+      "chapter_ids": [
+        "financial",
+        "front",
+        "risk"
+      ],
+      "required_inputs": [
+        "audit_reports",
+        "audit_opinions",
+        "supplementary_opinions"
+      ],
+      "source_ref_ids": [
+        "ex038-p00608",
+        "ex038-p00611",
+        "ov-sse-application-2023-p00198",
+        "ov-sse-application-2023-p00443"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00198",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "非标事项说明应来自有权机构/会计师。中期未经审计不可写成审计通过；缺意见页仍可生成标记缺口的工作稿。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#audit-opinion"
+      }
+    },
+    {
+      "rule_id": "sse-private-financial-statements",
+      "title": "合并及母公司六张表与重述",
+      "chapter_ids": [
+        "financial"
+      ],
+      "required_inputs": [
+        "statements",
+        "notes",
+        "restatements",
+        "pro_forma",
+        "ocr_confidence"
+      ],
+      "source_ref_ids": [
+        "ex038-p00618",
+        "ex038-p00619",
+        "ex038-p00623",
+        "ov-sse-application-2023-p00195",
+        "ov-sse-application-2023-p00196",
+        "ov-sse-application-2023-p00199",
+        "ov-sse-application-2023-p00200",
+        "ov-sse-application-2023-p00202",
+        "ov-sse-application-2023-p00443"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00195",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00196",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00199",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00202",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#financial-statements"
+      }
+    },
+    {
+      "rule_id": "sse-private-indicators",
+      "title": "财务指标定义、重算与缺项",
+      "chapter_ids": [
+        "financial",
+        "front"
+      ],
+      "required_inputs": [
+        "formulas",
+        "statement_facts",
+        "interest",
+        "depreciation_amortization"
+      ],
+      "source_ref_ids": [
+        "ex017-p00775",
+        "ex017-p00779",
+        "ex038-p00632",
+        "ex038-p00634",
+        "ov-sse-application-2023-p00200",
+        "ov-sse-application-2023-p00201"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00201",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "3.7.2第二段为面向普通投资者公募附加表，不作为私募强制清单。私募仍披露适用指标，定义取本期条款/专业口径。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#indicators"
+      }
+    },
+    {
+      "rule_id": "sse-private-mdna-thresholds",
+      "title": "资产负债项目构成和变动分析",
+      "chapter_ids": [
+        "financial"
+      ],
+      "required_inputs": [
+        "balance_sheet",
+        "changes",
+        "materiality_context"
+      ],
+      "source_ref_ids": [
+        "ex001-p00203",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-application-2023-p00204"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00203",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00204",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "10%以上/30%以上保留原文字义；低于阈值不豁免重大事项，零/负基数不机械使用百分比。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#mdna-thresholds"
+      }
+    },
+    {
+      "rule_id": "sse-private-cause-evidence",
+      "title": "变动原因不能仅凭勾稽推断",
+      "chapter_ids": [
+        "issuer",
+        "financial",
+        "risk"
+      ],
+      "required_inputs": [
+        "computed_changes",
+        "notes",
+        "management_explanation"
+      ],
+      "source_ref_ids": [
+        "ex017-p00782",
+        "ex038-p00647",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-disclosure-2023-p00024"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00203",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "计算差额不证明业务原因；原专家稿的推测仅作为待确认问题。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#cause-evidence"
+      }
+    },
+    {
+      "rule_id": "sse-private-debt-liquidity",
+      "title": "全口径有息债务与集中偿付",
+      "chapter_ids": [
+        "financial",
+        "credit",
+        "risk"
+      ],
+      "required_inputs": [
+        "interest_bearing_debt",
+        "bond_register",
+        "credit_facilities",
+        "maturities"
+      ],
+      "source_ref_ids": [
+        "ex038-p00649",
+        "ov-sse-application-2023-p00205",
+        "ov-sse-application-2023-p00217",
+        "ov-sse-application-2023-p00218",
+        "ov-sse-application-2023-p00219"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00205",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00217",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00218",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00219",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "全口径债务与报表差异要解释；授信总/已用/剩余额度按实际证据时点，不从余额差自动推断银行承诺。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#debt-liquidity"
+      }
+    },
+    {
+      "rule_id": "sse-private-related-contingent",
+      "title": "关联交易、担保、诉讼与受限资产",
+      "chapter_ids": [
+        "issuer",
+        "financial",
+        "risk"
+      ],
+      "required_inputs": [
+        "related_parties",
+        "guarantees",
+        "litigation",
+        "restricted_assets",
+        "subsequent_events"
+      ],
+      "source_ref_ids": [
+        "ex038-p00659",
+        "ov-sse-application-2023-p00206",
+        "ov-sse-application-2023-p00207",
+        "ov-sse-application-2023-p00208"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00206",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00207",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00208",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "关联方、或有事项和受限资产需材料及签署日后续事项核验；未检索到不能写为不存在。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#related-contingent"
+      }
+    },
+    {
+      "rule_id": "sse-private-rating-enhancement",
+      "title": "评级与增信分支",
+      "chapter_ids": [
+        "front",
+        "credit",
+        "enhancement",
+        "risk"
+      ],
+      "required_inputs": [
+        "rating_reports",
+        "enhancement_contracts",
+        "guarantor_financials"
+      ],
+      "source_ref_ids": [
+        "ex038-p00669",
+        "ov-sse-application-2023-p00210",
+        "ov-sse-application-2023-p00212",
+        "ov-sse-application-2023-p00222",
+        "ov-sse-application-2023-p00225",
+        "ov-sse-application-2023-p00231"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00210",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00212",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00222",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00225",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00231",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "无评级不是自动缺合规条件；有评级/增信以本期报告及合同为准，不添加担保人承诺。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#rating-enhancement"
+      }
+    },
+    {
+      "rule_id": "sse-private-protection",
+      "title": "投资者保护与协议一致性",
+      "chapter_ids": [
+        "protection",
+        "default",
+        "holders",
+        "trustee",
+        "enhancement"
+      ],
+      "required_inputs": [
+        "holder_meeting_rules",
+        "trust_agreement",
+        "covenants"
+      ],
+      "source_ref_ids": [
+        "ex001-p00462",
+        "ex038-p00960",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-protection-2021",
+          "locator": "NOTICE",
+          "published_on": "2021-08-13",
+          "effective_from": null,
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00127",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00128",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00143",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00144",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00145",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00146",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00147",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00148",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00462",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "参考文本可以参照，不等于每个示例条款均为强制或已约定。增信、会议、违约和受托协议逐项一致；证券业协会配套规则仍待核验。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#protection"
+      }
+    },
+    {
+      "rule_id": "sse-private-risk-disclosure",
+      "title": "风险、重大事项与全文回写",
+      "chapter_ids": [
+        "risk",
+        "front"
+      ],
+      "required_inputs": [
+        "updated_facts",
+        "risk_events",
+        "mitigation_evidence"
+      ],
+      "source_ref_ids": [
+        "ex038-p00117",
+        "ex038-p00465",
+        "ex038-p00467",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00090",
+        "ov-sse-application-2023-p00109",
+        "ov-sse-disclosure-2023-p00028"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00089",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00090",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00109",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00028",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "财务和已发生事项更新后回写；金额正确仍不能证明风险措辞充分，不自动删除历史有效风险。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#risk-disclosure"
+      }
+    },
+    {
+      "rule_id": "sse-private-sse-focus-2025",
+      "title": "上交所2025审核重点增量",
+      "chapter_ids": [
+        "issuer",
+        "funds",
+        "financial",
+        "risk"
+      ],
+      "required_inputs": [
+        "nonoperating_receivables",
+        "guarantees",
+        "private_debt_balance",
+        "issuer_type",
+        "focus_checklist"
+      ],
+      "source_ref_ids": [
+        "ex006-p00030",
+        "ex006-p00052",
+        "ex006-p00095",
+        "ex006-p00100",
+        "ov-sse-focus-2025-p00030",
+        "ov-sse-focus-2025-p00052",
+        "ov-sse-focus-2025-p00095",
+        "ov-sse-focus-2025-p00096",
+        "ov-sse-focus-2025-p00097",
+        "ov-sse-focus-2025-p00098",
+        "ov-sse-focus-2025-p00099",
+        "ov-sse-focus-2025-p00100",
+        "ov-sse-focus-2025-p00101"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00030",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00052",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00095",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00096",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00097",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00098",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00099",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00100",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00101",
+          "published_on": "2025-03-28",
+          "effective_from": "2025-03-28",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "城建/房地产/集团等触发后需专门审核。2025重点关注规则仍不能替代2026优化审核包或把审慎论证一律变为禁发。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#sse-focus-2025"
+      }
+    },
+    {
+      "rule_id": "sse-private-special-overlays-sse",
+      "title": "上交所2026专项品种需增量包",
+      "chapter_ids": [
+        "front",
+        "terms",
+        "funds",
+        "protection"
+      ],
+      "required_inputs": [
+        "special_features",
+        "use_of_proceeds",
+        "special_eligibility"
+      ],
+      "source_ref_ids": [
+        "ex005-p00007",
+        "ex005-p00189"
+      ],
+      "official_evidence": [],
+      "not_applicable_or_uncovered": "专项品种2026原件已有，但本切片不完成其官方效力及专业验收；不得按普通私募包自动放行专项债。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#special-overlays-sse"
+      }
+    },
+    {
+      "rule_id": "sse-private-document-delivery",
+      "title": "全文更新、定位和Word交付",
+      "chapter_ids": [
+        "front",
+        "tax",
+        "disclosure",
+        "reference",
+        "declarations"
+      ],
+      "required_inputs": [
+        "historical_document",
+        "change_plan",
+        "evidence_map",
+        "word_qa"
+      ],
+      "source_ref_ids": [
+        "ex038-p00448",
+        "ex038-p00748",
+        "ex017-p00146",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00089",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00096",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00440",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00441",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00442",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "16节是专家工作骨架，不是唯一法定目录/字体标准。税务依据、签章要求、真实Word修订/批注及WPS均另验。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#document-delivery"
+      }
+    },
+    {
+      "rule_id": "sse-private-private-negative-list",
+      "title": "私募准入与公募财务门槛隔离",
+      "chapter_ids": [
+        "terms",
+        "issuer",
+        "financial"
+      ],
+      "required_inputs": [
+        "negative_list_evidence",
+        "parallel_applications",
+        "unused_quota"
+      ],
+      "source_ref_ids": [
+        "ov-sse-application-2023-p00455",
+        "ov-sse-application-2023-p00456"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00455",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00456",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "没有财务指标限制不等于没有准入/负面清单/偿债风险要求；证券业协会负面清单现行全文尚未核验。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#private-negative-list"
+      }
+    },
+    {
+      "rule_id": "sse-private-idle-proceeds-2026",
+      "title": "闲置募集资金临时补流边界",
+      "chapter_ids": [
+        "funds",
+        "protection"
+      ],
+      "required_inputs": [
+        "funds_use",
+        "proceeds_restrictions",
+        "temporary_use_terms",
+        "payment_schedule"
+      ],
+      "source_ref_ids": [
+        "ov-sse-proceeds-2026-p00023",
+        "ov-sse-proceeds-2026-p00024",
+        "ov-sse-proceeds-2026-p00025",
+        "ov-sse-proceeds-2026-p00026"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00023",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00024",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00025",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00026",
+          "published_on": "2026-02-27",
+          "effective_from": "2026-02-27",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#idle-proceeds-2026"
+      }
+    },
+    {
+      "rule_id": "sse-private-continuing-disclosure",
+      "title": "私募定期披露安排",
+      "chapter_ids": [
+        "disclosure",
+        "reference"
+      ],
+      "required_inputs": [
+        "annual_disclosure_schedule",
+        "interim_disclosure_schedule"
+      ],
+      "source_ref_ids": [
+        "ov-sse-application-2023-p00461",
+        "ov-sse-disclosure-2023-p00009",
+        "ov-sse-disclosure-2023-p00023"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00461",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00009",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00023",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#continuing-disclosure"
+      }
+    },
+    {
+      "rule_id": "sse-private-disclosure-officer-2026",
+      "title": "信息披露负责人及联络人",
+      "chapter_ids": [
+        "disclosure",
+        "issuer",
+        "declarations"
+      ],
+      "required_inputs": [
+        "as_of",
+        "disclosure_officer",
+        "disclosure_contact",
+        "appointment_evidence",
+        "signed_commitment"
+      ],
+      "source_ref_ids": [
+        "ov-sse-officer-2025-p00007",
+        "ov-sse-officer-2025-p00008",
+        "ov-sse-officer-2025-p00009",
+        "ov-sse-officer-2025-p00010",
+        "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00012",
+        "ov-sse-officer-2025-p00013",
+        "ov-sse-officer-2025-p00014",
+        "ov-sse-officer-2025-p00015",
+        "ov-sse-officer-2025-p00016",
+        "ov-sse-officer-2025-p00017",
+        "ov-sse-officer-2025-p00018"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00007",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00008",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00009",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00010",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00011",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00012",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00013",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00014",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00015",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00016",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00017",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00018",
+          "published_on": "2025-12-26",
+          "effective_from": "2026-05-01",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#disclosure-officer-2026"
+      }
+    },
+    {
+      "rule_id": "sse-private-optimized-review-version",
+      "title": "优化审核新旧版本边界",
+      "chapter_ids": [
+        "terms",
+        "reference",
+        "funds"
+      ],
+      "required_inputs": [
+        "as_of",
+        "optimized_review_request",
+        "eligibility_evidence"
+      ],
+      "source_ref_ids": [
+        "ov-sse-mature-2026-p00010",
+        "ov-sse-mature-2026-p00054"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-mature-2026",
+          "locator": "P00010",
+          "published_on": "2026-09-04",
+          "effective_from": "2026-09-04",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-mature-2026",
+          "locator": "P00054",
+          "published_on": "2026-09-04",
+          "effective_from": "2026-09-04",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "2026-09-04起旧2023版废止；本包不实现知名成熟资格认定、简明披露或豁免，需独立审核新版本。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "manual-evidence-handler-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#optimized-review-version"
+      }
+    },
+    {
+      "rule_id": "sse-private-trustee-continuing-duties",
+      "title": "受托协议与持续履职衔接",
+      "chapter_ids": [
+        "trustee",
+        "holders",
+        "protection"
+      ],
+      "required_inputs": [
+        "trust_agreement",
+        "trustee_duties",
+        "monitoring_evidence"
+      ],
+      "source_ref_ids": [
+        "ov-sse-trustee-2025-p00005",
+        "ov-sse-trustee-2025-p00007",
+        "ov-sse-trustee-2025-p00012",
+        "ov-sse-trustee-2025-p00013",
+        "ov-sse-private-listing-2023-p00128"
+      ],
+      "official_evidence": [
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00005",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00007",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00012",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00013",
+          "published_on": "2025-12-24",
+          "effective_from": "2025-12-24",
+          "effective_to": null
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00128",
+          "published_on": "2023-10-20",
+          "effective_from": "2023-10-20",
+          "effective_to": null
+        }
+      ],
+      "not_applicable_or_uncovered": "2025指南包括鼓励措施和示范案例，不把示范案例写为发行人已履行事项；全量履职核验另作存续期覆盖。",
+      "professional_review": "pending",
+      "result_acceptance": "pending",
+      "engineering_check": "bounded-research-check-v4",
+      "documentary_review": {
+        "status": "completed_with_explicit_limits",
+        "reviewer": "Codex documentary analysis",
+        "reviewed_at": "2026-09-27T05:25:09Z",
+        "baseline_as_of": "2026-09-26",
+        "record": "RULE-REVIEW-20260927.md#trustee-continuing-duties"
+      }
+    }
+  ],
+  "chapters": [
+    {
+      "chapter_id": "front",
+      "rule_ids": [
+        "sse-private-source-authority",
+        "sse-private-period-window",
+        "sse-private-evidence-state",
+        "sse-private-identity",
+        "sse-private-private-investors",
+        "sse-private-current-terms",
+        "sse-private-audit-opinion",
+        "sse-private-indicators",
+        "sse-private-rating-enhancement",
+        "sse-private-risk-disclosure",
+        "sse-private-special-overlays-sse",
+        "sse-private-document-delivery"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "risk",
+      "rule_ids": [
+        "sse-private-business-revenue",
+        "sse-private-audit-opinion",
+        "sse-private-cause-evidence",
+        "sse-private-debt-liquidity",
+        "sse-private-related-contingent",
+        "sse-private-rating-enhancement",
+        "sse-private-risk-disclosure",
+        "sse-private-sse-focus-2025"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "terms",
+      "rule_ids": [
+        "sse-private-private-investors",
+        "sse-private-current-terms",
+        "sse-private-special-overlays-sse",
+        "sse-private-private-negative-list",
+        "sse-private-optimized-review-version"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "funds",
+      "rule_ids": [
+        "sse-private-funds-use-evidence",
+        "sse-private-private-use-change",
+        "sse-private-funds-simulation",
+        "sse-private-sse-focus-2025",
+        "sse-private-special-overlays-sse",
+        "sse-private-idle-proceeds-2026",
+        "sse-private-optimized-review-version"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "issuer",
+      "rule_ids": [
+        "sse-private-source-authority",
+        "sse-private-period-window",
+        "sse-private-evidence-state",
+        "sse-private-identity",
+        "sse-private-issuer-governance",
+        "sse-private-business-revenue",
+        "sse-private-cause-evidence",
+        "sse-private-related-contingent",
+        "sse-private-sse-focus-2025",
+        "sse-private-private-negative-list",
+        "sse-private-disclosure-officer-2026"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "financial",
+      "rule_ids": [
+        "sse-private-source-authority",
+        "sse-private-period-window",
+        "sse-private-evidence-state",
+        "sse-private-identity",
+        "sse-private-financial-validity-sse",
+        "sse-private-funds-simulation",
+        "sse-private-business-revenue",
+        "sse-private-audit-opinion",
+        "sse-private-financial-statements",
+        "sse-private-indicators",
+        "sse-private-mdna-thresholds",
+        "sse-private-cause-evidence",
+        "sse-private-debt-liquidity",
+        "sse-private-related-contingent",
+        "sse-private-sse-focus-2025",
+        "sse-private-private-negative-list"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "credit",
+      "rule_ids": [
+        "sse-private-debt-liquidity",
+        "sse-private-rating-enhancement"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "enhancement",
+      "rule_ids": [
+        "sse-private-rating-enhancement",
+        "sse-private-protection"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "tax",
+      "rule_ids": [
+        "sse-private-document-delivery"
+      ],
+      "uncovered": "税务现行依据与具体税率待核；不因目录有税项就认定合规覆盖。"
+    },
+    {
+      "chapter_id": "disclosure",
+      "rule_ids": [
+        "sse-private-document-delivery",
+        "sse-private-continuing-disclosure",
+        "sse-private-disclosure-officer-2026"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "protection",
+      "rule_ids": [
+        "sse-private-protection",
+        "sse-private-special-overlays-sse",
+        "sse-private-idle-proceeds-2026",
+        "sse-private-trustee-continuing-duties"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "default",
+      "rule_ids": [
+        "sse-private-protection"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "holders",
+      "rule_ids": [
+        "sse-private-private-use-change",
+        "sse-private-protection",
+        "sse-private-trustee-continuing-duties"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "trustee",
+      "rule_ids": [
+        "sse-private-private-use-change",
+        "sse-private-protection",
+        "sse-private-trustee-continuing-duties"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "institutions",
+      "rule_ids": [
+        "sse-private-current-terms"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "declarations",
+      "rule_ids": [
+        "sse-private-current-terms",
+        "sse-private-issuer-governance",
+        "sse-private-document-delivery",
+        "sse-private-disclosure-officer-2026"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    },
+    {
+      "chapter_id": "reference",
+      "rule_ids": [
+        "sse-private-financial-validity-sse",
+        "sse-private-document-delivery",
+        "sse-private-continuing-disclosure",
+        "sse-private-optimized-review-version"
+      ],
+      "uncovered": "须在真实成果中逐项确认披露和证据。"
+    }
+  ]
+}

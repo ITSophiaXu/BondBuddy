@@ -1,0 +1,64 @@
+{
+  "version": "2026.09.27-companion.1",
+  "status": "unresolved_source_inventory_not_exhaustive",
+  "professional_review": null,
+  "gaps": [
+    {
+      "id": "sac-private-negative-list",
+      "rule_ids": ["sse-private-private-negative-list"],
+      "lead_title": "非公开发行公司债券项目承接负面清单指引（2024年修订）",
+      "official_url": "https://www.sac.net.cn/sjb/zlgl/zlgz/202512/t20251231_69951.html",
+      "observed_at": "2026-09-27",
+      "retrieval_result": "HTTP 567 security block in ordinary HTTP and browser access; primary text not acquired",
+      "verified_version": null,
+      "verified_effective_date": null,
+      "needed": "协会正式正文、发布/生效/废止及过渡公告；核实标题中的2024版本，不能把URL迁移日期视为修订日",
+      "prohibited_inference": "不能以搜索摘要、旧版或缺命中判定发行人不在负面清单",
+      "owner": "Maxy / #20"
+    },
+    {
+      "id": "sac-trustee-companions",
+      "rule_ids": ["sse-private-protection", "sse-private-trustee-continuing-duties"],
+      "lead_title": "公司债券受托管理人执业行为准则",
+      "official_url": "https://www.sac.net.cn/sjb/zlgl/zlgz/202512/t20251231_69914.html",
+      "observed_at": "2026-09-27",
+      "retrieval_result": "HTTP 567 security block in ordinary browser access; primary text not acquired",
+      "verified_version": null,
+      "verified_effective_date": null,
+      "needed": "准则全文、修订公告及适用的受托协议必备条款；分别辨认公募/私募范围和过渡",
+      "prohibited_inference": "不得将名称含公开发行的必备条款直接推广至全部私募，也不将协议或指南当作已履职证据",
+      "owner": "Maxy / #20"
+    },
+    {
+      "id": "csrc-reorganization-current",
+      "rule_ids": ["sse-private-issuer-governance"],
+      "lead_title": "关于修改《上市公司重大资产重组管理办法》的决定（2025线索）",
+      "official_url": "https://www.csrc.gov.cn/csrc/c101953/c7558586/content.shtml",
+      "observed_at": "2026-09-27",
+      "retrieval_result": "TLS handshake timeout / ordinary browser timeout; amendment and consolidated text not acquired",
+      "verified_version": null,
+      "verified_effective_date": null,
+      "needed": "现行修订决定与完整正文，及交易所要求非上市债券发行人参照的具体条款；核算范围、连续累计、比例及例外",
+      "prohibited_inference": "不得用单一50%阈值、公司名称或审计报告没写重组推定不存在重大重组",
+      "owner": "Maxy / #20"
+    },
+    {
+      "id": "company-law-master-and-transition",
+      "rule_ids": ["sse-private-issuer-governance", "sse-private-disclosure-officer-2026"],
+      "official_url": null,
+      "retrieval_result": "government repost acquired; NPC master cross-check and specific implementation regulations not completed",
+      "needed": "全国人大正式文本独立校核及适用的出资期限/存量治理过渡规定",
+      "prohibited_inference": "不能把存量公司都设为2024年重新起算五年出资期限，不能以无查询记录证明不存在任职禁止",
+      "owner": "Maxy / #20"
+    },
+    {
+      "id": "other-clause-level-companions",
+      "rule_ids": ["sse-private-private-investors", "sse-private-related-contingent", "sse-private-special-overlays-sse", "sse-private-optimized-review-version"],
+      "official_url": null,
+      "retrieval_result": "not completed in this bounded source pass",
+      "needed": "投资者人数穿透的具体适用依据、相关税务及专项/优化条件的独立来源和项目证据，按31条未覆盖项继续核对",
+      "prohibited_inference": "不能把取得通用法和适当性办法当作全部条内专业覆盖；未知专项不当作无专项",
+      "owner": "Maxy / #20; trusted project facts depend on #15/#19"
+    }
+  ]
+}

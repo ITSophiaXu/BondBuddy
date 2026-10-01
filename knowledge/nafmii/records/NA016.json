@@ -1,0 +1,525 @@
+{
+  "source_id": "NA016",
+  "original_sha256": "fcbe2d9672c863b5204768ad517f4665cbd1dd927059383c424f74dd4e133922",
+  "extraction_status": "ooxml_text_extracted",
+  "records": [
+    {
+      "locator": "P00001",
+      "role": "body",
+      "text": "附件："
+    },
+    {
+      "locator": "P00003",
+      "role": "body",
+      "text": "非金融企业债务融资工具标准分销协议文本"
+    },
+    {
+      "locator": "P00005",
+      "role": "body",
+      "text": "甲方：                     乙方："
+    },
+    {
+      "locator": "P00007",
+      "role": "body",
+      "text": "本协议系甲乙双方根据有关法律规定，在平等、自愿的基础上协商订立而成，所有条款均是双方真实意思表示。"
+    },
+    {
+      "locator": "P00008",
+      "role": "body",
+      "text": "经双方友好协商，现就  （债券全称）  （债券简称：      ，代码：      ）初始登记前的债券额度分销事宜达成协议。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00009",
+      "role": "body",
+      "text": "本期债券为：□固定利率债券，□浮动利率债券。票面利率为    %（浮动利率债券及含权债指首次票面利率）。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00010",
+      "role": "body",
+      "text": "本期债券分销额度的分销采用券款对付的方式，甲乙双方应于      年      月      日不晚于下午      时（北京时间）同步办理债券分销额度的交割和款项结算，完成本次分销交易。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00011",
+      "role": "body",
+      "text": "甲方同意按全价100元/百元面值的价格向乙方分销面值总额人民币      元整（￥      ）的债券分销额度，乙方同意买入上述金额的债券分销额度。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00012",
+      "role": "body",
+      "text": "乙方保证具有投资甲方分销的本期债务融资工具的合法权利、授权及批准，且认购资金来源及用途合法。甲方保证其分销本期债务融资工具的行为合法合规。甲、乙双方保证本次债券额度分销事宜不存在利益输送等任何违法违规的行为。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00013",
+      "role": "body",
+      "text": "本协议受中华人民共和国法律（为本协议之目的不包括香港、澳门特别行政区及台湾）管辖并据其进行解释。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00014",
+      "role": "body",
+      "text": "双方应完整保存本分销协议及分销结算记录，保存期至当期债务融资工具本息兑付结束后的五年止。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00015",
+      "role": "body",
+      "text": "本协议各签署方不得以任何方式排除或修改以下内容：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00016",
+      "role": "body",
+      "text": "（一）本协议第一条所列示的债券信息要素应至少包括债券全称、债券简称及债券代码；",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00017",
+      "role": "body",
+      "text": "（二）本协议第二条关于“券款对付”分销结算方式的约定；",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00018",
+      "role": "body",
+      "text": "（三）本协议第三条关于按照全价100元/百元面值的价格进行分销的约定；",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00019",
+      "role": "body",
+      "text": "（四）本协议不设置手续费相关条款；",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00020",
+      "role": "body",
+      "text": "（五）本协议第四条至第七条。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00021",
+      "role": "body",
+      "text": "对于结构化产品、零息票据、外币结算债券等特定品种债务融资工具，由于产品设计、结算机制等合理需求无法满足本条第二、三款的,可以对本条第二、三款进行相应修改，所做修改应遵守相关法律法规、债务融资工具发行自律规则及本条款相关精神。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00022",
+      "role": "body",
+      "text": "在不违反中国法律的前提下，若双方协议对有关条款进行特别约定或对本协议未尽事宜进行补充约定，需在本第七条之后补充或修改有关条款。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00023",
+      "role": "body",
+      "text": "双方不得以财务顾问协议、二级市场交易等方式规避或违背本条相关约定。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"0\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00024",
+      "role": "body",
+      "text": "双方一致同意，除不可抗力外：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00025",
+      "role": "body",
+      "text": "（一）乙方未按本协议约定履行本期债券分销额度分销款划付义务的，应根据逾期金额及逾期天数（始于应付款日（含该日），止于实际全额付清应付款之日（不含该日））向甲方支付违约金，违约金计算方式：按照迟付金额（按照延迟过户的债券面值确定）及迟付天数，依照□日利率万分之   ，□票面利率计算；但如因甲方未按本协议第二条约定的时间向乙方过户债券，导致乙方付款延迟的，乙方不承担违约责任。"
+    },
+    {
+      "locator": "P00026",
+      "role": "body",
+      "text": "（二）甲方未按本协议约定履行本期分销额度过户义务的，应根据逾期过户债券所对应的分销款金额及逾期天数（始于应过户日（含该日），止于实际全额完成过户之日（不含该日））向乙方支付违约金，违约金计算方式：按照迟付金额（按照延迟过户的债券面值确定）及迟付天数，依照□日利率万分之   ，□票面利率计算；但如因乙方未按本协议第二条约定的时间向甲方支付本期债券分销款，导致甲方过户延迟的，甲方不承担违约责任。"
+    },
+    {
+      "locator": "P00027",
+      "role": "body",
+      "text": "违约方应支付的违约金不以非违约方提供损失证明为前提。如因任何一方的违约行为给对方造成超过上述违约金数额的损失，违约方还应承担补偿直接经济损失等相关责任。"
+    },
+    {
+      "locator": "P00028",
+      "role": "body",
+      "text": "账户信息：",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00029",
+      "role": "body",
+      "text": "账户信息内容"
+    },
+    {
+      "locator": "P00030",
+      "role": "body",
+      "text": "甲方"
+    },
+    {
+      "locator": "P00031",
+      "role": "body",
+      "text": "乙方"
+    },
+    {
+      "locator": "P00032",
+      "role": "body",
+      "text": "户名"
+    },
+    {
+      "locator": "P00035",
+      "role": "body",
+      "text": "开户行"
+    },
+    {
+      "locator": "P00038",
+      "role": "body",
+      "text": "账号"
+    },
+    {
+      "locator": "P00041",
+      "role": "body",
+      "text": "清算行行号"
+    },
+    {
+      "locator": "P00044",
+      "role": "body",
+      "text": "上海清算所托管户名"
+    },
+    {
+      "locator": "P00047",
+      "role": "body",
+      "text": "上海清算所托管账号"
+    },
+    {
+      "locator": "P00050",
+      "role": "body",
+      "text": "本协议未尽事宜，由双方协商解决。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00051",
+      "role": "body",
+      "text": "如甲方或乙方延期过户债券或支付款项超过   日的，非违约方有权单方解除本协议，并要求违约方承担违约责任、支付违约金并赔偿损失。"
+    },
+    {
+      "locator": "P00052",
+      "role": "body",
+      "text": "本协议一式贰份，双方各执壹份，经签署方法定代表人或授权签字人签字并加盖公章后生效。",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"12\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00054",
+      "role": "body",
+      "text": "甲方：                       乙方："
+    },
+    {
+      "locator": "P00055",
+      "role": "body",
+      "text": "法定代表人或授权代理人签字：  法定代表人或授权代理人签字："
+    },
+    {
+      "locator": "P00057",
+      "role": "body",
+      "text": "（盖章）                      （盖章）"
+    },
+    {
+      "locator": "P00058",
+      "role": "body",
+      "text": "联系人及联系方式：            联系人及联系方式："
+    },
+    {
+      "locator": "P00059",
+      "role": "body",
+      "text": "传真号码：                    传真号码："
+    },
+    {
+      "locator": "P00061",
+      "role": "body",
+      "text": "日期：      年      月      日"
+    },
+    {
+      "locator": "P00065",
+      "role": "body",
+      "text": "非金融企业债务融资工具标准分销协议文本"
+    },
+    {
+      "locator": "P00066",
+      "role": "body",
+      "text": "（英文翻译，仅供参考）"
+    },
+    {
+      "locator": "P00067",
+      "role": "body",
+      "text": "Distribution Agreement for Debt Financing Instruments of"
+    },
+    {
+      "locator": "P00068",
+      "role": "body",
+      "text": "Non-financial Enterprises"
+    },
+    {
+      "locator": "P00070",
+      "role": "body",
+      "text": "Statement on English Translation"
+    },
+    {
+      "locator": "P00071",
+      "role": "body",
+      "text": "This English translation is for reference only and is not prepared for the purposes of execution. It should be noted that each language has its own grammatical structures and embodies its own legal and cultural concepts. Accordingly, it is not possible to guarantee that the English version is an exact translation of the original Chinese version, and this English translation shall not be relied upon by any person in making any decision or taking any action."
+    },
+    {
+      "locator": "P00073",
+      "role": "body",
+      "text": "Party A: ____________[●]______________Party B: ___________[●]_______________"
+    },
+    {
+      "locator": "P00075",
+      "role": "body",
+      "text": "This Agreement has been entered into on a voluntary and equal basis between Party A and Party B (hereinafter referred to as “both parties”) in accordance with relevant laws and regulations, and all the following provisions reflect the true intention of both parties."
+    },
+    {
+      "locator": "P00077",
+      "role": "body",
+      "text": "This Agreement is reached on matters regarding the distribution of [full name of the bond] (bond abbreviation, bond code) in an agreed amount (the “agreed distribution quota”) prior to its preliminary registration.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00078",
+      "role": "body",
+      "text": "The current series of bonds are a [□fixed-rate bonds / □ floating-rate bonds]. The coupon rate is [●] % (which, for floating-rate bonds and option-embedded bonds, represents the first coupon rate)."
+    },
+    {
+      "locator": "P00080",
+      "role": "body",
+      "text": "The distribution of the agreed distribution quota shall be completed through the delivery versus payment (DVP)method where Party A shall deliver the bonds and Party B shall settle the payment simultaneously no later than [time, Beijing time] on [date].",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00082",
+      "role": "body",
+      "text": "Party A agrees to distribute the agreed distribution quota for a total amount of CNY [●]at the par value of CNY100 (one hundred) to Party B. Party B agrees to buy the agreed distribution quota at the above price.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00084",
+      "role": "body",
+      "text": "Party B warrants to Party A that it has the lawful right, authority and approval to subscribe for the current series of debt financing instrument distributed by Party A and the source and use of the subscription funds complies with all relevant laws and regulations. Party A warrants to Party B that the distribution of the current series of debt financing instruments complies with all relevant laws and regulations. Both parties warrant that the distribution of the current series of bonds does not involve the illegal transfer of assets and profits and does not violate any other law or regulation.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00086",
+      "role": "body",
+      "text": "This Agreement shall be governed by and construed in accordance with the laws of the People’s Republic of China (which for the purpose of this Agreement shall not include Hong Kong SAR, Macau SAR and Taiwan).",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00088",
+      "role": "body",
+      "text": "Each party shall retain this Distribution Agreement and the complete distribution settlement records for five years after the full payment of the interest and principal of the current series of bonds.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00090",
+      "role": "body",
+      "text": "Parties to this Agreement shall not exclude or revise the following provisions of this Agreement in any way:",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00091",
+      "role": "body",
+      "text": "The bond information set out in Article 1 of this Agreement shall at least include the full name of the bond, the bond abbreviation and the bond code;",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"20\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00092",
+      "role": "body",
+      "text": "The delivery versus payment (DVP)settlement method for distribution required under Article 2 of this Agreement;",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"20\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00093",
+      "role": "body",
+      "text": "The par value for distribution at CNY100 (one hundred) required under Article 3 of this Agreement;",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"20\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00094",
+      "role": "body",
+      "text": "This agreement shall not include Articles concerning commission fee;",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"20\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00095",
+      "role": "body",
+      "text": "Article 4 to Article 7 of this Agreement.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"20\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00096",
+      "role": "body",
+      "text": "Paragraph ii and iii of this Article may be modified accordingly, only for special type of bonds which could not meet the requirements of Paragraph ii and iii of this Article due to settlement mechanism or product design, such as structured products, zero coupon bonds and bonds settled in foreign currencies. The modification shall comply with all relevant laws and regulations, self-regulatory rules for debt financing instruments of non-financial enterprises and the essence of this Article."
+    },
+    {
+      "locator": "P00097",
+      "role": "body",
+      "text": "To the extent not contravening PRC Laws, both parties may agree on specific provisions relating to the above clauses or to include supplementary provisions on matters which are not addressed in this Agreement after this Article 7."
+    },
+    {
+      "locator": "P00098",
+      "role": "body",
+      "text": "Neither party may circumvent the prohibitions in this Article 7 through a financial advisory agreement or side letter or through secondary market trading."
+    },
+    {
+      "locator": "P00100",
+      "role": "body",
+      "text": "Both parties agree that except in the event of force majeure:",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00101",
+      "role": "body",
+      "text": "If Party B fails to fulfill its payment obligations for the agreed distribution quota pursuant to this Agreement, it shall be liable to pay damages to Party A calculated based on the overdue amount and the number of days overdue (from the payment due date (inclusive) to the date on which the payment is settled in full (exclusive)). The damages shall be calculated based on the overdue amount (determined based on the overdue notional amount of the bonds to be settled)and the number of days overdue, at [□the rate of  [●] per day, □ the nominal interest rate], provided that Party B shall not be liable for breach of contract should such delay in payment be a result of Party A’s failure to transfer the bonds to Party B in accordance with the timeline stipulated in Article 2 of this Agreement.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"1\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00103",
+      "role": "body",
+      "text": "If Party A fails to fulfill the obligation of transferring the agreed distribution quota in accordance with this Agreement, it shall be liable to pay damages to Party B calculated based on the amount of the agreed distribution quota receivable and the number of days overdue (from the transfer due date (inclusive) to the date of completion of the transfer (exclusive)). The damages shall be calculated based on the overdue amount (determined based on the overdue notional amount of the bonds to be settled) and the number of days overdue, at [□rate of [●] per day, □the nominal interest rate], provided that Party A shall not be liable for breach of contract should such delay in transfer be a result of Party B’s failure to settle payments for the agreed distribution quota in accordance with the timeline stipulated in Article 2 of this Agreement.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"1\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00105",
+      "role": "body",
+      "text": "The damages specified in this clause shall be payable without proof of loss by the non-defaulting party. If the breach of contract by any one party causes a loss to the other party that exceeds the amount of damages specified in this clause, the defaulting party shall indemnify the other party for any direct economic loss."
+    },
+    {
+      "locator": "P00107",
+      "role": "body",
+      "text": "Account information of both parties:",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00108",
+      "role": "body",
+      "text": "Account information"
+    },
+    {
+      "locator": "P00109",
+      "role": "body",
+      "text": "Party A"
+    },
+    {
+      "locator": "P00110",
+      "role": "body",
+      "text": "Party B"
+    },
+    {
+      "locator": "P00111",
+      "role": "body",
+      "text": "Account name"
+    },
+    {
+      "locator": "P00114",
+      "role": "body",
+      "text": "Account bank"
+    },
+    {
+      "locator": "P00117",
+      "role": "body",
+      "text": "Account no."
+    },
+    {
+      "locator": "P00120",
+      "role": "body",
+      "text": "Clearing bank number"
+    },
+    {
+      "locator": "P00123",
+      "role": "body",
+      "text": "Clearing house custody account name"
+    },
+    {
+      "locator": "P00126",
+      "role": "body",
+      "text": "Clearing house custody account no."
+    },
+    {
+      "locator": "P00130",
+      "role": "body",
+      "text": "Matters not addressed in this Agreement shall be settled through consultation between both parties. Should Party A fails to deliver the bonds or Party B fails to make payments, and such failure continue for a period of more than [●] days, the non-defaulting party shall have the right to unilaterally terminate this Agreement, and to hold the defaulting party liable for damages and indemnify.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00131",
+      "role": "body",
+      "text": "This Agreement shall be executed in duplicate with one original for each party. This Agreement shall become effective after execution by the legal representatives or authorized representatives of both parties and affixation of common seal.",
+      "numbering_xml": "<ns0:numPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:ilvl ns0:val=\"0\" /><ns0:numId ns0:val=\"19\" /></ns0:numPr>"
+    },
+    {
+      "locator": "P00133",
+      "role": "body",
+      "text": "Party A: __________[●]__________"
+    },
+    {
+      "locator": "P00134",
+      "role": "body",
+      "text": "_____________________________"
+    },
+    {
+      "locator": "P00136",
+      "role": "body",
+      "text": "Legal Representative or Authorized Signatory:"
+    },
+    {
+      "locator": "P00138",
+      "role": "body",
+      "text": "Company Chop"
+    },
+    {
+      "locator": "P00139",
+      "role": "body",
+      "text": "Contact person and contact details:__________[●]__________"
+    },
+    {
+      "locator": "P00140",
+      "role": "body",
+      "text": "Facsimile: __________[●]_________"
+    },
+    {
+      "locator": "P00141",
+      "role": "body",
+      "text": "Party B: ___________[●]_________"
+    },
+    {
+      "locator": "P00142",
+      "role": "body",
+      "text": "_____________________________"
+    },
+    {
+      "locator": "P00144",
+      "role": "body",
+      "text": "Legal Representative or Authorized Signatory:"
+    },
+    {
+      "locator": "P00146",
+      "role": "body",
+      "text": "Company Chop"
+    },
+    {
+      "locator": "P00147",
+      "role": "body",
+      "text": "Contact person and contact details:__________[●]__________"
+    },
+    {
+      "locator": "P00148",
+      "role": "body",
+      "text": "Facsimile: _________[●]_________"
+    },
+    {
+      "locator": "P00150",
+      "role": "body",
+      "text": "Date: [●]"
+    }
+  ]
+}

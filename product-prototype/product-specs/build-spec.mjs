@@ -22,9 +22,9 @@ const combinedName = 'BondBuddy产品开发说明书.md';
 const combined = [
   '# BondBuddy 产品开发说明书',
   '',
-  '版本 1.2｜需求基线 2026-09-22｜面向产品、设计、开发、行业审核、测试与运营',
+  '版本 1.4｜范围修订 2026-10-01｜面向产品、设计、开发、行业审核、测试与运营',
   '',
-  '本合订版由同目录 19 个模块汇编。按最新要求先 Web、最后 Windows，依五个里程碑逐步上线；第三阶段为募集书付费复核。目标与现有实现状态在第 17、18 章明确区分，认领任务见 [开发任务清单](delivery-plan/README.md)。',
+  '本合订版由同目录 19 个模块汇编。按最新要求先 Web、最后 Windows，依五个里程碑逐步上线；第三阶段为募集书付费复核及参考库推荐。M1 统一编制，原稿选填并手填品种、企业关系和报告期；目标信息独立，原对话区改补充要求，材料及知识 MD 直接交 worker；M2 取消余额退款/消费记录页。目标与现有实现状态在第 17、18 章明确区分，认领任务见 [开发任务清单](delivery-plan/README.md)。',
   '',
   '已确认首发包含大公募、PPN/MTN/CP/SCP 及 DFI 储架发行，支持启信宝、Wind、企业预警通；上传券商模板默认仅本人复用。积分采用用户指定 v1.1 点击即执行方案。',
   '',
@@ -112,7 +112,7 @@ const sources = sourcePaths.map(relative => {
   return { relative_path: relative, sha256: sha256(data), observed_mtime: fs.statSync(absolute).mtime.toISOString() };
 });
 const manifest = {
-  spec_version: '1.2',
+  spec_version: '1.4',
   requirements_date: '2026-09-22',
   assembled_at: new Date().toISOString(),
   scope: 'Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements',
@@ -130,7 +130,7 @@ const manifest = {
 fs.writeFileSync(path.join(out, 'spec-manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 const report = [
   '# 文档校验记录', '',
-  '规格版本：1.2；需求基线：2026-09-22。', '',
+  '规格版本：1.4；范围修订：2026-10-01。', '',
   '| 检查 | 结果 |', '|---|---|',
   '| 连续模块 | ' + files.length + ' 个，00–18 |',
   '| 模块正文中文字符 | ' + hanCount.toLocaleString('en-US') + ' |',

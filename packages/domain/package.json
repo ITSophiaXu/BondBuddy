@@ -1,0 +1,31 @@
+{
+  "name": "@bondbuddy/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./sse-private-checks": { "types": "./dist/sse-private-checks.d.ts", "default": "./dist/sse-private-checks.js" },
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./facts": { "types": "./dist/facts.d.ts", "default": "./dist/facts.js" },
+    "./historical-update": { "types": "./dist/historical-update.d.ts", "default": "./dist/historical-update.js" },
+    "./update-difficulty": { "types": "./dist/update-difficulty.d.ts", "default": "./dist/update-difficulty.js" },
+    "./issuance-arrangement": { "types": "./dist/issuance-arrangement.d.ts", "default": "./dist/issuance-arrangement.js" },
+    "./historical-native-extractor-version": { "types": "./dist/historical-native-extractor-version.d.ts", "default": "./dist/historical-native-extractor-version.js" },
+    "./reference-match": { "types": "./dist/reference-match.d.ts", "default": "./dist/reference-match.js" },
+    "./reference-source-selection": { "types": "./dist/reference-source-selection.d.ts", "default": "./dist/reference-source-selection.js" },
+    "./historical-profile-correction": { "types": "./dist/historical-profile-correction.d.ts", "default": "./dist/historical-profile-correction.js" },
+    "./sse-private-applicability": { "types": "./dist/sse-private-applicability-taxonomy.d.ts", "default": "./dist/sse-private-applicability-taxonomy.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "@bondbuddy/contracts": "0.1.0",
+    "@sinclair/typebox": "^0.34.41"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,323 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "admin-error-counts-redacted",
+      "schema": "AdminErrorCountsResponse",
+      "valid": true,
+      "value": {"items":[{"error_code":"DELIVERY_FAILED","error_category":"delivery","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","count":2}],"audit_id":"audit_syn_70"}
+    },
+    {
+      "name": "admin-job-timeline-retry-then-success",
+      "schema": "AdminJobTimelineResponse",
+      "valid": true,
+      "value": {
+        "job": {
+          "job_id": "job_syn_1",
+          "user_id": "user_syn_1",
+          "project_id": "proj_syn_1",
+          "run_id": "run_syn_1",
+          "channel": "production",
+          "operation_id": null,
+          "request_id": null,
+          "execution_request_id": null,
+          "execution_request_key_hash": null,
+          "trace_id": "run_syn_1",
+          "input_revision": null,
+          "input_hash": null,
+          "job_type": "update",
+          "subtype": "revision",
+          "state": "succeeded",
+          "stage": "delivered",
+          "attempts": 1,
+          "error_code": null,
+          "created_at": "2026-09-25T08:00:00Z",
+          "updated_at": "2026-09-25T08:05:00Z",
+          "duration_ms": 300000
+        },
+        "prompts": [
+          {
+            "snapshot_id": "snap_syn_1",
+            "kind": "user_prompt",
+            "version": 1,
+            "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "redaction_version": "scrub_v1",
+            "input_revision": 1,
+            "template_version": "tpl_1",
+            "rule_pack_version": null,
+            "model_parameters_version": "params_1",
+            "content_state": "available",
+            "created_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "user_submissions": [
+          {"submission_id":"submission_syn_1","snapshot_id":"snap_syn_1","kind":"run_execute","message_id":null,"message_version":null,"version":1,"previous_submission_id":null,"content_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","input_revision":1,"input_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","material_versions":[],"content_state":"available","created_at":"2026-09-25T08:00:00Z"}
+        ],
+        "stages": [
+          {
+            "seq": 1,
+            "type": "run.state_changed",
+            "state": "queued",
+            "stage": null,
+            "reason": "submitted",
+            "occurred_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "attempts": [
+          {
+            "attempt_id": "att_syn_1",
+            "logical_call_id": "draft",
+            "attempt_no": 1,
+            "channel": "production",
+            "status": "failed",
+            "model_id": "synthetic-model",
+            "provider_request_id": null,
+            "prompt_snapshot_ref": "snap_syn_1",
+            "user_submission_id": "submission_syn_1",
+            "usage_status": "measured",
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 10,
+              "cached_input_tokens": 40,
+              "reasoning_tokens": 5
+            },
+            "corrected": false,
+            "duration_ms": 1200,
+            "error_code": "MODEL_TIMEOUT",
+            "created_at": "2026-09-25T08:00:00Z"
+          },
+          {
+            "attempt_id": "att_syn_2",
+            "logical_call_id": "draft",
+            "attempt_no": 2,
+            "channel": "production",
+            "status": "completed",
+            "model_id": "synthetic-model",
+            "provider_request_id": "req_syn_2",
+            "prompt_snapshot_ref": "snap_syn_1",
+            "user_submission_id": "submission_syn_1",
+            "usage_status": "measured",
+            "usage": {
+              "input_tokens": 200,
+              "output_tokens": 50,
+              "cached_input_tokens": 80,
+              "reasoning_tokens": 20
+            },
+            "corrected": false,
+            "duration_ms": 3400,
+            "error_code": null,
+            "created_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "errors": [
+          {
+            "error_id": "err_syn_1",
+            "code": "MODEL_TIMEOUT",
+            "category": "model_provider",
+            "stage": "provider_call",
+            "attempt_id": "att_syn_1",
+            "provider_status": null,
+            "provider_error_type": null,
+            "retry_count": 0,
+            "fingerprint": null,
+            "safe_message": null,
+            "safe_stack": null,
+            "recovery_status": "retried",
+            "created_at": "2026-09-25T08:00:00Z"
+          }
+        ],
+        "artifact": {
+          "artifact_id": "art_syn_1",
+          "version": 1,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "quality_status": "passed",
+          "delivery_status": "available",
+          "created_at": "2026-09-25T08:00:00Z"
+        },
+        "outcome": {
+          "state": "succeeded",
+          "error_code": null,
+          "artifact_available": true
+        },
+        "consumption": {
+          "all_attempts": {
+            "attempts": 2,
+            "measured_attempts": 2,
+            "unresolved_attempts": 0,
+            "input_tokens": 300,
+            "output_tokens": 60,
+            "cached_input_tokens": 120,
+            "reasoning_tokens": 25
+          },
+          "completed_attempts": {
+            "attempts": 1,
+            "measured_attempts": 1,
+            "unresolved_attempts": 0,
+            "input_tokens": 200,
+            "output_tokens": 50,
+            "cached_input_tokens": 80,
+            "reasoning_tokens": 20
+          }
+        }
+      }
+    },
+    {
+      "name": "admin-user-submission-list",
+      "schema": "AdminUserSubmissionListResponse",
+      "valid": true,
+      "value": {
+        "job_id": "job_syn_1",
+        "audit_id": "audit_syn_1",
+        "items": [
+          {"submission_id":"submission_syn_1","snapshot_id":"snap_syn_1","kind":"run_execute","message_id":null,"message_version":null,"version":1,"previous_submission_id":null,"content_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","input_revision":1,"input_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","material_versions":[],"content_state":"available","created_at":"2026-09-25T08:00:00Z"}
+        ]
+      }
+    },
+    {
+      "name": "admin-runless-preflight-rejected",
+      "schema": "AdminJobTimelineResponse",
+      "valid": true,
+      "value": {
+        "job": {"job_id":"job_preflight_syn","user_id":"user_syn_1","project_id":"proj_syn_1","run_id":null,"channel":"production","operation_id":"op_preflight_syn","request_id":"req_preflight_syn","execution_request_id":null,"execution_request_key_hash":null,"trace_id":"trace_preflight_syn","input_revision":1,"input_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","job_type":"preflight","subtype":"preflight_rejected","state":"rejected","stage":"submission_rejected","attempts":0,"error_code":"INPUT_REVISION_CONFLICT","created_at":"2026-09-25T08:00:00Z","updated_at":"2026-09-25T08:00:00Z","duration_ms":0},
+        "prompts": [],
+        "user_submissions": [],
+        "stages": [
+          {"seq":1,"type":"operation.rejected","state":"rejected","stage":null,"reason":"input_revision_conflict","occurred_at":"2026-09-25T08:00:00Z"},
+          {"seq":2,"type":"job.state_changed","state":"rejected","stage":"submission_rejected","reason":"input_revision_conflict","occurred_at":"2026-09-25T08:00:00Z"}
+        ],
+        "attempts": [],
+        "errors": [],
+        "artifact": null,
+        "outcome": {"state":"rejected","error_code":"INPUT_REVISION_CONFLICT","artifact_available":false},
+        "consumption": {
+          "all_attempts": {"attempts":0,"measured_attempts":0,"unresolved_attempts":0,"input_tokens":null,"output_tokens":null,"cached_input_tokens":null,"reasoning_tokens":null},
+          "completed_attempts": {"attempts":0,"measured_attempts":0,"unresolved_attempts":0,"input_tokens":null,"output_tokens":null,"cached_input_tokens":null,"reasoning_tokens":null}
+        }
+      }
+    },
+    {
+      "name": "admin-events-redacted",
+      "schema": "AdminLogEventsResponse",
+      "valid": true,
+      "value": {
+        "items": [
+          {
+            "event_id": "ev1",
+            "kind": "model.call_started",
+            "occurred_at": "2026-09-25T08:00:00Z",
+            "user_id": "user_syn_1",
+            "project_id": null,
+            "job_id": "job_syn_1",
+            "run_id": "run_syn_1",
+            "channel": "production",
+            "trace_id": "run_syn_1",
+            "actor_type": "system",
+            "status": null,
+            "stage": null,
+            "error_code": null,
+            "error_id": null,
+            "logical_call_id": "draft",
+            "attempt_no": 1,
+            "prompt_snapshot_ref": "snap_syn_1"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "name": "admin-events-plaintext-rejected",
+      "schema": "AdminLogEventsResponse",
+      "valid": false,
+      "value": {
+        "items": [
+          {
+            "event_id": "ev1",
+            "kind": "model.call_started",
+            "occurred_at": "2026-09-25T08:00:00Z",
+            "user_id": "user_syn_1",
+            "project_id": null,
+            "job_id": "job_syn_1",
+            "run_id": "run_syn_1",
+            "channel": "production",
+            "trace_id": "run_syn_1",
+            "actor_type": "system",
+            "status": null,
+            "stage": null,
+            "error_code": null,
+            "error_id": null,
+            "logical_call_id": "draft",
+            "attempt_no": 1,
+            "prompt_snapshot_ref": "snap_syn_1",
+            "prompt_body": "plaintext must not appear"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "name": "admin-prompt-view-without-audit-rejected",
+      "schema": "AdminPromptView",
+      "valid": false,
+      "value": {
+        "snapshot_id": "snap_syn_1",
+        "user_id": "user_syn_1",
+        "project_id": "proj_syn_1",
+        "kind": "user_prompt",
+        "version": 1,
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "redaction_version": "scrub_v1",
+        "media_type": "text/plain; charset=utf-8",
+        "body": "synthetic"
+      }
+    },
+    {
+      "name": "evidence-gate-paused",
+      "schema": "EvidenceGateResponse",
+      "valid": true,
+      "value": {
+        "state": "paused",
+        "reason_code": "call_intent_not_persisted",
+        "changed_at": "2026-09-25T08:00:00Z",
+        "process_state": "open"
+      }
+    },
+    {
+      "name": "usage-correction-measured-request",
+      "schema": "UsageCorrectionRequest",
+      "valid": true,
+      "value": {
+        "chosen_observation_id": "obs_syn_1",
+        "usage_status": "measured",
+        "reason_code": "provider_invoice_match"
+      }
+    },
+    {
+      "name": "browser-error-report-request",
+      "schema": "BrowserErrorReportRequest",
+      "valid": true,
+      "value": {
+        "error_type": "TypeError",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "message": "Redacted diagnostic only",
+        "route_id": "/projects/:project_id",
+        "frontend_version": "m1.20260928",
+        "project_id": "proj_syn_1",
+        "job_id": "job_syn_1",
+        "client_time": "2026-09-28T08:00:00Z"
+      }
+    },
+    {
+      "name": "browser-error-report-unknown-field-rejected",
+      "schema": "BrowserErrorReportRequest",
+      "valid": false,
+      "value": {
+        "error_type": "TypeError",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "route_id": "/projects/:project_id",
+        "frontend_version": "m1.20260928",
+        "client_time": "2026-09-28T08:00:00Z",
+        "cookie": "synthetic secret"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "synthetic": true,
+  "cases": [
+    { "name": "agreement-configured", "schema": "AgreementResponse", "valid": true, "http_status": 200, "value": { "terms_version": "synthetic-terms-2026-09", "title": "BondBuddy 用户协议与数据保存说明", "summary_url_or_path": "/#/data-policy", "support_contact": "support@example.invalid" } },
+    { "name": "agreement-without-support-contact", "schema": "AgreementResponse", "valid": true, "http_status": 200, "value": { "terms_version": "synthetic-terms-2026-09", "title": "BondBuddy 用户协议与数据保存说明", "summary_url_or_path": "/#/data-policy", "support_contact": null } },
+    { "name": "agreement-empty-version-invalid", "schema": "AgreementResponse", "valid": false, "value": { "terms_version": "", "title": "BondBuddy 用户协议与数据保存说明", "summary_url_or_path": "/#/data-policy", "support_contact": null } },
+    { "name": "agreement-unset-503", "schema": "Error", "valid": true, "http_status": 503, "value": { "code": "CAPABILITY_NOT_READY", "message": "Registration agreement is not configured", "retryable": true, "field_errors": [], "correlation_id": "synthetic-req-agreement" } }
+  ]
+}

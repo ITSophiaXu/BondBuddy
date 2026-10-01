@@ -1,0 +1,16 @@
+{
+  "name": "@bondbuddy/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check:examples": "node dist/check-examples.js && node dist/check-data-lifecycle.js && npm run check:ocr-v2 && npm run check:generation-issuer-binding",
+    "check:generation-issuer-binding": "node --test dist/generation-issuer-binding.test.js",
+    "check:ocr-v2": "node --test dist/ocr-v2.test.js",
+    "test": "npm run build && npm run check:examples"
+  },
+  "dependencies": { "@sinclair/typebox": "^0.34.41" },
+  "devDependencies": { "ajv": "^8.17.1", "typescript": "^5.9.3", "@types/node": "^22.18.6" }
+}

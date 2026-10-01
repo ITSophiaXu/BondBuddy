@@ -13,9 +13,9 @@ import { randomUUID } from 'node:crypto';
 const artifacts=join(ROOT,'qa','artifacts',randomUUID());await mkdir(artifacts,{recursive:true});
 await processRun(PYTHON,[join(ROOT,'qa','make_fixtures.py'),artifacts]);
 const source=join(artifacts,'source.docx');
-test('all eight knowledge routes have different scope-specific markdown and traceable sources',async()=>{
-  const packs=await manifest();assert.equal(packs.length,8);
-  for(const p of packs){const k=await loadKnowledge(p.scope,p.kind);assert.equal(k.id,p.id);assert(k.handbook.includes(p.title));assert(k.rules.length>=26);assert(k.sourceChunks.length>0);}
+test('all twelve knowledge routes have different scope-specific markdown and traceable sources',async()=>{
+  const packs=await manifest();assert.equal(packs.length,12);
+  for(const p of packs){const k=await loadKnowledge(p.scope,p.kind);assert.equal(k.id,p.id);assert(k.handbook.includes(p.title));assert.equal(k.rules.length,p.ruleCount);assert(k.rules.some(r=>r.rule_id.endsWith('-financial-statements')));assert(k.sourceChunks.length>0);}
   const sse=await loadKnowledge('sse-private','review'),szse=await loadKnowledge('szse-public','review');
   assert(sse.handbook.includes('最近两年'));assert(szse.handbook.includes('最近三年'));assert(!szse.sources.includes('S005'));
 });

@@ -1,0 +1,13 @@
+# #33 issuer AnnualBusinessProfile storage handoff
+
+`issuer-profile-repository.ts` is an internal storage seam for a target issuer's annual business revenue profile. It stores an append-only JSON snapshot with a canonical SHA-256, the exact owner/project/run/input revision and hash, source material version, and parse-evidence references. The profile is separate from `bb_library_profiles`: a project profile cannot be promoted to the platform reference library.
+
+The repository discards a caller's verification status and writes only `pending_review`. The migration also rejects any other review status and prevents row updates/deletes. `loadReviewedIssuerAnnualProfile` returns `null`, so this table cannot currently satisfy the #33 model stage's reviewed-profile gate or authorize a reference lookup/model call.
+
+## Blocker to close
+
+There is no trusted authenticated reviewer handoff for a project-scoped issuer profile. A caller-supplied reviewer ID, review ID, timestamp, or `verified` status is not proof of authority. Before a profile can leave `pending_review`, an upstream contract must establish an authenticated reviewer principal, permitted review role, review scope, decision ID and immutable decision evidence, then append a new review event/version under that principal. Until that contract and its authorization source exist, do not add a worker option or SQL path that upgrades status.
+
+The repository does not extract or infer the three largest businesses. A producer still must use the exact run input revision, a recent complete audited annual consolidated revenue basis, all comparable revenue lines and their persisted evidence, resolve source conflicts and third-place ties, and apply the reviewed taxonomy. Filenames, project dropdowns, the internal library's profiles and user assertions cannot supply those facts. The current write boundary accepts only financial/audit material present in the locked input and evidence IDs present in that owner's `parsed` native-text `bb_parse_evidence` snapshot; it retains the result pending review regardless of content. OCR evidence and taxonomy/classification evidence without a persisted parse-evidence row are rejected and need a separate trusted validation path before this repository can accept them.
+
+After reviewer authority and profile production are available, the reviewed loader can be implemented as a separate reviewed event reader and composed with the existing `reference-library-selection.ts`. That still requires the independent #77 released authorized reference data/query lock and trusted production rule selection before #33 can call a model. This storage slice does not wire the shared runtime dispatcher or complete Word generation/delivery.

@@ -1,0 +1,38 @@
+# Production profile for a small shared host (openclaw-vm: 2 vCPU, 3.8 GiB RAM,
+# ~2.2 GiB available at the 384M worker sizing decision;
+# ~5 GB free disk shared with other apps). Use with:
+#   docker compose -f compose.yaml -f compose.prod.yaml ...   (scripts do this when BB_PROFILE=prod)
+# Steady-state limits: postgres 256M + api 512M + worker 512M + web 32M + egress 48M = 1360M
+# (migrate 128M runs to completion before api/worker start). No Azurite: Blob is Azure via env,
+# reached through the egress allow-list proxy, so BB_EGRESS_ALLOW must include the Blob host.
+services:
+  postgres:
+    image: postgres:16-alpine
+    command: ['postgres', '-c', 'shared_buffers=32MB', '-c', 'max_connections=30', '-c', 'work_mem=2MB', '-c', 'maintenance_work_mem=32MB', '-c', 'effective_cache_size=128MB']
+    deploy: {resources: {limits: {cpus: '0.75', memory: 256M}}}
+  migrate:
+    environment: {NODE_OPTIONS: --max-old-space-size=96}
+    deploy: {resources: {limits: {cpus: '0.5', memory: 128M}}}
+  api:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=320 --expose-gc
+      # Upload bytes stream to the disk spool volume; cap it for the ~5 GB shared disk
+      # (3 concurrent 100 MiB uploads plus completion re-checks).
+      BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_SPOOL_MAX_BYTES:-524288000}
+      HTTPS_PROXY: http://egress:3128
+      NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+    # 512M: full pdf.js inspection of a ~96 MiB scanned PDF measured at ~390 MiB peak (single-flight).
+    deploy: {resources: {limits: {cpus: '0.75', memory: 512M}}}
+  worker:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=160
+      # One general run/parse slot plus one parse-only slot; allow both to coexist in memory.
+      BB_WORKER_CONCURRENCY: '1'
+      BB_WORKER_PARSE_SLOTS: '1'
+      NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+      no_proxy: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+    deploy: {resources: {limits: {cpus: '0.75', memory: 512M}}}
+  egress:
+    deploy: {resources: {limits: {cpus: '0.25', memory: 48M}}}
+  web:
+    deploy: {resources: {limits: {cpus: '0.25', memory: 32M}}}

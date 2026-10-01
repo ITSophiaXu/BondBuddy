@@ -1,0 +1,48 @@
+{
+  "version": "2026.09.27-companion.1",
+  "status": "documentary_analysis_only",
+  "production_eligible": false,
+  "professional_review": null,
+  "assets": [
+    {
+      "id": "csrc-industry-2024",
+      "url": "https://www.csrc.gov.cn/csrc/c101954/c7520291/7520291/files/%E9%99%84%E4%BB%B61%EF%BC%9A%E3%80%8A%E4%B8%8A%E5%B8%82%E5%85%AC%E5%8F%B8%E8%A1%8C%E4%B8%9A%E7%BB%9F%E8%AE%A1%E5%88%86%E7%B1%BB%E4%B8%8E%E4%BB%A3%E7%A0%81%E3%80%8B.pdf",
+      "retrieved_at": "2026-09-27T05:49:21.086559+00:00",
+      "status": 200,
+      "final_url": "https://www.csrc.gov.cn/csrc/c101954/c7520291/7520291/files/%E9%99%84%E4%BB%B61%EF%BC%9A%E3%80%8A%E4%B8%8A%E5%B8%82%E5%85%AC%E5%8F%B8%E8%A1%8C%E4%B8%9A%E7%BB%9F%E8%AE%A1%E5%88%86%E7%B1%BB%E4%B8%8E%E4%BB%A3%E7%A0%81%E3%80%8B.pdf",
+      "content_type": "application/pdf",
+      "sha256": "407e8f6f7cee18a68783da6ff1b06bf723149f889a25f7a86232ac0ab27ea507",
+      "bytes": 542751,
+      "path": "originals/csrc-industry-2024.pdf"
+    },
+    {
+      "id": "sse-suitability-2023",
+      "url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/trading/currency/c/10781044/files/6b56460dbbc344ec847beed5acedf76a.docx",
+      "retrieved_at": "2026-09-27T05:53:05.816891+00:00",
+      "status": 200,
+      "final_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/trading/currency/c/10781044/files/6b56460dbbc344ec847beed5acedf76a.docx",
+      "bytes": 35027,
+      "sha256": "344c48bad2b7a8551d53c75538340f113e83b97801f748f5d63ab1b15470e6cd",
+      "path": "originals/sse-suitability-2023.docx"
+    },
+    {
+      "id": "sse-suitability-2023-notice",
+      "url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/trading/currency/c/c_20250606_10781044.shtml",
+      "retrieved_at": "2026-09-27T05:53:05.815891+00:00",
+      "status": 200,
+      "final_url": "https://www.sse.com.cn/lawandrules/sselawsrules2025/bond/trading/currency/c/c_20250606_10781044.shtml",
+      "bytes": 33092,
+      "sha256": "9990dcd5cbe5cb002838680802b1f6f42837aa1b19d198d4d437790bb03d865d",
+      "path": "notices/sse-suitability-2023.html"
+    },
+    {
+      "id": "company-law-2023",
+      "url": "https://policy.mofcom.gov.cn/claw/clawContent.shtml?id=98771",
+      "retrieved_at": "2026-09-27T05:54:55.885822+00:00",
+      "status": 200,
+      "bytes": 123211,
+      "sha256": "c079ac6a9e3f3dabeb447e7dcd3fb443e8ae257fb531dddb049060d5e43c4c18",
+      "path": "notices/company-law-2023.html"
+    }
+  ]
+}

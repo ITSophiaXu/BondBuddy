@@ -1,0 +1,608 @@
+{
+  "schema_version": "capability-coverage-v1",
+  "manifest_id": "sse-private-coverage",
+  "version": "2026.09.27-draft.6",
+  "rule_pack_id": "sse-private",
+  "assessed_at": "2026-09-27T05:25:09Z",
+  "items": [
+    {
+      "item_id": "source-authority",
+      "area": "全文 / 逐字段来源与冲突处理",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00082",
+        "ex017-p00151",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-disclosure-2023-p00024"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。逐字段证据优先级为内部方法；官方来源没有规定一个适用于全部事实的文件排名。"
+    },
+    {
+      "item_id": "period-window",
+      "area": "释义、业务、财务、重大事项 / 目标报告期及滚动窗口",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00209",
+        "ex017-p00210",
+        "ex001-p00443",
+        "ex038-p00617",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00443",
+        "ov-sse-application-2023-p00453",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00186"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。8.1.4是财务材料两年及一期要求，不自动缩短业务、评级、重组等独立回溯期间；年末、成立不足两年及豁免按证据判断。"
+    },
+    {
+      "item_id": "evidence-state",
+      "area": "全文、右侧项目对话 / 空值、用户陈述与待确认信息",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00845",
+        "ex038-p00622",
+        "ex038-p00647",
+        "ov-sse-disclosure-2023-p00024"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。用户陈述、OCR置信度与待确认标记是产品事实状态；不能因有用户输入就声明审计或公开核验通过。"
+    },
+    {
+      "item_id": "identity",
+      "area": "全文、合并/母公司报表 / 发行主体、口径与单位一致",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00617",
+        "ex038-p00621",
+        "ex038-p00595",
+        "ov-sse-application-2023-p00093",
+        "ov-sse-application-2023-p00094",
+        "ov-sse-application-2023-p00200"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。实体、合并/母公司、币种、单位、期间逐项绑定；地方国有企业不能据名称自动认定城建类。"
+    },
+    {
+      "item_id": "private-investors",
+      "area": "封面、重大事项、发行概况、认购承诺 / 私募发行对象与人数限制",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex035-page011",
+        "ex035-page012",
+        "ov-csrc-measures-2023-page011",
+        "ov-csrc-measures-2023-page012",
+        "ov-sse-private-listing-2023-p00011",
+        "ov-sse-private-listing-2023-p00025"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。200人分别检查发行及同次债券转让后持有人；机构适当性分类、穿透或例外仍需投资者适当性完整规则。"
+    },
+    {
+      "item_id": "financial-validity-sse",
+      "area": "财务、申报材料 / 上交所财务有效期",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex001-p00195",
+        "ex001-p00446",
+        "ov-sse-application-2023-p00445",
+        "ov-sse-application-2023-p00446",
+        "ov-sse-application-2023-p00447",
+        "ov-sse-application-2023-p00452"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。有效期截止日后新申报应更新材料；在审封卷延期不是自动宽限，须申请和交易所同意。缺申报日/批准证据不能判通过。"
+    },
+    {
+      "item_id": "current-terms",
+      "area": "封面、重大事项、发行概况、机构、声明 / 本期条款、多品种及机构联动",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00471",
+        "ex038-p00475",
+        "ex017-p00173",
+        "ov-sse-private-listing-2023-p00022",
+        "ov-sse-private-listing-2023-p00038",
+        "ov-sse-private-listing-2023-p00018"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。挂牌条件确认不能写成证监会公募注册。发行批文、规模、期限、机构变化均需本期依据；不推定全部条款不变。"
+    },
+    {
+      "item_id": "funds-use-evidence",
+      "area": "募集资金运用 / 组合资金用途与配套材料",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00512",
+        "ov-sse-proceeds-2026-p00009",
+        "ov-sse-proceeds-2026-p00010",
+        "ov-sse-proceeds-2026-p00011",
+        "ov-sse-proceeds-2026-p00014",
+        "ov-sse-proceeds-2026-p00018"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。用途可组合；生产性支出概括约定是有条件安排，不向所有项目自动套用。基金/股权/工程资料缺失逐项标记。"
+    },
+    {
+      "item_id": "private-use-change",
+      "area": "募集资金、持有人会议、受托管理 / 私募资金用途与约定变更程序",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex035-page004",
+        "ex001-p00458",
+        "ex038-p00539",
+        "ov-sse-application-2023-p00458",
+        "ov-sse-application-2023-p00459",
+        "ov-sse-proceeds-2026-p00028",
+        "ov-sse-proceeds-2026-p00029",
+        "ov-sse-proceeds-2026-p00030",
+        "ov-sse-proceeds-2026-p00031",
+        "ov-sse-proceeds-2026-p00032",
+        "ov-sse-proceeds-2026-p00033"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。3.2中公募跨用途类别的会议要求不直接变成所有私募要求；私募仍受8.4.1的未约定/重大影响和3.1限定偿债限制。"
+    },
+    {
+      "item_id": "funds-simulation",
+      "area": "募集资金、财务 / 发行后模拟及前次资金使用",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00546",
+        "ex038-p00554",
+        "ov-sse-proceeds-2026-p00035",
+        "ov-sse-proceeds-2026-p00036",
+        "ov-sse-proceeds-2026-p00037",
+        "ov-sse-proceeds-2026-p00038",
+        "ov-sse-proceeds-2026-p00039",
+        "ov-sse-proceeds-2026-p00040",
+        "ov-sse-proceeds-2026-p00041"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。发行后模拟公式是待验收内部方法。前次资金用途整改记录、台账和专户凭证缺失，不伪造已整改/合规意见。"
+    },
+    {
+      "item_id": "issuer-governance",
+      "area": "发行人基本情况、声明、重大事项 / 主体、控制链、董监高与重组",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00559",
+        "ex038-p00565",
+        "ex038-p00566",
+        "ov-sse-application-2023-p00171",
+        "ov-sse-application-2023-p00175",
+        "ov-sse-application-2023-p00177",
+        "ov-sse-application-2023-p00178",
+        "ov-sse-application-2023-p00179",
+        "ov-sse-application-2023-p00186",
+        "ov-sse-application-2023-p00187"
+      ],
+      "rationale": "已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。重大重组按引用的现行重组规则判断，单一50%启发式不作为已确认事实；公司法任职/监事安排仍须当期核验。"
+    },
+    {
+      "item_id": "business-revenue",
+      "area": "发行人主要业务、财务、风险 / 业务板块与收入成本毛利",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex001-p00181",
+        "ex038-p00596",
+        "ov-sse-application-2023-p00181",
+        "ov-sse-application-2023-p00182",
+        "ov-sse-application-2023-p00183",
+        "ov-sse-application-2023-p00184"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。一般10%以上主要板块是披露要求；后台前三合并主营业务收入匹配不替代全文披露。并列、分类变动和非可比期间须保留。"
+    },
+    {
+      "item_id": "audit-opinion",
+      "area": "财务基础、重大事项、风险 / 审计意见及非标补充说明",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00608",
+        "ex038-p00611",
+        "ov-sse-application-2023-p00198",
+        "ov-sse-application-2023-p00443"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。非标事项说明应来自有权机构/会计师。中期未经审计不可写成审计通过；缺意见页仍可生成标记缺口的工作稿。"
+    },
+    {
+      "item_id": "financial-statements",
+      "area": "财务会计信息 / 合并及母公司六张表与重述",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00618",
+        "ex038-p00619",
+        "ex038-p00623",
+        "ov-sse-application-2023-p00195",
+        "ov-sse-application-2023-p00196",
+        "ov-sse-application-2023-p00199",
+        "ov-sse-application-2023-p00200",
+        "ov-sse-application-2023-p00202",
+        "ov-sse-application-2023-p00443"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。私募财务窗口适用8.1.4；重述、备考和合并范围变化分别保留。不能为勾平报表改写源数。"
+    },
+    {
+      "item_id": "indicators",
+      "area": "财务指标、摘要、重大事项 / 财务指标定义、重算与缺项",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00775",
+        "ex017-p00779",
+        "ex038-p00632",
+        "ex038-p00634",
+        "ov-sse-application-2023-p00200",
+        "ov-sse-application-2023-p00201"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。3.7.2第二段为面向普通投资者公募附加表，不作为私募强制清单。私募仍披露适用指标，定义取本期条款/专业口径。"
+    },
+    {
+      "item_id": "mdna-thresholds",
+      "area": "管理层讨论与分析 / 资产负债项目构成和变动分析",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex001-p00203",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-application-2023-p00204"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。10%以上/30%以上保留原文字义；低于阈值不豁免重大事项，零/负基数不机械使用百分比。"
+    },
+    {
+      "item_id": "cause-evidence",
+      "area": "业务、财务、风险 / 变动原因不能仅凭勾稽推断",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex017-p00782",
+        "ex038-p00647",
+        "ov-sse-application-2023-p00203",
+        "ov-sse-disclosure-2023-p00024"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。计算差额不证明业务原因；原专家稿的推测仅作为待确认问题。"
+    },
+    {
+      "item_id": "debt-liquidity",
+      "area": "财务、资信、风险 / 全口径有息债务与集中偿付",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00649",
+        "ov-sse-application-2023-p00205",
+        "ov-sse-application-2023-p00217",
+        "ov-sse-application-2023-p00218",
+        "ov-sse-application-2023-p00219"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。全口径债务与报表差异要解释；授信总/已用/剩余额度按实际证据时点，不从余额差自动推断银行承诺。"
+    },
+    {
+      "item_id": "related-contingent",
+      "area": "发行人、财务、重大事项、风险 / 关联交易、担保、诉讼与受限资产",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00659",
+        "ov-sse-application-2023-p00206",
+        "ov-sse-application-2023-p00207",
+        "ov-sse-application-2023-p00208"
+      ],
+      "rationale": "已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。关联方、或有事项和受限资产需材料及签署日后续事项核验；未检索到不能写为不存在。"
+    },
+    {
+      "item_id": "rating-enhancement",
+      "area": "封面、资信、增信、风险、条款 / 评级与增信分支",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00669",
+        "ov-sse-application-2023-p00210",
+        "ov-sse-application-2023-p00212",
+        "ov-sse-application-2023-p00222",
+        "ov-sse-application-2023-p00225",
+        "ov-sse-application-2023-p00231"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。无评级不是自动缺合规条件；有评级/增信以本期报告及合同为准，不添加担保人承诺。"
+    },
+    {
+      "item_id": "protection",
+      "area": "投资者保护、违约、持有人会议、受托管理 / 投资者保护与协议一致性",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex001-p00462",
+        "ex038-p00960",
+        "ov-sse-protection-2021-notice",
+        "ov-sse-private-listing-2023-p00127",
+        "ov-sse-private-listing-2023-p00128",
+        "ov-sse-private-listing-2023-p00143",
+        "ov-sse-private-listing-2023-p00144",
+        "ov-sse-private-listing-2023-p00145",
+        "ov-sse-private-listing-2023-p00146",
+        "ov-sse-private-listing-2023-p00147",
+        "ov-sse-private-listing-2023-p00148",
+        "ov-sse-application-2023-p00462"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。参考文本可以参照，不等于每个示例条款均为强制或已约定。增信、会议、违约和受托协议逐项一致；证券业协会配套规则仍待核验。"
+    },
+    {
+      "item_id": "risk-disclosure",
+      "area": "风险提示、重大事项、全文 / 风险、重大事项与全文回写",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00117",
+        "ex038-p00465",
+        "ex038-p00467",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00090",
+        "ov-sse-application-2023-p00109",
+        "ov-sse-disclosure-2023-p00028"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。财务和已发生事项更新后回写；金额正确仍不能证明风险措辞充分，不自动删除历史有效风险。"
+    },
+    {
+      "item_id": "sse-focus-2025",
+      "area": "治理、财务、特定发行人、募资 / 上交所2025审核重点增量",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex006-p00030",
+        "ex006-p00052",
+        "ex006-p00095",
+        "ex006-p00100",
+        "ov-sse-focus-2025-p00030",
+        "ov-sse-focus-2025-p00052",
+        "ov-sse-focus-2025-p00095",
+        "ov-sse-focus-2025-p00096",
+        "ov-sse-focus-2025-p00097",
+        "ov-sse-focus-2025-p00098",
+        "ov-sse-focus-2025-p00099",
+        "ov-sse-focus-2025-p00100",
+        "ov-sse-focus-2025-p00101"
+      ],
+      "rationale": "已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。城建/房地产/集团等触发后需专门审核。2025重点关注规则仍不能替代2026优化审核包或把审慎论证一律变为禁发。"
+    },
+    {
+      "item_id": "special-overlays-sse",
+      "area": "封面、风险、条款、募资、披露、保护 / 上交所2026专项品种需增量包",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex005-p00007",
+        "ex005-p00189"
+      ],
+      "rationale": "已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。专项品种2026原件已有，但本切片不完成其官方效力及专业验收；不得按普通私募包自动放行专项债。"
+    },
+    {
+      "item_id": "document-delivery",
+      "area": "全文、目录、交叉引用、签章页 / 全文更新、定位和Word交付",
+      "disposition": "uncovered",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [
+        "ex038-p00448",
+        "ex038-p00748",
+        "ex017-p00146",
+        "ov-sse-application-2023-p00089",
+        "ov-sse-application-2023-p00096",
+        "ov-sse-application-2023-p00440",
+        "ov-sse-application-2023-p00441",
+        "ov-sse-application-2023-p00442"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。16节是专家工作骨架，不是唯一法定目录/字体标准。税务依据、签章要求、真实Word修订/批注及WPS均另验。"
+    },
+    {
+      "item_id": "other-markets",
+      "area": "交易商协会及其他市场",
+      "disposition": "not_applicable",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "source_ref_ids": [],
+      "rationale": "本包仅限指定交易所及发行方式，不改变NAFMII包。"
+    },
+    {
+      "item_id": "private-negative-list",
+      "area": "私募准入与公募财务门槛隔离",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "disposition": "uncovered",
+      "source_ref_ids": [
+        "ov-sse-application-2023-p00455",
+        "ov-sse-application-2023-p00456"
+      ],
+      "rationale": "已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。没有财务指标限制不等于没有准入/负面清单/偿债风险要求；证券业协会负面清单现行全文尚未核验。"
+    },
+    {
+      "item_id": "idle-proceeds-2026",
+      "area": "闲置募集资金临时补流边界",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "disposition": "uncovered",
+      "source_ref_ids": [
+        "ov-sse-proceeds-2026-p00023",
+        "ov-sse-proceeds-2026-p00024",
+        "ov-sse-proceeds-2026-p00025",
+        "ov-sse-proceeds-2026-p00026"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。受限定偿债等情形原则上不得约定临时补流；不得把2026条款倒写为过去已签订的合同事实。"
+    },
+    {
+      "item_id": "continuing-disclosure",
+      "area": "私募定期披露安排",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "disposition": "uncovered",
+      "source_ref_ids": [
+        "ov-sse-application-2023-p00461",
+        "ov-sse-disclosure-2023-p00009",
+        "ov-sse-disclosure-2023-p00023"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。此处为募集说明书中的披露安排；不宣称已完成存续期所有披露事项的自动监管。"
+    },
+    {
+      "item_id": "disclosure-officer-2026",
+      "area": "信息披露负责人及联络人",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "disposition": "uncovered",
+      "source_ref_ids": [
+        "ov-sse-officer-2025-p00007",
+        "ov-sse-officer-2025-p00008",
+        "ov-sse-officer-2025-p00009",
+        "ov-sse-officer-2025-p00010",
+        "ov-sse-officer-2025-p00011",
+        "ov-sse-officer-2025-p00012",
+        "ov-sse-officer-2025-p00013",
+        "ov-sse-officer-2025-p00014",
+        "ov-sse-officer-2025-p00015",
+        "ov-sse-officer-2025-p00016",
+        "ov-sse-officer-2025-p00017",
+        "ov-sse-officer-2025-p00018"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。2025-12-26发布，2026-05-01生效。任职资格及履职承诺必须实际取得；不适用于上市公司可转债。"
+    },
+    {
+      "item_id": "optimized-review-version",
+      "area": "优化审核新旧版本边界",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "disposition": "uncovered",
+      "source_ref_ids": [
+        "ov-sse-mature-2026-p00010",
+        "ov-sse-mature-2026-p00054"
+      ],
+      "rationale": "已实现明确人工审核处理及防误用检查；仍无自动专业判断，待专业覆盖决定/依据及真实结果验收。2026-09-04起旧2023版废止；本包不实现知名成熟资格认定、简明披露或豁免，需独立审核新版本。"
+    },
+    {
+      "item_id": "trustee-continuing-duties",
+      "area": "受托协议与持续履职衔接",
+      "document_stages": [
+        "registration",
+        "issuance"
+      ],
+      "disposition": "uncovered",
+      "source_ref_ids": [
+        "ov-sse-trustee-2025-p00005",
+        "ov-sse-trustee-2025-p00007",
+        "ov-sse-trustee-2025-p00012",
+        "ov-sse-trustee-2025-p00013",
+        "ov-sse-private-listing-2023-p00128"
+      ],
+      "rationale": "已实现受限结构化证据检查；尚缺事实接入、行业签认和真实结果验收，仍未完整覆盖。2025指南包括鼓励措施和示范案例，不把示范案例写为发行人已履行事项；全量履职核验另作存续期覆盖。"
+    }
+  ],
+  "open_blockers": [
+    {
+      "blocker_id": "official-effectivity",
+      "description": "10份官方证据已登记；证监会发布机关现行核验、协会负面清单/适当性/受托与会议规则、税务及特殊主体等尚待补齐并专业签认。",
+      "required_evidence": "verification/2026-09-26目录逐条核验、现行配套规则及适用性签认；不得把抓取或hash一致当行业审核。"
+    },
+    {
+      "blocker_id": "professional-samples",
+      "description": "尚无本scope基础/复杂/边界真实结果的行业验收；本sample_suite只验证工程门禁。",
+      "required_evidence": "授权样本、真实更新/反例结果、逐条财务和行业审核记录。"
+    },
+    {
+      "blocker_id": "production-release",
+      "description": "依赖#19的真实授权发布/选择链路及双角色签认，草稿文件不是生产发布。",
+      "required_evidence": "#19发布记录、锁定版本/hash、权限/撤回/回滚及任务选择证据。"
+    },
+    {
+      "blocker_id": "applicability-context",
+      "description": "#311已有整体审核/撤回及loader分支；仍需#19九维到十二码映射、已发布字典与真实项目/来源审核，不能默认批准。",
+      "required_evidence": "instrument/documentStage/issuerScope/investorScope/industry/specialFeatures/asOf均有本期证据及真实审核。"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+.supplement-panel .cowork-guidance,.supplement-panel .cowork-message small,.message-history small{color:var(--muted);font-size:11px;line-height:1.8}
+.supplement-panel .cowork-message p,.message-history p,.cowork-legacy p{white-space:pre-wrap;overflow-wrap:anywhere}
+.supplement-panel .cowork-message small{display:block;margin-top:8px}
+.supplement-panel #conversation-status{font-size:12px;line-height:1.7;color:var(--green);overflow-wrap:anywhere}
+.supplement-panel .cowork-legacy,.supplement-panel .message-history{border:1px solid var(--line);border-radius:8px;padding:12px;margin:14px 0;font-size:12px}
+.supplement-panel .cowork-legacy summary{cursor:pointer}
+.supplement-panel .cowork-legacy p{margin:10px 0}
+.supplement-panel .cowork-composer{min-width:0}
+.supplement-panel .cowork-composer>label{display:block;margin-bottom:8px;font-size:12px}
+.supplement-panel .cowork-composer textarea{width:100%;min-height:120px;border:1px solid #cbd7c3;border-radius:8px;padding:12px;font:inherit;font-size:12px;line-height:1.8;resize:vertical}
+.supplement-panel .cowork-composer>.cowork-save{width:100%;margin-top:10px}
+.supplement-panel .cowork-message-actions button{background:none;border:0;cursor:pointer}

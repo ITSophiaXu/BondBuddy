@@ -1,0 +1,67 @@
+import { test,expect } from '@playwright/test';
+import { Pool } from 'pg';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { account,login,origin } from './live-helpers';
+
+test('manual recovery: two real browser accounts bind an original channel, issue a link and reset without leaking the token',async({page,browser,playwright})=>{
+  test.skip(process.env.BB_E2E_RECOVERY!=='1','Requires an isolated database with configured synthetic support; no real channel messages are sent.');
+  test.setTimeout(60_000);
+  const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL});
+  const operatorContext=await browser.newContext({baseURL:origin,ignoreHTTPSErrors:true});
+  const staleContext=await browser.newContext({baseURL:origin,ignoreHTTPSErrors:true});
+  const operator=await operatorContext.newPage(),stale=await staleContext.newPage();
+  try{
+    const user=await account(playwright),support=await account(playwright);
+    const owner=await pool.query('SELECT id FROM bb_users WHERE username=$1',[support.username]);
+    await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'account_recovery','synthetic-browser','synthetic_test')",[randomUUID(),owner.rows[0].id]);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));operator.on('pageerror',e=>errors.push(e.message));
+    await login(page,user);await login(stale,user);await login(operator,support);
+    await page.getByRole('link',{name:'账号设置',exact:true}).click();
+    await page.getByLabel('恢复联系方式',{exact:true}).fill('original-channel@example.test');
+    await page.getByLabel('验证当前密码',{exact:true}).fill(user.password);
+    await page.getByRole('button',{name:'申请绑定或更换',exact:true}).click();
+    const binding=await page.locator('#account-recovery code').innerText();
+    await operator.getByRole('link',{name:'账号设置',exact:true}).click();
+    await operator.getByLabel('绑定编号或工单号').fill(binding);
+    await operator.getByRole('button',{name:'读取记录',exact:true}).click();
+    await expect(operator.locator('#support-record')).toContainText('original-channel@example.test');
+    await operator.getByRole('button',{name:'生成绑定确认码',exact:true}).click();
+    const code=await operator.getByLabel('一次性确认码',{exact:true}).inputValue();
+    // Synthetic manual-channel delivery: copy the operator-generated code into the real user's form.
+    await page.getByLabel('客服发送的确认码').fill(code);await page.getByRole('button',{name:'确认绑定',exact:true}).click();
+    await expect(page.locator('#recovery-account-message')).toHaveText('恢复联系方式已确认。');
+    await page.reload();await expect(page.locator('#account-recovery')).toContainText('已绑定邮箱');
+    await expect(page.locator('#recovery-support')).toHaveCount(0);
+    await page.getByRole('button',{name:'退出',exact:true}).click();
+    await page.getByRole('link',{name:'忘记密码？联系客服找回',exact:true}).click();
+    await page.getByLabel('账号用户名').fill(user.username);await page.getByRole('button',{name:'获取找回工单号'}).click();
+    const ticket=await page.locator('#recovery-public-body code').innerText();
+    await operator.getByLabel('记录类型').selectOption('ticket');await operator.getByLabel('绑定编号或工单号').fill(ticket);
+    await operator.getByRole('button',{name:'读取记录',exact:true}).click();
+    await expect(operator.getByRole('button',{name:'签发或重新签发重置链接'})).toBeDisabled();
+    await operator.getByLabel('我已通过上面的原渠道联系本人，并确认本次工单。').check();
+    await operator.getByRole('button',{name:'签发或重新签发重置链接'}).click();
+    const url=await operator.getByLabel('一次性重置链接',{exact:true}).inputValue(),token=url.split('/').at(-1)!;
+    const requestUrls:string[]=[];page.on('request',r=>requestUrls.push(r.url()));
+    await page.goto(url);await expect(page).toHaveURL(`${origin}/#/reset`);
+    await expect(page.getByRole('heading',{name:'设置新密码',exact:true})).toBeVisible();
+    const newPassword=`Recovered-${randomUUID()}`;
+    await page.getByLabel('新密码',{exact:true}).fill(newPassword);await page.getByLabel('再次输入新密码',{exact:true}).fill(newPassword);
+    await page.getByRole('button',{name:'设置新密码并退出旧会话'}).click();
+    await expect(page.locator('#login-message')).toHaveText('密码已重置，请使用新密码重新登录。');
+    expect((await stale.request.get('/api/v1/me')).status()).toBe(401);
+    expect((await operator.request.get('/api/v1/me')).status()).toBe(200);
+    expect(requestUrls.some(url=>url.includes(token))).toBe(false);
+    expect(await page.evaluate(()=>JSON.stringify({local:{...localStorage},session:{...sessionStorage}}))).not.toContain(token);
+    await login(page,{...user,password:newPassword});await page.getByRole('link',{name:'账号设置',exact:true}).click();
+    await expect(page.locator('#account-recovery')).toContainText('已绑定邮箱');
+    await page.setViewportSize({width:1440,height:960});await page.screenshot({path:join(tmpdir(),'bondbuddy-issue9-desktop.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(tmpdir(),'bondbuddy-issue9-mobile.png'),fullPage:true});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    await operator.getByRole('button',{name:'读取记录',exact:true}).click();
+    await expect(operator.locator('#support-record')).toContainText('密码已重置，请通过原渠道通知用户重新登录。');
+  }finally{await operatorContext.close();await staleContext.close();await pool.end();}
+});

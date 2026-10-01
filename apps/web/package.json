@@ -1,0 +1,22 @@
+{
+  "name": "@bondbuddy/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "playwright test",
+    "test:unit": "tsc -p tsconfig.test.json && node --test dist-test/*.test.js"
+  },
+  "dependencies": {
+    "@bondbuddy/contracts": "0.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@sinclair/typebox": "^0.34.52",
+    "@types/node": "^22.18.6",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0"
+  }
+}

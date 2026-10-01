@@ -1,0 +1,17 @@
+.update-form .update-section + .update-section{border-top:1px solid var(--line);margin-top:28px;padding-top:24px}
+.update-form .update-section h2{margin-bottom:12px}.update-form .optional{font-size:12px;font-weight:400;color:var(--muted)}
+.update-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.update-field.full{grid-column:1/-1}
+.update-form .field-hint,.update-form small{font-size:12px;color:var(--muted);line-height:1.85}.update-form .field-hint{margin:10px 0 16px}
+.update-form label{display:block;font-size:13px;font-weight:500;margin:16px 0 9px}
+.update-form input,.update-form select,.update-form textarea{font:inherit;width:100%;min-width:0;border:1px solid #d5dece;border-radius:7px;background:white;padding:12px;color:var(--ink)}
+.update-form textarea{min-height:108px;resize:vertical;line-height:1.8;font-size:13px}.money-input{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:8px}
+.update-form .history-answer{display:flex;gap:16px}.update-form .history-choice{display:flex;align-items:center;gap:10px;border:1px solid var(--line);padding:12px 22px;border-radius:8px;cursor:pointer;margin:8px 0}
+.update-form .history-choice input{width:auto;min-height:0;accent-color:var(--green)}.funding-row,.target-period-row{border:1px solid var(--line);border-radius:9px;padding:16px;margin:16px 0}.funding-row h3,.target-period-row h3{font-size:14px}.target-period-row small{display:block;margin-top:7px}.target-period-row .text-button{margin-top:12px}.period-limit-note{display:block;margin-top:8px}
+.supplement-panel{position:sticky;top:24px}.supplement-panel ul{padding-left:20px;font-size:13px;line-height:2}
+.update-form .detail-layout{align-items:start}.update-form .form-panel{min-width:0}.update-form .context-panel{min-width:0}
+@media(max-width:1100px){.update-grid{grid-template-columns:1fr}}@media(max-width:900px){.supplement-panel{position:static}}
+.source-prospectus{min-width:0;margin:16px 0;border:1px solid var(--line);border-radius:8px;padding:16px;align-items:start}
+.source-prospectus legend{font-size:13px;font-weight:600;padding:0 6px}
+.source-prospectus label{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px;line-height:1.5}
+.source-prospectus input,.source-prospectus select{box-sizing:border-box;width:100%;min-width:0;min-height:40px;padding:8px;border:1px solid #d5dece;border-radius:6px;background:white;color:var(--ink);font:inherit}
+.source-prospectus small{grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.7}

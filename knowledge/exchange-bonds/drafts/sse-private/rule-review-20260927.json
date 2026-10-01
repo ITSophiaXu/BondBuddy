@@ -1,0 +1,998 @@
+{
+  "version": "2026.09.27-draft.6",
+  "baseline_as_of": "2026-09-26",
+  "authored_at": "2026-09-27T05:25:09Z",
+  "review_type": "documentary_analysis_not_professional_attestation",
+  "counts": {
+    "reviewed": 31,
+    "bounded_checks": 25,
+    "manual_handlers": 6,
+    "new_bounded_checks": 14
+  },
+  "rules": [
+    {
+      "rule_id": "sse-private-source-authority",
+      "handling": "bounded-research-check-v4",
+      "input": "sourceSelection",
+      "conclusion": "逐字段列举适用候选；完整可比候选一致才报告一致，冲突必须有选值与理由的真实审核记录。",
+      "acceptance": "同名不同口径不可选；候选冲突、选值不在候选、OCR候选未核、缺冲突理由均不能通过。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00093",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-period-window",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "自然年度普通私募两年及一期；章丘2022/2023年末、任丘2023/2024及2025中期分别检查，不删独立三年回溯。",
+      "acceptance": "普通自然年度两年及一期，年末不重复一期；章丘2022/2023目标与任丘中期分别回放；特殊窗口另审。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00440",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00453",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00183",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00186",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-evidence-state",
+      "handling": "bounded-research-check-v4",
+      "input": "evidenceUse",
+      "conclusion": "未核证事实不得宣称已确认，并须保留待确认标记；状态合规不等于事实真实。",
+      "acceptance": "user_asserted/conflicted/空值/无定位均保留needs_evidence；正确标缺口允许工作稿继续。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-identity",
+      "handling": "bounded-research-check-v4",
+      "input": "identityComparison",
+      "conclusion": "精确对照已审核主体ID、合并/母公司、币种单位和起止期间，差异不自动归一。",
+      "acceptance": "只改主体、期间、合并口径或单位任何一项都报差异；无效日期不能进入比较。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00093",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00094",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-private-investors",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "发行200/201人和转让后200/201人分别核；补充穿透、分类和例外依据。",
+      "acceptance": "发行200/201人与转让后200/201人分别比较，不相加；穿透与适当性例外另审。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "csrc-measures-2023",
+          "locator": "PAGE011",
+          "sha256": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a"
+        },
+        {
+          "document_id": "csrc-measures-2023",
+          "locator": "PAGE012",
+          "sha256": "dff66f911d5d57e7371a606309d2bef9a2ce254a8736a906cbe475929ebeb11a"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00011",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00025",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-financial-validity-sse",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "6个月、获准至多1个月延期与到期新申报分别处理；已申请不等于同意。",
+      "acceptance": "六个日历月、月末/闰日、最多一月实际获准延期；新申报不得沿用在审延期；封卷20日及批准凭证另核。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00445",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00446",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00447",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00452",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-current-terms",
+      "handling": "bounded-research-check-v4",
+      "input": "currentTerm",
+      "conclusion": "逐品种及条款发生位置对照本期标准值；发行批文及法律措辞不得从旧稿推定不变。",
+      "acceptance": "单项规模/机构跨章不一致报差异；私募写公募注册报问题；缺本期条款留待确认。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00022",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00038",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00018",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-funds-use-evidence",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "偿债、补流、项目、股权、基金等组合用途逐项取证；缺许可证不编造取得事实。",
+      "acceptance": "各用途分项精确加总，币种/单位/总净额与完整清单先核；缺许可等标缺口，生产性支出简化另审。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00009",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00010",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00011",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00014",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00018",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-private-use-change",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "限定偿债不能由持有人决议豁免；私募不机械套公募跨类别会议要求。",
+      "acceptance": "限定偿债不可由会议豁免；私募的未约定/重大影响与公募跨用途额外要求分开。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00458",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00459",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00028",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00029",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00030",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00031",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00032",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00033",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-funds-simulation",
+      "handling": "bounded-research-check-v4",
+      "input": "fundsSimulation / previousProceeds",
+      "conclusion": "简化模拟显式记录到账/现金偿债/费用处理，精确核资产负债权益；费用计入损益或抵减债务账面金额须先获口径证据，不自行选择。前次资金另核总额、余额、完整披露及未整改。",
+      "acceptance": "小数和大数精确复算；错误费用处理/金额、无假设、复杂现金流转判断；前次未整改报问题；无前次须有依据。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00035",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00036",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00037",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00038",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00039",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00040",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00041",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-issuer-governance",
+      "handling": "manual-evidence-handler-v4",
+      "input": "governanceReview",
+      "conclusion": "已有3.6.2/4/5/6/9可支持披露；完整控制链/任职/重组判断须对应现行上位法与专业结论，本轮不作资格判定。",
+      "acceptance": "空事件清单需核证；不以持股50%推出重大重组；公司法/重组依据或判断缺失均留缺口，即使全有仍needs_judgement。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00171",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00175",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00177",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00178",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00179",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00186",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00187",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-business-revenue",
+      "handling": "bounded-research-check-v4",
+      "input": "businessSegment",
+      "conclusion": "收入减成本核毛利并按最终精度算毛利率；收入或毛利占比达到10%触发经营披露，保留重大风险和三年经营模式。",
+      "acceptance": "恰10%及毛利单独达线触发；零负分母不硬算；超过前三个的重要板块仍需披露；分类改名/重述先核可比。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00181",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00182",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00183",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00184",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-audit-opinion",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "强调事项及保留意见需有权机构说明/会计师补充/偿债影响；保留事项是否消除需会计师核查。",
+      "acceptance": "中期未审计不得称审计；强调/保留所需实际说明与会计师补充；否定/无法表示意见不自动放行。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00198",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-financial-statements",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "编合并报表时同时披露母公司三表；重述保留原数；新设子公司例外不免全部披露。",
+      "acceptance": "合并/母公司三表按单期核；重述不覆盖原数；合并范围变化及新设例外分别核；附注/备考另审。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00195",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00196",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00199",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00202",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00443",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-indicators",
+      "handling": "bounded-research-check-v4",
+      "input": "indicator",
+      "conclusion": "按已审核指标定义、分子分母、单位/期间与显示精度复算；3.7.2第二段属于普通投资者公募附加表。",
+      "acceptance": "比例/百分数分开，零负分母转判断，不用浮点或强套大公募指标；错误舍入报问题。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00200",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00201",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-mdna-thresholds",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "10%和30%均含边界、增减均算；零/负基数不机械比较，低占比重大风险仍需说明。",
+      "acceptance": "10%/30%含边界及增减；零负基数和不可比不机械算；低占比重大风险仍保留。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00203",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00204",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-cause-evidence",
+      "handling": "bounded-research-check-v4",
+      "input": "causeStatement",
+      "conclusion": "逐原因句绑定业务材料和已核因果联系；计算差额、模型推测仅作待确认解释。",
+      "acceptance": "计算正确但没有业务原因仍不得作为确定性因果披露；缺标记报问题。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00203",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00024",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-debt-liquidity",
+      "handling": "bounded-research-check-v4",
+      "input": "debtReconciliation / creditFacility",
+      "conclusion": "全口径债务=报表债务+解释清楚的调整，完整不重叠期限合计一致；普通授信同一时点总额=已用+剩余。",
+      "acceptance": "期限漏项、调整差异未说明、金额不合均提示；共享/循环/附条件额度不机械算可用承诺；未知集合不作空表。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00205",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00217",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00218",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00219",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-related-contingent",
+      "handling": "manual-evidence-handler-v4",
+      "input": "contingentReview",
+      "conclusion": "五类材料和公开信息核验分别保留未查、无命中、已核不存在、已发现；覆盖至签署日，不将无命中等同无事项。",
+      "acceptance": "未查/无命中却写不存在报问题；已发现仍写无报问题；缺类/过早截止/缺评估不能形成全量通过。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00206",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00207",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00208",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-rating-enhancement",
+      "handling": "bounded-research-check-v4",
+      "input": "ratingEnhancement",
+      "conclusion": "有评级才核本期评级报告及结论；有增信才核合同条款。无评级/增信需要事实依据，不自动新增安排。",
+      "acceptance": "确无评级不报违规；缺报告/合同、结论变化未回写须提示；保证人资料与效力仍人工核。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00210",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00212",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00222",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00225",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00231",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-protection",
+      "handling": "bounded-research-check-v4",
+      "input": "protectionTerms",
+      "conclusion": "本期受托协议、会议规则为基本核对；逐条对照契约，使用参考示例作承诺需真实约定。",
+      "acceptance": "无实际约定不得套入示例；会议/受托/增信/募集书差异报问题；协会配套未核不声称全量覆盖。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-protection-2021",
+          "locator": "NOTICE",
+          "sha256": "db4b4d36d7ba3a34b515348f6ac741b960923c6eb240a1f0c6422265e93fbbce"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00127",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00128",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00143",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00144",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00145",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00146",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00147",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00148",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00462",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-risk-disclosure",
+      "handling": "bounded-research-check-v4",
+      "input": "riskUpdate",
+      "conclusion": "金额/事件逐处与已核事实一致；删除历史风险须有依据，充分性由人工判断。",
+      "acceptance": "正文已改风险未改报差异；没有依据的风险删除报缺口；数值通过仍保留措辞判断。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00089",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00090",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00109",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00028",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-sse-focus-2025",
+      "handling": "manual-evidence-handler-v4",
+      "input": "focusReview",
+      "conclusion": "2025现行观察版本支持重点披露/用途/方案审慎要求；城建、房地产、集团及量化情形可同时存在，不以单一行业排除其他触发。",
+      "acceptance": "未完整排查提示缺口；多项触发不丢失；把审慎要求全写成禁发报问题；数值条件及例外未自动验收。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00030",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00052",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00095",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00096",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00097",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00098",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00099",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00100",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        },
+        {
+          "document_id": "sse-focus-2025",
+          "locator": "P00101",
+          "sha256": "94df576a881b9270336a4ae068287ff7a53b2051ba8ae219b9bf2c90edf2bba5"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-special-overlays-sse",
+      "handling": "manual-evidence-handler-v4",
+      "input": "specialReview",
+      "conclusion": "普通私募不兜底专项债。2026专项原件存在不等于本切片已完成官方效力、专业审核和增量实现。",
+      "acceptance": "未知不当无；完整核查为空才not_applicable；有专项却只用普通包报问题，有增量引用仍须判断。",
+      "professional_approval": null,
+      "source_refs": []
+    },
+    {
+      "rule_id": "sse-private-document-delivery",
+      "handling": "bounded-research-check-v4",
+      "input": "delivery",
+      "conclusion": "以本稿已审核披露清单核完整性，豁免需理由；有历史修改检查真实修订，有待确认批注检查批注；WPS由生成后记录证明。",
+      "acceptance": "空清单不能通过；非16节不误报；私募不硬要求摘要；无修订/批注报问题；XML检查不替代WPS。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00089",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00096",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00440",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00441",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00442",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-private-negative-list",
+      "handling": "manual-evidence-handler-v4",
+      "input": "negativeListReview",
+      "conclusion": "可确定私募不套公募财务指标门槛，并核并行/前次同品种未募足；不能据此确认全部准入。",
+      "acceptance": "并行同品种或前次未募足报问题；公募利润门槛误用于私募报问题；当前清单及发行人逐项审核缺失不能通过。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00455",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00456",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-idle-proceeds-2026",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "临时补流与最终补流区分；12个月和付款节点孰早，边界日前语义及原则禁止保留判断。",
+      "acceptance": "明确条款/机制/内部程序，12个月与付款节点孰早；边界日前语义、原则限制另审。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00023",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00024",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00025",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        },
+        {
+          "document_id": "sse-proceeds-2026",
+          "locator": "P00026",
+          "sha256": "bfb051e1a6713142a3c3abc72da09cd0fbffe8f7699e79e009d4e91f2ed304b1"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-continuing-disclosure",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "年后4个月内经审计财报、半年后2个月内中报；约定完整不证明实际已披露。",
+      "acceptance": "年度四月/中期两月约定分别核；月末不减一天；约定通过不代表已披露。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-application-2023",
+          "locator": "P00461",
+          "sha256": "6bf7d31162d7c9fcdc42ca1bf8372d8f527394ceb6e7c7e8300fd9172f2ee1dc"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00009",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        },
+        {
+          "document_id": "sse-disclosure-2023",
+          "locator": "P00023",
+          "sha256": "9767ec5214a10ce02dc9e505b5c6ddfb56969b9bfbd13c4c62b78035c7e06ad5"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-disclosure-officer-2026",
+      "handling": "bounded-research-check-v4",
+      "input": "existing-v2-v3-input",
+      "conclusion": "2025-12-26发布但2026-05-01生效；未变更可不重签，但要既有有效承诺。",
+      "acceptance": "生效日2026-05-01不是发布日期；未变更且有效承诺无需重签；任职禁止及签署须真实证据。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00007",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00008",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00009",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00010",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00011",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00012",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00013",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00014",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00015",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00016",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00017",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        },
+        {
+          "document_id": "sse-officer-2025",
+          "locator": "P00018",
+          "sha256": "8919c2f83534a6895bea12008a40c24413cdb217cb5e27019e390d22c80997b6"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-optimized-review-version",
+      "handling": "manual-evidence-handler-v4",
+      "input": "optimizedReview",
+      "conclusion": "2026-09-04版替代2023版已由公告及第14条支持；普通包不确定知名成熟资格及豁免。",
+      "acceptance": "未核是否采用须缺证；确未采用才not_applicable；采用旧版报问题，当前版也须独立资格审核。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-mature-2026",
+          "locator": "P00010",
+          "sha256": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163"
+        },
+        {
+          "document_id": "sse-mature-2026",
+          "locator": "P00054",
+          "sha256": "614fb23197d00220091c104b7f32b7b472013a9763a6bd6eeb3743ad878cb163"
+        }
+      ]
+    },
+    {
+      "rule_id": "sse-private-trustee-continuing-duties",
+      "handling": "bounded-research-check-v4",
+      "input": "trusteeStatement",
+      "conclusion": "约定安排绑定受托协议，已履职说法绑定实际履职记录；逐项对照募集书职责。",
+      "acceptance": "仅有指南示例不得写已履职；协议安排不能证明已经实施；全存续期核验仍人工。",
+      "professional_approval": null,
+      "source_refs": [
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00005",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00007",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00012",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-trustee-2025",
+          "locator": "P00013",
+          "sha256": "2f7bf77872b9018607771b063f4e80ccb02eda0a437a6c2c722a8fb3a0930166"
+        },
+        {
+          "document_id": "sse-private-listing-2023",
+          "locator": "P00128",
+          "sha256": "2b5a4bc34c2fe40a9545bcee8e2dee3327ed2e55d09718926d083d97411e4253"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+.artifact-page { margin-bottom: 20px; padding: 24px; overflow-wrap: anywhere; }
+.artifact-page h2 { margin: 0 0 12px; }
+.artifact-page h3 { margin: 0 0 8px; }
+.artifact-review { margin-top: 20px; padding: 18px; background: var(--paper, #faf8f1); border-radius: 12px; }
+.artifact-review ul { margin-bottom: 0; padding-left: 22px; }
+.artifact-review li + li { margin-top: 16px; }
+.artifact-review li p { margin-bottom: 4px; white-space: pre-wrap; }
+.artifact-files { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.artifact-file { border: 1px solid var(--line, #e3e6df); border-radius: 12px; padding: 20px; }
+.artifact-file p { line-height: 1.7; }
+.artifact-download-status { font-size: 13px; margin-bottom: 0; }
+.artifact-provenance { display: grid; grid-template-columns: minmax(100px, 180px) minmax(0, 1fr); gap: 12px; }
+.artifact-provenance dt { color: var(--muted, #647067); }
+.artifact-provenance dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .artifact-files { grid-template-columns: 1fr; }
+  .artifact-provenance { grid-template-columns: 1fr; gap: 6px; }
+  .artifact-provenance dd { margin-bottom: 12px; }
+}

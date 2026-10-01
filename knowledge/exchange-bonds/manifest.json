@@ -1,0 +1,68 @@
+{
+  "version": "2026.09.27-draft.6",
+  "sources": 36,
+  "occurrences": 40,
+  "official_evidence_catalog": "verification/2026-09-26/catalog.json",
+  "scopes": [
+    {
+      "scope": "sse-private",
+      "issue": 20,
+      "version": "2026.09.27-draft.6",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 31,
+      "chapters": 17,
+      "path": "drafts/sse-private"
+    },
+    {
+      "scope": "sse-public",
+      "issue": 21,
+      "version": "2026.09.26-draft.2",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 27,
+      "chapters": 17,
+      "path": "drafts/sse-public"
+    },
+    {
+      "scope": "sse-public_all",
+      "issue": 22,
+      "version": "2026.09.26-draft.2",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 28,
+      "chapters": 17,
+      "path": "drafts/sse-public_all"
+    },
+    {
+      "scope": "szse-private",
+      "issue": 23,
+      "version": "2026.09.26-draft.2",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 28,
+      "chapters": 14,
+      "path": "drafts/szse-private"
+    },
+    {
+      "scope": "szse-public",
+      "issue": 24,
+      "version": "2026.09.26-draft.2",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 30,
+      "chapters": 14,
+      "path": "drafts/szse-public"
+    },
+    {
+      "scope": "szse-public_all",
+      "issue": 25,
+      "version": "2026.09.26-draft.2",
+      "status": "draft",
+      "production_ready": false,
+      "rules": 31,
+      "chapters": 14,
+      "path": "drafts/szse-public_all"
+    }
+  ]
+}

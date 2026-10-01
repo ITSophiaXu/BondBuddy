@@ -1,0 +1,266 @@
+{
+  "schema_version": "chapter-template-v1",
+  "template_id": "nafmii-ppn-chapters",
+  "version": "2026.09.27-draft.1",
+  "rule_pack_id": "nafmii-ppn",
+  "market": "nafmii",
+  "offering": "ppn",
+  "document_stages": [
+    "registration",
+    "issuance"
+  ],
+  "chapters": [
+    {
+      "chapter_id": "dm-0",
+      "title": "声明与承诺、目录",
+      "form_refs": [
+        "DM-0"
+      ],
+      "source_ref_ids": [
+        "na042-p00396-af3096a1"
+      ],
+      "required_fields": [
+        "issuer",
+        "registration_status",
+        "responsibility",
+        "risk_prompts"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-1",
+      "title": "第一章 释义",
+      "form_refs": [
+        "DM-1"
+      ],
+      "source_ref_ids": [
+        "na042-p00468-f2fbbb1d"
+      ],
+      "required_fields": [
+        "defined_terms"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-2",
+      "title": "第二章 风险提示及说明",
+      "form_refs": [
+        "DM-2"
+      ],
+      "source_ref_ids": [
+        "na042-p00476-4258f823"
+      ],
+      "required_fields": [
+        "risks",
+        "risk_evidence"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-3",
+      "title": "第三章 发行条款",
+      "form_refs": [
+        "DM-3"
+      ],
+      "source_ref_ids": [
+        "na042-p00512-9751b631"
+      ],
+      "required_fields": [
+        "issue_amount",
+        "tenor",
+        "pricing",
+        "investor_scope"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-4",
+      "title": "第四章 募集资金运用",
+      "form_refs": [
+        "DM-4"
+      ],
+      "source_ref_ids": [
+        "na042-p00543-b0124773"
+      ],
+      "required_fields": [
+        "funds_use_items",
+        "project_approvals"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-5",
+      "title": "第五章 企业基本情况",
+      "form_refs": [
+        "DM-5"
+      ],
+      "source_ref_ids": [
+        "na042-p00557-d83023b4"
+      ],
+      "required_fields": [
+        "business_segments",
+        "ownership",
+        "consolidation_basis"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-6",
+      "title": "第六章 企业主要财务状况",
+      "form_refs": [
+        "DM-6"
+      ],
+      "source_ref_ids": [
+        "na042-p00625-60c98bbe"
+      ],
+      "required_fields": [
+        "financial_periods",
+        "consolidated_and_parent_sources",
+        "financial_analysis"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-7",
+      "title": "第七章 企业资信状况",
+      "form_refs": [
+        "DM-7"
+      ],
+      "source_ref_ids": [
+        "na042-p00665-4dccba32"
+      ],
+      "required_fields": [
+        "credit_history",
+        "bank_facilities"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-8",
+      "title": "第八章 债务融资工具信用增进（如有）",
+      "form_refs": [
+        "DM-8"
+      ],
+      "source_ref_ids": [
+        "na042-p00686-923dcaa9"
+      ],
+      "required_fields": [
+        "credit_enhancement"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-9",
+      "title": "第九章 主动债务管理（如有）",
+      "form_refs": [
+        "DM-9"
+      ],
+      "source_ref_ids": [
+        "na042-p00694-1bcd9b7f"
+      ],
+      "required_fields": [
+        "debt_management"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-10",
+      "title": "第十章 定向信息披露安排",
+      "form_refs": [
+        "DM-10"
+      ],
+      "source_ref_ids": [
+        "na042-p00706-b01a82df"
+      ],
+      "required_fields": [
+        "directional_disclosure_arrangements"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-11",
+      "title": "第十一章 持有人会议机制",
+      "form_refs": [
+        "DM-11"
+      ],
+      "source_ref_ids": [
+        "na042-p00722-57db90b0"
+      ],
+      "required_fields": [
+        "holder_meeting"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-12",
+      "title": "第十二章 受托管理人机制",
+      "form_refs": [
+        "DM-12"
+      ],
+      "source_ref_ids": [
+        "na042-p00750-0592eb28"
+      ],
+      "required_fields": [
+        "trustee",
+        "trust_agreement"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-13",
+      "title": "第十三章 投资人保护条款（如有）",
+      "form_refs": [
+        "DM-13"
+      ],
+      "source_ref_ids": [
+        "na042-p00766-087545d6"
+      ],
+      "required_fields": [
+        "investor_protection_terms"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-14",
+      "title": "第十四章 违约、风险情形及处置",
+      "form_refs": [
+        "DM-14"
+      ],
+      "source_ref_ids": [
+        "na042-p00782-acf15499"
+      ],
+      "required_fields": [
+        "default_and_resolution"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-15",
+      "title": "第十五章 发行有关机构",
+      "form_refs": [
+        "DM-15"
+      ],
+      "source_ref_ids": [
+        "na042-p00826-c015461a"
+      ],
+      "required_fields": [
+        "institutions"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    },
+    {
+      "chapter_id": "dm-16",
+      "title": "第十六章 备查文件",
+      "form_refs": [
+        "DM-16"
+      ],
+      "source_ref_ids": [
+        "na042-p00874-87737dc3"
+      ],
+      "required_fields": [
+        "references"
+      ],
+      "applicability": "DM路径注册/首期；后续BDM/协议DX路径另按条文，不自动裁剪；如有章节按实际事实。"
+    }
+  ]
+}

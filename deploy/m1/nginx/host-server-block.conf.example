@@ -1,0 +1,32 @@
+# Host nginx server block for the M1 stack on a shared host (e.g. openclaw-vm, where host nginx
+# already owns 80/443). Put in /etc/nginx/sites-available/bondbuddy-m1 and symlink to sites-enabled.
+# The stack must be mounted at the ROOT of its own hostname: the SPA loads /assets/*, calls
+# /api/v1/*, and sets Path=/ Secure cookies, so a path prefix under another app's hostname
+# (e.g. /bondbuddy/ on bonddraftai-openclaw...) is not supported and would share its cookie jar.
+# Replace BB_HOSTNAME and BB_HTTP_PORT (the value from deploy/m1/.env, 127.0.0.1 only).
+server {
+  listen 80;
+  listen [::]:80;
+  server_name BB_HOSTNAME;
+  location /.well-known/acme-challenge/ { root /var/www/html; }
+  location / { return 301 https://$host$request_uri; }
+}
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name BB_HOSTNAME;
+  ssl_certificate     /etc/letsencrypt/live/BB_HOSTNAME/fullchain.pem;   # certbot --nginx -d BB_HOSTNAME
+  ssl_certificate_key /etc/letsencrypt/live/BB_HOSTNAME/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  client_max_body_size 101m;
+  location / {
+    proxy_pass http://127.0.0.1:BB_HTTP_PORT;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_request_buffering off;
+    proxy_read_timeout 300s;
+  }
+}

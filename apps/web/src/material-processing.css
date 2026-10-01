@@ -1,0 +1,8 @@
+.material-processing{margin-top:6px;overflow-wrap:anywhere}
+.material-role-list{align-items:start}.material-role:only-child{grid-column:1 / -1}
+.processing-title{font-size:12px;font-weight:600;color:var(--muted)}
+.material-processing[data-tone="ready"] .processing-title{color:var(--green)}
+.material-processing[data-tone="attention"] .processing-title{color:#786024}
+.material-processing[data-tone="error"] .processing-title{color:#923e29}
+.processing-hint{font-size:11px;color:var(--muted);line-height:1.7}
+.material-processing>.text-button{font-size:12px;padding:6px 0;min-height:36px}

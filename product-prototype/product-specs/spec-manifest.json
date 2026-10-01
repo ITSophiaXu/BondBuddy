@@ -1,14 +1,14 @@
 {
-  "spec_version": "1.2",
+  "spec_version": "1.4",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-22T13:28:52.187Z",
+  "assembled_at": "2026-10-01T05:56:34.374Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
     {
       "file": "00-产品边界与需求决策.md",
       "title": "00 产品边界与需求决策",
-      "sha256": "0dc9fe525f7ee74fb02ab7e5770ee7da37a55690d83f748f80acf5eafe2074cd"
+      "sha256": "66d04034b7a584de61b7723bfd5adbe04bd0c49fd9a637afa3068905946d8ab3"
     },
     {
       "file": "01-Windows客户端与运行架构.md",
@@ -18,7 +18,7 @@
     {
       "file": "02-注册登录与账号.md",
       "title": "02 注册登录与账号",
-      "sha256": "bfcb6bf5c73a69441e32c5c5a17507f4d82569a621b72d9b9d587901a8eabab9"
+      "sha256": "53f0e7dc74c64d626703d40c83d44254aa3e6732c0a71db8ff309860a91bdd49"
     },
     {
       "file": "03-首页与项目管理.md",
@@ -28,12 +28,12 @@
     {
       "file": "04-材料导入与证据处理.md",
       "title": "04 材料导入与证据处理",
-      "sha256": "de0e56950fc9b8d737296ed504068373fea570fb8f6d10e0721fa05389405d00"
+      "sha256": "3de494c4918f0fc08546785021f6e919246fabb97da23bf3f4a0e2ff83eccbaf"
     },
     {
       "file": "05-更新募集书.md",
-      "title": "05 更新募集书",
-      "sha256": "d786defb039b013c1d6cafdfb12077a86c56a33db6010b6354d530ac8119e3f0"
+      "title": "05 募集书编制与更新",
+      "sha256": "e7164a1aed29f674729b6648bc1211f1caa49fae7faebc1043895e135c277780"
     },
     {
       "file": "06-复核募集书.md",
@@ -73,84 +73,84 @@
     {
       "file": "13-QA与项目对话.md",
       "title": "13 QA 问答与项目对话",
-      "sha256": "2297cd38d2deeeafa8ec21ae8013b30ad5be97b3de96771b6000c774ca7b5162"
+      "sha256": "c170381a28650b9a555b39f1c83487ffbe57ecb015d1e9c37358d7334ff278e7"
     },
     {
       "file": "14-积分充值与结算.md",
       "title": "14 积分充值与结算",
-      "sha256": "541e8d53cb48bf4e6dca9364a057c7878dd3d8b1b9e5f1ca2f6c625ea5c779f0"
+      "sha256": "f1f16177946d0c403cf111420e3c2caf93ec48ddcdfdaa65cc34e42781bb9d25"
     },
     {
       "file": "15-后台规则模板及数据接入.md",
       "title": "15 后台规则、模板及数据接入",
-      "sha256": "8522649b1f4b4b6a58d533ae1572fe129d6a03db041164c4ca2b33a956738e9d"
+      "sha256": "691445f6be71de82d00c04469bc474ac64a8a552cbe6a2e92a112681a85f89cb"
     },
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "954906c01f93cdd9da9ce002d7bdd87abce19c8591f2fbffb31e87a4233e5d8b"
+      "sha256": "91f84683a10234230dc0465bdc31ababd77001f1e26de53302bb16b8b2a722d8"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "4d50853e76d51037000a7ff403d9e23a93cdde5a795d6a4499aff75b314688df"
+      "sha256": "bc42d99ce2ccd83ee0de85c2e4e6b9cc8a366b7c625e26730ef1bc176a8a5bb0"
     },
     {
       "file": "18-当前实现与来源索引.md",
       "title": "18 当前实现与来源索引",
-      "sha256": "a1e2618e83a9a56f784ca62cb034c07a99a2784ba2d9347890cae5e7f8d11ac0"
+      "sha256": "ff2e52d0e1423548c4a8da31bfd9737dc357fc6038196953f281733bb61dac4f"
     }
   ],
   "sources": [
     {
       "relative_path": "product-prototype/product-specs/references/BondBuddy详细积分方案-v1.1-来源快照.md",
       "sha256": "76ff33f66847742d330189708ebca104d5e55e958f0546795a5ce33a56482066",
-      "observed_mtime": "2026-09-22T06:50:40.168Z"
+      "observed_mtime": "2026-09-30T04:36:42.304Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/积分参数-v1.1-来源快照.json",
       "sha256": "db50cd1335c5dd6112e661e514ae25c31b5af84a94edf6e22e4768308123b787",
-      "observed_mtime": "2026-09-22T06:50:40.173Z"
+      "observed_mtime": "2026-09-30T04:36:42.306Z"
     },
     {
       "relative_path": "product-prototype/product-specs/references/本地规格来源指纹-v1.1.json",
       "sha256": "51b69c0545b1b9ce4a2ea7687827a9ce20a36587998df65c5d0458977c4b3d01",
-      "observed_mtime": "2026-09-22T06:50:40.170Z"
+      "observed_mtime": "2026-09-30T04:36:42.305Z"
     },
     {
       "relative_path": "product-prototype/package.json",
       "sha256": "979fe857fe0cf376f5acf182b52747b21c6e1a7989e2dff310a9d4ea7340635c",
-      "observed_mtime": "2026-09-22T06:15:00.336Z"
+      "observed_mtime": "2026-09-30T04:36:42.208Z"
     },
     {
       "relative_path": "product-prototype/server.mjs",
       "sha256": "be63308d49de645458491314aa3b98f380041acb88edda668f48c79371a25a50",
-      "observed_mtime": "2026-09-22T06:10:56.169Z"
+      "observed_mtime": "2026-09-30T04:36:42.358Z"
     },
     {
       "relative_path": "product-prototype/docs/PROJECT-WORKSPACE.md",
       "sha256": "5a50f4c1bade760d6d44b5613695073c24bb724ace804b231e971bb67f391463",
-      "observed_mtime": "2026-09-22T06:16:08.437Z"
+      "observed_mtime": "2026-09-30T04:36:42.135Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-pricing.mjs",
-      "sha256": "74e0522fb7bfc32e3f69531b33294355b629ccf57d7e319382b824981e2c9d58",
-      "observed_mtime": "2026-09-22T06:10:02.753Z"
+      "sha256": "f52ed2bbde736786f9953e494bbf645de90d7c88b9c0805f45cfae767ac5bc9b",
+      "observed_mtime": "2026-09-30T04:36:42.194Z"
     },
     {
       "relative_path": "product-prototype/public/markets.js",
-      "sha256": "3fca04f84b188ae2f72964d82a0d9761e82e31ccb8955afac2df3b05560ffbed",
-      "observed_mtime": "2026-09-21T07:27:35.872Z"
+      "sha256": "3e59b309472e0c6707b539988ff27b5468abd05b4ceb5787bc20a848f77479a9",
+      "observed_mtime": "2026-09-30T04:36:42.319Z"
     },
     {
       "relative_path": "product-prototype/lib/credit-wallet.mjs",
-      "sha256": "140dea632a64f20c15746ee4ec087b4d8cf81bb63b45533eef7f5e59743f7080",
-      "observed_mtime": "2026-09-22T06:14:53.122Z"
+      "sha256": "4e6cd1564665476ae5a175a7cf10855abb7a8f561b9fc2613ff938d4b8561b21",
+      "observed_mtime": "2026-09-30T04:36:42.196Z"
     },
     {
       "relative_path": "product-prototype/public/credit-account.js",
-      "sha256": "293745ecddacd57ae3e9969bb00fde6c65114a92e6cc5f2ef7cfc8fc98010499",
-      "observed_mtime": "2026-09-22T06:32:26.827Z"
+      "sha256": "b4ddbe0736d40e81a6b1b39c3035f4d5b2c0056bfb37cd770eb5cf93fa4b7d66",
+      "observed_mtime": "2026-09-30T04:36:42.312Z"
     }
   ],
   "acceptance_ids": [
@@ -199,6 +199,12 @@
     "UPD-A16",
     "UPD-A17",
     "UPD-A18",
+    "UPD-A19",
+    "UPD-A20",
+    "UPD-A21",
+    "UPD-A22",
+    "UPD-A23",
+    "UPD-A24",
     "REV-A01",
     "REV-A02",
     "REV-A03",
@@ -262,11 +268,13 @@
     "BILL-A08",
     "BILL-A09",
     "BILL-A10",
+    "RULE-A03",
     "DATA-A01",
     "DATA-A02",
     "DATA-A03",
     "DATA-A04",
     "LIB-A01",
+    "LIB-A08",
     "LIB-A02",
     "LIB-A03",
     "LIB-A04",
@@ -274,6 +282,12 @@
     "LIB-A06",
     "LIB-A07",
     "RULE-A01",
+    "RULE-A02",
+    "RULE-A04",
+    "RULE-A05",
+    "RULE-A06",
+    "RULE-A07",
+    "RULE-A08",
     "LOG-A01",
     "LOG-A02",
     "LOG-A03",
@@ -284,6 +298,9 @@
     "LOG-A08",
     "LOG-A09",
     "LOG-A10",
+    "UX-A01",
+    "UX-A02",
+    "UX-A03",
     "E2E-01",
     "E2E-02",
     "E2E-03",
@@ -322,6 +339,8 @@
     "E2E-36",
     "E2E-37",
     "E2E-38",
+    "E2E-46",
+    "E2E-47",
     "E2E-39",
     "E2E-40",
     "E2E-41",
@@ -332,9 +351,9 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 55014,
-    "local_links_checked": 114,
-    "tables_checked": 129,
+    "han_characters": 74999,
+    "local_links_checked": 243,
+    "tables_checked": 131,
     "json_examples_checked": 4,
     "errors": []
   },

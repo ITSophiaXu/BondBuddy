@@ -1,0 +1,68 @@
+{
+  "schema_version": "rule-pack-v1",
+  "pack_id": "synthetic-sse-public-all",
+  "version": "synthetic-1",
+  "supersedes_version": null,
+  "status": "draft",
+  "scope": {
+    "market": "sse",
+    "offering": "public_all",
+    "instruments": [],
+    "document_stages": ["registration"],
+    "issuer_scopes": ["synthetic_issuer"]
+  },
+  "validity": {
+    "published_on": null,
+    "effective_from": "2026-01-01",
+    "effective_to": null,
+    "transition_terms": []
+  },
+  "sources": [{
+    "source_id": "synthetic-lead",
+    "kind": "unverified_lead",
+    "authority": "合成测试来源",
+    "document_title": "合成测试文档，不代表法规",
+    "source_version": "synthetic-1",
+    "official_url": null,
+    "document_hash": null,
+    "clause_locator": "synthetic-only",
+    "exact_quote": "仅用于验证 schema；不得用于专业判断或生产发布。",
+    "published_on": null,
+    "effective_from": null,
+    "effective_to": null,
+    "verified_by": null,
+    "verified_at": null
+  }],
+  "rules": [{
+    "rule_id": "synthetic-research-rule",
+    "version": "synthetic-1",
+    "title": "合成研究规则",
+    "enabled": false,
+    "enforcement": "research_only",
+    "source_ref_ids": ["synthetic-lead"],
+    "applicability": {"document_stages":["registration"],"issuer_scopes":[],"investor_scopes":[],"industries":[],"special_features":[]},
+    "required_inputs": [],
+    "checker": {"checker_id":"synthetic-checker","checker_version":"1","parameter_version":"1"},
+    "exceptions": [],
+    "evidence_requirements": [],
+    "outputs": {"when_met":"needs_judgement","when_not_met":"needs_judgement","severity":"info"},
+    "boundaries": ["仅用于 schema 测试，不表示覆盖任何产品。"],
+    "positive_examples": [{"example_id":"synthetic-positive","summary":"合成正例","expected_outcome":"needs_evidence","evidence_ref":"synthetic"}],
+    "negative_examples": [{"example_id":"synthetic-negative","summary":"合成反例","expected_outcome":"needs_evidence","evidence_ref":"synthetic"}],
+    "boundary_examples": [{"example_id":"synthetic-boundary","summary":"合成边界","expected_outcome":"needs_evidence","evidence_ref":"synthetic"}],
+    "owner_role": "industry_reviewer"
+  }],
+  "sample_suite": {
+    "suite_id": "synthetic-suite",
+    "version": "1",
+    "data_classification": "synthetic",
+    "cases": [
+      {"case_id":"synthetic-case-positive","polarity":"positive","evidence_ref":"synthetic","result":"passed","reviewed_by":"synthetic-reviewer","reviewed_at":"2026-09-24T00:00:00Z"},
+      {"case_id":"synthetic-case-negative","polarity":"negative","evidence_ref":"synthetic","result":"passed","reviewed_by":"synthetic-reviewer","reviewed_at":"2026-09-24T00:00:00Z"},
+      {"case_id":"synthetic-case-boundary","polarity":"boundary","evidence_ref":"synthetic","result":"passed","reviewed_by":"synthetic-reviewer","reviewed_at":"2026-09-24T00:00:00Z"}
+    ]
+  },
+  "reviews": [],
+  "release": null,
+  "withdrawal": null
+}
