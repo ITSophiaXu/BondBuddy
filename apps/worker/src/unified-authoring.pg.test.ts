@@ -91,7 +91,7 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
             options.name.includes('outline')?{chapters:['合成财务会计信息']}:
             options.name.includes('draft_')?{blocks:[{kind:'heading',text:'合成财务会计信息',rows:[],evidence:['target'],pending:[]},
               {kind:'paragraph',text:'合成目标发行人2025年净资产120万元。',rows:[],evidence:['target'],pending:[]}],summary:['合成编制'] }:
-              {reviewed:data.records.map((r:any)=>r.id),edits:[{record_id:data.records[0].id,after:`合成目标发行人2025年净资产120万元，第${ctx.run.input_revision}轮。`,evidence:['target'],pending:[]}],summary:['合成更新']};
+              {reviewed:data.records.map((r:any)=>r.id),edits:[{record_id:data.records[0].id,after:`合成目标发行人2025年净资产120万元，第${ctx.run.input_revision}轮。`,evidence:['target'],pending:[]}],additions:[],summary:['合成更新']};
           assert.ok(options.validate(value));return {kind:'done',value};
         }})});
         const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,unifiedWordDeliveryStage()],

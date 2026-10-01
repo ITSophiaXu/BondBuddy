@@ -363,7 +363,7 @@ export async function materialsReadiness(pool: Pool, run: Pick<RunRow, 'owner_us
     if (job?.state !== 'succeeded') { pending.push(key); continue; }
     const snapshotId = job.checkpoint?.stages?.parse_evidence?.snapshot_id;
     const materialReadiness = { role: pin.role, sha256: pin.sha256, media_type: String(material.media_type) };
-    const factSource = financialRoles.has(pin.role) || isRqAnnualProspectus(materialReadiness);
+    const factSource = !isUnifiedInput(input.manifest) && (financialRoles.has(pin.role) || isRqAnnualProspectus(materialReadiness));
     if (factSource && (typeof snapshotId !== 'string' || !snapshotId))
       return { status: 'failed', code: 'DATA_UNAVAILABLE', materials, pending };
     if (factSource) {

@@ -104,15 +104,19 @@ def render(request, source, tracked, clean, baseline):
         for pending in edit['pending'] if edit else []:
             review.append({'recordId': record['id'], 'message': pending})
             notes.append({'record_id': record['id'], 'message': pending})
-    if not replacements:
+    additions = request.get('additions', [])
+    for addition in additions:
+        for block in addition['blocks']:
+            notes.extend({'record_id': addition['after_record_id'], 'message': note} for note in block['pending'])
+    if not replacements and not additions:
         fail('WORD_NO_CHANGES')
     plan = {'source': {'contentHash': sha(source_path.read_bytes()), 'format': 'docx_effective'},
             'deliverable': False, 'baselineHash': sha(source_path.read_bytes()), 'planHash': request['plan_hash'],
-            'textPreview': previews, 'replacements': replacements, 'columns': [], 'reviewNotes': review,
+            'textPreview': previews, 'replacements': replacements, 'columns': [], 'reviewNotes': review, 'additions': additions,
             '_delivery_date': stamp}
     result = build(source_path, plan, tracked, clean, baseline)
     return {**result, 'writer_version': VERSION, 'source_sha256': request['source_sha256'],
-            'baseline_kind': 'reconstructed_pdf' if reconstructed else 'uploaded_source', 'pending_review': notes}
+            'baseline_kind': 'reconstructed_pdf' if reconstructed else 'uploaded_source', 'pending': len(notes), 'pending_review': notes}
 
 
 def main():

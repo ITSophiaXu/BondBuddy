@@ -94,7 +94,7 @@ test('completed project shows checked summary and downloads in the continuous wo
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
-test('latest failed run preserves access to successful Word summary and three variants', async ({ page }) => {
+test('latest failed run preserves access to successful Word summary and both user deliverables', async ({ page }) => {
   const data = state(); await installApi(page, data);
   await page.goto('/#tasks');
   await expect(page.locator('.project-state')).toHaveText('失败');
@@ -103,8 +103,8 @@ test('latest failed run preserves access to successful Word summary and three va
   await expect(page.locator('.artifact-review')).toContainText(summary.pending_review[0].message);
   await expect(page.locator('.artifact-review img')).toHaveCount(0);
   await expect(page.locator('.page-heading')).toContainText('输入版本 2');
-  await expect(page.getByRole('button', { name: /^下载/ })).toHaveCount(3);
-  for (const [variant, label] of [['revision', '修订版'], ['clean', '清洁版'], ['baseline', '有效基线']] as const) {
+  await expect(page.getByRole('button', { name: /^下载/ })).toHaveCount(2);
+  for (const [variant, label] of [['revision', '修订版'], ['clean', '清洁版']] as const) {
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', { name: `下载${label}`, exact: true }).click();
     const download = await downloaded;

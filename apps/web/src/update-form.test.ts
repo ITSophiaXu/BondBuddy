@@ -21,12 +21,15 @@ test('unselected and legacy dates are not silently coerced or turned into report
   assert.equal(cutoffSelection('2026-06-30',2026).legacy,false);
 });
 
-test('form shows year and four quarter ends without a date picker or target-period editor', () => {
+test('unified form collects explicit target years and interim without a historical-route question', () => {
   const details={...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'};
   const html=updateFormFields({name:'合成项目',kind:'update',issuer_name:null,market:null,offering:null,update_details:details});
-  for(const label of ['3月末','6月末','9月末','年末'])assert.ok(html.includes(label));
-  assert.match(html,/name="reporting_year"/);
-  assert.match(html,/name="reporting_quarter" value="09-30" checked/);
-  assert.doesNotMatch(html,/type="date"|target-period|target_period|本次目标报告期间/);
+  assert.match(html,/name="target_years"/);
+  assert.match(html,/name="target_interim" type="date"/);
+  assert.match(html,/原募集书选填/);
+  assert.doesNotMatch(html,/name="has_historical"|name="reporting_quarter"|name="reporting_year"/);
+  // A legacy cutoff alone does not invent the user's full target reporting periods.
+  assert.match(html,/name="target_years" value=""/);
+  assert.match(html,/name="target_interim" type="date" value=""/);
   assert.equal(details.reporting_cutoff,'2026-09-30');
 });

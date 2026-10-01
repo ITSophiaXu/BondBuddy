@@ -374,6 +374,15 @@ def accept_own_revisions(root):
 
 
 def reject_own_revisions(root, columns):
+    # A newly inserted table has every row marked inserted. A new paragraph has
+    # an inserted paragraph mark. Remove these blocks before rejecting run text.
+    for table in list(root.iter(Q("tbl"))):
+        rows = table.findall(Q("tr"))
+        if rows and all(row.find(Q("trPr") + "/" + Q("ins")) is not None for row in rows):
+            table.getparent().remove(table)
+    for paragraph in list(root.iter(Q("p"))):
+        if paragraph.find(Q("pPr") + "/" + Q("rPr") + "/" + Q("ins")) is not None:
+            paragraph.getparent().remove(paragraph)
     for node in list(root.iter()):
         if node.tag == Q("ins") and node.getparent() is not None:
             node.getparent().remove(node)
@@ -395,6 +404,76 @@ def reject_own_revisions(root, columns):
             if len(inserted) != 1:
                 fail("WORD_REJECT_COLUMN_MISMATCH")
             row.remove(inserted[0])
+
+
+def insert_blocks(root, additions, by_record, tracked, next_id, stamp):
+    """Insert editable, source-anchored paragraphs/tables with real OOXML revisions."""
+    body = root.find(Q("body"))
+    cursors = {}
+
+    def marker(parent):
+        node = etree.SubElement(parent, Q("ins"))
+        node.set(Q("id"), str(next_id()))
+        node.set(Q("author"), AUTHOR)
+        node.set(Q("date"), stamp)
+        return node
+
+    def paragraph(text, heading=False):
+        p = etree.Element(Q("p"))
+        props = etree.SubElement(p, Q("pPr"))
+        if heading:
+            etree.SubElement(props, Q("pStyle")).set(Q("val"), "Heading1")
+        if tracked:
+            marker(etree.SubElement(props, Q("rPr")))
+            marker(p).append(make_run(text))
+        else:
+            p.append(make_run(text))
+        return p
+
+    for addition in additions:
+        anchor = by_record.get(addition["after_record_id"])
+        if anchor is None:
+            fail("WORD_EDIT_ANCHOR_MISMATCH")
+        while anchor.getparent() is not body:
+            anchor = anchor.getparent()
+            if anchor is None:
+                fail("WORD_EDIT_ANCHOR_MISMATCH")
+        cursor = cursors.get(anchor, anchor)
+        generated = []
+        for block in addition["blocks"]:
+            if block["kind"] in ("heading", "paragraph"):
+                generated.append(paragraph(block["text"], block["kind"] == "heading"))
+            elif block["kind"] == "table":
+                rows = block["rows"]
+                if not rows or not rows[0] or any(len(row) != len(rows[0]) for row in rows):
+                    fail("WORD_TABLE_GRID_UNSUPPORTED")
+                if block["text"]:
+                    generated.append(paragraph(block["text"]))
+                table = etree.Element(Q("tbl"))
+                props = etree.SubElement(table, Q("tblPr"))
+                etree.SubElement(props, Q("tblStyle")).set(Q("val"), "TableGrid")
+                grid = etree.SubElement(table, Q("tblGrid"))
+                width = max(240, 9000 // len(rows[0]))
+                for _ in rows[0]:
+                    etree.SubElement(grid, Q("gridCol")).set(Q("w"), str(width))
+                for values in rows:
+                    row = etree.SubElement(table, Q("tr"))
+                    if tracked:
+                        marker(etree.SubElement(row, Q("trPr")))
+                    for value in values:
+                        cell = etree.SubElement(row, Q("tc"))
+                        cell_width = etree.SubElement(etree.SubElement(cell, Q("tcPr")), Q("tcW"))
+                        cell_width.set(Q("w"), str(width))
+                        cell_width.set(Q("type"), "dxa")
+                        cell.append(paragraph(value))
+                generated.append(table)
+            else:
+                fail("WORD_BLOCK_UNSUPPORTED")
+            generated.extend(paragraph("【待人工确认】" + note) for note in block["pending"])
+        for node in generated:
+            body.insert(body.index(cursor) + 1, node)
+            cursor = node
+        cursors[anchor] = cursor
 
 
 def build(source_path, plan, revision_path, clean_path, baseline_path=None):
@@ -489,6 +568,7 @@ def build(source_path, plan, revision_path, clean_path, baseline_path=None):
                 if visible(rows[preview["recordId"]]) != preview["after"]:
                     fail("WORD_CLEAN_PREVIEW_MISMATCH")
             insert_columns(root, plan["columns"], tracked, next_id, stamp)
+            insert_blocks(root, plan.get("additions", []), rows, tracked, next_id, stamp)
             add_comments(parts, root, notes, rows, tracked, next_id, stamp)
             parts["word/document.xml"] = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
             if tracked and "word/settings.xml" in parts:

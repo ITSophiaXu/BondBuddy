@@ -62,6 +62,22 @@ class UnifiedWordTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'WORD_SOURCE_HASH_MISMATCH'):
             render(request,self.source,self.tracked,self.clean,self.baseline)
 
+    def test_new_target_section_and_period_table_have_reversible_real_revisions(self):
+        doc=Document();doc.add_paragraph('原有条款保持不变。');doc.save(self.source)
+        records,_,_=_parse_docx(self.source,{})
+        request=self.request();request.update(source_sha256=hashlib.sha256(self.source.read_bytes()).hexdigest(),
+          media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          records=[{'id':r['record_id'],'text':r['literal_quote'],'locator':r['locator']} for r in records],
+          additions=[{'after_record_id':records[0]['record_id'],'blocks':[
+            {'kind':'heading','text':'新增目标品种披露','rows':[],'evidence':['target'],'pending':[]},
+            {'kind':'table','text':'新增期间数据','rows':[['项目','2024','2025'],['资产','100','120']],
+             'evidence':['report'],'pending':['本表为合成测试数据']}]}])
+        render(request,self.source,self.tracked,self.clean,self.baseline)
+        self.assertEqual(Document(self.clean).tables[0].cell(1,2).text,'120')
+        accepted=copy.deepcopy(self.xml(self.tracked));accept_own_revisions(accepted)
+        self.assertEqual(document_signature(accepted),document_signature(self.xml(self.clean)))
+        self.assertTrue(self.xml(self.tracked).find('.//'+Q('trPr')+'/'+Q('ins')) is not None)
+
     def test_reconstructed_pdf_is_explicit_and_tracked(self):
         self.source.write_bytes(b'%PDF-synthetic-placeholder')
         request=self.request();request.update(source_sha256=hashlib.sha256(self.source.read_bytes()).hexdigest(),media_type='application/pdf',

@@ -32,7 +32,10 @@ COPY python python
 COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/
 COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
 # Normalise permissions regardless of the build host's umask; the runtime user only reads.
-RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + ; chmod -R a+rX,go-w /app
+RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + \
+ && find /app -type d ! -perm -005 -exec chmod a+rx {} + \
+ && find /app -type f ! -perm -004 -exec chmod a+r {} + \
+ && find /app -perm /022 -exec chmod go-w {} +
 
 # Pinned codex-cli for the #16 contained adapter (same version as the #16 live probes).
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked

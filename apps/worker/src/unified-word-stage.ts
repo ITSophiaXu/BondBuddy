@@ -27,11 +27,11 @@ export function unifiedWordDeliveryStage(): RunStage {
         if (!bytes || digest(bytes) !== source.pin.sha256) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
         await writeFile(resolve(directory, 'source'), bytes, { mode: 0o600 });
       }
-      const planHash = digest(JSON.stringify({ edits: plan.edits, blocks: plan.blocks }));
+      const planHash = digest(JSON.stringify({ edits: plan.edits, blocks: plan.blocks, additions: plan.additions }));
       const request = { version: 'unified-word-request-v1', date: new Date(date).toISOString(),
         source_sha256: source?.pin.sha256 ?? null, media_type: source?.mediaType ?? null,
         records: source?.records.map(r => ({ id: `${source.pin.material_id}/${r.record_id}`, text: r.literal_quote, locator: r.locator })) ?? [],
-        edits: plan.edits, blocks: plan.blocks, plan_hash: planHash };
+        edits: plan.edits, blocks: plan.blocks, additions: plan.additions, plan_hash: planHash };
       await writeFile(resolve(directory, 'request.json'), JSON.stringify(request), { mode: 0o600 });
       const paths = ['tracked.docx', 'clean.docx', 'baseline.docx'].map(file => resolve(directory, file));
       const result = await runFile(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',

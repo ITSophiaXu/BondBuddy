@@ -18,11 +18,11 @@ test('unified update reads raw supporting records and requires complete baseline
   const prompts: string[] = [];
   const stage=unifiedModelGenerationStage({load:async()=>input(),model:options=>({name:options.name,run:async context=>{
     prompts.push(await options.buildPrompt(context));
-    const value=options.name.includes('read_') ? {notes:[{text:'2025年净资产120万元',evidence:['report/r1'],pending:false}]} :
-      {reviewed:['source/s1','source/s2'],edits:[{record_id:'source/s1',after:'2025年净资产120万元',evidence:['report/r1'],pending:[]}],summary:['更新财务期间及净资产']};
+    const value=options.name.includes('read_') ? {notes:[{text:'2025年净资产120万元',evidence:['m0r0'],pending:false}]} :
+      {reviewed:['m1r0','m1r1'],edits:[{record_id:'m1r0',after:'2025年净资产120万元',evidence:['m0r0'],pending:[]}],additions:[],summary:['更新财务期间及净资产']};
     assert.ok(options.validate(value));
     if ('reviewed' in value) {
-      assert.equal(options.validate({...value,reviewed:['source/s1']}),false);
+      assert.equal(options.validate({...value,reviewed:['m1r0']}),false);
       assert.equal(options.validate({...value,edits:[{...value.edits![0],evidence:['foreign-project/secret']}]}),false);
     }
     return {kind:'done',value};
@@ -35,9 +35,9 @@ test('no-source route writes chapters using issuer materials without a library o
   let calls=0;
   const result=await unifiedModelGenerationStage({load:async()=>input(false),model:options=>({name:options.name,run:async()=>{
     calls++;
-    const value=options.name.includes('read_')?{notes:[{text:'净资产120万元',evidence:['report/r1'],pending:false}]}:
+    const value=options.name.includes('read_')?{notes:[{text:'净资产120万元',evidence:['m0r0'],pending:false}]}:
       options.name.includes('outline')?{chapters:['发行人情况','财务会计信息']}:
-      {blocks:[{kind:'paragraph',text:'根据材料，2025年净资产120万元。',rows:[],evidence:['report/r1'],pending:[]}],summary:['合成编制结果']};
+      {blocks:[{kind:'paragraph',text:'根据材料，2025年净资产120万元。',rows:[],evidence:['m0r0'],pending:[]}],summary:['合成编制结果']};
     assert.ok(options.validate(value));return {kind:'done',value};
   }})}).run(ctx());
   assert.equal(result.kind,'done');assert.equal(calls,4);
