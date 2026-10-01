@@ -4,7 +4,7 @@ import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
-import { ProjectConversation, newProjectConversation, bindConversationPrompts } from './project-conversation';
+import { ProjectConversation, newProjectConversation } from './project-conversation';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -46,7 +46,7 @@ let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
 let projectConversation: ProjectConversation | undefined;
 let newConversationDraft = '';
-let pendingNewMessage: { projectId: string; text: string } | undefined;
+
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
 type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file: File; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string; session?: Dto<'UploadSessionResponse'> };
@@ -79,7 +79,7 @@ function clearPrivateState() {
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
-  newConversationDraft = ''; pendingNewMessage = undefined;
+  newConversationDraft = '';
   staleInputNoticeProjectId = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
@@ -282,7 +282,7 @@ async function renderRoute() {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
   newDirty = false;
-  if (currentRoute === '/new' && requested !== '/new' && !pendingNewMessage) newConversationDraft = '';
+  if (currentRoute === '/new' && requested !== '/new') newConversationDraft = '';
   const token = ++epoch;
   if (draft && (draft.dirty || draft.state === 'saving')) {
     const saved = await draft.save();
@@ -335,7 +335,6 @@ function renderNew() {
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section>${newProjectConversation(value, newConversationDraft)}</div></form>`, 'new');
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
   bindUpdateForm(form, () => { newDirty = true; }, value.update_details);
-  bindConversationPrompts(document.querySelector<HTMLElement>('.supplement-panel')!);
   document.querySelector<HTMLTextAreaElement>('#project-message')!.addEventListener('input', event => {
     if ((event as InputEvent).isComposing) return;
     newConversationDraft = (event.target as HTMLTextAreaElement).value; newDirty = true;
@@ -343,6 +342,7 @@ function renderNew() {
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     const value = readUpdateForm(form); value.name = value.name.trim();
+    value.update_details!.supplementary_notes = document.querySelector<HTMLTextAreaElement>('#project-message')!.value.trim() || null;
     const errors = validateDraft(value);
     if (errors.length) { const target = document.querySelector<HTMLElement>('#page-error')!; target.textContent = errors.join(' '); target.hidden = false; return; }
     creating = true;
@@ -354,8 +354,6 @@ function renderNew() {
     try {
       const project = await api.create(value);
       if (token !== epoch) return;
-      const text = document.querySelector<HTMLTextAreaElement>('#project-message')!.value;
-      pendingNewMessage = text.trim() ? { projectId: project.project_id, text } : undefined;
       newConversationDraft = ''; newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
@@ -382,9 +380,13 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         <div id="execution-root"></div>
         <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
       </div></div><div id="project-conversation-root"></div></div>`, 'workspace');
-  const initialMessage = pendingNewMessage?.projectId === project.project_id ? pendingNewMessage.text : '';
-  pendingNewMessage = undefined;
-  projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), initialMessage);
+  projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
+    if (!draft) return false;
+    const details = { ...draft.fields.update_details, supplementary_notes: text || null };
+    draft.edit({ update_details: details });
+    retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);
+    return draft.save();
+  });
   projectConversation.mount(document.querySelector<HTMLElement>('#project-conversation-root')!, value);
   const setStep = async (next: 'details' | 'materials') => {
     if (next === 'materials' && !await draft?.save()) return;

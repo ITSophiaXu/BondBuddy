@@ -49,9 +49,9 @@ export function projectConversation({state,draft,saveDraft,esc,icon,render,inval
     return `<div class="cowork-prompts">${labels.map(label=>`<button type="button" data-action="project-prompt" data-value="${label}">${label}</button>`).join('')}</div>`;
   }
   function composer(kind,d){
-    const label=kind==='review'?'补充核验线索或特别关注事项':'补充额外信息或修改要求';
-    const placeholder=kind==='review'?'例如：第86页的有息负债金额与审计附注不一致，请结合两处来源核对；公司最近变更了名称，相关公告稍后补充。':'例如：截至2026年6月末，公司银行授信总额50亿元，已使用30亿元，剩余额度20亿元。';
-    return `<form id="project-message-form"><label class="field"><span>${label}</span><textarea id="project-message" maxlength="3000" rows="4" placeholder="${esc(placeholder)}">${esc(d.messageDraft||'')}</textarea></label><button type="submit" class="btn primary small">${Number.isInteger(d.messageEditIndex)?'保存修改':'加入项目'} ${icon('send')}</button></form>`;
+    const label=kind==='review'?'补充核验线索或特别关注事项':'补充募集书更新说明（选填）';
+    const placeholder=kind==='review'?'例如：第86页的有息负债金额与审计附注不一致，请结合两处来源核对；公司最近变更了名称，相关公告稍后补充。':'请输入额外的募集书更新说明';
+    return `<form id="project-message-form"><label class="field"><span>${label}</span><textarea id="project-message" maxlength="3000" rows="4" placeholder="${esc(placeholder)}">${esc(d.messageDraft||'')}</textarea></label>${d.projectId ? '<button type="submit" class="btn primary small">保存补充说明</button>' : '<p class="cowork-footnote">随项目一起保存。</p>'}</form>`;
   }
   function saveFree(kind,text){
     const d=draft(kind);text=text.trim();if(!text)return false;

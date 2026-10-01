@@ -21,15 +21,10 @@ test('unselected and legacy dates are not silently coerced or turned into report
   assert.equal(cutoffSelection('2026-06-30',2026).legacy,false);
 });
 
-test('unified form collects explicit target years and interim without a historical-route question', () => {
+test('latest report period is the only period control in project basics', () => {
   const details={...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'};
   const html=updateFormFields({name:'合成项目',kind:'update',issuer_name:null,market:null,offering:null,update_details:details});
-  assert.match(html,/name="target_years"/);
-  assert.match(html,/name="target_interim" type="date"/);
-  assert.match(html,/原募集书选填/);
-  assert.doesNotMatch(html,/name="has_historical"|name="reporting_quarter"|name="reporting_year"/);
-  // A legacy cutoff alone does not invent the user's full target reporting periods.
-  assert.match(html,/name="target_years" value=""/);
-  assert.match(html,/name="target_interim" type="date" value=""/);
-  assert.equal(details.reporting_cutoff,'2026-09-30');
+  assert.match(html,/name="reporting_year"/);
+  assert.match(html,/name="reporting_quarter" value="09-30" checked/);
+  assert.doesNotMatch(html,/type="date"|target_years|target_interim|name="has_historical"/);
 });
