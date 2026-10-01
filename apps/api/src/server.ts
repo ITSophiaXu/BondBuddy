@@ -46,6 +46,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
+import { isUnifiedInput, lockUnifiedAuthoring } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -774,6 +775,21 @@ export function createServer(settings: Settings = {}) {
       }
       if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
+      if (p.update_details?.authoring_mode === 'unified_v1') {
+        const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(p, resolved, currentMessageSet);
+        const previous = (await client.query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.input_revision,i.manifest
+          FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
+          JOIN bb_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
+          JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision
+          WHERE r.owner_user_id=$1 AND r.project_id=$2 AND r.state='succeeded' AND r.channel='production'
+            AND a.quality_status='passed' AND a.delivery_status='available' ORDER BY r.created_at DESC LIMIT 1`,[user,id])).rows[0];
+        const sourceKey = (items: {material_id:string;material_version:number;role:string;sha256:string}[]) => JSON.stringify(items.filter(m => ['historical','reference'].includes(m.role)).map(m => [m.material_id,m.material_version,m.sha256]).sort());
+        if (previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
+            sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved)) {
+          authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
+        }
+        Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
+      }
       const hash=inputManifestHash(manifest);
       const q=await client.query('INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids,rule_pack_version,template_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[id,revision,user,p.draft_revision,hash,manifest,JSON.stringify(refs),JSON.stringify(requirementMessageIds),ruleBinding.status==='selected'?ruleBinding.pin.version:null,ruleBinding.status==='selected'?ruleBinding.pin.templateVersion:null]);
       if(targetConfirmation)await client.query(`INSERT INTO bb_input_revision_target_confirmations
@@ -1238,11 +1254,12 @@ export function createServer(settings: Settings = {}) {
     const wideRevision=!isPgInputRevision(b.input_revision);
     const browserKey=isBrowserUpdateKey(b.execution_request_id,b.project_id,b.input_revision,b.input_hash);
     const browserTestKey=!!b.test_grant_id&&browserKey;
-    const autoBrowserTestKey=!b.test_grant_id&&workingDraftConfigured()&&browserKey;
+    const unified = !wideRevision && isUnifiedInput((await db().query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[user,b.project_id,b.input_revision,b.input_hash])).rows[0]?.manifest);
+    const autoBrowserTestKey=!unified&&!b.test_grant_id&&workingDraftConfigured()&&browserKey;
     const storedExecutionKey=autoBrowserTestKey?autoTestExecutionKeyStorage(b.execution_request_id):rawExecutionKey;
     const logicalExecutionKey=autoBrowserTestKey?storedExecutionKey:b.execution_request_id;
     const logicalKeyHash=executionKeyHash(logicalExecutionKey);
-    const expectedChannel:'non_production_test'|'production'=b.test_grant_id||workingDraftConfigured()?'non_production_test':'production';
+    const expectedChannel:'non_production_test'|'production'=b.test_grant_id||(!unified&&workingDraftConfigured())?'non_production_test':'production';
     const existingRun=async(client:PoolClient)=>{
       // Old automatic test runs used the raw browser key. Honor an exact replay
       // before looking for a new channel-scoped run, without crossing channels.
@@ -1423,7 +1440,8 @@ export function createServer(settings: Settings = {}) {
       source_sha256:pair!.source_sha256,baseline_hash:pair!.baseline_hash,
       effective_baseline_sha256:pair!.effective_baseline_sha256,plan_hash:pair!.plan_hash,
       replacements:pair!.replacements,columns:pair!.columns,pending_review_count:pair!.pending,
-      pending_review:pair!.pending_review} : undefined;
+      pending_review:pair!.pending_review,
+      ...(pair!.baseline_kind ? {baseline_kind:pair!.baseline_kind, source_issuer:pair!.source_issuer ?? null, authoring_summary:pair!.authoring_summary ?? []} : {})} : undefined;
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
     await transaction(db(),async client=>{
       await client.query('INSERT INTO bb_artifact_download_grants(token_hash,owner_user_id,artifact_id,artifact_version,expires_at) VALUES($1,$2,$3,$4,$5)',[digest(grant),user,id,a.version,expires]);
@@ -1537,6 +1555,12 @@ export function createServer(settings: Settings = {}) {
           inputRevision:b.input_revision,inputHash:b.input_hash});
         const missingInputs:string[]=[],uncertainty:string[]=[];
         const manifest=input.manifest as Record<string,unknown>;
+        if (isUnifiedInput(manifest)) {
+          const status = queueEnabled || settings.enableRunStaging ? 'ready' as const : 'blocked' as const;
+          await recordLogicalJob(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'preflight',jobType:'preflight',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash,stage:status});
+          return { project_id:id,input_revision:b.input_revision,input_hash:b.input_hash,status,
+            missing_inputs:[],uncertainty:[],blocking_inputs:status==='blocked'?['execution_capability_not_ready']:[],advisory_inputs:[],billing_mode:'platform_trial' as const };
+        }
         const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
           {userId:user,projectId:id,inputRevision:b.input_revision,inputHash:b.input_hash},input);
         const ruleCheck=await revalidateStoredProductionRulePin(client,{ownerUserId:user,projectId:id},input,settings.reviewedContextLoader);

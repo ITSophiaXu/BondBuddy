@@ -8,6 +8,8 @@ import { ProjectConversation, newProjectConversation, bindConversationPrompts } 
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
+import { sourceFields, readSourceFields } from './source-prospectus.js';
+import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
@@ -465,7 +467,7 @@ function roleLabel(role: UploadRole) {
 }
 
 function roleGuidance(role: UploadRole) {
-  if (role === 'historical') return '必需：本发行人的历史募集书，优先提供 Word；PDF 将重建可编辑底稿，排版可能需要核对';
+  if (role === 'historical') return '选填：同企业、母公司、子公司或相似业务企业原稿。优先 Word；PDF 重建后需核对排版。';
   if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
   if (role === 'audit') return '必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传';
   if (role === 'financial') return '按所需年度提供；已包含在审计报告中时无需另传';
@@ -540,7 +542,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}"><div class="material-file-main"><strong>${esc(upload.file.name)}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(upload.file.size)}</span>${showProgress ? `<progress max="${upload.file.size}" value="${progress}" aria-label="${esc(upload.file.name)} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -551,11 +553,11 @@ function renderMaterialPartitions(projectId: string) {
     seen.add(upload.material.material_id); return true;
   });
   const materials = recoveredMaterials.get(projectId) ?? [];
-  const history = draft?.fields.update_details.has_historical;
+  const history = null;
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
   // Product partitions from project-workspace.js; detailed role values still come from contracts.
   const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: UploadRole }[] = [
-    {label:'本发行人历史募集书 / 相似募集书',roles:M1_MATERIAL_PARTITIONS[0].roles,primary:history === false ? 'reference' : 'historical'},
+    {label:'历史／参考募集书（选填）',roles:M1_MATERIAL_PARTITIONS[0].roles.filter(role => role.code === 'historical' || materials.some(m => m.role === role.code)).map(role => ({...role,label:role.code === 'historical' ? '历史／参考募集书' : '已保存参考稿'})),primary:'historical'},
     {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:'audit'},
     {label:'募投项目与权证材料',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:'fundUse'},
     {label:'其他项目材料',roles:M1_MATERIAL_PARTITIONS.slice(3).flatMap(p => [...p.roles]),primary:'other'}
@@ -570,7 +572,7 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}<button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}<button type="button" class="text-button" data-delete-material="${esc(material.material_id)}">删除</button></div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div><ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}</ul></li>`;
   }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
@@ -611,7 +613,8 @@ function updateMaterialWorkspace(projectId: string) {
           heading.querySelector('div')!.innerHTML = fresh.querySelector('.material-role-heading > div')!.innerHTML;
           const picker = fresh.querySelector('.material-picker'), oldPicker = heading.querySelector('.material-picker');
           if (!picker) oldPicker?.remove(); else if (!oldPicker) heading.append(picker);
-          old.querySelector('.material-file-list')!.innerHTML = fresh.querySelector('.material-file-list')!.innerHTML;
+          const fileList = old.querySelector('.material-file-list')!;
+          if (!fileList.querySelector('[data-source-field]:focus')) fileList.innerHTML = fresh.querySelector('.material-file-list')!.innerHTML;
         }
         const next: Element | null = previous ? previous.nextElementSibling : group.firstElementChild;
         if (next !== role) group.insertBefore(role, next);
@@ -790,6 +793,23 @@ async function refreshProjectMaterials(projectId: string, token: number) {
 
 function bindMaterialWorkspace(projectId: string) {
   const host = document.querySelector<HTMLElement>('#material-partitions')!;
+  host.addEventListener('change', event => {
+    const target = event.target as HTMLElement;
+    const source = target.closest<HTMLElement>('[data-source-material]');
+    if (!source || !draft) return;
+    const material = confirmedMaterials(projectId).find(m => m.material_id === source.dataset.sourceMaterial);
+    if (!material) return;
+    const value = readSourceFields(source, material);
+    const sources = (draft.fields.update_details.source_prospectuses ?? []).filter(s => s.material_id !== material.material_id);
+    const details = { ...draft.fields.update_details, authoring_mode: 'unified_v1' as const, source_prospectuses: [...sources, value] };
+    draft.edit({ update_details: details });
+    retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);
+    if (target.dataset.sourceField === 'market') {
+      const template = document.createElement('template'); template.innerHTML = sourceFields(material, details.source_prospectuses);
+      source.querySelector('[data-source-field="offering"]')!.innerHTML = template.content.querySelector('[data-source-field="offering"]')!.innerHTML;
+    }
+    else syncProjectExecution(projectId);
+  });
   host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });
   host.addEventListener('drop', event => {
     const picker = (event.target as HTMLElement).closest('.material-picker'); if (!picker) return;

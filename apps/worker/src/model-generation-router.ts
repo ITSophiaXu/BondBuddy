@@ -45,9 +45,11 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
+      if ((ctx.values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') return unifiedModelGenerationStage().run(ctx);
       if (ctx.run.task_kind === 'update') return update.run(ctx);
       if (ctx.run.task_kind === 'generation') return generation.run(ctx);
       return { kind: 'pause', stage: 'capability_not_ready', reason: 'unsupported_model_generation_task_kind' };
     },
   };
 }
+import { unifiedModelGenerationStage } from './unified-model-stage.js';

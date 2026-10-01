@@ -126,7 +126,9 @@
   .prototype-app .workflow-card { padding:20px 15px; }
   .prototype-app .workflow-card h3 { font-size:16px; }
   .prototype-app .materials-heading, .prototype-app .material-partition { padding:18px; }
-  .prototype-app .page-head { gap:16px; }
+  .prototype-app .page-head { gap:16px; flex-wrap:wrap; }
+  .prototype-app .heading-actions { flex-shrink:0; }
+  .prototype-app .heading-actions .text-button { white-space:nowrap; }
   .prototype-app .page-head>div { min-width:0; }
   .prototype-app .page-head>div h1 { font-size:25px; }
   .prototype-app .stepper { gap:10px; }

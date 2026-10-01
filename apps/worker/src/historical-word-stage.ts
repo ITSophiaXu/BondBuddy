@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { unifiedWordDeliveryStage } from './unified-word-stage.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -80,6 +81,7 @@ async function writeHistoricalWord(ctx: StageContext, plan: HistoricalGeneration
 /** Native revision generation is a replayable, deterministic stage; only checked bytes may become artifacts. */
 export function historicalWordDeliveryStage(options: { writer?: typeof writeHistoricalWord } = {}): RunStage {
   return { name: 'word_delivery', replay: true, run: async ctx => {
+    if ((ctx.values.get('model_generation') as { version?: string })?.version === 'unified-plan-v1') return unifiedWordDeliveryStage().run(ctx);
     if (ctx.run.task_kind !== 'update') return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_word_task_kind_required' };
     const value = ctx.values.get('model_generation');
     const plan = value as HistoricalGenerationPlan | undefined;

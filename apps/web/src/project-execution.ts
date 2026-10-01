@@ -52,9 +52,10 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
   return pendingConditions;
 }
 
-export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>['kind'], hasHistorical: boolean | null, materials: readonly Material[]): string | undefined {
+export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>['kind'], hasHistorical: boolean | null, materials: readonly Material[], unified = false): string | undefined {
   if (!(error instanceof ApiError) || error.code !== 'INPUT_REQUIRED' || error.status !== 409) return undefined;
   const reference = errorReference(error);
+  if (unified) return `本次输入尚未满足执行条件，请核对本次目标及已上传原稿的信息；历史／参考募集书选填，无需更改企业关系或重复上传。${reference}`;
   if (kind === 'update' && !materials.some(material => material.role === 'historical') &&
       materials.some(material => material.role === 'reference'))
     return `已上传募集书被登记为参考稿。更新需本发行人历史稿及身份核验；若该文件是本发行人的历史募集书，请联系支持保留原文件并更正分类后重新锁定输入。若确实没有本发行人历史稿，请联系支持转为新稿；无需重传。${reference}`;
@@ -70,6 +71,12 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function readinessMessage(reason: string): string {
+  if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
+  if (reason === 'authoring_source_information_required') return '请在上传的原募集书下补齐原发行人、企业关系、市场、品种及报告期。保存后停止本次任务，再以新输入重新编制。';
+  if (reason === 'authoring_issuer_materials_required') return '请补充目标发行人的材料；其他企业的参考稿不能代替目标企业事实。保存后停止本次任务，再以新输入重新编制。';
+  if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
+  if (reason === 'authoring_material_unreadable') return '有材料无法读取，请查看材料区，替换文件后以新输入重新编制。';
+  if (reason === 'authoring_no_verified_changes') return '本轮未形成有依据的正文修改，尚未交付新成果。请核对本次材料和更新要求。';
   if (runtimeMessage(reason)) return runtimeMessage(reason)!;
   if (reason === 'TRIAL_ACCESS_DENIED') return '当前账号的试用权限已停用，请联系支持。';
   if (reason.startsWith('rule_pack:') || reason.startsWith('rule_applicability_')) return '适用规则的处理条件尚未就绪，请联系支持核对。';
@@ -141,7 +148,7 @@ export class ProjectExecution {
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
     host.innerHTML = '<section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div>';
-    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message">开始更新 ${icon('arrow')}</button></div>`;
+    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message">开始编制 ${icon('arrow')}</button></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
     this.button('select-saved-input').addEventListener('click', () => {
@@ -153,7 +160,7 @@ export class ProjectExecution {
           if (!this.active) return;
           if (ref.message_ids.length) {
             this.offerSavedInput = false;
-            this.message = '已有已保存消息，不能继续未证明包含这些消息的旧输入；请重新开始以锁定新版本。';
+            this.message = '已有已保存补充要求，不能继续未证明包含这些消息的旧输入；请重新开始以锁定新版本。';
             return;
           }
           this.selectedMessages = ref; this.selected = true; this.offerSavedInput = false; this.message = '';
@@ -171,8 +178,7 @@ export class ProjectExecution {
   }
   private node(selector: string) { return this.host.querySelector<HTMLElement>(selector) ?? this.actions.querySelector<HTMLElement>(selector)!; }
   private eligibleMaterials() {
-    const historical = this.draft.fields.update_details.has_historical;
-    return this.materials.filter(m => m.role === 'historical' ? historical !== false : m.role === 'reference' ? historical !== true : true);
+    return this.materials;
   }
   /**
    * Resolves the structural reference for a no-history generation project. The parse snapshot id is
@@ -184,17 +190,18 @@ export class ProjectExecution {
    */
   private async referenceFor(project: Dto<'ProjectResponse'>, selected: readonly Material[]): Promise<
     { status: 'none' } | { status: 'pinned'; choice: UserReferenceChoice } | { status: 'blocked'; message: string }> {
+    if (this.draft.fields.update_details.authoring_mode === 'unified_v1') return { status: 'none' };
     if (project.kind !== 'generation' || this.draft.fields.update_details.has_historical !== false) return { status: 'none' };
     const reference = selectedReference(selected, this.draft.fields.update_details.has_historical);
     if (!reference) return { status: 'none' };
     if (!project.market || !project.offering) {
-      return { status: 'blocked', message: '用户指定参考稿的目标市场与发行方式尚未保存，请刷新项目信息并重新选择参考稿后再开始更新。' };
+      return { status: 'blocked', message: '用户指定参考稿的目标市场与发行方式尚未保存，请刷新项目信息并重新选择参考稿后再开始编制。' };
     }
     let fresh: Material;
     try {
       fresh = this.referenceSnapshots ? await this.referenceSnapshots(this.id, reference) : reference;
     } catch {
-      return { status: 'blocked', message: '用户指定参考稿信息暂时无法读取，请刷新已保存材料并重新选择参考稿后再开始更新。' };
+      return { status: 'blocked', message: '用户指定参考稿信息暂时无法读取，请刷新已保存材料并重新选择参考稿后再开始编制。' };
     }
     const resolved = referencePin(reference, fresh, project.offering);
     return 'note' in resolved ? { status: 'blocked', message: resolved.note } : { status: 'pinned', choice: resolved.choice };
@@ -241,7 +248,7 @@ export class ProjectExecution {
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked);
-    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…') : this.nextRequested ? '生成新版' : '开始更新';
+    this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…') : this.nextRequested ? '生成新版' : '开始编制';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;
     this.button('refresh-execution').disabled = this.busy || this.starting;
@@ -274,7 +281,7 @@ export class ProjectExecution {
     this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       <p class="muted">关闭页面不会取消任务。补材料或修改要求用于下一轮，旧成果仍会保留。</p>
-      <div class="form-actions">${activeRun && run.state !== 'paused' ? '<button class="button secondary" type="button" id="cancel-run">停止更新</button>' : run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
+      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
         ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
           : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看与补充材料</button></div></div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}">查看此前成功成果</a>` : ''}<p>${esc(this.progressMessage)}</p>`;
@@ -328,7 +335,7 @@ export class ProjectExecution {
     catch (error) {
       if (this.active) {
         const inputMessage = operation !== 'other'
-          ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials) : undefined;
+          ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials, this.draft.fields.update_details.authoring_mode === 'unified_v1') : undefined;
         this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
           (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
         this.message = inputMessage ??
@@ -345,6 +352,9 @@ export class ProjectExecution {
       if (!this.materialReady || this.inputReadUncertain) return;
       const selected = this.eligibleMaterials();
       if (!selected.length) { this.message = '请先添加本次需要的项目材料。'; return; }
+      if (this.draft.fields.update_details.authoring_mode !== 'unified_v1') {
+        this.draft.edit({ update_details: { ...this.draft.fields.update_details, authoring_mode: 'unified_v1', has_historical: null } });
+      }
       const confirmedGeneration = this.generation;
       if (!await this.draft.save() || !this.active) { this.message = '项目修改尚未保存，请先处理上方保存提示。'; return; }
       if (confirmedGeneration !== this.generation) { this.message = '保存期间目标或材料有变化，请重新核对目标。'; return; }
@@ -352,7 +362,7 @@ export class ProjectExecution {
       if (!p.market || !p.offering) { this.message = '请先在项目表单选择目标市场和发行方式。'; return; }
       const beforeMessages = this.generation;
       const messages = await this.conversation.currentRef();
-      if (beforeMessages !== this.generation) { this.message = '消息列表已变化，请核对最新内容后再次开始。'; return; }
+      if (beforeMessages !== this.generation) { this.message = '补充要求列表已变化，请核对最新内容后再次开始。'; return; }
       const generation = this.generation;
       this.selected = false; this.preflight = undefined;
       const reference = await this.referenceFor(p, selected);
@@ -463,7 +473,7 @@ export class ProjectExecution {
       const pinned = this.selectedMessages;
       if (!pinned || pinned.version !== latestMessages.version || pinned.content_sha256 !== latestMessages.content_sha256 ||
           JSON.stringify(pinned.message_ids) !== JSON.stringify(latestMessages.message_ids) || generation !== this.generation) {
-        this.invalidate(); this.message = '已保存的项目消息有变化，请核对后重新开始，新消息不会写入旧任务。'; return;
+        this.invalidate(); this.message = '已保存的项目补充要求有变化，请核对后重新开始，新消息不会写入旧任务。'; return;
       }
       const request = await executionRequest(input, this.taskKind);
       if (!this.active || generation !== this.generation) return;

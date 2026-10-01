@@ -19,13 +19,13 @@ const invalid = () => new ApiError(0, 'DATA_UNAVAILABLE');
 const readError = (error: unknown) => error instanceof ApiError ? friendlyError(error) : '连接中断，请检查网络后重试。';
 
 export function newProjectConversation(value: ProjectCreate, text = '') {
-  return `<aside class="panel project-cowork supplement-panel" aria-label="项目协作">
-    <div class="cowork-heading">${icon('chat')}<div><h2>一起完成这个项目</h2><p>额外信息和修改要求，可以在这里补充。</p></div></div>
-    <div class="cowork-context"><span id="cowork-issuer">${esc(value.issuer_name || '待填写发行人')}</span><strong id="cowork-scope">${esc(value.market ? MARKET_LABELS[value.market] : '发行市场待选择')} · ${esc(value.offering ? OFFERING_LABELS[value.offering] : '发行方式待选择')}</strong><small>先创建项目，再发送并保存消息</small></div>
-    <div class="cowork-messages"><p class="cowork-guidance">项目创建后可连续发送补充要求；当前文字尚未发送。</p></div>
+  return `<aside class="panel project-cowork supplement-panel" aria-label="补充要求">
+    <div class="cowork-heading">${icon('chat')}<div><h2>募集书编制的补充要求</h2><p>额外信息和修改要求，可以在这里补充。</p></div></div>
+    <div class="cowork-context"><span id="cowork-issuer">${esc(value.issuer_name || '待填写发行人')}</span><strong id="cowork-scope">${esc(value.market ? MARKET_LABELS[value.market] : '发行市场待选择')} · ${esc(value.offering ? OFFERING_LABELS[value.offering] : '发行方式待选择')}</strong><small>先创建项目，再保存补充要求</small></div>
+    <div class="cowork-messages"><p class="cowork-guidance">项目创建后可保存和编辑补充要求；当前文字尚未保存。</p></div>
     <div class="cowork-prompts">${Object.keys(prompts).map(label => `<button type="button" data-note-example="${label}">${label}</button>`).join('')}</div>
-    <div class="cowork-composer"><label for="project-message">补充说明与写作要求</label><textarea id="project-message" maxlength="12000" rows="4" placeholder="例如：截至2026年6月末，授信总额50亿元，已使用30亿元。">${esc(text)}</textarea><button class="btn primary cowork-save" type="button" disabled>创建项目后可发送 ${icon('send')}</button>
-    <p class="cowork-footnote">输入仅在本页暂存；创建项目不会自动发送。助手回复和意图识别尚未接通。</p></div></aside>`;
+    <div class="cowork-composer"><label for="project-message">补充说明与写作要求</label><textarea id="project-message" maxlength="12000" rows="4" placeholder="例如：截至2026年6月末，授信总额50亿元，已使用30亿元。">${esc(text)}</textarea><button class="btn primary cowork-save" type="button" disabled>创建项目后可保存 ${icon('send')}</button>
+    <p class="cowork-footnote">输入仅在本页暂存；创建项目后保存，点击开始编制时使用。</p></div></aside>`;
 }
 
 export function bindConversationPrompts(host: HTMLElement) {
@@ -45,7 +45,7 @@ export class ProjectConversation {
   private cursor: string | null = null;
   private loading = false;
   private saving = false;
-  private status = '正在读取已保存消息…';
+  private status = '正在读取已保存补充要求…';
   private composer: string;
   private edit?: { id: string; version: number };
   private pending?: Request;
@@ -60,9 +60,9 @@ export class ProjectConversation {
   get hasMessages() { return Boolean(this.ref?.message_ids.length); }
   get ready() { return !!this.ref && !this.loading; }
   get blockReason() {
-    if (this.saving || this.pending) return '补充消息尚未确认保存，请先重试或重新读取。';
-    if (this.composer.trim()) return '有尚未发送的补充，请先发送或清空。';
-    if (!this.ready) return '项目消息尚未读取，请在右侧重新读取。';
+    if (this.saving || this.pending) return '补充补充要求尚未确认保存，请先重试或重新读取。';
+    if (this.composer.trim()) return '有尚未保存的补充，请先保存或清空。';
+    if (!this.ready) return '项目补充要求尚未读取，请在右侧重新读取。';
     return '';
   }
   mount(host: HTMLElement, value: ProjectCreate) {
@@ -103,15 +103,15 @@ export class ProjectConversation {
       : prior?.getAttribute('data-scope') ?? '';
     const legacy = value?.update_details?.supplementary_notes ?? this.host.dataset.legacy ?? '';
     this.host.dataset.legacy = legacy;
-    this.host.innerHTML = `<aside class="panel project-cowork supplement-panel" aria-label="项目协作"><div class="cowork-heading">${icon('chat')}<div><h2>一起完成这个项目</h2><p>额外信息和修改要求，可以在这里补充。</p></div></div>
-      <div class="cowork-context" id="cowork-context" data-issuer="${esc(issuer)}" data-scope="${esc(scope)}"><span id="cowork-issuer">${esc(issuer || '待填写发行人')}</span><strong id="cowork-scope">${esc(scope)}</strong><small>消息按账号与项目保存 · 开始更新需单独点击</small></div>
-      <div class="cowork-messages" aria-live="polite">${this.items.length ? this.items.map(item => `<article class="cowork-message" data-message-id="${esc(item.message_id)}"><p>${esc(item.body).replaceAll('\n', '<br>')}</p><small>已记录 · 用户提供（未核验） · 版本 ${item.message_version} · ${esc(date(item.created_at))}</small><div class="cowork-message-actions"><button type="button" data-edit-message="${esc(item.message_id)}">修改</button>${item.message_version > 1 ? `<button type="button" data-message-version="${esc(item.message_id)}" data-version="${item.message_version - 1}">查看旧版本</button>` : ''}</div></article>`).join('') : `<p class="cowork-guidance">${this.loading ? '正在读取项目消息…' : this.ref ? '还没有已发送的项目补充。' : '消息尚未读取，请重试。'}</p>`}</div>
-      ${this.cursor ? '<button id="more-project-messages" class="text-button" type="button">加载更多消息</button>' : ''}
-      ${this.history ? `<section class="message-history" aria-label="消息历史版本"><h3>历史版本 ${this.history.message_version} · 用户提供（未核验）</h3><p>${esc(this.history.body).replaceAll('\n', '<br>')}</p><small>${esc(date(this.history.created_at))} · ${this.history.material_versions.length} 份精确材料引用</small><div class="cowork-message-actions">${this.history.message_version > 1 ? `<button type="button" data-message-version="${esc(this.history.message_id)}" data-version="${this.history.message_version - 1}">更早版本</button>` : ''}<button type="button" id="close-message-history">关闭</button></div></section>` : ''}
-      ${legacy ? `<details class="cowork-legacy"><summary>旧版补充说明（未作为消息发送）</summary><p>${esc(legacy).replaceAll('\n', '<br>')}</p><small>此内容仍保存在原项目草稿及下一版输入中，可在“项目信息”中修改。</small></details>` : ''}
+    this.host.innerHTML = `<aside class="panel project-cowork supplement-panel" aria-label="补充要求"><div class="cowork-heading">${icon('chat')}<div><h2>募集书编制的补充要求</h2><p>额外信息和修改要求，可以在这里补充。</p></div></div>
+      <div class="cowork-context" id="cowork-context" data-issuer="${esc(issuer)}" data-scope="${esc(scope)}"><span id="cowork-issuer">${esc(issuer || '待填写发行人')}</span><strong id="cowork-scope">${esc(scope)}</strong><small>补充要求按账号与项目保存 · 开始编制需单独点击</small></div>
+      <div class="cowork-messages" aria-live="polite">${this.items.length ? this.items.map(item => `<article class="cowork-message" data-message-id="${esc(item.message_id)}"><p>${esc(item.body).replaceAll('\n', '<br>')}</p><small>已记录 · 用户提供（未核验） · 版本 ${item.message_version} · ${esc(date(item.created_at))}</small><div class="cowork-message-actions"><button type="button" data-edit-message="${esc(item.message_id)}">修改</button>${item.message_version > 1 ? `<button type="button" data-message-version="${esc(item.message_id)}" data-version="${item.message_version - 1}">查看旧版本</button>` : ''}</div></article>`).join('') : `<p class="cowork-guidance">${this.loading ? '正在读取项目补充要求…' : this.ref ? '还没有已保存的项目补充。' : '补充要求尚未读取，请重试。'}</p>`}</div>
+      ${this.cursor ? '<button id="more-project-messages" class="text-button" type="button">加载更多补充要求</button>' : ''}
+      ${this.history ? `<section class="message-history" aria-label="补充要求历史版本"><h3>历史版本 ${this.history.message_version} · 用户提供（未核验）</h3><p>${esc(this.history.body).replaceAll('\n', '<br>')}</p><small>${esc(date(this.history.created_at))} · ${this.history.material_versions.length} 份精确材料引用</small><div class="cowork-message-actions">${this.history.message_version > 1 ? `<button type="button" data-message-version="${esc(this.history.message_id)}" data-version="${this.history.message_version - 1}">更早版本</button>` : ''}<button type="button" id="close-message-history">关闭</button></div></section>` : ''}
+      ${legacy ? `<details class="cowork-legacy"><summary>旧版补充说明（未作为补充要求保存）</summary><p>${esc(legacy).replaceAll('\n', '<br>')}</p><small>此内容仍保存在原项目草稿及下一版输入中，可在“项目信息”中修改。</small></details>` : ''}
       <div class="cowork-prompts">${Object.keys(prompts).map(label => `<button type="button" data-note-example="${label}">${label}</button>`).join('')}</div>
-      <div class="cowork-composer"><label for="project-message">补充说明与写作要求</label><textarea id="project-message" maxlength="12000" rows="4" placeholder="例如：截至2026年6月末，授信总额50亿元，已使用30亿元。">${esc(this.composer)}</textarea><button class="btn primary cowork-save" id="send-project-message" type="button">${this.edit ? '保存修改' : '发送并保存'} ${icon('send')}</button>${this.edit && !this.pending ? '<button class="text-button" id="cancel-message-edit" type="button">取消编辑</button>' : ''}${this.pending ? '<button class="text-button" id="restore-message-request" type="button">恢复原请求以重试</button>' : ''}
-      <p class="cowork-footnote">发送仅保存用户原话，不会收到助手回复或自动开始更新。执行中的新消息只用于下一次输入版本。</p><p id="conversation-status" role="status"></p><button id="reload-project-messages" class="text-button" type="button">重新读取消息</button></div></aside>`;
+      <div class="cowork-composer"><label for="project-message">补充说明与写作要求</label><textarea id="project-message" maxlength="12000" rows="4" placeholder="例如：截至2026年6月末，授信总额50亿元，已使用30亿元。">${esc(this.composer)}</textarea><button class="btn primary cowork-save" id="send-project-message" type="button">${this.edit ? '保存修改' : '保存要求'} ${icon('send')}</button>${this.edit && !this.pending ? '<button class="text-button" id="cancel-message-edit" type="button">取消编辑</button>' : ''}${this.pending ? '<button class="text-button" id="restore-message-request" type="button">恢复原请求以重试</button>' : ''}
+      <p class="cowork-footnote">保存后重开可恢复。点击开始编制才执行；运行中新增或修改的要求用于下次编制。</p><p id="conversation-status" role="status"></p><button id="reload-project-messages" class="text-button" type="button">重新读取补充要求</button></div></aside>`;
     this.controls();
   }
   setContext(value: ProjectCreate) {
@@ -133,8 +133,8 @@ export class ProjectConversation {
     const stale = this.ref && this.edit && this.items.find(item => item.message_id === this.edit?.id)?.message_version !== this.edit.version;
     send.disabled = this.saving || this.loading || !this.composer.trim() || !!stale || !this.ref && !this.pending ||
       !!this.pending && this.composer.trim() !== this.pending.body;
-    send.textContent = this.saving ? '正在保存…' : this.pending ? '按同一请求重试保存' : this.edit ? '保存修改' : '发送并保存';
-    this.host.querySelector('#conversation-status')!.textContent = stale ? '这条消息已有新版本。请重新选择最新版本后再编辑；原文仍保留在输入框。' : this.status;
+    send.textContent = this.saving ? '正在保存…' : this.pending ? '按同一请求重试保存' : this.edit ? '保存修改' : '保存要求';
+    this.host.querySelector('#conversation-status')!.textContent = stale ? '这条补充要求已有新版本。请重新选择最新版本后再编辑；原文仍保留在输入框。' : this.status;
     this.host.querySelector<HTMLTextAreaElement>('#project-message')!.disabled = this.saving;
     this.host.querySelector<HTMLButtonElement>('#restore-message-request')?.toggleAttribute('disabled', this.saving);
     this.host.querySelector<HTMLButtonElement>('#restore-message-request')?.toggleAttribute('hidden', this.composer.trim() === this.pending?.body);
@@ -160,13 +160,13 @@ export class ProjectConversation {
       this.items = result.items; this.cursor = result.next_cursor;
       this.ref = result.project_message_set_ref;
       this.savedAwaitingRead = false;
-      this.status = this.pending ? '此前保存结果未确认；可按同一请求重试，或确认当前列表后再操作。' : `已读取 ${this.items.length} 条用户消息。`;
+      this.status = this.pending ? '此前保存结果未确认；可按同一请求重试，或确认当前列表后再操作。' : `已读取 ${this.items.length} 条用户补充要求。`;
     } catch (error) {
       if (this.controller.signal.aborted) return;
       this.ref = undefined; this.items = []; this.cursor = null;
       this.status = this.savedAwaitingRead
-        ? `消息已保存，但列表读取失败：${readError(error)} 请重新读取；无需重复发送。`
-        : `消息读取失败：${readError(error)} 请重新读取。`;
+        ? `补充要求已保存，但列表读取失败：${readError(error)} 请重新读取；无需重复保存。`
+        : `补充要求读取失败：${readError(error)} 请重新读取。`;
     } finally { if (!this.controller.signal.aborted) { this.loading = false; this.render(); this.onChange(); } }
   }
   private async more() {
@@ -177,10 +177,10 @@ export class ProjectConversation {
       const page = await this.page(cursor);
       if (!sameRef(ref, page.project_message_set_ref) || page.items.some(item => this.items.some(previous => previous.message_id === item.message_id))) throw invalid();
       this.items.push(...page.items); this.cursor = page.next_cursor;
-      this.status = `已读取 ${this.items.length} 条用户消息。`;
+      this.status = `已读取 ${this.items.length} 条用户补充要求。`;
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        this.loading = false; this.status = '消息列表已变化，正在重新读取第一页；输入框未改动。';
+        this.loading = false; this.status = '补充要求列表已变化，正在重新读取第一页；输入框未改动。';
         await this.refresh(); return;
       }
       this.status = `加载更多失败：${readError(error)} 可重试。`;
@@ -189,7 +189,7 @@ export class ProjectConversation {
   private selectEdit(id: string) {
     const message = this.items.find(item => item.message_id === id);
     if (!message || this.pending || this.saving) return;
-    if (this.composer.trim() && !window.confirm('当前尚未发送的文字会被这条消息的内容替换，是否继续？')) return;
+    if (this.composer.trim() && !window.confirm('当前尚未保存的文字会被这条补充要求的内容替换，是否继续？')) return;
     this.edit = { id, version: message.message_version };
     this.composer = message.body; this.status = `正在编辑版本 ${message.message_version}；原版本将保留可查。`;
     this.onChange(); this.render();
@@ -216,7 +216,7 @@ export class ProjectConversation {
     };
     if (this.composer.trim() !== this.pending.body) { this.controls(); return; }
     const request = this.pending;
-    this.saving = true; this.status = '正在保存用户消息…'; this.controls(); this.onChange();
+    this.saving = true; this.status = '正在保存用户补充要求…'; this.controls(); this.onChange();
     try {
       const saved = await this.api.saveProjectMessage(this.projectId, request, this.controller.signal);
       if (saved.conversation_id !== this.projectId || saved.message_id !== request.message_id ||
@@ -229,7 +229,7 @@ export class ProjectConversation {
       this.ref = saved.project_message_set_ref;
       this.pending = undefined; this.edit = undefined; this.composer = '';
       this.savedAwaitingRead = true;
-      this.status = '已保存用户补充；未核验，不会自动开始更新。';
+      this.status = '已保存用户补充；未核验，不会自动开始编制。';
       this.onChange();
       this.saving = false;
       await this.refresh();
@@ -237,9 +237,9 @@ export class ProjectConversation {
       if (this.controller.signal.aborted) return;
       if (error instanceof ApiError && error.status === 409) {
         this.pending = undefined;
-        this.status = '消息版本或请求冲突。正在重新读取服务器版本；输入原文保留，不会覆盖。';
+        this.status = '补充要求版本或请求冲突。正在重新读取服务器版本；输入原文保留，不会覆盖。';
         this.saving = false; await this.refresh();
-        if (this.ref) this.status = '服务器版本已重新读取；请检查差异，再选择最新消息修改。';
+        if (this.ref) this.status = '服务器版本已重新读取；请检查差异，再选择最新补充要求修改。';
       } else {
         this.status = `保存结果尚未确认：${friendlyError(error)} 原文保留，可按同一请求重试。`;
       }
@@ -251,7 +251,7 @@ export class ProjectConversation {
     const ref = page.project_message_set_ref;
     if (!this.ref || !sameRef(this.ref, ref)) {
       this.items = page.items; this.cursor = page.next_cursor; this.ref = ref;
-      this.status = '服务器消息列表已更新，请核对最新消息。';
+      this.status = '服务器补充要求列表已更新，请核对最新补充要求。';
       this.render(); this.onChange();
     }
     return ref;

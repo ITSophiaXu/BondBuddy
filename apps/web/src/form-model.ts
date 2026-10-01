@@ -8,7 +8,7 @@ export function projectKind(hasHistorical: boolean | null | undefined): 'generat
   return hasHistorical === false ? 'generation' : 'update';
 }
 export function blankDraft(): ProjectCreate {
-  return { name: '', kind: 'update', issuer_name: null, market: null, offering: null, update_details: emptyUpdateDetails() };
+  return { name: '', kind: 'update', issuer_name: null, market: null, offering: null, update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', source_prospectuses: [] } };
 }
 export function draftFromProject(project: Project): ProjectCreate {
   return { name: project.name, kind: project.kind, issuer_name: project.issuer_name, market: project.market, offering: project.offering,
@@ -25,6 +25,7 @@ export function validateDraft(draft: ProjectCreate): string[] {
   return updateDetailsErrors(draft.update_details ?? emptyUpdateDetails()).map(error => error.message);
 }
 export function materialHints(details: UpdateDetails): string[] {
+  if (details.authoring_mode === 'unified_v1') return ['发行人材料：审计报告、财务报表及附注等', '历史／参考募集书（选填）'];
   const hints = ['审计报告，或财务报表及附注'];
   if (details.has_historical === true) hints.unshift('本发行人的历史募集书');
   if (details.has_historical === false) hints.push('相似募集书（可选）');

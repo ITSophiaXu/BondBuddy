@@ -148,8 +148,8 @@ async function setup(page: Page, state = fixture(), canStart = true) {
   });
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
-  if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
-  else await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeDisabled();
+  if (canStart) await expect(page.getByRole('button', { name: '开始编制', exact: true })).toBeEnabled();
+  else await expect(page.getByRole('button', { name: '开始编制', exact: true })).toBeDisabled();
   return state;
 }
 async function prepare(page: Page) {
@@ -236,7 +236,7 @@ test('editing while preflight is pending discards that result; next action locks
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseCheck).toBe(true);
   await page.getByLabel('补充说明与写作要求').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
   await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#start-disabled-reason')).toContainText('尚未发送');
+  await expect(page.locator('#start-disabled-reason')).toContainText('尚未保存');
   await page.getByLabel('补充说明与写作要求').fill('');
   await prepare(page);
   expect(state.inputs).toHaveLength(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
@@ -251,26 +251,25 @@ test('409 preserves target input and never submits a run', async ({ page }) => {
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
 
-test('input error identifies the missing historical draft without blaming saved financial material', async ({ page }) => {
+test('unified rejection leaves history optional and preserves saved financial material', async ({ page }) => {
   const state=fixture(); state.materials.shift(); state.checkStatus='ready';
   state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-history-required'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('本发行人历史募集书');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-history-required');
   await expect(page.locator('#execute-input')).toBeDisabled();
   expect(state.materials).toHaveLength(1); expect(state.runs.size).toBe(0);
 });
 
-test('an existing update project with reference + audit explains classification before suggesting a new draft', async ({ page }) => {
+test('legacy reference plus audit upgrades to unified input without requiring a new project', async ({ page }) => {
   const state=fixture(); state.project.update_details!.has_historical=false;
   Object.assign(state.materials[0], { role: 'reference', parse_snapshot_id: 'synthetic-snapshot' });
   state.checkStatus='ready';
   state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-required'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('已上传募集书被登记为参考稿');
-  await expect(page.locator('#execution-message')).toContainText('若该文件是本发行人的历史募集书');
-  await expect(page.locator('#execution-message')).toContainText('保留原文件并更正分类');
-  await expect(page.locator('#execution-message')).toContainText('若确实没有本发行人历史稿');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
+  await expect(page.locator('#execution-message')).toContainText('无需更改企业关系或重复上传');
+  expect(state.materials[0].role).toBe('reference');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-generation-required');
   await expect(page.locator('#execute-input')).toBeDisabled();
   if (process.env.BB_361_ERROR_EVIDENCE_DIR) {
@@ -283,15 +282,16 @@ test('an existing update project with reference + audit explains classification 
   expect(state.inputs[0].material_versions).toHaveLength(2);
   expect(state.runs.size).toBe(0);
   await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
-  expect(state.project.update_details!.has_historical).toBe(false);
+  expect(state.project.update_details!.has_historical).toBeNull();
+  expect(state.project.update_details!.authoring_mode).toBe('unified_v1');
 });
 
-test('a preflight INPUT_REQUIRED shows reference classification and rechecks the same immutable input', async ({ page }) => {
+test('a unified INPUT_REQUIRED preserves source roles and rechecks the same immutable input', async ({ page }) => {
   const state=fixture(); state.project.update_details!.has_historical=false;
   Object.assign(state.materials[0], { role:'reference' });
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-preflight-role'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('已上传募集书被登记为参考稿');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-preflight-role');
   await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.locator('#recheck-input')).toBeVisible();
@@ -406,6 +406,7 @@ test('stale recheck with a dirty local draft stops without writing it over the f
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-dirty-stale'};
   await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-dirty-stale');
+  const initialPatches=state.patchRequests; // Explicit start migrates this legacy draft once.
   state.project.draft_revision=4; state.project.input_revision=8; state.project.input_hash=hash('synthetic-dirty-v8');
   state.snapshots.set(8,{...state.snapshots.get(3)!,input_revision:8,input_hash:state.project.input_hash});
   state.holdProjectRead=true;
@@ -426,13 +427,13 @@ test('stale recheck with a dirty local draft stops without writing it over the f
     }
   }
   await page.waitForTimeout(900);
-  expect(state.patchRequests).toBe(0);
+  expect(state.patchRequests).toBe(initialPatches);
   expect(state.project.name).toBe('合成任务项目');
   page.once('dialog', dialog=>{ void dialog.accept(); });
   await page.locator('#reload-draft').click();
   await expect(page.locator('#execution-message')).toContainText('项目已保存更新的输入版本');
   await expect(page.locator('#name')).toHaveValue('合成任务项目');
-  expect(state.patchRequests).toBe(0);
+  expect(state.patchRequests).toBe(initialPatches);
   expect(state.executes).toHaveLength(0);
 });
 
@@ -450,25 +451,24 @@ test('recheck rejects an inconsistent latest input without retrying the old revi
   await expect(page.locator('#execute-input')).toBeDisabled();
 });
 
-test('the historical choice still sees a misclassified reference excluded from execution inputs', async ({ page }) => {
+test('unified input includes reference materials and does not ask for reclassification', async ({ page }) => {
   const state=fixture(); state.materials[0].role='reference';
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-excluded-reference'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('已上传募集书被登记为参考稿');
-  expect(state.inputs[0].material_versions).toEqual([{material_id:'synthetic-audit',material_version:1}]);
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
+  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
   await page.reload(); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('保留原文件并更正分类');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
   expect(state.materials[0].role).toBe('reference'); expect(state.executes).toHaveLength(0);
 });
 
-test('a generation rejection keeps structural reference separate from issuer verification', async ({ page }) => {
+test('a legacy generation rejection keeps references optional and supports rechecking', async ({ page }) => {
   const state=fixture(); state.project.kind='generation'; state.project.update_details!.has_historical=false;
   Object.assign(state.materials[0], {role:'reference',parse_snapshot_id:'synthetic-snapshot'});
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-preflight'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('新稿尚未满足执行条件');
-  await expect(page.locator('#execution-message')).toContainText('身份核验及新稿处理条件');
-  await expect(page.locator('#execution-message')).toContainText('不要把相似稿改作本发行人历史稿');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
+  await expect(page.locator('#execution-message')).toContainText('无需更改企业关系或重复上传');
   await expect(page.locator('#execution-message')).not.toContainText('更正分类');
   await expect(page.locator('#execute-input')).toBeDisabled();
   state.preflightError=undefined; state.checkStatus='ready';
@@ -511,16 +511,16 @@ test('temporary start failure retains support reference and does not claim missi
   expect(state.runs.size).toBe(0);
 });
 
-test('current historical choice excludes reference-only materials without a second selection form', async ({ page }) => {
+test('unified authoring includes all uploaded source materials without a second selection form', async ({ page }) => {
   const state=fixture(); state.materials.push({...state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx'});
   await setup(page,state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
-  expect(state.inputs[0].material_versions).toEqual(state.materials.slice(0,2).map(m=>({material_id:m.material_id,material_version:1})));
+  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
   expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
   await expect(page.locator('#execution-actions input, #execution-actions select')).toHaveCount(0);
 });
 
-test('no-history project routes to the generation task kind and pins a user-specified reference', async ({ page }) => {
+test('legacy generation task kind is retained with unified source metadata', async ({ page }) => {
   const state=fixture();
   state.project.kind='generation';
   state.project.update_details={...state.project.update_details!,has_historical:false};
@@ -536,47 +536,31 @@ test('no-history project routes to the generation task kind and pins a user-spec
   expect(state.executes[0].execution_request_id).toMatch(/^web-generation-/);
   expect(state.inputs[0].material_versions).toEqual([
     {material_id:'synthetic-reference',material_version:1},{material_id:'synthetic-audit',material_version:1}]);
-  // Structure only: exact reference identity plus the owner-visible parse snapshot; no issuer facts.
-  expect(state.inputs[0].user_reference).toEqual({material_id:'synthetic-reference',material_version:1,
-    material_sha256:hash('history'),parse_snapshot_id:'synthetic-snapshot',target_product:'private',target_document_stage:'issuance'});
+  // Source metadata is pinned from the saved project by the API; no separate reference-library gate.
+  expect(state.inputs[0]).not.toHaveProperty('user_reference');
+  expect(state.project.update_details!.authoring_mode).toBe('unified_v1');
   await expect(page.locator('#execution-message')).not.toContainText('解析快照');
 });
 
-test('a selected reference without an available parse snapshot stops before creating an input or run', async ({ page }) => {
-  const state=fixture();
-  state.project.kind='generation';
+test('reference parsing is handled by the unified worker after an immutable task is submitted', async ({ page }) => {
+  const state=fixture(); state.project.kind='generation';
   state.project.update_details={...state.project.update_details!,has_historical:false};
   state.materials=[{...state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx'},state.materials[1]];
-  state.checkStatus='ready';
-  await setup(page,state);
-  await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('解析快照尚未就绪');
-  expect(state.inputs).toHaveLength(0);
-  expect(state.preflights).toHaveLength(0);
-  expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#run-panel')).toBeHidden();
+  state.checkStatus='ready'; await setup(page,state); await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
+  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
+  expect(state.inputs[0]).not.toHaveProperty('user_reference');
 });
 
-test('list v1 -> GET v2 before start stops without creating an input or run', async ({ page }) => {
-  const state=fixture();
-  state.project.kind='generation';
-  state.project.update_details={...state.project.update_details!,has_historical:false};
-  const reference={...state.materials[0],material_id:'synthetic-reference',role:'reference' as const,filename:'reference.docx',parse_snapshot_id:'synthetic-snapshot-v1'};
-  state.materials=[reference as Dto<'MaterialResponse'>,state.materials[1]];
-  state.checkStatus='ready';
+test('unified input rejection preserves the selected version without silently substituting newer material', async ({ page }) => {
+  const state=fixture(); state.checkStatus='ready'; state.conflictSave=true;
   await setup(page,state);
-  // The page recovered the list entry as v1; the owner-scoped re-read taken at submission now returns v2.
-  Object.assign(state.materials[0],{material_version:2,sha256:hash('history-v2'),parse_snapshot_id:'synthetic-snapshot-v2'});
+  Object.assign(state.materials[0],{material_version:2,sha256:hash('history-v2')});
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('已更新为新的版本');
-  expect(state.inputs).toHaveLength(0);
-  expect(state.preflights).toHaveLength(0);
-  expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#run-panel')).toBeHidden();
-  expect(state.runs.size).toBe(0);
-  // The page stays on the project and the action remains available for a refreshed re-selection.
-  await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
-  await expect(page.getByRole('heading',{name:'合成任务项目',exact:true})).toBeVisible();
+  await expect(page.locator('#execution-message')).toContainText('消息或项目版本已变化');
+  expect(state.inputs).toHaveLength(1); expect(state.inputs[0].material_versions[0].material_version).toBe(1);
+  expect(state.executes).toHaveLength(0); expect(state.runs.size).toBe(0);
 });
 
 test('manual task refresh invalidates a late paused poll without replaying task actions', async ({ page }) => {
@@ -647,7 +631,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   expect(state.runActions).toEqual([`/runs/${run.run_id}/resume`]);
   run.state='running';
   await expect(page.locator('#cancel-run')).toBeVisible({ timeout: 10000 });
-  await page.getByRole('button',{name:'停止更新',exact:true}).click();
+  await page.getByRole('button',{name:'停止本次任务',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已取消'); expect(state.runs.size).toBe(1);
 });
 
@@ -845,7 +829,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
     await setup(page, state, false);
-    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
+    await page.getByLabel('为历史／参考募集书选择文件').setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
     await expect(history).toContainText('正在保存和核验');
     expect(releaseSave).toBeDefined(); releaseSave!();
@@ -868,10 +852,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); scrollTo(0, 0); });
       await page.screenshot({ path: join(output, `materials-${label}.png`), fullPage: true });
     }
-    await page.getByRole('button', { name: '开始更新', exact: true }).click();
+    await page.getByRole('button', { name: '开始编制', exact: true }).click();
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     await expect(page.locator('#execution-preflight')).toBeHidden();
-    await expect(page.getByRole('button', { name: '保留待确认项并开始更新' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '保留待确认项并开始编制' })).toHaveCount(0);
     expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(1);
     expect(state.inputs[0]).not.toHaveProperty('target_confirmation');
     expect(state.inputs[0].material_versions).toEqual(state.materials.map(m => ({ material_id: m.material_id, material_version: 1 })));

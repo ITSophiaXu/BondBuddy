@@ -20,6 +20,10 @@ COPY apps apps
 COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
 COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
+COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
+COPY knowledge/exchange-bonds/共通方法与差异.md knowledge/exchange-bonds/冲突与未覆盖项.md knowledge/exchange-bonds/
+COPY knowledge/nafmii/APPLICABILITY.md knowledge/nafmii/APPLICABILITY.md
+COPY knowledge/nafmii/drafts/ knowledge/nafmii/drafts/
 RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js \
  && npm prune --omit=dev --no-audit --no-fund \
  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src
@@ -28,7 +32,10 @@ COPY python python
 COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/
 COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
 # Normalise permissions regardless of the build host's umask; the runtime user only reads.
-RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + ; chmod -R a+rX,go-w /app
+RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + \
+ && find /app -type d ! -perm -005 -exec chmod a+rx {} + \
+ && find /app -type f ! -perm -004 -exec chmod a+r {} + \
+ && find /app -perm /022 -exec chmod go-w {} +
 
 # Pinned codex-cli for the #16 contained adapter (same version as the #16 live probes).
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
@@ -66,7 +73,7 @@ COPY --from=build --chown=root:root /app/packages packages
 COPY --from=build --chown=root:root /app/apps/api apps/api
 COPY --from=build --chown=root:root /app/apps/worker apps/worker
 COPY --from=build --chown=root:root /app/db db
-COPY --from=build --chown=root:root /app/knowledge/exchange-bonds/drafts/sse-private knowledge/exchange-bonds/drafts/sse-private
+COPY --from=build --chown=root:root /app/knowledge knowledge
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/blob-snapshot.mjs
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-offhost.mjs
 COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/backup-stream.mjs

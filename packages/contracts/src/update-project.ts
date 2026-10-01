@@ -1,4 +1,17 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { MARKETS, OFFERINGS, MARKET_OFFERINGS } from './public-enums.js';
+import type { ProjectMessageSetPin } from './project-message-set-pin.js';
+
+export type UnifiedAuthoringInput = {
+  version: 'unified_v1'; source_prospectuses: SourceProspectus[];
+  requirements: ProjectMessageSetPin['members'];
+  knowledge: { path: string; sha256: string; markdown: string }[];
+  knowledge_status: 'authoring_reference_not_compliance_approval';
+  previous_output?: { artifact_id: string; version: number; sha256: string; run_id: string; input_revision: number };
+};
+export function isUnifiedInput(manifest: unknown): manifest is Record<string, unknown> & { authoring: UnifiedAuthoringInput } {
+  return !!manifest && typeof manifest === 'object' && (manifest as { authoring?: { version?: unknown } }).authoring?.version === 'unified_v1';
+}
 
 // One definition for the form, API, and immutable input manifest (spec 05/16).
 export const PROJECT_FIELD_LIMITS = { name: 120, issuer: 200, notes: 6000, fundingUses: 30 } as const;
@@ -31,7 +44,22 @@ export const TargetReportingPeriodSchema = Type.Object({
   // Evidence references are reserved until this project input can validate them against owned materials.
   evidence_refs: Type.Array(Type.String({ minLength: 1, maxLength: 128 }), { maxItems: 0 })
 }, { additionalProperties: false, description: 'User-entered target period; never evidence-verified by the project draft API.' });
+export const SOURCE_RELATIONS = { same_issuer: '同企业', parent: '目标发行人的母公司', subsidiary: '目标发行人的子公司', similar_business: '相似业务企业' } as const;
+export const SourceProspectusSchema = Type.Object({
+  material_id: Type.String({ minLength: 1, maxLength: 128 }),
+  material_version: Type.Integer({ minimum: 1 }),
+  sha256: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+  issuer_name: nullable(Type.String({ maxLength: PROJECT_FIELD_LIMITS.issuer })),
+  relation: Type.Union([...Object.keys(SOURCE_RELATIONS).map(v => Type.Literal(v as keyof typeof SOURCE_RELATIONS)), Type.Null()]),
+  market: Type.Union([...MARKETS.map(v => Type.Literal(v)), Type.Null()]),
+  offering: Type.Union([...OFFERINGS.map(v => Type.Literal(v)), Type.Null()]),
+  reporting_periods: Type.Array(TargetReportingPeriodSchema, { maxItems: 30 }),
+  status: Type.Literal('user_asserted')
+}, { additionalProperties: false });
+export type SourceProspectus = Static<typeof SourceProspectusSchema>;
 export const UpdateDetailsSchema = Type.Object({
+  authoring_mode: Type.Optional(Type.Literal('unified_v1')),
+  source_prospectuses: Type.Optional(Type.Array(SourceProspectusSchema, { maxItems: 60 })),
   has_historical: nullable(Type.Boolean()),
   reporting_cutoff: nullable(Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
   // Optional for older clients. On PATCH, omission preserves the saved period set; [] explicitly clears it.
@@ -61,6 +89,15 @@ export function moneyInMicroYuan(amount: Money): bigint {
 }
 export function updateDetailsErrors(details: UpdateDetails): Array<{ field: string; code: string; message: string }> {
   const errors = [];
+  const sourceIds = new Set<string>();
+  for (const [index, source] of (details.source_prospectuses ?? []).entries()) {
+    const field = `update_details.source_prospectuses.${index}`;
+    if (sourceIds.has(source.material_id)) errors.push({ field, code: 'duplicate_source', message: '每份原稿只能保存一组信息。' });
+    sourceIds.add(source.material_id);
+    if (source.offering && (!source.market || !(MARKET_OFFERINGS[source.market] as readonly string[]).includes(source.offering)))
+      errors.push({ field, code: 'invalid_source_scope', message: '原稿市场与品种不匹配。' });
+    errors.push(...updateDetailsErrors({ ...emptyUpdateDetails(), target_reporting_periods: source.reporting_periods }).map(e => ({ ...e, field: `${field}.${e.field}` })));
+  }
   if (details.reporting_cutoff) {
     const parsed = new Date(`${details.reporting_cutoff}T00:00:00Z`);
     if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== details.reporting_cutoff) {
