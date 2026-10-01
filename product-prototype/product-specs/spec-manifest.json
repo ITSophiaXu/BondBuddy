@@ -1,14 +1,14 @@
 {
-  "spec_version": "1.3",
+  "spec_version": "1.4",
   "requirements_date": "2026-09-22",
-  "assembled_at": "2026-09-30T04:52:28.537Z",
+  "assembled_at": "2026-10-01T05:56:34.374Z",
   "scope": "Web-first staged delivery, Windows last; current BondBuddy plus commercial launch requirements",
   "pricing_version": "proposal-2026-09-22-v1.1",
   "modules": [
     {
       "file": "00-产品边界与需求决策.md",
       "title": "00 产品边界与需求决策",
-      "sha256": "7b0d1ae7479ed12980d63f79ae925ac9a4f61ef49691dede47bbecd14bd683c3"
+      "sha256": "66d04034b7a584de61b7723bfd5adbe04bd0c49fd9a637afa3068905946d8ab3"
     },
     {
       "file": "01-Windows客户端与运行架构.md",
@@ -28,12 +28,12 @@
     {
       "file": "04-材料导入与证据处理.md",
       "title": "04 材料导入与证据处理",
-      "sha256": "2384f8a1b670c0d88989c8ffa74bba56f1bd4fc2cf2233a3af5a9e94f669509e"
+      "sha256": "3de494c4918f0fc08546785021f6e919246fabb97da23bf3f4a0e2ff83eccbaf"
     },
     {
       "file": "05-更新募集书.md",
-      "title": "05 更新募集书",
-      "sha256": "a4a4a07f52975ebdd252d2320c787903dcf5544aebb458f8358ff010d0127241"
+      "title": "05 募集书编制与更新",
+      "sha256": "e7164a1aed29f674729b6648bc1211f1caa49fae7faebc1043895e135c277780"
     },
     {
       "file": "06-复核募集书.md",
@@ -73,32 +73,32 @@
     {
       "file": "13-QA与项目对话.md",
       "title": "13 QA 问答与项目对话",
-      "sha256": "f20cc0250d5813d3c0560ea871a5224beb01045412fb4ae03e44de4a88bdc91e"
+      "sha256": "c170381a28650b9a555b39f1c83487ffbe57ecb015d1e9c37358d7334ff278e7"
     },
     {
       "file": "14-积分充值与结算.md",
       "title": "14 积分充值与结算",
-      "sha256": "0cfab34a4841dcc10d2bf3a0f3fc5be2a8ebde45c81c128a0fe63e554346c772"
+      "sha256": "f1f16177946d0c403cf111420e3c2caf93ec48ddcdfdaa65cc34e42781bb9d25"
     },
     {
       "file": "15-后台规则模板及数据接入.md",
       "title": "15 后台规则、模板及数据接入",
-      "sha256": "b33206d58be80ed4b449af521f6b1fac9c658bf674d2ade80245be88c0f1d2c0"
+      "sha256": "691445f6be71de82d00c04469bc474ac64a8a552cbe6a2e92a112681a85f89cb"
     },
     {
       "file": "16-数据模型接口与状态机.md",
       "title": "16 数据模型、接口与状态机",
-      "sha256": "a312669f7bcd3979d96c368ef44a59d0f14e240440d4b9324fb846096d476c11"
+      "sha256": "91f84683a10234230dc0465bdc31ababd77001f1e26de53302bb16b8b2a722d8"
     },
     {
       "file": "17-验收测试与实施路线.md",
       "title": "17 验收测试与实施路线",
-      "sha256": "39e3d7f7d8a9237a2d48c00336e21bbfb306f196ce30932f38db518d60540cc8"
+      "sha256": "bc42d99ce2ccd83ee0de85c2e4e6b9cc8a366b7c625e26730ef1bc176a8a5bb0"
     },
     {
       "file": "18-当前实现与来源索引.md",
       "title": "18 当前实现与来源索引",
-      "sha256": "8fe0b9aa816eb1efc9deb888b4f21bf9a10cfb28ff1602b0112c1f26b1aed5be"
+      "sha256": "ff2e52d0e1423548c4a8da31bfd9737dc357fc6038196953f281733bb61dac4f"
     }
   ],
   "sources": [
@@ -351,8 +351,8 @@
   ],
   "validation": {
     "module_count": 19,
-    "han_characters": 76273,
-    "local_links_checked": 235,
+    "han_characters": 74999,
+    "local_links_checked": 243,
     "tables_checked": 131,
     "json_examples_checked": 4,
     "errors": []
