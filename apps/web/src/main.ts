@@ -4,11 +4,11 @@ import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
-import { ProjectConversation, newProjectConversation } from './project-conversation';
+import { ProjectConversation } from './project-conversation';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
-import { sourceFields, readSourceFields } from './source-prospectus.js';
+import { sourceFields, readSourceFields, sourcePeriodSummary, clearSourceSelections } from './source-prospectus.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
@@ -45,7 +45,6 @@ let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
 let staleInputNoticeProjectId: string | undefined;
 let projectConversation: ProjectConversation | undefined;
-let newConversationDraft = '';
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
@@ -75,11 +74,11 @@ const accountPage: AccountContext = {
 };
 
 function clearPrivateState() {
+  clearSourceSelections();
   dashboard?.dispose(); dashboard = undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
-  newConversationDraft = '';
   staleInputNoticeProjectId = undefined;
   disposeOcrReview();
   materialProcessing?.dispose(); materialProcessing = undefined;
@@ -282,7 +281,6 @@ async function renderRoute() {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
   newDirty = false;
-  if (currentRoute === '/new' && requested !== '/new') newConversationDraft = '';
   const token = ++epoch;
   if (draft && (draft.dirty || draft.state === 'saving')) {
     const saved = await draft.save();
@@ -331,18 +329,13 @@ async function renderRoute() {
 function renderNew() {
   const value = blankDraft();
   shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>提供项目材料和要求，点击开始即可执行。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}
-    <form id="create-form" class="update-form"><div class="workspace-layout"><section class="panel form-panel form-card">${updateFormFields(value)}
-    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section>${newProjectConversation(value, newConversationDraft)}</div></form>`, 'new');
+    <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value)}
+    <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div></section></div></form>`, 'new');
   const form = document.querySelector<HTMLFormElement>('#create-form')!;
   bindUpdateForm(form, () => { newDirty = true; }, value.update_details);
-  document.querySelector<HTMLTextAreaElement>('#project-message')!.addEventListener('input', event => {
-    if ((event as InputEvent).isComposing) return;
-    newConversationDraft = (event.target as HTMLTextAreaElement).value; newDirty = true;
-  });
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     const value = readUpdateForm(form); value.name = value.name.trim();
-    value.update_details!.supplementary_notes = document.querySelector<HTMLTextAreaElement>('#project-message')!.value.trim() || null;
     const errors = validateDraft(value);
     if (errors.length) { const target = document.querySelector<HTMLElement>('#page-error')!; target.textContent = errors.join(' '); target.hidden = false; return; }
     creating = true;
@@ -354,7 +347,7 @@ function renderNew() {
     try {
       const project = await api.create(value);
       if (token !== epoch) return;
-      newConversationDraft = ''; newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
+      newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
   });
@@ -368,7 +361,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span><button class="text-button" type="button" id="delete-project">删除项目</button></div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
-    <div class="workspace-layout"><div class="workspace-main">
+    <div class="workspace-layout authoring-workspace"><div class="workspace-main">
       <form id="draft-form" class="update-form" ${step === 'materials' ? 'hidden' : ''}><section class="panel form-card"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
       <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
       <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}>
@@ -376,10 +369,10 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         <div id="workspace-progress"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span>随时查看与补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div>
-    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section></details>
+    <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
         <div class="form-footer"><button type="button" class="btn secondary" id="previous-details">上一步</button><div id="execution-actions"></div></div>
-      </div></div><div id="project-conversation-root"></div></div>`, 'workspace');
+      </div></div></div>`, 'workspace');
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
     const details = { ...draft.fields.update_details, supplementary_notes: text || null };
@@ -801,7 +794,8 @@ function bindMaterialWorkspace(projectId: string) {
     if (!source || !draft) return;
     const material = confirmedMaterials(projectId).find(m => m.material_id === source.dataset.sourceMaterial);
     if (!material) return;
-    const value = readSourceFields(source, material);
+    const previous = draft.fields.update_details.source_prospectuses?.find(s => s.material_id === material.material_id && s.material_version === material.material_version && s.sha256 === material.sha256);
+    const value = readSourceFields(source, material, previous, target.dataset.sourceField);
     const sources = (draft.fields.update_details.source_prospectuses ?? []).filter(s => s.material_id !== material.material_id);
     const details = { ...draft.fields.update_details, authoring_mode: 'unified_v1' as const, source_prospectuses: [...sources, value] };
     draft.edit({ update_details: details });
@@ -810,7 +804,8 @@ function bindMaterialWorkspace(projectId: string) {
       const template = document.createElement('template'); template.innerHTML = sourceFields(material, details.source_prospectuses);
       source.querySelector('[data-source-field="offering"]')!.innerHTML = template.content.querySelector('[data-source-field="offering"]')!.innerHTML;
     }
-    else syncProjectExecution(projectId);
+    source.querySelector('[data-source-period-summary]')!.textContent = sourcePeriodSummary(value.reporting_periods);
+    syncProjectExecution(projectId);
   });
   host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });
   host.addEventListener('drop', event => {

@@ -1,7 +1,7 @@
 import { projectConversation } from './project-conversation.js';
 import { REVIEW_DIMENSIONS,FINANCIAL_ROLES } from './review-scope.js';
 import { planQueries,hasExternalData } from './query-policy.js';
-import { MARKETS,offeringsFor,offeringName } from './markets.js';
+import { MARKETS,offeringsFor,offeringName,annualCountFor } from './markets.js';
 import { ROLE_NAMES,SUPPORT_ROLES,normaliseOptional,FUNDING_PURPOSES } from './project-fields.js';
 
 export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,render,draft,saveDraft,authoring,reportingPreview,refreshJobs,upload=async(path,body)=>api(path,{method:'POST',body}),document=globalThis.document,location=globalThis.location}){
@@ -17,24 +17,32 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     const currentYear=new Date().getFullYear();
     return `${kind==='review'?reviewOverview():''}<section class="form-section"><h2>项目基本信息</h2><p>${kind==='review'?'填写必要信息，用于确定适用规则和财务核对期间。':'填写本次发行安排；选填信息可按已知情况补充。'}</p><div class="field-grid">${textField('title','项目名称',d.title,'例如：2026年第一期债券',true)}${textField('issuer','发行人全称',d.issuer,'填写本次发行人的法定全称',true)}${select('exchange','发行市场',MARKETS,d.exchange,true)}${select('offering',d.exchange==='nafmii'?'债务融资工具品种':'发行方式',offeringsFor(d.exchange),d.offering,true)}<div class="field full"><label for="year">最新报告期 <span class="required">*</span></label><div class="period-row"><select id="year" name="year" required>${Array.from({length:currentYear-1998},(_,i)=>currentYear+1-i).map(y=>`<option value="${y}" ${String(y)===d.year?'selected':''}>${y} 年</option>`).join('')}</select><div class="quarter-grid">${[['03-31','3月末'],['06-30','6月末'],['09-30','9月末'],['12-31','年末']].map(([v,l])=>`<label class="quarter"><input type="radio" name="quarter" value="${v}" ${v===d.quarter?'checked':''} required>${l}</label>`).join('')}</div></div>${reportingPreview(d,kind==='update'?'simple':false)}</div></div></section>${kind==='update'?authoring.optional(d):''}`;
   }
-  function selected(kind){const d=draft(kind);return state.files[kind].filter(f=>kind==='review'?f.role!=='reference':SUPPORT_ROLES.includes(f.role)||(d.authoringMode==='historical'?f.role==='historical':f.role==='userReference'));}
+  function selected(kind){const d=draft(kind);return state.files[kind].filter(f=>kind==='review'?f.role!=='reference':SUPPORT_ROLES.includes(f.role)||['historical','userReference'].includes(f.role));}
   function reviewOverview(){
     const plan=planQueries({kind:'review',prompt:[draft('review').reviewNotes,...(draft('review').projectMessages||[]).map(m=>m.text)].filter(Boolean).join('\n'),connectors:state.connectors||[],webAvailable:state.health.webConfigured,registryAvailable:state.health.registryConfigured,externalDataAllowed:hasExternalData(state.billing?.seat.quota)});
     const status=plan.requiresProfessional?'当前套餐依据上传材料复核；公开检索与工商查询需专业版。':plan.web||plan.registry||plan.connectorIds.length?'将使用已连接的公开检索和数据来源；未覆盖的部分会单独说明。':'公开查询服务暂未连接；相关核验会标记为未覆盖。';
     return '<section class="review-overview"><h2>这次会复核什么</h2><div class="review-dimensions">'+REVIEW_DIMENSIONS.map((d,i)=>'<article><span class="review-number">0'+(i+1)+'</span><h3>'+d.title+'</h3><p>'+d.description+'</p><small>'+d.deliverable+'</small></article>').join('')+'</div><p class="review-source-status">'+esc(status)+'</p><p class="authoring-help">结果包括原文批注、复核报告和待补充事项。未取得依据的事项不会标为已通过。</p></section>';
   }
+  function sourceMetadata(kind,f,index){
+    if(kind!=='update'||!['historical','userReference'].includes(f.role))return '';
+    const d=draft(kind),v=d.sourceProspectuses?.[f.key||index]||{},year=v.year||String(new Date().getFullYear());
+    const selectSource=(field,label,options)=>`<label>${label}<select data-prototype-source="${index}" data-source-field="${field}"><option value="">请选择</option>${options.map(([id,text])=>`<option value="${id}" ${v[field]===id?'selected':''}>${text}</option>`).join('')}</select></label>`;
+    const count=annualCountFor(v.offering),last=Number(year)-(v.quarter==='12-31'?0:1);
+    const summary=v.quarter?`原稿报告期：${Array.from({length:count},(_,i)=>`${last-count+i+1}年`).join('、')}${v.quarter==='12-31'?'':`、${year}年1—${Number(v.quarter.slice(0,2))}月`}`:'选填；未填写也可开始编制。';
+    return `<fieldset class="prototype-source"><legend>原稿信息（选填）</legend><div class="field-grid"><label>原发行人名称<input data-prototype-source="${index}" data-source-field="issuer_name" value="${esc(v.issuer_name||'')}"></label>${selectSource('relation','与目标发行人的关系',[['same_issuer','同企业'],['parent','母公司'],['subsidiary','子公司'],['similar_business','相似业务企业']])}${selectSource('market','原发行市场',MARKETS)}${selectSource('offering','原品种',v.market?offeringsFor(v.market):[])}<div class="field full"><label>原稿最新报告期<select data-prototype-source="${index}" data-source-field="year">${Array.from({length:new Date().getFullYear()-1998},(_,i)=>String(new Date().getFullYear()+1-i)).map(y=>`<option value="${y}" ${y===year?'selected':''}>${y} 年</option>`).join('')}</select></label><div class="quarter-grid">${[['03-31','3月末'],['06-30','6月末'],['09-30','9月末'],['12-31','年末']].map(([q,l])=>`<label class="quarter"><input type="radio" name="source-period-${index}" data-prototype-source="${index}" data-source-field="quarter" value="${q}" ${v.quarter===q?'checked':''}>${l}</label>`).join('')}</div><small>${summary}</small></div></div><small>原稿信息与本次目标分开保存；未知可留空，由编制时结合材料处理。</small></fieldset>`;
+  }
   function fileRow(kind,f){
     const index=state.files[kind].indexOf(f),pending=f.uploadStatus==='uploading',failed=f.uploadStatus==='error';
     const status=f.stored?'已上传并保存':failed?f.error:pending?(f.progress===100?'传输完成，正在保存…':'正在上传 '+(f.progress===null?'':f.progress+'%')):'已选择，等待上传';
-    return '<div class="file-item"><div class="file-icon">'+icon('file')+'</div><div class="file-name"><strong>'+esc(f.file.name)+'</strong><small class="'+(failed?'upload-error':'')+'">'+bytes(f.file.size)+' · '+esc(status)+'</small>'+(pending?'<progress max="100" '+(f.progress===null?'':'value="'+(f.progress||0)+'"')+' aria-label="'+esc(f.file.name)+'上传进度"></progress>':'')+'</div>'+(failed?'<button type="button" class="text-btn" data-action="retry-project-upload" data-value="'+index+'">重试</button>':'')+'<button type="button" class="icon-btn" data-action="remove-file" data-value="'+index+'" '+(pending?'disabled':'')+' aria-label="移除'+esc(f.file.name)+'">'+icon('close')+'</button></div>';
+    return '<div class="file-item"><div class="file-icon">'+icon('file')+'</div><div class="file-name"><strong>'+esc(f.file.name)+'</strong><small class="'+(failed?'upload-error':'')+'">'+bytes(f.file.size)+' · '+esc(status)+'</small>'+(pending?'<progress max="100" '+(f.progress===null?'':'value="'+(f.progress||0)+'"')+' aria-label="'+esc(f.file.name)+'上传进度"></progress>':'')+'</div>'+(failed?'<button type="button" class="text-btn" data-action="retry-project-upload" data-value="'+index+'">重试</button>':'')+'<button type="button" class="icon-btn" data-action="remove-file" data-value="'+index+'" '+(pending?'disabled':'')+' aria-label="移除'+esc(f.file.name)+'">'+icon('close')+'</button></div>'+sourceMetadata(kind,f,index);
   }
   function uploads(kind,d){
     const files=selected(kind),primary=kind==='review'?'updated':'historical';
     const groups=[];
-    if(kind==='review'||d.authoringMode==='historical')groups.push({role:primary,title:kind==='review'?'待复核募集书':'本发行人历史募集书',hint:'必需 · 1 份 DOCX；用于原文定位和 Word '+(kind==='review'?'批注':'修订'),accept:'.docx',single:true,roles:[primary]});
+    if(kind==='review')groups.push({role:primary,title:kind==='review'?'待复核募集书':'本发行人历史募集书',hint:'必需 · 1 份 DOCX；用于原文定位和 Word '+(kind==='review'?'批注':'修订'),accept:'.docx',single:true,roles:[primary]});
+    if(kind==='update')groups.push({role:'historical',title:'历史／参考募集书（选填）',hint:'可上传同企业、母公司、子公司或相似业务企业的募集书；未提供原稿也可编制。',accept:'.docx,.pdf',roles:['historical','userReference']});
     groups.push({role:'audit',title:'审计报告 / 财务报表及附注',hint:'必需 · 可上传一份完整审计报告，也可分开上传报表和附注；同一文件无需重复上传。',roles:FINANCIAL_ROLES});
     if(kind==='update')groups.push({role:'fundUse',title:'募投项目与权证材料',hint:'按项目提供：可研报告、备案许可、土地或建设许可证、基金备案许可、子公司股权投资相关材料等。',roles:['fundUse','feasibility','resolutions']});
-    if(kind==='update'&&d.authoringMode==='reference')groups.push({role:'userReference',title:'相似募集书',hint:'选填 · 有合适的参考文件可以上传；没有也可以继续提供本项目材料。',accept:'.docx,.pdf',single:true,roles:['userReference']});
     const assigned=new Set(groups.flatMap(g=>g.roles));groups.push({role:'other',title:kind==='review'?'其他核对依据':'其他项目材料',hint:kind==='review'?'选填 · 可补充适用法规、工商资料、授信或其他核对依据。':'选填 · 可补充发行方案、授信、经营及其他资料。',roles:[...new Set(files.filter(f=>!assigned.has(f.role)).map(f=>f.role)),'other']});
     return (kind==='review'?reviewOverview():'')+'<section class="form-section material-sections"><h2>提供项目材料</h2><p>在对应分区添加文件，选中后立即上传。每份材料都会显示上传状态。</p>'+groups.map(g=>'<section class="material-group"><div class="material-group-heading"><h3>'+g.title+'</h3><span>'+files.filter(f=>g.roles.includes(f.role)).length+' 份</span></div><p>'+g.hint+'</p><label class="dropzone compact-dropzone" data-upload-role="'+g.role+'">'+icon('upload')+'<strong>点击或拖入'+g.title+'</strong><span>'+((g.accept||'.docx,.pdf,.xlsx,.csv,.txt').replaceAll('.','').toUpperCase().replaceAll(',',' / '))+'</span><input type="file" data-project-upload-role="'+g.role+'" accept="'+(g.accept||'.docx,.pdf,.xlsx,.csv,.txt')+'" '+(g.single?'':'multiple')+' aria-label="上传'+g.title+'"></label><div class="file-list">'+files.filter(f=>g.roles.includes(f.role)).map(f=>fileRow(kind,f)).join('')+'</div></section>').join('')+'<p class="authoring-help">最多60份、合计80 MB。上传材料免费；扫描件或无法解析的文件需替换后再执行。</p></section>';
   }
@@ -66,7 +74,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
   function quoteContent(){return '<p>材料与需求已保存。准备完成后，点击执行即可开始。</p>';}
   function cowork(kind,d){
     const messages=d.projectMessages||[];
-    return `<aside class="panel project-cowork"><div class="cowork-heading">${icon('file')}<h2>募集书更新补充说明</h2></div><div class="cowork-messages">${messages.map((m,i)=>`<div class="cowork-message"><p>${esc(m.text).replaceAll('\n','<br>')}</p><div class="cowork-message-actions"><button type="button" data-action="project-edit-message" data-value="${i}">修改</button></div></div>`).join('')}</div>${conversation.composer(kind,d)}</aside>`;
+    return `<section class="panel project-cowork"><div class="cowork-heading">${icon('file')}<h2>募集书更新补充说明</h2></div><div class="cowork-messages">${messages.map((m,i)=>`<div class="cowork-message"><p>${esc(m.text).replaceAll('\n','<br>')}</p><div class="cowork-message-actions"><button type="button" data-action="project-edit-message" data-value="${i}">修改</button></div></div>`).join('')}</div>${conversation.composer(kind,d)}</section>`;
   }
   function page(kind){
     const d=draft(kind);
@@ -90,7 +98,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     state.step=Math.min(2,state.step);const locked=busy(kind),step=state.step,ready=state.health.authoringVersion===2&&state.health.projectInputVersion===3&&state.health.oneClickExecution===true;const labels=['创建项目','材料与要求'];
     const content=(ready?'':'<div class="notice" role="status"><span>新版项目流程等待服务重启。请关闭原启动窗口，重新打开 Start-BondBuddy.cmd 后刷新；已填写的信息会保留，重启前不会开始任务或扣点。</span></div>')+(step===1?basics(kind,d):step===2?uploads(kind,d):quoteContent(d.assessment));
     const button=step===1?(d.projectId?'保存并继续':'创建项目，继续提供材料'):'开始'+(kind==='update'?'更新':'复核');
-    return head(kind==='update'?'更新募集说明书':'复核募集说明书','提供项目材料和要求，点击开始即可执行。','PROSPECTUS WORKSPACE','<a class="btn secondary" href="#tasks">查看全部项目</a>')+`<div class="stepper">${labels.map((label,i)=>`${i?'<span class="step-line"></span>':''}<span class="step ${step===i+1?'current':''}"><b>${step>i+1?'✓':i+1}</b>${label}</span>`).join('')}</div><fieldset class="workspace-layout workspace-controls" ${locked?'disabled aria-busy="true"':''}><form id="workflow-form"><div class="panel form-card">${content}</div><div class="form-footer">${step>1?'<button type="button" class="btn secondary" data-action="previous-step">上一步</button>':'<span>创建项目与上传材料免费</span>'}<button type="submit" class="btn primary" id="start-task" ${ready&&!uploading&&!locked?'':'disabled'}>${locked?pending.get(operationKey(kind)):!ready?'等待服务重启':uploading?'等待材料上传完成':button}</button></div></form>${cowork(kind,d)}</fieldset>`;
+    return head(kind==='update'?'更新募集说明书':'复核募集说明书','提供项目材料和要求，点击开始即可执行。','PROSPECTUS WORKSPACE','<a class="btn secondary" href="#tasks">查看全部项目</a>')+`<div class="stepper">${labels.map((label,i)=>`${i?'<span class="step-line"></span>':''}<span class="step ${step===i+1?'current':''}"><b>${step>i+1?'✓':i+1}</b>${label}</span>`).join('')}</div><fieldset class="workspace-layout authoring-workspace workspace-controls" ${locked?'disabled aria-busy="true"':''}><div><form id="workflow-form"><div class="panel form-card">${content}</div></form>${step===2?cowork(kind,d):''}<div class="form-footer">${step>1?'<button type="button" class="btn secondary" data-action="previous-step">上一步</button>':'<span>创建项目与上传材料免费</span>'}<button type="submit" form="workflow-form" class="btn primary" id="start-task" ${ready&&!uploading&&!locked?'':'disabled'}>${locked?pending.get(operationKey(kind)):!ready?'等待服务重启':uploading?'等待材料上传完成':button}</button></div></div></fieldset>`;
   }
   async function assess(kind){
     const d=draft(kind),epoch=state.accountEpoch,data=new FormData();for(const [k,v] of Object.entries(fields(kind)))if(v!==undefined&&v!==null&&typeof v!=='object')data.set(k,v);
@@ -134,6 +142,8 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     if(el.closest('#workflow-form')&&el.name)invalidate(state.route);
   }
   function change(el){
+    if(el.dataset?.prototypeSource!==undefined){const i=Number(el.dataset.prototypeSource),f=state.files[state.route][i],d=draft(state.route);d.sourceProspectuses??={};const v=d.sourceProspectuses[f.key||i]??={};v[el.dataset.sourceField]=el.value;if(el.dataset.sourceField==='market')v.offering='';invalidate(state.route);saveDraft(state.route);void render();return true;}
+
     if(el.dataset?.projectUploadRole){void addFiles(el.files,el.dataset.projectUploadRole).catch(error=>toast(error.message,true));return true;}
     if(el.name==='exchange'&&el.closest('#workflow-form')){const d=draft(state.route);d.exchange=el.value;d.offering=offeringsFor(d.exchange)[0][0];invalidate(state.route);saveDraft(state.route);void render();return true;}
     if(el.id==='workspace-primary')return false;
