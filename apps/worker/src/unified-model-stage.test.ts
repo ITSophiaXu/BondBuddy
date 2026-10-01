@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
-import { chunkEvidence, unifiedModelGenerationStage } from './unified-model-stage.js';
+import { chunkEvidence, promptLocator, unifiedModelGenerationStage } from './unified-model-stage.js';
 import type { UnifiedInput } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
 
@@ -21,6 +21,12 @@ test('unified update reads raw supporting records and requires complete baseline
     const value=options.name.includes('read_') ? {notes:[{text:'2025年净资产120万元',evidence:['m0r0'],pending:false}]} :
       {reviewed:['m1r0','m1r1'],edits:[{record_id:'m1r0',after:'2025年净资产120万元',evidence:['m0r0'],pending:[]}],additions:[],summary:['更新财务期间及净资产']};
     assert.ok(options.validate(value));
+    assert.match(options.logicalCallId,/^unified-v2-[a-z0-9_]+$/);
+    assert.equal(options.templateVersion,'unified-authoring-v2');
+    if ('notes' in value) {
+      assert.equal(options.validate({notes:[{text:'合成数据',evidence:['m0r0-m0r2'],pending:false}]}),false);
+      assert.equal(options.validate({notes:[{text:'合成数据',evidence:['target'],pending:false}]}),false);
+    }
     if ('reviewed' in value) {
       assert.equal(options.validate({...value,reviewed:['m1r0']}),false);
       assert.equal(options.validate({...value,edits:[{...value.edits![0],evidence:['foreign-project/secret']}]}),false);
@@ -53,4 +59,21 @@ test('chunking preserves each raw record exactly once without silent truncation'
   const records=Array.from({length:401},(_,i)=>({id:String(i),text:'原文'.repeat(i%13+1),uncertainty:[]}));
   assert.deepEqual(chunkEvidence(records,400).flat(),records);
   assert.throws(()=>chunkEvidence([{id:'large',text:'x'.repeat(500),uncertainty:[]}],400),/block_too_large/);
+});
+
+test('prompt keeps layout coordinates without repeating private stable anchors',()=>{
+  const locator={sheet:'财务报表',cell:'B10',merged_range:'B10:C10',stable_ref:{xml_path:'x'.repeat(2000)}};
+  assert.deepEqual(promptLocator(locator),{sheet:'财务报表',cell:'B10',merged_range:'B10:C10'});
+  assert.equal(locator.stable_ref.xml_path.length,2000);
+  const path=[{table:1,row:2,column:3},{paragraph:1}];
+  assert.deepEqual(promptLocator({path,stable_ref:'docx:internal'}),{path});
+});
+
+test('chunking bounds serialized UTF-8 including locator overhead without losing records',()=>{
+  const records=Array.from({length:40},(_,i)=>({id:`r${i}`,text:'数值',uncertainty:[],locator:{sheet:'财务报表'.repeat(30),cell:`B${i}`}}));
+  const chunks=chunkEvidence(records,18000,600,2000);
+  assert.deepEqual(chunks.flat(),records);
+  assert.ok(chunks.length>1);
+  assert.ok(chunks.every(chunk=>Buffer.byteLength(JSON.stringify(chunk))<=2000));
+  assert.throws(()=>chunkEvidence(records,18000,600,20),/block_too_large/);
 });
