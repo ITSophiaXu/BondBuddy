@@ -1,5 +1,5 @@
 // Presentation choices from product-prototype/public/project-workspace.js:basics.
-// A selected cutoff does not infer a reporting-period set or evidence status.
+// The standard authoring window is derived separately by the shared contracts helper.
 export const QUARTER_ENDS = [
   ['03-31', '3月末'], ['06-30', '6月末'], ['09-30', '9月末'], ['12-31', '年末']
 ] as const;

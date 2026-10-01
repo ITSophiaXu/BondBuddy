@@ -29,7 +29,7 @@ function fixture() {
     saves: [] as Dto<'ProjectMessageSaveRequest'>[], inputs: [] as Dto<'InputRevisionCreateRequest'>[],
     snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], run: undefined as Dto<'RunResponse'> | undefined,
-    dropOnce: false, changedCursor: false, failRead: false, inputConflictOnce: false, pageCursors: [] as string[]
+    createFailOnce: false, notePatchFailOnce: false, dropOnce: false, changedCursor: false, failRead: false, inputConflictOnce: false, pageCursors: [] as string[]
   };
   function ref() {
     const members = messages.map(m => ({ message_id: m.message_id, message_version: m.message_version,
@@ -75,6 +75,7 @@ async function setup(page: Page, fixtureState = fixture()) {
     if (path === '/me') return state.owner ? reply(route, 200, { user_id: state.owner, session_status: 'active' }) : reply(route, 401, { code: 'UNAUTHENTICATED' });
     if (!state.owner) return reply(route, 401, { code: 'UNAUTHENTICATED' });
     if (path === '/projects' && method === 'POST') {
+      if (state.createFailOnce) { state.createFailOnce=false; return reply(route,503,{code:'DATA_UNAVAILABLE'}); }
       const input = request.postDataJSON() as Dto<'ProjectCreateRequest'>;
       expect(Value.Check(schemas.ProjectCreateRequest, input)).toBe(true);
       Object.assign(state.project, input);
@@ -85,6 +86,7 @@ async function setup(page: Page, fixtureState = fixture()) {
     }] : [], page: { next_cursor: null, has_more: false } });
     if (state.owner !== 'owner-a') return reply(route, 404, { code: 'NOT_FOUND' });
     if (path === `/projects/${id}`) {
+      if (method==='PATCH'&&state.notePatchFailOnce) { state.notePatchFailOnce=false; return reply(route,503,{code:'DATA_UNAVAILABLE'}); }
       if (method === 'PATCH') Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 });
       return reply(route, 200, state.project);
     }
@@ -164,11 +166,11 @@ async function setup(page: Page, fixtureState = fixture()) {
     return reply(route, 404, { code: 'NOT_FOUND' });
   });
   await page.goto(`/#/projects/${id}`);
-  await expect(page.locator('#conversation-status')).toContainText('已读取');
+  await expect(page.locator('#conversation-status')).toBeEmpty();
   return fixtureState;
 }
 async function send(page: Page, text: string) {
-  await page.getByLabel('补充说明与写作要求').fill(text);
+  await page.getByLabel('补充募集书更新说明').fill(text);
   await page.locator('#send-project-message').click();
   await expect(page.locator('.cowork-message').filter({ hasText: text })).toBeVisible();
 }
@@ -176,7 +178,7 @@ async function send(page: Page, text: string) {
 test('unified source metadata is material-version-bound, survives reopening and never starts on save', async ({page}) => {
   const {state}=await setup(page);
   await expect(page.getByRole('heading',{name:'是否有本发行人的历史募集书？'})).toHaveCount(0);
-  await expect(page.getByRole('heading',{name:'募集书编制的补充要求'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'募集书更新补充说明'})).toBeVisible();
   const source=page.locator('[data-source-material="synthetic-historical"]');
   await source.getByLabel('原发行人名称',{exact:true}).fill('合成母公司');
   await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('parent');
@@ -199,20 +201,20 @@ test('save-only sends, exact edit history, lost-response idempotency and refresh
   const setupState = await setup(page);
   const { state } = setupState;
   state.dropOnce = true;
-  await page.getByLabel('补充说明与写作要求').fill('用户授信原话：50亿元');
+  await page.getByLabel('补充募集书更新说明').fill('用户授信原话：50亿元');
   await page.locator('#send-project-message').click();
   await expect(page.locator('#conversation-status')).toContainText('保存结果尚未确认');
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('用户授信原话：50亿元');
-  await page.getByLabel('补充说明与写作要求').fill('另一条尚未发送的内容');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('用户授信原话：50亿元');
+  await page.getByLabel('补充募集书更新说明').fill('另一条尚未发送的内容');
   await expect(page.locator('#send-project-message')).toBeDisabled();
   page.once('dialog', dialog => dialog.accept());
   await page.locator('#restore-message-request').click();
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('用户授信原话：50亿元');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('用户授信原话：50亿元');
   await page.locator('#send-project-message').click();
   await expect(page.locator('.cowork-message')).toContainText('用户授信原话：50亿元');
   expect(state.saves[0]).toEqual(state.saves[1]); expect(state.messages).toHaveLength(1);
   await page.locator('[data-edit-message]').click();
-  await page.getByLabel('补充说明与写作要求').fill('用户修正：截至6月，已用30亿元');
+  await page.getByLabel('补充募集书更新说明').fill('用户修正：截至6月，已用30亿元');
   await page.locator('#send-project-message').click();
   await expect(page.locator('.cowork-message')).toContainText('用户修正：截至6月');
   expect(state.messages[0].message_version).toBe(2);
@@ -234,17 +236,17 @@ test('save-only sends, exact edit history, lost-response idempotency and refresh
 test('acknowledged save is not reported as pending when the following read fails', async ({ page }) => {
   const { state } = await setup(page);
   state.failRead = true;
-  await page.getByLabel('补充说明与写作要求').fill('服务器已保存的用户消息');
+  await page.getByLabel('补充募集书更新说明').fill('服务器已保存的用户消息');
   await page.locator('#send-project-message').click();
   await expect(page.locator('#conversation-status')).toContainText('补充要求已保存，但列表读取失败');
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('');
   await expect(page.locator('#send-project-message')).toBeDisabled();
   expect(state.messages).toHaveLength(1);
   expect(state.saves).toHaveLength(1);
   state.failRead = false;
   await page.locator('#reload-project-messages').click();
   await expect(page.locator('.cowork-message')).toContainText('服务器已保存的用户消息');
-  await expect(page.locator('#conversation-status')).toContainText('已读取');
+  await expect(page.locator('#conversation-status')).toBeEmpty();
   expect(state.saves).toHaveLength(1);
 });
 
@@ -300,7 +302,7 @@ test('pagination pins all messages, new edit produces a new immutable input with
   expect(state.inputs[0].requirement_message_ids).toHaveLength(24);
   expect(state.inputs[0].project_message_set_ref).toEqual(f.ref());
   const oldHash = state.snapshots.get(1)!.input_hash;
-  await page.getByLabel('补充说明与写作要求').fill('运行中补充，不能改写旧输入');
+  await page.getByLabel('补充募集书更新说明').fill('运行中补充，不能改写旧输入');
   await page.locator('#send-project-message').click();
   await expect.poll(() => state.messages.length).toBe(25);
   expect(state.run?.input_hash).toBe(oldHash);
@@ -322,14 +324,14 @@ test('stale edit and cursor reread without overriding; owner switch clears priva
   await page.locator('[data-edit-message]').click();
   f.save({ message_id: f.state.messages[0].message_id, submission_request_id: 'external-edit',
     expected_message_version: 1, body: '另一页面已修改', material_versions: [] });
-  await page.getByLabel('补充说明与写作要求').fill('本页不同的修改');
+  await page.getByLabel('补充募集书更新说明').fill('本页不同的修改');
   await page.locator('#send-project-message').click();
   await expect(page.locator('#conversation-status')).toContainText('新版本');
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('本页不同的修改');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('本页不同的修改');
   expect(f.state.messages[0].body).toBe('另一页面已修改');
   page.once('dialog', dialog => dialog.accept());
   await page.locator('[data-edit-message]').click();
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('另一页面已修改');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('另一页面已修改');
   for (let n = 1; n <= 21; n++) f.save({ message_id: `extra-${n}`, submission_request_id: `extra-${n}`,
     expected_message_version: null, body: `补充 ${n}`, material_versions: [] });
   await page.locator('#reload-project-messages').click();
@@ -337,7 +339,7 @@ test('stale edit and cursor reread without overriding; owner switch clears priva
   f.state.changedCursor = true;
   await page.locator('#more-project-messages').click();
   await expect(f.state.pageCursors.filter(cursor => cursor === 'first').length).toBeGreaterThan(2);
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('另一页面已修改');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('另一页面已修改');
   await page.locator('#cancel-message-edit').click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('second'); await page.getByLabel('密码').fill('synthetic-password');
@@ -366,17 +368,85 @@ test('create and material conversation use the prototype desktop and mobile work
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
-  await page.getByLabel('目标报告年度').fill('2024、2025');
-  await page.getByLabel('目标一期截止日（无则留空）').fill('2026-06-30');
-  await page.getByLabel('补充说明与写作要求').fill('合成补充：授信口径待核对。');
+  await page.getByLabel('最新报告期年份').selectOption('2026');
+  await page.getByRole('radio',{name:'6月末',exact:true}).check();
+  await page.getByLabel('补充募集书更新说明').fill('合成补充：授信口径待核对。');
   await capture('create');
   await page.setViewportSize({ width: 390, height: 844 }); await capture('create-mobile');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
-  await expect(page.locator('#conversation-status')).toContainText('已读取');
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('合成补充：授信口径待核对。');
-  await page.locator('#send-project-message').click();
+  await expect(page.locator('#conversation-status')).toBeEmpty();
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('');
   await expect(page.locator('.cowork-message')).toContainText('合成补充：授信口径待核对。');
   await capture('materials');
   await page.setViewportSize({ width: 390, height: 844 }); await capture('materials-mobile');
+});
+
+
+test('latest period derives and saves source-independent windows; initial note is saved with creation and editable after reload', async ({page}) => {
+  const {state}=await setup(page);
+  await page.goto('/#update');
+  await page.getByLabel('项目名称').fill('合成报告期项目');
+  await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
+  await page.getByLabel('发行方式',{exact:true}).selectOption('private');
+  await page.getByLabel('最新报告期年份').selectOption('2026');
+  await page.getByRole('radio',{name:'6月末',exact:true}).check();
+  await expect(page.locator('#reporting-window')).toHaveText('报告期：2024年、2025年、2026年1—6月');
+  await expect(page.locator('.cowork-context,.cowork-prompts, input[type=date]')).toHaveCount(0);
+  await page.getByLabel('补充募集书更新说明').fill('创建时要求：重点更新经营情况');
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+  await expect(page.locator('.cowork-initial')).toContainText('创建时要求：重点更新经营情况');
+  expect(state.project.update_details?.supplementary_notes).toBe('创建时要求：重点更新经营情况');
+  expect(state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2024-12-31','2025-12-31','2026-06-30']);
+  expect(state.saves).toHaveLength(0); expect(state.executes).toHaveLength(0);
+  await page.reload();
+  await page.getByRole('button',{name:'修改创建时的补充说明'}).click();
+  await page.getByLabel('补充募集书更新说明').fill('修改后要求：补充业务变化');
+  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
+  await expect(page.locator('.cowork-initial')).toContainText('修改后要求：补充业务变化');
+  await page.getByRole('button',{name:'编辑项目信息'}).click();
+  await page.getByLabel('发行方式',{exact:true}).selectOption('public');
+  await expect.poll(()=>state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2023-12-31','2024-12-31','2025-12-31','2026-06-30']);
+  await page.getByRole('radio',{name:'年末',exact:true}).check();
+  await expect.poll(()=>state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2024-12-31','2025-12-31','2026-12-31']);
+  await page.reload();
+  await expect(page.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
+  await expect(page.locator('.cowork-initial')).toContainText('修改后要求：补充业务变化');
+  expect(state.executes).toHaveLength(0);
+});
+
+test('unrelated edits preserve historical target metadata and original prospectus metadata',async({page})=>{
+  const f=fixture();
+  const old=[{start:'2024-01-01',end:'2024-12-31',period_kind:'annual' as const,scope:'parent' as const,status:'user_asserted' as const,evidence_refs:[]}];
+  f.state.project.update_details!.target_reporting_periods=old;
+  f.state.project.update_details!.source_prospectuses=[{material_id:'synthetic-historical',material_version:1,sha256:hash('historical'),issuer_name:'合成母公司',relation:'parent',market:'nafmii',offering:'ppn',reporting_periods:old,status:'user_asserted'}];
+  await setup(page,f);await page.getByRole('button',{name:'编辑项目信息'}).click();
+  await page.getByLabel('项目名称').fill('仅改名称');
+  await expect.poll(()=>f.state.project.name).toBe('仅改名称');
+  expect(f.state.project.update_details!.target_reporting_periods).toEqual(old);
+  await page.getByRole('radio',{name:'9月末',exact:true}).check();
+  await expect.poll(()=>f.state.project.update_details!.reporting_cutoff).toBe('2025-09-30');
+  expect(f.state.project.update_details!.source_prospectuses![0].reporting_periods).toEqual(old);
+  expect(f.state.executes).toHaveLength(0);
+});
+
+
+test('creation and initial-note save failures keep the submitted text for explicit retry without starting work',async({page})=>{
+  const {state}=await setup(page);await page.goto('/#update');
+  await page.getByLabel('项目名称').fill('合成保存失败项目');
+  await page.getByLabel('补充募集书更新说明').fill('失败时必须保留的补充说明');
+  state.createFailOnce=true;
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+  await expect(page.locator('#page-error')).toBeVisible();
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('失败时必须保留的补充说明');
+  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
+  await expect(page.locator('.cowork-initial')).toContainText('失败时必须保留的补充说明');
+  await page.getByRole('button',{name:'修改创建时的补充说明'}).click();
+  await page.getByLabel('补充募集书更新说明').fill('修改失败仍保留');state.notePatchFailOnce=true;
+  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
+  await expect(page.locator('#conversation-status')).toContainText('保存失败');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('修改失败仍保留');
+  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
+  await expect(page.locator('.cowork-initial')).toContainText('修改失败仍保留');
+  expect(state.executes).toHaveLength(0);expect(state.saves).toHaveLength(0);
 });

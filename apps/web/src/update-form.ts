@@ -1,12 +1,14 @@
-import { FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from '@bondbuddy/contracts';
+import { reportingWindow, FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from '@bondbuddy/contracts';
 import { prototypeIcon as icon } from './prototype-design.js';
-import { annualYears, interimEnd, enteredPeriods } from './source-prospectus.js';
+import { QUARTER_ENDS, cutoffSelection, quarterCutoff } from './reporting-cutoff.js';
 import { changeMarket, marketValue, materialHints, projectKind, type ProjectCreate } from './form-model.js';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const option = (value: string, label: string, active: unknown) => `<option value="${esc(value)}"${value === active ? ' selected' : ''}>${esc(label)}</option>`;
 const note = (name: string, label: string, value: unknown, placeholder: string) => `<div class="update-field full"><label for="${name}">${label}</label><textarea id="${name}" name="${name}" maxlength="${PROJECT_FIELD_LIMITS.notes}" placeholder="${esc(placeholder)}">${esc(value)}</textarea></div>`;
 const money = (name: string, label: string, value: Money | null) => `<div class="update-field"><label for="${name}">${label}</label><div class="money-input"><input id="${name}" name="${name}" inputmode="decimal" maxlength="40" value="${esc(value?.value)}" placeholder="未确定可留空"><select name="${name}_unit" aria-label="${label}单位">${MONEY_UNITS.map(unit => option(unit.code, unit.label, value?.unit ?? 'hundred_million')).join('')}</select></div></div>`;
+const originalTarget = new WeakMap<HTMLFormElement, string>();
+const targetKey = (value: ProjectCreate) => JSON.stringify([value.market, value.offering, value.update_details?.reporting_cutoff]);
 const retainedDetails = new WeakMap<HTMLFormElement, UpdateDetails>();
 
 export function offeringOptions(draft: ProjectCreate) {
@@ -18,18 +20,19 @@ export function fundingRows(details: UpdateDetails) {
 function purposeHint(purpose: UpdateDetails['funding_uses'][number]['purpose']) { return FUNDING_PURPOSES.find(p => p.code === purpose)?.materials ?? '用途未定可留空，已确定的安排可以先填写。'; }
 export function updateFormFields(value: ProjectCreate) {
   const d = value.update_details!;
-  return `<section class="update-section"><h2>本次募集书目标</h2><p class="field-hint">原募集书选填。可上传本企业、母公司、子公司或相似业务企业的稿件，也可直接提供发行人材料编制新稿。</p><div class="update-grid"><label>目标报告年度<input name="target_years" value="${esc(annualYears(d.target_reporting_periods))}" placeholder="例如：2023、2024、2025"></label><label>目标一期截止日（无则留空）<input name="target_interim" type="date" value="${esc(interimEnd(d.target_reporting_periods))}"></label></div></section>
-  <section class="update-section"><h2>项目基本信息</h2><p class="field-hint">填写本次拟更新的目标。尚未确定的信息可留空保存。</p><div class="update-grid">
+  const selected = cutoffSelection(d.reporting_cutoff);
+  return `<section class="update-section"><h2>项目基本信息</h2><p class="field-hint">填写本次拟更新的目标。尚未确定的信息可留空保存。</p><div class="update-grid">
     <div class="update-field"><label for="name">项目名称 <span class="required">必填</span></label><input id="name" name="name" required maxlength="${PROJECT_FIELD_LIMITS.name}" value="${esc(value.name)}" placeholder="例如：发行人 2026 年募集书更新"></div>
     <div class="update-field"><label for="issuer">发行人全称</label><input id="issuer" name="issuer" maxlength="${PROJECT_FIELD_LIMITS.issuer}" value="${esc(value.issuer_name)}" placeholder="填写发行人法定全称"></div>
     <div class="update-field"><label for="market">发行市场</label><select id="market" name="market"><option value="">请选择</option>${MARKETS.map(m => option(m, MARKET_LABELS[m], value.market)).join('')}</select></div>
     <div class="update-field"><label for="offering">发行方式</label><select id="offering" name="offering"${!value.market ? ' disabled' : ''}>${offeringOptions(value)}</select></div>
+    <div class="update-field full"><label for="reporting-year">最新报告期</label><div class="period-row"><select id="reporting-year" name="reporting_year" aria-label="最新报告期年份">${selected.years.map(y => option(y, `${y} 年`, selected.year)).join('')}</select><div class="quarter-grid">${QUARTER_ENDS.map(([q, label]) => `<label class="quarter"><input type="radio" name="reporting_quarter" value="${q}"${selected.quarter === q ? ' checked' : ''}>${label}</label>`).join('')}</div></div>${selected.legacy ? `<p id="legacy-cutoff" class="field-hint">已保存报告期：${esc(d.reporting_cutoff)}；选择期末后更新。</p>` : ''}<p class="field-hint" id="reporting-window" role="status"></p></div>
     </div><p id="market-notice" class="field-hint" role="status"></p></section>
   <section class="update-section"><h2>发行规模与债券安排 <span class="optional">选填</span></h2><p class="field-hint">不同品种的期限、含权条款和用途会影响募集书多个章节。如有多个品种，请分别说明。</p><div class="update-grid">${money('registration_amount', '申报 / 注册总额', d.registration_amount)}${money('issuance_amount', '本期发行规模', d.issuance_amount)}${note('bond_terms', '债券安排', d.bond_terms, '例如：本期拟发行不超过10亿元，3年期。如有多个品种，请分别说明金额、期限、利率方式、还本付息、回售 / 赎回 / 调息、增信和用途差异及回拨安排。未确定的内容可注明待定。')}</div></section>
   <section class="update-section"><h2>参与机构 <span class="optional">选填</span></h2><p class="field-hint">仅一家主承销商时填名称即可；多家参与时再说明牵头、联席及其他分工，未定角色可留空。</p>${note('underwriting', '承销安排', d.underwriting, '例如：XX证券担任主承销商。或：XX证券牵头、YY银行联席，XX证券兼任簿记管理人。')}${note('other_agencies', '其他参与机构与分工', d.other_agencies, '如受托管理人、会计师事务所、律师事务所等。')}</section>
   <section class="update-section"><h2>评级与增信 <span class="optional">选填</span></h2><p class="field-hint">分清主体、债项、保证人评级；未确定可留空，后续提供评级或担保资料。</p>${note('rating_enhancement', '评级与增信安排', d.rating_enhancement, '可填写评级对象、等级、评级机构、保证人、担保方式或抵质押物等已知信息。')}</section>
   <section class="update-section"><h2>募集资金用途 <span class="optional">选填</span></h2><p class="field-hint">可添加多种用途，分别填写金额和具体安排；用途未定也能保存。</p><div id="funding-rows">${fundingRows(d)}</div><button type="button" id="add-purpose" class="button secondary">＋ 添加资金用途</button></section>
-  <section class="update-section"><h2>其他项目信息 <span class="optional">选填</span></h2>${note('other_information', '其他已知信息', d.other_information, '例如：公司名称变更、银行授信额度及使用情况；相关材料可后续补充。')}${d.supplementary_notes ? `<p class="field-hint">旧版补充仍随项目草稿保存，未作为独立消息发送；修改它不会编辑已发送的消息。</p>${note('supplementary_notes', '旧版补充说明', d.supplementary_notes, '旧版草稿说明')}` : ''}</section>`;
+  <section class="update-section"><h2>其他项目信息 <span class="optional">选填</span></h2>${note('other_information', '其他已知信息', d.other_information, '例如：公司名称变更、银行授信额度及使用情况；相关材料可后续补充。')}</section>`;
 }
 function text(data: FormData, name: string) { return String(data.get(name) ?? '').trim() || null; }
 function readMoney(data: FormData, name: string): Money | null {
@@ -39,15 +42,21 @@ function readMoney(data: FormData, name: string): Money | null {
 export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
   const data = new FormData(form);
   const hasHistorical = null;
-  const periods = enteredPeriods(String(data.get('target_years') ?? ''), String(data.get('target_interim') ?? ''));
+  const previous = retainedDetails.get(form);
+  const cutoff = quarterCutoff(String(data.get('reporting_year') ?? ''), String(data.get('reporting_quarter') ?? ''))
+    ?? (previous?.reporting_cutoff?.startsWith(`${data.get('reporting_year')}-`) ? previous.reporting_cutoff : null);
+  const market = marketValue(String(data.get('market') ?? '')), offering = text(data, 'offering') as Offering | null;
+  const sameTarget = originalTarget.get(form) === JSON.stringify([market, offering, cutoff]);
+  const periods = sameTarget && previous?.target_reporting_periods?.length
+    ? structuredClone(previous.target_reporting_periods) : reportingWindow(market, offering, cutoff);
 
-  return { kind: projectKind(hasHistorical), name: String(data.get('name') ?? ''), issuer_name: text(data, 'issuer'), market: marketValue(String(data.get('market') ?? '')), offering: text(data, 'offering') as Offering | null,
+  return { kind: projectKind(hasHistorical), name: String(data.get('name') ?? ''), issuer_name: text(data, 'issuer'), market, offering,
     update_details: {
       ...structuredClone(retainedDetails.get(form) ?? {}),
       authoring_mode: 'unified_v1',
       target_reporting_periods: periods,
       has_historical: hasHistorical,
-      reporting_cutoff: periods.map(p => p.end).filter((d): d is string => !!d).sort().at(-1) ?? null, registration_amount: readMoney(data, 'registration_amount'), issuance_amount: readMoney(data, 'issuance_amount'),
+      reporting_cutoff: cutoff, registration_amount: readMoney(data, 'registration_amount'), issuance_amount: readMoney(data, 'issuance_amount'),
       bond_terms: text(data, 'bond_terms'), underwriting: text(data, 'underwriting'), other_agencies: text(data, 'other_agencies'), rating_enhancement: text(data, 'rating_enhancement'),
       funding_uses: [...form.querySelectorAll('[data-purpose]')].map((_, i) => ({ purpose: text(data, `purpose_${i}`) as UpdateDetails['funding_uses'][number]['purpose'], amount: readMoney(data, `use_amount_${i}`), details: text(data, `use_details_${i}`), target: text(data, `use_target_${i}`) })),
       other_information: text(data, 'other_information'), supplementary_notes: data.has('supplementary_notes') ? text(data, 'supplementary_notes') : retainedDetails.get(form)?.supplementary_notes ?? null
@@ -56,12 +65,17 @@ export function readUpdateForm(form: HTMLFormElement): ProjectCreate {
 }
 export function bindUpdateForm(form: HTMLFormElement, changed: (value: ProjectCreate) => void, initialDetails?: UpdateDetails) {
   if (initialDetails) retainedDetails.set(form, structuredClone(initialDetails));
+  originalTarget.set(form, targetKey(readUpdateForm(form)));
   const emit = () => {
     const value = readUpdateForm(form);
-    const issuer = document.querySelector('#cowork-issuer'); if (issuer) issuer.textContent = value.issuer_name || '待填写发行人';
-    const scope = document.querySelector('#cowork-scope'); if (scope) scope.textContent = `${value.market ? MARKET_LABELS[value.market] : '发行市场待选择'} · ${value.offering ? OFFERING_LABELS[value.offering] : '发行方式待选择'}`;
+    const periods = value.update_details?.target_reporting_periods ?? [];
+    form.querySelector('#reporting-window')!.textContent = periods.length
+      ? `报告期：${periods.map(p => p.period_kind === 'annual' ? `${p.end?.slice(0,4)}年` : `${p.end?.slice(0,4)}年1—${Number(p.end?.slice(5,7))}月`).join('、')}` : '';
     changed(value);
   };
+  // Show the saved/derived range without triggering an autosave on mount.
+  const periods = readUpdateForm(form).update_details?.target_reporting_periods ?? [];
+  form.querySelector('#reporting-window')!.textContent = periods.length ? `报告期：${periods.map(p => p.period_kind === 'annual' ? `${p.end?.slice(0,4)}年` : `${p.end?.slice(0,4)}年1—${Number(p.end?.slice(5,7))}月`).join('、')}` : '';
   form.addEventListener('input', event => { if (!(event as InputEvent).isComposing) emit(); });
   form.addEventListener('compositionend', emit);
   form.addEventListener('change', event => {

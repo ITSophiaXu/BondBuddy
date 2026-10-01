@@ -6,4 +6,4 @@ export const offeringsFor=market=>market==='nafmii'?BANK_OFFERINGS:EXCHANGE_OFFE
 export const SCOPE_NAMES=Object.fromEntries(MARKETS.flatMap(([market,label])=>offeringsFor(market).map(([offering,name])=>[`${market}-${offering}`,`${label} · ${name}`])));
 export const validScope=scope=>Object.hasOwn(SCOPE_NAMES,scope);
 export const offeringName=(market,offering)=>offeringsFor(market).find(([id])=>id===offering)?.[1]||'待选择';
-export const annualCountFor=offering=>offering==='private'?2:3;
+export const annualCountFor=offering=>['private','ppn'].includes(offering)?2:3;
