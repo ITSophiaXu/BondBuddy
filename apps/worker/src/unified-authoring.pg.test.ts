@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { latestProviderAttempt } from '@bondbuddy/api/provider-results';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { createServer } from '@bondbuddy/api';
@@ -86,6 +87,8 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
         assert.equal((await send('POST',`/api/v1/projects/${project}/messages`,{...message,submission_request_id:randomUUID(),expected_message_version:1,body:'合成后续要求：下一轮才生效。'})).statusCode,201);
         let modelCalls=0;
         const model=unifiedModelGenerationStage({model:options=>({name:options.name,run:async(ctx:StageContext)=>{
+          // Exercise the real durable-journal boundary even though model replies are synthetic.
+          assert.equal(await latestProviderAttempt(pool,ctx.lease,options.logicalCallId),null);
           const prompt=await options.buildPrompt(ctx);
           const data=JSON.parse(prompt.split('输入数据：\n')[1]!);
           if(data.requirements)assert.deepEqual(data.requirements,[run.input_revision===ctx.run.input_revision?message.body:'合成后续要求：下一轮才生效。']);

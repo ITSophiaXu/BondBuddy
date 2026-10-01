@@ -70,7 +70,7 @@ export function unifiedModelGenerationStage(options: { model?: typeof codexModel
       const call = async <T>(id: string, instruction: string, payload: unknown, schema: Record<string, unknown>, validate: (data: any) => boolean): Promise<T | { stopped: true; outcome: Awaited<ReturnType<RunStage['run']>> }> => {
         if (++calls > 180) throw new UnifiedInputPending('authoring_document_exceeds_call_limit');
         const check = ajv.compile(schema);
-        const stage = (options.model ?? codexModelStage)({ name: `unified_${id}`, logicalCallId: `unified-v1:${id}`, config: options.config ?? loadCodexAdapterConfig,
+        const stage = (options.model ?? codexModelStage)({ name: `unified_${id}`, logicalCallId: `unified-v1-${id}`, config: options.config ?? loadCodexAdapterConfig,
           buildPrompt: async () => `${rules}\n${instruction}\n输入数据：\n${JSON.stringify(payload)}`,
           schema, validate: value => Boolean(check(value)) && validate(value), resultSchemaVersion: `unified-${id.split('_')[0]}-v1`, templateVersion: 'unified-authoring-v1' });
         const result = await stage.run(ctx);
