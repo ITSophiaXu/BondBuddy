@@ -450,3 +450,17 @@ test('creation and initial-note save failures keep the submitted text for explic
   await expect(page.locator('.cowork-initial')).toContainText('修改失败仍保留');
   expect(state.executes).toHaveLength(0);expect(state.saves).toHaveLength(0);
 });
+
+
+test('explicit start derives missing legacy target periods without changing a previously locked input',async({page})=>{
+  const {state}=await setup(page);
+  expect(state.project.update_details?.target_reporting_periods).toBeUndefined();
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2024-12-31','2025-12-31']);
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);
+  const snapshot=JSON.stringify(state.snapshots.get(1));
+  await page.reload();
+  expect(JSON.stringify(state.snapshots.get(1))).toBe(snapshot);
+  expect(state.executes).toHaveLength(1);
+});
