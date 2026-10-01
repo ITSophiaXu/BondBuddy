@@ -614,7 +614,7 @@ function updateMaterialWorkspace(projectId: string) {
           const picker = fresh.querySelector('.material-picker'), oldPicker = heading.querySelector('.material-picker');
           if (!picker) oldPicker?.remove(); else if (!oldPicker) heading.append(picker);
           const fileList = old.querySelector('.material-file-list')!;
-          if (!fileList.contains(document.activeElement)) fileList.innerHTML = fresh.querySelector('.material-file-list')!.innerHTML;
+          if (!fileList.querySelector('[data-source-field]:focus')) fileList.innerHTML = fresh.querySelector('.material-file-list')!.innerHTML;
         }
         const next: Element | null = previous ? previous.nextElementSibling : group.firstElementChild;
         if (next !== role) group.insertBefore(role, next);

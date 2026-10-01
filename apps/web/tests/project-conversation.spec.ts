@@ -355,7 +355,10 @@ test('create and material conversation use the prototype desktop and mobile work
   const capture = async (name: string) => {
     await page.evaluate(() => { document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0, 0); });
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
-    if (evidence) await page.screenshot({ path: join(evidence, `bb18-implementation-${name}.png`), fullPage: true });
+    if (evidence) {
+      await page.screenshot({ path: join(evidence, `bb18-implementation-${name}.png`), fullPage: true });
+      await page.screenshot({ path: join(evidence, `implementation-${name}-viewport.png`) });
+    }
   };
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto('/#update');

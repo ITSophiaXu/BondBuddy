@@ -52,9 +52,10 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
   return pendingConditions;
 }
 
-export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>['kind'], hasHistorical: boolean | null, materials: readonly Material[]): string | undefined {
+export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>['kind'], hasHistorical: boolean | null, materials: readonly Material[], unified = false): string | undefined {
   if (!(error instanceof ApiError) || error.code !== 'INPUT_REQUIRED' || error.status !== 409) return undefined;
   const reference = errorReference(error);
+  if (unified) return `本次输入尚未满足执行条件，请核对本次目标及已上传原稿的信息；历史／参考募集书选填，无需更改企业关系或重复上传。${reference}`;
   if (kind === 'update' && !materials.some(material => material.role === 'historical') &&
       materials.some(material => material.role === 'reference'))
     return `已上传募集书被登记为参考稿。更新需本发行人历史稿及身份核验；若该文件是本发行人的历史募集书，请联系支持保留原文件并更正分类后重新锁定输入。若确实没有本发行人历史稿，请联系支持转为新稿；无需重传。${reference}`;
@@ -334,7 +335,7 @@ export class ProjectExecution {
     catch (error) {
       if (this.active) {
         const inputMessage = operation !== 'other'
-          ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials) : undefined;
+          ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials, this.draft.fields.update_details.authoring_mode === 'unified_v1') : undefined;
         this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
           (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
         this.message = inputMessage ??
