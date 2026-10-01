@@ -35,15 +35,9 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   for (const pin of m.materials) {
     const material = (await pool.query('SELECT role,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [run.owner_user_id, run.project_id, pin.material_id, pin.material_version])).rows[0];
     if (!material || material.role !== pin.role || String(material.sha256).trim() !== pin.sha256) return fail;
-    if (['historical', 'reference'].includes(pin.role)) {
-      const source = m.authoring.source_prospectuses.find(s => s.material_id === pin.material_id && s.material_version === pin.material_version && s.sha256 === pin.sha256);
-      if (!source?.issuer_name || !source.relation || !source.market || !source.offering || !isMarketOffering(source.market, source.offering) || !source.reporting_periods.length)
-        return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_source_information_required' };
-    }
   }
-  if (!m.materials.some(pin => !['historical','reference'].includes(pin.role)) &&
-      !m.authoring.source_prospectuses.some(s => s.relation === 'same_issuer'))
-    return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };
+  // Source metadata is optional context. The worker resolves gaps from the uploaded
+  // material and labels uncertainty; an unfilled relationship is never a same-issuer assertion.
   if (!m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
   if (m.authoring.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) return fail;
   if (m.authoring.previous_output && !await previousArtifact(pool, run, m.authoring.previous_output)) return fail;

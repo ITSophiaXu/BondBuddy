@@ -35,6 +35,10 @@ test('unified update reads raw supporting records and requires complete baseline
   }})});
   const result=await stage.run(ctx());assert.equal(result.kind,'done');
   assert.equal(prompts.length,2);assert.match(prompts[0],/2025年净资产120万元/);assert.match(prompts[1],/合成补充要求/);assert.match(prompts[1],/public_all/);
+  const data=JSON.parse(prompts[1]!.split('输入数据：\n')[1]!);
+  assert.equal(data.editing_baseline.relation,null);assert.equal(data.editing_baseline.issuer_name,null);
+  assert.match(prompts[1]!,/关系未知不能默认同企业/);
+  if(result.kind==='done')assert.match((result.value as import('./unified-model-stage.js').UnifiedPlan).edits[0]!.pending.join(' '),/企业关系未提供/);
 });
 
 test('pinned knowledge citations are accepted with exact hash provenance; invented paths still fail',async()=>{

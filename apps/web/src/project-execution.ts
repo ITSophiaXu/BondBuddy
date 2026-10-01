@@ -72,7 +72,7 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function readinessMessage(reason: string): string {
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
-  if (reason === 'authoring_source_information_required') return '请在上传的原募集书下补齐原发行人、企业关系、市场、品种及报告期。保存后停止本次任务，再以新输入重新编制。';
+  if (reason === 'authoring_source_information_required') return '旧任务因原稿信息缺失暂停。原稿信息现为选填，请联系支持恢复此任务；无需补齐或重复提交。';
   if (reason === 'authoring_issuer_materials_required') return '请补充目标发行人的材料；其他企业的参考稿不能代替目标企业事实。保存后停止本次任务，再以新输入重新编制。';
   if (reason === 'authoring_ocr_incomplete') return '扫描材料仍有页面未能读取，请查看材料或联系支持；任务没有跳过这些页面。';
   if (reason === 'authoring_material_unreadable') return '有材料无法读取，请查看材料区，替换文件后以新输入重新编制。';
@@ -246,6 +246,7 @@ export class ProjectExecution {
   private render() {
     if (!this.active) return;
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
+    this.conversation.setEditingVisible(!this.restoring && !activeRun && (!this.run || this.nextRequested));
     const blocked = this.startBlockReason();
     this.button('execute-input').disabled = Boolean(blocked);
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始编制' : '正在提交…') : this.nextRequested ? '生成新版' : '开始编制';
@@ -291,7 +292,7 @@ export class ProjectExecution {
     }
     const recheckPaused = this.host.querySelector<HTMLButtonElement>('#recheck-paused');
     if (recheckPaused) { recheckPaused.disabled = this.busy; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
-    this.host.querySelector('#prepare-next-version')?.addEventListener('click', () => { this.nextRequested = true; this.invalidate(); this.actions.scrollIntoView({block:'center'}); });
+    this.host.querySelector('#prepare-next-version')?.addEventListener('click', () => { this.nextRequested = true; this.invalidate(); const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#project-conversation-root')?.scrollIntoView({block:'center'}); });
     this.host.querySelector('#show-project-materials')?.addEventListener('click', () => { const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#materials-title')?.scrollIntoView({block:'start'}); });
     const artifactId = (run?.state === 'succeeded' || testCompleted) ? run?.artifact_id : undefined;
     if (artifactId && artifactId !== this.deliveryId) {

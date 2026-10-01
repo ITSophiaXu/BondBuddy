@@ -32,14 +32,16 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
       headers:{origin,...headers},payload:payload as any});
     try {
       await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,`unified_${randomUUID().slice(0,8)}`]);
-      for(const relation of [null,'same_issuer','parent','subsidiary','similar_business'] as const){
+      for(const scenario of [null,'same_issuer','parent','subsidiary','similar_business','absent_metadata','partial_metadata'] as const){
+        const missingMetadata=scenario==='absent_metadata'||scenario==='partial_metadata';
+        const relation=missingMetadata?null:scenario;
         const created=await send('POST','/api/v1/projects',{kind:'update',name:`Synthetic unified ${relation}`,issuer_name:'合成目标发行人',market:'sse',offering:'private',
           update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',target_reporting_periods:periods}});
         assert.equal(created.statusCode,201,created.body);
         const project=created.json().project_id;
         const refs:{material_id:string;material_version:number}[]=[];
         let source:SourceProspectus|undefined;
-        for(const role of relation?['historical','audit']:['audit']){
+        for(const role of missingMetadata?['historical']:relation?['historical','audit']:['audit']){
           const bytes=role==='historical'?makeWorkerDocxFixture({externalLink:false}):Buffer.from('合成目标发行人：2025年净资产120万元；无新增对外担保。');
           const media=role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain';
           const declaration={byte_size:bytes.length,sha256:digest(bytes)};
@@ -51,6 +53,8 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
           refs.push({material_id:complete.json().material_id,material_version:1});
           if(role==='historical') source={...refs.at(-1)!,sha256:declaration.sha256,issuer_name:relation==='same_issuer'?'合成目标发行人':'合成参考企业',
             relation,market:'szse',offering:'public_all',reporting_periods:periods,status:'user_asserted'};
+          if(scenario==='absent_metadata')source=undefined;
+          if(scenario==='partial_metadata'&&source)source={...source,issuer_name:null,relation:null,market:null,offering:null,reporting_periods:[]};
           assert.equal(await runMaterialParseOnce({pool,material:{pool,blobs:{getPrivate:key=>blobs.getIfExists(key)}}}),'succeeded');
         }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
@@ -106,13 +110,13 @@ test('unified API → real parsing → synthetic model → real Word pair, immut
         const delivered=(await send('GET',`/api/v1/runs/${run.run_id}`)).json();
         assert.equal(delivered.state,'succeeded');
         const artifact=(await send('GET',`/api/v1/artifacts/${delivered.artifact_id}`)).json();
-        assert.equal(artifact.word_delivery.baseline_kind,relation?'uploaded_source':'none');
+        assert.equal(artifact.word_delivery.baseline_kind,relation||missingMetadata?'uploaded_source':'none');
         for(const variant of ['revision','clean']){
           const file=(await send('GET',`/api/v1/artifacts/${artifact.word_delivery[`${variant}_artifact_id`]}`)).json();
           const response=await send('GET',file.download_url);
           assert.equal(response.statusCode,200,response.body);assert.equal(digest(response.rawPayload),file.sha256);
         }
-        if(!relation){
+        if(!relation&&!missingMetadata){
           const next=await lock();
           const pin=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,next.input_revision])).rows[0].manifest.authoring.previous_output;
           assert.equal(pin.artifact_id,artifact.word_delivery.clean_artifact_id);

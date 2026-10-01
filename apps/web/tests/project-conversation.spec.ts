@@ -184,14 +184,16 @@ test('unified source metadata is material-version-bound, survives reopening and 
   await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('parent');
   await source.getByLabel('原发行市场',{exact:true}).selectOption('nafmii');
   await source.getByLabel('原品种',{exact:true}).selectOption('ppn');
-  await source.getByLabel('原报告年度',{exact:true}).fill('2022、2023');
-  await source.getByLabel('原一期截止日（无则留空）',{exact:true}).fill('2024-06-30');
+  await source.getByLabel('原稿最新报告期年份',{exact:true}).selectOption('2024');
+  await source.getByRole('radio',{name:'6月末',exact:true}).check();
   await source.getByLabel('原发行人名称',{exact:true}).focus();
   await expect.poll(()=>state.project.update_details?.source_prospectuses?.[0]?.reporting_periods.length).toBe(3);
   expect(state.project.update_details!.source_prospectuses![0]).toMatchObject({material_id:'synthetic-historical',material_version:1,sha256:hash('historical'),relation:'parent',market:'nafmii',offering:'ppn'});
   expect(state.project.market).toBe('sse');expect(state.project.offering).toBe('private');expect(state.executes).toHaveLength(0);
   await page.reload();await expect(source.getByLabel('原发行人名称',{exact:true})).toHaveValue('合成母公司');
-  await expect(source.getByLabel('原报告年度',{exact:true})).toHaveValue('2022、2023');
+  await expect(source.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2024');
+  await expect(source.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
+  expect(state.project.update_details!.source_prospectuses![0].reporting_periods.map(p=>p.end)).toEqual(['2022-12-31','2023-12-31','2024-06-30']);
   await send(page,'合成补充：更新至2025年末。');expect(state.executes).toHaveLength(0);
   await mkdir('test-evidence/m1-unified',{recursive:true});
   await page.screenshot({path:'test-evidence/m1-unified/materials.png',fullPage:true});
@@ -302,14 +304,17 @@ test('pagination pins all messages, new edit produces a new immutable input with
   expect(state.inputs[0].requirement_message_ids).toHaveLength(24);
   expect(state.inputs[0].project_message_set_ref).toEqual(f.ref());
   const oldHash = state.snapshots.get(1)!.input_hash;
-  await page.getByLabel('补充募集书更新说明').fill('运行中补充，不能改写旧输入');
-  await page.locator('#send-project-message').click();
-  await expect.poll(() => state.messages.length).toBe(25);
-  expect(state.run?.input_hash).toBe(oldHash);
-  expect(state.executes).toHaveLength(1);
+  await expect(page.locator('#project-conversation-root')).toBeHidden();
+  await page.getByRole('button',{name:'查看与补充材料'}).click();
+  await expect(page.locator('#project-message')).toBeHidden();
+  expect(state.run?.input_hash).toBe(oldHash);expect(state.executes).toHaveLength(1);
   state.run!.state = 'failed';
   await page.reload(); await expect(page.locator('#execution-progress')).toContainText('任务失败');
   await page.getByRole('button', { name: '继续修改' }).click();
+  await page.getByLabel('补充募集书更新说明').fill('下一轮补充，不能改写旧输入');
+  await page.locator('#send-project-message').click();
+  await expect.poll(()=>state.messages.length).toBe(25);
+  expect(state.snapshots.get(1)!.input_hash).toBe(oldHash);
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
   expect(state.inputs).toHaveLength(2);
@@ -370,20 +375,23 @@ test('create and material conversation use the prototype desktop and mobile work
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
   await page.getByLabel('最新报告期年份').selectOption('2026');
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
-  await page.getByLabel('补充募集书更新说明').fill('合成补充：授信口径待核对。');
+  await expect(page.locator('#project-message')).toHaveCount(0);
   await capture('create');
   await page.setViewportSize({ width: 390, height: 844 }); await capture('create-mobile');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
   await expect(page.locator('#conversation-status')).toBeEmpty();
   await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('');
-  await expect(page.locator('.cowork-message')).toContainText('合成补充：授信口径待核对。');
+  await send(page,'合成补充：授信口径待核对。');
+  expect(await page.locator('#project-conversation-root').evaluate(el=>!!el.closest('#project-materials-details'))).toBe(true);
   await capture('materials');
+  if(evidence){await page.locator('#project-conversation-root').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-supplement.png')});}
   await page.setViewportSize({ width: 390, height: 844 }); await capture('materials-mobile');
+  if(evidence){await page.locator('#project-conversation-root').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-supplement-mobile.png')});}
 });
 
 
-test('latest period derives and saves source-independent windows; initial note is saved with creation and editable after reload', async ({page}) => {
+test('latest period derives source-independent windows; supplementary notes are saved on materials and editable after reload', async ({page}) => {
   const {state}=await setup(page);
   await page.goto('/#update');
   await page.getByLabel('项目名称').fill('合成报告期项目');
@@ -393,17 +401,16 @@ test('latest period derives and saves source-independent windows; initial note i
   await page.getByRole('radio',{name:'6月末',exact:true}).check();
   await expect(page.locator('#reporting-window')).toHaveText('报告期：2024年、2025年、2026年1—6月');
   await expect(page.locator('.cowork-context,.cowork-prompts, input[type=date]')).toHaveCount(0);
-  await page.getByLabel('补充募集书更新说明').fill('创建时要求：重点更新经营情况');
+  await expect(page.locator('#project-message')).toHaveCount(0);
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.locator('.cowork-initial')).toContainText('创建时要求：重点更新经营情况');
-  expect(state.project.update_details?.supplementary_notes).toBe('创建时要求：重点更新经营情况');
+  await send(page,'上传后补充要求：重点更新经营情况');
   expect(state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2024-12-31','2025-12-31','2026-06-30']);
-  expect(state.saves).toHaveLength(0); expect(state.executes).toHaveLength(0);
+  expect(state.saves).toHaveLength(1); expect(state.executes).toHaveLength(0);
   await page.reload();
-  await page.getByRole('button',{name:'修改创建时的补充说明'}).click();
+  await page.locator('[data-edit-message]').click();
   await page.getByLabel('补充募集书更新说明').fill('修改后要求：补充业务变化');
   await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
-  await expect(page.locator('.cowork-initial')).toContainText('修改后要求：补充业务变化');
+  await expect(page.locator('.cowork-message')).toContainText('修改后要求：补充业务变化');
   await page.getByRole('button',{name:'编辑项目信息'}).click();
   await page.getByLabel('发行方式',{exact:true}).selectOption('public');
   await expect.poll(()=>state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2023-12-31','2024-12-31','2025-12-31','2026-06-30']);
@@ -411,7 +418,9 @@ test('latest period derives and saves source-independent windows; initial note i
   await expect.poll(()=>state.project.update_details?.target_reporting_periods?.map(p=>p.end)).toEqual(['2024-12-31','2025-12-31','2026-12-31']);
   await page.reload();
   await expect(page.getByRole('radio',{name:'年末',exact:true})).toBeChecked();
-  await expect(page.locator('.cowork-initial')).toContainText('修改后要求：补充业务变化');
+  await expect(page.locator('#project-conversation-root')).toBeHidden();
+  await page.getByRole('button',{name:'保存并继续'}).click();
+  await expect(page.locator('.cowork-message')).toContainText('修改后要求：补充业务变化');
   expect(state.executes).toHaveLength(0);
 });
 
@@ -431,16 +440,10 @@ test('unrelated edits preserve historical target metadata and original prospectu
 });
 
 
-test('creation and initial-note save failures keep the submitted text for explicit retry without starting work',async({page})=>{
-  const {state}=await setup(page);await page.goto('/#update');
-  await page.getByLabel('项目名称').fill('合成保存失败项目');
-  await page.getByLabel('补充募集书更新说明').fill('失败时必须保留的补充说明');
-  state.createFailOnce=true;
-  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.locator('#page-error')).toBeVisible();
-  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('失败时必须保留的补充说明');
-  await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.locator('.cowork-initial')).toContainText('失败时必须保留的补充说明');
+test('legacy initial-note save failure preserves content at the material footer for explicit retry',async({page})=>{
+  const f=fixture();f.state.project.update_details!.supplementary_notes='旧项目已保存的补充说明';
+  const {state}=await setup(page,f);
+  await expect(page.locator('.cowork-initial')).toContainText('旧项目已保存的补充说明');
   await page.getByRole('button',{name:'修改创建时的补充说明'}).click();
   await page.getByLabel('补充募集书更新说明').fill('修改失败仍保留');state.notePatchFailOnce=true;
   await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
@@ -450,7 +453,6 @@ test('creation and initial-note save failures keep the submitted text for explic
   await expect(page.locator('.cowork-initial')).toContainText('修改失败仍保留');
   expect(state.executes).toHaveLength(0);expect(state.saves).toHaveLength(0);
 });
-
 
 test('explicit start derives missing legacy target periods without changing a previously locked input',async({page})=>{
   const {state}=await setup(page);
@@ -463,4 +465,32 @@ test('explicit start derives missing legacy target periods without changing a pr
   await page.reload();
   expect(JSON.stringify(state.snapshots.get(1))).toBe(snapshot);
   expect(state.executes).toHaveLength(1);
+});
+
+
+test('source quarter controls stay independent and unrelated edits preserve actual nonstandard coverage',async({page})=>{
+  const f=fixture();
+  const old=[{start:'2023-04-01',end:'2024-03-30',period_kind:'annual' as const,scope:'parent' as const,status:'user_asserted' as const,evidence_refs:[]}];
+  f.state.project.update_details!.source_prospectuses=[{material_id:'synthetic-historical',material_version:1,sha256:hash('historical'),issuer_name:'合成母公司',relation:'parent',market:'nafmii',offering:'ppn',reporting_periods:old,status:'user_asserted'}];
+  f.state.materials.push({...f.state.materials[0],material_id:'synthetic-reference',role:'reference',filename:'reference.docx',sha256:hash('reference')});
+  await setup(page,f);
+  const source=page.locator('[data-source-material="synthetic-historical"]'), reference=page.locator('[data-source-material="synthetic-reference"]');
+  await expect(source.getByText('已保留原稿的实际报告期',{exact:false})).toBeVisible();
+  await source.getByLabel('原发行人名称',{exact:true}).fill('更正名称');await reference.getByLabel('原发行人名称',{exact:true}).focus();
+  await expect.poll(()=>f.state.project.update_details!.source_prospectuses![0].issuer_name).toBe('更正名称');
+  expect(f.state.project.update_details!.source_prospectuses![0].reporting_periods).toEqual(old);
+  await reference.getByLabel('原稿最新报告期年份').selectOption('2022');
+  await page.getByRole('button',{name:'刷新已保存材料'}).click();
+  await expect(reference.getByLabel('原稿最新报告期年份')).toHaveValue('2022');
+  await reference.getByRole('radio',{name:'9月末',exact:true}).check();
+  await reference.getByLabel('原发行市场',{exact:true}).selectOption('sse');
+  await reference.getByLabel('原品种',{exact:true}).selectOption('public');
+  await source.getByRole('radio',{name:'6月末',exact:true}).check();
+  await reference.getByLabel('原发行人名称',{exact:true}).focus();
+  await expect.poll(()=>f.state.project.update_details!.source_prospectuses!.find(s=>s.material_id==='synthetic-reference')?.reporting_periods.map(p=>p.end)).toEqual(['2019-12-31','2020-12-31','2021-12-31','2022-09-30']);
+  await page.reload();
+  await expect(source.getByRole('radio',{name:'6月末',exact:true})).toBeChecked();
+  await expect(reference.getByRole('radio',{name:'9月末',exact:true})).toBeChecked();
+  expect(f.state.project.update_details!.source_prospectuses!.every(s=>s.reporting_periods.every(p=>p.status==='needs_confirmation'&&p.scope===null))).toBe(true);
+  await expect(page.locator('input[type=date]')).toHaveCount(0);
 });
