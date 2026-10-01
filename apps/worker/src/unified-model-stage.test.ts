@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
-import { chunkEvidence, unifiedModelGenerationStage } from './unified-model-stage.js';
+import { chunkEvidence, promptLocator, unifiedModelGenerationStage } from './unified-model-stage.js';
 import type { UnifiedInput } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
 
@@ -21,6 +21,12 @@ test('unified update reads raw supporting records and requires complete baseline
     const value=options.name.includes('read_') ? {notes:[{text:'2025年净资产120万元',evidence:['m0r0'],pending:false}]} :
       {reviewed:['m1r0','m1r1'],edits:[{record_id:'m1r0',after:'2025年净资产120万元',evidence:['m0r0'],pending:[]}],additions:[],summary:['更新财务期间及净资产']};
     assert.ok(options.validate(value));
+    assert.match(options.logicalCallId,/^unified-v3-[a-z0-9_]+$/);
+    assert.equal(options.templateVersion,'unified-authoring-v3');
+    if ('notes' in value) {
+      assert.equal(options.validate({notes:[{text:'合成数据',evidence:['m0r0-m0r2'],pending:false}]}),false);
+      assert.equal(options.validate({notes:[{text:'合成数据',evidence:['target'],pending:false}]}),false);
+    }
     if ('reviewed' in value) {
       assert.equal(options.validate({...value,reviewed:['m1r0']}),false);
       assert.equal(options.validate({...value,edits:[{...value.edits![0],evidence:['foreign-project/secret']}]}),false);
@@ -29,6 +35,26 @@ test('unified update reads raw supporting records and requires complete baseline
   }})});
   const result=await stage.run(ctx());assert.equal(result.kind,'done');
   assert.equal(prompts.length,2);assert.match(prompts[0],/2025年净资产120万元/);assert.match(prompts[1],/合成补充要求/);assert.match(prompts[1],/public_all/);
+});
+
+test('pinned knowledge citations are accepted with exact hash provenance; invented paths still fail',async()=>{
+  const result=await unifiedModelGenerationStage({load:async()=>input(),model:options=>({name:options.name,run:async()=>{
+    const value=options.name.includes('read_')?{notes:[{text:'净资产120万元',evidence:['m0r0'],pending:false}]}:
+      {reviewed:['m1r0','m1r1'],edits:[{record_id:'m1r1',after:'按目标类型补充条款，适用事实待人工确认。',evidence:['synthetic.md','target'],pending:['适用事实待核']}],
+        additions:[{after_record_id:'m1r1',blocks:[{kind:'paragraph',text:'按所附知识补充披露。',rows:[],evidence:['synthetic.md'],pending:['待核']}]}],summary:['补充目标类型条款']};
+    assert.ok(options.validate(value));
+    if(value.edits && value.additions){
+      assert.equal(options.validate({...value,edits:[{...value.edits[0],evidence:['not-pinned.md']}]}),false);
+      assert.equal(options.validate({...value,additions:[{...value.additions[0],blocks:[{...value.additions[0]!.blocks[0],evidence:['../synthetic.md']}]}]}),false);
+    }
+    return {kind:'done',value};
+  }})}).run(ctx());
+  assert.equal(result.kind,'done');
+  if(result.kind==='done'){
+    const plan=result.value as import('./unified-model-stage.js').UnifiedPlan;
+    assert.deepEqual(plan.edits[0]!.evidence,[`knowledge:synthetic.md@${'a'.repeat(64)}`,'target']);
+    assert.deepEqual(plan.additions[0]!.blocks[0]!.evidence,[`knowledge:synthetic.md@${'a'.repeat(64)}`]);
+  }
 });
 
 test('no-source route writes chapters using issuer materials without a library or approved fact service (synthetic)', async()=>{
@@ -53,4 +79,21 @@ test('chunking preserves each raw record exactly once without silent truncation'
   const records=Array.from({length:401},(_,i)=>({id:String(i),text:'原文'.repeat(i%13+1),uncertainty:[]}));
   assert.deepEqual(chunkEvidence(records,400).flat(),records);
   assert.throws(()=>chunkEvidence([{id:'large',text:'x'.repeat(500),uncertainty:[]}],400),/block_too_large/);
+});
+
+test('prompt keeps layout coordinates without repeating private stable anchors',()=>{
+  const locator={sheet:'财务报表',cell:'B10',merged_range:'B10:C10',stable_ref:{xml_path:'x'.repeat(2000)}};
+  assert.deepEqual(promptLocator(locator),{sheet:'财务报表',cell:'B10',merged_range:'B10:C10'});
+  assert.equal(locator.stable_ref.xml_path.length,2000);
+  const path=[{table:1,row:2,column:3},{paragraph:1}];
+  assert.deepEqual(promptLocator({path,stable_ref:'docx:internal'}),{path});
+});
+
+test('chunking bounds serialized UTF-8 including locator overhead without losing records',()=>{
+  const records=Array.from({length:40},(_,i)=>({id:`r${i}`,text:'数值',uncertainty:[],locator:{sheet:'财务报表'.repeat(30),cell:`B${i}`}}));
+  const chunks=chunkEvidence(records,18000,600,2000);
+  assert.deepEqual(chunks.flat(),records);
+  assert.ok(chunks.length>1);
+  assert.ok(chunks.every(chunk=>Buffer.byteLength(JSON.stringify(chunk))<=2000));
+  assert.throws(()=>chunkEvidence(records,18000,600,20),/block_too_large/);
 });
