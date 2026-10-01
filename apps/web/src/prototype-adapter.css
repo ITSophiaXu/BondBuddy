@@ -137,3 +137,5 @@
   .execution-main-action { align-items:flex-start; flex-direction:column; }
   .execution-main-action .button { width:100%; }
 }
+
+.prototype-app .workspace-layout.authoring-workspace{grid-template-columns:minmax(0,1fr)}

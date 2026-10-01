@@ -15,3 +15,5 @@
 .source-prospectus label{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px;line-height:1.5}
 .source-prospectus input,.source-prospectus select{box-sizing:border-box;width:100%;min-width:0;min-height:40px;padding:8px;border:1px solid #d5dece;border-radius:6px;background:white;color:var(--ink);font:inherit}
 .source-prospectus small{grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.7}
+
+.source-prospectus .source-period{grid-column:1/-1}.source-period>label>select{width:130px}.source-period .quarter-grid{margin:12px 0;max-width:520px}.source-period label.quarter{flex-direction:row;align-items:center}.source-period input[type=radio]{width:auto;min-height:0;padding:0}.source-period small{display:block}
