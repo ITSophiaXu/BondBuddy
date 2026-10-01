@@ -635,6 +635,28 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
   await expect(page.locator('#execution-progress')).toContainText('已取消'); expect(state.runs.size).toBe(1);
 });
 
+test('resumed source-input task shows compilation without a false blocker', async ({ page }) => {
+  const state = fixture(); state.checkStatus = 'ready';
+  state.runStage = 'awaiting_materials'; state.runReason = 'authoring_source_information_required';
+  await setup(page, state); await page.locator('#execute-input').click();
+  await expect(page.locator('.execution-summary')).toContainText('原稿信息现为选填');
+  const run = [...state.runs.values()][0]; const inputHash = run.input_hash;
+  run.state = 'running'; run.stage = 'provider_call';
+  state.runReason = 'provider_call_may_be_sent'; state.eventSeq++;
+  await page.reload();
+  await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
+  await expect(page.locator('.execution-summary')).toHaveCount(0);
+  await expect(page.locator('#execution-progress')).not.toContainText('联系支持');
+  await expect(page.locator('#project-conversation-root')).not.toBeVisible();
+  expect(state.executes).toHaveLength(1); expect(run.input_hash).toBe(inputHash);
+  if (process.env.BB_RUNNING_UX_DIR) {
+    for (const [name, width, height] of [['desktop',1440,960],['mobile',390,844]] as const) {
+      await page.setViewportSize({width,height});
+      await page.screenshot({path:join(process.env.BB_RUNNING_UX_DIR,`running-${name}.png`)});
+    }
+  }
+});
+
 test('account switch ignores an in-flight execute result', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
