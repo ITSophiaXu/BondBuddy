@@ -17,7 +17,7 @@ const states: Record<RunState, string> = {
   succeeded: '已生成', test_completed: '内部测试工作稿', failed: '任务失败', cancelled: '已取消'
 };
 const stages: Record<string, string> = { input_lock: '核对输入与规则', materials_ready: '读取材料',
-  model_generation: '生成全文内容', word_delivery: '生成并检查 Word', capability_not_ready: '等待处理条件',
+  model_generation: '生成全文内容', provider_call: '正在编制募集书', word_delivery: '生成并检查 Word', capability_not_ready: '等待处理条件',
   queued: '等待处理', completed: '处理完成' };
 
 type PauseStage = (typeof RUN_PAUSE_STAGES)[number];
@@ -270,11 +270,13 @@ export class ProjectExecution {
     const testCompleted = run?.state === 'test_completed' && testRun;
     const automaticPause = automaticPauseMessage(run);
     const repeatedPause = run?.state === 'paused' && this.samePauseAfterResume(run);
+    const needsAttention = run && ['paused', 'awaiting_input', 'failed', 'rejected', 'cancelled'].includes(run.state);
     // The current run stage is authoritative even when event history is late or unavailable.
     const summary = automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
       : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
-      : this.reason ? readinessMessage(this.reason)
+      : needsAttention && this.reason ? readinessMessage(this.reason)
+        : !needsAttention && this.reason === 'trial_limit_cleared' ? runtimeMessage(this.reason)
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对先前模型调用，请联系支持处理。'
