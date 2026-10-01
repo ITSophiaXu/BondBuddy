@@ -54,20 +54,20 @@ export class ArtifactPage {
     const delivery = artifact.word_delivery;
     const pending = delivery ? Math.max(delivery.pending_review_count, delivery.pending_review.length) : 0;
     const files = delivery
-      ? (Object.keys(variants) as Variant[]).map(variant => ({ id: delivery[`${variant}_artifact_id`], variant, ...variants[variant] }))
+      ? (['revision', 'clean'] as Variant[]).map(variant => ({ id: delivery[`${variant}_artifact_id`], variant, ...variants[variant], ...(delivery.baseline_kind === 'none' ? { description: '本次为首次编制，没有旧文对照；两份均为可编辑首稿。' } : {}) }))
       : [{ id: artifact.artifact_id, variant: undefined, label: 'Word 成果', description: '此历史成果未提供修订、清洁版和基线的分类信息。' }];
     this.shell(`<a class="back-link" href="#/projects/${encodeURIComponent(project.project_id)}">← 返回项目工作区</a>
       <div class="page-heading"><div><p class="eyebrow">成果与下载</p><h1>${esc(project.name)}</h1><p class="muted">成果 v${artifact.version} · 输入版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p></div><button class="button secondary" id="refresh-artifact">重新读取成果</button></div>
       <section class="panel artifact-page" aria-labelledby="artifact-summary"><h2 id="artifact-summary">${artifact.delivery_status === 'test_only' ? '内部测试工作稿·未经专业审核·不得对外使用' : pending ? '工作稿已生成，含待人工确认事项' : '工作稿已生成'}</h2>
         <p>文件已通过服务端交付检查；生成完成不表示业务事实已全部确认或达到正式申报条件。</p>
-        ${delivery ? `<p>本轮完成 ${delivery.replacements} 处替换、${delivery.columns} 处表格增列。</p>
+        ${delivery ? `<p>${delivery.baseline_kind === 'none' ? '本次为首次编制，没有历史修订对照。' : `本轮完成 ${delivery.replacements} 处替换、${delivery.columns} 处表格增列。`}</p>${delivery.source_issuer ? `<p>${delivery.baseline_kind === 'project_output' ? '对照本项目上一版成果，发行人：' : '对照原稿企业：'}${esc(delivery.source_issuer)}${delivery.baseline_kind === 'reconstructed_pdf' ? '；PDF 重建基线，排版请核对。' : ''}</p>` : ''}${delivery.authoring_summary?.length ? `<ul>${delivery.authoring_summary.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}
           <div class="artifact-review" aria-labelledby="artifact-review-title"><h3 id="artifact-review-title">待人工确认（${pending} 项）</h3>
           ${pending ? `<ul>${delivery.pending_review.map(item => `<li><p>${esc(item.message)}</p><span class="muted">原文记录：${esc(item.record_id)}</span></li>`).join('')}</ul>${pending > delivery.pending_review.length ? '<p>部分待确认详情尚未提供，请核对 Word 内的标记与批注。</p>' : ''}` : '<p>本轮交付摘要未列出待确认项，仍需核对原始材料和工作稿。</p>'}</div>` : '<p class="muted">此历史成果未提供变更摘要或待确认清单，请核对文档内容。</p>'}
       </section>
       <section class="panel artifact-page" aria-labelledby="artifact-downloads"><h2 id="artifact-downloads">下载 Word</h2><p class="muted">下载已有文件不会发起新任务。WPS/Word 兼容范围以实际验收记录为准。</p>
         <div class="artifact-files">${files.map((file, index) => `<article class="artifact-file"><h3>${file.label}</h3><p>${file.description}</p><button class="button ${index === 0 ? 'primary' : 'secondary'}" data-artifact-file="${index}" title="${esc(file.description)}">下载${file.label}</button><p class="artifact-download-status" data-download-status="${index}" role="status"></p></article>`).join('')}</div>
       </section>
-      <section class="panel artifact-page"><details><summary>来源与版本核对</summary><dl class="artifact-provenance"><dt>任务编号</dt><dd>${esc(run.run_id)}</dd><dt>成果编号</dt><dd>${esc(artifact.artifact_id)}</dd><dt>输入版本</dt><dd>${run.input_revision}</dd><dt>当前文件 SHA-256</dt><dd>${esc(artifact.sha256)}</dd>${delivery ? `<dt>原上传文件 SHA-256</dt><dd>${esc(delivery.source_sha256)}</dd><dt>有效基线 DOCX SHA-256</dt><dd>${esc(delivery.effective_baseline_sha256)}</dd>` : ''}</dl></details></section>`, 'projects');
+      <section class="panel artifact-page"><details><summary>来源与版本核对</summary><dl class="artifact-provenance"><dt>任务编号</dt><dd>${esc(run.run_id)}</dd><dt>成果编号</dt><dd>${esc(artifact.artifact_id)}</dd><dt>输入版本</dt><dd>${run.input_revision}</dd><dt>当前文件 SHA-256</dt><dd>${esc(artifact.sha256)}</dd>${delivery ? `${delivery.source_sha256 ? `<dt>${delivery.baseline_kind === 'project_output' ? '上一版成果' : '原上传文件'} SHA-256</dt><dd>${esc(delivery.source_sha256)}</dd>` : ''}<dt>${delivery.baseline_kind === 'none' ? '本次首稿 DOCX' : '有效基线 DOCX'} SHA-256</dt><dd>${esc(delivery.effective_baseline_sha256)}</dd>` : ''}</dl></details></section>`, 'projects');
     document.querySelector('#refresh-artifact')!.addEventListener('click', () => { void this.render(artifact.artifact_id); });
     document.querySelectorAll<HTMLButtonElement>('[data-artifact-file]').forEach(button => {
       const index = Number(button.dataset.artifactFile);

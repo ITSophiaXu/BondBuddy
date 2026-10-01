@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
+import { chunkEvidence, unifiedModelGenerationStage } from './unified-model-stage.js';
+import type { UnifiedInput } from './unified-input.js';
+import type { StageContext } from './run-pipeline.js';
+
+function input(source = true): UnifiedInput {
+  const record = (material: string, id: string, text: string) => ({record_id:id,material_id:material,material_version:1,content_hash:'a'.repeat(64),locator_type:'text_line' as const,locator:{},literal_quote:text,context:'',extraction_method:'native_text' as const,extractor_version:'synthetic',confidence:null,uncertainty:[],formatting:{}});
+  return { manifest: {issuer_name:'合成目标',market:'szse',offering:'public_all',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'},materials:[],
+    authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:[{path:'synthetic.md',markdown:'合成测试知识',sha256:'a'.repeat(64)}],knowledge_status:'authoring_reference_not_compliance_approval'}},requirements:['合成补充要求'],materials:[
+    {pin:{material_id:'report',material_version:1,role:'audit',sha256:'b'.repeat(64)},filename:'合成财务材料',mediaType:'text/plain',objectKey:'private/report',records:[record('report','r1','2025年净资产120万元')]},
+    ...(source ? [{pin:{material_id:'source',material_version:1,role:'historical',sha256:'c'.repeat(64)},filename:'合成参考',mediaType:'text/plain',objectKey:'private/source',records:[record('source','s1','2024年净资产100万元'),record('source','s2','其他条款')]}] : [])] };
+}
+const ctx = () => ({run:{input_hash:'f'.repeat(64)},values:new Map(),checkpoint:{}} as unknown as StageContext);
+
+test('unified update reads raw supporting records and requires complete baseline coverage and valid citations (synthetic)', async () => {
+  const prompts: string[] = [];
+  const stage=unifiedModelGenerationStage({load:async()=>input(),model:options=>({name:options.name,run:async context=>{
+    prompts.push(await options.buildPrompt(context));
+    const value=options.name.includes('read_') ? {notes:[{text:'2025年净资产120万元',evidence:['report/r1'],pending:false}]} :
+      {reviewed:['source/s1','source/s2'],edits:[{record_id:'source/s1',after:'2025年净资产120万元',evidence:['report/r1'],pending:[]}],summary:['更新财务期间及净资产']};
+    assert.ok(options.validate(value));
+    if ('reviewed' in value) {
+      assert.equal(options.validate({...value,reviewed:['source/s1']}),false);
+      assert.equal(options.validate({...value,edits:[{...value.edits![0],evidence:['foreign-project/secret']}]}),false);
+    }
+    return {kind:'done',value};
+  }})});
+  const result=await stage.run(ctx());assert.equal(result.kind,'done');
+  assert.equal(prompts.length,2);assert.match(prompts[0],/2025年净资产120万元/);assert.match(prompts[1],/合成补充要求/);assert.match(prompts[1],/public_all/);
+});
+
+test('no-source route writes chapters using issuer materials without a library or approved fact service (synthetic)', async()=>{
+  let calls=0;
+  const result=await unifiedModelGenerationStage({load:async()=>input(false),model:options=>({name:options.name,run:async()=>{
+    calls++;
+    const value=options.name.includes('read_')?{notes:[{text:'净资产120万元',evidence:['report/r1'],pending:false}]}:
+      options.name.includes('outline')?{chapters:['发行人情况','财务会计信息']}:
+      {blocks:[{kind:'paragraph',text:'根据材料，2025年净资产120万元。',rows:[],evidence:['report/r1'],pending:[]}],summary:['合成编制结果']};
+    assert.ok(options.validate(value));return {kind:'done',value};
+  }})}).run(ctx());
+  assert.equal(result.kind,'done');assert.equal(calls,4);
+});
+
+test('unknown provider outcome stops all following generation and delivery (synthetic)', async()=>{
+  let calls=0;
+  const result=await unifiedModelGenerationStage({load:async()=>input(),model:options=>({name:options.name,run:async()=>{calls++;return {kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'};}})}).run(ctx());
+  assert.deepEqual(result,{kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'});assert.equal(calls,1);
+});
+
+test('chunking preserves each raw record exactly once without silent truncation',()=>{
+  const records=Array.from({length:401},(_,i)=>({id:String(i),text:'原文'.repeat(i%13+1),uncertainty:[]}));
+  assert.deepEqual(chunkEvidence(records,400).flat(),records);
+  assert.throws(()=>chunkEvidence([{id:'large',text:'x'.repeat(500),uncertainty:[]}],400),/block_too_large/);
+});

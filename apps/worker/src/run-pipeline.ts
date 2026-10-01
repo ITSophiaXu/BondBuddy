@@ -5,6 +5,8 @@
 // `succeeded` only via queue.finish after the Word artifact passed inspection and Blob readback.
 // A stage the pipeline needs but that is not implemented pauses the run (`capability_not_ready`).
 import type { Pool } from 'pg';
+import { isUnifiedInput } from '@bondbuddy/contracts';
+import { unifiedInputGate } from './unified-input.js';
 import { RQ_PROSPECTUS_ANNUAL_SOURCE_SHA256 } from './rq-prospectus-annual-fact-constants.js';
 import { ERROR_CODES, MATERIAL_PARSE_JOB_TYPE, M1_MATERIAL_PARTITIONS, RUN_PIPELINE_STAGES, type RUN_PAUSE_STAGES } from '@bondbuddy/contracts';
 import { digest, Problem, type PrivateBlobs } from '@bondbuddy/api/data';
@@ -294,6 +296,7 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
+    if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: { authoring_mode: 'unified_v1' } };
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
     const issuerBindingGate = await verifyGenerationIssuerBinding(run, manifest, loadGenerationIssuerBinding);
@@ -381,7 +384,14 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
   return {
   name: 'materials_ready',
   replay: true,
-  run: async ({ pool, run, checkpoint }) => {
+  run: async ({ pool, run, checkpoint, values }) => {
+    if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
+      // Native reading/OCR remains a worker tool; a separate fact inventory is not an admission requirement.
+      const r = await materialsReadiness(pool, run);
+      if (r.status === 'failed') return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_material_unreadable' };
+      if (r.status === 'pending') return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };
+      return { kind: 'done', checkpoint: { materials: r.materials.map(({ material_id, material_version, outcome }) => ({ material_id, material_version, outcome })) } };
+    }
     const r = await materialsReadiness(pool, run);
     if (r.status === 'failed') return { kind: 'fail', code: r.code! };
     if (r.status === 'pending') return { kind: 'pause', stage: 'awaiting_materials', reason: 'material_parse_pending' };
@@ -531,6 +541,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       if (!deps.stages.includes(inputLockStage)) return null;
       const input = await currentRunInput(pool, run);
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
+      if (isUnifiedInput(input.manifest)) return unifiedInputGate(pool, run, input);
       const generationGate = await verifyGenerationIssuerBinding(run, input.manifest, deps.loadGenerationIssuerBinding);
       if (generationGate) return generationGate;
       if(run.channel==='non_production_test')

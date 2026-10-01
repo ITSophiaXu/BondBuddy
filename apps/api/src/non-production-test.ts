@@ -109,6 +109,7 @@ export async function assertGenerationWorkingDraftInput(db: PoolClient, scope: O
 export async function autoWorkingDraftGrant(db: PoolClient, scope: Omit<TestGrantScope, 'grantId'>,
   input: LockedInput, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
   if (!record(input.manifest) || !['update', 'generation'].includes(String(input.manifest.kind))) return null;
+  if ((input.manifest.authoring as { version?: string } | undefined)?.version === 'unified_v1') return null;
   if (!workingDraftConfigured(env)) return null;
   if (!testChannelEnabled(env)) throw new Problem(409, 'TEST_CHANNEL_DISABLED', 'Configured working draft channel is unavailable');
   await assertLockedInputIntegrity(db, scope, input);

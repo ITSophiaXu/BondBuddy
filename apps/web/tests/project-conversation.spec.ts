@@ -84,7 +84,10 @@ async function setup(page: Page, fixtureState = fixture()) {
       ...state.project, latest_run: state.run ? { run_id: state.run.run_id, state: state.run.state, updated_at: now } : null
     }] : [], page: { next_cursor: null, has_more: false } });
     if (state.owner !== 'owner-a') return reply(route, 404, { code: 'NOT_FOUND' });
-    if (path === `/projects/${id}`) return reply(route, 200, state.project);
+    if (path === `/projects/${id}`) {
+      if (method === 'PATCH') Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 });
+      return reply(route, 200, state.project);
+    }
     if (path === `/projects/${id}/messages` && method === 'GET') {
       if (state.failRead) return reply(route, 503, { code: 'DATA_UNAVAILABLE' });
       const cursor = url.searchParams.get('cursor'), first = cursor ? Number(cursor.split(':')[1]) : 0;
@@ -170,6 +173,28 @@ async function send(page: Page, text: string) {
   await expect(page.locator('.cowork-message').filter({ hasText: text })).toBeVisible();
 }
 
+test('unified source metadata is material-version-bound, survives reopening and never starts on save', async ({page}) => {
+  const {state}=await setup(page);
+  await expect(page.getByRole('heading',{name:'是否有本发行人的历史募集书？'})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'募集书编制的补充要求'})).toBeVisible();
+  const source=page.locator('[data-source-material="synthetic-historical"]');
+  await source.getByLabel('原发行人名称',{exact:true}).fill('合成母公司');
+  await source.getByLabel('与目标发行人的关系',{exact:true}).selectOption('parent');
+  await source.getByLabel('原发行市场',{exact:true}).selectOption('nafmii');
+  await source.getByLabel('原品种',{exact:true}).selectOption('ppn');
+  await source.getByLabel('原报告年度',{exact:true}).fill('2022、2023');
+  await source.getByLabel('原一期截止日（无则留空）',{exact:true}).fill('2024-06-30');
+  await source.getByLabel('原发行人名称',{exact:true}).focus();
+  await expect.poll(()=>state.project.update_details?.source_prospectuses?.[0]?.reporting_periods.length).toBe(3);
+  expect(state.project.update_details!.source_prospectuses![0]).toMatchObject({material_id:'synthetic-historical',material_version:1,sha256:hash('historical'),relation:'parent',market:'nafmii',offering:'ppn'});
+  expect(state.project.market).toBe('sse');expect(state.project.offering).toBe('private');expect(state.executes).toHaveLength(0);
+  await page.reload();await expect(source.getByLabel('原发行人名称',{exact:true})).toHaveValue('合成母公司');
+  await expect(source.getByLabel('原报告年度',{exact:true})).toHaveValue('2022、2023');
+  await send(page,'合成补充：更新至2025年末。');expect(state.executes).toHaveLength(0);
+  await mkdir('test-evidence/m1-unified',{recursive:true});
+  await page.screenshot({path:'test-evidence/m1-unified/materials.png',fullPage:true});
+});
+
 test('save-only sends, exact edit history, lost-response idempotency and refresh/relogin', async ({ page }) => {
   const setupState = await setup(page);
   const { state } = setupState;
@@ -211,7 +236,7 @@ test('acknowledged save is not reported as pending when the following read fails
   state.failRead = true;
   await page.getByLabel('补充说明与写作要求').fill('服务器已保存的用户消息');
   await page.locator('#send-project-message').click();
-  await expect(page.locator('#conversation-status')).toContainText('消息已保存，但列表读取失败');
+  await expect(page.locator('#conversation-status')).toContainText('补充要求已保存，但列表读取失败');
   await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('');
   await expect(page.locator('#send-project-message')).toBeDisabled();
   expect(state.messages).toHaveLength(1);
@@ -239,7 +264,7 @@ test('input-lock conflict rereads every saved message before creating a fresh sn
   expect(f.state.inputs[0].project_message_set_ref).toEqual(f.ref());
 });
 
-test('no-history generation keeps the same message pin and generation execution kind', async ({ page }) => {
+test('legacy generation project upgrades to unified input while preserving messages and execution kind', async ({ page }) => {
   const f = fixture();
   f.state.project.kind = 'generation';
   f.state.project.update_details!.has_historical = false;
@@ -254,10 +279,9 @@ test('no-history generation keeps the same message pin and generation execution 
   expect(state.executes).toHaveLength(1);
   expect(state.inputs[0].requirement_message_ids).toEqual(f.ref().message_ids);
   expect(state.inputs[0].project_message_set_ref).toEqual(f.ref());
-  expect(state.inputs[0].user_reference).toEqual({
-    material_id: 'synthetic-reference', material_version: 1, material_sha256: hash('reference'),
-    parse_snapshot_id: 'synthetic-reference-snapshot', target_product: 'private', target_document_stage: 'issuance'
-  });
+  expect(state.inputs[0].user_reference).toBeUndefined();
+  expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-reference',material_version:1});
+  expect(state.project.update_details!.authoring_mode).toBe('unified_v1');
   expect(state.executes[0].task_kind).toBe('generation');
   await expect(page.locator('.cowork-assistant')).toHaveCount(0);
 });
@@ -337,11 +361,10 @@ test('create and material conversation use the prototype desktop and mobile work
   await page.goto('/#update');
   await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
-  await page.locator('[name=has_historical][value=yes]').check();
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
-  await page.getByLabel('财务截止年份').selectOption('2026');
-  await page.getByRole('radio', { name: '6月末', exact: true }).check();
+  await page.getByLabel('目标报告年度').fill('2024、2025');
+  await page.getByLabel('目标一期截止日（无则留空）').fill('2026-06-30');
   await page.getByLabel('补充说明与写作要求').fill('合成补充：授信口径待核对。');
   await capture('create');
   await page.setViewportSize({ width: 390, height: 844 }); await capture('create-mobile');
