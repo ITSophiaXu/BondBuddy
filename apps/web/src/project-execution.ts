@@ -1,6 +1,6 @@
 import { ArtifactPage } from './artifact-page';
 import { prototypeIcon as icon } from './prototype-design';
-import { type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
+import { reportingWindow, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -352,8 +352,13 @@ export class ProjectExecution {
       if (!this.materialReady || this.inputReadUncertain) return;
       const selected = this.eligibleMaterials();
       if (!selected.length) { this.message = '请先添加本次需要的项目材料。'; return; }
-      if (this.draft.fields.update_details.authoring_mode !== 'unified_v1') {
-        this.draft.edit({ update_details: { ...this.draft.fields.update_details, authoring_mode: 'unified_v1', has_historical: null } });
+      const details = this.draft.fields.update_details;
+      const periods = details.target_reporting_periods?.length ? details.target_reporting_periods
+        : reportingWindow(this.draft.fields.market, this.draft.fields.offering, details.reporting_cutoff);
+      // Derive missing legacy targets only on an explicit new execution, never on read or resume.
+      if (details.authoring_mode !== 'unified_v1' || !details.target_reporting_periods?.length && periods.length) {
+        this.draft.edit({ update_details: { ...details, authoring_mode: 'unified_v1', has_historical: null,
+          ...(periods.length ? { target_reporting_periods: periods } : {}) } });
       }
       const confirmedGeneration = this.generation;
       if (!await this.draft.save() || !this.active) { this.message = '项目修改尚未保存，请先处理上方保存提示。'; return; }
