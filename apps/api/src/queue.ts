@@ -7,6 +7,7 @@ import { assertModelCallAllowed, reportTrialRejection, trialGuardConfig } from '
 import { DOCX_LIMITS, inspectDocx, WORD_DELIVERY_VALIDATOR_VERSION, WORD_MEDIA_TYPE, type DocxInspection } from './docx-inspector.js';
 import { assertTestGrant } from './non-production-test.js';
 import { errorDiagnostic } from './error-diagnostics.js';
+import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from './provider-results.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
 export type Lease = { jobId:string; runId:string; owner:string; token:string; checkpoint:Record<string,unknown>; attempts:number };
@@ -532,14 +533,17 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
       AND revision=$3 AND input_hash=$4 AND manifest->'update_details'->>'authoring_mode'='unified_v1'`,
       [owner,r.project_id,r.input_revision,r.input_hash]);
     if(!input.rowCount)return false;
-    const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,t.error_code,t.exit_code,t.exit_signal,t.tool_attempts
+    const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,t.error_code,t.exit_code,t.exit_signal,t.tool_attempts,t.adapter,t.adapter_version
       FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
       LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
     if(unresolved.rows.length!==1)return false;
     const a=unresolved.rows[0];
-    if(a.status!=='pending_reconcile' || !/^unified-v3-(read_\d+_\d+(?:_part_[01])?|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) ||
-      a.observed_usage!=='unknown' || a.error_code!=='MODEL_TIMEOUT' || a.tool_attempts!==0 ||
+    const legacyTextOnly=/^unified-v3-(read_\d+_\d+(?:_part_[01])?|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) && a.tool_attempts===0;
+    const materialReads=/^unified-v4-(update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) &&
+      a.adapter==='codex_exec' && a.adapter_version===READ_ONLY_MATERIAL_ADAPTER_VERSION;
+    if(a.status!=='pending_reconcile' || !(legacyTextOnly || materialReads) ||
+      a.observed_usage!=='unknown' || a.error_code!=='MODEL_TIMEOUT' ||
       !(a.exit_code!==null || ['SIGTERM','SIGKILL'].includes(a.exit_signal)))return false;
     const evidence=await client.query(`SELECT
       EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$1) AS has_result,

@@ -6,6 +6,9 @@ import type { ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { Lease } from './queue.js';
 export type { PrivateBlobs } from './data.js';
 
+// This adapter exposes only immutable, run-local material reads; no side-effecting tools.
+export const READ_ONLY_MATERIAL_ADAPTER_VERSION = 'codex-material-readonly-1';
+
 const safeId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const safeVersion = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(value);
 const safeError = (value: unknown): value is string => typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(value);
