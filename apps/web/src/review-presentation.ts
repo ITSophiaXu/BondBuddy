@@ -9,7 +9,7 @@ export const conclusionLabels: Record<ReviewFinding['conclusion'], string> = {
 };
 export const checkLabels: Record<ReviewFinding['check_status'], string> = { rechecked: '本轮核验', carried_forward: '沿用先前结果' };
 
-export function sourceLocator(ref: ReviewEvidenceRef): string {
+export function sourceLocator(ref: Pick<ReviewEvidenceRef, 'locator'>): string {
   const labels:Record<string,string>={page:'页码',page_number:'页码',paragraph:'段落',paragraph_index:'段落序号',block_index:'内容序号',table:'表格',table_index:'表格序号',row:'行',column:'列',sheet:'工作表',cell:'单元格',line:'行号',bbox:'页内位置',heading:'章节'};
   return Object.entries(ref.locator).map(([key, value]) => `${labels[key]??key}：${typeof value === 'object' ? JSON.stringify(value) : String(value)}`).join(' · ');
 }

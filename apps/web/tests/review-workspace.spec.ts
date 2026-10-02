@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { Value } from '@sinclair/typebox/value';
 import { ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
-  type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewHistoryEntry, type Run } from '@bondbuddy/contracts';
+  type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
 
 // Real Chromium with an owner-aware synthetic HTTP fixture. Not model, database or Word acceptance.
@@ -25,7 +25,7 @@ function fixture(){
   const makeRun=(runId:string,state:Run['state'],requestId='old'):Run=>({run_id:runId,execution_request_id:requestId,project_id:id,input_revision:1,input_hash:hash('input'),channel:'production',test_grant_id:null,uncovered_items:[],state,stage:null,event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?'artifact-1':null,prompt_snapshot_ref:null,updated_at:now});
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
-  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun};
+  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[]};
   return state;
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
@@ -86,6 +86,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       if(!material){material={...upload,material_id:'evidence-new',material_version:1,upload_id:'upload-evidence',state:'persisted',persisted_at:now,error:null};state.workspace.materials.push(material);}
       if(state.dropUploadOnce){state.dropUploadOnce=false;return route.abort('connectionreset');}return reply(route,200,material);
     }
+    if(path.startsWith('/artifacts/')&&!path.endsWith('/download')){state.artifactReads.push(path);const artifact=state.artifacts.get(path.split('/').at(-1)!);if(artifact)return reply(route,200,artifact);}
     if(path==='/artifacts/artifact-1')return reply(route,200,{artifact_id:'artifact-1',run_id:'run-1',version:1,media_type:mime,sha256:hash('synthetic verified bytes'),quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/artifact-1/download',expires_at:'2027-01-01T00:00:00Z'});
     if(path==='/artifacts/artifact-1/download')return route.fulfill({status:200,contentType:mime,body:'synthetic verified bytes'});
     return reply(route,404,{code:'NOT_FOUND'});
@@ -94,6 +95,43 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
 }
 const finding=(page:Page,id:string)=>page.locator(`[data-finding-id="${id}"]`);
 async function openFinding(page:Page,id:string){const card=finding(page,id);if(!await card.getAttribute('open').then(v=>v!==null))await card.locator('summary').click();return card;}
+
+function revisionFixture(){
+  const state=fixture(),report=state.workspace.selected_report!;
+  const handling:ReviewRevisionHandling={version:'review-revision-handling-v1',source_report:{report_id:report.report_id,run_id:report.run_id,version:1,input_revision:1,sha256:hash('report')},source_material:report.source_material,accepted_plan:{plan_id:'plan-1',version:1,sha256:hash('plan'),accepted_at:now},review_passed:false,limitations:['公开信息未重新核验，需另行明确复核。'],items:[
+    {finding_id:'F01',report_id:report.report_id,status:'modified',reason:'金额已按同口径审计依据改为 120。',locations:[{record_id:'record-0',locator:{paragraph:10}}],evidence_refs:['audit-record-1'],review_passed:false},
+    {finding_id:'F02',report_id:report.report_id,status:'needs_evidence',reason:'缺少更名生效日期依据，历史名称暂保留。',locations:[{record_id:'record-2',locator:{paragraph:20}}],evidence_refs:[],review_passed:false},
+    {finding_id:'F03',report_id:report.report_id,status:'not_modified',reason:'用户未选择此项，保留原标题。',locations:[],evidence_refs:[],review_passed:false},
+  ]};
+  const artifact={artifact_id:'revision-2',artifact_version:1,kind:'revision' as const,filename:'合成修订稿.docx'};
+  const metadata:Dto<'ArtifactResponse'>={artifact_id:artifact.artifact_id,run_id:'revision-run-2',version:1,media_type:mime,sha256:hash('synthetic revision'),quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/revision-2/download',expires_at:'2027-01-01T00:00:00Z',word_delivery:{variant:'revision',revision_artifact_id:artifact.artifact_id,clean_artifact_id:'clean-2',baseline_artifact_id:'baseline-2',writer_version:'bondbuddy-word-delivery-1.0.0',source_sha256:report.source_material.sha256,baseline_hash:hash('baseline'),effective_baseline_sha256:hash('baseline'),plan_hash:handling.accepted_plan.sha256,replacements:1,columns:1,pending_review_count:2,pending_review:[],revision_handling:handling,review_passed:false}};
+  state.workspace.artifacts=[artifact];state.workspace.artifact_run={run_id:metadata.run_id,version:2,operation:'revision',source_report_id:report.report_id};
+  const entry:ReviewHistoryEntry={...structuredClone(state.history[0]),run:{...state.makeRun(metadata.run_id,'succeeded'),artifact_id:artifact.artifact_id},version:2,operation:'revision',source_report_id:report.report_id,report_id:null,artifacts:[artifact],created_at:'2026-10-02T11:00:00Z'};
+  state.history.push(entry);state.artifacts.set(artifact.artifact_id,metadata);
+  return {state,metadata,handling,entry};
+}
+
+test('revision results expose handling reasons and locations without chat or execution',async({page})=>{
+  const {state}=revisionFixture();await setup(page,state);await expect(page.getByRole('button',{name:'处理清单',exact:true})).toBeVisible();expect(state.artifactReads).toHaveLength(0);
+  await page.getByRole('button',{name:'处理清单',exact:true}).click();const dialog=page.getByRole('dialog',{name:'修订处理清单'});
+  await expect(dialog).toContainText('执行版本 V2 · revision-run-2');await expect(dialog).toContainText('来源报告：report-v1 · V1');await expect(dialog).toContainText('已修改 1 项 · 未修改 1 项 · 待补证 1 项');
+  await expect(dialog.locator('[data-handling-finding="F02"]')).toContainText('缺少更名生效日期依据');await expect(dialog.locator('[data-handling-finding="F03"]')).toContainText('用户未选择此项');await expect(dialog).toContainText('段落：10');await expect(dialog).toContainText('已修改不代表复核通过');await expect(dialog).toContainText('公开信息未重新核验');
+  expect(state.artifactReads).toEqual(['/artifacts/revision-2']);expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-review/handling-desktop.png'});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-review/handling-narrow.png'});
+});
+
+test('workbench handling reads the exact historical revision and returns to its history',async({page})=>{
+  const {state,handling,entry}=revisionFixture();handling.source_report.report_id='report-older';handling.items.forEach(item=>item.report_id='report-older');entry.source_report_id='report-older';
+  await setup(page,state,'#dashboard');await page.getByRole('button',{name:'版本记录',exact:true}).click();const history=page.getByRole('dialog',{name:'合成募集书复核项目 · 版本记录'});const revision=history.locator('.review-history-entry').filter({hasText:'revision-run-2'});await expect(revision).toContainText('来源报告 report-older');await expect(revision.getByRole('link',{name:'打开来源报告'})).toHaveAttribute('href',/report_id=report-older/);
+  await revision.getByRole('button',{name:'处理清单',exact:true}).click();const detail=page.getByRole('dialog',{name:'修订处理清单'});await expect(detail).toContainText('来源报告：report-older · V1');await expect(detail).toContainText('用户未选择此项');expect(state.artifactReads).toEqual(['/artifacts/revision-2']);await detail.getByRole('button',{name:'返回',exact:true}).click();await expect(history).toBeVisible();await expect(history.locator('.review-history-entry')).toHaveCount(2);
+});
+
+test('handling remains unavailable on missing metadata, stale artifact association or invalid status and can retry',async({page})=>{
+  const {state,metadata,handling}=revisionFixture();delete metadata.word_delivery!.revision_handling;await setup(page,state);await page.getByRole('button',{name:'处理清单',exact:true}).click();const detail=page.getByRole('dialog',{name:'修订处理清单'});await expect(detail.getByRole('alert')).toContainText('尚未提供处理清单');await expect(detail.locator('.review-handling-item')).toHaveCount(0);
+  metadata.word_delivery!.revision_handling=handling;metadata.run_id='other-run';await detail.getByRole('button',{name:'重试读取处理清单'}).click();await expect(detail.getByRole('alert')).toContainText('来源版本不一致');await expect(detail.locator('.review-handling-item')).toHaveCount(0);
+  metadata.run_id='revision-run-2';Object.assign(handling.items[0],{review_passed:true});await detail.getByRole('button',{name:'重试读取处理清单'}).click();await expect(detail.getByRole('alert')).toContainText('来源版本不一致');await expect(detail.locator('.review-handling-item')).toHaveCount(0);
+  handling.items[0].review_passed=false;await detail.getByRole('button',{name:'重试读取处理清单'}).click();await expect(detail.locator('.review-handling-item')).toHaveCount(3);expect(state.executes).toHaveLength(0);
+});
 
 test('result buttons explain, download, plan and explicitly execute without chat; active run and empty plan are guarded',async({page})=>{
   const state=await setup(page);await expect(page.locator('#review-agent')).toBeHidden();await expect(page.getByRole('tab')).toHaveCount(2);
