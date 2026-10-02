@@ -8,13 +8,13 @@
 - 检出完整工作树；不能只取 apps/packages，因为既有统一编制测试读取 `knowledge/exchange-bonds/drafts/sse-private` 等固定知识文件。
 - PostgreSQL 服务在当前 job 内创建 `bb_m3_ci`，账号和口令明确是一次性 synthetic 值。初始化采用实际接口：`DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs`。迁移进程结束连接后，测试辅助程序通过具有 CREATEDB 的临时角色，为每个文件克隆并清理独立数据库；不存在生产连接或数据库 dump。
 - Azurite 只将 Blob 端口绑定本机回环地址，使用公开的开发存储连接配置；SDK 写入/删除 readiness 容器后才测试。job 结束移除容器。
-- `npm run build`、`npm run check:contracts` 后，执行 workflow 中列出的 runtime-entry、解析并发/私有 staging、共享 adapter/material-tools/router/统一编制及 M3 API/domain/assistant/review/revision/PG-Azurite 定向集，随后运行三个 Python Word 测试模块。
+- `npm run build`、`npm run check:contracts` 后，执行 workflow 中列出的 runtime-entry、解析并发/私有 staging、共享 adapter/material-tools/router/统一编制及 M3 API/domain/assistant/review/revision/PG-Azurite 定向集。parser1.0.8追加原生解析、证据存储、财务提取、显式公式及已授权样本兼容性检查；随后运行Python原生parser和三个Word测试模块。
 
-真实 Linux 的 `0700` 私有目录、`flock`、孤儿目录清理、进程信号和 SIGTERM 测试原样运行；没有平台跳过或放宽断言。测试环境提供绝对 Python 路径；Node TAP 只要出现非零 skipped/TODO 或无测试就失败，Python 跳过也失败。模型和搜索响应均来自显式 synthetic 夹具；`BB_TEST_LIVE_AUTHORING=0`、`BB_REVIEW_WEB_SEARCH_ENABLED=0`，不调用模型供应商。数据库、Azurite、Python 解析/Word、子进程和下载/恢复代码实际运行。
+真实 Linux 的 `0700` 私有目录、`flock`、孤儿目录清理、进程信号和 SIGTERM 测试原样运行；没有平台跳过或放宽断言。测试环境提供绝对 Python 路径；Node TAP 只要出现非零 skipped/TODO 或无测试就失败，Python 跳过也失败。模型和搜索响应均来自显式 synthetic 夹具；`BB_TEST_LIVE_AUTHORING=0`、`BB_REVIEW_WEB_SEARCH_ENABLED=0`，不调用模型供应商。解析/财务提取集另启用`BB_RUN_AUTHORIZED_LARGE_XLSX`、`BB_RUN_AUTHORIZED_SAMPLE_TESTS`和`BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_TESTS`，读取仓库已登记授权的原件；不将授权样本测试说成真实模型或专业验收。数据库、Azurite、Python解析/Word、子进程和下载/恢复代码实际运行。
 
 ## 首次触发与证据要求
 
-主协调分支提交上述 workflow 后，创建或更新以 `develop` 为 base 的 PR，查看 **M3 Linux synthetic integration / linux-integration**。首次工作流若等待仓库 Actions 策略或贡献者批准，应记录实际状态；没有运行记录不能视为通过，也不据此修改仓库权限设置。
+主协调分支提交上述 workflow 后，创建或更新以 `develop` 为 base 的 PR，查看 **M3 Linux integration / linux-integration**。首次工作流若等待仓库 Actions 策略或贡献者批准，应记录实际状态；没有运行记录不能视为通过，也不据此修改仓库权限设置。
 
 首次完成需记录 run URL、PR merge SHA、runner 和依赖版本、迁移日志、Node pass/fail/skipped 计数及 Python结果；应确认 runtime-entry 的完整子进程/SIGTERM 用例和 M3 完整上传到 Word 流程均执行。失败时保留 Actions 步骤日志并在同一 PR 修复，不将缺环境导致的跳过或未启动记为验收。
 
@@ -28,4 +28,6 @@
 
 Python wheel dry-run已由上述runner实际安装和运行证据补充。该结果覆盖synthetic模型输入下的真实Linux/数据库/存储/解析/Word工程链路；真实供应商、专业质量、WPS和生产部署/回滚验收仍独立跟踪。
 
-同步develop `1b06287`后，定向集追加`run-runtime.test.js`及`unified-timeout-recovery.test.js`，覆盖新增长编制deadline和只读材料工具恢复的共用队列边界。首次运行的169计数保留为历史证据；最新提交及合并树的计数、结论见[PR #523 checks](https://github.com/ITSophiaXu/BondBuddy/pull/523/checks)。
+同步develop `1b06287`后，定向集追加`run-runtime.test.js`及`unified-timeout-recovery.test.js`，覆盖新增长编制deadline和只读材料工具恢复的共用队列边界。[run 37006145251](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37006145251)于2026-10-02T12:25:13Z成功，head`9ea8ed8`、合并树`1ab1c77`，Node173/173、Python Word20/20，零失败/跳过/TODO。
+
+上述计数保留为新增parser/样本/公式/供应商schema修复前的历史证据；扩展后的最终提交及合并树、计数、结论见[PR #523 checks](https://github.com/ITSophiaXu/BondBuddy/pull/523/checks)。不会将旧SHA的成功用于宣称新提交已经通过。

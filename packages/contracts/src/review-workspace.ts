@@ -27,7 +27,8 @@ export type ReviewProposal = { proposal_id: string; source_report_id: string; fi
 export type ReviewMessage = { message_id: string; role: 'user' | 'assistant'; content: string; context: ReviewContext; created_at: string; reply_status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'; reply_to: string | null; proposal: ReviewProposal | null; error: string | null };
 export const ReviewPlanRequestSchema = strict({ expected_version: Type.Integer({ minimum: 0 }), source_report_id: id, finding_ids: Type.Array(id, { maxItems: 2000, uniqueItems: true }), excluded_findings: Type.Array(strict({ finding_id: id, reason: Type.String({ minLength: 1, maxLength: 12000 }) }), { maxItems: 2000 }), requirements: Type.Array(text, { maxItems: 100 }), proposal_id: Type.Optional(id) });
 export type ReviewPlanRequest = Static<typeof ReviewPlanRequestSchema>;
-export type ReviewPlan = Omit<ReviewPlanRequest, 'expected_version' | 'proposal_id'> & { plan_id: string; version: number; sha256: string; accepted_at: string };
+export type ReviewPlan = Omit<ReviewPlanRequest, 'expected_version' | 'proposal_id'> & { plan_id: string; version: number; sha256: string; accepted_at: string;
+  proposal_origin?: { proposal: ReviewProposal; sha256: string; adoption: 'as_proposed' | 'user_adjusted' } };
 export const ReviewExecutionRequestSchema = strict({ execution_request_id: id, operation: Type.Union([Type.Literal('full_review'), Type.Literal('differential_review'), Type.Literal('revision')]), expected_input_version: Type.Integer({ minimum: 1 }), source_report_id: nullableId, expected_plan_version: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]), finding_ids: Type.Array(id, { maxItems: 2000, uniqueItems: true }) });
 export type ReviewExecutionRequest = Static<typeof ReviewExecutionRequestSchema>;
 export type ReviewArtifact = { artifact_id: string; artifact_version: number; kind: 'report' | 'comments' | 'revision' | 'clean' | 'baseline'; filename: string };

@@ -17,7 +17,7 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const FILE_ID = 'rq-202509-02';
 const EXPECTED_BYTES = 424_900;
 const EXPECTED_SHA256 = 'c11db9a211c7e8c21efc5aab6a8e503b3817aa78f3d184cfe5d077b0a32826c2';
-const PARSER_VERSION = 'bondbuddy-document-parser-1.0.7';
+const PARSER_VERSION = 'bondbuddy-document-parser-1.0.8';
 const REPORTING_CUTOFF = '2025-09-30'; // Target intent only; manifest target_reporting_periods are never passed to recognition.
 
 type ManifestFile = {

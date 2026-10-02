@@ -76,6 +76,26 @@ test('normalization handles nested schema keywords and rejects mixed primitive e
   assert.deepEqual(schema, original);
 });
 
+test('Copilot schema omits unsupported uniqueness while the local contract still rejects duplicate IDs', async () => {
+  const schema={type:'object',additionalProperties:false,required:['items'],properties:{items:{type:'array',uniqueItems:true,items:{type:'string'}}}};
+  const original=structuredClone(schema),normalized=normalizeCodexOutputSchema(schema) as typeof schema;
+  assert.equal(normalized.properties.items.uniqueItems,undefined);
+  assert.deepEqual(schema,original);
+  const validate=new Ajv({strict:true}).compile(schema);
+  assert.equal(validate({items:['F1','F2']}),true);
+  assert.equal(validate({items:['F1','F1']}),false);
+  const {config,cleanup}=await setup({max_schema_reasks:0});
+  try {
+    const result=await runContainedModelCall(call('SCENARIO:duplicate_ids',{
+      output:{kind:'json',schema,validate:value=>!!validate(value)},
+    }),new MemoryCodexJournal(),config);
+    assert.equal(result.status,'failed');
+    assert.equal(result.error_code,'MODEL_OUTPUT_SCHEMA_INVALID');
+    assert.equal(result.value,null);
+    assert.equal(result.attempts[0]?.usage.status,'measured');
+  } finally {await cleanup();}
+});
+
 async function setup(overrides: Partial<CodexAdapterConfig> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'bb-codex-test-'));
   const config: CodexAdapterConfig = { command: [process.execPath, fake], model_id: 'deepseek-flash', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'codex-deepseek-flash-test', reasoning_effort: null, credential: { kind: 'env', name: 'BB_SYNTHETIC_DEEPSEEK_KEY' }, work_root: join(root, 'work'), timeout_ms: 5000, kill_grace_ms: 200, max_output_bytes: 1 << 20, max_schema_reasks: 1, disabled_features: DEFAULT_DISABLED_FEATURES, path_env: '/usr/bin:/bin', ...overrides };
@@ -340,13 +360,15 @@ test('interrupted, non-zero exit, broken stream and turn.failed map to stable co
 test('explicit provider request rejection is a failed attempt with unknown usage and no tool attempt', async () => {
   const { config, cleanup } = await setup();
   try {
+    for (const scenario of ['request_rejected','schema_rejected']) {
     const j = new MemoryCodexJournal();
-    const r = await runContainedModelCall(call('SCENARIO:request_rejected'), j, config);
+    const r = await runContainedModelCall(call(`SCENARIO:${scenario}`), j, config);
     assert.equal(r.status, 'failed'); assert.equal(r.error_code, 'MODEL_PROVIDER_REQUEST_REJECTED');
     assert.equal(r.attempts[0].tool_attempts, 0, 'metadata warning is a text error item');
     assert.equal(r.attempts[0].usage.status, 'unknown');
     assert.equal(j.observations[0].observation.outcome, 'failed');
     assert.ok(!JSON.stringify(r.attempts).includes('synthetic rejected request'), 'raw error is never recorded');
+    }
   } finally { await cleanup(); }
 });
 

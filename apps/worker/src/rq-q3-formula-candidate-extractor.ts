@@ -118,7 +118,7 @@ export function createRqQ3FormulaCandidateExtractor(
       const completion = await resolveParseCompletion(request);
       const cells = request.records.filter(isCell);
       if (request.material_sha256 !== RQ_Q3_FORMULA_SOURCE_SHA256 || cells.length !== request.records.length ||
-          !['bondbuddy-document-parser-1.0.6', 'bondbuddy-document-parser-1.0.7'].includes(request.parser_version)) {
+          !['bondbuddy-document-parser-1.0.6', 'bondbuddy-document-parser-1.0.7', 'bondbuddy-document-parser-1.0.8'].includes(request.parser_version)) {
         return { ...resultBase(request), facts: [], needs_review: [{
           evidence_refs: request.records.slice(0, 32).map(record => record.record_id),
           reason_code: 'RQ_Q3_FORMULA_SOURCE_OR_PARSER_UNSUPPORTED',

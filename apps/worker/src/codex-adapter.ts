@@ -60,8 +60,8 @@ export const DEFAULT_DISABLED_FEATURES = ['shell_tool', 'unified_exec', 'shell_s
 const TEXT_ITEM_TYPES = new Set(['agent_message', 'reasoning', 'todo_list', 'error']);
 const REASK_MARKER = '[bb-reask]';
 
-// Add only redundant type constraints. Mixed primitive types are rejected locally rather
-// than silently narrowing a schema or relying on provider-specific union support.
+// Prepare the provider's supported schema dialect without changing the caller's local validator.
+// Mixed primitive types are rejected instead of silently narrowing their union.
 export function normalizeCodexOutputSchema(schema: Record<string, unknown>): Record<string, unknown> {
   const copy = structuredClone(schema);
   const inferredType = (value: unknown) => {
@@ -74,6 +74,9 @@ export function normalizeCodexOutputSchema(schema: Record<string, unknown>): Rec
     if (Array.isArray(node)) { for (const child of node) walk(child); return; }
     if (!node || typeof node !== 'object') return;
     const s = node as Record<string, unknown>;
+    // Copilot structured output rejects uniqueItems. The original schema/validator still
+    // rejects duplicate IDs before a response can be persisted as an accepted result.
+    delete s.uniqueItems;
     if (!('type' in s) && !('anyOf' in s) && !('$ref' in s) && ('const' in s || 'enum' in s)) {
       const values = 'const' in s ? [s.const] : s.enum;
       if (!Array.isArray(values) || values.length === 0) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -122,7 +125,8 @@ function providerErrorCode(eventError: unknown): ModelAdapterErrorCode | null {
   if (http === '402') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
   if (http === '401') return 'MODEL_PROVIDER_AUTH_FAILED';
   if (http === '429') return 'MODEL_PROVIDER_RATE_LIMITED';
-  return type === 'invalid_request_error' ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
+  return type === 'invalid_request_error' || code === 'invalid_request_body' || code === 'invalid_json_schema'
+    ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
 }
 
 const safeId = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);

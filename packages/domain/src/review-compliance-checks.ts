@@ -15,7 +15,7 @@ export interface ReviewRuleAssessment {
 }
 export interface ReviewFormattingRequirement {
   check_id: string; record_ids: string[]; rule_ref: ReviewRuleRef;
-  property: 'latin_font' | 'east_asia_font' | 'half_points' | 'rendered_layout';
+  property: 'latin_font' | 'east_asia_font' | 'half_points' | 'outline_level' | 'rendered_layout';
   expected: string;
 }
 /** Taken from the actual parser record after its response/hash is verified. */
@@ -131,6 +131,12 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     }
     const bad: ReviewEvidenceRef[] = [], unknown: ReviewEvidenceRef[] = [];
     for (const record of records) {
+      if(requirement.property==='outline_level'){
+        const value=record.formatting.outline_level;
+        if(typeof value!=='string'||!/^(?:[1-9]|body)$/.test(value)||!/^[1-9]$/.test(requirement.expected))unknown.push(record.ref);
+        else if(value!==requirement.expected)bad.push(record.ref);
+        continue;
+      }
       const runs = record.formatting.runs;
       if (!Array.isArray(runs) || !runs.length) { unknown.push(record.ref); continue; }
       for (const run of runs) {
@@ -144,14 +150,14 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     const findings = bad.length ? normalizeReviewFindings([{
       stable_key:`format:${requirement.check_id}`,dimension:'compliance',conclusion:'error',severity:'P3',
       title:requirement.rule_ref.authority === 'regulatory' ? '文档格式与适用规则不一致' : requirement.rule_ref.authority==='internal_method'?'文档格式与用户指定要求不一致':'文档格式与指定模板要求不一致',
-      description:`实际继承后的 ${requirement.property} 不符合要求 ${requirement.expected}；仅核对文档属性，不表示实际字体环境或视觉分页已验证。`,
+      description:requirement.property==='outline_level'?`已定位段落的实际大纲级别不符合指定的 ${requirement.expected} 级；依据文档属性核对，不从样式名称或外观推断。`:`实际继承后的 ${requirement.property} 不符合要求 ${requirement.expected}；仅核对文档属性，不表示实际字体环境或视觉分页已验证。`,
       target_refs:uniqueEvidence(bad),evidence_refs:uniqueEvidence(bad),rule_refs:[requirement.rule_ref],
-      suggested_change:`将已定位范围的 ${requirement.property} 调整为 ${requirement.expected}。`,
+      suggested_change:requirement.property==='outline_level'?`将已定位段落的大纲级别调整为 ${requirement.expected} 级；需使用支持样式修改的文档编辑器。`:`将已定位范围的 ${requirement.property} 调整为 ${requirement.expected}。`,
       verification:'deterministic',can_revise:false,limitations:['formatting_edit_requires_ooxml_writer'],
     }],ctx) : [];
     result.findings.push(...findings);
     result.coverage.push(reviewCoverage(ctx,requirement.check_id,'compliance',unknown.length ? 'uncovered' : bad.length ? 'issue' : 'pass',
-      unknown.length ? '部分 run 为主题字体或属性缺失；已确认差异仍保留，不能声称全范围格式已核。'
+      unknown.length ? requirement.property==='outline_level'?'部分段落缺少可确定的大纲级别（含旧解析快照或未解析的样式继承）；已确认差异仍保留，不能声称全范围层级已核。':'部分 run 为主题字体或属性缺失；已确认差异仍保留，不能声称全范围格式已核。'
         : bad.length ? '已定位真实 DOCX 属性差异。' : '指定范围的已解析 DOCX 属性与明确要求一致；不包含视觉渲染检查。',refs,findings,[requirement.rule_ref]));
   }
   result.limitations = [...new Set(result.findings.flatMap(f => f.limitations).concat(result.coverage.filter(c => ['uncovered','manual','needs_evidence'].includes(c.outcome)).map(c => c.reason)))];

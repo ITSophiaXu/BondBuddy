@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reviewFinancialEvidence, type ReviewFinancialObservation, type ReviewFinancialCalculation } from './review-financial-checks.js';
 import { reviewFixture } from './review-test-fixtures.js';
+import { referenceFor } from './review-evidence.js';
 
 test('synthetic missing digit is a repairable deterministic error with only numeric target anchors',()=>{
   const f=reviewFixture(),target=f.observation('d','100.00'),source=f.observation('a','1000.00',{source_kind:'audit'});
@@ -75,4 +76,24 @@ test('incomplete sum, duplicate terms, zero/negative denominator and mixed inter
 test('empty extraction is explicitly uncovered and duplicate IDs are rejected',()=>{
   const f=reviewFixture();assert.equal(reviewFinancialEvidence({observations:[],calculations:[]},f.ctx).coverage[0]?.outcome,'uncovered');
   const d=f.observation('d','1');assert.throws(()=>reviewFinancialEvidence({observations:[d,d],calculations:[]},f.ctx),/DUPLICATE_ID/);
+});
+
+test('native relation provenance is retained and tampered or uncertain declarations cannot permit a financial repair',()=>{
+  for(const mutation of ['valid','quote','pin','uncertainty','method']){
+    const f=formula('sum',['10','20'],'35');
+    const declaration=f.addRecord('relation','计算关系：合计=甲项+乙项');
+    if(mutation==='uncertainty')declaration.uncertainty=['ocr-relation'];
+    if(mutation==='method')declaration.extraction_method='ocr';
+    const ref=referenceFor(declaration);
+    if(mutation==='quote')ref.quote='计算关系：合计=甲项+丙项';
+    if(mutation==='pin')ref.parse_response_sha256='f'.repeat(64);
+    f.calculation.relation_refs=[ref];
+    const report=reviewFinancialEvidence({observations:f.observations,calculations:[f.calculation]},f.ctx);
+    if(mutation==='valid'){
+      assert(report.findings.some(r=>r.conclusion==='error'&&r.repairability.can_revise&&r.evidence_refs.some(e=>e.record_id==='relation')));
+    }else{
+      assert(report.findings.every(r=>r.conclusion!=='error'&&!r.repairability.can_revise),mutation);
+      assert(report.coverage.every(c=>c.outcome!=='pass'),mutation);
+    }
+  }
 });
