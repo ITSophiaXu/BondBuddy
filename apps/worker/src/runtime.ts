@@ -36,8 +36,9 @@ export interface ProviderCallReconciler { name: string; query(attempt: PendingAt
 
 /**
  * `codex exec` exposes no provider request ID or lookup API (#16: provider_request_id_status is
- * always `unknown`), so the default reconciler cannot prove either outcome and leaves the run
- * paused at `provider_reconcile` for an operator. It never guesses `confirmed_not_sent`.
+ * always `unknown`), so the default reconciler cannot prove either supplier outcome.
+ * Only the separately checked, bounded unified-timeout policy may authorize another attempt;
+ * all other unknown calls stay at `provider_reconcile`. Never guess `confirmed_not_sent`.
  */
 export const codexNoLookupReconciler: ProviderCallReconciler = { name: 'codex_no_lookup', query: async () => ({ outcome: 'unknown' }) };
 
