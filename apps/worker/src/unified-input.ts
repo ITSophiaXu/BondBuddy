@@ -52,7 +52,7 @@ async function previousArtifact(pool: Pool, run: RunRow, pin: NonNullable<Unifie
   return row && String(row.sha256).trim() === pin.sha256 ? row : null;
 }
 
-export async function loadUnifiedInput(ctx: StageContext): Promise<UnifiedInput> {
+export async function loadUnifiedInput(ctx: StageContext, options: { originalFiles?: boolean } = {}): Promise<UnifiedInput> {
   const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
@@ -65,6 +65,10 @@ export async function loadUnifiedInput(ctx: StageContext): Promise<UnifiedInput>
       WHERE m.owner_user_id=$1 AND m.project_id=$2 AND m.id=$3 AND m.version=$4 AND m.deleted_at IS NULL`,
     [scope.ownerUserId, scope.projectId, scope.materialId, scope.materialVersion, documentParserVersion()])).rows[0];
     if (!result) throw new Error('INPUT_REVISION_CONFLICT');
+    if (options.originalFiles) {
+      materials.push({pin,filename:result.filename,mediaType:result.media_type,objectKey:result.object_key,records:[]});
+      continue;
+    }
     if (result.state !== 'succeeded') throw new UnifiedInputPending(result.state === 'failed' ? 'authoring_material_unreadable' : 'material_parse_pending');
     const snapshotId = result.checkpoint?.stages?.parse_evidence?.snapshot_id;
     const snapshot = snapshotId ? await getParseSnapshot({ pool: ctx.pool }, scope, snapshotId) : null;
@@ -98,6 +102,9 @@ export async function loadUnifiedInput(ctx: StageContext): Promise<UnifiedInput>
     if (!stored) throw new Error('INPUT_REVISION_CONFLICT');
     const bytes = await ctx.blobs.getIfExistsBounded(stored.object_key,100 * 1024 * 1024);
     if (!bytes || digest(bytes) !== prior.sha256) throw new Error('INPUT_REVISION_CONFLICT');
+    if (options.originalFiles) {
+      materials.push({pin:{material_id:prior.artifact_id,material_version:prior.version,sha256:prior.sha256,role:'project_output'},filename:'本项目上一版清洁稿.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:stored.object_key,records:[]});
+    } else {
     const directory = await mkdtemp(resolve(tmpdir(),'bb-prior-output-'));
     try {
       const path = resolve(directory,'baseline.docx');
@@ -109,6 +116,7 @@ export async function loadUnifiedInput(ctx: StageContext): Promise<UnifiedInput>
       if (parsed.status === 'failed' || !parsed.records.length) throw new UnifiedInputPending('authoring_previous_output_unreadable');
       materials.push({pin:{material_id:prior.artifact_id,material_version:prior.version,sha256:prior.sha256,role:'project_output'},filename:'本项目上一版清洁稿',mediaType,objectKey:stored.object_key,records:parsed.records});
     } finally { await rm(directory,{recursive:true,force:true}); }
+    }
   }
   const requirements: string[] = [];
   for (const pin of manifest.authoring.requirements) {

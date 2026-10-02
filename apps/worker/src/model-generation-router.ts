@@ -1,3 +1,4 @@
+import { fileAuthoringStage } from './file-authoring-stage.js';
 /** Routes the shared model_generation stage by the immutable run task kind. */
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { noHistoryModelGenerationStage } from './no-history-model-stage.js';
@@ -47,9 +48,10 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     run: async ctx => {
       if ((ctx.values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
         // Never change logical call IDs or resend calls on a previously started v3 run.
-        // New runs use read-only, run-scoped material tools while they author each section.
-        const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));
-        return unifiedModelGenerationStage({direct:!legacy}).run(ctx);
+        // New runs hand original files to one native Codex execution; old results replay unchanged.
+        const old=Object.keys(ctx.checkpoint).some(k=>/^unified_v[34]_/.test(k));
+        if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
+        return fileAuthoringStage().run(ctx);
       }
       if (ctx.run.task_kind === 'update') return update.run(ctx);
       if (ctx.run.task_kind === 'generation') return generation.run(ctx);
