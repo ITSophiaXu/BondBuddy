@@ -279,7 +279,11 @@ export function reviewModelStage(options:{
     const reconciliation=runFinancial?reviewAuditReconciliation(observations,input.evidence):{findings:[],coverage:[],limitations:[]};
     const compliance=runCompliance?reviewComplianceEvidence({context:input.rule_context,packs:input.rule_packs,
       assessments:[...new Map(normalized.flatMap(n=>n.compliance).filter(a=>input.scope.mode==='full_review'||a.target_refs.length>0&&a.target_refs.every(ref=>complianceKeys.has(evidenceKey(ref)))).map(a=>[a.check_id,a])).values()],
-      formatting_requirements:input.formatting_requirements.filter(r=>r.record_ids.every(id=>complianceTargets.some(record=>record.record_id===id))),
+      formatting_requirements:input.formatting_requirements.flatMap(requirement=>{
+        if(input.scope.mode==='full_review')return [requirement];
+        const record_ids=requirement.record_ids.filter(id=>complianceTargets.some(record=>record.record_id===id));
+        return record_ids.length?[{...requirement,record_ids}]:[];
+      }),
       formatted_records:complianceTargets.map(r=>({ref:referenceFor(r),formatting:r.formatting??{}}))},input.evidence):{findings:[],coverage:[],limitations:[]};
     const modelFindings=normalizeReviewFindings(normalized.flatMap(n=>n.concerns).filter(c=>input.scope.mode==='full_review'
       ||c.target_refs.length>0&&c.target_refs.every(ref=>(c.dimension==='financial'?financialKeys:complianceKeys).has(evidenceKey(ref)))),input.evidence);
