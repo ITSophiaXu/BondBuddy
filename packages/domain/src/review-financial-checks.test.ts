@@ -57,7 +57,7 @@ test('parse uncertainty, missing context, same-document audit and unsupported un
 function formula(operation:ReviewFinancialCalculation['operation'],values:string[],result:string,options:{complete?:boolean;previous?:boolean;unit?:string}={}){
   const f=reviewFixture();const sources=values.map((v,i)=>f.observation(`a${i}`,v,{source_kind:'audit',unit:options.unit??'万元',...(options.previous&&i===1?{period:{start:'2024-01-01',end:'2024-12-31',as_of:null}}:{})}));
   const d=f.observation('d',result,{metric:'formula-result',unit:operation==='sum'?'万元':operation==='percentage_point'?'百分点':'%'});
-  const calculation:ReviewFinancialCalculation={calculation_id:'formula',label:'Synthetic formula',operation,result_id:'d',operand_ids:sources.map(s=>s.observation_id),complete_terms:options.complete??true};
+  const calculation:ReviewFinancialCalculation={calculation_id:'formula',label:'Synthetic formula',operation,result_id:'d',operand_ids:sources.map(s=>s.observation_id),complete_terms:options.complete??true,relation_verification:'trusted_structured'};
   return {...f,observations:[d,...sources],calculation};
 }
 test('sum, ratios, growth and percentage points use deterministic formulas and final rounding',()=>{
