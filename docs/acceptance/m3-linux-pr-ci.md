@@ -27,3 +27,5 @@
 - Python Word交付与修订：20 tests，全部通过，无跳过。
 
 Python wheel dry-run已由上述runner实际安装和运行证据补充。该结果覆盖synthetic模型输入下的真实Linux/数据库/存储/解析/Word工程链路；真实供应商、专业质量、WPS和生产部署/回滚验收仍独立跟踪。
+
+同步develop `1b06287`后，定向集追加`run-runtime.test.js`及`unified-timeout-recovery.test.js`，覆盖新增长编制deadline和只读材料工具恢复的共用队列边界。首次运行的169计数保留为历史证据；最新提交及合并树的计数、结论见[PR #523 checks](https://github.com/ITSophiaXu/BondBuddy/pull/523/checks)。

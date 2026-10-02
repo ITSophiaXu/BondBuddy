@@ -1,6 +1,6 @@
 # M3 实现与集成验收记录
 
-关联 #47、#48、#49、#55、#145、#56；需求 PR #519 已合并，最终集成基线 develop `987f11e`（包含 #520 直接编制材料工具）。本记录随实现提交，描述实际证据，未勾选 GitHub 验收项或关闭 Issue。M3 不包含收费、参考库或商业数据接口前置。
+关联 #47、#48、#49、#55、#145、#56；需求 PR #519 已合并，集成基线 develop `1b06287`（包含 #520 直接编制材料工具、#524 长编制超时）。本记录随实现提交，描述实际证据，未勾选 GitHub 验收项或关闭 Issue。M3 不包含收费、参考库或商业数据接口前置。
 
 ## 已实现范围
 
@@ -34,6 +34,7 @@
 - 最终合并`987f11e`后全工作区构建、contracts及表格修复后的worker构建通过。下列联合回归共148项：首轮147通过、0跳过；唯一失败为既有编制测试在Windows找不到`python3`，改为使用明确配置的测试Python后发现精简检出缺少已有知识目录，恢复该跟踪目录后定向复测1/1通过。未更改解析器或放宽断言。共用适配器现为21/21，包含#520材料工具；M3真实PG/Azurite链路、助手、修订及全部新增表格场景通过。
 - 真实PG/Azurite解析并发槽回归2/2通过，环境工厂装配检查1/1通过。完整`runtime-entry.test.ts`在Windows执行到`PARSE_STAGING_UNSAFE_ROOT`失败，未绕过POSIX权限检查；随后由下述真实Linux CI补齐运行证据。
 - [Linux Actions首次运行](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37004818931)于2026-10-02T12:11:19Z成功：Ubuntu24.04、Node24.14.0、Python3.11.11、PostgreSQL16.10、Azurite3.35.0，实际PR合并树`f989cc94a49fc6f60b57fb178218fda6dc35650a`（head `90ac256` + develop `987f11e`）。构建/契约/迁移通过；Node169/169、Python Word20/20，0失败、0跳过。包含完整runtime-entry/SIGTERM、0700/flock隔离、解析并发、共享worker及M3上传到Word链路；模型仍为synthetic。配置及证据边界见[Linux PR检查说明](m3-linux-pr-ci.md)。这补齐CI环境的Linux测试，不代表生产部署/回滚通过。
+- 随后同步`1b06287`：保留#524仅用于编制材料工具的长超时及只读工具恢复识别，同时保留M3搜索事件journal；助手/复核/修订没有被切换为编制材料工具。CI增加`run-runtime`与`unified-timeout-recovery`覆盖共用队列变化；该最新合并树的运行结果以[PR #523检查页](https://github.com/ITSophiaXu/BondBuddy/pull/523/checks)为准，不以首次运行的历史SHA替代。
 
 测试使用独立数据库克隆，不连接模板长期占用，也不操作生产数据库或用户原型存储。首次补写的API测试尝试直接把无交付证据的任务设为成功，被数据库Word门正确拒绝；测试已改为分别验证失败报告可追溯与默认不展示，真实成功行为由完整交付链路验证。
 

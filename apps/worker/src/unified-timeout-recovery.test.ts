@@ -80,6 +80,11 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
         {logical:'unified-v4-update_0',tools:2},
         {logical:'unified-v4-update_0',tools:2,adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION,exited:false},
         {logical:'unified-v4-update_0',tools:2,adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION,error:'MODEL_TOOL_ATTEMPT_BLOCKED'},
+        // A read-only adapter version must not authorize replay of M3 model calls.
+        {logical:'review-v1-extract-0-0123456789abcdef',adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION},
+        {logical:'review-revision-v1-0',adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION},
+        {logical:'m3-public-search',adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION},
+        {logical:'m3-public-compare-0',adapterVersion:READ_ONLY_MATERIAL_ADAPTER_VERSION},
       ]){
         const refused=await fixture(options);assert.equal(await refused.recover(),false,JSON.stringify(options));
       }
