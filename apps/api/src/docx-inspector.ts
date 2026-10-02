@@ -4,6 +4,7 @@ import { digest } from './data.js';
 
 export const WORD_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const WORD_DELIVERY_VALIDATOR_VERSION = 'ooxml-docx-v1';
+export const GENERATED_WORD_DELIVERY_VERSION = 'generated-word-download-v1';
 
 export const DOCX_LIMITS = Object.freeze({
   archiveBytes: 64 * 1024 * 1024,
@@ -41,7 +42,27 @@ export type DocxInspection = {
   required_parts: string[];
   relationship_count: number;
   failure_codes: string[];
+  validation_scope?: 'file_availability';
+  content_review?: 'not_performed';
 };
+
+/** Generated Word delivery does not parse or judge content, layout or revisions.
+ * `passed` here means only a bounded file candidate; Blob readback is recorded separately.
+ * Keep the distinct version and not_run checks so this cannot be mistaken for OOXML review.
+ */
+export function inspectGeneratedWord(bytes: Buffer): DocxInspection {
+  const valid = Buffer.isBuffer(bytes) && bytes.length >= 4 && bytes.length <= DOCX_LIMITS.archiveBytes
+    && bytes.readUInt32LE(0) === 0x04034b50;
+  return {
+    schema_version: 1, validator_version: GENERATED_WORD_DELIVERY_VERSION,
+    quality_status: valid ? 'passed' : 'failed', validation_scope: 'file_availability', content_review: 'not_performed',
+    byte_size: Buffer.isBuffer(bytes) ? bytes.length : 0,
+    sha256: digest(Buffer.isBuffer(bytes) ? bytes : Buffer.alloc(0)),
+    zip: { entry_count: 0, compressed_bytes: 0, uncompressed_bytes: 0 },
+    checks: { zip_structure: 'not_run', entry_integrity: 'not_run', xml_well_formedness: 'not_run', ooxml_relationships: 'not_run', word_document: 'not_run' },
+    required_parts: [], relationship_count: 0, failure_codes: valid ? [] : ['WORD_FILE_UNAVAILABLE']
+  };
+}
 
 type ZipEntry = {
   name: string;

@@ -40,6 +40,8 @@ else:
  doc=Document();doc.add_paragraph('合成目标发行人2025年净资产120万元。'+d['input_hash'][:8]);doc.save(o/'clean.docx')
  shutil.copyfile(o/'clean.docx',o/'tracked.docx');shutil.copyfile(o/'clean.docx',o/'baseline.docx')
 (o/'delivery.md').write_text('合成测试编制。未进行页面视觉检查。',encoding='utf-8')
+if not source:
+ (o/'baseline.docx').unlink();(o/'delivery.md').unlink()
 `;
 const result=spawnSync('/opt/venv/bin/python',['-c',program],{cwd,env:{PATH:process.env.PATH,PYTHONPATH:'/app/python',LANG:'C.UTF-8'},encoding:'utf8'});
 if(result.status!==0){process.stderr.write(result.stderr);process.exit(1);}

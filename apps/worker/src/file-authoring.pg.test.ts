@@ -14,6 +14,7 @@ import { runMaterialParseOnce } from './material-parse-job.js';
 import { inputLockStage, materialsReadyStage, runPipelineOnce, type StageContext } from './run-pipeline.js';
 import { fileAuthoringStage,fileAuthoringDeliveryStage } from './file-authoring-stage.js';
 import {fileURLToPath} from 'node:url';
+import { requeueGeneratedWordDelivery, promoteWordArtifact } from '@bondbuddy/api/queue';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 
 const database = await isolatedTestDatabase(undefined,'file-authoring');
@@ -93,8 +94,22 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         assert.equal((await send('POST',`/api/v1/projects/${project}/messages`,{...message,submission_request_id:randomUUID(),expected_message_version:1,body:'合成后续要求：下一轮才生效。'})).statusCode,201);
         const configuration=loadCodexAdapterConfig();
         const model=fileAuthoringStage({config:live?configuration:{...configuration,command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-authoring.mjs',import.meta.url))]}});
-        const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,fileAuthoringDeliveryStage()],
+        let rejectLegacy=scenario==='same_issuer'&&!live;
+        const legacyRejection={name:'word_delivery',run:async(ctx:StageContext)=>{
+          await promoteWordArtifact(pool,ctx.lease,Buffer.from('synthetic legacy baseline rejection'),blobs);
+          return {kind:'fail' as const,code:'WORD_QUALITY_REJECTED'};
+        }};
+        const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,rejectLegacy?legacyRejection:fileAuthoringDeliveryStage()],
           onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
+        if(rejectLegacy){
+          assert.equal(await execute(),'failed');
+          const before=(await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n;
+          assert.equal(before,1);
+          const recover=()=>requeueGeneratedWordDelivery(pool,{runId:run.run_id,actor:'synthetic-delivery-repair'});
+          assert.equal((await recover()).idempotent,false);
+          assert.equal((await recover()).idempotent,true);
+          rejectLegacy=false;
+        }
         const result=await execute();
         if(result!=='succeeded'){
           // Bounded metadata only: never print prompts, material contents or credentials.
@@ -112,7 +127,15 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         }
         const delivered=(await send('GET',`/api/v1/runs/${run.run_id}`)).json();
         assert.equal(delivered.state,'succeeded');
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,1);
+        if(scenario==='same_issuer'&&!live){
+          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_word_delivery_evidence WHERE run_id=$1 AND quality_status='failed'",[run.run_id])).rows[0].n,1);
+          assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND state='failed'",[run.run_id])).rows[0].n,1);
+        }
         const artifact=(await send('GET',`/api/v1/artifacts/${delivered.artifact_id}`)).json();
+        assert.equal(artifact.word_delivery.delivery_policy,'generated_pair_v1');
+        assert.equal(artifact.word_delivery.content_review,'not_performed');
+        assert.equal(artifact.word_delivery.baseline_artifact_id,undefined);
         assert.equal(artifact.word_delivery.baseline_kind,relation||missingMetadata?'uploaded_source':'none');
         for(const variant of ['revision','clean']){
           const file=(await send('GET',`/api/v1/artifacts/${artifact.word_delivery[`${variant}_artifact_id`]}`)).json();

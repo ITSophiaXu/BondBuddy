@@ -1,7 +1,7 @@
 import { deflateRawSync } from 'node:zlib';
 
 // Synthetic OOXML fixture only; it exercises package structure and is not provider or content review evidence.
-export function makeSyntheticDocxFixture():Buffer {
+export function makeSyntheticDocxFixture(options:{text?:string;stored?:boolean}={}):Buffer {
   const relationships='http://schemas.openxmlformats.org/package/2006/relationships';
   const types='http://schemas.openxmlformats.org/package/2006/content-types';
   const word='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -25,13 +25,13 @@ export function makeSyntheticDocxFixture():Buffer {
   const local:Buffer[]=[],central:Buffer[]=[];
   let offset=0;
   for(const [filename,content] of files){
-    const name=Buffer.from(filename),bytes=Buffer.from(content),compressed=deflateRawSync(bytes),crc=crc32(bytes);
+    const name=Buffer.from(filename),bytes=Buffer.from(filename==='word/document.xml'&&options.text?content.replace('Synthetic Word delivery fixture',options.text):content),compressed=options.stored?bytes:deflateRawSync(bytes),crc=crc32(bytes);
     const header=Buffer.alloc(30);
-    header.writeUInt32LE(0x04034b50,0);header.writeUInt16LE(20,4);header.writeUInt16LE(0x0800,6);header.writeUInt16LE(8,8);
+    header.writeUInt32LE(0x04034b50,0);header.writeUInt16LE(20,4);header.writeUInt16LE(0x0800,6);header.writeUInt16LE(options.stored?0:8,8);
     header.writeUInt32LE(crc,14);header.writeUInt32LE(compressed.length,18);header.writeUInt32LE(bytes.length,22);header.writeUInt16LE(name.length,26);
     local.push(header,name,compressed);
     const record=Buffer.alloc(46);
-    record.writeUInt32LE(0x02014b50,0);record.writeUInt16LE(0x0314,4);record.writeUInt16LE(20,6);record.writeUInt16LE(0x0800,8);record.writeUInt16LE(8,10);
+    record.writeUInt32LE(0x02014b50,0);record.writeUInt16LE(0x0314,4);record.writeUInt16LE(20,6);record.writeUInt16LE(0x0800,8);record.writeUInt16LE(options.stored?0:8,10);
     record.writeUInt32LE(crc,16);record.writeUInt32LE(compressed.length,20);record.writeUInt32LE(bytes.length,24);record.writeUInt16LE(name.length,28);
     record.writeUInt32LE((0o100644<<16)>>>0,38);record.writeUInt32LE(offset,42);
     central.push(record,name);

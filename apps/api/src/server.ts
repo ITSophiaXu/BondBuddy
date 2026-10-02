@@ -1441,6 +1441,7 @@ export function createServer(settings: Settings = {}) {
       effective_baseline_sha256:pair!.effective_baseline_sha256,plan_hash:pair!.plan_hash,
       replacements:pair!.replacements,columns:pair!.columns,pending_review_count:pair!.pending,
       pending_review:pair!.pending_review,
+      ...(pair!.delivery_policy==='generated_pair_v1' ? {delivery_policy:'generated_pair_v1',content_review:'not_performed'} : {}),
       ...(pair!.baseline_kind ? {baseline_kind:pair!.baseline_kind, source_issuer:pair!.source_issuer ?? null, authoring_summary:pair!.authoring_summary ?? []} : {})} : undefined;
     const grant=uid(),expires=new Date(Date.now()+5*60_000);
     await transaction(db(),async client=>{

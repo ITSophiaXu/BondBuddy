@@ -1,5 +1,7 @@
 # M1 统一技术栈与四人协作基线
 
+> 2026-10-02 交付更新：[双 Word 生成后直接下载](product-decisions/2026-10-02-generated-word-download.md)。统一编制路径使用 `generated-word-download-v1` 文件可用性证据，取消内容/修订/完整 OOXML/基线检查对交付的阻断；保留私有存储读回与授权下载。新证据明确 `content_review=not_performed`，旧检查证据不变。已有完整模型结果可经审计的 delivery-only 命令恢复，恢复路径不调用模型。下文旧质量门描述按此决定调整。
+
 > 当前架构（2026-10-01）：按[统一编制决定](product-decisions/2026-10-01-unified-prospectus-authoring.md)迁移为单一入口，将原始材料、可选原稿元数据、目标、要求与知识 MD 交同一 worker。无稿可编制；原稿企业关系与目标独立。后文旧历史／generation 分支、事实审批及规则发布链路是现有实现记录，不能继续作为新 M1 的产品硬依赖。复用账号、上传、持久任务及 Word 能力，不平行再造服务。PR #499 的实现与验证见下一节；部署及真实结果验收另行记录。
 
 ## M1 统一编制实现（PR #499）
