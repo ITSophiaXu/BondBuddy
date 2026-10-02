@@ -1,6 +1,7 @@
 import { fileAuthoringDeliveryStage } from './file-authoring-stage.js';
 import { createHash } from 'node:crypto';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
+import { reviewWordDeliveryStage } from './review-word-stage.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -84,6 +85,7 @@ export function historicalWordDeliveryStage(options: { writer?: typeof writeHist
   return { name: 'word_delivery', replay: true, run: async ctx => {
     if ((ctx.values.get('model_generation') as {version?:string})?.version==='codex-file-word-v1') return fileAuthoringDeliveryStage().run(ctx);
     if ((ctx.values.get('model_generation') as { version?: string })?.version === 'unified-plan-v1') return unifiedWordDeliveryStage().run(ctx);
+    if ((ctx.values.get('model_generation') as { version?: string })?.version === 'review-analysis-v1') return reviewWordDeliveryStage().run(ctx);
     if (ctx.run.task_kind !== 'update') return { kind: 'pause', stage: 'capability_not_ready', reason: 'historical_word_task_kind_required' };
     const value = ctx.values.get('model_generation');
     const plan = value as HistoricalGenerationPlan | undefined;

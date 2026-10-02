@@ -6,12 +6,19 @@ import { historicalModelGenerationStage } from './historical-model-stage.js';
 import { loadHistoricalGenerationInput } from './historical-generation-input.js';
 import { createFactEvidenceReviewGuardedLoader, type FactEvidenceReviewGateLoaderOptions } from './fact-evidence-review-gate.js';
 import type { RunStage } from './run-pipeline.js';
+import { loadReviewInput } from './review-input.js';
+import { reviewModelStage } from './review-model-stage.js';
+import { reviewPublicStage } from './review-public-stage.js';
+import { unifiedModelGenerationStage } from './unified-model-stage.js';
 
 export interface ModelGenerationRouterOptions {
   /** Trusted adapters are supplied only after their server-side sources are implemented. */
   noHistoryAdapters?: NoHistoryStageAdapters;
   /** Internal seam for focused router tests; production defaults to the #31 implementation. */
   historicalStage?: RunStage;
+  /** Internal seams keep integration tests on the real contained adapter with synthetic replies. */
+  reviewStage?: RunStage;
+  publicStage?: RunStage;
   /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
   factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
 }
@@ -53,10 +60,17 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
         if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
         return fileAuthoringStage().run(ctx);
       }
+      if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {
+        const result = await (options.reviewStage ?? reviewModelStage({ loadInput: loadReviewInput })).run(ctx);
+        if (result.kind !== 'done') return result;
+        ctx.values.set('model_generation', result.value);
+        const publicResult = await (options.publicStage ?? reviewPublicStage()).run(ctx);
+        if (publicResult.kind !== 'done') return publicResult;
+        return { ...result, value: { ...(result.value as Record<string, unknown>), report: publicResult.value } };
+      }
       if (ctx.run.task_kind === 'update') return update.run(ctx);
       if (ctx.run.task_kind === 'generation') return generation.run(ctx);
       return { kind: 'pause', stage: 'capability_not_ready', reason: 'unsupported_model_generation_task_kind' };
     },
   };
 }
-import { unifiedModelGenerationStage } from './unified-model-stage.js';

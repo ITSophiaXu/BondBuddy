@@ -10,8 +10,11 @@ import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import type { ReviewContext, ReviewDraft, ReviewReport } from '@bondbuddy/contracts';
 import type { ProviderCallIntent } from '@bondbuddy/api/provider-results';
+import { assertModelCallAllowed, configureTrialGuard, tokensSince, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { claimReviewAssistant, ReviewAssistantJournal, reviewAssistantSnapshot, runReviewAssistantOnce, validReviewAssistantReply } from './review-assistant.js';
+import { persistParseSnapshot } from './parse-evidence-repository.js';
+import type { DocumentParseRecord, DocumentParseResponse } from './document-parser.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const sha='a'.repeat(64);
@@ -124,7 +127,89 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
     const expire=async(id:string)=>{await pool.query("UPDATE bb_review_messages SET lease_until=now()-interval '1 second' WHERE id=$1",[id]);};
     return {owner,project,source,queue,config,sends,row,attempt,replies,expire,blobs,values};
   }
+  const killSwitch=async(state:'engaged'|'released')=>{await pool.query(`INSERT INTO bb_trial_kill_switch_events(id,state,reason_code,actor_id)
+    VALUES($1,$2,'synthetic_assistant_guard','synthetic-operator')`,[randomUUID(),state]);};
+  const evidenceGate=async(state:'paused'|'open')=>{await pool.query(`INSERT INTO bb_evidence_gate_events(id,state,reason_code,actor_type)
+    VALUES($1,$2,'synthetic_assistant_guard','system')`,[randomUUID(),state]);};
+  const deny=async(owner:string)=>{await pool.query(`INSERT INTO bb_trial_overrides(id,user_id,effect,reason_code,actor_id)
+    VALUES($1,$2,'deny','synthetic_assistant_guard','synthetic-operator')`,[randomUUID(),owner]);};
   try {
+    await t.test('closed evidence gate, operator kill switch and account deny prevent new sends without fabricated usage',async ctx=>{
+      for(const gate of ['evidence','kill','deny'] as const) {
+        const f=await fixture(ctx),m=await f.queue();
+        try {
+          if(gate==='evidence')await evidenceGate('paused');else if(gate==='kill')await killSwitch('engaged');else await deny(f.owner);
+          assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
+          assert.equal((await f.row(m.id)).error,gate==='evidence'?'DATA_UNAVAILABLE':gate==='kill'?'MODEL_CALLS_SUSPENDED':'TRIAL_ACCESS_DENIED');
+          assert.equal(await f.sends(),0);assert.equal(await f.attempt(m.id),undefined);assert.equal((await f.replies(m.id)).length,0);
+          assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_observability_events WHERE owner_user_id=$1 AND kind='model.usage_observed'",[f.owner])).rows[0].n),0);
+        } finally {if(gate==='evidence')await evidenceGate('open');if(gate==='kill')await killSwitch('released');}
+      }
+    });
+
+    await t.test('runtime evidence outage preserves unknown usage and pauses subsequent model sends',async ctx=>{
+      const f=await fixture(ctx),first=await f.queue();let injected=false;
+      // Only one runtime UPDATE fails. Rollback, pause/alert writes and all other queries use real PostgreSQL.
+      const faultPool=new Proxy(pool,{get(target,key){
+        if(key==='connect')return async()=>{
+          const client=await target.connect();
+          return new Proxy(client,{get(target,key){
+            if(key==='query')return(...args:unknown[])=>{
+              if(!injected&&typeof args[0]==='string'&&args[0].startsWith('UPDATE bb_review_assistant_attempts SET runtime=')) {
+                injected=true;throw Object.assign(new Error('synthetic runtime evidence outage'),{code:'08006'});
+              }
+              return Reflect.apply(target.query,target,args);
+            };
+            const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+          }});
+        };
+        const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+      }});
+      try {
+        assert.equal(await runReviewAssistantOnce({pool:faultPool,blobs:f.blobs,config:f.config()}),'unknown');
+        assert.equal(injected,true);assert.equal(await f.sends(),1);
+        const saved=await f.attempt(first.id);
+        assert.equal(saved.status,'pending_reconcile');assert.equal(saved.usage_status,'unknown');
+        assert.equal(saved.runtime,null);assert.equal(saved.observation,null);assert.ok(saved.result_ref);
+        for(const key of ['input_tokens','cached_input_tokens','output_tokens','reasoning_tokens','total_tokens','internal_cost'])assert.equal(saved[key],null);
+        assert.equal((await f.replies(first.id)).length,0);
+        const gate=(await pool.query('SELECT state,reason_code FROM bb_evidence_gate_events ORDER BY seq DESC LIMIT 1')).rows[0];
+        assert.deepEqual(gate,{state:'paused',reason_code:'assistant_runtime_not_persisted'});
+        const next=await f.queue();assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
+        assert.equal((await f.row(next.id)).error,'DATA_UNAVAILABLE');assert.equal(await f.attempt(next.id),undefined);assert.equal(await f.sends(),1);
+      } finally {await evidenceGate('open');}
+    });
+
+    await t.test('assistant observations share the platform token guard while unknown usage remains unknown and no billing occurs',async ctx=>{
+      const before=trialGuardConfig();configureTrialGuard({...before,enabled:true,model_tokens_per_user_per_day:100,unknown_usage_tokens_per_attempt:100});
+      try {
+        for(const usage of [measured,'missing']) {
+          const f=await fixture(ctx),first=await f.queue();
+          assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(plainReply,usage)}),usage==='missing'?'unknown':'completed');
+          const observed=await f.attempt(first.id);
+          assert.equal(observed.usage_status,usage==='missing'?'unknown':'measured');assert.equal(observed.internal_cost,null);
+          if(usage==='missing'){assert.equal(observed.input_tokens,null);assert.equal(observed.output_tokens,null);assert.equal(observed.total_tokens,null);}
+          assert.equal(await tokensSince(pool,trialGuardConfig(),f.owner,new Date(0)),100,'shared platform budget includes assistant attempts');
+          const client=await pool.connect();
+          try {await assert.rejects(assertModelCallAllowed(client,trialGuardConfig(),f.owner),{code:'TRIAL_QUOTA_EXCEEDED'});}finally{client.release();}
+          const next=await f.queue();assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
+          assert.equal((await f.row(next.id)).error,'TRIAL_QUOTA_EXCEEDED');assert.equal(await f.attempt(next.id),undefined);assert.equal(await f.sends(),1);
+          assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_outbox WHERE owner_user_id=$1 AND event_type ~ '(billing|charge|settlement|reservation)'",[f.owner])).rows[0].n),0);
+        }
+      } finally {configureTrialGuard(before);}
+    });
+
+    await t.test('closed new-call gates still permit exact completed-result recovery without another send',async ctx=>{
+      const f=await fixture(ctx),m=await f.queue();
+      await assert.rejects(runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(),afterCall:async()=>{throw new Error('SYNTHETIC_CRASH');}}),/SYNTHETIC_CRASH/);
+      const first=await f.attempt(m.id);await f.expire(m.id);
+      try {
+        await evidenceGate('paused');await killSwitch('engaged');await deny(f.owner);
+        assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'completed');
+        assert.equal(await f.sends(),1);assert.equal((await f.attempt(m.id)).id,first.id);assert.equal((await f.replies(m.id))[0].content,plainReply.content);
+      } finally {await evidenceGate('open');await killSwitch('released');}
+    });
+
     await t.test('concurrent workers claim once; prompt snapshot, measured usage and proposal are durable without plan/task/billing writes',async ctx=>{
       const f=await fixture(ctx,true),prior=await f.queue({status:'completed'}),m=await f.queue({prior:[prior.id]});
       const outcomes=await Promise.all([runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()})]);
@@ -154,6 +239,53 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       await assert.rejects(pool.query("UPDATE bb_review_messages SET context_snapshot='{}' WHERE id=$1",[m.id]),/immutable/);
       await assert.rejects(pool.query('UPDATE bb_review_assistant_attempts SET input_tokens=84 WHERE id=$1',[attempt.id]),/immutable/);
       assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'idle');assert.equal(await f.sends(),1);
+    });
+
+    await t.test('large attachment bodies reserve every report reference before optional text and disclose omissions',async ctx=>{
+      const f=await fixture(ctx);
+      const parsed=async(texts:string[])=>{
+        const materialId=randomUUID(),uploadId=randomUUID(),requestId=randomUUID(),bytes=Buffer.from(texts.join('\n')),hash=digest(bytes);
+        const objectKey=`users/${f.owner}/projects/${f.project}/${materialId}.txt`;
+        await f.blobs.put(objectKey,bytes,'text/plain');
+        await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+          VALUES($1,$2,$3,'synthetic.txt','text/plain',$4,$5,'audit',$6,now()+interval '1 hour','completed')`,[uploadId,f.owner,f.project,bytes.length,hash,`${objectKey}/upload`]);
+        await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+          VALUES($1,1,$2,$3,$4,'audit','synthetic.txt','text/plain',$5,$6,$7,'persisted')`,[materialId,f.owner,f.project,uploadId,bytes.length,hash,objectKey]);
+        const records:DocumentParseRecord[]=texts.map((text,i)=>({record_id:`record-${i}`,material_id:materialId,material_version:1,content_hash:hash,
+          locator_type:'text_line',locator:{line:i+1,stable_ref:`text:l${String(i+1).padStart(6,'0')}`},literal_quote:text,context:'',
+          extraction_method:'native_text',extractor_version:'synthetic-budget-1',confidence:null,uncertainty:[],formatting:{}}));
+        const response:DocumentParseResponse={schema_version:'document-parse-response-v1',request_id:requestId,parser_version:'synthetic-budget-1',status:'parsed',
+          material:{material_id:materialId,material_version:1,media_type:'text/plain',sha256:hash},records,warnings:[],document:{page_count:null,encoding:'utf-8'},error:null};
+        const stored=await persistParseSnapshot({pool},{ownerUserId:f.owner,projectId:f.project,materialId,materialVersion:1,requestId},{mediaType:'text/plain',sha256:hash},response);
+        const refs=records.map(record=>({material_id:materialId,material_version:1,material_sha256:hash,
+          parse_snapshot_id:stored.snapshotId,parse_response_sha256:stored.responseSha256,record_id:record.record_id,record_sha256:inputManifestHash(record),
+          locator_type:record.locator_type,locator:record.locator,quote:record.literal_quote.slice(0,80),extraction_method:record.extraction_method,uncertainty:[]}));
+        return {pin:{material_id:materialId,material_version:1,sha256:hash},records,refs};
+      };
+      const main=await parsed(['synthetic main report evidence',...Array.from({length:40},()=> 'synthetic appendix '.repeat(550))]);
+      const audit=await parsed(Array.from({length:12},()=> 'synthetic audit evidence '.repeat(600)));
+      const source=report(f.project);source.source_material=main.pin;source.findings[0]!.target_refs=[main.refs[0]!];source.findings[0]!.evidence_refs=audit.refs;
+      await pool.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids)
+        VALUES($1,1,$2,1,$3,'{}','[]','[]')`,[f.project,f.owner,sha]);
+      await pool.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
+        VALUES($1,$2,$3,1,$4,$5,'review',$4,'paused')`,[source.run_id,f.owner,f.project,sha,randomUUID()]);
+      await pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)`,
+        [source.report_id,f.owner,f.project,source.run_id,inputManifestHash(source),source]);
+      const m=await f.queue({source,mutate:m=>{
+        m.context.material_refs=[main.pin];Object.assign(m.context_snapshot,{material_refs:[main.pin]});
+        m.request_hash=inputManifestHash({project_id:f.project,content:m.content,context:m.context});
+      }});
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'completed');assert.equal(await f.sends(),1);
+      const user=await f.row(m.id),snap=(await pool.query('SELECT object_key FROM bb_snapshot_refs WHERE id=$1',[user.prompt_snapshot_id])).rows[0];
+      const prompt=(await f.blobs.get(snap.object_key)).toString('utf8');
+      const payload=JSON.parse(prompt.match(/<<BB-DATA-[a-f0-9]+ ref=review-context\n([\s\S]+)\nBB-DATA-[a-f0-9]+>>/)![1]!);
+      const mainBody=payload.material_evidence.find((item:any)=>item.material_ref.material_id===main.pin.material_id);
+      const auditBody=payload.material_evidence.find((item:any)=>item.material_ref.material_id===audit.pin.material_id);
+      assert.equal(mainBody.status,'partial');assert.ok(mainBody.omitted_record_count>0);assert.ok(mainBody.limitations.some((text:string)=>text.includes('未提供')));
+      assert.equal(mainBody.records[0].record_sha256,main.refs[0]!.record_sha256);
+      assert.equal(auditBody.status,'available');assert.equal(auditBody.scope,'report_references');assert.equal(auditBody.records.length,audit.records.length);
+      assert.deepEqual(auditBody.records.map((record:any)=>record.literal_quote),audit.records.map(record=>record.literal_quote));
+      assert.deepEqual(auditBody.records.map((record:any)=>record.record_sha256),audit.refs.map(ref=>ref.record_sha256));
     });
 
     await t.test('crash after durable intent is unknown after lease recovery and never resends',async ctx=>{

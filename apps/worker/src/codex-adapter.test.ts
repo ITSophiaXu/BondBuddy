@@ -17,6 +17,24 @@ const validateRecord = new Ajv({ strict: true }).compile(schemas.ModelAdapterAtt
 const answerSchema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string' && Number.isInteger((v as { n?: unknown }).n);
 
+test('M3 search requires durable tool evidence and retains the ordinary read-only containment', async () => {
+  const { config, cleanup } = await setup({ web_search: 'live' });
+  try {
+    await assert.rejects(runContainedModelCall(call('SCENARIO:web_search'), new MemoryCodexJournal(), config), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+    const saved: unknown[] = [];
+    const journal = new MemoryCodexJournal() as MemoryCodexJournal & { recordWebSearchEvents: NonNullable<import('./codex-adapter.js').CodexJournal['recordWebSearchEvents']> };
+    journal.recordWebSearchEvents = async (_intent, events) => { saved.push(...events); };
+    const result = await runContainedModelCall(call('SCENARIO:web_search'), journal, config);
+    assert.equal(result.status, 'completed'); assert.equal(saved.length, 1);
+    assert.equal((saved[0] as any).item.id, 'search-1');
+    const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
+    assert.ok(args.includes('web_search="live"')); assert.ok(args.includes('sandbox_mode="read-only"'));
+    assert.ok(args.join(' ').includes('--disable shell_tool'));
+    const ordinary = await runContainedModelCall(call('SCENARIO:web_search'), new MemoryCodexJournal(), { ...config, web_search: 'disabled' });
+    assert.equal(ordinary.error_code, 'MODEL_TOOL_ATTEMPT_BLOCKED');
+  } finally { await cleanup(); }
+});
+
 test('output schema normalization covers historical nested const/enum nodes without changing validation', () => {
   const original = structuredClone(historicalGenerationSchema);
   const normalized = normalizeCodexOutputSchema(historicalGenerationSchema);
@@ -198,7 +216,8 @@ test('structured success: intent before spawn, isolated cwd/home/env, #79 record
     const trace = t.seen[0] as { argv: string[]; cwd_entries: string[]; env_keys: string[]; codex_home_exists: boolean };
     assert.deepEqual(trace.cwd_entries, [], 'cwd is empty');
     assert.ok(trace.codex_home_exists);
-    assert.deepEqual(trace.env_keys.filter(k => !['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'NO_COLOR', 'BB_SYNTHETIC_DEEPSEEK_KEY'].includes(k)), [], 'minimal env only');
+    const platformKeys = process.platform === 'win32' ? ['HOMEDRIVE','HOMEPATH','LOGONSERVER','SYSTEMDRIVE','SYSTEMROOT','TEMP','USERDOMAIN','USERNAME','USERPROFILE','WINDIR'] : [];
+    assert.deepEqual(trace.env_keys.filter(k => !['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'NO_COLOR', 'BB_SYNTHETIC_DEEPSEEK_KEY', ...platformKeys].includes(k)), [], 'minimal env and Windows process defaults only');
     assert.ok(!trace.env_keys.includes('BB_SYNTHETIC_CANARY_SECRET'));
     assert.ok(trace.argv.includes('--output-schema') && trace.argv.includes('--ephemeral'));
     const [rec] = r.attempts;
@@ -231,7 +250,10 @@ test('injected material instructions cannot execute a tool: attempt fails closed
     const r = await runContainedModelCall(call(prompt), j, config);
     assert.equal(r.status, 'failed'); assert.equal(r.error_code, 'MODEL_TOOL_ATTEMPT_BLOCKED');
     const rec = r.attempts[0];
-    assert.equal(rec.tool_attempts, 1); assert.equal(rec.finish_reason, 'tool_blocked'); assert.equal(rec.exit_signal, 'SIGKILL'); assert.equal(rec.usage.status, 'unknown');
+    assert.equal(rec.tool_attempts, 1); assert.equal(rec.finish_reason, 'tool_blocked');
+    if (process.platform === 'win32') assert.ok(rec.exit_signal === 'SIGKILL' || (rec.exit_signal === null && rec.exit_code !== 0));
+    else assert.equal(rec.exit_signal, 'SIGKILL');
+    assert.equal(rec.usage.status, 'unknown');
     assert.equal(r.value, null, 'no output from a breached attempt is used');
     assert.equal(j.results.size, 0);
     await new Promise(res => setTimeout(res, 600));
@@ -293,9 +315,11 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
     const r = await runContainedModelCall(call('SCENARIO:hang'), j, config);
     assert.equal(r.status, 'needs_reconcile'); assert.equal(r.error_code, 'MODEL_TIMEOUT');
     const rec = r.attempts[0];
-    assert.equal(rec.exit_signal, 'SIGKILL', 'fake ignores SIGTERM, grace SIGKILL ends it');
+    if (process.platform === 'win32') assert.ok(rec.exit_signal === 'SIGKILL' || (rec.exit_signal === null && rec.exit_code !== 0));
+    else assert.equal(rec.exit_signal, 'SIGKILL', 'fake ignores SIGTERM, grace SIGKILL ends it');
     assert.equal(rec.usage.status, 'unknown'); assert.equal(rec.usage.input_tokens, null);
     assert.ok(rec.duration_ms >= 300); assert.equal(rec.framework_thread_id, '0199a1f0-0000-7000-8000-00000000c0de');
+    assert.ok(rec.duration_ms < 10000, 'termination remains bounded when the OS tree-kill helper cannot complete');
     assert.equal(j.intents.length, 1);
   } finally { await cleanup(); }
 });

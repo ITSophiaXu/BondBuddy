@@ -69,6 +69,9 @@ test('revision input pins canonical immutable report and explicit accepted plan 
   f.pin.selected_findings.reverse();
   f.revision.input_hash=f.run.input_hash=inputManifestHash(f.input.manifest);
   assert.equal(await unifiedInputGate(f.db,f.run,f.revision),null,'finding selection order is not an implicit change to the accepted set');
+  Object.assign(f.input.manifest,{issuer_name:null,market:null,offering:null});
+  f.revision.input_hash=f.run.input_hash=inputManifestHash(f.input.manifest);
+  assert.equal(await unifiedInputGate(f.db,f.run,f.revision),null,'optional project labels do not block a precisely pinned finding revision');
 });
 
 test('revision rejects another owner, stale report content, changed accepted selection and alternate baseline',async()=>{

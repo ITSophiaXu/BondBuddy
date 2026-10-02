@@ -73,7 +73,9 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   if (revision && (!await reviewRevisionInputGate(pool, run, revision) || m.authoring.previous_output)) return fail;
   if (revision && !revision.selected_findings.some(executableRevisionFinding))
     return { kind: 'pause', stage: 'capability_not_ready', reason: 'revision_no_executable_changes' };
-  if (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || (!revision && !m.update_details.target_reporting_periods?.length))
+  // A finding revision already pins its verified source/report/evidence. Optional project
+  // labels cannot impose M1 whole-document authoring prerequisites on that accepted scope.
+  if (!revision && (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || !m.update_details.target_reporting_periods?.length))
     return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_target_information_required' };
   if (!m.materials.length) return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };
   for (const pin of m.materials) {
