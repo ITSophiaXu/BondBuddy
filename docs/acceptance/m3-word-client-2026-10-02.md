@@ -65,8 +65,8 @@ documents 技能的 `render_docx.py` 在当前依赖包中因缺少 `soffice.exe
 随记录保存生成、COM 往返、结构对比及带标记导出脚本，需在上述实际代码版本且已安装 Word 的 Windows 环境运行。Python 使用 Codex bundled runtime（含 python-docx/lxml），脚本只依赖仓库测试夹具；第二个参数为测试输出目录。示例：
 
 ```powershell
-$runtimePython='C:\Users\lezhai\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-$repo='C:\Users\lezhai\Downloads\Bondbuddy\m3-runtime'
+$runtimePython=$env:BONDBUDDY_TEST_PYTHON # 已配置、含 python-docx/lxml 的 Python 可执行文件
+$repo=(Get-Location).Path # 在仓库根目录执行
 $fixtures='.local\m3-word-client-2026-10-02\fixtures'
 & $runtimePython -B docs/acceptance/m3-word-client-evidence/prepare.py $repo $fixtures
 & docs/acceptance/m3-word-client-evidence/roundtrip.ps1 -FixtureRoot $fixtures
