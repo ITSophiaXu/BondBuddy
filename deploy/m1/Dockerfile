@@ -105,6 +105,7 @@ RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
 COPY --chmod=0755 deploy/m1/scripts/copilot-token.mjs /usr/local/bin/bb-copilot-token
 RUN install -d -m 0755 /opt/bondbuddy
 COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-authoring-model-catalog.json /opt/bondbuddy/codex-authoring-model-catalog.json
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 COPY --chmod=0755 deploy/m1/scripts/verify-ocr-runtime.sh /usr/local/bin/bb-verify-ocr-runtime

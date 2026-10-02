@@ -16,6 +16,10 @@ const selected = new Set(selectedArg ? selectedArg.split('=')[1].split(',') : pl
 for (const id of selected) if (!plan.milestones.some(m => m.id === id)) throw Error('Unknown milestone: ' + id);
 if (args.some(a => !['--apply', '--check'].includes(a) && !a.startsWith('--milestones='))) throw Error('Unknown argument');
 if (apply && check) throw Error('Choose --check or --apply');
+// M3 is maintained through explicit, reviewed requirement updates. This legacy
+// bulk publisher must never recreate excluded tasks or overwrite live edits.
+// Reject before publication-state writes, gh discovery, or any network action.
+if (apply && selected.has('M3')) throw Error('M3 --apply is disabled for this legacy publisher before network access. Reconcile the six current issues (#47/#48/#49/#55/#145/#56) individually with docs/product-decisions/2026-10-02-m3-review-scope.md. --check remains an offline check; it is not remote verification.');
 const statePath = path.join(dir, 'published.json');
 const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {
   repository: plan.repository, namespace: plan.namespace, milestones: {}, issues: {}, verified: false
@@ -51,6 +55,12 @@ const mutate = async (endpoint, method, payload) => {
   return api(endpoint, method, payload);
 };
 const taskIds = new Set(plan.tasks.map(t => t.id));
+const currentM3Ids = ['M3-01', 'M3-02', 'M3-03', 'M3-09', 'M3-10', 'M3-11'];
+const actualM3Ids = plan.tasks.filter(t => t.milestone === 'M3').map(t => t.id).sort();
+if (JSON.stringify(actualM3Ids) !== JSON.stringify([...currentM3Ids].sort())) throw Error('M3 must contain exactly the six current tasks; excluded library/data tasks cannot rejoin this milestone.');
+for (const t of plan.tasks.filter(t => t.milestone === 'M3')) {
+  if (t.dependsOn.some(id => /^M2-|^M4-|^M1-3[23]$|^M3-0[4-8]$/.test(id))) throw Error('Out-of-scope M3 dependency: ' + t.id);
+}
 const ordered = [], visited = new Set(), active = new Set();
 function visit(t) {
   if (visited.has(t.id)) return;

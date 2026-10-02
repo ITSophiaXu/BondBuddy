@@ -14,6 +14,35 @@ function input(source = true): UnifiedInput {
 }
 const ctx = () => ({run:{input_hash:'f'.repeat(64)},values:new Map(),checkpoint:{}} as unknown as StageContext);
 
+test('direct authoring starts with the source update, even with large supporting files; no prereading barrier',async()=>{
+ const material=input();const seed=material.materials[0].records[0];
+ material.materials[0].records=Array.from({length:22014},(_,i)=>({...seed,record_id:`r${i}`,literal_quote:i===22013?'2025年净资产120万元':'合成表格内容'.repeat(20)}));
+ const ids:string[]=[];
+ const result=await unifiedModelGenerationStage({direct:true,load:async()=>material,model:options=>({name:options.name,run:async c=>{
+   ids.push(options.logicalCallId);assert.equal(options.logicalCallId,'unified-v4-update_0');
+   assert.equal(options.materialTools?.materials[0].records.length,22014);
+   assert.equal(options.materialTools?.materials[0].records[22013].text,'2025年净资产120万元');
+   const prompt=await options.buildPrompt(c);assert.ok(Buffer.byteLength(prompt)<20000,'large auxiliary input stays in tools, not an aggregate prompt');
+   const data=JSON.parse(prompt.split('输入数据：\n')[1]);assert.equal(data.material_reading,undefined);assert.equal(data.materials[0].record_count,22014);
+   const value={reviewed:['m1r0','m1r1'],edits:[{record_id:'m1r0',after:'2025年净资产120万元',evidence:['m0r22013'],pending:[]}],additions:[],summary:['合成真实编制路径测试']};
+   assert.ok(options.validate(value));assert.equal(options.validate({...value,reviewed:['m1r0']}),false);
+   assert.equal(options.validate({...value,edits:[{...value.edits[0],evidence:['other-project']}]}),false);
+   return {kind:'done',value};
+ }})}).run(ctx());
+ assert.equal(result.kind,'done');assert.deepEqual(ids,['unified-v4-update_0']);
+ if(result.kind==='done')assert.equal((result.value as any).edits[0].evidence[0],'report/r22013');
+});
+
+test('direct no-source drafting uses uploaded materials without a prereading or reference-library prerequisite',async()=>{
+ const ids:string[]=[];
+ const result=await unifiedModelGenerationStage({direct:true,load:async()=>input(false),model:options=>({name:options.name,run:async()=>{
+  ids.push(options.logicalCallId);assert.ok(options.materialTools);
+  const value=options.name.includes('outline')?{chapters:['发行人情况']}:{blocks:[{kind:'paragraph',text:'合成新稿正文，净资产120万元。',rows:[],evidence:['m0r0'],pending:[]}],summary:['合成编制']};
+  assert.ok(options.validate(value));return {kind:'done',value};
+ }})}).run(ctx());
+ assert.equal(result.kind,'done');assert.deepEqual(ids,['unified-v4-outline','unified-v4-draft_0']);
+});
+
 test('unified update reads raw supporting records and requires complete baseline coverage and valid citations (synthetic)', async () => {
   const prompts: string[] = [];
   const stage=unifiedModelGenerationStage({load:async()=>input(),model:options=>({name:options.name,run:async context=>{

@@ -2,13 +2,15 @@
 
 仓库：[ITSophiaXu/BondBuddy](https://github.com/ITSophiaXu/BondBuddy)
 
-发布后已读取 GitHub 核对标题、标签、里程碑、正文和父子关系。认领时设置 assignee 或在任务下评论；本文记录发布时的链接，不追踪后续任务完成状态。
+历史发布时已读取 GitHub 核对标题、标签、里程碑、正文和父子关系；该记录不表示后续范围修改已发布或实现。本文保留链接，认领与完成状态以 GitHub 为准。
+
+2026-10-02 当前 M3 仅 #47／#48／#49／#55／#145／#56，见[范围决定](../../../docs/product-decisions/2026-10-02-m3-review-scope.md)。常规操作由结果页按钮完成、助手按需展开、版本记录归工作台；本次无用户报价、余额校验、充值、冻结、扣费或结算，保留真实 usage／内部成本。#77／#78 和 #50／#52／#53／#54 移出 M3，#51 独立检索服务不再计划；M2 账务与 M4 独立 QA 均非 M3 前置。
 
 | 阶段 | 里程碑 | 跟踪 issue |
 |---|---|---|
 | M1 | [M1 · 网页版注册/登录与募集书更新上线](https://github.com/ITSophiaXu/BondBuddy/milestone/1) | [#1](https://github.com/ITSophiaXu/BondBuddy/issues/1) |
 | M2 | [M2 · 积分与付费功能上线](https://github.com/ITSophiaXu/BondBuddy/milestone/2) | [#2](https://github.com/ITSophiaXu/BondBuddy/issues/2) |
-| M3 | [M3 · 募集书付费复核功能上线](https://github.com/ITSophiaXu/BondBuddy/milestone/3) | [#3](https://github.com/ITSophiaXu/BondBuddy/issues/3) |
+| M3 | [M3 · 募集书复核与结果修订上线](https://github.com/ITSophiaXu/BondBuddy/milestone/3) | [#3](https://github.com/ITSophiaXu/BondBuddy/issues/3) |
 | M4 | [M4 · 材料生成与用户问答上线](https://github.com/ITSophiaXu/BondBuddy/milestone/4) | [#4](https://github.com/ITSophiaXu/BondBuddy/issues/4) |
 | M5 | [M5 · Windows 应用上线](https://github.com/ITSophiaXu/BondBuddy/milestone/5) | [#5](https://github.com/ITSophiaXu/BondBuddy/issues/5) |
 
@@ -42,8 +44,8 @@
 | M1-31 上传后识别历史募集书的市场、发行方式和报告期，形成更新难度依据 | [#76](https://github.com/ITSophiaXu/BondBuddy/issues/76) |
 | M1-26 基于本发行人历史原文更新全文并形成可追溯修订 | [#31](https://github.com/ITSophiaXu/BondBuddy/issues/31) |
 | M1-27 实现跨市场/品种和多档安排的全文联动更新 | [#32](https://github.com/ITSophiaXu/BondBuddy/issues/32) |
-| M1-32 建设后台募集书库、分类索引与首批可用参考数据 | [#77](https://github.com/ITSophiaXu/BondBuddy/issues/77) |
-| M1-33 实现后台募集书库的持续增量更新、审核与版本退役 | [#78](https://github.com/ITSophiaXu/BondBuddy/issues/78) |
+| M1-32 建设后台募集书库、分类索引与首批可用参考数据（移出 M3，后续待排期） | [#77](https://github.com/ITSophiaXu/BondBuddy/issues/77) |
+| M1-33 实现后台募集书库的持续增量更新、审核与版本退役（移出 M3，后续待排期） | [#78](https://github.com/ITSophiaXu/BondBuddy/issues/78) |
 | M1-28 无历史稿时按前三大业务自动匹配参考稿并编制新稿 | [#33](https://github.com/ITSophiaXu/BondBuddy/issues/33) |
 | M1-29 交付基于历史原文的 Word 修订版或无历史稿新稿 | [#34](https://github.com/ITSophiaXu/BondBuddy/issues/34) |
 | M1-34 上线前交付统一用户行为、Prompt、Job、Token 与错误日志 | [#79](https://github.com/ITSophiaXu/BondBuddy/issues/79) |
@@ -59,16 +61,17 @@
 | M2-09 实现邀请、每日活跃与活动风控 | [#44](https://github.com/ITSophiaXu/BondBuddy/issues/44) |
 | M2-10 上线账务运营、价格条款与真实成本校准 | [#45](https://github.com/ITSophiaXu/BondBuddy/issues/45) |
 | M2-11 完成积分支付上线及更新任务商业闭环验收 | [#46](https://github.com/ITSophiaXu/BondBuddy/issues/46) |
-| M3-01 完成复核工作区和三维范围说明 | [#47](https://github.com/ITSophiaXu/BondBuddy/issues/47) |
+| M3-01 完成复核工作区、按需项目助手与工作台版本记录 | [#47](https://github.com/ITSophiaXu/BondBuddy/issues/47) |
 | M3-02 实现审计证据财务复核与确定性勾稽 | [#48](https://github.com/ITSophiaXu/BondBuddy/issues/48) |
 | M3-03 实现市场合规、披露完整性和真实格式复核 | [#49](https://github.com/ITSophiaXu/BondBuddy/issues/49) |
-| M3-04 建立公开数据适配、授权与主体匹配契约 | [#50](https://github.com/ITSophiaXu/BondBuddy/issues/50) |
-| M3-05 实现官方公开信息检索、来源快照与事实核验 | [#51](https://github.com/ITSophiaXu/BondBuddy/issues/51) |
-| M3-06 完成启信宝真实授权接入及工商核验 | [#52](https://github.com/ITSophiaXu/BondBuddy/issues/52) |
-| M3-07 完成 Wind 真实授权接入及债券数据核验 | [#53](https://github.com/ITSophiaXu/BondBuddy/issues/53) |
-| M3-08 完成企业预警通真实授权接入及风险核验 | [#54](https://github.com/ITSophiaXu/BondBuddy/issues/54) |
+| M3-04 建立公开数据适配、授权与主体匹配契约（移出 M3，后续可选） | [#50](https://github.com/ITSophiaXu/BondBuddy/issues/50) |
+| M3-05 独立公开信息检索／来源快照服务（不再计划） | [#51](https://github.com/ITSophiaXu/BondBuddy/issues/51) |
+| M3-06 完成启信宝真实授权接入及工商核验（移出 M3，后续可选） | [#52](https://github.com/ITSophiaXu/BondBuddy/issues/52) |
+| M3-07 完成 Wind 真实授权接入及债券数据核验（移出 M3，后续可选） | [#53](https://github.com/ITSophiaXu/BondBuddy/issues/53) |
+| M3-08 完成企业预警通真实授权接入及风险核验（移出 M3，后续可选） | [#54](https://github.com/ITSophiaXu/BondBuddy/issues/54) |
 | M3-09 编排三维复核并导出有来源的问题报告与 Word 批注 | [#55](https://github.com/ITSophiaXu/BondBuddy/issues/55) |
-| M3-10 完成复核专业验收与付费上线 | [#56](https://github.com/ITSophiaXu/BondBuddy/issues/56) |
+| M3-11 实现复核结果驱动的修订计划与明确执行 | [#145](https://github.com/ITSophiaXu/BondBuddy/issues/145) |
+| M3-10 完成复核与结果修订的集成及上线验收 | [#56](https://github.com/ITSophiaXu/BondBuddy/issues/56) |
 | M4-01 交付材料生成工作区、来源选择和右侧对话 | [#57](https://github.com/ITSophiaXu/BondBuddy/issues/57) |
 | M4-02 建立平台模板及个人券商模板库 | [#58](https://github.com/ITSophiaXu/BondBuddy/issues/58) |
 | M4-03 实现立项报告模板与券商规则适配 | [#59](https://github.com/ITSophiaXu/BondBuddy/issues/59) |

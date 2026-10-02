@@ -3,6 +3,12 @@ import { applyScope20260930 } from './scope-20260930.mjs';
 import { applyScope20261001 } from './scope-20261001.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// Historical snapshot only: the overlays below predate the current M1/M2
+// decisions and the 2026-10-02 M3 interaction/no-billing scope. They must not
+// regenerate current issue bodies, plan.json, README, or publication metadata.
+throw new Error('Legacy snapshot generator disabled before file writes. Do not regenerate current requirements from scope-20260930/scope-20261001. Update the affected plan.json entries and issue drafts against docs/product-decisions/2026-10-02-m3-review-scope.md; use publish-issues.mjs --check for offline validation.');
+
 const out=path.dirname(fileURLToPath(import.meta.url));
 const namespace='bondbuddy-web-first-20260922';
 const branch='develop';

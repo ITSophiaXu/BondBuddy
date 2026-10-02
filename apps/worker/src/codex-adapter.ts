@@ -1,13 +1,16 @@
 // #16 contained Codex -> DeepSeek adapter. Server-side only; not wired into runOnce.
-// Each attempt runs `codex exec --json` with a fresh CODEX_HOME, an empty cwd, a minimal
+// Each attempt runs `codex exec --json` with a fresh CODEX_HOME, an isolated cwd, a minimal
 // environment, read-only sandbox and tool features disabled. Any tool item the model still
 // emits is treated as a containment breach: the process group is killed and the attempt
-// fails closed. Material text only ever reaches the model as untrusted prompt data.
+// fails closed. Authoring may additionally register the three fixed, read-only bb_materials
+// methods over an immutable run-local dataset. No general file, shell or network tools.
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import type { ModelAdapterAttemptRecord, ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelAttemptRuntime } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
@@ -194,10 +197,25 @@ export function codexConfigOverrides(c: CodexAdapterConfig): string[] {
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string }): string[] {
   const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', '--sandbox', 'read-only', '--cd', o.cwd,
     ...codexConfigOverrides(c), ...c.disabled_features.flatMap(f => ['--disable', f])];
   if (o.ephemeral) args.push('--ephemeral');
+  if (o.materialDataFile) {
+    if(resolve(o.materialDataFile)!==resolve(o.cwd,'materials.json'))throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+    // Only these fixed read-only methods are exposed. Shell, arbitrary file access,
+    // browser, external MCP servers and networking tools remain unavailable.
+    for(const setting of [
+      ...(c.credential.kind==='command'?['model_catalog_json="/opt/bondbuddy/codex-authoring-model-catalog.json"']:[]),
+      `mcp_servers.bb_materials.command=${JSON.stringify(process.execPath)}`,
+      `mcp_servers.bb_materials.args=${JSON.stringify([fileURLToPath(new URL('./authoring-material-tools.js',import.meta.url)),o.materialDataFile])}`,
+      `mcp_servers.bb_materials.enabled_tools=${JSON.stringify(MATERIAL_TOOLS)}`,
+      // The user authorized reading this task's files. Only the three fixed read-only
+      // methods are trusted; writes still require approval and are not exposed at all.
+      ...MATERIAL_TOOLS.map(tool=>`mcp_servers.bb_materials.tools.${tool}.approval_mode="writes"`),
+      'mcp_servers.bb_materials.required=true',
+    ])args.push('-c',setting);
+  }
   if (o.schemaFile) args.push('--output-schema', o.schemaFile);
   // An ephemeral CODEX_HOME is per attempt and has no stored session to resume.
   if (!o.ephemeral && o.resumeThreadId) args.push('resume', o.resumeThreadId);
@@ -240,7 +258,7 @@ export type CodexProcessResult = {
 
 // One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
 // private buffer for status markers, then discarded. It is never logged or persisted.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -288,7 +306,11 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
         case 'item.started': case 'item.updated': case 'item.completed': {
           const item = ev.item as Record<string, unknown> | undefined;
           const type = typeof item?.type === 'string' ? item.type : 'unknown';
-          if (!TEXT_ITEM_TYPES.has(type)) { r.tool_attempts++; stop('tool', true); return; }
+          if (!TEXT_ITEM_TYPES.has(type)) {
+            const allowed=!!o.materialDataFile && type==='mcp_tool_call' && item?.server==='bb_materials' && MATERIAL_TOOLS.includes(item?.tool as typeof MATERIAL_TOOLS[number]);
+            if(!allowed){r.tool_attempts++; stop('tool', true); return;}
+            if(ev.type==='item.started')r.tool_attempts++;
+          }
           if (ev.type === 'item.completed' && type === 'agent_message' && typeof item?.text === 'string') r.last_message = item.text;
           break;
         }
@@ -359,6 +381,8 @@ export type ContainedCallInput = {
   prompt_snapshot_ref: string; prompt: string; output: { kind: 'json'; schema: Record<string, unknown>; validate: (v: unknown) => boolean } | { kind: 'text' };
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
   onEvent?: (event: Record<string, unknown>) => void;
+  /** Immutable, owner-scoped material records prepared by the authoring worker. */
+  materialTools?: MaterialToolData;
 };
 export type ContainedCallResult = {
   status: 'completed' | 'reused' | 'failed' | 'needs_reconcile';
@@ -434,9 +458,11 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         let schemaFile: string | null = null;
         if (input.output.kind === 'json') { schemaFile = join(attemptDir, 'output-schema.json'); await writeFile(schemaFile, JSON.stringify(normalizeCodexOutputSchema(input.output.schema)), { mode: 0o600 }); }
         if ((await readdir(cwd)).length) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
+        const materialDataFile=input.materialTools?join(cwd,'materials.json'):undefined;
+        if(materialDataFile)await writeFile(materialDataFile,JSON.stringify(input.materialTools),{mode:0o600});
 
         await journal.recordIntent(intent); // durable before spawn
-        const raw = await runCodexProcess(c, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, signal: input.signal, onEvent: input.onEvent });
+        const raw = await runCodexProcess(c, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, materialDataFile, signal: input.signal, onEvent: input.onEvent });
         if (raw.thread_id) threadId = raw.thread_id;
         const output = input.output;
         const cls = classifyCodexResult(raw, text => {

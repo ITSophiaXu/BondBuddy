@@ -69,6 +69,25 @@ const call = (prompt: string, extra: Partial<ContainedCallInput> = {}): Containe
 };
 const traces = () => { const seen: Record<string, unknown>[] = []; return { seen, onEvent: (e: Record<string, unknown>) => { if (e.type === 'fake.trace') seen.push(e); } }; };
 
+test('authoring permits only fixed run-local material tools; default adapter still blocks them',async()=>{
+ const {config,cleanup}=await setup();
+ try{
+  const materialTools={materials:[{id:'m0',filename:'synthetic.txt',context:{},records:[{id:'m0r0',text:'synthetic',uncertainty:[]}]}]};
+  const t=traces();const journal=new MemoryCodexJournal();
+  const ok=await runContainedModelCall(call('SCENARIO:material_tool',{materialTools,onEvent:t.onEvent}),journal,config);
+  assert.equal(ok.status,'completed');assert.equal(ok.attempts[0].tool_attempts,1);
+  const trace=t.seen[0] as any;assert.deepEqual(trace.cwd_entries,['materials.json']);
+  assert.ok(trace.argv.includes('mcp_servers.bb_materials.required=true'));
+  assert.ok(trace.argv.includes('shell_tool'));assert.ok(!trace.argv.includes('--enable'));
+  journal.prior={call_id:ok.attempts[0].call_id,attempt_no:1,status:'completed',observed:true};
+  journal.readCompleted=async()=>({value:ok.value,result_sha256:ok.attempts[0].result_sha256!});
+  const replay=await runContainedModelCall(call('SCENARIO:material_tool',{materialTools}),journal,config);assert.equal(replay.status,'reused');assert.equal(replay.attempts.length,0);
+  const denied=await runContainedModelCall(call('SCENARIO:material_tool'),new MemoryCodexJournal(),config);
+  assert.equal(denied.error_code,'MODEL_TOOL_ATTEMPT_BLOCKED');
+  assert.deepEqual(await readdir(config.work_root),[]);
+ }finally{await cleanup();}
+});
+
 test('usage normalizer follows observed Codex semantics and never double-adds', () => {
   assert.deepEqual(normalizeCodexUsage({ input_tokens: 8364, cached_input_tokens: 7424, output_tokens: 4, reasoning_output_tokens: 0 }), { status: 'measured', input_tokens: 8364, cached_input_tokens: 7424, output_tokens: 4, reasoning_tokens: 0, total_tokens: 8368 });
   assert.equal(normalizeCodexUsage({ input_tokens: 10, cached_input_tokens: 11, output_tokens: 1 }).status, 'pending');
