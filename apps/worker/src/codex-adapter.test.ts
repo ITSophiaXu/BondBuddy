@@ -88,6 +88,40 @@ test('authoring permits only fixed run-local material tools; default adapter sti
  }finally{await cleanup();}
 });
 
+test('authoring deadline is independently configurable and rejects invalid timers', () => {
+  const defaults = loadCodexAdapterConfig({ BB_CODEX_TIMEOUT_MS: '600000' });
+  assert.equal(defaults.timeout_ms, 600000);
+  assert.equal(defaults.authoring_timeout_ms, 2700000);
+  assert.equal(loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: '3600000' }).authoring_timeout_ms, 3600000);
+  for (const value of ['0', '-1', 'abc', '1.5', '2147483648'])
+    assert.throws(() => loadCodexAdapterConfig({ BB_CODEX_AUTHORING_TIMEOUT_MS: value }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+});
+
+test('authoring survives the short-call deadline but remains bounded and cancellable', async () => {
+  const { config, cleanup } = await setup({ timeout_ms: 200, authoring_timeout_ms: 3000, kill_grace_ms: 100 });
+  const materialTools = { materials: [] };
+  try {
+    const completed = await runContainedModelCall(call('SCENARIO:long_authoring', { materialTools }), new MemoryCodexJournal(), config);
+    assert.equal(completed.status, 'completed');
+    assert.ok(completed.attempts[0].duration_ms >= 800);
+    assert.equal(completed.attempts[0].usage.status, 'measured');
+    assert.equal(completed.attempts[0].adapter_version, 'codex-material-readonly-1');
+    const short = await runContainedModelCall(call('SCENARIO:long_authoring'), new MemoryCodexJournal(), config);
+    assert.equal(short.error_code, 'MODEL_TIMEOUT');
+    const bounded = await runContainedModelCall(call('SCENARIO:hang', { materialTools }), new MemoryCodexJournal(), { ...config, authoring_timeout_ms: 400 });
+    assert.equal(bounded.error_code, 'MODEL_TIMEOUT');
+    assert.equal(bounded.attempts[0].usage.status, 'unknown');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 400);
+    try {
+      const cancelled = await runContainedModelCall(call('SCENARIO:hang', { materialTools, signal: controller.signal }), new MemoryCodexJournal(), config);
+      assert.equal(cancelled.error_code, 'MODEL_CANCELLED');
+      assert.ok(cancelled.attempts[0].duration_ms < 2500);
+      assert.equal(cancelled.attempts[0].usage.status, 'unknown');
+    } finally { clearTimeout(timer); }
+  } finally { await cleanup(); }
+});
+
 test('usage normalizer follows observed Codex semantics and never double-adds', () => {
   assert.deepEqual(normalizeCodexUsage({ input_tokens: 8364, cached_input_tokens: 7424, output_tokens: 4, reasoning_output_tokens: 0 }), { status: 'measured', input_tokens: 8364, cached_input_tokens: 7424, output_tokens: 4, reasoning_tokens: 0, total_tokens: 8368 });
   assert.equal(normalizeCodexUsage({ input_tokens: 10, cached_input_tokens: 11, output_tokens: 1 }).status, 'pending');
