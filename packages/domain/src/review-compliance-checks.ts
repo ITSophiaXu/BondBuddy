@@ -143,11 +143,11 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     }
     const findings = bad.length ? normalizeReviewFindings([{
       stable_key:`format:${requirement.check_id}`,dimension:'compliance',conclusion:'error',severity:'P3',
-      title:requirement.rule_ref.authority === 'regulatory' ? '文档格式与适用规则不一致' : '文档格式与指定模板要求不一致',
+      title:requirement.rule_ref.authority === 'regulatory' ? '文档格式与适用规则不一致' : requirement.rule_ref.authority==='internal_method'?'文档格式与用户指定要求不一致':'文档格式与指定模板要求不一致',
       description:`实际继承后的 ${requirement.property} 不符合要求 ${requirement.expected}；仅核对文档属性，不表示实际字体环境或视觉分页已验证。`,
       target_refs:uniqueEvidence(bad),evidence_refs:uniqueEvidence(bad),rule_refs:[requirement.rule_ref],
       suggested_change:`将已定位范围的 ${requirement.property} 调整为 ${requirement.expected}。`,
-      verification:'deterministic',can_revise:true,
+      verification:'deterministic',can_revise:false,limitations:['formatting_edit_requires_ooxml_writer'],
     }],ctx) : [];
     result.findings.push(...findings);
     result.coverage.push(reviewCoverage(ctx,requirement.check_id,'compliance',unknown.length ? 'uncovered' : bad.length ? 'issue' : 'pass',

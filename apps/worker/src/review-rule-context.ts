@@ -9,12 +9,13 @@ import type { ReviewRuleRef } from '../../../packages/contracts/dist/review-resu
 import type { ReviewFormattingRequirement } from '../../../packages/domain/dist/review-compliance-checks.js';
 import type { ReviewAnalysisRecord } from './review-model-stage.js';
 import type { StageContext } from './run-pipeline.js';
+import { loadExplicitReviewFormatting } from './review-formatting-context.js';
 
 export interface ReviewRuleManifest {
   market:string|null;offering:string|null;issuer_name:string|null;
   draft_revision?:unknown;
   materials:{material_id:string;material_version:number;sha256:string;role:string}[];
-  review:{input:{as_of:string|null}};
+  review:{input:{as_of:string|null;requirements?:readonly string[]}};
 }
 export interface ReviewRuleContextResult {
   rule_context:RuleContext|null;rule_packs:RulePack[];rules:ReviewRuleRef[];
@@ -90,7 +91,8 @@ export async function loadReviewRuleContext(ctx:StageContext,manifest:ReviewRule
   if(inputManifestHash(manifest)!==ctx.run.input_hash.trim())throw new Error('REVIEW_RULE_INPUT_HASH_MISMATCH');
   if(records.some(r=>r.owner_user_id!==ctx.run.owner_user_id||r.project_id!==ctx.run.project_id
     ||!manifest.materials.some(m=>m.material_id===r.material_id&&m.material_version===r.material_version&&m.sha256===r.material_sha256)))throw new Error('REVIEW_RULE_RECORD_SCOPE_MISMATCH');
-  const result:ReviewRuleContextResult={rule_context:null,rule_packs:[],rules:[],formatting_requirements:[],limitations:[]};
+  const formatting=loadExplicitReviewFormatting({input_hash:ctx.run.input_hash.trim(),input_revision:ctx.run.input_revision,requirements:manifest.review.input.requirements??[],records});
+  const result:ReviewRuleContextResult={rule_context:null,rule_packs:[],...formatting};
   const stored=ctx.checkpoint.review_rules as unknown as RuleCheckpoint|undefined;
   if(stored&&(stored.version!=='review-rules-v1'||stored.input_hash!==ctx.run.input_hash.trim()))throw new Error('REVIEW_RULE_CHECKPOINT_MISMATCH');
   if(!manifest.market||!manifest.offering||!(MARKETS as readonly string[]).includes(manifest.market)
@@ -131,7 +133,7 @@ export async function loadReviewRuleContext(ctx:StageContext,manifest:ReviewRule
     if(inputManifestHash(selected.pin)!==inputManifestHash(pin)||rulePackContentHash(selected.pack)!==pin.contentHash)throw new Error('REVIEW_RULE_RELEASE_CHANGED');
     const decision=evaluateRulePackCapability(selected.pack,context);
     if(decision.decision!=='eligible_for_evaluation'){result.limitations.push(...decision.reason_codes.map(reason=>`正式规则尚不可评估：${reason}`));return result;}
-    result.rule_context=context;result.rule_packs=[selected.pack];result.rules=references(selected.pack,asOf,new Set(decision.applicable_rule_ids));
+    result.rule_context=context;result.rule_packs=[selected.pack];result.rules.push(...references(selected.pack,asOf,new Set(decision.applicable_rule_ids)));
   }else if(snapshot.mode==='reference'){
     const candidates=await readCandidates(ctx,manifest.market,manifest.offering,snapshot.candidates);
     for(const pin of snapshot.candidates){const row=candidates.find(r=>r.id===pin.release_id);const pack=row?trustedCandidate(row,manifest.market,manifest.offering,asOf):null;
