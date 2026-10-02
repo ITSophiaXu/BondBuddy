@@ -12,7 +12,7 @@ import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, uid } from '@bondbuddy/api/data';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
-import { claim, jobSnapshot } from '@bondbuddy/api/queue';
+import { claim, jobSnapshot, pauseRun } from '@bondbuddy/api/queue';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
 import { CodexDurableJournal } from './durable-probe-journal.js';
 import { runReconcileCommand } from './reconcile-run.js';
@@ -74,6 +74,7 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     // A second invocation with the same logical call reuses the checkpointed result.
     const again = await runContainedModelCall(callFor(ok, 'SCENARIO:structured'), journalFor(ok), config);
     assert.equal(again.status, 'reused'); assert.deepEqual(again.value, { answer: 'OK', n: 16 });
+    await pauseRun(pool,ok.lease,'awaiting_materials','synthetic_test_complete');
 
     // Timeout: recorded with unknown usage and the job pauses for reconciliation.
     const slow = await fixture('timeout');
@@ -82,6 +83,25 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     const tr = (await pool.query('SELECT a.status,a.usage_status,o.input_tokens,t.error_code,t.exit_signal FROM bb_model_call_attempts a JOIN bb_provider_call_observations o ON o.attempt_id=a.id JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id WHERE a.job_id=$1', [slow.lease.jobId])).rows[0];
     assert.deepEqual([tr.status, tr.usage_status, tr.input_tokens, tr.error_code, tr.exit_signal], ['pending_reconcile', 'unknown', null, 'MODEL_TIMEOUT', 'SIGKILL']);
     assert.equal((await jobSnapshot(pool, owner, slow.runId)).state, 'paused');
+
+    // Exercise the real journal boundary beyond the ordinary JSON re-ask budget.
+    // A second locally terminated timeout still has an explicit durable retry disposition.
+    let recovered = slow;
+    for (const attemptNo of [2, 3]) {
+      const prior = (await pool.query('SELECT id AS call_id FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY attempt_no DESC LIMIT 1', [slow.lease.jobId])).rows[0];
+      assert.ok(prior);
+      await runReconcileCommand(pool, ['resolve', slow.runId, prior.call_id, 'retry_unknown_usage', 'synthetic_timeout_recovery'], 'synthetic-operator');
+      const lease = await claim(pool, 30); assert.ok(lease); assert.equal(lease.runId, slow.runId);
+      recovered = { ...slow, lease };
+      const retry = await runContainedModelCall(callFor(recovered, attemptNo === 2 ? 'SCENARIO:hang' : 'SCENARIO:structured'), journalFor(recovered), config);
+      assert.equal(retry.status, attemptNo === 2 ? 'needs_reconcile' : 'completed');
+      assert.deepEqual(retry.attempts.map(a => a.attempt_no), [attemptNo]);
+    }
+    const recoveredRows = (await pool.query('SELECT attempt_no,status,usage_status FROM bb_model_call_attempts WHERE job_id=$1 ORDER BY attempt_no', [slow.lease.jobId])).rows;
+    assert.deepEqual(recoveredRows.map(a => [a.attempt_no, a.status, a.usage_status]), [[1, 'failed', 'unknown'], [2, 'failed', 'unknown'], [3, 'completed', 'measured']]);
+    const retryReplay = await runContainedModelCall(callFor(recovered, 'SCENARIO:structured'), journalFor(recovered), config);
+    assert.equal(retryReplay.status, 'reused'); assert.equal(retryReplay.attempts.length, 0);
+    await pauseRun(pool,recovered.lease,'awaiting_materials','synthetic_test_complete');
 
     // A typed provider request rejection has no generated result or measured usage.
     // It must fail durably rather than enter the no-lookup reconciliation loop.
@@ -117,6 +137,7 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     const resumedCall = await runContainedModelCall(callFor(resumedFixture,'SCENARIO:structured'),journalFor(resumedFixture),config);
     assert.equal(resumedCall.status,'completed');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[depleted.lease.jobId])).rows[0].n,2);
+    await pauseRun(pool,resumedLease,'awaiting_materials','synthetic_test_complete');
 
     // Crash after intent, before any observation: the next lease must not resend.
     const crash = await fixture('crash');
