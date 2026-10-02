@@ -5,7 +5,7 @@ import { referenceFor } from '../../../packages/domain/dist/review-evidence.js';
 import { normalizeReviewFindings } from '../../../packages/domain/dist/review-finding-normalization.js';
 import { isReviewReport, type ReviewReport } from '../../../packages/contracts/dist/review-results.js';
 import { buildReviewAnalysisPrompt, chunkReviewRecords, normalizeModelReviewAnalysis, reviewModelStage, reviewPromptRecordId, reviewPromptRuleId,
-  type ModelReviewAnalysis, type ReviewAnalysisInput, type ReviewAnalysisRecord, type ReviewAnalysisResult } from './review-model-stage.js';
+  reviewAnalysisTemplateVersion, type ModelReviewAnalysis, type ReviewAnalysisInput, type ReviewAnalysisRecord, type ReviewAnalysisResult } from './review-model-stage.js';
 import type { StageContext } from './run-pipeline.js';
 
 function fixture(){
@@ -62,7 +62,7 @@ test('worker reads every batch through model adapter and independently recompute
     const record=input.evidence.records.find(r=>reviewPromptRecordId(r)===data.records[0].id)!;
     const raw=empty(data.records.map((r:{id:string})=>r.id));raw.observations=[observation(record,record.source_kind==='disclosure'?'100.00':'1000.00')];
     assert(options.validate(raw));assert.equal(options.validate({...raw,reviewed_record_ids:[]}),false);
-    assert.equal(options.resultSchemaVersion,'review-analysis-v1');assert.equal(options.templateVersion,'review-analysis-v1');return {kind:'done',value:raw};
+    assert.equal(options.resultSchemaVersion,'review-analysis-v1');assert.equal(options.templateVersion,reviewAnalysisTemplateVersion);return {kind:'done',value:raw};
   }})});
   const result=await stage.run(ctx);assert.equal(result.kind,'done');if(result.kind!=='done')return;
   const value=result.value as ReviewAnalysisResult;assert(isReviewReport(value.report));assert.equal(value.report.findings[0]?.conclusion,'error');assert.equal(value.report.findings[0]?.suggested_change,'1000.00');assert.equal(value.model_calls,2);

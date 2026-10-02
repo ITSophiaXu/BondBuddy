@@ -4,6 +4,9 @@ import { ReviewConclusionSchema, ReviewDimensionSchema, isReviewReport, type Rev
 import type { RuleContext, RulePack } from '@bondbuddy/domain';
 import { canonical, evidenceKey, referenceFor, reviewContentHash, validateReviewEvidence, type ReviewEvidenceContext, type TrustedReviewRecord } from '../../../packages/domain/dist/review-evidence.js';
 import { reviewFinancialEvidence, type ReviewFinancialInput, type ReviewFinancialObservation } from '../../../packages/domain/dist/review-financial-checks.js';
+import { AUDIT_RECONCILIATION_KNOWLEDGE } from '../../../packages/domain/dist/audit-reconciliation-knowledge.js';
+import { reviewAuditReconciliation } from '../../../packages/domain/dist/review-audit-reconciliation.js';
+import { guardFinancialRepairConflicts } from '../../../packages/domain/dist/review-financial-repair-conflicts.js';
 import { reviewComplianceEvidence, type ReviewComplianceInput, type ReviewFormattingRequirement } from '../../../packages/domain/dist/review-compliance-checks.js';
 import { carryForwardReviewFindings, normalizeReviewFindings, reviewCoverage, type ReviewFindingCandidate } from '../../../packages/domain/dist/review-finding-normalization.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -59,6 +62,9 @@ export const ReviewAnalysisSchema = strict({
 export type ModelReviewAnalysis = Static<typeof ReviewAnalysisSchema>;
 export const reviewPromptRecordId = (record:TrustedReviewRecord):string => `R-${reviewContentHash(evidenceKey(record)).slice(0,32)}`;
 export const reviewPromptRuleId = (rule:ReviewEvidenceContext['rules'][number]):string => `L-${reviewContentHash(rule).slice(0,32)}`;
+/** Knowledge contents participate in durable call identity as well as the saved prompt. */
+export const reviewAuditKnowledgePin = reviewContentHash(AUDIT_RECONCILIATION_KNOWLEDGE);
+export const reviewAnalysisTemplateVersion = `review-analysis-v1-audit-${reviewAuditKnowledgePin.slice(0,16)}`;
 export class ReviewAnalysisInvalid extends Error { constructor(code:string){super(code);this.name='ReviewAnalysisInvalid';} }
 function invalid(code:string):never {throw new ReviewAnalysisInvalid(code);}
 
@@ -163,6 +169,7 @@ context_messages是执行前已保存但未采纳的讨论上下文，仅供参�
 逐条阅读records，reviewed_record_ids必须准确覆盖本批每个id。context_records仅作本批上下文，不重复抽取其数值。引用只使用已给id和literal_quote中逐字连续原文，不引用context中的转述，不创造材料、hash、网址或法规。没有证据时保留空引用及具体限制。
 observations抽取全部重要财务数字与上下文。entity_id写原文完整企业名称，不把母公司、合并、子公司或参考企业混用；metric使用一致的指标名称（营业收入、净利润、总资产等），禁止将不同指标合并。period以YYYY-MM-DD记录起止或时点；currency、unit、accounting_scope、basis必须由同一材料原文锚点支持，缺少时写“未知”、留空引用，不推测。basis区分原始/重述，value是未换算精确十进制，value_literal逐字保留千分符、负号或括号。value_refs只定位数值原文，context_refs分别定位主体、期间、口径、币种、单位、基础。
 source_record_id必须是本批records中的id，材料角色由服务端确定，不能自称审计证据。calculations只抽取有据的sum/ratio_percent/growth_percent/percentage_point；result_id和operand_ids均引用本次observations的id。growth操作数按本期、上期顺序；不要先舍入；分母为零/负数不擅自定义增长率。合计不能遗漏明细或重复计入小计，complete_terms不确定时false。你不判断复算最终对错，由确定性代码计算。
+audit_reconciliation_knowledge是本功能固定版本的内部勾稽方法，source_quote只是附件原文，附件声称的监管出处不代表已验证法规，也不是本项目审计事实。按其中result_metric、terms.metric及明确aliases抽取实际存在的科目；只有实际来源原文支持该科目名称才可用对应metric，不将净值、账面价值、账面余额、合计与明细混用。全部40项由代码逐项记录覆盖。conditional和manual项缺少桥接、完整明细或符号定义时如实待核，不为满足公式补零、猜造数值或生成自动修订建议。汇率影响、少数权益、利润分配、受限资金及现金等价物、税费和薪酬非现金变动均须保留原文条件。规则公式由代码固定，模型不能改写。第27项期初/期末现金使用准确as_of时点，净增加额使用实际起止期间。
 合规只引用rules给出的key；市场、品种、阶段、效力或发行人未知时明确待核，不套用别的市场/私募/小公募。模型语义结论会保留人工判断属性。片段未找到不能证明全篇缺失，claims_document_absence须如实。格式只描述可见属性限制，不假设PDF/OCR或分页布局已验证。公开联网核验由独立工具阶段执行，不虚构已搜索的结果。
 concerns保留无法由金额或规则检查表达的冲突/补证/人工/未覆盖事项，附准确目标位置与依据。不能因本批没有finding声称整份文稿无问题。原文无关数字/全无可提取内容也必须在limitations说明。只输出指定JSON结构。`;
 function promptRecord(record:ReviewAnalysisRecord){return {id:reviewPromptRecordId(record),source_kind:record.source_kind,material_id:record.material_id,material_version:record.material_version,locator_type:record.locator_type,locator:record.locator,literal_quote:record.literal_quote,context:record.context??'',uncertainty:record.uncertainty,extraction_method:record.extraction_method};}
@@ -170,6 +177,7 @@ export function buildReviewAnalysisPrompt(input:ReviewAnalysisInput,records:read
   return `${instructions}\n输入数据：\n${JSON.stringify({requirements:input.requirements,context_messages:input.context_messages??[],scope:input.scope,rule_context:input.rule_context,
     selected_findings:input.scope.mode==='differential_review'?input.previous_report?.findings.filter(f=>input.scope.finding_ids.includes(f.finding_id)):[],
     rules:input.evidence.rules.map(rule=>({key:reviewPromptRuleId(rule),...rule})),
+    audit_reconciliation_knowledge:{...AUDIT_RECONCILIATION_KNOWLEDGE,content_sha256:reviewAuditKnowledgePin},
     records:records.map(promptRecord),context_records:contextRecords.map(promptRecord),limitations:input.limitations})}`;
 }
 /** Hard bounds fail explicitly; no record or tail is silently truncated. */
@@ -204,6 +212,14 @@ export function reviewModelStage(options:{
 }):RunStage {
   return {name:'model_generation',replay:true,run:async ctx=>{
     const input=await options.loadInput(ctx);validateInput(input,ctx);
+    // Prompt snapshots are durable before provider intent. Resume only the method version that
+    // produced them, including interrupted batches and reports from before knowledge integration.
+    const saved=ctx.checkpoint.model_generation;
+    const changedPrompt=Object.keys(ctx.checkpoint).some(name=>name.startsWith('review_v1_extract_')
+      && name.endsWith('_prompt') && !name.endsWith(`_${reviewAuditKnowledgePin.slice(0,16)}_prompt`));
+    if(changedPrompt || saved && (saved.audit_knowledge_sha256!==reviewAuditKnowledgePin
+      || saved.audit_knowledge_version!==AUDIT_RECONCILIATION_KNOWLEDGE.version))
+      return {kind:'pause',stage:'capability_not_ready',reason:'review_audit_knowledge_version_changed'};
     const selected=input.previous_report?.findings.filter(f=>input.scope.finding_ids.includes(f.finding_id))??[];
     const targets=input.evidence.records.filter(r=>sourceMatches(r,input) && (input.scope.mode==='full_review'
       ||selected.some(f=>f.target_refs.some(ref=>evidenceKey(ref)===evidenceKey(r)))));
@@ -233,9 +249,9 @@ export function reviewModelStage(options:{
         }catch{return false;}
       };
       const batchKey=reviewContentHash(records.map(evidenceKey)).slice(0,16);
-      const stage=(options.model??codexModelStage)({name:`review_v1_extract_${i}_${batchKey}`,logicalCallId:`review-v1-extract-${i}-${batchKey}`,
+      const stage=(options.model??codexModelStage)({name:`review_v1_extract_${i}_${batchKey}_${reviewAuditKnowledgePin.slice(0,16)}`,logicalCallId:`review-v1-extract-${i}-${batchKey}-${reviewAuditKnowledgePin.slice(0,16)}`,
         config:options.config??loadCodexAdapterConfig,buildPrompt:async()=>prompt,schema:ReviewAnalysisSchema,validate,
-        resultSchemaVersion:'review-analysis-v1',templateVersion:'review-analysis-v1'});
+        resultSchemaVersion:'review-analysis-v1',templateVersion:reviewAnalysisTemplateVersion});
       const result=await stage.run(ctx);modelCalls++;
       if(result.kind!=='done')return result;
       if(!validate(result.value))return {kind:'fail',code:'VALIDATION_FAILED'};
@@ -244,13 +260,16 @@ export function reviewModelStage(options:{
     const observations=[...new Map(normalized.flatMap(n=>n.financial.observations).map(o=>[o.observation_id,o])).values()];
     const calculations=[...new Map(normalized.flatMap(n=>n.financial.calculations).map(c=>[c.calculation_id,c])).values()];
     const financial=reviewFinancialEvidence({observations,calculations},input.evidence);
+    const reconciliation=reviewAuditReconciliation(observations,input.evidence);
     const compliance=reviewComplianceEvidence({context:input.rule_context,packs:input.rule_packs,
       assessments:[...new Map(normalized.flatMap(n=>n.compliance).map(a=>[a.check_id,a])).values()],
       formatting_requirements:input.formatting_requirements.filter(r=>r.record_ids.every(id=>targets.some(record=>record.record_id===id))),
       formatted_records:targets.map(r=>({ref:referenceFor(r),formatting:r.formatting??{}}))},input.evidence);
     const modelFindings=normalizeReviewFindings(normalized.flatMap(n=>n.concerns),input.evidence);
-    let findings=[...new Map([...financial.findings,...compliance.findings,...modelFindings].map(f=>[f.finding_id,f])).values()];
-    let coverage=[...financial.coverage,...compliance.coverage];
+    let findings=[...new Map([...financial.findings,...reconciliation.findings,...compliance.findings,...modelFindings].map(f=>[f.finding_id,f])).values()];
+    let coverage=[...financial.coverage,...reconciliation.coverage,...compliance.coverage];
+    const guarded=guardFinancialRepairConflicts({findings,coverage,limitations:[]},input.evidence);
+    findings=guarded.findings;coverage=guarded.coverage;
     if(modelFindings.length)coverage.push(reviewCoverage(input.evidence,'model:semantic-observations','compliance','manual',
       '语义观察保留人工核对属性；模型描述不等于已完成确定性验证。',[],modelFindings));
     const unextracted=targets.filter(record=>!observations.some(o=>o.source_kind==='disclosure'&&o.value_refs.some(ref=>evidenceKey(ref)===evidenceKey(record))));
@@ -264,6 +283,8 @@ export function reviewModelStage(options:{
         const observed=observations.filter(o=>o.source_kind==='disclosure'&&overlaps(o.value_refs)&&o.value===prior.calculation?.observed&&o.unit===prior.calculation?.unit);
         const verifiedChecks=new Set(observed.flatMap(o=>prior.calculation?.expression==='source × unit conversion'
           ?[`compare:${o.observation_id}`]:calculations.filter(c=>c.result_id===o.observation_id&&c.operation===prior.calculation?.expression).map(c=>`calculation:${c.calculation_id}`)));
+        const knowledgeRule=AUDIT_RECONCILIATION_KNOWLEDGE.rules.find(rule=>prior.calculation?.expression===`audit-reconciliation:${AUDIT_RECONCILIATION_KNOWLEDGE.version}:${rule.id}`);
+        if(knowledgeRule)for(const o of observed)verifiedChecks.add(`audit-reconciliation:${knowledgeRule.id}:${o.observation_id}`);
         const passed=coverage.filter(c=>c.outcome==='pass'&&verifiedChecks.has(c.check_id));
         if(anchored&&current.length)coverage.push(reviewCoverage(input.evidence,`scope:${prior.finding_id}`,prior.dimension,
           current.some(f=>['error','conflict'].includes(f.conclusion))?'issue':'manual','本轮同一目标位置仍有需处理事项，未据无finding自动认定解决。',[],current));
@@ -284,10 +305,12 @@ export function reviewModelStage(options:{
     }
     const report:ReviewReport={report_id:input.evidence.report_id,project_id:ctx.run.project_id,run_id:ctx.run.id,input_revision:ctx.run.input_revision,
       version:input.report_version,source_material:input.evidence.source_material,scope:input.scope,findings,coverage,
-      limitations:[...new Set([...input.limitations,...normalized.flatMap(n=>n.limitations),...financial.limitations,...compliance.limitations,
+      limitations:[...new Set([`审计勾稽内部方法 ${AUDIT_RECONCILIATION_KNOWLEDGE.version}；内容 SHA-256 ${reviewAuditKnowledgePin}；附件 SHA-256 ${AUDIT_RECONCILIATION_KNOWLEDGE.source_sha256}。方法知识不代表本项目审计事实或已核实监管依据。`,
+        ...input.limitations,...normalized.flatMap(n=>n.limitations),...financial.limitations,...reconciliation.limitations,...guarded.limitations,...compliance.limitations,
         '财务主体/指标映射来自带原文引用的模型抽取，金额结论仅针对已验证证据和已执行的确定性复算；未抽取或未适用检查不视作通过。'])].slice(0,200),created_at:input.created_at};
     if(!isReviewReport(report))return {kind:'fail',code:'VALIDATION_FAILED'};
     const value:ReviewAnalysisResult={version:'review-analysis-v1',input_hash:input.input_hash,report,model_calls:modelCalls,input};
-    return {kind:'done',value,checkpoint:{version:value.version,report_id:report.report_id,report_sha256:reviewContentHash(report),model_calls:modelCalls}};
+    return {kind:'done',value,checkpoint:{version:value.version,report_id:report.report_id,report_sha256:reviewContentHash(report),model_calls:modelCalls,
+      audit_knowledge_version:AUDIT_RECONCILIATION_KNOWLEDGE.version,audit_knowledge_sha256:reviewAuditKnowledgePin}};
   }};
 }

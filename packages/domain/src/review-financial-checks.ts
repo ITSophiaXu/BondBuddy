@@ -77,6 +77,8 @@ function validObservation(o: ReviewFinancialObservation, ctx: ReviewEvidenceCont
   if (precision(o) > 12) problems.push('financial_display_precision_unsupported');
   return [...new Set(problems)];
 }
+/** Reuse the same source, literal and context checks for immutable knowledge formulas. */
+export const validateReviewFinancialObservation = validObservation;
 function converted(o: ReviewFinancialObservation, to: string): Rational { return convert(decimal(o.value), unit(o.unit), unit(to)); }
 function roundedEqual(expected: Rational, observed: ReviewFinancialObservation): boolean {
   return equal(decimal(display(expected, precision(observed), false)), decimal(observed.value));
