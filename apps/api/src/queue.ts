@@ -538,7 +538,7 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
       WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
     if(unresolved.rows.length!==1)return false;
     const a=unresolved.rows[0];
-    if(a.status!=='pending_reconcile' || !/^unified-v3-(read_\d+_\d+|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) ||
+    if(a.status!=='pending_reconcile' || !/^unified-v3-(read_\d+_\d+(?:_part_[01])?|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) ||
       a.observed_usage!=='unknown' || a.error_code!=='MODEL_TIMEOUT' || a.tool_attempts!==0 ||
       !(a.exit_code!==null || ['SIGTERM','SIGKILL'].includes(a.exit_signal)))return false;
     const evidence=await client.query(`SELECT
@@ -609,14 +609,15 @@ export async function repairUnifiedTimeoutRetry(pool:Pool,input:{runId:string;at
     const retries=history.filter(h=>h.reason_code==='terminated_timeout_auto_retry');
     if(retries.length>6||retries.filter(h=>h.logical_call_id===a.logical_call_id).length>2)throw refuse();
     const evidence=(await client.query(`SELECT
-      EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND (created_at>$3 OR (logical_call_id=$5 AND attempt_no>$6))) AS newer,
+      EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND
+        (created_at>(SELECT created_at FROM bb_model_call_attempts WHERE id=$2) OR (logical_call_id=$4 AND attempt_no>$5))) AS newer,
       EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$2) AS has_result,
-      EXISTS(SELECT 1 FROM bb_artifact_versions WHERE run_id=$4) AS has_artifact,
+      EXISTS(SELECT 1 FROM bb_artifact_versions WHERE run_id=$3) AS has_artifact,
       EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$2 AND outcome='pending_reconcile'
         AND error_code='MODEL_TIMEOUT' AND usage_status='unknown' AND result_id IS NULL) AS timeout_observed,
       EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$2 AND
         (outcome<>'pending_reconcile' OR error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR usage_status<>'unknown' OR result_id IS NOT NULL)) AS conflicting`,
-      [j.id,a.id,a.created_at,r.id,a.logical_call_id,a.attempt_no])).rows[0];
+      [j.id,a.id,r.id,a.logical_call_id,a.attempt_no])).rows[0];
     if(evidence.newer||evidence.has_result||evidence.has_artifact||!evidence.timeout_observed||evidence.conflicting)throw refuse();
     const recent=(await client.query('SELECT seq,state,payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 3',[r.id])).rows;
     if(recent.length!==3||recent[0].seq!==r.event_cursor||recent[0].payload.reason!=='processor_failed'||
