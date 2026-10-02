@@ -106,6 +106,9 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
   const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
+  // Original-file authoring has no accepted-finding scope enforcement. Even malformed
+  // revision markers must fail before that path can discard the pinned parse records.
+  if (options.originalFiles && Object.hasOwn(manifest.authoring, 'review_revision')) throw new Error('INPUT_REVISION_CONFLICT');
   const revision = manifest.authoring.review_revision;
   if (revision && !await reviewRevisionInputGate(ctx.pool, ctx.run, revision)) throw new Error('INPUT_REVISION_CONFLICT');
   const revisionRefs = revision ? revisionEvidenceRefs(revision) : [];

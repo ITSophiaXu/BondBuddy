@@ -35,6 +35,20 @@ test('M3 search requires durable tool evidence and retains the ordinary read-onl
   } finally { await cleanup(); }
 });
 
+test('file authoring rejects live web search even with durable logging before preparation or provider intent', async () => {
+  const { config, cleanup } = await setup({ web_search: 'live' });
+  try {
+    let prepared=0,collected=0,logged=0;
+    const journal = new MemoryCodexJournal() as MemoryCodexJournal & { recordWebSearchEvents: NonNullable<import('./codex-adapter.js').CodexJournal['recordWebSearchEvents']> };
+    journal.recordWebSearchEvents=async()=>{logged++;};
+    await assert.rejects(runContainedModelCall(call('SCENARIO:web_search',{
+      fileWorkspace:{prepare:async()=>{prepared++;},collect:async()=>{collected++;return {}; }},
+    }),journal,config),{code:'MODEL_ADAPTER_CONFIG_INVALID'});
+    assert.deepEqual([prepared,collected,logged,journal.intents.length],[0,0,0,0]);
+    assert.equal(existsSync(config.work_root),false,'mixed tool modes fail before a workspace exists');
+  } finally { await cleanup(); }
+});
+
 test('output schema normalization covers historical nested const/enum nodes without changing validation', () => {
   const original = structuredClone(historicalGenerationSchema);
   const normalized = normalizeCodexOutputSchema(historicalGenerationSchema);

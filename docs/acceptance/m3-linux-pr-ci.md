@@ -8,7 +8,7 @@
 - 检出完整工作树；不能只取 apps/packages，因为既有统一编制测试读取 `knowledge/exchange-bonds/drafts/sse-private` 等固定知识文件。
 - PostgreSQL 服务在当前 job 内创建 `bb_m3_ci`，账号和口令明确是一次性 synthetic 值。初始化采用实际接口：`DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs`。迁移进程结束连接后，测试辅助程序通过具有 CREATEDB 的临时角色，为每个文件克隆并清理独立数据库；不存在生产连接或数据库 dump。
 - Azurite 只将 Blob 端口绑定本机回环地址，使用公开的开发存储连接配置；SDK 写入/删除 readiness 容器后才测试。job 结束移除容器。
-- `npm run build`、`npm run check:contracts` 后，执行 workflow 中列出的 runtime-entry、解析并发/私有 staging、共享 adapter/material-tools/router/统一编制及 M3 API/domain/assistant/review/revision/PG-Azurite 定向集。parser1.0.8追加原生解析、证据存储、财务提取、显式公式及已授权样本兼容性检查；随后运行Python原生parser和三个Word测试模块。
+- `npm run build`、`npm run check:contracts` 后，执行 workflow 中列出的 runtime-entry、解析并发/私有 staging、共享 adapter/material-tools/router/统一编制及 M3 API/domain/assistant/review/revision/PG-Azurite 定向集。parser1.0.8追加原生解析、证据存储、财务提取、显式公式及已授权样本兼容性检查；随后运行Python原生parser、file-authoring和三个Word测试模块。
 
 真实 Linux 的 `0700` 私有目录、`flock`、孤儿目录清理、进程信号和 SIGTERM 测试原样运行；没有平台跳过或放宽断言。测试环境提供绝对 Python 路径；Node TAP 只要出现非零 skipped/TODO 或无测试就失败，Python 跳过也失败。模型和搜索响应均来自显式 synthetic 夹具；`BB_TEST_LIVE_AUTHORING=0`、`BB_REVIEW_WEB_SEARCH_ENABLED=0`，不调用模型供应商。解析/财务提取集另启用`BB_RUN_AUTHORIZED_LARGE_XLSX`、`BB_RUN_AUTHORIZED_SAMPLE_TESTS`和`BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_TESTS`，读取仓库已登记授权的原件；不将授权样本测试说成真实模型或专业验收。数据库、Azurite、Python解析/Word、子进程和下载/恢复代码实际运行。
 
@@ -33,3 +33,7 @@ Python wheel dry-run已由上述runner实际安装和运行证据补充。该结
 上述计数保留为新增parser/样本/公式/供应商schema修复前的历史证据；扩展后的最终提交及合并树、计数、结论见[PR #523 checks](https://github.com/ITSophiaXu/BondBuddy/pull/523/checks)。不会将旧SHA的成功用于宣称新提交已经通过。
 
 整合develop `c2c3448`的固定审计知识后，Node清单还包含知识源/hash、审计勾稽、修订冲突、实际worker组合回归及原生页眉/目录检查，以验证其与M3原文语义、差异范围和显式公式的组合；不仅验证独立知识模块。
+
+继续整合develop `babbe37` / #526后，追加`codex-file-authoring.test.js`、`file-authoring.pg.test.js`和Python `test_file_authoring`，验证共用适配器与原始文件编制。M3修订需保留独立的锁定报告、解析快照、已采纳问题和允许修改位置路径；CI中的router及M3 PG链路对此分别断言。Linux文件权限与信号行为仍按原测试执行，不把Windows跳过当成通过。
+
+两个Node文件编制测试使用既有`deploy/m1/Dockerfile`的worker target，Node镜像指定24.14.0，镜像内Python/OCR依赖沿用生产Dockerfile；其Codex0.154.0二进制按既有sha512校验。不能在仅有setup-python的runner直接执行，因为真实权限预检要求`/usr/local/bin/codex`、`/opt/venv/bin/python`和`/app/python`。CI只在一次性runner加载仓库既有AppArmor profile，容器保留只读根目录、cap_drop ALL、no-new-privileges、指定seccomp和/tmp临时空间；没有privileged/unconfined、凭据或生产挂载。容器通过host网络访问同job的PG/Azurite，内部Codex文件沙盒仍禁用网络，并真实验证输入只读、输出可写及沙盒外文件不可读。模型回复为synthetic；该测试不代表真实provider或生产主机已验收。

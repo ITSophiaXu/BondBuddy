@@ -118,7 +118,8 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       assert.equal(overlap.statusCode,409,overlap.body);
       const nextInput={...input,requirements:['合成下一版要求：保留未选问题。']};
       const next=await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:1,input:nextInput});assert.equal(next.statusCode,200,next.body);
-      const router=modelGenerationRouter({reviewStage:reviewModelStage({loadInput:loadReviewInput,config})});
+      const router=modelGenerationRouter({reviewStage:reviewModelStage({loadInput:loadReviewInput,config}),
+        unifiedStage:options=>unifiedModelGenerationStage({...options,config})});
       const execute=(model:RunStage,afterStage?:RunPipelineDependencies['afterStage'])=>runPipelineOnce({pool,blobs,leaseSeconds:60,
         stages:[inputLockStage,materialsReadyStage,model,historicalWordDeliveryStage()],afterStage,onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
       await assert.rejects(execute(router,async stage=>{if(stage==='word_promoted')throw new Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
@@ -190,7 +191,7 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       const revisionRun=revisionStart.json();
       const latestInput={...nextInput,requirements:['合成运行中追加：只能下轮生效。']};
       assert.equal((await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:2,input:latestInput})).statusCode,200);
-      assert.equal(await execute(unifiedModelGenerationStage({config})),'succeeded');
+      assert.equal(await execute(router),'succeeded');
       const revisionRow=(await send('GET',`/api/v1/runs/${revisionRun.run_id}`)).json();assert.equal(revisionRow.state,'succeeded');
       const revisionFile=await download(revisionRow.artifact_id),summary=revisionFile.metadata.word_delivery;
       assert.equal(summary.review_passed,false);assert.equal(summary.revision_handling.review_passed,false);

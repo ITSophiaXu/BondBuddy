@@ -14,7 +14,7 @@ concurrency:
 jobs:
   linux-integration:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -150,6 +150,7 @@ jobs:
             apps/worker/dist/codex-durable.test.js \
             apps/worker/dist/provider-reconciliation.test.js \
             apps/worker/dist/model-generation-router.test.js \
+            apps/worker/dist/unified-input.test.js \
             apps/worker/dist/unified-model-stage.test.js \
             apps/worker/dist/unified-authoring.pg.test.js \
             apps/worker/dist/unified-timeout-recovery.test.js \
@@ -183,9 +184,46 @@ jobs:
           fi
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/bb-m3-linux.tap"
 
+      - name: Build the existing worker image for original-file sandbox tests
+        run: |
+          docker build --file deploy/m1/Dockerfile --target worker \
+            --build-arg NODE_IMAGE=node:24.14.0-bookworm-slim \
+            --tag bb-m3-file-authoring:ci .
+          # This is the disposable CI VM, not a deployment host. Keep the same
+          # restricted profiles as production; never use privileged/unconfined.
+          command -v apparmor_parser
+          sudo apparmor_parser -r deploy/m1/security/codex-apparmor.profile
+
+      - name: Original-file authoring with actual Codex file isolation
+        run: |
+          # Synthetic provider, real pinned Codex sandbox preflight and Word files.
+          # Host networking reaches only the job's PG/Azurite endpoints in tests;
+          # the nested authoring sandbox explicitly denies network access.
+          docker run --rm --name bb-m3-file-authoring \
+            --network host --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --security-opt "seccomp=$GITHUB_WORKSPACE/deploy/m1/security/codex-seccomp.json" \
+            --security-opt apparmor=bondbuddy-codex-v1 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=1073741824,mode=1777 \
+            --env BB_TEST_DATABASE_URL --env BB_TEST_AZURITE_CONNECTION_STRING \
+            --env BB_TEST_LIVE_AUTHORING=0 --env BB_REVIEW_WEB_SEARCH_ENABLED=0 \
+            --env BONDBUDDY_TEST_PYTHON=/opt/venv/bin/python \
+            --env BONDBUDDY_WORD_PYTHON=/opt/venv/bin/python \
+            --env BB_PYTHON=/opt/venv/bin/python --env PYTHONDONTWRITEBYTECODE=1 \
+            --entrypoint node bb-m3-file-authoring:ci \
+            --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/codex-file-authoring.test.js \
+            apps/worker/dist/file-authoring.pg.test.js \
+            | tee "$RUNNER_TEMP/bb-m3-file-authoring.tap"
+          if grep -Eq '^# (skipped|todo) [1-9][0-9]*$' "$RUNNER_TEMP/bb-m3-file-authoring.tap"; then
+            echo 'Required file authoring sandbox tests were skipped or left TODO.' >&2
+            exit 1
+          fi
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/bb-m3-file-authoring.tap"
+
       - name: Python native parser, Word delivery and revision regressions
         run: |
-          python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery 2>&1 | tee "$RUNNER_TEMP/bb-m3-python.log"
+          python -m unittest -v test_document_parser test_file_authoring test_review_word test_unified_word test_word_delivery 2>&1 | tee "$RUNNER_TEMP/bb-m3-python.log"
           if grep -Eq 'OK \(skipped=[1-9][0-9]*\)' "$RUNNER_TEMP/bb-m3-python.log"; then
             echo 'Required Python tests were skipped.' >&2
             exit 1
@@ -196,4 +234,7 @@ jobs:
         run: |
           if docker container inspect bb-m3-azurite >/dev/null 2>&1; then
             docker rm --force bb-m3-azurite
+          fi
+          if docker container inspect bb-m3-file-authoring >/dev/null 2>&1; then
+            docker rm --force bb-m3-file-authoring
           fi

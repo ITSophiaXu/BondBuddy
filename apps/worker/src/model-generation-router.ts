@@ -19,6 +19,8 @@ export interface ModelGenerationRouterOptions {
   /** Internal seams keep integration tests on the real contained adapter with synthetic replies. */
   reviewStage?: RunStage;
   publicStage?: RunStage;
+  unifiedStage?: typeof unifiedModelGenerationStage;
+  fileStage?: typeof fileAuthoringStage;
   /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
   factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
 }
@@ -53,12 +55,17 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
-      if ((ctx.values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
+      const authoring = ctx.values.get('input_lock') as { authoring_mode?: string; review_revision?: boolean } | undefined;
+      if (authoring?.authoring_mode === 'unified_v1') {
+        const unified = options.unifiedStage ?? unifiedModelGenerationStage;
+        // Only the validated immutable input lock supplies this marker. Finding revisions
+        // must keep their accepted scope and exact report baseline, including on recovery.
+        if (authoring.review_revision) return unified().run(ctx);
         // Never change logical call IDs or resend calls on a previously started v3 run.
         // New runs hand original files to one native Codex execution; old results replay unchanged.
         const old=Object.keys(ctx.checkpoint).some(k=>/^unified_v[34]_/.test(k));
-        if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
-        return fileAuthoringStage().run(ctx);
+        if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unified({direct:!legacy}).run(ctx);}
+        return (options.fileStage ?? fileAuthoringStage)().run(ctx);
       }
       if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {
         const result = await (options.reviewStage ?? reviewModelStage({ loadInput: loadReviewInput })).run(ctx);

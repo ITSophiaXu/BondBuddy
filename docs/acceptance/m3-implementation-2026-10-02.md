@@ -1,6 +1,6 @@
 # M3 实现与集成验收记录
 
-关联 #47、#48、#49、#55、#145、#56；需求 PR #519 已合并，集成基线 develop `c2c3448`（包含 #520 直接编制材料工具、#524 长编制超时、#522 固定审计勾稽方法）。本记录随实现提交，描述实际证据，未代替 GitHub 专业及上线验收。M3 不包含收费、参考库或商业数据接口前置。
+关联 #47、#48、#49、#55、#145、#56；需求 PR #519 已合并，集成基线 develop `babbe37`（包含 #520 直接编制材料工具、#524 长编制超时、#522 固定审计勾稽方法和 #526 原始文件 Word 编制）。本记录随实现提交，描述实际证据，未代替 GitHub 专业及上线验收。M3 不包含收费、参考库或商业数据接口前置。
 
 ## 已实现范围
 
@@ -47,6 +47,12 @@
 - 本地真实助手链路暴露带点模型ID的结果存储失败：供应商调用已成功且measured用量10955/896已保存，结果字节尚未入库，状态保留pending_reconcile。修复仅使model_id接受公共模型契约已有的点号，归属/资源/路径标识仍严格校验。并发回归另确定性复现PG微秒时间被JS Date截断的问题：同毫秒的先前消息被误判晚于发送时刻；claim现保留PG原始时间文本，历史和附件都使用精确截止时间，未来同毫秒内容仍拒绝。API/worker构建与真实PG/Azurite的provider-results、assistant、provider-reconciliation三文件20/20通过，0跳过。
 
 测试使用独立数据库克隆，不连接模板长期占用，也不操作生产数据库或用户原型存储。首次补写的API测试尝试直接把无交付证据的任务设为成功，被数据库Word门正确拒绝；测试已改为分别验证失败报告可追溯与默认不展示，真实成功行为由完整交付链路验证。
+
+整合`babbe37` / #526后，再次全工作区构建和contracts通过。M3修订标识只来自通过归属/hash/原报告/已采纳计划校验的输入锁，优先进入专用修订流程；新M1编制走原始文件，旧v3/v4调用保持恢复路径。材料就绪和原始文件入口同时保护固定解析证据，直接把修订送入原始文件入口会拒绝；文件工具与live搜索混用也在工作区或调用intent创建前拒绝。
+
+本次最终11文件定向回归98/98通过，零失败/跳过/TODO，71.4秒：router、revision、unified-input/model、adapter、review-model/public/assistant、provider-results/reconciliation及M3 PG链路。后者通过真实router完成上传/解析→复核→采纳计划→修订/清洁Word→下载/历史，供应商仍为合成子进程。Python `test_file_authoring` 7/7通过（3.4秒）；Linux原始文件沙盒检查交给同PR的worker-image CI独立执行，不以Windows测试代替。
+
+最终真实助手持久化链路于2026-10-02T13:41:30Z通过：真实API上传/解析合成材料、幂等入队、worker/PG/Azurite journal与Copilot Enterprise `gpt-6.1-sol`完成一次调用。在供应商结果持久化后、回复完成前注入崩溃，过期租约恢复复用原结果，确认仅1次provider启动、1个attempt、1条回复、0工具调用。实际input10,971/output1,062/total12,033 tokens，cached9,332包含在input中、reasoning720包含在output中；usage为measured，价格/内部货币成本仍unknown，未伪造零成本。run/job/plan/input_revision及billing outbox事件均0→0，草稿不变。独立测试数据库和Blob容器已删除，原账号配置hash不变。[专门证据与边界](m3-assistant-durable-2026-10-02.md)说明Windows诊断启动桥与生产Linux凭据命令的区别；这不是部署后或真实客户材料联合验收。
 
 最终联合回归命令（仓库根目录；先设置`BB_TEST_DATABASE_URL`为已迁移且可克隆的synthetic模板、`BB_TEST_AZURITE_CONNECTION_STRING`为测试存储、`BONDBUDDY_TEST_PYTHON`及`BONDBUDDY_WORD_PYTHON`为包含仓库Python依赖的解释器；检出需包含`knowledge/exchange-bonds/drafts/sse-private`）：
 

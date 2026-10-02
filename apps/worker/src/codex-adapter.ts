@@ -445,6 +445,7 @@ export function attemptRecord(intent: ProviderCallIntent, c: CodexAdapterConfig,
 // before spawn, and re-asks only after a settled schema-invalid answer with measured usage.
 export async function runContainedModelCall(input: ContainedCallInput, journal: CodexJournal, c: CodexAdapterConfig): Promise<ContainedCallResult> {
   assertCodexConfig(c);
+  if (input.fileWorkspace && c.web_search === 'live') throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search === 'live' && !journal.recordWebSearchEvents) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const ids = [input.owner_user_id, input.project_id, input.job_id, input.run_id, input.trace_id, input.logical_call_id, input.prompt_snapshot_ref];
   if (!ids.every(safeId) || input.trace_id !== input.run_id || !safeVersion(input.result_schema_version) || typeof input.prompt !== 'string' || !input.prompt) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');

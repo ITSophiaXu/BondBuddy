@@ -4,10 +4,12 @@ import type { Pool } from 'pg';
 import { emptyUpdateDetails, executableRevisionFinding, isReviewRevisionPin, type ReviewEvidenceRef,
   type ReviewFinding, type ReviewReport, type ReviewRevisionPin } from '@bondbuddy/contracts';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import { unifiedInputGate, type UnifiedInput } from './unified-input.js';
+import { loadUnifiedInput, unifiedInputGate, type UnifiedInput } from './unified-input.js';
 import { revisionFindingGroups, unifiedModelGenerationStage, type UnifiedPlan } from './unified-model-stage.js';
 import { unifiedWordDeliveryStage } from './unified-word-stage.js';
-import type { InputRevisionRow, RunRow, StageContext } from './run-pipeline.js';
+import { createMaterialsReadyStage, inputLockStage, type InputRevisionRow, type RunRow, type StageContext } from './run-pipeline.js';
+import { fileAuthoringStage } from './file-authoring-stage.js';
+import { modelGenerationRouter } from './model-generation-router.js';
 
 /** All issuer names, source records and model outputs in this file are synthetic. */
 function fixture() {
@@ -50,9 +52,11 @@ function fixture() {
   const queries:{sql:string;values:unknown[]}[]=[];
   const db={query:async(sql:string,values:unknown[])=>{
     queries.push({sql,values});
+    if(sql.includes('FROM bb_input_revisions'))return {rows:[revision]};
     if(sql.includes('FROM bb_review_reports'))return {rows:[{run_id:report.run_id,version:report.version,content_sha256:pin.source_report.sha256,report}]};
     if(sql.includes('FROM bb_review_revision_plans'))return {rows:[{content_sha256:plan.sha256,accepted_at:new Date(plan.accepted_at),plan}]};
     if(sql.includes('FROM bb_material_versions'))return {rows:[input.manifest.materials.find(m=>m.material_id===values[2])]};
+    if(sql.includes('FROM bb_jobs'))return {rows:[]};
     throw new Error(`Unexpected query: ${sql}`);
   }} as unknown as Pool;
   const context={run,pool:db,values:new Map(),checkpoint:{},signal:new AbortController().signal} as StageContext;
@@ -87,6 +91,48 @@ test('revision rejects another owner, stale report content, changed accepted sel
   }
 });
 
+test('input lock derives the revision route only after validating the immutable report and accepted selection',async()=>{
+  const f=fixture();
+  const locked=await inputLockStage.run(f.context);
+  assert.deepEqual(locked,{kind:'done',value:{authoring_mode:'unified_v1',review_revision:true}});
+  for(const mutate of [
+    (v:ReturnType<typeof fixture>)=>{v.report.findings[0]!.description='tampered';},
+    (v:ReturnType<typeof fixture>)=>{v.plan.finding_ids=['F-2'];},
+  ]) {
+    const changed=fixture();mutate(changed);
+    assert.deepEqual(await inputLockStage.run(changed.context),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+  }
+});
+
+test('fresh revisions retain material readiness while ordinary fresh authoring consumes original files',async()=>{
+  const f=fixture();
+  f.context.values.set('input_lock',{authoring_mode:'unified_v1',review_revision:true});
+  assert.deepEqual(await createMaterialsReadyStage().run(f.context),{
+    kind:'pause',stage:'awaiting_materials',reason:'material_parse_pending',
+  });
+  assert.ok(f.queries.some(query=>query.sql.includes('FROM bb_jobs')));
+  f.context.values.set('input_lock',{authoring_mode:'unified_v1',review_revision:false});
+  f.queries.length=0;
+  assert.deepEqual(await createMaterialsReadyStage().run(f.context),{kind:'done',checkpoint:{original_files:true}});
+  assert.equal(f.queries.length,0);
+});
+
+test('original-file loader and direct file stage reject revision markers before material or model access',async()=>{
+  for(const malformed of [false,true]) {
+    const f=fixture();
+    if(malformed) (f.input.manifest.authoring as unknown as Record<string,unknown>).review_revision=null;
+    f.revision.input_hash=f.run.input_hash=inputManifestHash(f.input.manifest);
+    await assert.rejects(loadUnifiedInput(f.context,{originalFiles:true}),/INPUT_REVISION_CONFLICT/);
+    assert.equal(f.queries.length,1,'only the immutable input is read; original files are untouched');
+    let modelCalls=0;
+    const result=await fileAuthoringStage({load:async()=>f.input,model:()=>{
+      modelCalls++;throw new Error('full-document model must never run for finding revisions');
+    }}).run(f.context);
+    assert.deepEqual(result,{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+    assert.equal(modelCalls,0);
+  }
+});
+
 test('repairability never upgrades conflict, OCR, missing evidence or unknown rule applicability',()=>{
   const f=fixture();assert.equal(executableRevisionFinding(f.finding),true);
   for(const mutate of [
@@ -103,7 +149,11 @@ test('revision changes only exact accepted baseline and preserves original repor
   // The authoring fallback would otherwise prefer a project output. It must not be selected here.
   f.input.materials.unshift({...f.source,pin:{...f.source.pin,material_id:'unrelated-output',role:'project_output'}});
   const prompts:string[]=[];
-  const stage=unifiedModelGenerationStage({load:async()=>f.input,model:options=>({name:options.name,run:async context=>{
+  const lock=await inputLockStage.run(f.context);assert.equal(lock.kind,'done');
+  if(lock.kind!=='done')return;
+  f.context.values.set('input_lock',lock.value);
+  const stage=modelGenerationRouter({fileStage:()=>{throw new Error('finding revisions cannot enter full authoring');},
+    unifiedStage:()=>unifiedModelGenerationStage({load:async()=>f.input,model:options=>({name:options.name,run:async context=>{
     prompts.push(await options.buildPrompt(context));
     assert.equal(options.logicalCallId,'review-revision-v1-0');
     const payload=JSON.parse(prompts[0]!.split('输入数据：\n')[1]!);
@@ -120,7 +170,7 @@ test('revision changes only exact accepted baseline and preserves original repor
     assert.equal(options.validate({...value,edits:[{...value.edits[0],finding_ids:['F-2']}]}),false);
     assert.equal(options.validate({...value,handling:[{...value.handling[0],status:'not_modified'}]}),false);
     return {kind:'done',value};
-  }})});
+  }})})});
   const outcome=await stage.run(f.context);assert.equal(outcome.kind,'done');
   if(outcome.kind!=='done')return;
   const plan=outcome.value as UnifiedPlan;
