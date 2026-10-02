@@ -107,6 +107,7 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
   const revision = manifest.authoring.review_revision;
+  if (revision && options.originalFiles) throw new Error('INPUT_REVISION_CONFLICT');
   if (revision && !await reviewRevisionInputGate(ctx.pool, ctx.run, revision)) throw new Error('INPUT_REVISION_CONFLICT');
   const revisionRefs = revision ? revisionEvidenceRefs(revision) : [];
   const materials: UnifiedMaterial[] = [];

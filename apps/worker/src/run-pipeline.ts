@@ -299,7 +299,8 @@ export const inputLockStage: RunStage = {
     if (!input) return { kind: 'fail', code: 'NOT_FOUND' };
     if (input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
     const manifest = input.manifest as Record<string, unknown> | null;
-    if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: { authoring_mode: 'unified_v1' } };
+    if (isUnifiedInput(manifest)) return (await unifiedInputGate(pool, run, input)) ?? { kind: 'done', value: {
+      authoring_mode: 'unified_v1', review_revision: !!(manifest as {authoring?:{review_revision?:unknown}}).authoring?.review_revision } };
     if (isReviewInput(manifest)) return (await reviewInputGate(pool, run, input)) ?? { kind: 'done', value: { review_mode: 'review_v1' } };
     const identityGate = await verifyUpdateIssuerIdentityBinding(pool, run, manifest);
     if (identityGate) return identityGate;
@@ -393,7 +394,8 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
     if ((values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
       // New file-authoring runs consume original files. Readability/OCR is handled by Codex
       // on demand, not by a pre-run full-material parse barrier. Input gate still checks ownership/hashes.
-      if(!Object.keys(checkpoint).some(k=>/^unified_v[34]_/.test(k)))return {kind:'done',checkpoint:{original_files:true}};
+      if(!(values.get('input_lock') as {review_revision?:boolean})?.review_revision
+          && !Object.keys(checkpoint).some(k=>/^unified_v[34]_/.test(k)))return {kind:'done',checkpoint:{original_files:true}};
       // Native reading/OCR remains a worker tool; a separate fact inventory is not an admission requirement.
       const r = await materialsReadiness(pool, run);
       if (r.status === 'failed') return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_material_unreadable' };

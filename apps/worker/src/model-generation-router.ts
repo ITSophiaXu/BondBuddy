@@ -1,4 +1,3 @@
-import { fileAuthoringStage } from './file-authoring-stage.js';
 /** Routes the shared model_generation stage by the immutable run task kind. */
 import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { noHistoryModelGenerationStage } from './no-history-model-stage.js';
@@ -10,6 +9,7 @@ import { loadReviewInput } from './review-input.js';
 import { reviewModelStage } from './review-model-stage.js';
 import { reviewPublicStage } from './review-public-stage.js';
 import { unifiedModelGenerationStage } from './unified-model-stage.js';
+import { fileAuthoringStage } from './file-authoring-stage.js';
 
 export interface ModelGenerationRouterOptions {
   /** Trusted adapters are supplied only after their server-side sources are implemented. */
@@ -19,6 +19,8 @@ export interface ModelGenerationRouterOptions {
   /** Internal seams keep integration tests on the real contained adapter with synthetic replies. */
   reviewStage?: RunStage;
   publicStage?: RunStage;
+  revisionStage?: RunStage;
+  fileStage?: RunStage;
   /** #15 fact evidence review guard. Absent = off, so the historical stage keeps its current behavior. */
   factEvidenceReviewGate?: FactEvidenceReviewGateLoaderOptions;
 }
@@ -53,13 +55,6 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
     name: 'model_generation',
     replay: true,
     run: async ctx => {
-      if ((ctx.values.get('input_lock') as { authoring_mode?: string })?.authoring_mode === 'unified_v1') {
-        // Never change logical call IDs or resend calls on a previously started v3 run.
-        // New runs hand original files to one native Codex execution; old results replay unchanged.
-        const old=Object.keys(ctx.checkpoint).some(k=>/^unified_v[34]_/.test(k));
-        if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
-        return fileAuthoringStage().run(ctx);
-      }
       if ((ctx.values.get('input_lock') as { review_mode?: string })?.review_mode === 'review_v1') {
         const result = await (options.reviewStage ?? reviewModelStage({ loadInput: loadReviewInput })).run(ctx);
         if (result.kind !== 'done') return result;
@@ -67,6 +62,15 @@ export function modelGenerationRouter(options: ModelGenerationRouterOptions = {}
         const publicResult = await (options.publicStage ?? reviewPublicStage()).run(ctx);
         if (publicResult.kind !== 'done') return publicResult;
         return { ...result, value: { ...(result.value as Record<string, unknown>), report: publicResult.value } };
+      }
+      const locked = ctx.values.get('input_lock') as {authoring_mode?:string;review_revision?:boolean}|undefined;
+      if (locked?.authoring_mode === 'unified_v1') {
+        // An accepted M3 finding revision stays on its bounded source/report/plan path.
+        // Ordinary new authoring uses original files; previously started calls keep their identity.
+        if(locked.review_revision)return (options.revisionStage ?? unifiedModelGenerationStage()).run(ctx);
+        const old=Object.keys(ctx.checkpoint).some(k=>/^unified_v[34]_/.test(k));
+        if(old){const legacy=Object.keys(ctx.checkpoint).some(k=>k.startsWith('unified_v3_'));return unifiedModelGenerationStage({direct:!legacy}).run(ctx);}
+        return (options.fileStage ?? fileAuthoringStage()).run(ctx);
       }
       if (ctx.run.task_kind === 'update') return update.run(ctx);
       if (ctx.run.task_kind === 'generation') return generation.run(ctx);

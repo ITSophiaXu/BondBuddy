@@ -15,6 +15,9 @@ jobs:
   cli-review-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
     env:
       BB_TEST_DATABASE_URL: postgresql://bondbuddy:synthetic-ci-only@127.0.0.1:5432/bb_m3_cli
       BB_TEST_AZURITE_CONNECTION_STRING: UseDevelopmentStorage=true
@@ -76,6 +79,8 @@ jobs:
             apps/worker/dist/authoring-material-tools.test.js \
             apps/worker/dist/codex-adapter.test.js \
             apps/worker/dist/codex-durable.test.js \
+            apps/worker/dist/codex-file-authoring.test.js \
+            apps/worker/dist/file-authoring.pg.test.js \
             apps/worker/dist/model-generation-router.test.js \
             apps/api/dist/review-workspace.test.js \
             packages/domain/dist/review-*.test.js \
@@ -86,8 +91,9 @@ jobs:
             exit 1
           fi
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m3-cli-review.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m3-cli-review.tap"
       - name: Native Word and parser regressions
-        run: python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery
+        run: python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery test_file_authoring
       - name: Stop private Blob test service
         if: always()
         run: |

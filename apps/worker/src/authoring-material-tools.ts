@@ -60,9 +60,11 @@ async function serve(path:string,reviewTraceFile?:string){
       else if(request.method==='tools/call'){
         const args=request.params?.arguments;
         if(args===null||typeof args!=='object'||Array.isArray(args))throw Error('Invalid arguments');
-        const output=review?callReviewTool(data as ReviewToolData,request.params.name,args,trace!):callMaterialTool(data as MaterialToolData,request.params.name,args);
-        // Persist host-authored reads/receipts before the CLI can see the returned receipt ID.
-        if(review)await writeFile(reviewTraceFile!,JSON.stringify(trace),{mode:0o600});
+        // Failed persistence must not make an unseen result count as a read or receipt.
+        // Commit the candidate in memory only after its durable write succeeds.
+        const candidate=review?structuredClone(trace!):undefined;
+        const output=review?callReviewTool(data as ReviewToolData,request.params.name,args,candidate!):callMaterialTool(data as MaterialToolData,request.params.name,args);
+        if(review){await writeFile(reviewTraceFile!,JSON.stringify(candidate),{mode:0o600});trace=candidate;}
         result={content:[{type:'text',text:JSON.stringify(output)}]};
       }else throw Error('Unsupported method');
       process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result})+'\n');

@@ -113,11 +113,15 @@ test('repeated CLI tool checks merge coverage while preserving findings and ever
 });
 
 test('fake, omitted, tampered and mismatched receipts or reading claims cannot produce a report',async()=>{
-  for(const mutate of ['fake','omit','tamper','count','mismatch','no-knowledge'] as const){const {input,ctx}=fixture();
+  for(const mutate of ['fake','omit','duplicate','tamper','count','mismatch','no-knowledge'] as const){const {input,ctx}=fixture();
     const result=await reviewModelStage({loadInput:async()=>input,model:o=>({name:o.name,run:async()=>{
       const value=syntheticCliReview(o.reviewTools!,{financial:{observations:input.evidence.records.map((r,i)=>observation(r,i?'1000.00':'100.00',`o${i}`)),calculations:[]}});
       if(mutate==='fake')value.output.receipt_ids=['receipt-not-issued'];
       if(mutate==='omit')value.output.receipt_ids=[];
+      if(mutate==='duplicate'){
+        callReviewTool(o.reviewTools!,'check_financial',{observations:input.evidence.records.map((r,i)=>observation(r,i?'1000.00':'100.00',`o${i}`)),calculations:[]},value.tool_trace);
+        value.output.receipt_ids=[value.tool_trace.receipts[0]!.receipt_id,value.tool_trace.receipts[0]!.receipt_id];
+      }
       if(mutate==='tamper')value.tool_trace.receipts[0]!.evaluation.findings[0]!.suggested_change='9999.00';
       if(mutate==='count')value.output.reviewed_record_count++;
       if(mutate==='no-knowledge'){value.tool_trace.knowledge_read_ranges=[];value.tool_trace.knowledge_read_complete=false;}
@@ -180,6 +184,7 @@ test('deleted, edited, ambiguous or changed parse targets remain uncovered witho
 
 test('same-source same financial check can resolve; new-source pass cannot release historical identity',async()=>{
   for(const crossVersion of [false,true]){const {input,ctx}=fixture();input.previous_report=previousReport(input);const prior=input.previous_report.findings[0]!;
+    prior.conclusion='error';
     prior.calculation={expression:'source × unit conversion',operands:['old'],observed:'100.00',expected:'1000.00',unit:'万元',rounding:'Original precision'};input.scope={mode:'differential_review',finding_ids:[prior.finding_id]};
     if(crossVersion)changeSource(input);const audit=input.evidence.records.find(r=>r.source_kind==='audit')!;audit.literal_quote=audit.literal_quote.replace('1000.00','100.00');audit.record_sha256=reviewContentHash(audit.literal_quote);
     const normalized=normalizeModelReviewAnalysis(input,{...empty([]),observations:input.evidence.records.map((r,i)=>observation(r,'100.00',`o${i}`))}).financial.observations;

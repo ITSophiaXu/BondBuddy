@@ -2,6 +2,18 @@
 
 关联 #47、#48、#49、#55、#145、#56；需求 PR #519 已合并，集成基线 develop `1b06287`（包含 #520 直接编制材料工具、#524 长编制超时）。本记录随实现提交，描述实际证据，未勾选 GitHub 验收项或关闭 Issue。M3 不包含收费、参考库或商业数据接口前置。
 
+## CLI 主导复核的后续验证
+
+本次后续集成已 rebase 到 develop `babbe37`，保留 #526 原文件编制，并按[CLI 复核决定](../product-decisions/2026-10-02-m3-cli-led-review.md)替换抽取后自动扫描。下文原 M3 工程证据属于此前实现；不能把其抽取批次测试计数当作新方法验证。
+
+- 全部 7 个工作区 `npm run build` 和 `npm run check:contracts` 通过；契约检查包含 156 个 synthetic、12 个内部库、4 个生命周期样例及 OCR/主体绑定 40 项。
+- 本轮 worker/API/domain 联合回归共 185 项，180 通过、0 失败、5 项因本机未配置 PostgreSQL 而跳过。跳过项为工作区、助手及 3 项 OCR 数据库场景；交由 Linux CI 实际执行对应集成链路。
+- 最后收据与范围保护修改后，模型 stage、差异边界、实际 STDIO MCP 与 contained CLI 定向复验 30/30 通过，0 跳过。重复收据不能掩盖遗漏；host 保存失败不会登记未返回的阅读或计算收据；旧 conflict 及缺少精确操作数链的审计问题继续人工待核。
+- 原生 DOCX/XLSX 解析、表格上下文与 CLI/MCP 回归 11/11 通过；知识/协议/边界 16/16 通过；Python 原件编制及 Word 交付 27/27 通过，均无跳过。上述定向集合有重叠，不相加为独立总数。
+- 新 CLI Linux workflow 使用私有 PostgreSQL/Azurite、实际 Python 与受控子进程，执行 CLI、旧共用适配器、原文件编制及 Word 下载回归；显式拒绝失败、跳过或 TODO。原 M3 Linux workflow 保留 runtime-entry、SIGTERM、0700/flock 及共用 worker 检查。运行链接和最终状态写入本次 PR。
+
+本轮材料和模型回复均明确为 synthetic；实际工程组件的验证不替代真实供应商、专业复核、WPS 或生产部署验收。本次没有运行生产迁移或部署，原 Issue 保持开放。
+
 ## 已实现范围
 
 | Issue | 本次交付 | 尚不具备的验收证据 |

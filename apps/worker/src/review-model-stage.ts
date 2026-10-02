@@ -96,7 +96,8 @@ function validateInput(input: ReviewAnalysisInput, ctx: StageContext): void {
 
 function normalizedConcerns(input: ReviewAnalysisInput, raw: CliReview, accessible?: ReadonlySet<string>) {
   return normalizeModelReviewAnalysis(input, { reviewed_record_ids: [], observations: [], calculations: [],
-    compliance_assessments: [], concerns: raw.concerns, limitations: raw.limitations } satisfies ModelReviewAnalysis, accessible).concerns;
+    compliance_assessments: [], concerns: raw.concerns.map(c => c.dimension === 'financial' ? { ...c, suggested_change: null } : c),
+    limitations: raw.limitations } satisfies ModelReviewAnalysis, accessible).concerns;
 }
 function validateCliOutput(input: ReviewAnalysisInput, raw: unknown, allowed: ReadonlySet<string>, byDimension?: ReviewToolData['allowed_target_ids_by_dimension']): raw is CliReview {
   try {
@@ -122,7 +123,7 @@ export function assembleCliReview(input: ReviewAnalysisInput, raw: CliReview, da
   const read = new Set(trace.read_record_ids), allowed = new Set(data.allowed_target_ids);
   if (!validateCliOutput(input, raw, allowed, data.allowed_target_ids_by_dimension) || raw.reviewed_record_count !== read.size) fail('review_cli_output_invalid');
   const receipts = new Map(trace.receipts.map(r => [r.receipt_id, r]));
-  if (raw.receipt_ids.length !== receipts.size || raw.receipt_ids.some(id => !receipts.has(id))) fail('review_cli_receipts_incomplete');
+  if (raw.receipt_ids.length !== receipts.size || new Set(raw.receipt_ids).size !== receipts.size || raw.receipt_ids.some(id => !receipts.has(id))) fail('review_cli_receipts_incomplete');
   const concerns = normalizedConcerns(input, raw, read);
   const semantic = normalizeReviewFindings(concerns, input.evidence);
   const byKey = new Map(raw.concerns.map((c, i) => [c.stable_key, normalizeReviewFindings([concerns[i]!], input.evidence)[0]!]));
@@ -183,7 +184,7 @@ function retainDifferential(input: ReviewAnalysisInput, raw: CliReview | null, t
       result.coverage.push(reviewCoverage(input.evidence, `scope:${prior.finding_id}`, prior.dimension, 'uncovered', '所选问题未完整定位到当前源稿；保留历史问题，不能因删改或缺少匹配认定解决。', mapping.current_target_refs, [retained, ...current]));
     } else {
       const claims = raw?.checks.filter(c => c.outcome === 'pass' && c.resolves_finding_ids.includes(prior.finding_id)) ?? [];
-      const resolved = !mapping.source_changed && prior.dimension === 'financial' && !!prior.calculation && claims.some(c => {
+      const resolved = !mapping.source_changed && prior.dimension === 'financial' && prior.conclusion === 'error' && !!prior.calculation && claims.some(c => {
         const receipt = trace?.receipts.find(r => r.receipt_id === c.receipt_id);
         const pass = receipt?.evaluation.coverage.find(p => p.check_id === c.receipt_check_id && p.outcome === 'pass');
         const observations = receipt?.financial?.observations.filter(o => o.source_kind === 'disclosure' && overlaps(o.value_refs) && o.value === prior.calculation!.observed && o.unit === prior.calculation!.unit) ?? [];
@@ -199,9 +200,9 @@ function retainDifferential(input: ReviewAnalysisInput, raw: CliReview | null, t
           }
           if (receipt?.financial?.calculations.some(calc => calc.result_id === o.observation_id && calc.operation === prior.calculation!.expression
             && JSON.stringify(calc.operand_ids) === JSON.stringify(prior.calculation!.operands) && pass.check_id === `calculation:${calc.calculation_id}`)) return true;
-          return receipt?.audit_rule_ids.some(id => prior.calculation!.expression === `audit-reconciliation:${AUDIT_RECONCILIATION_KNOWLEDGE.version}:${id}` && pass.check_id === `audit-reconciliation:${id}:${o.observation_id}`
-            && prior.calculation!.operands.length > 0 && prior.calculation!.operands.every(operand => receipt.financial!.observations.some(s => s.observation_id === operand
-              && s.value_refs.every(ref => pass.evidence_refs.some(e => evidenceKey(e) === evidenceKey(ref))))));
+          // Audit-method coverage does not yet issue the precise operand chain used.
+          // Its current pass cannot independently release a historical calculation issue.
+          return false;
         });
       });
       if (current.length) result.coverage.push(reviewCoverage(input.evidence, `scope:${prior.finding_id}`, prior.dimension, current.some(f => ['error', 'conflict'].includes(f.conclusion)) ? 'issue' : 'manual', '同一目标位置本轮仍有需处理事项。', mapping.current_target_refs, current));
