@@ -56,7 +56,8 @@ export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: Revi
     && content.accepted_at === pin.accepted_plan.accepted_at
     && new Date(planRow.accepted_at).toISOString() === pin.accepted_plan.accepted_at
     && content.source_report_id === pin.source_report.report_id
-    && inputManifestHash(content.finding_ids) === inputManifestHash(pin.selected_findings.map(finding => finding.finding_id))
+    && content.finding_ids.every((id:unknown) => typeof id === 'string')
+    && inputManifestHash([...content.finding_ids].sort()) === inputManifestHash(pin.selected_findings.map(finding => finding.finding_id).sort())
     && inputManifestHash(content.excluded_findings) === inputManifestHash(pin.excluded_findings)
     && inputManifestHash(content.requirements) === inputManifestHash(pin.requirements);
 }
@@ -177,6 +178,15 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     }
   }
   const requirements: string[] = [];
+  // The review input's requirements and the accepted plan remain separately pinned.
+  // Neither later chat messages nor the project's current mutable draft are loaded here.
+  if (revision && manifest.review && typeof manifest.review === 'object') {
+    const locked = (manifest.review as {input?:{requirements?:unknown}}).input?.requirements;
+    if (locked !== undefined) {
+      if (!Array.isArray(locked) || locked.some(value => typeof value !== 'string')) throw new Error('INPUT_REVISION_CONFLICT');
+      requirements.push(...locked);
+    }
+  }
   for (const pin of manifest.authoring.requirements) {
     const row = (await ctx.pool.query(`SELECT snapshot_id,content_sha256 FROM bb_user_submission_versions
       WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND message_id=$4 AND message_version=$5 AND submission_kind='project_message'`,
