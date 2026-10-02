@@ -4,6 +4,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { open, rm } from 'node:fs/promises';
 import { once } from 'node:events';
 import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDiagnostic } from './parser-diagnostics.js';
+import { validDocxDocumentFormatting, type DocxDocumentFormatting } from '../../../packages/domain/dist/review-document-formatting.js';
 
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
@@ -96,7 +97,7 @@ export type DocumentParseResponse = {
   }|null;
   records: DocumentParseRecord[];
   warnings: Array<{code:string;message:string}>;
-  document: Record<string, unknown> & {page_count:number|null;auxiliary_targets?:DocxAuxiliaryTarget[]};
+  document: Record<string, unknown> & {page_count:number|null;auxiliary_targets?:DocxAuxiliaryTarget[];docx_formatting?:DocxDocumentFormatting};
   error: {code:string;message:string}|null;
 };
 
@@ -428,7 +429,7 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
     ? ['page_count','pages_without_native_text','pages_with_images']
     : request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ? (value.status==='failed'?['page_count']:supportsDocxAuxiliaryTargets(value.parser_version)
-        ? ['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary'])
+        ? ['page_count','revision_summary','auxiliary_targets',...(value.parser_version===DOCX_OUTLINE_PARSER_VERSION&&Object.hasOwn(value.document,'docx_formatting')?['docx_formatting']:[])]:['page_count','revision_summary'])
       : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ? ['page_count','worksheet_count','missing_formula_results','cached_formula_results']
         : request.material.media_type==='text/csv'
@@ -448,11 +449,21 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
     }
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     const hasAuxiliaryTargets=supportsDocxAuxiliaryTargets(value.parser_version);
-    if(!hasExactKeys(value.document,hasAuxiliaryTargets?['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary']) ||
+    const hasFormatting=Object.hasOwn(value.document,'docx_formatting');
+    const documentKeys=hasAuxiliaryTargets?['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary'];
+    if(hasFormatting)documentKeys.push('docx_formatting');
+    if(!hasExactKeys(value.document,documentKeys) ||
+      (hasFormatting&&(value.parser_version!==DOCX_OUTLINE_PARSER_VERSION||!validDocxDocumentFormatting(value.document.docx_formatting))) ||
       (hasAuxiliaryTargets && !validDocxAuxiliaryTargets(value.document.auxiliary_targets)) ||
       !isObject(value.document.revision_summary) || !hasExactKeys(value.document.revision_summary,['insertions','deletions']) ||
       !Number.isSafeInteger(value.document.revision_summary.insertions) || Number(value.document.revision_summary.insertions)<0 ||
       !Number.isSafeInteger(value.document.revision_summary.deletions) || Number(value.document.revision_summary.deletions)<0) throw parserError('INVALID_PARSE_RESPONSE');
+    if(hasFormatting){
+      const formatting=value.document.docx_formatting as DocxDocumentFormatting,targets=value.document.auxiliary_targets as DocxAuxiliaryTarget[];
+      if(formatting.headers.parts.some(part=>!targets.some(target=>target.kind==='header'&&target.part_name===part.part_name&&target.part_sha256===part.part_sha256
+        &&target.parseable&&target.scope.status==='resolved'&&target.scope.relationship_part_sha256===part.relationship_part_sha256
+        &&part.sections.every(section=>target.scope.section_references.some(ref=>ref.section_index===section.section_index&&ref.reference_type===section.reference_type)))))throw parserError('INVALID_PARSE_RESPONSE');
+    }
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
     if(!positiveInteger(value.document.worksheet_count) || !Number.isSafeInteger(value.document.missing_formula_results) || Number(value.document.missing_formula_results)<0 ||
       !Number.isSafeInteger(value.document.cached_formula_results) || Number(value.document.cached_formula_results)<0 ||

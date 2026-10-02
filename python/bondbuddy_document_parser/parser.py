@@ -25,6 +25,7 @@ from openpyxl.cell.cell import MergedCell
 import pdfplumber
 from pypdf import PdfReader
 from .paragraph_outline import ParagraphOutlineResolver
+from .document_formatting import document_formatting
 
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
@@ -1146,7 +1147,9 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     if not records:
         raise ParseFailure("MATERIAL_UNREADABLE", "DOCX contains no extractable effective body text")
     return records, warnings, {"page_count": None, "revision_summary": {"insertions": inserted, "deletions": deleted},
-                               "auxiliary_targets": auxiliary_targets}
+                               "auxiliary_targets": auxiliary_targets,
+                               "docx_formatting": document_formatting(path, root, styles.element, document.settings.element, auxiliary_targets,
+                                                                      MAX_DOCX_AUXILIARY_PART_BYTES, bool(unsupported_revision_count))}
 
 
 def _parse_pdf(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:

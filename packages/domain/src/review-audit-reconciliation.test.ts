@@ -22,7 +22,8 @@ function fixture() {
       material_sha256:source ? f.ctx.source_material.sha256 : reviewContentHash('synthetic-audit'),
       parse_snapshot_id:source ? 'synthetic-disclosure-snapshot' : 'synthetic-audit-snapshot',
       parse_response_sha256:reviewContentHash(source ? 'synthetic-disclosure-snapshot' : 'synthetic-audit-snapshot')}));
-    return {observation_id:id,source_kind,entity_id:'synthetic-issuer',metric,accounting_scope:'consolidated',basis:'original',
+    // Synthetic structured producer provenance; model JSON cannot supply this assertion.
+    return {observation_id:id,source_kind,entity_id:'synthetic-issuer',metric,accounting_scope:'consolidated',basis:'original',context_verification:'trusted_structured',
       period,currency:'CNY',unit:'万元',value,value_literal:options.value_literal ?? value,value_refs:[ref],
       context_refs:{entity:[ref],period:[ref],accounting_scope:[ref],currency:[ref],unit:[ref],basis:[ref]},...rest};
   };
@@ -55,6 +56,19 @@ test('synthetic missing digit yields exact repairable fixed formula with only di
   assert.equal(coverage(result,r).outcome,'issue');assert.equal(item.conclusion,'error');assert.equal(item.suggested_change,'300.00');
   assert.deepEqual(item.repairability.allowed_record_ids,['d']);assert.equal(item.calculation?.expression,`audit-reconciliation:${pack.version}:${r.id}`);
   assert.deepEqual(item.calculation?.operands,['a0','a1']);assert.equal(item.calculation?.unit,'万元');assert(item.calculation?.rounding.includes('+a0 +a1'));
+});
+test('omitted or unverified context provenance cannot authorize a formula pass or repair',()=>{
+  for(const provenance of ['omitted','unverified'] as const)for(const source of ['target','operand'] as const){
+    const f=fixture(),r=rule(1),input=f.build(r,'30.00',['100.00','200.00']);
+    const observation=source==='target'?input.target:input.operands[0]!;
+    if(provenance==='omitted')delete observation.context_verification;
+    else observation.context_verification='unverified';
+    const result=reviewAuditReconciliation(input.observations,f.ctx),item=finding(result,r)!;
+    assert.equal(coverage(result,r).outcome,'needs_evidence',`${provenance}:${source}`);
+    assert(item.limitations.includes('financial_semantic_context_unverified'));
+    assert(result.coverage.every(check=>check.outcome!=='pass'));
+    assert(result.findings.every(finding=>!finding.repairability.can_revise&&!finding.suggested_change));
+  }
 });
 test('subtraction distinguishes a negative signed amount from subtracting an expense',()=>{
   const f=fixture(),r=rule(19),input=f.build(r,'85.00',['100.00','-5.00','10.00']);

@@ -8,6 +8,8 @@ import type { Pool } from 'pg';
 import type { ReviewAnalysisInput, ReviewAnalysisRecord } from './review-model-stage.js';
 import { isReviewReport } from '@bondbuddy/contracts';
 import { loadReviewRuleContext } from './review-rule-context.js';
+import { loadReviewDocumentFormatting } from './review-document-formatting.js';
+import type { ReviewFormattedDocument } from '../../../packages/domain/dist/review-compliance-checks.js';
 
 export type ReviewManifest = Record<string, unknown> & {
   issuer_name: string | null; market: string | null; offering: string | null;
@@ -49,6 +51,7 @@ export async function loadReviewInput(ctx: StageContext): Promise<ReviewAnalysis
   if (!row || !isReviewInput(row.manifest) || await reviewInputGate(ctx.pool, ctx.run, row)) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as ReviewManifest, review = manifest.review;
   const records: ReviewAnalysisRecord[] = [], limitations: string[] = [];
+  const formatted_documents:ReviewFormattedDocument[]=[];
   type SnapshotPin = { material_id: string; material_version: number; snapshot_id: string | null; response_sha256: string | null; gap: string | null };
   let snapshots = ctx.checkpoint.review_sources?.snapshots as SnapshotPin[] | undefined;
   if (!snapshots) {
@@ -69,6 +72,11 @@ export async function loadReviewInput(ctx: StageContext): Promise<ReviewAnalysis
     if (!selected.snapshot_id) { limitations.push(`材料 ${pin.material_id} 无可用解析证据，本次未覆盖。`); continue; }
     const snapshot = await getParseSnapshot({ pool: ctx.pool }, { ownerUserId: ctx.run.owner_user_id, projectId: ctx.run.project_id, materialId: pin.material_id, materialVersion: pin.material_version }, selected.snapshot_id);
     if (!snapshot || snapshot.contentSha256 !== pin.sha256 || snapshot.responseSha256 !== selected.response_sha256) throw new Error('INPUT_REVISION_CONFLICT');
+    if(pin.material_id===review.input.source_material_ref!.material_id){
+      const document=loadReviewDocumentFormatting(snapshot,{owner_user_id:ctx.run.owner_user_id,project_id:ctx.run.project_id,
+        source:review.input.source_material_ref!,snapshot_id:selected.snapshot_id,response_sha256:selected.response_sha256});
+      if(document)formatted_documents.push(document);
+    }
     for (const warning of snapshot.response.warnings) limitations.push(`材料 ${pin.material_id}：${warning.code}`);
     for (const record of snapshot.evidence) {
       records.push({ owner_user_id: ctx.run.owner_user_id, project_id: ctx.run.project_id,
@@ -107,6 +115,7 @@ export async function loadReviewInput(ctx: StageContext): Promise<ReviewAnalysis
   const input: ReviewAnalysisInput = { input_hash: ctx.run.input_hash.trim(), evidence: { owner_user_id: ctx.run.owner_user_id, project_id: ctx.run.project_id, report_id: review.report_id,
     source_material: review.input.source_material_ref!, records, rules: ruleContext.rules },
     rule_context: ruleContext.rule_context,
+    formatted_documents,
     rule_packs: ruleContext.rule_packs, formatting_requirements: ruleContext.formatting_requirements, requirements: review.input.requirements,
     context_messages: review.context_messages ?? [],
     ...{ historical_records: historicalRecords },

@@ -2,6 +2,8 @@ import type { ReviewCheckCoverage, ReviewEvidenceRef, ReviewRuleRef } from '../.
 import { evaluateRulePackCapability, rulePackContentHash, type RuleContext, type RulePack } from './index.js';
 import { validateReviewEvidence, validateReviewRule, uniqueEvidence, type ReviewEvidenceContext } from './review-evidence.js';
 import { normalizeReviewFindings, reviewCoverage, type ReviewEvaluation } from './review-finding-normalization.js';
+import { documentFormattingProperty, validFormattedDocument, checkDocumentFormatting, type ReviewFormattedDocument } from './review-document-formatting.js';
+export type { ReviewFormattedDocument } from './review-document-formatting.js';
 
 export interface ReviewRuleAssessment {
   check_id: string; rule_id: string; pack_id: string;
@@ -15,7 +17,8 @@ export interface ReviewRuleAssessment {
 }
 export interface ReviewFormattingRequirement {
   check_id: string; record_ids: string[]; rule_ref: ReviewRuleRef;
-  property: 'latin_font' | 'east_asia_font' | 'half_points' | 'outline_level' | 'rendered_layout';
+  property: 'latin_font' | 'east_asia_font' | 'half_points' | 'outline_level' | 'rendered_layout'
+    | 'header_text_sha256' | 'header_latin_font' | 'header_east_asia_font' | 'header_half_points' | 'toc_field' | 'toc_generated';
   expected: string;
 }
 /** Taken from the actual parser record after its response/hash is verified. */
@@ -23,6 +26,7 @@ export interface ReviewFormattedRecord { ref: ReviewEvidenceRef; formatting: Rec
 export interface ReviewComplianceInput {
   context: RuleContext | null; packs: RulePack[]; assessments: ReviewRuleAssessment[];
   formatting_requirements: ReviewFormattingRequirement[]; formatted_records: ReviewFormattedRecord[];
+  formatted_documents?: ReviewFormattedDocument[];
 }
 
 function ruleBelongsToPack(ref: ReviewRuleRef, pack: RulePack | undefined): boolean {
@@ -117,6 +121,16 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
     const applicable = requirement.rule_ref.applicability === 'applicable' && (requirement.rule_ref.authority !== 'regulatory'
       || eligible.get(requirement.rule_ref.pack_id)?.has(requirement.rule_ref.rule_id)
         && ruleBelongsToPack(requirement.rule_ref,input.packs.find(pack => pack.pack_id === requirement.rule_ref.pack_id)));
+    if(documentFormattingProperty(requirement.property)){
+      const documents=input.formatted_documents??[];
+      if(ruleErrors.length||!applicable||requirement.rule_ref.authority!=='internal_method'||requirement.record_ids.length
+        ||documents.length!==1||!validFormattedDocument(documents[0]!,ctx)){
+        result.coverage.push(reviewCoverage(ctx,requirement.check_id,'compliance','uncovered',
+          '页眉/目录检查缺少有效的用户要求、当前源稿或同一原生解析快照元数据；旧快照与不同版本不能推断通过。',[],[],ruleErrors.length?[]:[requirement.rule_ref]));continue;
+      }
+      const checked=checkDocumentFormatting(requirement.property,requirement.expected,documents[0]!);
+      result.coverage.push(reviewCoverage(ctx,requirement.check_id,'compliance',checked.outcome,checked.reason,[],[],[requirement.rule_ref]));continue;
+    }
     if (ruleErrors.length || !applicable || !requirement.record_ids.length || !requirement.expected.trim()) {
       result.coverage.push(reviewCoverage(ctx,requirement.check_id,'compliance','uncovered','格式要求缺少有效来源、明确范围或适用性。',[])); continue;
     }

@@ -5,7 +5,7 @@ import { reviewContentHash } from '../../../packages/domain/dist/review-evidence
 import type { ReviewAnalysisRecord } from './review-model-stage.js';
 
 type Result={rules:ReviewRuleRef[];formatting_requirements:ReviewFormattingRequirement[];limitations:string[]};
-type Standard={index:number;text:string;scope:'正文'|'正文段落'|'表格'|'指定标题';selector?:string;property:ReviewFormattingRequirement['property'];expected:string;record_ids:string[]};
+type Standard={index:number;text:string;scope:'正文'|'正文段落'|'表格'|'指定标题'|'页眉'|'目录';selector?:string;property:ReviewFormattingRequirement['property'];expected:string;record_ids:string[]};
 const namedSizes:Record<string,number>={初号:84,小初:72,一号:52,小一:48,二号:44,小二:36,三号:32,小三:30,四号:28,小四:24,五号:21,小五:18,六号:15,小六:13,七号:11,八号:10};
 const fontNames=new Set(['宋体','黑体','楷体','仿宋','微软雅黑','等线','华文宋体','华文中宋','华文仿宋','华文楷体','Arial','Times New Roman','Calibri','Cambria','Microsoft YaHei','SimSun','SimHei','FangSong','KaiTi','DengXian']);
 function fontName(value:string):string|null{
@@ -24,6 +24,14 @@ export function loadExplicitReviewFormatting(input:{input_hash:string;input_revi
   const result:Result={rules:[],formatting_requirements:[],limitations:[]};const standards:Standard[]=[];
   const current=input.records.filter(r=>r.source_kind==='disclosure'&&r.locator_type==='docx_block');
   for(const [index,text] of input.requirements.entries()){
+    const header=/^(?:格式要求\s*[：:]\s*)?页眉内容\s*(?:为|[：:])\s*(?:“([^”\r\n]{1,300})”|"([^"\r\n]{1,300})")[。.]?$/u.exec(text.trim());
+    if(header){standards.push({index,text,scope:'页眉',property:'header_text_sha256',expected:createHash('sha256').update(header[1]??header[2]!,'utf8').digest('hex'),record_ids:[]});continue;}
+    if(/^(?:格式要求\s*[：:]\s*)?目录(?:必须)?(?:使用|包含)\s*TOC\s*域[。.]?$/iu.test(text.trim())){
+      standards.push({index,text,scope:'目录',property:'toc_field',expected:'present',record_ids:[]});continue;
+    }
+    if(/^(?:格式要求\s*[：:]\s*)?目录必须存在[。.]?$/u.test(text.trim())){
+      standards.push({index,text,scope:'目录',property:'toc_generated',expected:'present',record_ids:[]});continue;
+    }
     const heading=/^(?:格式要求\s*[：:]\s*)?标题\s*(?:“([^”\r\n]{1,300})”|"([^"\r\n]{1,300})")\s*(?:的)?(?:层级|大纲级别)\s*(?:为|[：:])\s*([1-9一二三四五六七八九])\s*级[。.]?$/u.exec(text.trim());
     if(heading){
       const selector=(heading[1]??heading[2]!).trim(),level=heading[3]!;
@@ -33,13 +41,13 @@ export function loadExplicitReviewFormatting(input:{input_hash:string;input_revi
       standards.push({index,text,scope:'指定标题',selector,property:'outline_level',expected,record_ids:matches.length===1?[matches[0]!.record_id]:[]});
       continue;
     }
-    const match=/^(?:格式要求\s*[：:]\s*)?(正文段落|正文|表格)\s*(中文字体|西文字体|字号)\s*(?:为|[：:])\s*(.+?)[。.]?$/u.exec(text.trim());
-    if(!match){if(/字体|字号|页眉|页脚|目录|行距|分页|标题|大纲级别/.test(text))result.limitations.push(`输入要求 ${index+1} 的格式范围或标准未能明确解析，本轮未自动检查该要求；支持逐条明确正文/正文段落/表格的字体或字号，以及精确标题标准，例如：标题“第一章 总则”层级为1级。`);continue;}
+    const match=/^(?:格式要求\s*[：:]\s*)?(正文段落|正文|表格|页眉)\s*(中文字体|西文字体|字号)\s*(?:为|[：:])\s*(.+?)[。.]?$/u.exec(text.trim());
+    if(!match){if(/字体|字号|页眉|页脚|目录|行距|分页|标题|大纲级别/.test(text))result.limitations.push(`输入要求 ${index+1} 的格式范围或标准未能明确解析，本轮未自动检查该要求；支持逐条明确正文/正文段落/表格/页眉的字体或字号、精确标题层级、页眉内容，以及“目录必须使用TOC域”或“目录必须存在”。`);continue;}
     const scope=match[1] as Standard['scope'],property=match[2]==='字号'?'half_points':match[2]==='中文字体'?'east_asia_font':'latin_font',value=match[3]!.trim();
     const expected=property==='half_points'?halfPoints(value):fontName(value);
     if(!expected){result.limitations.push(`输入要求 ${index+1} 的字体或字号值不明确，不选择其中一个候选标准。`);continue;}
-    const record_ids=current.filter(r=>scope==='正文'||(scope==='表格'?table(r):!table(r))).map(r=>r.record_id);
-    standards.push({index,text,scope,property,expected,record_ids});
+    const record_ids=scope==='页眉'?[]:current.filter(r=>scope==='正文'||(scope==='表格'?table(r):!table(r))).map(r=>r.record_id);
+    standards.push({index,text,scope,property:scope==='页眉'?`header_${property}`:property,expected,record_ids});
   }
   const conflicting=new Set<number>();
   for(const [i,a] of standards.entries())for(const b of standards.slice(i+1))if(a.property===b.property&&a.expected!==b.expected){
@@ -58,6 +66,6 @@ export function loadExplicitReviewFormatting(input:{input_hash:string;input_revi
     if(!chunks.length)chunks.push([]);
     for(const [batch,record_ids] of chunks.entries())result.formatting_requirements.push({check_id:`user-format:${identity.slice(0,24)}:${batch}`,record_ids,rule_ref:rule,property:standard.property,expected:standard.expected});
   }
-  if(standards.length)result.limitations.push('用户格式标准仅核对本次已解析的原生 DOCX 正文；“正文”含正文表格，“正文段落”不含表格。指定标题按真实 OOXML 大纲级别核对，不由样式名称或文字外观推断层级；旧快照缺字段时未覆盖。页眉页脚、目录域及实际视觉分页尚未覆盖，格式发现仅供报告和批注，不能通过文本修订改变字体、字号或大纲级别。');
+  if(standards.length)result.limitations.push('用户格式标准核对本次原生 DOCX 属性；“正文”含正文表格，“正文段落”不含表格。指定标题按真实 OOXML 大纲级别核对，旧快照缺字段时未覆盖。页眉按已解析部件及分节引用核对精确内容、字体或字号；目录区分 TOC 域存在与可读取结果。页眉/目录仅写入全量审查的覆盖明细，保留部件位置和材料/解析哈希，不生成正文锚点、批注或文本修订；差异复核尚未覆盖文档级格式。页脚、目录页码刷新、目录条目完整性及实际视觉分页尚未覆盖，格式发现不能通过文本修订改变字体、字号或大纲级别。');
   return result;
 }

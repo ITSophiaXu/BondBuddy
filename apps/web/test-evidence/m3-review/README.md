@@ -56,7 +56,7 @@ npm test -w @bondbuddy/web -- review-workspace.spec.ts prototype-workflow.spec.t
 
 处理清单补充验证：contracts / web build 通过，单元测试 48/48，`npm test -w @bondbuddy/web -- review-workspace.spec.ts` 11/11（原 M3 8 项 + 处理清单 3 项）。新增验证覆盖两处入口、三种处理状态与原因、历史来源版本、缺失/错配/非法数据及重试；此轮未重复未改动的 M1/原型浏览器测试。
 
-提议调整与项目资料补充验证（同日后续修复，未重跑完整套件）：
+提议调整与项目资料补充的分步验证（当时采用定向检查；后续完整 M3 回归见下文）：
 
 ```cmd
 set BB_E2E_BROWSER_CHANNEL=msedge
@@ -73,6 +73,8 @@ npm.cmd test -w @bondbuddy/web -- review-workspace.spec.ts --grep=plan.failures
 - 上述为 **7 个不同的定向浏览器用例**（6 个新增、1 个既有），不与前述 11/11 或早期 23/23 累加为完整套件结果。最终截图检查重复执行 `--grep=unrepairable` 1/1 和 `--grep=missing.review.project` 1/1，后者在 tab 修复后再次通过；这些复验不另计用例数。三张新增截图均已目视核对，提议弹窗复选框的全宽继承问题已修复。
 - 独立后端验证：设置 `BB_TEST_DATABASE_URL` 指向可克隆的本地合成测试数据库后，`node --test apps/api/dist/review-workspace.test.js` 为 1/1、零跳过。该真实 PostgreSQL 用例覆盖调整选择的提议来源与哈希、重排同一范围、非法提议／问题拒绝、原消息不变、无新增运行，以及补充项目字段不改写既有任务 manifest；不与浏览器用例数合计。
 - contracts / API / Web build、`npm run check:contracts` 和 `git diff --check` 通过；tab 与弹窗错误反馈修复后的 Web build 另行通过。本轮没有重复未改动的完整单元测试、M1／原型浏览器套件或真实供应商验收。
+
+整合 develop `c2c3448` 后，以实现 head `a0bf76f` 执行完整 `review-workspace.spec.ts`：**17/17通过，零失败**（Edge，32.5秒）。本轮包括提议调整、弹窗失败反馈、资料补充与实际标签恢复，以及全部既有 M3 行为；不是将前述定向计数相加。四张已有实现截图重新生成并目视检查，保留原型截图及原型存储不变。未重复未改动的 M1/原型浏览器用例。
 
 首次运行缺少 Playwright 默认 Chromium，改用本机 Edge 后执行成功；`BB_E2E_BROWSER_CHANNEL` 为可选环境参数，CI 默认行为保持不变。
 

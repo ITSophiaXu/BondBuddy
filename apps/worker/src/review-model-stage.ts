@@ -8,7 +8,7 @@ import { AUDIT_RECONCILIATION_KNOWLEDGE } from '../../../packages/domain/dist/au
 import { reviewAuditReconciliation } from '../../../packages/domain/dist/review-audit-reconciliation.js';
 import { guardFinancialRepairConflicts } from '../../../packages/domain/dist/review-financial-repair-conflicts.js';
 import { verifyModelFinancialContext } from '../../../packages/domain/dist/review-financial-context.js';
-import { reviewComplianceEvidence, type ReviewComplianceInput, type ReviewFormattingRequirement } from '../../../packages/domain/dist/review-compliance-checks.js';
+import { reviewComplianceEvidence, type ReviewComplianceInput, type ReviewFormattingRequirement, type ReviewFormattedDocument } from '../../../packages/domain/dist/review-compliance-checks.js';
 import { carryForwardReviewFindings, normalizeReviewFindings, reviewCoverage, type ReviewFindingCandidate } from '../../../packages/domain/dist/review-finding-normalization.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
@@ -29,6 +29,7 @@ export interface ReviewAnalysisInput {
   rule_context: RuleContext | null;
   rule_packs: RulePack[];
   formatting_requirements: ReviewFormattingRequirement[];
+  formatted_documents?: ReviewFormattedDocument[];
   requirements: string[];
   context_messages?: { role:string; content:string; context:unknown }[];
   scope: ReviewReport['scope'];
@@ -297,6 +298,20 @@ export function reviewModelStage(options:{
       .filter(c=>observationIds.has(c.result_id)&&c.operand_ids.every(id=>observationIds.has(id))).map(c=>[c.calculation_id,c])).values()];
     const financial=runFinancial?reviewFinancialEvidence({observations,calculations},input.evidence):{findings:[],coverage:[],limitations:[]};
     const reconciliation=runFinancial?reviewAuditReconciliation(observations,input.evidence):{findings:[],coverage:[],limitations:[]};
+    // Exact result bindings keep pass/conflict/rounding constraints separate from their operands.
+    const checkTargets=new Map<string,ReviewFinancialObservation>();
+    const observationById=new Map(observations.map(o=>[o.observation_id,o]));
+    for(const observed of observations.filter(o=>o.source_kind==='disclosure')){
+      checkTargets.set(`compare:${observed.observation_id}`,observed);
+      for(const rule of AUDIT_RECONCILIATION_KNOWLEDGE.rules)if([rule.result_metric,...(rule.result_aliases??[])].includes(observed.metric))
+        checkTargets.set(`audit-reconciliation:${rule.id}:${observed.observation_id}`,observed);
+    }
+    for(const calculation of calculations){const observed=observationById.get(calculation.result_id);
+      if(observed?.source_kind==='disclosure')checkTargets.set(`calculation:${calculation.calculation_id}`,observed);}
+    if(input.scope.mode==='differential_review')reconciliation.coverage=reconciliation.coverage.filter(check=>checkTargets.has(check.check_id));
+    // Model-only concerns cannot acquire trusted blocking provenance from a title or limitation code.
+    const guarded=guardFinancialRepairConflicts({findings:[...financial.findings,...reconciliation.findings],
+      coverage:[...financial.coverage,...reconciliation.coverage],limitations:[]},input.evidence,checkTargets);
     const compliance=runCompliance?reviewComplianceEvidence({context:input.rule_context,packs:input.rule_packs,
       assessments:[...new Map(normalized.flatMap(n=>n.compliance).filter(a=>input.scope.mode==='full_review'||a.target_refs.length>0&&a.target_refs.every(ref=>complianceKeys.has(evidenceKey(ref)))).map(a=>[a.check_id,a])).values()],
       formatting_requirements:input.formatting_requirements.flatMap(requirement=>{
@@ -304,13 +319,13 @@ export function reviewModelStage(options:{
         const record_ids=requirement.record_ids.filter(id=>complianceTargets.some(record=>record.record_id===id));
         return record_ids.length?[{...requirement,record_ids}]:[];
       }),
-      formatted_records:complianceTargets.map(r=>({ref:referenceFor(r),formatting:r.formatting??{}}))},input.evidence):{findings:[],coverage:[],limitations:[]};
+      formatted_records:complianceTargets.map(r=>({ref:referenceFor(r),formatting:r.formatting??{}})),
+      formatted_documents:input.scope.mode==='full_review'?input.formatted_documents??[]:[]},input.evidence):{findings:[],coverage:[],limitations:[]};
     const modelFindings=normalizeReviewFindings(normalized.flatMap(n=>n.concerns).filter(c=>input.scope.mode==='full_review'
       ||c.target_refs.length>0&&c.target_refs.every(ref=>(c.dimension==='financial'?financialKeys:complianceKeys).has(evidenceKey(ref)))),input.evidence);
-    let findings=[...new Map([...financial.findings,...reconciliation.findings,...compliance.findings,...modelFindings].map(f=>[f.finding_id,f])).values()];
-    let coverage=[...financial.coverage,...reconciliation.coverage,...compliance.coverage];
-    const guarded=guardFinancialRepairConflicts({findings,coverage,limitations:[]},input.evidence);
-    findings=guarded.findings;coverage=guarded.coverage;
+    let findings=[...new Map([...guarded.findings,...compliance.findings,...modelFindings].map(f=>[f.finding_id,f])).values()];
+    let coverage=[...guarded.coverage,...compliance.coverage];
+    let dependencyRecheckNote:string|null=null;
     if(runFinancial)for(const gap of nativeFormulas.gaps)coverage.push(reviewCoverage(input.evidence,gap.check_id,'financial','manual',gap.reason,gap.evidence_refs));
     const contextDimension=runFinancial?'financial':'compliance';
     for(const {batch_key,gap} of contextGaps)coverage.push(reviewCoverage(input.evidence,`${contextDimension}:context-capacity:${batch_key}:${gap.group_id}`,contextDimension,'uncovered',
@@ -350,6 +365,21 @@ export function reviewModelStage(options:{
           findings.push(...pending);coverage.push(reviewCoverage(input.evidence,`scope:${prior.finding_id}`,prior.dimension,'manual',pending[0]!.description,mapping.current_target_refs,pending));
         }
       }
+      // Rechecking a selected result also evaluates its financial constraints. Preserve unselected historical
+      // findings as carried; give an identical current dependency result its own stable report-bound identity.
+      const unselectedIds=new Set(input.previous_report!.findings.filter(f=>!input.scope.finding_ids.includes(f.finding_id)).map(f=>f.finding_id));
+      const dependencyIds=new Map(findings.filter(f=>f.check_status==='rechecked'&&unselectedIds.has(f.finding_id))
+        .map(f=>[f.finding_id,`F-${reviewContentHash(['selected-target-dependency',input.evidence.report_id,f.finding_id]).slice(0,24)}`]));
+      if(dependencyIds.size)dependencyRecheckNote='所选目标相关检查的本轮复算结果使用当前报告的新事项编号；原未选事项仍沿用历史报告，不代表已重新复核。';
+      findings=findings.map(f=>{
+        const id=dependencyIds.get(f.finding_id);if(!id)return f;
+        const note=' 本项为所选目标相关检查的本轮复算结果；此前未选事项仍按历史报告沿用。';
+        // Preserve a schema-maximum original concern verbatim. The report-level note remains visible
+        // even when the finding has no room for another sentence or limitation marker.
+        return {...f,finding_id:id,description:f.description.length+note.length<=12000?f.description+note:f.description,
+          limitations:f.limitations.length<200?[...new Set([...f.limitations,'selected_target_dependency_recheck'])]:f.limitations};
+      });
+      coverage=coverage.map(c=>({...c,finding_ids:c.finding_ids.map(id=>dependencyIds.get(id)??id)}));
       const carried=carryForwardReviewFindings(input.previous_report!.findings,input.scope.finding_ids,input.evidence.report_id);
       const previousIds=new Set([...carried,...findings.filter(f=>f.check_status==='carried_forward')].map(f=>f.finding_id));
       const carriedCoverage=input.previous_report!.coverage.filter(c=>!c.finding_ids.length||c.finding_ids.some(id=>previousIds.has(id))).map(c=>({...structuredClone(c),
@@ -361,6 +391,7 @@ export function reviewModelStage(options:{
     const report:ReviewReport={report_id:input.evidence.report_id,project_id:ctx.run.project_id,run_id:ctx.run.id,input_revision:ctx.run.input_revision,
       version:input.report_version,source_material:input.evidence.source_material,scope:input.scope,findings,coverage,
       limitations:[...new Set([`审计勾稽内部方法 ${AUDIT_RECONCILIATION_KNOWLEDGE.version}；内容 SHA-256 ${reviewAuditKnowledgePin}；附件 SHA-256 ${AUDIT_RECONCILIATION_KNOWLEDGE.source_sha256}。方法知识不代表本项目审计事实或已核实监管依据。`,
+        ...(dependencyRecheckNote?[dependencyRecheckNote]:[]),
         ...input.limitations,...(contextGaps.length?[`${contextGaps.length} 个批次范围存在上下文容量缺口，具体目标见未覆盖记录。`]:[]),...normalized.flatMap(n=>n.limitations),...financial.limitations,...reconciliation.limitations,...guarded.limitations,...compliance.limitations,
         '表格上下文按同一解析快照的工作表/表格结构绑定；表前12个非空行不保证包含全部语义表头。显式同表求和按完整快照映射，但不会自动批准财务上下文；其他跨批公式图、表外或更深层表头仍未验证。',
         '财务主体/指标映射来自带原文引用的模型抽取，金额结论仅针对已验证证据和已执行的确定性复算；未抽取或未适用检查不视作通过。'])].slice(0,200),created_at:input.created_at};

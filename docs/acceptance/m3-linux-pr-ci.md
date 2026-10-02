@@ -31,3 +31,5 @@ Python wheel dry-run已由上述runner实际安装和运行证据补充。该结
 同步develop `1b06287`后，定向集追加`run-runtime.test.js`及`unified-timeout-recovery.test.js`，覆盖新增长编制deadline和只读材料工具恢复的共用队列边界。[run 37006145251](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37006145251)于2026-10-02T12:25:13Z成功，head`9ea8ed8`、合并树`1ab1c77`，Node173/173、Python Word20/20，零失败/跳过/TODO。
 
 上述计数保留为新增parser/样本/公式/供应商schema修复前的历史证据；扩展后的最终提交及合并树、计数、结论见[PR #523 checks](https://github.com/ITSophiaXu/BondBuddy/pull/523/checks)。不会将旧SHA的成功用于宣称新提交已经通过。
+
+整合develop `c2c3448`的固定审计知识后，Node清单还包含知识源/hash、审计勾稽、修订冲突、实际worker组合回归及原生页眉/目录检查，以验证其与M3原文语义、差异范围和显式公式的组合；不仅验证独立知识模块。

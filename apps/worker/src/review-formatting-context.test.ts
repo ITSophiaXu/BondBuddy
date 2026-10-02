@@ -31,7 +31,7 @@ test('saved explicit standards supply immutable user-source rules and current-so
   assert.equal(result.rules[0]?.source_sha256,createHash('sha256').update('正文中文字体为宋体').digest('hex'));assert.match(result.rules[0]!.locator,/revision 7.*非监管规则/);
 });
 test('ambiguous, conditional, visual and conflicting input never chooses a standard silently',()=>{
-  for(const input of ['全文使用宋体','正文中文字体为宋体或黑体','正文中文字体为不是宋体','正文中文字体为除标题外用宋体','正文字号为小四或四号','页眉字号为12磅','正文标题层级必须三级','如果是大公募，正文字号为小四'])assert.equal(load([input]).formatting_requirements.length,0,input);
+  for(const input of ['全文使用宋体','正文中文字体为宋体或黑体','正文中文字体为不是宋体','正文中文字体为除标题外用宋体','正文字号为小四或四号','页脚字号为12磅','正文标题层级必须三级','如果是大公募，正文字号为小四'])assert.equal(load([input]).formatting_requirements.length,0,input);
   const conflicts=load(['正文中文字体为宋体','表格中文字体为黑体','正文段落字号为12磅']);assert.equal(conflicts.formatting_requirements.length,1);assert.equal(conflicts.formatting_requirements[0]?.property,'half_points');assert(conflicts.limitations.some(x=>x.includes('冲突')));
   const distinct=load(['正文段落中文字体为宋体','表格中文字体为黑体']);assert.equal(distinct.formatting_requirements.length,2);
 });
@@ -88,7 +88,7 @@ d.save(sys.argv[1])`;
     const checked=reviewComplianceEvidence({context:null,packs:[],assessments:[],formatting_requirements:loaded.formatting_requirements,formatted_records:source.map(r=>({ref:referenceFor(r),formatting:r.formatting!}))},evidence);
     const actual=checked.coverage.filter(c=>c.check_id.startsWith('user-format:'));assert.deepEqual(actual.map(c=>c.outcome),['issue','issue','pass']);
     assert.equal(checked.findings.length,2);assert(checked.findings.every(f=>f.conclusion==='error'&&!f.repairability.can_revise&&f.rule_refs?.[0]?.authority==='internal_method'));
-    assert(loaded.limitations.some(x=>x.includes('页眉页脚')&&x.includes('尚未覆盖')));assert(source[0]?.formatting?.runs);
+    assert(loaded.limitations.some(x=>x.includes('页脚')&&x.includes('尚未覆盖')));assert(source[0]?.formatting?.runs);
   }finally{assert(directory.startsWith(resolve(tmpdir(),'bb-review-format-')));await rm(directory,{recursive:true,force:true});}
 });
 

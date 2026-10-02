@@ -89,6 +89,7 @@ jobs:
           python -m pip freeze
           echo "BONDBUDDY_TEST_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
           echo "BONDBUDDY_WORD_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "BB_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
           echo "PYTHONPATH=$GITHUB_WORKSPACE/python:$GITHUB_WORKSPACE/python/tests" >> "$GITHUB_ENV"
           command -v flock
           test -x apps/worker/test-fixtures/codex/fake-codex.mjs
@@ -152,8 +153,11 @@ jobs:
             apps/worker/dist/unified-authoring.pg.test.js \
             apps/worker/dist/unified-timeout-recovery.test.js \
             apps/worker/dist/review-anchor-mapping.test.js \
+            apps/worker/dist/review-audit-knowledge.test.js \
+            apps/worker/dist/review-financial-integration.test.js \
             apps/worker/dist/review-assistant.test.js \
             apps/worker/dist/review-formatting-context.test.js \
+            apps/worker/dist/review-document-formatting.test.js \
             apps/worker/dist/review-native-formulas.test.js \
             apps/worker/dist/review-record-context.test.js \
             apps/worker/dist/review-rule-context.test.js \
@@ -166,6 +170,9 @@ jobs:
             packages/domain/dist/review-evidence.test.js \
             packages/domain/dist/review-financial-context.test.js \
             packages/domain/dist/review-financial-checks.test.js \
+            packages/domain/dist/audit-reconciliation-knowledge.test.js \
+            packages/domain/dist/review-audit-reconciliation.test.js \
+            packages/domain/dist/review-financial-repair-conflicts.test.js \
             packages/domain/dist/review-compliance-checks.test.js \
             | tee "$RUNNER_TEMP/bb-m3-linux.tap"
           if grep -Eq '^# (skipped|todo) [1-9][0-9]*$' "$RUNNER_TEMP/bb-m3-linux.tap"; then
