@@ -18,4 +18,12 @@
 
 首次完成需记录 run URL、PR merge SHA、runner 和依赖版本、迁移日志、Node pass/fail/skipped 计数及 Python结果；应确认 runtime-entry 的完整子进程/SIGTERM 用例和 M3 完整上传到 Word 流程均执行。失败时保留 Actions 步骤日志并在同一 PR 修复，不将缺环境导致的跳过或未启动记为验收。
 
-本次仅完成工作流配置、源码/入口核对和静态检查，尚无 GitHub Actions Linux 成功运行证据。Python 固定依赖已做 Linux CPython 3.11 wheel 解析 dry-run（未安装），这不代替 runner 上的安装与测试。真实供应商、专业质量、WPS和部署验收仍独立跟踪。
+## 首次实际运行结果
+
+[Actions run 37004818931](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37004818931) 于2026-10-02T12:11:19Z成功结束。检出的PR合并树为`f989cc94a49fc6f60b57fb178218fda6dc35650a`，由head `90ac2565bcc4fb0f126a0bddf05944bb5941eb76`与develop `987f11e1764e831bad95735b5e44ad0cebc31660`组成。
+
+- 上述固定Linux环境实际安装依赖，构建、contracts、Azurite读写及全部迁移成功。
+- Node定向集：169 tests / 169 pass / 0 fail / 0 skipped / 0 todo；完整`production entry: heartbeat, parse claim, capability_not_ready run, probe loop, SIGTERM`用例及M3上传→解析→报告/批注→修订Word→不可变历史均实际执行。
+- Python Word交付与修订：20 tests，全部通过，无跳过。
+
+Python wheel dry-run已由上述runner实际安装和运行证据补充。该结果覆盖synthetic模型输入下的真实Linux/数据库/存储/解析/Word工程链路；真实供应商、专业质量、WPS和生产部署/回滚验收仍独立跟踪。

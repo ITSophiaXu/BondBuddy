@@ -32,7 +32,8 @@
 - Codex适配器20/20通过；修复Windows进程树终止命令返回非零时仍永久等待的问题。模拟越权工具尝试、超时、取消、已完成结果重放和未知usage均通过；平台信号/系统进程环境差异单独断言，不降低Linux检查。
 - 公开搜索事件journal真实PG/Azurite回归1/1通过：写入校验owner/project/run/call/attempt及有效租约，事件/hash不可变；相同重放可接受，冲突、跨项目及过期租约拒绝，并保留证据故障保护。
 - 最终合并`987f11e`后全工作区构建、contracts及表格修复后的worker构建通过。下列联合回归共148项：首轮147通过、0跳过；唯一失败为既有编制测试在Windows找不到`python3`，改为使用明确配置的测试Python后发现精简检出缺少已有知识目录，恢复该跟踪目录后定向复测1/1通过。未更改解析器或放宽断言。共用适配器现为21/21，包含#520材料工具；M3真实PG/Azurite链路、助手、修订及全部新增表格场景通过。
-- 真实PG/Azurite解析并发槽回归2/2通过，环境工厂装配检查1/1通过。现有完整`runtime-entry.test.ts`需要POSIX私有目录权限与SIGTERM；Windows执行到`PARSE_STAGING_UNSAFE_ROOT`失败。本机无Docker或已安装WSL发行版，**不能记为Linux入口验收通过**；生产发布前仍需在目标Linux环境完成原测试，未绕过其安全检查。
+- 真实PG/Azurite解析并发槽回归2/2通过，环境工厂装配检查1/1通过。完整`runtime-entry.test.ts`在Windows执行到`PARSE_STAGING_UNSAFE_ROOT`失败，未绕过POSIX权限检查；随后由下述真实Linux CI补齐运行证据。
+- [Linux Actions首次运行](https://github.com/ITSophiaXu/BondBuddy/actions/runs/37004818931)于2026-10-02T12:11:19Z成功：Ubuntu24.04、Node24.14.0、Python3.11.11、PostgreSQL16.10、Azurite3.35.0，实际PR合并树`f989cc94a49fc6f60b57fb178218fda6dc35650a`（head `90ac256` + develop `987f11e`）。构建/契约/迁移通过；Node169/169、Python Word20/20，0失败、0跳过。包含完整runtime-entry/SIGTERM、0700/flock隔离、解析并发、共享worker及M3上传到Word链路；模型仍为synthetic。配置及证据边界见[Linux PR检查说明](m3-linux-pr-ci.md)。这补齐CI环境的Linux测试，不代表生产部署/回滚通过。
 
 测试使用独立数据库克隆，不连接模板长期占用，也不操作生产数据库或用户原型存储。首次补写的API测试尝试直接把无交付证据的任务设为成功，被数据库Word门正确拒绝；测试已改为分别验证失败报告可追溯与默认不展示，真实成功行为由完整交付链路验证。
 
