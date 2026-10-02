@@ -576,6 +576,11 @@
       "url": "https://github.com/ITSophiaXu/BondBuddy/issues/79",
       "bodyHash": "733c981438cedb0ab9d69ade139fce846bc50541cd43390e59f6c1b557f97860",
       "parent": 1
+    },
+    "M3-11": {
+      "number": 145,
+      "id": 5578759147,
+      "url": "https://github.com/ITSophiaXu/BondBuddy/issues/145"
     }
   },
   "verified": true,
@@ -583,5 +588,6 @@
   "verifiedMilestones": [
     "M1",
     "M2"
-  ]
+  ],
+  "currentScopeNote": "2026-10-02 M3 requirements are maintained separately from this historical publication snapshot. Existing bodyHash/verified/verifiedAt fields describe their original publication only. The added M3-11 identity is from the saved issue snapshot; no current body hash or publication verification is asserted."
 }
