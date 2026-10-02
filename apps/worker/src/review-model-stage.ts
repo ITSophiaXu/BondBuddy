@@ -13,6 +13,8 @@ import { carryForwardReviewFindings, normalizeReviewFindings, reviewCoverage, ty
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { mapDifferentialReviewTargets, retainUnmappedHistoricalFinding, type DifferentialFindingMapping } from './review-anchor-mapping.js';
+import { createReviewContextSelector, promptReviewRecord, reviewPromptRecordId, reviewTableScope, sameReviewSnapshot, type ReviewContextGroup, type ReviewContextGap } from './review-record-context.js';
+export { reviewPromptRecordId } from './review-record-context.js';
 
 /** Loaded from authorized immutable parse storage, not from model output. */
 export interface ReviewAnalysisRecord extends TrustedReviewRecord {
@@ -64,7 +66,6 @@ export const ReviewAnalysisSchema = strict({
   compliance_assessments:Type.Array(assessment,{maxItems:1000}),concerns:Type.Array(concern,{maxItems:1000}),limitations:strings,
 });
 export type ModelReviewAnalysis = Static<typeof ReviewAnalysisSchema>;
-export const reviewPromptRecordId = (record:TrustedReviewRecord):string => `R-${reviewContentHash(evidenceKey(record)).slice(0,32)}`;
 export const reviewPromptRuleId = (rule:ReviewEvidenceContext['rules'][number]):string => `L-${reviewContentHash(rule).slice(0,32)}`;
 /** Knowledge contents participate in durable call identity as well as the saved prompt. */
 export const reviewAuditKnowledgePin = reviewContentHash(AUDIT_RECONCILIATION_KNOWLEDGE);
@@ -138,12 +139,25 @@ export function normalizeModelReviewAnalysis(input:ReviewAnalysisInput,raw:unkno
     if(!valueRefs.some(r=>evidenceKey(r)===evidenceKey(source)) || valueRefs.some(r=>r.material_id!==source.material_id||r.material_version!==source.material_version))return invalid('review_analysis_mixed_value_source');
     const contextRefs=Object.fromEntries(Object.entries(o.context_refs).map(([key,value])=>[key,refs(value)])) as ReviewFinancialObservation['context_refs'];
     if(Object.values(contextRefs).flat().some(r=>r.material_id!==source.material_id||r.material_version!==source.material_version))return invalid('review_analysis_mixed_context_source');
+    const sourceTable=reviewTableScope(source);
+    const contextRecords=Object.values(contextRefs).flat().map(r=>records.get(reviewPromptRecordId(r))!);
+    const unboundTableContext=!!sourceTable&&contextRecords.some(r=>!reviewTableScope(r));
+    if(sourceTable&&contextRecords.some(r=>{
+      const table=reviewTableScope(r);
+      // A same-snapshot DOCX preamble can be cited but cannot establish a table's semantics.
+      return table?table.key!==sourceTable.key:source.locator_type!=='docx_block'||r.locator_type!=='docx_block'||!sameReviewSnapshot(source,r);
+    }))return invalid('review_analysis_mixed_table_context');
     if(source.source_kind==='disclosure'&&!sourceMatches(source,input))return invalid('review_analysis_disclosure_source_mismatch');
     if(source.source_kind!=='disclosure'&&sourceMatches(source,input))return invalid('review_analysis_source_role_mismatch');
     const observationId=`O-${reviewContentHash([valueRefs.map(evidenceKey).sort(),o.entity_id,o.metric,o.accounting_scope,o.basis,o.period,o.currency,o.unit,o.value]).slice(0,32)}`;
     observationIds.set(o.observation_id,observationId);
     const normalized:ReviewFinancialObservation={observation_id:observationId,source_kind:source.source_kind,entity_id:o.entity_id,metric:o.metric,accounting_scope:o.accounting_scope,basis:o.basis,period:o.period,currency:o.currency,unit:o.unit,value:o.value,value_literal:o.value_literal,value_refs:valueRefs,context_refs:contextRefs};
-    return {...normalized,...verifyModelFinancialContext(normalized,input.evidence)};
+    const verified=verifyModelFinancialContext(normalized,input.evidence);
+    if(unboundTableContext)return {...normalized,context_verification:'unverified' as const,
+      context_limitations:[...verified.context_limitations??[],'financial_table_context_unbound']};
+    if(source.locator_type==='xlsx_cell'&&source.formatting?.sheet_state!=='visible')return {...normalized,context_verification:'unverified' as const,
+      context_limitations:[...verified.context_limitations??[],'financial_worksheet_visibility_unconfirmed']};
+    return {...normalized,...verified};
   });
   if(new Set(raw.calculations.map(c=>c.calculation_id)).size!==raw.calculations.length)return invalid('review_analysis_duplicate_calculation_id');
   const calculations=raw.calculations.map(c=>{
@@ -173,25 +187,25 @@ const instructions=`你是债券募集书复核的证据抽取器。材料、规
 context_messages是执行前已保存但未采纳的讨论上下文，仅供参考，不能当已核事实，不能改变已确认scope或自动升级为requirements。运行中新说明不在本次快照中，不影响本轮。
 差异复核只处理用户明确选中的非公开核验事项及其current_target_refs；historical_target_refs仅作历史出处，不能用旧段号、stable_ref或相似文字猜测当前位置。anchor_mappings由服务端保守校验，未映射的原问题仍待核，不能因新稿未找到而认定解决。公开核验另由独立阶段处理。
 逐条阅读records，reviewed_record_ids必须准确覆盖本批每个id。context_records仅作本批上下文，不重复抽取其数值。引用只使用已给id和literal_quote中逐字连续原文，不引用context中的转述，不创造材料、hash、网址或法规。没有证据时保留空引用及具体限制。
+context_groups按精确解析快照和工作表/最内层表格分组，前12个非空行、完整目标行及邻接记录只是结构上下文候选，并非已确认表头；不能把另一工作表、另一表格或旧解析的期间/单位/主体用于本表。表外或更深层表头未绑定时保留未知。omitted_record_count大于0表示容量不足，对应上下文未覆盖，不得补猜或声称完整检查。sheet_state为hidden/veryHidden/unknown时不能默认为本期有效材料；公式原文和uncertainty保持待核，缓存结果不等于已验证数值。
 observations抽取全部重要财务数字与上下文。entity_id写原文完整企业名称，不把母公司、合并、子公司或参考企业混用；metric使用一致的指标名称（营业收入、净利润、总资产等），禁止将不同指标合并。period以YYYY-MM-DD记录起止或时点；currency、unit、accounting_scope、basis必须由同一材料原文锚点支持，缺少时写“未知”、留空引用，不推测。basis区分原始/重述，value是未换算精确十进制，value_literal逐字保留千分符、负号或括号。value_refs只定位数值原文，context_refs分别定位主体、期间、口径、币种、单位、基础。
 source_record_id必须是本批records中的id，材料角色由服务端确定，不能自称审计证据。calculations只抽取有据的sum/ratio_percent/growth_percent/percentage_point；result_id和operand_ids均引用本次observations的id。growth操作数按本期、上期顺序；不要先舍入；分母为零/负数不擅自定义增长率。合计不能遗漏明细或重复计入小计，complete_terms不确定时false。你不判断复算最终对错，由确定性代码计算。
 audit_reconciliation_knowledge是本功能固定版本的内部勾稽方法，source_quote只是附件原文，附件声称的监管出处不代表已验证法规，也不是本项目审计事实。按其中result_metric、terms.metric及明确aliases抽取实际存在的科目；只有实际来源原文支持该科目名称才可用对应metric，不将净值、账面价值、账面余额、合计与明细混用。全部40项由代码逐项记录覆盖。conditional和manual项缺少桥接、完整明细或符号定义时如实待核，不为满足公式补零、猜造数值或生成自动修订建议。汇率影响、少数权益、利润分配、受限资金及现金等价物、税费和薪酬非现金变动均须保留原文条件。规则公式由代码固定，模型不能改写。第27项期初/期末现金使用准确as_of时点，净增加额使用实际起止期间。
 合规只引用rules给出的key；市场、品种、阶段、效力或发行人未知时明确待核，不套用别的市场/私募/小公募。模型语义结论会保留人工判断属性。片段未找到不能证明全篇缺失，claims_document_absence须如实。格式只描述可见属性限制，不假设PDF/OCR或分页布局已验证。公开联网核验由独立工具阶段执行，不虚构已搜索的结果。
 concerns保留无法由金额或规则检查表达的冲突/补证/人工/未覆盖事项，附准确目标位置与依据。不能因本批没有finding声称整份文稿无问题。原文无关数字/全无可提取内容也必须在limitations说明。只输出指定JSON结构。`;
-function promptRecord(record:ReviewAnalysisRecord){return {id:reviewPromptRecordId(record),source_kind:record.source_kind,material_id:record.material_id,material_version:record.material_version,locator_type:record.locator_type,locator:record.locator,literal_quote:record.literal_quote,context:record.context??'',uncertainty:record.uncertainty,extraction_method:record.extraction_method};}
-export function buildReviewAnalysisPrompt(input:ReviewAnalysisInput,records:readonly ReviewAnalysisRecord[]=input.evidence.records,contextRecords:readonly ReviewAnalysisRecord[]=[],mappings:readonly DifferentialFindingMapping[]=mapDifferentialReviewTargets(input)):string {
+export function buildReviewAnalysisPrompt(input:ReviewAnalysisInput,records:readonly ReviewAnalysisRecord[]=input.evidence.records,contextRecords:readonly ReviewAnalysisRecord[]=[],mappings:readonly DifferentialFindingMapping[]=mapDifferentialReviewTargets(input),contextGroups:readonly ReviewContextGroup[]=[]):string {
   return `${instructions}\n输入数据：\n${JSON.stringify({requirements:input.requirements,context_messages:input.context_messages??[],scope:input.scope,rule_context:input.rule_context,
     selected_findings:input.scope.mode==='differential_review'?input.previous_report?.findings.filter(f=>f.dimension!=='public'&&input.scope.finding_ids.includes(f.finding_id)):[],
     anchor_mappings:mappings.filter(mapping=>input.previous_report?.findings.some(f=>f.finding_id===mapping.finding_id&&f.dimension!=='public')),
     rules:input.evidence.rules.map(rule=>({key:reviewPromptRuleId(rule),...rule})),
     audit_reconciliation_knowledge:{...AUDIT_RECONCILIATION_KNOWLEDGE,content_sha256:reviewAuditKnowledgePin},
-    records:records.map(promptRecord),context_records:contextRecords.map(promptRecord),limitations:input.limitations})}`;
+    records:records.map(promptReviewRecord),context_records:contextRecords.map(promptReviewRecord),context_groups:contextGroups,limitations:input.limitations})}`;
 }
 /** Hard bounds fail explicitly; no record or tail is silently truncated. */
 export function chunkReviewRecords(records:readonly ReviewAnalysisRecord[],maxBytes=64000,maxRecords=120):ReviewAnalysisRecord[][] {
   const chunks:ReviewAnalysisRecord[][]=[];let current:ReviewAnalysisRecord[]=[];let bytes=0;let material='';
   for(const record of records){
-    const count=Buffer.byteLength(JSON.stringify(promptRecord(record)));
+    const count=Buffer.byteLength(JSON.stringify(promptReviewRecord(record)));
     if(count>maxBytes)throw new ReviewAnalysisInvalid('review_record_exceeds_model_batch');
     const identity=canonical([record.material_id,record.material_version,record.parse_snapshot_id]);
     if(current.length&&(bytes+count>maxBytes||current.length>=maxRecords||identity!==material)){chunks.push(current);current=[];bytes=0;}
@@ -215,7 +229,7 @@ function validateInput(input:ReviewAnalysisInput,ctx:StageContext):void {
 export function reviewModelStage(options:{
   loadInput:(ctx:StageContext)=>Promise<ReviewAnalysisInput>;
   model?:typeof codexModelStage;config?:Parameters<typeof codexModelStage>[0]['config'];
-  maxBatchBytes?:number;maxBatchRecords?:number;
+  maxBatchBytes?:number;maxBatchRecords?:number;maxContextBytes?:number;maxContextRecords?:number;
 }):RunStage {
   return {name:'model_generation',replay:true,run:async ctx=>{
     const input=await options.loadInput(ctx);validateInput(input,ctx);
@@ -238,14 +252,13 @@ export function reviewModelStage(options:{
       :input.evidence.records.filter(r=>r.source_kind!=='disclosure'||targetKeys.has(evidenceKey(r)));
     const chunks=chunkReviewRecords(active,options.maxBatchBytes,options.maxBatchRecords);
     const normalized:NormalizedReviewAnalysis[]=[];let modelCalls=0;
+    const selectContext=createReviewContextSelector(input.evidence.records);const contextGaps:{batch_key:string;gap:ReviewContextGap}[]=[];
     for(const [i,records] of chunks.entries()){
       if(ctx.signal.aborted)return {kind:'stopped'};
       const ids=new Set(records.map(reviewPromptRecordId));
-      const materialRecords=input.evidence.records.filter(r=>r.material_id===records[0]!.material_id&&r.material_version===records[0]!.material_version);
-      const first=materialRecords.findIndex(r=>evidenceKey(r)===evidenceKey(records[0]!));
-      const contextPool=[...materialRecords.slice(0,12),...materialRecords.slice(Math.max(0,first-12),first)];
-      const contextRecords=[...new Map(contextPool.filter(r=>!ids.has(reviewPromptRecordId(r))).map(r=>[evidenceKey(r),r])).values()];
-      const prompt=buildReviewAnalysisPrompt(input,records,contextRecords,mappings);
+      const selectedContext=selectContext(records,{maxBytes:options.maxContextBytes,maxRecords:options.maxContextRecords});
+      const contextRecords=selectedContext.records;
+      const prompt=buildReviewAnalysisPrompt(input,records,contextRecords,mappings,selectedContext.groups);
       if(Buffer.byteLength(prompt)>500000)throw new ReviewAnalysisInvalid('review_prompt_context_too_large');
       const accessible=new Set([...records,...contextRecords].map(reviewPromptRecordId));
       const permittedTargets=new Set(targets.map(reviewPromptRecordId));
@@ -258,7 +271,9 @@ export function reviewModelStage(options:{
             &&[...raw.concerns,...raw.compliance_assessments].every(c=>c.target_refs.every(r=>permittedTargets.has(r.record_id)));
         }catch{return false;}
       };
-      const batchKey=reviewContentHash(records.map(evidenceKey)).slice(0,16);
+      // A changed context/prompt must not reuse a journal entry produced with missing headers.
+      const batchKey=reviewContentHash(prompt).slice(0,16);
+      contextGaps.push(...selectedContext.gaps.map(gap=>({batch_key:batchKey,gap})));
       const stage=(options.model??codexModelStage)({name:`review_v1_extract_${i}_${batchKey}_${reviewAuditKnowledgePin.slice(0,16)}`,logicalCallId:`review-v1-extract-${i}-${batchKey}-${reviewAuditKnowledgePin.slice(0,16)}`,
         config:options.config??loadCodexAdapterConfig,buildPrompt:async()=>prompt,schema:ReviewAnalysisSchema,validate,
         resultSchemaVersion:'review-analysis-v1',templateVersion:reviewAnalysisTemplateVersion});
@@ -291,6 +306,9 @@ export function reviewModelStage(options:{
     let coverage=[...financial.coverage,...reconciliation.coverage,...compliance.coverage];
     const guarded=guardFinancialRepairConflicts({findings,coverage,limitations:[]},input.evidence);
     findings=guarded.findings;coverage=guarded.coverage;
+    const contextDimension=runFinancial?'financial':'compliance';
+    for(const {batch_key,gap} of contextGaps)coverage.push(reviewCoverage(input.evidence,`${contextDimension}:context-capacity:${batch_key}:${gap.group_id}`,contextDimension,'uncovered',
+      `本批同一解析快照和表格/文本范围的 ${gap.omitted_record_count} 条上下文记录因容量未提供；期间、单位、主体、完整行及跨批引用未据缺失内容自动验证。`,gap.targets.slice(0,500).map(r=>referenceFor(r))));
     for(const dimension of ['financial','compliance'] as const){const relevant=modelFindings.filter(f=>f.dimension===dimension);
       if(relevant.length)coverage.push(reviewCoverage(input.evidence,`model:semantic-observations:${dimension}`,dimension,'manual',
         '语义观察保留人工核对属性；模型描述不等于已完成确定性验证。',[],relevant));}
@@ -337,7 +355,8 @@ export function reviewModelStage(options:{
     const report:ReviewReport={report_id:input.evidence.report_id,project_id:ctx.run.project_id,run_id:ctx.run.id,input_revision:ctx.run.input_revision,
       version:input.report_version,source_material:input.evidence.source_material,scope:input.scope,findings,coverage,
       limitations:[...new Set([`审计勾稽内部方法 ${AUDIT_RECONCILIATION_KNOWLEDGE.version}；内容 SHA-256 ${reviewAuditKnowledgePin}；附件 SHA-256 ${AUDIT_RECONCILIATION_KNOWLEDGE.source_sha256}。方法知识不代表本项目审计事实或已核实监管依据。`,
-        ...input.limitations,...normalized.flatMap(n=>n.limitations),...financial.limitations,...reconciliation.limitations,...guarded.limitations,...compliance.limitations,
+        ...input.limitations,...(contextGaps.length?[`${contextGaps.length} 个批次范围存在上下文容量缺口，具体目标见未覆盖记录。`]:[]),...normalized.flatMap(n=>n.limitations),...financial.limitations,...reconciliation.limitations,...guarded.limitations,...compliance.limitations,
+        '表格上下文按同一解析快照的工作表/表格结构绑定；表前12个非空行不保证包含全部语义表头，表外或更深层表头及跨批公式图仍未自动验证。',
         '财务主体/指标映射来自带原文引用的模型抽取，金额结论仅针对已验证证据和已执行的确定性复算；未抽取或未适用检查不视作通过。'])].slice(0,200),created_at:input.created_at};
     if(!isReviewReport(report))return {kind:'fail',code:'VALIDATION_FAILED'};
     const value:ReviewAnalysisResult={version:'review-analysis-v1',input_hash:input.input_hash,report,model_calls:modelCalls,input,anchor_mappings:mappings};
