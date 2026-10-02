@@ -7,6 +7,7 @@ import { reviewFinancialEvidence, type ReviewFinancialInput, type ReviewFinancia
 import { AUDIT_RECONCILIATION_KNOWLEDGE } from '../../../packages/domain/dist/audit-reconciliation-knowledge.js';
 import { reviewAuditReconciliation } from '../../../packages/domain/dist/review-audit-reconciliation.js';
 import { guardFinancialRepairConflicts } from '../../../packages/domain/dist/review-financial-repair-conflicts.js';
+import { verifyModelFinancialContext } from '../../../packages/domain/dist/review-financial-context.js';
 import { reviewComplianceEvidence, type ReviewComplianceInput, type ReviewFormattingRequirement } from '../../../packages/domain/dist/review-compliance-checks.js';
 import { carryForwardReviewFindings, normalizeReviewFindings, reviewCoverage, type ReviewFindingCandidate } from '../../../packages/domain/dist/review-finding-normalization.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -141,7 +142,8 @@ export function normalizeModelReviewAnalysis(input:ReviewAnalysisInput,raw:unkno
     if(source.source_kind!=='disclosure'&&sourceMatches(source,input))return invalid('review_analysis_source_role_mismatch');
     const observationId=`O-${reviewContentHash([valueRefs.map(evidenceKey).sort(),o.entity_id,o.metric,o.accounting_scope,o.basis,o.period,o.currency,o.unit,o.value]).slice(0,32)}`;
     observationIds.set(o.observation_id,observationId);
-    return {observation_id:observationId,source_kind:source.source_kind,entity_id:o.entity_id,metric:o.metric,accounting_scope:o.accounting_scope,basis:o.basis,period:o.period,currency:o.currency,unit:o.unit,value:o.value,value_literal:o.value_literal,value_refs:valueRefs,context_refs:contextRefs};
+    const normalized:ReviewFinancialObservation={observation_id:observationId,source_kind:source.source_kind,entity_id:o.entity_id,metric:o.metric,accounting_scope:o.accounting_scope,basis:o.basis,period:o.period,currency:o.currency,unit:o.unit,value:o.value,value_literal:o.value_literal,value_refs:valueRefs,context_refs:contextRefs};
+    return {...normalized,...verifyModelFinancialContext(normalized,input.evidence)};
   });
   if(new Set(raw.calculations.map(c=>c.calculation_id)).size!==raw.calculations.length)return invalid('review_analysis_duplicate_calculation_id');
   const calculations=raw.calculations.map(c=>{
@@ -150,7 +152,7 @@ export function normalizeModelReviewAnalysis(input:ReviewAnalysisInput,raw:unkno
     const resultObservation=observations.find(o=>o.observation_id===result)!;
     const operandObservations=operands.map(id=>observations.find(o=>o.observation_id===id)!);
     return {...c,calculation_id:`C-${reviewContentHash([c.operation,result,operands]).slice(0,32)}`,result_id:result,operand_ids:operands as string[],
-      complete_terms:c.complete_terms && (c.operation!=='sum'||completeNativeSum(resultObservation,operandObservations,input))};
+      complete_terms:c.complete_terms && (c.operation!=='sum'||completeNativeSum(resultObservation,operandObservations,input)),relation_verification:'unverified' as const};
   });
   const compliance:ReviewComplianceInput['assessments']=raw.compliance_assessments.map(a=>{
     const rr=ruleRefs(a.rule_keys),first=rr[0]!;
