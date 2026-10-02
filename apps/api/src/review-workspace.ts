@@ -153,11 +153,15 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       if ((old?.version ?? 0) !== b.expected_version) stale();
       const report = (await readReviewReport(client, user, id, b.source_report_id)).report;
       if ([...b.finding_ids, ...b.excluded_findings.map(f => f.finding_id)].some(f => !report.findings.some(v => v.finding_id === f)) || b.excluded_findings.some(f => b.finding_ids.includes(f.finding_id))) invalid('Plan findings must belong to the report and cannot be selected and excluded together');
+      let proposalOrigin: ReviewPlan['proposal_origin'];
       if (b.proposal_id) {
         const proposed = (await client.query("SELECT proposal FROM bb_review_messages WHERE owner_user_id=$1 AND project_id=$2 AND role='assistant' AND proposal->>'proposal_id'=$3", [user, id, b.proposal_id])).rows[0]?.proposal;
-        if (!proposed || proposed.source_report_id !== b.source_report_id || !same(proposed.finding_ids, b.finding_ids) || !same(proposed.requirements, b.requirements)) invalid('Accepted proposal does not match the saved assistant proposal');
+        if (!proposed || proposed.source_report_id !== b.source_report_id) invalid('Proposal does not belong to the source report');
+        // The proposal is provenance; the user's explicitly confirmed selection is the plan.
+        proposalOrigin = { proposal: proposed, sha256: inputManifestHash(proposed),
+          adoption: same([...proposed.finding_ids].sort(), [...b.finding_ids].sort()) && same(proposed.requirements, b.requirements) ? 'as_proposed' : 'user_adjusted' };
       }
-      const snapshot = { plan_id: old?.plan_id ?? uid(), version: b.expected_version + 1, source_report_id: b.source_report_id, finding_ids: b.finding_ids, excluded_findings: b.excluded_findings, requirements: b.requirements, accepted_at: new Date().toISOString() };
+      const snapshot = { plan_id: old?.plan_id ?? uid(), version: b.expected_version + 1, source_report_id: b.source_report_id, finding_ids: b.finding_ids, excluded_findings: b.excluded_findings, requirements: b.requirements, accepted_at: new Date().toISOString(), ...(proposalOrigin ? { proposal_origin: proposalOrigin } : {}) };
       const plan: ReviewPlan = { ...snapshot, sha256: inputManifestHash(snapshot) };
       await client.query('INSERT INTO bb_review_revision_plans(id,version,owner_user_id,project_id,content_sha256,accepted_at,plan) VALUES($1,$2,$3,$4,$5,$6,$7)', [plan.plan_id, plan.version, user, id, plan.sha256, plan.accepted_at, plan]);
       await outbox(client, user, id, 'review.plan_accepted', { plan_id: plan.plan_id, version: plan.version, source_report_id: plan.source_report_id });

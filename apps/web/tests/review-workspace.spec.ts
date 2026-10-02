@@ -2,9 +2,9 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { Value } from '@sinclair/typebox/value';
-import { ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
+import { schemas, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
-  type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run } from '@bondbuddy/contracts';
+  type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewProposal, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
 
 // Real Chromium with an owner-aware synthetic HTTP fixture. Not model, database or Word acceptance.
@@ -25,7 +25,7 @@ function fixture(){
   const makeRun=(runId:string,state:Run['state'],requestId='old'):Run=>({run_id:runId,execution_request_id:requestId,project_id:id,input_revision:1,input_hash:hash('input'),channel:'production',test_grant_id:null,uncovered_items:[],state,stage:null,event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?'artifact-1':null,prompt_snapshot_ref:null,updated_at:now});
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
-  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[]};
+  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[]};
   return state;
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
@@ -34,7 +34,15 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     if(path==='/me')return reply(route,200,{user_id:state.owner,session_status:'active'});
     if(path==='/projects')return reply(route,200,{items:[{...state.workspace.project,status:state.workspace.active_run?.state??'succeeded',latest_artifact:null,latest_run:null}],page:{next_cursor:null,has_more:false}});
     if(state.owner!=='owner-a')return reply(route,404,{code:'NOT_FOUND'});
-    if(path===`/projects/${id}`)return reply(route,200,state.workspace.project);
+    if(path===`/projects/${id}`){
+      if(method==='PATCH'){
+        const body=request.postDataJSON() as Dto<'ProjectPatchRequest'>;expect(Value.Check(schemas.ProjectPatchRequest,body)).toBe(true);state.projectPatches.push(body);
+        if(state.failProjectPatch)return reply(route,503,{code:'DATA_UNAVAILABLE'});
+        if(request.headers()['if-match']!==String(state.workspace.project.draft_revision))return reply(route,409,{code:'INPUT_REVISION_CONFLICT'});
+        state.workspace.project={...state.workspace.project,...body,draft_revision:state.workspace.project.draft_revision+1,updated_at:now};
+      }
+      return reply(route,200,state.workspace.project);
+    }
     if(path.endsWith('/review-workspace')){state.workspaceReads++;return reply(route,200,state.workspace);}
     if(path.endsWith('/review-history'))return reply(route,200,{items:state.history});
     if(path.endsWith('/review-draft')){
@@ -63,8 +71,13 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     }
     if(path.endsWith('/revision-plan')){
       const body=request.postDataJSON() as ReviewPlanRequest;expect(Value.Check(ReviewPlanRequestSchema,body)).toBe(true);state.plans.push(body);
+      if(state.failPlan)return reply(route,503,{code:'DATA_UNAVAILABLE'});
       if(body.expected_version!==(state.workspace.plan?.version??0))return reply(route,409,{code:'INPUT_REVISION_CONFLICT'});
-      const {expected_version,proposal_id,...plan}=body;state.workspace.plan={...plan,version:expected_version+1,plan_id:'plan-1',sha256:hash(JSON.stringify(body)),accepted_at:now};return reply(route,200,state.workspace.plan);
+      const {expected_version,proposal_id,...plan}=body;
+      const proposal=proposal_id?state.workspace.messages.find(message=>message.role==='assistant'&&message.proposal?.proposal_id===proposal_id)?.proposal:undefined;
+      if(proposal_id&&(!proposal||proposal.source_report_id!==body.source_report_id))return reply(route,422,{code:'VALIDATION_FAILED'});
+      const proposal_origin=proposal?{proposal:structuredClone(proposal),sha256:hash(JSON.stringify(proposal)),adoption:JSON.stringify([...proposal.finding_ids].sort())===JSON.stringify([...body.finding_ids].sort())&&JSON.stringify(proposal.requirements)===JSON.stringify(body.requirements)?'as_proposed' as const:'user_adjusted' as const}:undefined;
+      state.workspace.plan={...plan,version:expected_version+1,plan_id:'plan-1',sha256:hash(JSON.stringify(body)),accepted_at:now,...(proposal_origin?{proposal_origin}:{})};return reply(route,200,state.workspace.plan);
     }
     if(path.endsWith('/review-executions')){
       const body=request.postDataJSON() as ReviewExecutionRequest;expect(Value.Check(ReviewExecutionRequestSchema,body)).toBe(true);state.executes.push(body);
@@ -158,6 +171,85 @@ test('separate context drafts survive switching, refresh and failed sync; sendin
   await page.getByRole('button',{name:'重试待确认原请求'}).click();await expect(page.locator('.review-proposal')).toBeVisible();expect(state.requests).toHaveLength(2);expect(state.requests[0]).toEqual(state.requests[1]);expect(state.requests[0].context).toMatchObject({project_id:id,report_id:'report-v1',finding_ids:['F01'],material_refs:[{material_id:'material-0',material_version:1},{material_id:'material-1',material_version:1}]});
   expect(state.executes).toHaveLength(0);expect(state.plans).toHaveLength(0);await page.getByRole('button',{name:'查看并采纳计划'}).click();expect(state.plans).toHaveLength(0);await page.getByRole('button',{name:'采纳计划',exact:true}).click();await expect.poll(()=>state.plans.length).toBe(1);expect(state.executes).toHaveLength(0);
   await (await openFinding(page,'F02')).getByRole('button',{name:'继续讨论此项'}).click();await expect(page.locator('#review-message-input')).toHaveValue('F02 的未发送草稿');
+});
+
+for(const scenario of [
+  {name:'deselected',original:['F01','F03'],edit:'remove',selected:['F01']},
+  {name:'additional',original:['F01'],edit:'add',selected:['F01','F03']},
+  {name:'unrepairable',original:['F01','F02'],edit:'none',selected:['F01']},
+] as const)test(`assistant proposal accepts ${scenario.name} choices as the confirmed plan while retaining original provenance`,async({page})=>{
+  const state=fixture(),report=state.workspace.selected_report!;
+  report.findings.push({...structuredClone(report.findings[0]),finding_id:'F03',title:'关联摘要金额需要同步'});
+  const proposal:ReviewProposal={proposal_id:'synthetic-editable-proposal',source_report_id:report.report_id,finding_ids:[...scenario.original],
+    requirements:['保留原报告与未选问题'],explanation:'合成提议：请核对以下修改范围。'};
+  state.workspace.messages.push({message_id:'proposal-message',role:'assistant',content:'合成回复，仅提出计划。',context:{project_id:id,report_id:report.report_id,finding_ids:[],material_refs:[]},
+    created_at:now,reply_status:'completed',reply_to:null,proposal:structuredClone(proposal),error:null});
+  await setup(page,state);await page.getByRole('button',{name:'项目助手',exact:true}).click();await page.getByRole('button',{name:'查看并采纳计划'}).click();
+  const dialog=page.getByRole('dialog');await expect(dialog).toContainText('采纳以本次核对后的选择为准，原提议保留');
+  if(scenario.edit==='remove')await dialog.locator('[data-plan-finding="F03"]').uncheck();
+  if(scenario.edit==='add')await dialog.locator('[data-plan-finding="F03"]').check();
+  if(scenario.edit==='none'){await expect(dialog).toContainText('以下提议事项缺少修订依据');await expect(dialog).toContainText('F02');await expect(dialog.locator('[data-plan-finding="F02"]')).toHaveCount(0);}
+  expect(state.plans).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  await dialog.getByRole('button',{name:'采纳计划',exact:true}).click();await expect(dialog).not.toBeVisible();
+  expect(state.workspace.plan?.finding_ids).toEqual(scenario.selected);
+  expect(state.workspace.plan?.proposal_origin).toMatchObject({proposal,adoption:'user_adjusted'});
+  expect(state.workspace.messages[0].proposal).toEqual(proposal);
+  expect(state.plans[0].proposal_id).toBe(proposal.proposal_id);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
+  if(scenario.edit==='none')expect(state.workspace.plan?.excluded_findings).toContainEqual({finding_id:'F02',reason:report.findings[1].repairability.reason});
+  await page.getByRole('button',{name:'核对修订计划',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('当前计划经用户调整，原提议未改变');
+  if(scenario.edit==='none'){await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-review/proposal-adjusted-desktop.png'});}
+  await page.getByRole('button',{name:'保存计划',exact:true}).click();await expect.poll(()=>state.plans.length).toBe(2);
+  expect(state.plans[1].proposal_id).toBe(proposal.proposal_id);expect(state.executes).toHaveLength(0);
+});
+
+test('plan failures remain visible in adoption and save dialogs with selections retained and no execution',async({page})=>{
+  const state=fixture(),report=state.workspace.selected_report!;
+  report.findings.push({...structuredClone(report.findings[0]),finding_id:'F03',title:'关联摘要金额需要同步'});
+  const proposal:ReviewProposal={proposal_id:'synthetic-failing-plan',source_report_id:report.report_id,finding_ids:['F01','F03'],requirements:['保留原报告'],explanation:'合成提议：核对修改范围。'};
+  state.workspace.messages.push({message_id:'failing-plan-message',role:'assistant',content:'合成回复，仅提出计划。',context:{project_id:id,report_id:report.report_id,finding_ids:[],material_refs:[]},created_at:now,reply_status:'completed',reply_to:null,proposal:structuredClone(proposal),error:null});
+  await setup(page,state);await page.getByRole('button',{name:'项目助手',exact:true}).click();await page.getByRole('button',{name:'查看并采纳计划'}).click();
+  let dialog=page.getByRole('dialog');await dialog.locator('[data-plan-finding="F03"]').uncheck();state.failPlan=true;
+  await dialog.getByRole('button',{name:'采纳计划',exact:true}).click();await expect(dialog).toBeVisible();await expect(dialog.locator('#review-dialog-status')).toBeVisible();await expect(dialog.locator('#review-dialog-status')).toContainText('选择未确认');await expect(page.locator('#review-status')).toContainText('选择未确认');
+  await expect(dialog.locator('[data-plan-finding="F01"]')).toBeChecked();await expect(dialog.locator('[data-plan-finding="F03"]')).not.toBeChecked();expect(state.workspace.plan).toBeNull();expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(1);
+  state.failPlan=false;await dialog.getByRole('button',{name:'采纳计划',exact:true}).click();await expect(dialog).not.toBeVisible();expect(state.workspace.plan?.finding_ids).toEqual(['F01']);
+  const adopted=structuredClone(state.workspace.plan);await page.getByRole('button',{name:'核对修订计划',exact:true}).click();dialog=page.getByRole('dialog');await dialog.locator('[data-plan-finding="F03"]').check();state.failPlan=true;
+  await dialog.getByRole('button',{name:'保存计划',exact:true}).click();await expect(dialog).toBeVisible();await expect(dialog.locator('#review-dialog-status')).toBeVisible();await expect(dialog.locator('#review-dialog-status')).toContainText('选择未确认');await expect(page.locator('#review-status')).toContainText('选择未确认');
+  await expect(dialog.locator('[data-plan-finding="F01"]')).toBeChecked();await expect(dialog.locator('[data-plan-finding="F03"]')).toBeChecked();expect(state.workspace.plan).toEqual(adopted);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(1);
+  state.failPlan=false;await dialog.getByRole('button',{name:'保存计划',exact:true}).click();await expect(dialog).not.toBeVisible();expect(state.workspace.plan?.finding_ids).toEqual(['F01','F03']);expect(state.workspace.messages[0].proposal).toEqual(proposal);expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(1);
+});
+
+test('missing review project details can be completed and return to the exact report with unsent and input drafts preserved',async({page})=>{
+  const state=fixture();Object.assign(state.workspace.project,{issuer_name:null,market:null,offering:null});
+  state.workspace.active_run=state.makeRun('active-details-run','running');state.runs.set('active-details',state.workspace.active_run);
+  const originalReport=structuredClone(state.workspace.selected_report),originalRun=structuredClone(state.workspace.active_run),originalHistory=structuredClone(state.history);
+  await setup(page,state);state.failDrafts=true;
+  await (await openFinding(page,'F01')).getByRole('button',{name:'继续讨论此项'}).click();await page.locator('#review-message-input').fill('F01 / R1 未发送的口径说明');
+  await page.getByRole('button',{name:'收起项目助手',exact:true}).last().click();await page.getByRole('tab',{name:'材料与要求'}).click();
+  await page.locator('#review-requirements').fill('下一版需要保留的复核要求');
+  await expect(page.getByRole('link',{name:'补充项目信息',exact:true})).toBeVisible();await expect(page.locator('#review-meta')).toContainText('发行人待填写');
+  await mkdir('test-evidence/m3-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-evidence/m3-review/project-details-entry-desktop.png'});
+  await page.getByRole('link',{name:'补充项目信息',exact:true}).click();await expect(page.getByRole('heading',{name:'编辑复核项目信息',exact:true})).toBeVisible();
+  await expect(page.locator('#draft-form input')).toHaveCount(2);await expect(page.locator('#draft-form select')).toHaveCount(2);
+  state.failProjectPatch=true;await page.locator('#review-issuer').fill('补充后的合成发行人');await page.locator('#review-market').selectOption('nafmii');await page.locator('#review-offering').selectOption('dfi');
+  await page.locator('#save-draft').click();await expect(page.locator('#save-state')).toContainText('保存未确认');await expect(page.locator('#review-issuer')).toHaveValue('补充后的合成发行人');
+  state.failProjectPatch=false;await page.locator('#save-draft').click();await expect(page.locator('#save-state')).toContainText('已保存');
+  expect(state.workspace.project).toMatchObject({kind:'review',issuer_name:'补充后的合成发行人',market:'nafmii',offering:'dfi'});
+  expect(state.workspace.selected_report).toEqual(originalReport);expect(state.workspace.active_run).toEqual(originalRun);expect(state.history).toEqual(originalHistory);expect(state.executes).toHaveLength(0);
+  await page.screenshot({path:'test-evidence/m3-review/project-details-form-desktop.png'});
+  state.failDrafts=false;await page.getByRole('link',{name:'返回复核工作区',exact:true}).click();await expect(page).toHaveURL(/review\?tab=materials&report_id=report-v1/);
+  await expect(page.getByRole('tab',{name:'材料与要求',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.locator('#review-materials-panel')).toBeVisible();await expect(page.locator('#review-results-panel')).toBeHidden();
+  await expect(page.locator('#review-requirements')).toHaveValue('下一版需要保留的复核要求');await expect(page.locator('#review-meta')).toContainText('补充后的合成发行人');
+  await page.getByRole('button',{name:'项目助手',exact:true}).click();await expect(page.locator('#review-message-input')).toHaveValue('F01 / R1 未发送的口径说明');
+  await expect(page.locator('.review-agent-context')).toContainText('report-v1');await expect(page.locator('.review-agent-context')).toContainText('F01');
+  expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);expect(state.workspace.selected_report).toEqual(originalReport);
+});
+
+test('direct report links without a valid explicit tab open results',async({page})=>{
+  const state=fixture();await setup(page,state,`#/projects/${id}/review?report_id=report-v1`);
+  await expect(page.getByRole('tab',{name:'复核结果',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.locator('#review-results-panel')).toBeVisible();await expect(page.locator('#review-materials-panel')).toBeHidden();
+  await page.goto(`/#/projects/${id}/review?tab=unknown&report_id=report-v1`);
+  await expect(page.getByRole('tab',{name:'复核结果',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.locator('#review-results-panel')).toBeVisible();await expect(page.locator('#review-materials-panel')).toBeHidden();
+  expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
 });
 
 test('typing while a message saves is retained; polling preserves open findings and textarea selection',async({page})=>{

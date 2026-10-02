@@ -6,7 +6,7 @@ import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { digest, uid } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import type { ReviewReport } from '@bondbuddy/contracts';
+import type { ReviewEvidenceRef, ReviewProposal, ReviewReport } from '@bondbuddy/contracts';
 
 const connection = await isolatedTestDatabase(undefined, 'm3-workspace');
 test('M3 ownership, independent drafts, idempotency, immutable input, mutex and failed version history', { skip: !connection }, async () => {
@@ -44,6 +44,13 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
     const locked = (await pool.query('SELECT manifest,input_hash FROM bb_input_revisions WHERE project_id=$1 AND revision=$2', [id, run.input_revision])).rows[0];
     assert.deepEqual(locked, old); assert.equal(inputManifestHash(locked.manifest), locked.input_hash.trim());
     assert.deepEqual(locked.manifest.review.input.requirements, ['原要求']);
+    const projectBeforeEdit = (await send('GET', base)).json();
+    const details = await app.inject({ method: 'PATCH', url: base, headers: { origin, 'if-match': String(projectBeforeEdit.draft_revision) },
+      payload: { issuer_name: 'Synthetic clarified issuer', market: 'nafmii', offering: 'dfi' } }); ok(details);
+    assert.equal(details.json().kind, 'review');
+    assert.equal(details.json().issuer_name, 'Synthetic clarified issuer');
+    assert.deepEqual((await pool.query('SELECT manifest,input_hash FROM bb_input_revisions WHERE project_id=$1 AND revision=$2', [id, run.input_revision])).rows[0], old,
+      'editing optional project labels affects a future execution without altering the active run snapshot');
     assert.equal((await send('PUT', `${base}/review-draft`, { kind: 'input', expected_version: 1, input })).statusCode, 409);
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [run.run_id]);
     const second = await send('POST', `${base}/review-executions`, { ...execute, execution_request_id: uid(), expected_input_version: 2 }); ok(second);
@@ -60,6 +67,14 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
     active = 'synthetic-m3-owner';
     const report: ReviewReport = { report_id: uid(), project_id: id, run_id: run.run_id, input_revision: 1, version: 1, source_material: pin,
       scope: { mode: 'full_review', finding_ids: [] }, findings: [], coverage: [], limitations: ['synthetic empty report'], created_at: new Date().toISOString() };
+    const ref: ReviewEvidenceRef = { material_id: mat, material_version: 1, material_sha256: sha, parse_snapshot_id: 'synthetic-parse',
+      parse_response_sha256: digest('synthetic-parse'), record_id: 'synthetic-record', record_sha256: digest('synthetic-record'),
+      locator_type: 'pdf_bbox', locator: { page: 1 }, quote: 'synthetic source', extraction_method: 'native_text', uncertainty: [] };
+    report.findings = ['F1','F2','F3'].map(finding_id => ({ finding_id, report_id: report.report_id, dimension: 'financial',
+      conclusion: finding_id === 'F3' ? 'needs_evidence' : 'error', severity: 'P2', title: finding_id, description: 'Synthetic proposal fixture',
+      target_refs: [ref], evidence_refs: finding_id === 'F3' ? [] : [ref], suggested_change: 'Synthetic supported change', limitations: [],
+      repairability: { can_revise: finding_id !== 'F3', reason: finding_id === 'F3' ? '缺少证据，保留原文' : 'Synthetic evidence', allowed_record_ids: finding_id === 'F3' ? [] : [ref.record_id] },
+      origin_report_id: report.report_id, check_status: 'rechecked' }));
     await pool.query('INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)', [report.report_id, active, id, run.run_id, inputManifestHash(report), report]);
     assert.equal((await send('GET', `${base}/review-workspace`)).json().selected_report, null,
       'a persisted report from a cancelled/failed delivery is not the default completed result');
@@ -71,5 +86,34 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [id])).rows[0].n, 2);
     await assert.rejects(pool.query("UPDATE bb_review_reports SET report='{}' WHERE id=$1", [report.report_id]), /immutable/);
     await assert.rejects(pool.query("UPDATE bb_review_revision_plans SET plan='{}' WHERE id=$1", [plan.json().plan_id]), /immutable/);
+    let planVersion = 1;
+    for (const scenario of [
+      { original: ['F1','F2'], selected: ['F1'], adoption: 'user_adjusted' },
+      { original: ['F1'], selected: ['F1','F2'], adoption: 'user_adjusted' },
+      { original: ['F1','F3'], selected: ['F1'], adoption: 'user_adjusted' },
+      { original: ['F2','F1'], selected: ['F1','F2'], adoption: 'as_proposed' },
+    ]) {
+      const proposal: ReviewProposal = { proposal_id: uid(), source_report_id: report.report_id, finding_ids: scenario.original,
+        requirements: ['保留未选问题的原结论'], explanation: 'Synthetic assistant proposal; awaiting explicit user adoption' };
+      const messageId = uid();
+      await pool.query(`INSERT INTO bb_review_messages(id,owner_user_id,project_id,submission_request_id,request_hash,role,content,context,reply_status,proposal)
+        VALUES($1,$2,$3,$4,$5,'assistant','Synthetic proposal',$6,'completed',$7)`, [messageId, active, id, uid(), digest(messageId), { ...context, report_id: report.report_id }, proposal]);
+      const accepted = await send('PUT', `${base}/revision-plan`, { expected_version: planVersion, source_report_id: report.report_id,
+        finding_ids: scenario.selected, excluded_findings: scenario.original.filter(f => !scenario.selected.includes(f)).map(finding_id => ({ finding_id, reason: '用户核对后本次不修订' })),
+        requirements: proposal.requirements, proposal_id: proposal.proposal_id }); ok(accepted); planVersion++;
+      const saved = accepted.json();
+      assert.deepEqual(saved.finding_ids, scenario.selected);
+      assert.deepEqual(saved.proposal_origin, { proposal, sha256: inputManifestHash(proposal), adoption: scenario.adoption });
+      const { sha256: savedHash, ...content } = saved;
+      assert.equal(savedHash, inputManifestHash(content), 'origin and confirmed selection are both locked in the accepted plan hash');
+      assert.deepEqual((await pool.query('SELECT proposal FROM bb_review_messages WHERE id=$1', [messageId])).rows[0].proposal, proposal);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [id])).rows[0].n, 2, 'adoption never executes');
+      const invalidProposal = await send('PUT', `${base}/revision-plan`, { expected_version: planVersion, source_report_id: report.report_id,
+        finding_ids: scenario.selected, excluded_findings: [], requirements: proposal.requirements, proposal_id: uid() });
+      assert.equal(invalidProposal.statusCode, 422, 'unknown or foreign proposal cannot become provenance');
+      const foreignFinding = await send('PUT', `${base}/revision-plan`, { expected_version: planVersion, source_report_id: report.report_id,
+        finding_ids: ['outside-report'], excluded_findings: [], requirements: proposal.requirements, proposal_id: proposal.proposal_id });
+      assert.equal(foreignFinding.statusCode, 422, 'edited choices still belong to the pinned report');
+    }
   } finally { await app.close(); await pool.end(); }
 });

@@ -5,7 +5,7 @@ import { ProjectBrowser } from './project-browser';
 import { ArtifactPage } from './artifact-page';
 import { ProjectExecution } from './project-execution';
 import { ProjectConversation } from './project-conversation';
-import { ReviewWorkspace, renderNewReview } from './review-workspace';
+import { ReviewWorkspace, renderNewReview, reviewProjectFields, bindReviewProjectFields } from './review-workspace';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
@@ -328,17 +328,19 @@ async function renderRoute() {
     reviewWorkspace = new ReviewWorkspace(api, identity, decodeURIComponent(reviewMatch[1]), shell, () => token === epoch, query.get('report_id') || undefined, query.get('tab') || undefined);
     await reviewWorkspace.render(); return;
   }
-  const match = requested.match(/^\/projects\/([^/?]+)(?:\?step=(details|materials))?$/);
+  const match = requested.match(/^\/projects\/([^/?]+)(?:\?(.*))?$/);
   if (!match) { location.hash = '/'; return; }
   shell('<p role="status">正在读取项目…</p><p id="page-error" role="alert" hidden></p>', 'projects');
   try {
     const project = await api.project(decodeURIComponent(match[1]));
     if (token !== epoch) return;
+    const projectQuery = new URLSearchParams(match[2]);
     if (project.kind === 'review') {
+      if (projectQuery.get('step') === 'details') { renderReviewProjectDetails(project, projectQuery); return; }
       reviewWorkspace = new ReviewWorkspace(api, identity!, project.project_id, shell, () => token === epoch);
       await reviewWorkspace.render(); return;
     }
-    renderProject(project, match[2] === 'details' ? 'details' : 'materials');
+    renderProject(project, projectQuery.get('step') === 'details' ? 'details' : 'materials');
   } catch (error) {
     if (token !== epoch) return;
     shell(`<a class="back-link" href="#/">← 返回我的项目</a><div class="empty-state"><h1>项目暂时无法打开</h1><p>${esc(friendlyError(error))}</p><button class="button secondary" id="retry-project">重新加载</button></div><p id="page-error" role="alert" hidden></p>`, 'projects');
@@ -370,6 +372,21 @@ function renderNew() {
       newDirty = false; location.hash = `/projects/${encodeURIComponent(project.project_id)}`;
     } catch (error) { if (token === epoch) showError(error); }
     finally { creating = false; controls.forEach(({ control, disabled }) => { control.disabled = disabled; }); button.textContent = '创建项目，继续提供材料'; }
+  });
+}
+
+function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLSearchParams) {
+  draft = new Draft(project, api, updateSaveState);
+  const returnQuery = new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' });
+  const reportId = query.get('review_report_id'); if (reportId) returnQuery.set('report_id', reportId);
+  const returnHref = `#/projects/${encodeURIComponent(project.project_id)}/review?${returnQuery}`;
+  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header><form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">只需项目名称、发行人和市场品种。已开始任务、旧报告、材料与讨论草稿保持原版本；填写信息本身不会开始复核。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, 'review');
+  const form = document.querySelector<HTMLFormElement>('#draft-form')!;
+  bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }));
+  form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
+  document.querySelector('#reload-draft')!.addEventListener('click', () => {
+    if (!window.confirm('加载最新资料会放弃当前未保存的项目信息，是否继续？')) return;
+    draft?.dispose(); draft = undefined; void renderRoute();
   });
 }
 

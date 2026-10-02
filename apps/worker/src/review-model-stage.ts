@@ -14,6 +14,7 @@ import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage, type RunStage, type StageContext } from './run-pipeline.js';
 import { mapDifferentialReviewTargets, retainUnmappedHistoricalFinding, type DifferentialFindingMapping } from './review-anchor-mapping.js';
 import { createReviewContextSelector, promptReviewRecord, reviewPromptRecordId, reviewTableScope, sameReviewSnapshot, type ReviewContextGroup, type ReviewContextGap } from './review-record-context.js';
+import { produceNativeReviewFormulas } from './review-native-formulas.js';
 export { reviewPromptRecordId } from './review-record-context.js';
 
 /** Loaded from authorized immutable parse storage, not from model output. */
@@ -289,7 +290,11 @@ export function reviewModelStage(options:{
     const runFinancial=input.scope.mode==='full_review'||financialTargets.length>0,runCompliance=input.scope.mode==='full_review'||complianceTargets.length>0;
     const observations=[...new Map(normalized.flatMap(n=>n.financial.observations).filter(o=>o.source_kind!=='disclosure'||o.value_refs.every(ref=>financialKeys.has(evidenceKey(ref)))).map(o=>[o.observation_id,o])).values()];
     const observationIds=new Set(observations.map(o=>o.observation_id));
-    const calculations=[...new Map(normalized.flatMap(n=>n.financial.calculations).filter(c=>observationIds.has(c.result_id)&&c.operand_ids.every(id=>observationIds.has(id))).map(c=>[c.calculation_id,c])).values()];
+    const nativeFormulas=produceNativeReviewFormulas({evidence:input.evidence,records:input.evidence.records,observations,target_keys:financialKeys,full_review:input.scope.mode==='full_review'});
+    const relationKey=(c:ReviewFinancialInput['calculations'][number])=>JSON.stringify([c.operation,c.result_id,[...c.operand_ids].sort()]);
+    const nativeRelations=new Set(nativeFormulas.calculations.map(relationKey));
+    const calculations=[...new Map([...normalized.flatMap(n=>n.financial.calculations).filter(c=>!nativeRelations.has(relationKey(c))),...nativeFormulas.calculations]
+      .filter(c=>observationIds.has(c.result_id)&&c.operand_ids.every(id=>observationIds.has(id))).map(c=>[c.calculation_id,c])).values()];
     const financial=runFinancial?reviewFinancialEvidence({observations,calculations},input.evidence):{findings:[],coverage:[],limitations:[]};
     const reconciliation=runFinancial?reviewAuditReconciliation(observations,input.evidence):{findings:[],coverage:[],limitations:[]};
     const compliance=runCompliance?reviewComplianceEvidence({context:input.rule_context,packs:input.rule_packs,
@@ -306,6 +311,7 @@ export function reviewModelStage(options:{
     let coverage=[...financial.coverage,...reconciliation.coverage,...compliance.coverage];
     const guarded=guardFinancialRepairConflicts({findings,coverage,limitations:[]},input.evidence);
     findings=guarded.findings;coverage=guarded.coverage;
+    if(runFinancial)for(const gap of nativeFormulas.gaps)coverage.push(reviewCoverage(input.evidence,gap.check_id,'financial','manual',gap.reason,gap.evidence_refs));
     const contextDimension=runFinancial?'financial':'compliance';
     for(const {batch_key,gap} of contextGaps)coverage.push(reviewCoverage(input.evidence,`${contextDimension}:context-capacity:${batch_key}:${gap.group_id}`,contextDimension,'uncovered',
       `本批同一解析快照和表格/文本范围的 ${gap.omitted_record_count} 条上下文记录因容量未提供；期间、单位、主体、完整行及跨批引用未据缺失内容自动验证。`,gap.targets.slice(0,500).map(r=>referenceFor(r))));
@@ -314,7 +320,7 @@ export function reviewModelStage(options:{
         '语义观察保留人工核对属性；模型描述不等于已完成确定性验证。',[],relevant));}
     const unextracted=financialTargets.filter(record=>!observations.some(o=>o.source_kind==='disclosure'&&o.value_refs.some(ref=>evidenceKey(ref)===evidenceKey(record))));
     if(runFinancial)coverage.push(reviewCoverage(input.evidence,'financial:extraction-coverage','financial','uncovered',
-      `已将 ${financialTargets.length} 条目标记录交给模型阅读；${unextracted.length} 条没有形成可复算财务观察。阅读/抽取不构成全文财务通过，跨批公式与未抽取事项未自动验证。`,[]));
+      `已将 ${financialTargets.length} 条目标记录交给模型阅读；${unextracted.length} 条没有形成可复算财务观察。阅读/抽取不构成全文财务通过；仅原文明确声明且映射无歧义的同表求和关系进入独立复算，其他公式及未抽取事项仍未验证。`,[]));
     if(input.scope.mode==='differential_review'){
       for(const prior of selected){
         const mapping=mappingById.get(prior.finding_id)!;
@@ -356,7 +362,7 @@ export function reviewModelStage(options:{
       version:input.report_version,source_material:input.evidence.source_material,scope:input.scope,findings,coverage,
       limitations:[...new Set([`审计勾稽内部方法 ${AUDIT_RECONCILIATION_KNOWLEDGE.version}；内容 SHA-256 ${reviewAuditKnowledgePin}；附件 SHA-256 ${AUDIT_RECONCILIATION_KNOWLEDGE.source_sha256}。方法知识不代表本项目审计事实或已核实监管依据。`,
         ...input.limitations,...(contextGaps.length?[`${contextGaps.length} 个批次范围存在上下文容量缺口，具体目标见未覆盖记录。`]:[]),...normalized.flatMap(n=>n.limitations),...financial.limitations,...reconciliation.limitations,...guarded.limitations,...compliance.limitations,
-        '表格上下文按同一解析快照的工作表/表格结构绑定；表前12个非空行不保证包含全部语义表头，表外或更深层表头及跨批公式图仍未自动验证。',
+        '表格上下文按同一解析快照的工作表/表格结构绑定；表前12个非空行不保证包含全部语义表头。显式同表求和按完整快照映射，但不会自动批准财务上下文；其他跨批公式图、表外或更深层表头仍未验证。',
         '财务主体/指标映射来自带原文引用的模型抽取，金额结论仅针对已验证证据和已执行的确定性复算；未抽取或未适用检查不视作通过。'])].slice(0,200),created_at:input.created_at};
     if(!isReviewReport(report))return {kind:'fail',code:'VALIDATION_FAILED'};
     const value:ReviewAnalysisResult={version:'review-analysis-v1',input_hash:input.input_hash,report,model_calls:modelCalls,input,anchor_mappings:mappings};

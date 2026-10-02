@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { normalizeDecimal } from '@bondbuddy/domain/facts';
 import { getParseSnapshot, type ParseEvidencePool, type StoredParseSnapshot } from './parse-evidence-repository.js';
-import { DOCX_AUXILIARY_TARGETS_PARSER_VERSION, type DocxAuxiliaryTarget, type DocumentParseRecord } from './document-parser.js';
+import { supportsDocxAuxiliaryTargets, type DocxAuxiliaryTarget, type DocumentParseRecord } from './document-parser.js';
 
 export interface FactEvidenceContextPool extends ParseEvidencePool {}
 
@@ -200,7 +200,7 @@ export function deriveFactEvidenceContextManifest(input: {
     reasons.add('PARSE_EVIDENCE_INVENTORY_INCOMPLETE');
   }
   if (input.snapshot.response.status === 'failed') reasons.add('PARSE_SNAPSHOT_FAILED');
-  if (input.docx && input.snapshot.response.parser_version !== DOCX_AUXILIARY_TARGETS_PARSER_VERSION) reasons.add('DOCX_AUXILIARY_INVENTORY_VERSION_UNSUPPORTED');
+  if (input.docx && !supportsDocxAuxiliaryTargets(input.snapshot.response.parser_version)) reasons.add('DOCX_AUXILIARY_INVENTORY_VERSION_UNSUPPORTED');
   if (input.docx && !Array.isArray(input.snapshot.response.document.auxiliary_targets)) {
     reasons.add('DOCX_AUXILIARY_INVENTORY_MISSING');
   }

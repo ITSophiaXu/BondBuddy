@@ -27,6 +27,8 @@ export interface ReviewFinancialCalculation {
   complete_terms: boolean;
   /** Arithmetic alone does not verify that these operands define the disclosed metric. */
   relation_verification?: 'trusted_structured' | 'unverified';
+  /** Exact native declaration and term labels supplied by the deterministic relationship producer. */
+  relation_refs?: ReviewEvidenceRef[];
 }
 export interface ReviewFinancialInput { observations: ReviewFinancialObservation[]; calculations: ReviewFinancialCalculation[] }
 const units: Record<string, string> = { yuan:'元', thousand_yuan:'千元', ten_thousand:'万元', ten_thousand_yuan:'万元', hundred_million_yuan:'亿元', percent:'%', percentage_point:'百分点' };
@@ -150,8 +152,12 @@ export function reviewFinancialEvidence(input: ReviewFinancialInput, ctx: Review
       result.coverage.push(reviewCoverage(ctx,key,'financial','uncovered','公式引用的披露结果或操作数不存在。',[])); continue;
     }
     const sources = operands as ReviewFinancialObservation[];
-    const support = uniqueEvidence(sources.flatMap(references));
+    const support = uniqueEvidence([...sources.flatMap(references),...(calculation.relation_refs??[])]);
     const problems = [...validation.get(observed.observation_id)!, ...sources.flatMap(o => validation.get(o.observation_id)!)];
+    for(const ref of calculation.relation_refs??[]){
+      problems.push(...validateReviewEvidence(ref,ctx,true));
+      if(ref.extraction_method!=='native_text'||ref.uncertainty.length)problems.push('financial_formula_source_uncertain');
+    }
     if (calculation.relation_verification !== 'trusted_structured') problems.push('financial_formula_relation_unverified');
     if (new Set(calculation.operand_ids).size !== calculation.operand_ids.length || calculation.operand_ids.includes(calculation.result_id)) problems.push('formula_duplicate_or_self_reference');
     const sameContext = sources.every(o => o.entity_id === observed.entity_id && o.accounting_scope === observed.accounting_scope && o.basis === observed.basis

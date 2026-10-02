@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { DOCX_AUXILIARY_TARGETS_PARSER_VERSION, type DocxAuxiliaryTarget, type DocumentParseRecord } from './document-parser.js';
 import { deriveFactEvidenceContextManifest } from './fact-evidence-context-repository.js';
 import type { StoredParseSnapshot } from './parse-evidence-repository.js';
+import { localizedHistoricalWarnings } from './historical-baseline-warnings.js';
 
 const body: DocumentParseRecord = {
   record_id: 'evidence-000001', material_id: 'material-1', material_version: 1, content_hash: 'a'.repeat(64),
@@ -141,4 +142,18 @@ test('missing DOCX auxiliary inventory in a legacy snapshot stays incomplete', (
   assert.equal(manifest.reviewable, false);
   assert.ok(manifest.completeness_reasons.includes('DOCX_AUXILIARY_INVENTORY_VERSION_UNSUPPORTED'));
   assert.ok(manifest.completeness_reasons.includes('DOCX_AUXILIARY_INVENTORY_MISSING'));
+});
+
+test('parser 1.0.7 and 1.0.8 retain auxiliary context and localized warnings without rewriting old snapshots',()=>{
+  const identities:string[]=[];
+  for(const version of ['bondbuddy-document-parser-1.0.7','bondbuddy-document-parser-1.0.8']){
+    const current=snapshot({parserVersion:version,response:{...snapshot().response,parser_version:version}});
+    const manifest=deriveFactEvidenceContextManifest({...binding,snapshot:current,selectedRecords:[body],auxiliaryTargets:[],docx:true});
+    assert.equal(manifest.completeness_status,'complete');identities.push(manifest.evidence_set_sha256);
+    const response={...current.response,status:'needs_confirmation' as const,warnings:[{code:'DOCX_AUXILIARY_PARTS',message:'Synthetic header'}],
+      document:{...current.response.document,auxiliary_targets:[headerTarget({status:'resolved',reason:null})]}};
+    assert.equal(localizedHistoricalWarnings(response)?.length,1);
+    assert.deepEqual(localizedHistoricalWarnings({...response,parser_version:'bondbuddy-document-parser-1.0.6'}),[]);
+  }
+  assert.notEqual(identities[0],identities[1]);
 });

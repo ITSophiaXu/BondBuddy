@@ -14,6 +14,7 @@ const SUPPORTED_PARSER_VERSIONS = new Set([
   'bondbuddy-document-parser-1.0.5',
   'bondbuddy-document-parser-1.0.6',
   'bondbuddy-document-parser-1.0.7',
+  'bondbuddy-document-parser-1.0.8',
 ]);
 const LEGACY_TARGET_SHEET = '合并利润表';
 const INTERIM_TARGET_SHEET = '02合并利润表';

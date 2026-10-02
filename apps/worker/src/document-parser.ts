@@ -8,6 +8,9 @@ import { classifyParserStderr, PARSER_STDERR_CAPTURE_BYTES, type ParserStderrDia
 export const DOCUMENT_PARSE_REQUEST_VERSION = 'document-parse-request-v1' as const;
 export const DOCUMENT_PARSE_RESPONSE_VERSION = 'document-parse-response-v1' as const;
 export const DOCX_AUXILIARY_TARGETS_PARSER_VERSION = 'bondbuddy-document-parser-1.0.7' as const;
+export const DOCX_OUTLINE_PARSER_VERSION = 'bondbuddy-document-parser-1.0.8' as const;
+export const supportsDocxAuxiliaryTargets = (version: unknown): boolean =>
+  version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION || version===DOCX_OUTLINE_PARSER_VERSION;
 export const DOCUMENT_PARSER_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 export const DOCUMENT_PARSER_STREAM_MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 export const DOCUMENT_PARSER_STREAM_MAX_TEXT_BYTES = 16 * 1024 * 1024;
@@ -424,7 +427,7 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
   if(!hasExactKeys(value.document,value.status==='failed'?['page_count']:request.material.media_type==='application/pdf'
     ? ['page_count','pages_without_native_text','pages_with_images']
     : request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      ? (value.status==='failed'?['page_count']:value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION
+      ? (value.status==='failed'?['page_count']:supportsDocxAuxiliaryTargets(value.parser_version)
         ? ['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary'])
       : request.material.media_type==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ? ['page_count','worksheet_count','missing_formula_results','cached_formula_results']
@@ -444,7 +447,7 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
       if(!Array.isArray(pages) || !pages.every(page=>positiveInteger(page) && page<=pageCount)) throw parserError('INVALID_PARSE_RESPONSE');
     }
   } else if(request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    const hasAuxiliaryTargets=value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION;
+    const hasAuxiliaryTargets=supportsDocxAuxiliaryTargets(value.parser_version);
     if(!hasExactKeys(value.document,hasAuxiliaryTargets?['page_count','revision_summary','auxiliary_targets']:['page_count','revision_summary']) ||
       (hasAuxiliaryTargets && !validDocxAuxiliaryTargets(value.document.auxiliary_targets)) ||
       !isObject(value.document.revision_summary) || !hasExactKeys(value.document.revision_summary,['insertions','deletions']) ||
@@ -462,7 +465,7 @@ export function validateDocumentParseResponse(value:unknown, request:DocumentPar
       !nonEmptyString(warning.message,4096)) throw parserError('INVALID_PARSE_RESPONSE');
   }
   if(value.status!=='failed' && request.material.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
-    value.parser_version===DOCX_AUXILIARY_TARGETS_PARSER_VERSION) {
+    supportsDocxAuxiliaryTargets(value.parser_version)) {
     const targets=value.document.auxiliary_targets as DocxAuxiliaryTarget[];
     const hasAuxiliary=targets.some(target=>target.kind!=='drawing');
     const hasDrawings=targets.some(target=>target.kind==='drawing');

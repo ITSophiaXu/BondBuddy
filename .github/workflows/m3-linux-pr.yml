@@ -1,4 +1,4 @@
-name: M3 Linux synthetic integration
+name: M3 Linux integration
 
 on:
   pull_request:
@@ -24,6 +24,10 @@ jobs:
       BB_TEST_AZURITE_CONNECTION_STRING: UseDevelopmentStorage=true
       BB_TEST_LIVE_AUTHORING: '0'
       BB_REVIEW_WEB_SEARCH_ENABLED: '0'
+      # Already-authorized repository fixtures; supplier responses remain synthetic.
+      BB_RUN_AUTHORIZED_LARGE_XLSX: '1'
+      BB_RUN_AUTHORIZED_SAMPLE_TESTS: '1'
+      BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_TESTS: '1'
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
     services:
@@ -133,8 +137,15 @@ jobs:
             apps/worker/dist/run-runtime.test.js \
             apps/worker/dist/runtime-parse-slots.test.js \
             apps/worker/dist/parse-staging.test.js \
+            apps/worker/dist/document-parser.test.js \
+            apps/worker/dist/document-parser-csv.test.js \
+            apps/worker/dist/fact-evidence-context-repository.test.js \
+            apps/worker/dist/native-financial-fact-extractor.test.js \
+            apps/worker/dist/rq-prospectus-annual-fact-extractor.test.js \
+            apps/worker/dist/rq-q3-formula-candidate-extractor.test.js \
             apps/worker/dist/authoring-material-tools.test.js \
             apps/worker/dist/codex-adapter.test.js \
+            apps/worker/dist/codex-probe-cli.test.js \
             apps/worker/dist/codex-durable.test.js \
             apps/worker/dist/model-generation-router.test.js \
             apps/worker/dist/unified-model-stage.test.js \
@@ -143,6 +154,7 @@ jobs:
             apps/worker/dist/review-anchor-mapping.test.js \
             apps/worker/dist/review-assistant.test.js \
             apps/worker/dist/review-formatting-context.test.js \
+            apps/worker/dist/review-native-formulas.test.js \
             apps/worker/dist/review-record-context.test.js \
             apps/worker/dist/review-rule-context.test.js \
             apps/worker/dist/review-model-stage.test.js \
@@ -162,9 +174,9 @@ jobs:
           fi
           grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/bb-m3-linux.tap"
 
-      - name: Python Word delivery and revision regressions
+      - name: Python native parser, Word delivery and revision regressions
         run: |
-          python -m unittest -v test_review_word test_unified_word test_word_delivery 2>&1 | tee "$RUNNER_TEMP/bb-m3-python.log"
+          python -m unittest -v test_document_parser test_review_word test_unified_word test_word_delivery 2>&1 | tee "$RUNNER_TEMP/bb-m3-python.log"
           if grep -Eq 'OK \(skipped=[1-9][0-9]*\)' "$RUNNER_TEMP/bb-m3-python.log"; then
             echo 'Required Python tests were skipped.' >&2
             exit 1

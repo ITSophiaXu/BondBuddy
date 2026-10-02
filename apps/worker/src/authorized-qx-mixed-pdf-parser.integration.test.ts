@@ -77,7 +77,7 @@ test('authorized qx-202606-02 mixed-scan PDF keeps native anchors and marks scan
       },
     };
     const parsed = await runDocumentParserToFile(request, recordsPath, { pythonExecutable, repoRoot });
-    assert.equal(parsed.response.parser_version, 'bondbuddy-document-parser-1.0.7');
+    assert.equal(parsed.response.parser_version, 'bondbuddy-document-parser-1.0.8');
     assert.equal(parsed.response.status, 'needs_confirmation');
     const document = parsed.response.document as { page_count: number; pages_without_native_text: number[]; pages_with_images: number[] };
     assert.equal(document.page_count, 74);
