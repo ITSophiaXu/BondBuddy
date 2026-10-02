@@ -673,3 +673,8 @@ context保留原run输入hash，proposalHash/reviewHash分别绑定提案和结�
 
 
 非生产历史工作稿的空截止日可从同 owner、同发行人及已锁定财务材料的有位置证据的事实候选期间推导临时边界，不读取文件名、不使用当前日期或固定日期，不覆盖显式用户截止日或正式通道。候选须通过来源、owner/project/entity、锁定材料版本/hash 和位置证据校验，并排除证据审核不允许使用的条目；不能用历史稿、参考资料、其他主体或用户陈述推导。待核或冲突的数值可提供临时期间证据，但保留其不确定性，绝不因此进入可用财务数值集合。合格候选须具有唯一一致截止日，竞争日期返回 `historical_target_period_ambiguous`，不任意选最新日期。截止日、候选 ID、状态、不确定性和位置证据冻结到 `historical_generation_input` 检查点并纳入 preparation hash，恢复时核对。原 manifest/hash 不改写；模型上下文保留 `needs_confirmation` 来源，Word 修订计划必有“财务截止日未由用户确认”的待核批注，列出候选与定位、不确定性，并明确其数值未因此核验。缺少合格证据仍暂停；只有待核数值且无受支持改动时，`historicalModelGenerationStage` 仍在规划后返回 `historical_no_supported_changes`，需要后续接入原始材料全文修订能力，不能靠放宽财务数值可信度解决。这不补齐零候选抽取，也不证明真实模型调用或 Word 交付完成。
+
+
+### 2026-10-02 M1 编制超时恢复
+
+已记录进程退出的统一编制 MODEL_TIMEOUT 由 worker sweep 在核对调用、结果引用和用量后自动安排有界重试，复用同 run/input 和已完成检查点。未知用量仍为 unknown；每逻辑调用最多重试两次、每任务六次，耗尽后明确失败，不无限暂停。进程失联、取消、已有结果和用量冲突不自动重放。具体条件、审计及私有恢复入口见 [供应商结果恢复说明](runbooks/provider-result-reconciliation.md#m1-unified-authoring-timeout-recovery-2026-10-02)。这不会新增材料或业务确认门槛，不改变 Word 交付检查。
