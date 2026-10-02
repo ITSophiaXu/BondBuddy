@@ -148,6 +148,7 @@ jobs:
             apps/worker/dist/codex-adapter.test.js \
             apps/worker/dist/codex-probe-cli.test.js \
             apps/worker/dist/codex-durable.test.js \
+            apps/worker/dist/provider-reconciliation.test.js \
             apps/worker/dist/model-generation-router.test.js \
             apps/worker/dist/unified-model-stage.test.js \
             apps/worker/dist/unified-authoring.pg.test.js \
@@ -166,6 +167,7 @@ jobs:
             apps/worker/dist/review-revision.test.js \
             apps/worker/dist/m3-review-pipeline.pg.integration.test.js \
             apps/api/dist/review-workspace.test.js \
+            apps/api/dist/provider-results.test.js \
             apps/api/dist/zz_trial_guard.test.js \
             packages/domain/dist/review-evidence.test.js \
             packages/domain/dist/review-financial-context.test.js \

@@ -76,7 +76,9 @@ async function lockedMessage(client:PoolClient,lease:ReviewAssistantLease) {
 export async function claimReviewAssistant(pool:Pool,leaseSeconds=120):Promise<ReviewAssistantLease|null> {
   if (!Number.isSafeInteger(leaseSeconds)||leaseSeconds<5||leaseSeconds>3600) fail('ASSISTANT_CONFIG_INVALID');
   return transaction(pool,async client=>{
-    const row=(await client.query(`SELECT m.* FROM bb_review_messages m JOIN bb_projects p ON p.id=m.project_id AND p.owner_user_id=m.owner_user_id
+    // Keep PostgreSQL microseconds for both history and parsed-attachment cutoffs;
+    // node-postgres Date decoding would truncate valid earlier evidence in the same millisecond.
+    const row=(await client.query(`SELECT m.*,m.created_at::text AS created_at FROM bb_review_messages m JOIN bb_projects p ON p.id=m.project_id AND p.owner_user_id=m.owner_user_id
       WHERE m.role='user' AND p.archived_at IS NULL AND p.deleted_at IS NULL AND (m.reply_status='queued' OR (m.reply_status='running' AND m.lease_until<now()))
       ORDER BY m.created_at,m.id FOR UPDATE OF m SKIP LOCKED LIMIT 1`)).rows[0];
     if (!row) return null;

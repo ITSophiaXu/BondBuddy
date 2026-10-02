@@ -108,10 +108,10 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       await pool.query(`INSERT INTO bb_review_reports(id,owner_user_id,project_id,run_id,version,content_sha256,report) VALUES($1,$2,$3,$4,1,$5,$6)`,
         [source.report_id,owner,project,source.run_id,inputManifestHash(source),source]);
     }
-    const queue=async(options:{source?:ReviewReport|null;prior?:string[];mutate?:(m:ReturnType<typeof message>)=>void;status?:'queued'|'completed'}={})=>{
+    const queue=async(options:{source?:ReviewReport|null;prior?:string[];mutate?:(m:ReturnType<typeof message>)=>void;status?:'queued'|'completed';createdAt?:string}={})=>{
       const m=message(project,options.source===undefined?source:options.source,options.prior);options.mutate?.(m);
-      await pool.query(`INSERT INTO bb_review_messages(id,owner_user_id,project_id,submission_request_id,request_hash,role,content,context,context_snapshot,reply_status)
-        VALUES($1,$2,$3,$4,$5,'user',$6,$7,$8,$9)`,[m.id,owner,project,randomUUID(),m.request_hash,m.content,m.context,m.context_snapshot,options.status??'queued']);
+      await pool.query(`INSERT INTO bb_review_messages(id,owner_user_id,project_id,submission_request_id,request_hash,role,content,context,context_snapshot,reply_status,created_at)
+        VALUES($1,$2,$3,$4,$5,'user',$6,$7,$8,$9,COALESCE($10::timestamptz,now()))`,[m.id,owner,project,randomUUID(),m.request_hash,m.content,m.context,m.context_snapshot,options.status??'queued',options.createdAt??null]);
       return m;
     };
     const config=(reply:unknown=source?proposedReply:plainReply,usage:unknown=measured):CodexAdapterConfig=>({
@@ -211,9 +211,11 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
     });
 
     await t.test('concurrent workers claim once; prompt snapshot, measured usage and proposal are durable without plan/task/billing writes',async ctx=>{
-      const f=await fixture(ctx,true),prior=await f.queue({status:'completed'}),m=await f.queue({prior:[prior.id]});
+      const f=await fixture(ctx,true),prior=await f.queue({status:'completed',createdAt:'2026-10-02T00:00:00.000100Z'}),
+        m=await f.queue({prior:[prior.id],createdAt:'2026-10-02T00:00:00.000900Z'});
+      assert.equal((await f.row(prior.id)).created_at.getTime(),(await f.row(m.id)).created_at.getTime(),'JS Date truncates both PostgreSQL timestamps to the same millisecond');
       const outcomes=await Promise.all([runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()})]);
-      assert.deepEqual(outcomes.sort(),['completed','idle']);assert.equal(await f.sends(),1);
+      assert.deepEqual(outcomes.sort(),['completed','idle'],JSON.stringify({reply_error:(await f.row(m.id)).error,attempt_error:(await f.attempt(m.id))?.error_code}));assert.equal(await f.sends(),1);
       const user=await f.row(m.id),replies=await f.replies(m.id),attempt=await f.attempt(m.id);
       assert.equal(user.reply_status,'completed');assert.equal(user.lease_token,null);assert.equal(replies.length,1);
       assert.equal(replies[0].proposal.source_report_id,f.source!.report_id);assert.deepEqual(replies[0].proposal.finding_ids,['F1']);
@@ -239,6 +241,14 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       await assert.rejects(pool.query("UPDATE bb_review_messages SET context_snapshot='{}' WHERE id=$1",[m.id]),/immutable/);
       await assert.rejects(pool.query('UPDATE bb_review_assistant_attempts SET input_tokens=84 WHERE id=$1',[attempt.id]),/immutable/);
       assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'idle');assert.equal(await f.sends(),1);
+    });
+
+    await t.test('future history within the same millisecond is rejected before model send',async ctx=>{
+      const f=await fixture(ctx),future=await f.queue({status:'completed',createdAt:'2026-10-02T00:00:00.000900Z'}),
+        m=await f.queue({prior:[future.id],createdAt:'2026-10-02T00:00:00.000100Z'});
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
+      assert.equal((await f.row(m.id)).error,'ASSISTANT_CONTEXT_INVALID');
+      assert.equal(await f.sends(),0);assert.equal(await f.attempt(m.id),undefined);
     });
 
     await t.test('large attachment bodies reserve every report reference before optional text and disclose omissions',async ctx=>{
@@ -306,10 +316,11 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
 
     await t.test('crash after completed result reuses exact stored response once and cannot silently accept a conflicting reply',async ctx=>{
       const f=await fixture(ctx),m=await f.queue();
-      await assert.rejects(runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config(),afterCall:async()=>{throw new Error('SYNTHETIC_CRASH');}}),/SYNTHETIC_CRASH/);
+      const dottedModelConfig={...f.config(),model_id:'gpt-6.1-sol'};
+      await assert.rejects(runReviewAssistantOnce({pool,blobs:f.blobs,config:dottedModelConfig,afterCall:async()=>{throw new Error('SYNTHETIC_CRASH');}}),/SYNTHETIC_CRASH/);
       const first=await f.attempt(m.id);assert.equal(first.status,'completed');assert.equal(await f.sends(),1);assert.equal((await f.replies(m.id)).length,0);
       await f.expire(m.id);
-      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config({...plainReply,content:'This must never be sent'})}),'completed');
+      assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:{...f.config({...plainReply,content:'This must never be sent'}),model_id:'gpt-6.1-sol'}}),'completed');
       assert.equal(await f.sends(),1);assert.equal((await f.replies(m.id))[0].content,plainReply.content);
       assert.equal((await f.attempt(m.id)).id,first.id);
       const second=await f.queue();
@@ -356,8 +367,10 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
     });
 
     await t.test('stale lease and foreign identity cannot write journal; archived/deleted projects are not claimed',async ctx=>{
-      const f=await fixture(ctx),m=await f.queue(),lease=await claimReviewAssistant(pool);
+      const f=await fixture(ctx),m=await f.queue({createdAt:'2026-10-02T00:00:00.000900Z'}),lease=await claimReviewAssistant(pool);
       assert.equal(lease?.id,m.id);assert.equal(await claimReviewAssistant(pool),null);
+      assert.equal(typeof lease!.created_at,'string');
+      assert.equal(lease!.created_at,(await pool.query('SELECT created_at::text AS exact_time FROM bb_review_messages WHERE id=$1',[m.id])).rows[0].exact_time);
       const row=lease!;row.prompt_snapshot_id=randomUUID();
       const journal=new ReviewAssistantJournal({pool,blobs:f.blobs,lease:row,validateResult:()=>true});
       const intent:ProviderCallIntent={owner_user_id:f.owner,project_id:f.project,job_id:m.id,run_id:m.id,trace_id:m.id,logical_call_id:'review-assistant-v1',
