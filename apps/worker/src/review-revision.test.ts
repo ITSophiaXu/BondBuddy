@@ -66,6 +66,9 @@ test('revision input pins canonical immutable report and explicit accepted plan 
   assert.deepEqual(f.queries[0]!.values,['report','owner','project',1]);
   assert.deepEqual(f.queries[1]!.values,['accepted-plan','owner','project',1]);
   assert.equal(f.plan.sha256,inputManifestHash(Object.fromEntries(Object.entries(f.plan).filter(([key])=>key!=='sha256'))));
+  f.pin.selected_findings.reverse();
+  f.revision.input_hash=f.run.input_hash=inputManifestHash(f.input.manifest);
+  assert.equal(await unifiedInputGate(f.db,f.run,f.revision),null,'finding selection order is not an implicit change to the accepted set');
 });
 
 test('revision rejects another owner, stale report content, changed accepted selection and alternate baseline',async()=>{
