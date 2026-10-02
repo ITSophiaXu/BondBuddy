@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "fixtures": [
+    {
+      "name": "review-report.docx",
+      "sha256": "1a17649339784c402308c6e5bca4672d0f2dfd4c643b43634c3ae94dbea148fd",
+      "bytes": 34896
+    }
+  ]
+}
