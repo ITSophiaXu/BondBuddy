@@ -5,6 +5,7 @@ import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { ArtifactDownloads, artifactError } from './artifact-download';
 import { ReviewApi } from './review-api';
 import { ReviewAssistant } from './review-assistant';
+import { RevisionHandlingDialog } from './review-revision-handling';
 import { dimensionLabels, conclusionLabels, findingHtml, reportSummary, evidenceHtml, rulesHtml, sourceLocator } from './review-presentation';
 import { executionIdentity, isActiveRun, runStateLabel } from './review-state';
 import { date, esc } from './ui';
@@ -27,6 +28,7 @@ export class ReviewWorkspace {
   private page?: HTMLElement;
   private dialog?: HTMLDialogElement;
   private downloads = new ArtifactDownloads();
+  private handling: RevisionHandlingDialog;
   private tab: 'materials'|'results' = 'materials';
   private agentOpen = false;
   private filters = {dimension:'all',conclusion:'all'};
@@ -56,6 +58,7 @@ export class ReviewWorkspace {
   constructor(private api: ApiClient, private owner: string, private projectId: string,
     private shell: (html: string, section: string) => void, private current: () => boolean, private reportId?: string, tab?: string) {
     this.reviewApi = new ReviewApi(api,projectId,this.controller.signal);
+    this.handling = new RevisionHandlingDialog(api);
     this.assistant = new ReviewAssistant(this.reviewApi,owner,()=>this.refresh(),proposal=>this.previewPlan(proposal));
     this.localInputKey = `bb-review-input:${owner}:${projectId}`;
     this.executionKey = `bb-review-execution:${owner}:${projectId}`;
@@ -66,7 +69,7 @@ export class ReviewWorkspace {
   get hasUnconfirmed() { return this.uploading||this.inputDirty||this.assistant.hasUnconfirmed||Boolean(this.executionPending); }
   dispose() {
     this.disposed=true; this.readGeneration++; clearTimeout(this.pollTimer);clearTimeout(this.inputTimer);
-    this.assistant.dispose();this.controller.abort();this.downloads.dispose();this.dialog?.remove();
+    this.assistant.dispose();this.controller.abort();this.downloads.dispose();this.handling.dispose();this.dialog?.remove();
   }
   async beforeLeave() {
     if(this.uploading){this.message('材料正在上传，请等待保存结果后离开。',true);return false;}
@@ -147,6 +150,7 @@ export class ReviewWorkspace {
         case 'explain':if(finding)this.explain(finding);break;
         case 'discuss':case 'dispute':this.setAgent(true);this.assistant.focus(!finding&&this.tab==='materials'?{project_id:this.projectId,report_id:null,finding_ids:[],material_refs:structuredClone(this.draftInput?.material_versions??[])}:this.context(finding),target.dataset.reviewAction==='dispute'?'我对此项结论有异议：':'');break;
         case 'download':if(target.dataset.artifactId)void this.download(target.dataset.artifactId);break;
+        case 'handling':this.showHandling();break;
         case 'reload-input':void this.resolveInput(false);break;
         case 'adopt-local-input':void this.resolveInput(true);break;
       }
@@ -190,7 +194,7 @@ export class ReviewWorkspace {
     const progress=run?`<section class="review-run"><h3>任务状态：${runStateLabel[run.state]}</h3><p>输入版本 ${run.input_revision} · ${esc(run.run_id)}</p>${run.stage?`<p>${esc(run.stage)}</p>`:''}${['failed','cancelled','rejected','paused','awaiting_input'].includes(run.state)?'<p>本轮状态已保留。补充材料与要求后，可以明确开始下一轮；原报告保持不变。</p>':''}${isActiveRun(run)?'<p>当前输入已锁定。新增材料和说明进入下一版，关闭页面不会取消任务。</p><div class="review-run-actions"><button class="btn secondary small" data-review-action="cancel">停止本次任务</button></div>':''}</section>`:'';
     if(!report){host.innerHTML=progress+`<div class="review-empty"><h2>${isActiveRun(run)?'复核正在进行':'还没有复核报告'}</h2><p class="review-muted">${isActiveRun(run)?'结果就绪后会在这里显示，项目助手仍可记录下一版说明。':'提供材料并明确开始后，在这里查看问题、依据与成果。'}</p><button class="btn secondary" data-review-tab="materials">查看材料与要求</button></div>`;return;}
     const findings=report.findings.filter(f=>(this.filters.dimension==='all'||f.dimension===this.filters.dimension)&&(this.filters.conclusion==='all'||f.conclusion===this.filters.conclusion));
-    host.innerHTML=progress+reportSummary(report)+`<div class="review-section-heading"><h3>复核发现</h3><span class="review-muted">${esc(this.materialNames()[report.source_material.material_id]??report.source_material.material_id)} · V${report.source_material.material_version} · ${esc(date(report.created_at))}</span></div><div class="review-filters"><label>检查维度<select data-review-filter="dimension"><option value="all">全部维度</option>${Object.entries(dimensionLabels).map(([value,label])=>`<option value="${value}" ${this.filters.dimension===value?'selected':''}>${label}</option>`).join('')}</select></label><label>结论<select data-review-filter="conclusion"><option value="all">全部结论</option>${Object.entries(conclusionLabels).map(([value,label])=>`<option value="${value}" ${this.filters.conclusion===value?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="review-findings">${findings.length?findings.map(f=>findingHtml(f,this.selections.has(f.finding_id),this.materialNames())).join(''):'<p class="review-muted">当前筛选没有发现；请结合检查覆盖与限制阅读结果。</p>'}</div><div class="review-plan-bar"><div><strong>已选择 ${this.selections.size} 项修订</strong><p>先核对修改范围，再明确执行。补证、异议与已修改都不自动代表复核通过。</p></div><button class="btn primary small" data-review-action="plan" ${this.planSaving?'disabled':''}>核对修订计划</button></div>${this.artifactHeading()}<div class="review-downloads">${this.workspace.artifacts.map(artifact=>`<button class="btn secondary small" data-review-action="download" data-artifact-id="${esc(artifact.artifact_id)}">下载${{report:'问题报告',comments:'批注稿',revision:'修订版',clean:'清洁版',baseline:'基线文稿'}[artifact.kind]}</button>`).join('')}</div><div class="review-footer-actions"><p>版本记录在工作台项目内保存。当前结果的来源与限制始终保留。</p><button class="btn secondary small" data-review-action="review" ${isActiveRun(this.workspace.active_run)?'disabled':''}>再次完整复核</button></div>`;
+    host.innerHTML=progress+reportSummary(report)+`<div class="review-section-heading"><h3>复核发现</h3><span class="review-muted">${esc(this.materialNames()[report.source_material.material_id]??report.source_material.material_id)} · V${report.source_material.material_version} · ${esc(date(report.created_at))}</span></div><div class="review-filters"><label>检查维度<select data-review-filter="dimension"><option value="all">全部维度</option>${Object.entries(dimensionLabels).map(([value,label])=>`<option value="${value}" ${this.filters.dimension===value?'selected':''}>${label}</option>`).join('')}</select></label><label>结论<select data-review-filter="conclusion"><option value="all">全部结论</option>${Object.entries(conclusionLabels).map(([value,label])=>`<option value="${value}" ${this.filters.conclusion===value?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="review-findings">${findings.length?findings.map(f=>findingHtml(f,this.selections.has(f.finding_id),this.materialNames())).join(''):'<p class="review-muted">当前筛选没有发现；请结合检查覆盖与限制阅读结果。</p>'}</div><div class="review-plan-bar"><div><strong>已选择 ${this.selections.size} 项修订</strong><p>先核对修改范围，再明确执行。补证、异议与已修改都不自动代表复核通过。</p></div><button class="btn primary small" data-review-action="plan" ${this.planSaving?'disabled':''}>核对修订计划</button></div>${this.artifactHeading()}<div class="review-downloads">${this.handlingButton()}${this.workspace.artifacts.map(artifact=>`<button class="btn secondary small" data-review-action="download" data-artifact-id="${esc(artifact.artifact_id)}">下载${{report:'问题报告',comments:'批注稿',revision:'修订版',clean:'清洁版',baseline:'基线文稿'}[artifact.kind]}</button>`).join('')}</div><div class="review-footer-actions"><p>版本记录在工作台项目内保存。当前结果的来源与限制始终保留。</p><button class="btn secondary small" data-review-action="review" ${isActiveRun(this.workspace.active_run)?'disabled':''}>再次完整复核</button></div>`;
     host.querySelectorAll<HTMLInputElement>('[data-review-select]').forEach(input=>input.disabled=this.planSaving);
     host.querySelectorAll<HTMLDetailsElement>('.review-finding').forEach(d=>{d.open=this.openFindings.has(d.dataset.findingId!);});
   }
@@ -198,6 +202,14 @@ export class ReviewWorkspace {
   private artifactHeading(){
     const run=this.workspace?.artifact_run;if(!run||!this.workspace?.artifacts.length)return '';
     return `<div class="review-section-heading"><h3>执行版本 V${run.version} · ${operationLabels[run.operation]}成果</h3></div><p class="review-muted">${esc(run.run_id)}${run.source_report_id?` · 来源报告 ${esc(run.source_report_id)}`:''}。${run.operation==='revision'?'上方保留来源报告的发现；本轮已生成修改文稿，是否通过需要再次明确复核。':'下载对应这次执行的成果，来源与限制保留在报告中。'}</p>`;
+  }
+  private handlingButton(){return this.workspace?.artifact_run?.operation==='revision'&&this.workspace.artifacts.some(a=>a.kind==='revision')?'<button class="btn secondary small" data-review-action="handling">处理清单</button>':'';}
+  private showHandling(){
+    const run=this.workspace?.artifact_run,artifact=this.workspace?.artifacts.find(a=>a.kind==='revision');
+    if(!run||run.operation!=='revision'||!artifact)return;
+    const report=this.workspace?.selected_report;
+    this.handling.open({artifact,runId:run.run_id,version:run.version,sourceReportId:run.source_report_id,
+      sourceReport:report?.report_id===run.source_report_id?report:undefined,materialNames:this.materialNames()});
   }
   private async persistInput(){
     while(this.inputDirty&&this.workspace&&this.draftInput&&this.live()){
