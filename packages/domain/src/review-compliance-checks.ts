@@ -21,7 +21,7 @@ export interface ReviewFormattingRequirement {
 /** Taken from the actual parser record after its response/hash is verified. */
 export interface ReviewFormattedRecord { ref: ReviewEvidenceRef; formatting: Record<string, unknown> }
 export interface ReviewComplianceInput {
-  context: RuleContext; packs: RulePack[]; assessments: ReviewRuleAssessment[];
+  context: RuleContext | null; packs: RulePack[]; assessments: ReviewRuleAssessment[];
   formatting_requirements: ReviewFormattingRequirement[]; formatted_records: ReviewFormattedRecord[];
 }
 
@@ -41,9 +41,12 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
   const result: ReviewEvaluation = { findings:[],coverage:[],limitations:[] };
   const eligible = new Map<string, Set<string>>();
   const gatedPacks = new Map<string, string>();
+  if (!input.context) result.coverage.push(reviewCoverage(ctx,'rules:context-missing','compliance','uncovered',
+    '市场、品种、适用日期或发行阶段缺失，不能推测规则适用性。',[]));
   for (const pack of input.packs) {
     if (eligible.has(pack.pack_id) || gatedPacks.has(pack.pack_id)) throw new Error('REVIEW_RULE_PACK_AMBIGUOUS');
     try {
+      if (!input.context) { gatedPacks.set(pack.pack_id,'rule_context_missing'); continue; }
       const decision = evaluateRulePackCapability(pack,input.context);
       if (decision.decision === 'eligible_for_evaluation') eligible.set(pack.pack_id,new Set(decision.applicable_rule_ids));
       else {

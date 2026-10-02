@@ -30,6 +30,10 @@ test('numeric substring cannot turn 1000 into quoted evidence for 100',()=>{
   const f=reviewFixture(),d=f.observation('d','1000');d.value='100';d.value_literal='100';
   const result=reviewFinancialEvidence({observations:[d,f.observation('a','100',{source_kind:'audit'})],calculations:[]},f.ctx);
   assert(result.findings[0]?.limitations.includes('financial_value_not_in_source'));assert.equal(result.coverage[0]?.outcome,'needs_evidence');
+  d.value_refs=[{...d.value_refs[0]!,quote:'100'}];
+  assert(reviewFinancialEvidence({observations:[d],calculations:[]},f.ctx).findings[0]?.limitations.includes('financial_value_not_in_source'));
+  const negative=f.observation('n','-100');negative.value='100';negative.value_literal='100';negative.value_refs=[{...negative.value_refs[0]!,quote:'100'}];
+  assert(reviewFinancialEvidence({observations:[negative],calculations:[]},f.ctx).findings[0]?.limitations.includes('financial_value_not_in_source'));
 });
 test('entity, currency, scope, basis and period mismatch never creates a hard monetary error',()=>{
   const changes:Partial<ReviewFinancialObservation>[]=[{entity_id:'other'},{currency:'USD'},{accounting_scope:'parent'},{basis:'restated'},{period:{start:'2024-01-01',end:'2024-12-31',as_of:null}}];

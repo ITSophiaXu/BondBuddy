@@ -1,6 +1,6 @@
 import type { ReviewEvidenceRef, ReviewFinding } from '../../contracts/dist/review-results.js';
 import { add, subtract, divide, scale, convert, decimal, display, equal, type Rational } from './update-arithmetic.js';
-import { canonical, uniqueEvidence, validateReviewEvidence, type ReviewEvidenceContext } from './review-evidence.js';
+import { canonical, evidenceKey, uniqueEvidence, validateReviewEvidence, type ReviewEvidenceContext } from './review-evidence.js';
 import { normalizeReviewFindings, reviewCoverage, type ReviewEvaluation, type ReviewFindingCandidate } from './review-finding-normalization.js';
 
 export interface ReviewFinancialObservation {
@@ -58,11 +58,19 @@ function validObservation(o: ReviewFinancialObservation, ctx: ReviewEvidenceCont
   try { if (literal === null || !equal(decimal(literal),decimal(o.value))) problems.push('financial_value_literal_mismatch'); }
   catch { problems.push('financial_decimal_invalid'); }
   if (!o.value_refs.some(ref => {
-    const text = ref.quote; let start = text.indexOf(o.value_literal);
-    while (start >= 0) {
-      const before = text[start - 1] ?? '', after = text[start + o.value_literal.length] ?? '';
-      if (!/[\d,.]/.test(before) && !/[\d,.]/.test(after)) return true;
-      start = text.indexOf(o.value_literal, start + 1);
+    const record = ctx.records.find(record => evidenceKey(record) === evidenceKey(ref));
+    if (!record || !o.value_literal.length) return false;
+    // Verify token boundaries in the trusted full record, not in a model-truncated quote.
+    let quoteStart = record.literal_quote.indexOf(ref.quote);
+    while (quoteStart >= 0) {
+      let start = ref.quote.indexOf(o.value_literal);
+      while (start >= 0) {
+        const absolute = quoteStart + start;
+        const before = record.literal_quote[absolute - 1] ?? '', after = record.literal_quote[absolute + o.value_literal.length] ?? '';
+        if (!/[\d,.+\-（(]/.test(before) && !/[\d,.%％)）]/.test(after)) return true;
+        start = ref.quote.indexOf(o.value_literal, start + 1);
+      }
+      quoteStart = record.literal_quote.indexOf(ref.quote,quoteStart + 1);
     }
     return false;
   })) problems.push('financial_value_not_in_source');
