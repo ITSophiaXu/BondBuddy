@@ -55,3 +55,9 @@ test('known style discrepancy is retained alongside unknown portions and cannot 
   f.input.formatted_records=[{ref:f.target,formatting:{runs:[{half_points:'22'},{half_points:null}]}}];const result=reviewComplianceEvidence(f.input,f.ctx);
   assert.equal(result.findings[0]?.conclusion,'error');assert.equal(result.coverage.find(c=>c.check_id==='format')?.outcome,'uncovered');
 });
+test('fixed ledger sources with unknown project applicability retain cited manual observations only',async()=>{
+  const f=await fixture();f.input.context=null;const unknown={...f.ref,applicability:'unknown' as const};f.ctx.rules=[unknown];
+  f.input.assessments=[{...f.assessment,rule_refs:[unknown],evaluation_method:'model',outcome:'pass'}];
+  const result=reviewComplianceEvidence(f.input,f.ctx);assert.equal(result.findings[0]?.conclusion,'manual');assert.equal(result.findings[0]?.rule_refs?.[0]?.applicability,'unknown');
+  assert(result.coverage.every(c=>c.outcome!=='pass'));assert.equal(result.findings[0]?.repairability.can_revise,false);
+});

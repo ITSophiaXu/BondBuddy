@@ -64,6 +64,20 @@ export function reviewComplianceEvidence(input: ReviewComplianceInput, ctx: Revi
   for (const assessment of input.assessments) {
     const ids = eligible.get(assessment.pack_id);
     if (!ids?.has(assessment.rule_id)) {
+      // A persisted source may be supplied as reading material while project applicability is
+      // unknown. Keep the model's cited observation as manual, never as a legal pass or error.
+      const referenceOnly = assessment.evaluation_method === 'model' && assessment.rule_refs.length > 0
+        && assessment.rule_refs.every(rule => rule.rule_id === assessment.rule_id && rule.pack_id === assessment.pack_id
+          && rule.applicability === 'unknown' && !validateReviewRule(rule,ctx).length
+          && ruleBelongsToPack(rule,input.packs.find(pack => pack.pack_id === assessment.pack_id)));
+      if (referenceOnly) {
+        const findings = normalizeReviewFindings([{stable_key:`reference-rule:${assessment.check_id}`,dimension:'compliance',conclusion:'manual',severity:'P2',
+          title:assessment.title,description:`${assessment.description} 本条来源的项目适用性尚未核实，不构成正式合规结论。`,
+          target_refs:assessment.target_refs,evidence_refs:assessment.evidence_refs,rule_refs:assessment.rule_refs,
+          limitations:['rule_applicability_unverified'],verification:'model_only',can_revise:false}],ctx);
+        result.findings.push(...findings);result.coverage.push(reviewCoverage(ctx,assessment.check_id,'compliance','manual',
+          '保留受信发布来源的语义观察，适用性与结论待人工核对。',findings.flatMap(f=>f.evidence_refs),findings,assessment.rule_refs));continue;
+      }
       result.coverage.push(reviewCoverage(ctx,assessment.check_id,'compliance','uncovered','规则没有通过本次项目的市场、品种、阶段及效力校验。',[])); continue;
     }
     assessed.add(`${assessment.pack_id}:${assessment.rule_id}`);
