@@ -130,6 +130,7 @@ jobs:
         run: |
           node --test --test-concurrency=1 --test-reporter=tap \
             apps/worker/dist/runtime-entry.test.js \
+            apps/worker/dist/run-runtime.test.js \
             apps/worker/dist/runtime-parse-slots.test.js \
             apps/worker/dist/parse-staging.test.js \
             apps/worker/dist/authoring-material-tools.test.js \
@@ -138,6 +139,7 @@ jobs:
             apps/worker/dist/model-generation-router.test.js \
             apps/worker/dist/unified-model-stage.test.js \
             apps/worker/dist/unified-authoring.pg.test.js \
+            apps/worker/dist/unified-timeout-recovery.test.js \
             apps/worker/dist/review-anchor-mapping.test.js \
             apps/worker/dist/review-assistant.test.js \
             apps/worker/dist/review-formatting-context.test.js \
