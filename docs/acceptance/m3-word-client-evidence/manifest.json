@@ -1,0 +1,35 @@
+{
+  "synthetic": true,
+  "fixtures": [
+    {
+      "name": "clean-revision.docx",
+      "sha256": "0993e83aee6acd6c914b721c9b73e46998321cc97a6fb90825e94a8d4aa4da37",
+      "bytes": 37277
+    },
+    {
+      "name": "comments-existing-revision.docx",
+      "sha256": "450a3f91b5cfb6a9cd70c74525f74507814f5daa03d5bccfa85adb14bcd4d470",
+      "bytes": 37125
+    },
+    {
+      "name": "existing-comments.docx",
+      "sha256": "b5822679ecf4eace8cf1964c019bf8c06f4934c6b66fae625aa581eac12794c3",
+      "bytes": 37323
+    },
+    {
+      "name": "native-comments.docx",
+      "sha256": "38f8e9faffa828ea7036dbe1301ab578ef5341614b2517735c39652621b704ca",
+      "bytes": 37306
+    },
+    {
+      "name": "review-report.docx",
+      "sha256": "0128c0cb2a2908f9dce72dcf99bfe24f0b1978b4671d54a27789bdaaa5df4f84",
+      "bytes": 34858
+    },
+    {
+      "name": "tracked-revision.docx",
+      "sha256": "06944ecb4958a35187146058dbda872173ced8d8e8c1e4fe2bbf87798c391e08",
+      "bytes": 37400
+    }
+  ]
+}

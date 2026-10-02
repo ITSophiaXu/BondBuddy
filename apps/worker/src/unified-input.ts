@@ -1,5 +1,6 @@
 import { Value } from '@sinclair/typebox/value';
-import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, type UnifiedAuthoringInput, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
+import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
+  type ReviewRevisionPin, type ReviewEvidenceRef, type UnifiedAuthoringInput, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { digest } from '@bondbuddy/api/data';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { ownerProjectMessageBody } from '@bondbuddy/api/log-ops';
@@ -23,22 +24,71 @@ export type UnifiedRecord = Omit<DocumentParseRecord, 'extraction_method'> & { e
 export type UnifiedMaterial = { pin: UnifiedManifest['materials'][number]; filename: string; mediaType: string; objectKey: string; records: UnifiedRecord[]; pending?: string[] };
 export type UnifiedInput = { manifest: UnifiedManifest; materials: UnifiedMaterial[]; requirements: string[] };
 export class UnifiedInputPending extends Error {}
+
+export function revisionEvidenceRefs(pin: ReviewRevisionPin): ReviewEvidenceRef[] {
+  return pin.selected_findings.filter(executableRevisionFinding).flatMap(finding => [...finding.target_refs, ...finding.evidence_refs]);
+}
+
+/** A revision can only consume the immutable report and explicitly accepted plan from its owner/project. */
+export async function reviewRevisionInputGate(pool: Pool, run: RunRow, pin: ReviewRevisionPin): Promise<boolean> {
+  if (!isReviewRevisionPin(pin) || pin.owner_user_id !== run.owner_user_id || pin.project_id !== run.project_id) return false;
+  const reportRow = (await pool.query(`SELECT run_id,version,content_sha256,report FROM bb_review_reports
+    WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND version=$4`,
+  [pin.source_report.report_id, run.owner_user_id, run.project_id, pin.source_report.version])).rows[0];
+  const report = reportRow?.report;
+  if (!reportRow || !isReviewReport(report) || String(reportRow.content_sha256).trim() !== pin.source_report.sha256
+      || inputManifestHash(report) !== pin.source_report.sha256 || reportRow.run_id !== pin.source_report.run_id
+      || report.run_id !== pin.source_report.run_id || report.report_id !== pin.source_report.report_id
+      || report.version !== pin.source_report.version || report.input_revision !== pin.source_report.input_revision
+      || report.project_id !== run.project_id || inputManifestHash(report.source_material) !== inputManifestHash(pin.source_material)
+      || pin.selected_findings.some(finding => inputManifestHash(finding) !== inputManifestHash(report.findings.find(item => item.finding_id === finding.finding_id) ?? null))
+      || pin.excluded_findings.some(finding => !report.findings.some(item => item.finding_id === finding.finding_id))) return false;
+  const planRow = (await pool.query(`SELECT content_sha256,accepted_at,plan FROM bb_review_revision_plans
+    WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND version=$4`,
+  [pin.accepted_plan.plan_id, run.owner_user_id, run.project_id, pin.accepted_plan.version])).rows[0];
+  if (!planRow?.plan || !planRow.accepted_at || !Number.isFinite(new Date(planRow.accepted_at).getTime())
+      || !Array.isArray(planRow.plan.finding_ids) || !Array.isArray(planRow.plan.excluded_findings)
+      || !Array.isArray(planRow.plan.requirements)) return false;
+  const { sha256: planSha256, ...content } = planRow.plan;
+  return planSha256 === pin.accepted_plan.sha256 && String(planRow.content_sha256).trim() === pin.accepted_plan.sha256
+    && inputManifestHash(content) === pin.accepted_plan.sha256
+    && content.plan_id === pin.accepted_plan.plan_id && content.version === pin.accepted_plan.version
+    && content.accepted_at === pin.accepted_plan.accepted_at
+    && new Date(planRow.accepted_at).toISOString() === pin.accepted_plan.accepted_at
+    && content.source_report_id === pin.source_report.report_id
+    && content.finding_ids.every((id:unknown) => typeof id === 'string')
+    && inputManifestHash([...content.finding_ids].sort()) === inputManifestHash(pin.selected_findings.map(finding => finding.finding_id).sort())
+    && inputManifestHash(content.excluded_findings) === inputManifestHash(pin.excluded_findings)
+    && inputManifestHash(content.requirements) === inputManifestHash(pin.requirements);
+}
+
 export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevisionRow): Promise<Extract<StageOutcome, { kind: 'pause' | 'fail' }> | null> {
   const fail = { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' } as const;
   if (!isUnifiedInput(input.manifest) || inputManifestHash(input.manifest) !== input.input_hash.trim() || input.input_hash.trim() !== run.input_hash.trim()) return fail;
   const m = input.manifest as UnifiedManifest;
   if (!Value.Check(UpdateDetailsSchema, m.update_details) || m.update_details.authoring_mode !== 'unified_v1' ||
       !Array.isArray(m.materials) || !Array.isArray(m.authoring.source_prospectuses) || !Array.isArray(m.authoring.knowledge) || !Array.isArray(m.authoring.requirements)) return fail;
-  if (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || !m.update_details.target_reporting_periods?.length)
+  const revision = m.authoring.review_revision;
+  if (Object.hasOwn(m.authoring,'review_revision') && !isReviewRevisionPin(revision)) return fail;
+  if (revision && (!await reviewRevisionInputGate(pool, run, revision) || m.authoring.previous_output)) return fail;
+  if (revision && !revision.selected_findings.some(executableRevisionFinding))
+    return { kind: 'pause', stage: 'capability_not_ready', reason: 'revision_no_executable_changes' };
+  // A finding revision already pins its verified source/report/evidence. Optional project
+  // labels cannot impose M1 whole-document authoring prerequisites on that accepted scope.
+  if (!revision && (typeof m.issuer_name !== 'string' || !m.issuer_name.trim() || !isMarketOffering(m.market, m.offering) || !m.update_details.target_reporting_periods?.length))
     return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_target_information_required' };
   if (!m.materials.length) return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };
   for (const pin of m.materials) {
     const material = (await pool.query('SELECT role,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [run.owner_user_id, run.project_id, pin.material_id, pin.material_version])).rows[0];
     if (!material || material.role !== pin.role || String(material.sha256).trim() !== pin.sha256) return fail;
   }
+  if (revision && (!m.materials.some(pin => pin.material_id === revision.source_material.material_id
+      && pin.material_version === revision.source_material.material_version && pin.sha256 === revision.source_material.sha256)
+      || revisionEvidenceRefs(revision).some(ref => !m.materials.some(pin => pin.material_id === ref.material_id
+        && pin.material_version === ref.material_version && pin.sha256 === ref.material_sha256)))) return fail;
   // Source metadata is optional context. The worker resolves gaps from the uploaded
   // material and labels uncertainty; an unfilled relationship is never a same-issuer assertion.
-  if (!m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
+  if (!revision && !m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
   if (m.authoring.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) return fail;
   if (m.authoring.previous_output && !await previousArtifact(pool, run, m.authoring.previous_output)) return fail;
   return null;
@@ -56,6 +106,12 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
   const row = (await ctx.pool.query('SELECT input_hash,manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3', [ctx.run.owner_user_id, ctx.run.project_id, ctx.run.input_revision])).rows[0];
   if (!row || !isUnifiedInput(row.manifest) || inputManifestHash(row.manifest) !== ctx.run.input_hash.trim()) throw new Error('INPUT_REVISION_CONFLICT');
   const manifest = row.manifest as UnifiedManifest;
+  // Original-file authoring has no accepted-finding scope enforcement. Even malformed
+  // revision markers must fail before that path can discard the pinned parse records.
+  if (options.originalFiles && Object.hasOwn(manifest.authoring, 'review_revision')) throw new Error('INPUT_REVISION_CONFLICT');
+  const revision = manifest.authoring.review_revision;
+  if (revision && !await reviewRevisionInputGate(ctx.pool, ctx.run, revision)) throw new Error('INPUT_REVISION_CONFLICT');
+  const revisionRefs = revision ? revisionEvidenceRefs(revision) : [];
   const materials: UnifiedMaterial[] = [];
   for (const pin of manifest.materials) {
     const scope = { ownerUserId: ctx.run.owner_user_id, projectId: ctx.run.project_id, materialId: pin.material_id, materialVersion: pin.material_version };
@@ -69,15 +125,24 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
       materials.push({pin,filename:result.filename,mediaType:result.media_type,objectKey:result.object_key,records:[]});
       continue;
     }
-    if (result.state !== 'succeeded') throw new UnifiedInputPending(result.state === 'failed' ? 'authoring_material_unreadable' : 'material_parse_pending');
-    const snapshotId = result.checkpoint?.stages?.parse_evidence?.snapshot_id;
+    const pinnedRefs = revisionRefs.filter(ref => ref.material_id === pin.material_id && ref.material_version === pin.material_version);
+    const revisionSnapshots = new Set(pinnedRefs.map(ref => ref.parse_snapshot_id));
+    if (revisionSnapshots.size > 1) throw new Error('INPUT_REVISION_CONFLICT');
+    if (!revisionSnapshots.size && result.state !== 'succeeded') throw new UnifiedInputPending(result.state === 'failed' ? 'authoring_material_unreadable' : 'material_parse_pending');
+    const snapshotId = revisionSnapshots.size ? [...revisionSnapshots][0] : result.checkpoint?.stages?.parse_evidence?.snapshot_id;
     const snapshot = snapshotId ? await getParseSnapshot({ pool: ctx.pool }, scope, snapshotId) : null;
     if (snapshot && snapshot.contentSha256 !== pin.sha256) throw new Error('INPUT_REVISION_CONFLICT');
     let records: UnifiedRecord[] = snapshot?.evidence ?? [];
+    if (pinnedRefs.some(ref => !snapshot || snapshot.snapshotId !== ref.parse_snapshot_id || snapshot.responseSha256 !== ref.parse_response_sha256
+        || ref.material_sha256 !== pin.sha256 || !records.some(record => record.record_id === ref.record_id
+          && inputManifestHash(record) === ref.record_sha256 && record.literal_quote === ref.quote
+          && inputManifestHash(record.locator) === inputManifestHash(ref.locator)
+          && record.extraction_method === ref.extraction_method && inputManifestHash(record.uncertainty) === inputManifestHash(ref.uncertainty))))
+      throw new Error('INPUT_REVISION_CONFLICT');
     // Native parsers identify scanned/image pages. Preflight OCR covers only a few pages;
     // the leased authoring run consumes the existing complete, hash-checked page cache.
-    if (result.checkpoint?.stages?.ocr_evidence || ['image/png','image/jpeg'].includes(result.media_type) ||
-        snapshot?.response.warnings.some(w => ['PDF_PAGES_WITHOUT_TEXT','PDF_IMAGES_NOT_OCRD'].includes(w.code))) {
+    if (!revision && (result.checkpoint?.stages?.ocr_evidence || ['image/png','image/jpeg'].includes(result.media_type) ||
+        snapshot?.response.warnings.some(w => ['PDF_PAGES_WITHOUT_TEXT','PDF_IMAGES_NOT_OCRD'].includes(w.code)))) {
       const ocrScope = { owner: ctx.run.owner_user_id, projectId: ctx.run.project_id, materialId: pin.material_id,
         version: pin.material_version, purpose: 'full_ocr' as const, runId: ctx.run.id, leaseToken: ctx.lease.token };
       const { aggregate } = await processOcrV2(ctx.pool,ctx.blobs,ocrScope);
@@ -119,6 +184,15 @@ export async function loadUnifiedInput(ctx: StageContext, options: { originalFil
     }
   }
   const requirements: string[] = [];
+  // The review input's requirements and the accepted plan remain separately pinned.
+  // Neither later chat messages nor the project's current mutable draft are loaded here.
+  if (revision && manifest.review && typeof manifest.review === 'object') {
+    const locked = (manifest.review as {input?:{requirements?:unknown}}).input?.requirements;
+    if (locked !== undefined) {
+      if (!Array.isArray(locked) || locked.some(value => typeof value !== 'string')) throw new Error('INPUT_REVISION_CONFLICT');
+      requirements.push(...locked);
+    }
+  }
   for (const pin of manifest.authoring.requirements) {
     const row = (await ctx.pool.query(`SELECT snapshot_id,content_sha256 FROM bb_user_submission_versions
       WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND message_id=$4 AND message_version=$5 AND submission_kind='project_message'`,

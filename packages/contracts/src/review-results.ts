@@ -11,6 +11,7 @@ const strings = Type.Array(text, { maxItems: 200 });
 const ids = Type.Array(id, { maxItems: 2000, uniqueItems: true });
 
 export const ReviewDimensionSchema = Type.Union([Type.Literal('financial'), Type.Literal('compliance'), Type.Literal('public')]);
+export const ReviewPublicCategorySchema = Type.Union(['entity_control','bonds_credit','litigation_penalties','material_events'].map(value => Type.Literal(value)));
 export const ReviewConclusionSchema = Type.Union([Type.Literal('error'), Type.Literal('conflict'), Type.Literal('needs_evidence'), Type.Literal('manual'), Type.Literal('uncovered')]);
 export const ReviewCheckStatusSchema = Type.Union([Type.Literal('rechecked'), Type.Literal('carried_forward')]);
 
@@ -52,6 +53,7 @@ export const ReviewFindingSchema = strict({
   finding_id: id, report_id: id, dimension: ReviewDimensionSchema, conclusion: ReviewConclusionSchema,
   severity: Type.Union([Type.Literal('P1'), Type.Literal('P2'), Type.Literal('P3')]),
   title: text, description: text, target_refs: evidence, evidence_refs: evidence,
+  public_category: Type.Optional(ReviewPublicCategorySchema),
   rule_refs: Type.Optional(rules), public_sources: Type.Optional(publicSources), suggested_change: Type.Optional(text), limitations: strings,
   calculation: Type.Optional(strict({ expression: text, operands: ids, expected: text, observed: text, unit: id, rounding: text })),
   repairability: strict({ can_revise: Type.Boolean(), reason: text, allowed_record_ids: ids }),

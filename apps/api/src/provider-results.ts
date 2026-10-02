@@ -74,7 +74,7 @@ export function providerResultObjectKey(intent: ProviderCallIntent, sha256: stri
 function assertIntent(intent: ProviderCallIntent) {
   if (!safeId(intent.owner_user_id) || !safeId(intent.project_id) || !safeId(intent.job_id) || !safeId(intent.run_id) ||
       !safeId(intent.trace_id) || !safeId(intent.logical_call_id) || !safeId(intent.call_id) || !Number.isSafeInteger(intent.attempt_no) || intent.attempt_no < 1 ||
-      !safeId(intent.model_id) || !safeVersion(intent.model_config_version) || !safeId(intent.prompt_snapshot_ref) || intent.trace_id !== intent.run_id || intent.call_id.length > 128) {
+      !safeVersion(intent.model_id) || !safeVersion(intent.model_config_version) || !safeId(intent.prompt_snapshot_ref) || intent.trace_id !== intent.run_id || intent.call_id.length > 128) {
     throw new Error('Invalid provider call identity');
   }
 }

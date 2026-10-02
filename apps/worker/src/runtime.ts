@@ -21,6 +21,7 @@ import type { NoHistoryStageAdapters } from './no-history-model-stage.js';
 import { loadCodexAdapterConfig, type CodexAdapterConfig } from './codex-adapter.js';
 import { assertProbeConfig, runPlatformProbeOnce } from './platform-probe-job.js';
 import { historicalWordDeliveryStage } from './historical-word-stage.js';
+import { runReviewAssistantOnce } from './review-assistant.js';
 import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { sweepParseStaging } from './parse-staging.js';
 import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
@@ -72,6 +73,8 @@ export type WorkerRuntimeOptions = {
   workerId?: string; heartbeatMs?: number;
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
+  /** M3 discussions use their own leases and never create document runs. */
+  reviewAssistant?: { config?: CodexAdapterConfig; pollMs?: number };
   stagingRoot?: string;
 };
 
@@ -92,9 +95,9 @@ export class WorkerRuntime {
   private readonly runLeases = new Map<number, Lease>();
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
-  readonly counters = { run: 0, parse: 0, probe: 0, idle: 0, sweeps: 0, errors: 0 };
-  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
-    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
+  readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
+  private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
+    & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
 
   constructor(options: WorkerRuntimeOptions) {
     this.o = { concurrency: 2, parseSlots: 1, pollMs: 1000, leaseSeconds: 30, sweepMs: 15000, drainMs: 20000, kinds: ['run', 'parse'],
@@ -128,6 +131,7 @@ export class WorkerRuntime {
     this.loops.push(this.heartbeatLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
     if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
+    if (this.o.reviewAssistant && this.o.kinds.includes('run')) this.loops.push(this.assistantLoop(this.o.reviewAssistant));
     return this;
   }
 
@@ -170,6 +174,16 @@ export class WorkerRuntime {
       catch { this.counters.errors++; outcome = 'error'; }
       if (outcome !== 'idle') { this.counters.probe++; this.emit({ kind: 'platform_probe', outcome }); }
       if (outcome === 'idle' || outcome === 'error') await sleep(probe.pollMs ?? 5000, this.stopSignal.signal);
+    }
+  }
+
+  private async assistantLoop(options: NonNullable<WorkerRuntimeOptions['reviewAssistant']>) {
+    while (!this.stopping) {
+      let outcome = 'idle';
+      try { outcome = await runReviewAssistantOnce({ pool: this.o.pool, blobs: this.o.blobs, signal: this.workAbort.signal, config: options.config }); }
+      catch { this.counters.errors++; outcome = 'error'; }
+      if (outcome !== 'idle') { this.counters.assistant++; this.emit({ kind: 'review_assistant', outcome }); }
+      if (outcome === 'idle' || outcome === 'error') await sleep(options.pollMs ?? this.o.pollMs, this.stopSignal.signal);
     }
   }
 
@@ -309,7 +323,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   const materials = runStages.find(stage => stage.name === 'materials_ready')!;
   environmentMaterialsStages.set(materials, { run: materials.run, replay: materials.replay });
   return {
-    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages,
+    pool, blobs, kinds: kinds as ('run' | 'parse')[], runStages, reviewAssistant: {},
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
     ...(targetPeriodCandidateProducer ? { produceTargetPeriodCandidates: async request =>

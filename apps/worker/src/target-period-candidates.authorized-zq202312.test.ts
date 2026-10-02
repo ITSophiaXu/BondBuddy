@@ -18,7 +18,7 @@ const FILES = {
   historical: { id: 'zq-202312-01', bytes: 623_540, sha256: '8b7dab59cc9d0cc86da5fa06af2fcc9d9dfc84012cbb6460e5e92a650c73a0be', mediaType: DOCX },
   financial: { id: 'zq-202312-02', bytes: 48_915, sha256: '1904db38788dacc07603234ac83be81548493321abc45905601422a6a9b30a2f', mediaType: XLSX },
 } as const;
-const PARSER_VERSION = 'bondbuddy-document-parser-1.0.7';
+const PARSER_VERSION = 'bondbuddy-document-parser-1.0.8';
 
 type ManifestAnchor = { readonly locator: string; readonly quote: string };
 type ManifestFile = {

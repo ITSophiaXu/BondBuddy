@@ -24,11 +24,13 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 import pdfplumber
 from pypdf import PdfReader
+from .paragraph_outline import ParagraphOutlineResolver
+from .document_formatting import document_formatting
 
 
 REQUEST_SCHEMA_VERSION = "document-parse-request-v1"
 RESPONSE_SCHEMA_VERSION = "document-parse-response-v1"
-PARSER_VERSION = "bondbuddy-document-parser-1.0.7"
+PARSER_VERSION = "bondbuddy-document-parser-1.0.8"
 DEFAULT_MAX_PAGES = 1500
 MAX_UNCOMPRESSED_OFFICE_BYTES = 300 * 1024 * 1024
 MAX_WORKSHEET_CELLS = 2_000_000
@@ -160,6 +162,7 @@ def _paragraph_formatting(
     paragraph_style: Any,
     style_layers: Any,
     default_rpr: Any,
+    outline_level: str | None,
 ) -> dict[str, Any]:
     summaries: list[dict[str, Any]] = []
     previous_key: str | None = None
@@ -199,6 +202,7 @@ def _paragraph_formatting(
         "style": paragraph_style.name if paragraph_style else "",
         "runs": summaries,
         "paragraph_overrides": layout,
+        "outline_level": outline_level,
     }
 
 
@@ -1069,6 +1073,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     root = document.element
     unsupported_revision_count = _unsupported_docx_revision_count(root)
     styles = document.styles
+    outline_resolver = ParagraphOutlineResolver(styles.element)
     defaults = styles.element.find(qn("w:docDefaults"))
     default_rpr = defaults.find(".//" + qn("w:rPr")) if defaults is not None else None
     style_cache: dict[tuple[int, str | None], tuple[Any, list[Any]]] = {}
@@ -1103,7 +1108,7 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
             locator,
             value,
             context=heading,
-            formatting=_paragraph_formatting(paragraph, paragraph_style, style_layers, default_rpr),
+            formatting=_paragraph_formatting(paragraph, paragraph_style, style_layers, default_rpr, outline_resolver.resolve(paragraph._p)),
             uncertainty=uncertainty,
         ))
 
@@ -1142,7 +1147,9 @@ def _parse_docx(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any
     if not records:
         raise ParseFailure("MATERIAL_UNREADABLE", "DOCX contains no extractable effective body text")
     return records, warnings, {"page_count": None, "revision_summary": {"insertions": inserted, "deletions": deleted},
-                               "auxiliary_targets": auxiliary_targets}
+                               "auxiliary_targets": auxiliary_targets,
+                               "docx_formatting": document_formatting(path, root, styles.element, document.settings.element, auxiliary_targets,
+                                                                      MAX_DOCX_AUXILIARY_PART_BYTES, bool(unsupported_revision_count))}
 
 
 def _parse_pdf(path: Path, options: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:

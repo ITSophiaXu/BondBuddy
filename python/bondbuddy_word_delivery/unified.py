@@ -38,6 +38,29 @@ def render(request, source, tracked, clean, baseline):
         fail('WORD_PLAN_NOT_SUPPORTED')
     stamp = request['date']
     blocks = request['blocks']
+    handling = request.get('revision_handling')
+    if handling is not None:
+        if (source is None or blocks or handling.get('version') != 'review-revision-handling-v1'
+                or handling.get('review_passed') is not False
+                or handling.get('source_material', {}).get('sha256') != request.get('source_sha256')
+                or not handling.get('source_report', {}).get('report_id')
+                or not handling.get('accepted_plan', {}).get('plan_id')):
+            fail('WORD_REVISION_SCOPE_MISMATCH')
+        allowed = set(request.get('revision_allowed_record_ids', []))
+        changed = {edit['record_id'] for edit in request['edits']}
+        changed.update(addition['after_record_id'] for addition in request.get('additions', []))
+        if not changed or not changed.issubset(allowed):
+            fail('WORD_REVISION_SCOPE_MISMATCH')
+        items = handling.get('items', [])
+        if (not items or len({item['finding_id'] for item in items}) != len(items)
+                or any(item.get('review_passed') is not False
+                       or item.get('report_id') != handling['source_report']['report_id']
+                       or item.get('status') not in ('modified', 'not_modified', 'needs_evidence') for item in items)):
+            fail('WORD_REVISION_SCOPE_MISMATCH')
+        handled = {handling['source_material']['material_id'] + '/' + location['record_id']
+                   for item in items if item['status'] == 'modified' for location in item['locations']}
+        if changed != handled:
+            fail('WORD_REVISION_SCOPE_MISMATCH')
     notes = []
     if source is None:
         if not blocks or not any(b.get('kind') != 'heading' and (b.get('text') or b.get('rows')) for b in blocks):
@@ -116,7 +139,8 @@ def render(request, source, tracked, clean, baseline):
             '_delivery_date': stamp}
     result = build(source_path, plan, tracked, clean, baseline)
     return {**result, 'writer_version': VERSION, 'source_sha256': request['source_sha256'],
-            'baseline_kind': 'reconstructed_pdf' if reconstructed else 'uploaded_source', 'pending': len(notes), 'pending_review': notes}
+            'baseline_kind': 'reconstructed_pdf' if reconstructed else 'uploaded_source', 'pending': len(notes), 'pending_review': notes,
+            **({'revision_handling': handling, 'review_passed': False} if handling is not None else {})}
 
 
 def main():

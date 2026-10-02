@@ -4,6 +4,9 @@ import { latestProviderAttempt, persistProviderResultObject, readCheckpointedPro
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
 import type { ProbeJournal } from './deepseek-probe.js';
 import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
+import { Problem, transaction } from '@bondbuddy/api/data';
+import { guardEvidenceWrite } from '@bondbuddy/api/evidence-gate';
 
 // This is an internal worker seam. It never accepts a browser principal and is not
 // installed by the production worker entry point until the live release gates pass.
@@ -45,6 +48,26 @@ export class DurableProbeJournal implements ProbeJournal {
 // #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
 export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+
+  async recordWebSearchEvents(intent: ProviderCallIntent, events: NonNullable<import('./codex-adapter.js').CodexProcessResult['web_search_events']>) {
+    const { pool, lease } = this.codexInput;
+    if (intent.owner_user_id !== lease.owner || intent.job_id !== lease.jobId || intent.run_id !== lease.runId) throw new Error('PROVIDER_ATTEMPT_SCOPE_MISMATCH');
+    await guardEvidenceWrite(pool,'web_search_evidence_not_persisted',()=>transaction(pool,async client=>{
+      const active=await client.query(`SELECT 1 FROM bb_jobs j JOIN bb_model_call_attempts a ON a.job_id=j.id AND a.owner_user_id=j.owner_user_id
+        JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id
+        WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND r.project_id=$4 AND j.lease_token=$5
+        AND j.state='running' AND j.lease_until>now() AND r.state NOT IN ('failed','cancelled','rejected','succeeded','test_completed')
+        AND a.id=$6 AND a.logical_call_id=$7 AND a.attempt_no=$8 FOR UPDATE OF j,a`,
+      [intent.job_id,intent.owner_user_id,intent.run_id,intent.project_id,lease.token,intent.call_id,intent.logical_call_id,intent.attempt_no]);
+      if(!active.rowCount)throw new Problem(409,'CAPABILITY_NOT_READY','Web search evidence lease or attempt is no longer valid');
+      const hash=inputManifestHash(events);
+      await client.query(`INSERT INTO bb_model_web_search_evidence(call_id,owner_user_id,project_id,run_id,job_id,logical_call_id,content_sha256,events)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(call_id) DO NOTHING`,
+      [intent.call_id,intent.owner_user_id,intent.project_id,intent.run_id,intent.job_id,intent.logical_call_id,hash,JSON.stringify(events)]);
+      const saved=(await client.query('SELECT content_sha256 FROM bb_model_web_search_evidence WHERE call_id=$1',[intent.call_id])).rows[0];
+      if(saved?.content_sha256.trim()!==hash)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Web search evidence cannot be replaced');
+    }));
+  }
 
   async recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void> {
     await recordModelAttemptRuntime(this.codexInput.pool,this.codexInput.lease,intent,runtime);

@@ -40,6 +40,8 @@ async function checkedFile(root:string,name:string,max=MAX){
 export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:typeof loadUnifiedInput;config?:ReturnType<typeof loadCodexAdapterConfig>}={}):RunStage{
   return {name:'model_generation',replay:true,run:async ctx=>{
     const input=await (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
+    // A direct or injected loader cannot send an accepted finding revision to full authoring.
+    if(Object.hasOwn(input.manifest.authoring,'review_revision'))return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
     const source=editingSource(input);
     const originals=new Map<string,string>();
     const prepare=async(cwd:string)=>{

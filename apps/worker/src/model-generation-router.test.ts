@@ -57,3 +57,69 @@ test('unrecognized task kinds do not fall through to either generator', async ()
   assert.deepEqual(result, { kind: 'pause', stage: 'capability_not_ready', reason: 'unsupported_model_generation_task_kind' });
   assert.equal(updateCalls, 0);
 });
+
+test('fresh unified authoring uses original files without entering legacy or revision generation',async()=>{
+  const checkpoints:StageContext['checkpoint'][]=[{},{file_authoring_v1:{attempt:1}}];
+  for(const checkpoint of checkpoints) {
+    const ctx=context('update');ctx.checkpoint=checkpoint;
+    ctx.values.set('input_lock',{authoring_mode:'unified_v1',review_revision:false});
+    let fileCalls=0;
+    const result=await modelGenerationRouter({
+      unifiedStage:()=>{throw new Error('fresh M1 must use original-file authoring');},
+      fileStage:()=>({name:'model_generation',run:async received=>{
+        fileCalls++;assert.equal(received,ctx);return {kind:'done',value:{route:'file'}};
+      }}),
+    }).run(ctx);
+    assert.deepEqual(result,{kind:'done',value:{route:'file'}});assert.equal(fileCalls,1);
+  }
+});
+
+test('validated finding revisions take precedence over fresh and legacy authoring checkpoints',async()=>{
+  const checkpoints:StageContext['checkpoint'][]=[{},{unified_v3_0:{attempt:1}},{unified_v4_0:{attempt:1}}];
+  for(const checkpoint of checkpoints) {
+    const ctx=context('update');ctx.checkpoint=checkpoint;
+    ctx.values.set('input_lock',{authoring_mode:'unified_v1',review_revision:true});
+    let revisionCalls=0;
+    const result=await modelGenerationRouter({
+      fileStage:()=>{throw new Error('finding revisions must never use full-document authoring');},
+      unifiedStage:options=>{
+        assert.equal(options,undefined,'the dedicated stage derives revision details from the locked manifest');
+        return {name:'model_generation',run:async received=>{
+          revisionCalls++;assert.equal(received,ctx);return {kind:'done',value:{route:'revision'}};
+        }};
+      },
+    }).run(ctx);
+    assert.deepEqual(result,{kind:'done',value:{route:'revision'}});assert.equal(revisionCalls,1);
+  }
+});
+
+test('legacy unified v3 and v4 calls retain their original direct-mode selection on replay',async()=>{
+  for(const [key,direct] of [['unified_v3_0',false],['unified_v4_0',true]] as const) {
+    const ctx=context('update');ctx.checkpoint={[key]:{attempt:1}};
+    ctx.values.set('input_lock',{authoring_mode:'unified_v1'});
+    let legacyCalls=0;
+    const result=await modelGenerationRouter({
+      fileStage:()=>{throw new Error('old calls must keep their logical call IDs');},
+      unifiedStage:options=>{
+        assert.deepEqual(options,{direct});
+        return {name:'model_generation',run:async()=>{legacyCalls++;return {kind:'done',value:{route:key}};}};
+      },
+    }).run(ctx);
+    assert.deepEqual(result,{kind:'done',value:{route:key}});assert.equal(legacyCalls,1);
+  }
+});
+
+test('review route retains its public stage and returns the resulting report',async()=>{
+  const ctx=context('review');ctx.values.set('input_lock',{review_mode:'review_v1'});
+  const reviewed={report:{report_id:'draft'},observations:['synthetic']};
+  const published={report_id:'published'};
+  const result=await modelGenerationRouter({
+    reviewStage:{name:'model_generation',run:async()=>({kind:'done',value:reviewed})},
+    publicStage:{name:'model_generation',run:async received=>{
+      assert.equal(received.values.get('model_generation'),reviewed);return {kind:'done',value:published};
+    }},
+    fileStage:()=>{throw new Error('review is not full-document authoring');},
+    unifiedStage:()=>{throw new Error('review is not finding revision');},
+  }).run(ctx);
+  assert.deepEqual(result,{kind:'done',value:{...reviewed,report:published}});
+});

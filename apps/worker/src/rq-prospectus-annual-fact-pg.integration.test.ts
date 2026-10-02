@@ -113,7 +113,7 @@ test('authorized rq-202509 DOCX persists 16 fail-closed annual candidates throug
     assert.equal(parseOutcome, 'succeeded', 'the authorized DOCX should be parsed and snapshotted through the durable material job');
     const completedJob = (await pool.query('SELECT state,parser_version,checkpoint FROM bb_jobs WHERE id=$1 AND owner_user_id=$2', [job.jobId, owner])).rows[0];
     assert.equal(completedJob?.state, 'succeeded');
-    assert.equal(completedJob?.parser_version, 'bondbuddy-document-parser-1.0.7');
+    assert.equal(completedJob?.parser_version, 'bondbuddy-document-parser-1.0.8');
     const snapshotId = completedJob?.checkpoint?.stages?.parse_evidence?.snapshot_id;
     assert.equal(typeof snapshotId, 'string');
     const evidenceCount = Number((await pool.query('SELECT count(*)::int AS count FROM bb_parse_evidence WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=1 AND snapshot_id=$4',

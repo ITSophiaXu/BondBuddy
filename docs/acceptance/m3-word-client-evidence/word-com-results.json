@@ -1,0 +1,130 @@
+{
+  "synthetic": true,
+  "word_version": "16.0",
+  "word_build": "16.0.20430",
+  "instance_hwnd": null,
+  "existing_word_pids": [],
+  "cases": [
+    {
+      "name": "clean-revision.docx",
+      "opened": true,
+      "saved": true,
+      "reopened": true,
+      "error": null,
+      "before": {
+        "comments": 1,
+        "revisions": 0,
+        "tables": 1,
+        "pages": 1
+      },
+      "after": {
+        "comments": 1,
+        "revisions": 0,
+        "tables": 1,
+        "pages": 1
+      },
+      "pdf_exported": true
+    },
+    {
+      "name": "comments-existing-revision.docx",
+      "opened": true,
+      "saved": true,
+      "reopened": true,
+      "error": null,
+      "before": {
+        "comments": 1,
+        "revisions": 1,
+        "tables": 0,
+        "pages": 1
+      },
+      "after": {
+        "comments": 1,
+        "revisions": 1,
+        "tables": 0,
+        "pages": 1
+      },
+      "pdf_exported": true
+    },
+    {
+      "name": "existing-comments.docx",
+      "opened": true,
+      "saved": true,
+      "reopened": true,
+      "error": null,
+      "before": {
+        "comments": 3,
+        "revisions": 0,
+        "tables": 1,
+        "pages": 1
+      },
+      "after": {
+        "comments": 3,
+        "revisions": 0,
+        "tables": 1,
+        "pages": 1
+      },
+      "pdf_exported": true
+    },
+    {
+      "name": "native-comments.docx",
+      "opened": true,
+      "saved": true,
+      "reopened": true,
+      "error": null,
+      "before": {
+        "comments": 2,
+        "revisions": 0,
+        "tables": 1,
+        "pages": 1
+      },
+      "after": {
+        "comments": 2,
+        "revisions": 0,
+        "tables": 1,
+        "pages": 1
+      },
+      "pdf_exported": true
+    },
+    {
+      "name": "review-report.docx",
+      "opened": true,
+      "saved": true,
+      "reopened": true,
+      "error": null,
+      "before": {
+        "comments": 0,
+        "revisions": 0,
+        "tables": 0,
+        "pages": 1
+      },
+      "after": {
+        "comments": 0,
+        "revisions": 0,
+        "tables": 0,
+        "pages": 1
+      },
+      "pdf_exported": true
+    },
+    {
+      "name": "tracked-revision.docx",
+      "opened": true,
+      "saved": true,
+      "reopened": true,
+      "error": null,
+      "before": {
+        "comments": 1,
+        "revisions": 6,
+        "tables": 1,
+        "pages": 1
+      },
+      "after": {
+        "comments": 1,
+        "revisions": 6,
+        "tables": 1,
+        "pages": 1
+      },
+      "pdf_exported": true
+    }
+  ],
+  "at_utc": "2026-10-02T11:28:58.4202125Z"
+}

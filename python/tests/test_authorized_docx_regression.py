@@ -28,6 +28,7 @@ SUPPORTED_PARSER_VERSIONS = {
     "bondbuddy-document-parser-1.0.4.1",
     "bondbuddy-document-parser-1.0.6",
     "bondbuddy-document-parser-1.0.7",
+    "bondbuddy-document-parser-1.0.8",
 }
 
 

@@ -8,7 +8,8 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   outputDir: join(tmpdir(), 'bondbuddy-web-test-results'),
-  use: { baseURL: process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173', ignoreHTTPSErrors: true },
+  use: { baseURL: process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173', ignoreHTTPSErrors: true,
+    ...(process.env.BB_E2E_BROWSER_CHANNEL ? { channel: process.env.BB_E2E_BROWSER_CHANNEL } : {}) },
   webServer: process.env.BB_E2E_BASE_URL ? undefined : {
     command: 'npm run dev', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI
   }

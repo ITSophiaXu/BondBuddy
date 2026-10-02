@@ -1,0 +1,164 @@
+{
+  "evidence_version": "m3-assistant-durable-v1",
+  "started_at": "2026-10-02T13:40:39.435Z",
+  "finished_at": "2026-10-02T13:41:30.249Z",
+  "passed": true,
+  "synthetic_business_data": true,
+  "scope": "production API/assistant queue/journal/worker + real Copilot through local Windows launch bridge",
+  "deployment_acceptance": false,
+  "api_transport": "Fastify inject through production server handlers; no deployed HTTP listener or browser",
+  "provider": "copilot-enterprise",
+  "model": "gpt-6.1-sol",
+  "policy": {
+    "approval_policy": "on-request",
+    "approvals_reviewer": "auto_review",
+    "sandbox": "read-only",
+    "tools_disabled": true
+  },
+  "raw_result": {
+    "local_diagnostics_relative_path": "m3-assistant-durable-live/2026-10-02T13-40-39-433Z/result.json",
+    "sha256": "2d716dc620e7496b5d47491d67619bf8f7ced2af5e6e715c243d5a674a169266",
+    "removed": [
+      "local account and environment paths",
+      "database/container/project/message identifiers",
+      "framework thread identifier",
+      "global config digest"
+    ]
+  },
+  "implementation_sha256": {
+    "apps/worker/src/review-assistant.ts": "28b2f49e0bd16e71d91f2ced333f4fee1df22949ea6c75a83a920c3d4d095156",
+    "apps/worker/dist/review-assistant.js": "51f0d58797c3fbb6dcc42a02527ce6a74c992a8b2b0d4dacc31a44ada64ef039",
+    "apps/worker/src/codex-adapter.ts": "8ee37295a1005db8f49fa70550ff5a100ea9ab62cc9965bc524ab3dd762f1497",
+    "apps/worker/dist/codex-adapter.js": "be426df4c0e0d5d96c36ccd6797841f95c593a91761017cd79cddf1cb95f0f31",
+    "apps/api/src/review-workspace.ts": "dba545d2961ea5eaa486d65ca65e33dd12e608a2a0056f7ae9ea0e941fd063f2",
+    "apps/api/dist/review-workspace.js": "4d2b69b47f8bb28467c54fc6f9a149684cbeffeeb571c71e9e8922208d7f2a0a",
+    "apps/api/src/provider-results.ts": "7679dd8c19842bab8a2c556b02eafef86b318d764fefb8199b49953694a7fef3",
+    "apps/api/dist/provider-results.js": "1585b4a45f8f7cdfedbd211b92e925a9e078cbf659d10e3b6d69f7757ce7815b"
+  },
+  "implementation_hash_scope": "Exact exercised on-disk source/dist bytes before final CRLF normalization; not canonical Git blob hashes.",
+  "isolation": {
+    "database_strategy": "unique empty database with existing repository migrations; source database untouched",
+    "migrations_applied": 84,
+    "initial_database_counts": {
+      "projects": 1,
+      "messages": 0
+    },
+    "only_initial_project_is_migration_seed": true,
+    "blob_strategy": "unique private Azurite container; no existing project container read or modified"
+  },
+  "api_and_parser_assertions": {
+    "synthetic_review_project_created": true,
+    "synthetic_txt_uploaded_through_production_api": true,
+    "upload_sha256_checked": true,
+    "production_material_parse_worker": "succeeded",
+    "production_python_document_parser": true,
+    "draft_material_version_pinned": true,
+    "duplicate_submission_same_message": true,
+    "duplicate_submission_after_recovery_same_message": true,
+    "parsed_material_present_in_saved_prompt": true,
+    "saved_prompt_sha256_verified": true,
+    "stored_result_sha256_verified": true
+  },
+  "synthetic_material": {
+    "media_type": "text/plain",
+    "material_version": 1,
+    "sha256": "6c9d7e9f4f9b4afd2daa43e763bdc2c333ed9e056ccb5701b86593e77c930660",
+    "content": "合成测试材料，不对应任何真实发行人。合成甲公司2025年度母公司营业收入为100万元，合并营业收入为120万元。两项口径不同，不应直接互相替换。本材料没有审计意见，仅供助手交互验收。\n"
+  },
+  "user_message": "请根据附件V1解释母公司100万元与合并120万元为什么不能直接替换，并指出还需要什么审计证据。当前仅讨论，请不要声称已经核验通过、修改输入或执行任务。",
+  "attempt": {
+    "status": "completed",
+    "usage": {
+      "status": "measured",
+      "input_tokens": 10971,
+      "cached_input_tokens": 9332,
+      "output_tokens": 1062,
+      "reasoning_tokens": 720,
+      "total_tokens": 12033
+    },
+    "error_code": null,
+    "runtime": {
+      "adapter": "codex_exec",
+      "exit_code": 0,
+      "error_code": null,
+      "started_at": "2026-10-02T13:40:48.118Z",
+      "duration_ms": 41434,
+      "exit_signal": null,
+      "finish_reason": "stop",
+      "tool_attempts": 0,
+      "model_provider": "copilot-enterprise",
+      "pricing_status": "unknown",
+      "adapter_version": "codex-adapter-1",
+      "model_config_version": "local-existing-copilot-durable-v1",
+      "provider_request_id_status": "unknown"
+    },
+    "internal_cost": null,
+    "pricing_status": "unknown",
+    "result_sha256": "679f8d076a2e9747d02eec55a334214e0f1485057f0518c9f1dce93595a9f7db"
+  },
+  "bridge_result": {
+    "exit_code": 0,
+    "diagnostic_errors": []
+  },
+  "prompt_sha256": "e3990946fa3db2b667f363b7fee6433d2180d3d1ac481b4f039d8f0a5228f429",
+  "recovery": {
+    "initial": 1,
+    "recovery": 1,
+    "idle_check": 1,
+    "injected_crash": "after persisted provider result, before reply finalization",
+    "persisted_before_crash": {
+      "attempt_status": "completed",
+      "usage_status": "measured",
+      "message_reply_status": "running",
+      "assistant_replies": 0
+    },
+    "recovered_from_stored_result": true,
+    "recovery_worker_result": "completed",
+    "subsequent_worker_result": "idle",
+    "provider_starts": 1,
+    "attempts": 1,
+    "assistant_replies": 1,
+    "reply_equals_stored_result": true
+  },
+  "side_effect_counts": {
+    "before": {
+      "runs": 0,
+      "jobs": 0,
+      "plans": 0,
+      "input_revisions": 0,
+      "billing_outbox_events": 0,
+      "billing_tables": {}
+    },
+    "after": {
+      "runs": 0,
+      "jobs": 0,
+      "plans": 0,
+      "input_revisions": 0,
+      "billing_outbox_events": 0,
+      "billing_tables": {}
+    }
+  },
+  "draft_unchanged": true,
+  "active_run": null,
+  "plan": null,
+  "billing_scope": "No billing tables exist in this schema; zero billing-related outbox events and no payment functionality were exercised. This is not acceptance of a charging system.",
+  "reply": {
+    "content": "附件V1（记录 evidence-000001，第1行，定位 text:l000001）记载：合成甲公司2025年度母公司营业收入100万元、合并营业收入120万元，并明确说明两项口径不同、材料没有审计意见，仅供合成测试。\n\n母公司口径反映母公司自身的收入；合并口径通常涵盖母公司及纳入合并范围的子公司，并抵销内部交易。相同年度不代表相同报表范围，因此应按具体披露项或指标要求选用，不能直接替换。20万元差额也不能仅凭该记录认定为子公司收入，仍需解释合并范围和抵销影响。\n\n还需要以下审计证据：\n\n- 覆盖2025年度母公司及合并财务报表的正式审计报告、对应利润表和附注，用于核对金额、单位、期间及审计意见。\n- 合并范围及其变动、收入确认政策和收入明细等附注，用于说明两种口径的组成。\n- 两种口径之间的收入差异调节表及支持资料，列明子公司收入、内部交易抵销等项目，并与经审计报表勾稽。\n\n现有V1不足以确认这两个金额已经审计或复核通过；上述内容仅为口径解释及补证要求。",
+    "cited_finding_ids": [],
+    "proposal": null
+  },
+  "cleanup": {
+    "isolated_database_deleted_and_absence_verified": true,
+    "unique_azurite_container_deleted": true,
+    "existing_config_sha256_unchanged": true,
+    "source_database_untouched": true,
+    "credentials_read_copied_or_printed": false
+  },
+  "boundaries": [
+    "The real provider was reached through a local Windows CLI launch bridge using the existing Copilot Enterprise account.",
+    "Production API handlers, material parser, assistant queue, durable journal, adapter event validation and recovery worker were executed.",
+    "Production Linux credential helper, process-group lifecycle, deployment networking and sandbox image were not accepted by this probe.",
+    "No live web-search tool, browser flow, real customer document, Word/WPS client, or billing system was exercised.",
+    "One provider start is the count for this final isolated acceptance run, not the total for earlier diagnostics."
+  ]
+}

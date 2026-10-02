@@ -3,6 +3,7 @@ import { MARKETS, OFFERINGS, MARKET_OFFERINGS } from './public-enums.js';
 import type { ProjectMessageSetPin } from './project-message-set-pin.js';
 
 export type UnifiedAuthoringInput = {
+  review_revision?: import('./review-revision.js').ReviewRevisionPin;
   version: 'unified_v1'; source_prospectuses: SourceProspectus[];
   requirements: ProjectMessageSetPin['members'];
   knowledge: { path: string; sha256: string; markdown: string }[];
