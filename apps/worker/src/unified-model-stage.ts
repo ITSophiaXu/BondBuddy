@@ -106,12 +106,24 @@ export function unifiedModelGenerationStage(options: { model?: typeof codexModel
       for (const [m, material] of input.materials.entries()) {
         if (material === source) continue;
         for (const [c, records] of chunkEvidence(evidenceFor(material),12000,400,64000).entries()) {
-          const ids = new Set(records.map(r => r.id));
-          const result = await call<{ notes: Note[] }>(`read_${m}_${c}`, '完整阅读本批原始材料，保留本次编制需要的事实、财务表格、期间/单位、条款和缺项。非目标企业资料只记结构参考，不转成目标事实；不得遗漏本批关键数值。输出可供后续章节编制的详细笔记，每条引用本批原文 id。',
-            { target: promptInput(input).target, source: sourceContext(input, material), filename: material.filename, records }, evidenceSchema([...ids]),
-            result => result.notes.length > 0 && result.notes.every((n: Note) => n.text.trim() && n.evidence.length && n.evidence.every(id => ids.has(id))));
-          if (isStopped(result)) return result.outcome;
-          notes.push(...result.notes);
+          const id=`read_${m}_${c}`;
+          const dispositions=ctx.lease?.checkpoint.operator_reconciliations as Record<string,{actor?:string;reason_code?:string;logical_call_id?:string;decision?:string}>|undefined;
+          const timedOut=Object.values(dispositions??{}).some(d=>d.actor==='worker_timeout_recovery' &&
+            d.reason_code==='terminated_timeout_auto_retry' && d.decision==='retry_unknown_usage' && d.logical_call_id===`unified-v3-${id}`);
+          const resultRefs=ctx.lease?.checkpoint.provider_results;
+          const completedParent=Array.isArray(resultRefs) && resultRefs.some(r=>r?.logical_call_id===`unified-v3-${id}`);
+          // Keep all original batch IDs stable. Only an evidenced timeout splits into
+          // deterministic child calls; completed siblings/children replay unchanged.
+          const middle=Math.ceil(records.length/2);
+          const parts=timedOut && !completedParent && records.length>1 ? [records.slice(0,middle),records.slice(middle)] : [records];
+          for(const [part,subset] of parts.entries()){
+            const ids = new Set(subset.map(r => r.id));
+            const result = await call<{ notes: Note[] }>(parts.length===1?id:`${id}_part_${part}`, '完整阅读本批原始材料，保留本次编制需要的事实、财务表格、期间/单位、条款和缺项。非目标企业资料只记结构参考，不转成目标事实；不得遗漏本批关键数值。输出可供后续章节编制的详细笔记，每条引用本批原文 id。',
+              { target: promptInput(input).target, source: sourceContext(input, material), filename: material.filename, records:subset }, evidenceSchema([...ids]),
+              result => result.notes.length > 0 && result.notes.every((n: Note) => n.text.trim() && n.evidence.length && n.evidence.every(id => ids.has(id))));
+            if (isStopped(result)) return result.outcome;
+            notes.push(...result.notes);
+          }
         }
       }
       if (!source && !notes.length) return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };

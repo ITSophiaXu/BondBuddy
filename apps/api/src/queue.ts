@@ -538,7 +538,7 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
       WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
     if(unresolved.rows.length!==1)return false;
     const a=unresolved.rows[0];
-    if(a.status!=='pending_reconcile' || !/^unified-v3-(read_\d+_\d+|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) ||
+    if(a.status!=='pending_reconcile' || !/^unified-v3-(read_\d+_\d+(?:_part_[01])?|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) ||
       a.observed_usage!=='unknown' || a.error_code!=='MODEL_TIMEOUT' || a.tool_attempts!==0 ||
       !(a.exit_code!==null || ['SIGTERM','SIGKILL'].includes(a.exit_signal)))return false;
     const evidence=await client.query(`SELECT
@@ -575,6 +575,62 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
 }
 const operatorField = /^[A-Za-z0-9_.@-]{1,128}$/;
 const operatorReason = /^[a-z][a-z0-9_]{1,63}$/;
+
+/** Private, explicit repair of the journal flag regression; never a generic failed-run resume.
+ * The already-authorized timeout retry was rejected before sending another call. Preserve
+ * its original failure, observations, usage and retry budget, and audit this correction.
+ */
+export async function repairUnifiedTimeoutRetry(pool:Pool,input:{runId:string;attemptId:string;actor:string}) {
+  if(![input.runId,input.attemptId,input.actor].every(v=>operatorField.test(v)))
+    throw new Problem(422,'VALIDATION_FAILED','Invalid timeout repair identity');
+  return transaction(pool,async client=>{
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 FOR UPDATE',[input.runId])).rows[0];
+    if(!r)throw missing();
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
+    if(!j)throw missing();
+    const repaired=j.checkpoint?.timeout_retry_repairs?.[input.attemptId];
+    if(repaired)return {run_id:r.id,attempt_id:input.attemptId,idempotent:true};
+    const refuse=()=>new Problem(409,'INPUT_REVISION_CONFLICT','Run does not match the interrupted timeout retry');
+    // finish maps internal model codes to DATA_UNAVAILABLE in the job; the exact
+    // original model failure remains on the terminal event checked below.
+    if(r.state!=='failed'||j.state!=='failed'||j.error_code!=='DATA_UNAVAILABLE'||j.lease_token||j.lease_until)throw refuse();
+    const unified=await client.query(`SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2
+      AND revision=$3 AND input_hash=$4 AND manifest->'update_details'->>'authoring_mode'='unified_v1'`,[r.owner_user_id,r.project_id,r.input_revision,r.input_hash]);
+    if(!unified.rowCount)throw refuse();
+    const a=(await client.query(`SELECT a.*,t.error_code,t.exit_code,t.exit_signal,t.tool_attempts,u.usage_status AS observed_usage
+      FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+      JOIN bb_call_usage u ON u.attempt_id=a.id WHERE a.id=$1 AND a.job_id=$2 AND a.owner_user_id=$3`,[input.attemptId,j.id,r.owner_user_id])).rows[0];
+    const disposition=j.checkpoint?.operator_reconciliations?.[input.attemptId];
+    if(!a||a.status!=='failed'||a.error_code!=='MODEL_TIMEOUT'||a.observed_usage!=='unknown'||a.tool_attempts!==0||
+      !(a.exit_code!==null||['SIGTERM','SIGKILL'].includes(a.exit_signal))||
+      disposition?.actor!=='worker_timeout_recovery'||disposition?.decision!=='retry_unknown_usage'||
+      disposition?.reason_code!=='terminated_timeout_auto_retry'||disposition?.logical_call_id!==a.logical_call_id)throw refuse();
+    const history=Object.values(j.checkpoint.operator_reconciliations) as {reason_code?:string;logical_call_id?:string}[];
+    const retries=history.filter(h=>h.reason_code==='terminated_timeout_auto_retry');
+    if(retries.length>6||retries.filter(h=>h.logical_call_id===a.logical_call_id).length>2)throw refuse();
+    const evidence=(await client.query(`SELECT
+      EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND
+        (created_at>(SELECT created_at FROM bb_model_call_attempts WHERE id=$2) OR (logical_call_id=$4 AND attempt_no>$5))) AS newer,
+      EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$2) AS has_result,
+      EXISTS(SELECT 1 FROM bb_artifact_versions WHERE run_id=$3) AS has_artifact,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$2 AND outcome='pending_reconcile'
+        AND error_code='MODEL_TIMEOUT' AND usage_status='unknown' AND result_id IS NULL) AS timeout_observed,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$2 AND
+        (outcome<>'pending_reconcile' OR error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR usage_status<>'unknown' OR result_id IS NOT NULL)) AS conflicting`,
+      [j.id,a.id,r.id,a.logical_call_id,a.attempt_no])).rows[0];
+    if(evidence.newer||evidence.has_result||evidence.has_artifact||!evidence.timeout_observed||evidence.conflicting)throw refuse();
+    const recent=(await client.query('SELECT seq,state,payload FROM bb_run_events WHERE run_id=$1 ORDER BY seq DESC LIMIT 3',[r.id])).rows;
+    if(recent.length!==3||recent[0].seq!==r.event_cursor||recent[0].payload.reason!=='processor_failed'||
+      recent[0].payload.error_code!=='MODEL_OUTPUT_SCHEMA_INVALID'||recent[1].payload.reason!=='claimed'||
+      recent[2].payload.reason!=='provider_timeout_retry_scheduled'||recent[2].payload.attempt_id!==a.id)throw refuse();
+    const audit={actor:input.actor,attempt_id:a.id,reason_code:'timeout_retry_flag_repaired',failure_event_seq:String(r.event_cursor)};
+    await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',error_code=NULL,updated_at=now(),
+      checkpoint=jsonb_set(checkpoint,'{timeout_retry_repairs}',COALESCE(checkpoint->'timeout_retry_repairs','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true)
+      WHERE id=$1`,[j.id,a.id,JSON.stringify(audit)]);
+    await event(client,r,'queued','queued','provider_timeout_retry_repaired',undefined,'run.state_changed',audit);
+    return {run_id:r.id,attempt_id:a.id,idempotent:false};
+  });
+}
 
 /** Private maintenance read; attempt ownership is derived from the run and job, never from CLI input. */
 export async function listOperatorReconciliations(pool:Pool) {

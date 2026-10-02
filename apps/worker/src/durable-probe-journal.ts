@@ -52,7 +52,7 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
 
   async latestAttempt(logicalCallId: string): Promise<PriorAttempt | null> {
     const row=await latestProviderAttempt(this.codexInput.pool,this.codexInput.lease,logicalCallId);
-    return row?{call_id:row.call_id,attempt_no:row.attempt_no,status:row.status,observed:row.observed}:null;
+    return row?{call_id:row.call_id,attempt_no:row.attempt_no,status:row.status,observed:row.observed,operator_retry:row.operator_retry}:null;
   }
 
   async readCompleted(logicalCallId: string, attemptNo: number) {

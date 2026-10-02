@@ -5,7 +5,7 @@ import { createServer } from '@bondbuddy/api';
 import { digest, uid, type PrivateBlobs } from '@bondbuddy/api/data';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
-import { claim, pauseRun, recordPotentialCall, recoverUnifiedTimeout } from '@bondbuddy/api/queue';
+import { claim, finish, pauseRun, recordPotentialCall, recoverUnifiedTimeout, repairUnifiedTimeoutRetry } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime, recordProviderCallObservation, latestProviderAttempt } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -19,7 +19,7 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       getIfExistsBounded:async k=>bytes.get(k)??null,exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
     const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
     const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
-    const logical='unified-v3-read_0_10';
+    const logical='unified-v3-read_0_10_part_0';
     type EvidenceOptions={unified?:boolean;runtime?:boolean;observation?:boolean;error?:string;observationError?:string;exited?:boolean;tools?:number;measured?:boolean};
     async function fixture(options:EvidenceOptions={}){
       const p=await send('POST','/api/v1/projects',{name:'Synthetic timeout',kind:'update',issuer_name:'合成企业',market:'sse',offering:'private',
@@ -86,5 +86,30 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
       assert.equal(await capped.recover(),true);
       assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[capped.lease.runId])).rows[0].state,'failed');
       const cancelled=await fixture();await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[cancelled.lease.runId]);assert.equal(await cancelled.recover(),false);
+
+      // The old journal could drop the retry flag and fail before attempt 3 was sent.
+      // Only this evidenced software failure may be explicitly repaired, once.
+      const interrupted=await fixture();assert.equal(await interrupted.recover(),true);
+      let repairLease=await claim(pool,30);assert.ok(repairLease);assert.equal(repairLease.runId,interrupted.lease.runId);
+      const second=await timeout(repairLease,interrupted.project,2);assert.equal(await second.recover(),true);
+      repairLease=await claim(pool,30);assert.ok(repairLease);assert.equal(repairLease.runId,interrupted.lease.runId);
+      await finish(pool,repairLease,'failed',{errorCode:'MODEL_OUTPUT_SCHEMA_INVALID',failedStage:'model_generation'});
+      const repair=()=>repairUnifiedTimeoutRetry(pool,{runId:interrupted.lease.runId,attemptId:second.attempt,actor:'synthetic-repair'});
+      await assert.rejects(repairUnifiedTimeoutRetry(pool,{runId:cancelled.lease.runId,attemptId:second.attempt,actor:'synthetic-repair'}),/does not match/);
+      await assert.rejects(repairUnifiedTimeoutRetry(pool,{runId:interrupted.lease.runId,attemptId:interrupted.attempt,actor:'synthetic-repair'}),/does not match/);
+      await assert.rejects(repairUnifiedTimeoutRetry(pool,{runId:f.lease.runId,attemptId:third.attempt,actor:'synthetic-repair'}),/does not match/);
+      const saved=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[repairLease.jobId])).rows[0].checkpoint;
+      await pool.query(`ALTER TABLE bb_outbox ADD CONSTRAINT repair_rollback CHECK (aggregate_id <> '${repairLease.runId}') NOT VALID`);
+      await assert.rejects(repair,/repair_rollback/);
+      assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[repairLease.runId])).rows[0].state,'failed');
+      await pool.query('ALTER TABLE bb_outbox DROP CONSTRAINT repair_rollback');
+      assert.deepEqual((await Promise.all([repair(),repair()])).map(x=>x.idempotent).sort(),[false,true]);
+      const repaired=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[repairLease.jobId])).rows[0].checkpoint;
+      assert.deepEqual(repaired.stages,saved.stages);assert.deepEqual(repaired.provider_results,saved.provider_results);
+      assert.deepEqual(repaired.operator_reconciliations,saved.operator_reconciliations,'repair does not reset the retry budget');
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='provider_timeout_retry_repaired'",[repairLease.runId])).rows[0].n,1);
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'error_code'='MODEL_OUTPUT_SCHEMA_INVALID'",[repairLease.runId])).rows[0].n,1,'original failure stays in history');
+      assert.equal((await pool.query("SELECT count(*)::int n FROM bb_call_usage WHERE job_id=$1 AND usage_status='unknown'",[repairLease.jobId])).rows[0].n,2);
+      assert.equal((await claim(pool,30))?.runId,repairLease.runId);
     }finally{await app.close();await pool.end();}
   });

@@ -85,6 +85,38 @@ test('chunking preserves each raw record exactly once without silent truncation'
   assert.throws(()=>chunkEvidence([{id:'large',text:'x'.repeat(500),uncertainty:[]}],400),/block_too_large/);
 });
 
+test('only a recovered timed-out reading batch splits; IDs and complete record coverage survive replay',async()=>{
+  const material=input();const seed=material.materials[0]!.records[0]!;
+  material.materials[0]!.records=Array.from({length:401},(_,i)=>({...seed,record_id:`r${i}`,literal_quote:`合成数值${i}`}));
+  const context=ctx();
+  context.lease={jobId:'synthetic-job',runId:'synthetic-run',owner:'synthetic-owner',token:'synthetic-lease',attempts:1,
+    checkpoint:{operator_reconciliations:{timeout:{actor:'worker_timeout_recovery',reason_code:'terminated_timeout_auto_retry',decision:'retry_unknown_usage',logical_call_id:'unified-v3-read_0_0'}}}};
+  const sent=new Map<string,string[]>();let secondPartAttempts=0;
+  const stage=unifiedModelGenerationStage({load:async()=>material,model:options=>({name:options.name,run:async c=>{
+    const data=JSON.parse((await options.buildPrompt(c)).split('输入数据：\n')[1]!);
+    if(options.logicalCallId==='unified-v3-read_0_0_part_1' && secondPartAttempts++===0)
+      return {kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'};
+    if(options.name.includes('read_')){
+      const ids=data.records.map((r:{id:string})=>r.id);
+      if(sent.has(options.logicalCallId))assert.deepEqual(ids,sent.get(options.logicalCallId));
+      else sent.set(options.logicalCallId,ids);
+      const value={notes:ids.map((id:string)=>({text:'合成数值',evidence:[id],pending:false}))};
+      assert.ok(options.validate(value));return {kind:'done',value};
+    }
+    const all=data.material_reading.flatMap((n:{evidence:string[]})=>n.evidence);
+    assert.deepEqual(all,Array.from({length:401},(_,i)=>`m0r${i}`));
+    const value={reviewed:['m1r0','m1r1'],edits:[{record_id:'m1r0',after:'已据完整材料更新',evidence:['m0r0'],pending:[]}],additions:[],summary:['合成更新']};
+    assert.ok(options.validate(value));return {kind:'done',value};
+  }})});
+  assert.equal((await stage.run(context)).kind,'pause');
+  assert.equal((await stage.run(context)).kind,'done');
+  assert.deepEqual([...sent.keys()],['unified-v3-read_0_0_part_0','unified-v3-read_0_0_part_1','unified-v3-read_0_1']);
+  assert.deepEqual([...sent.values()].map(ids=>ids.length),[200,200,1]);
+  context.lease.checkpoint.provider_results=[{logical_call_id:'unified-v3-read_0_0'}];
+  sent.clear();assert.equal((await stage.run(context)).kind,'done');
+  assert.deepEqual([...sent.keys()],['unified-v3-read_0_0','unified-v3-read_0_1'],'an already completed parent keeps its original replay identity');
+});
+
 test('prompt keeps layout coordinates without repeating private stable anchors',()=>{
   const locator={sheet:'财务报表',cell:'B10',merged_range:'B10:C10',stable_ref:{xml_path:'x'.repeat(2000)}};
   assert.deepEqual(promptLocator(locator),{sheet:'财务报表',cell:'B10',merged_range:'B10:C10'});
