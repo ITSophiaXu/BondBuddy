@@ -22,16 +22,15 @@
 
 ## 可重复验证
 
-Windows PowerShell，Python需安装 python-docx、lxml、openpyxl：
+Windows PowerShell，先将 `BONDBUDDY_TEST_PYTHON` 指向已安装 python-docx、lxml、openpyxl 的 Python 可执行文件：
 
 ```powershell
 npm.cmd run build -w @bondbuddy/worker
-$env:BONDBUDDY_TEST_PYTHON='C:\Users\lezhai\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
 node --test packages/domain/dist/review-*.test.js apps/worker/dist/review-*.test.js
 git diff --check
 ```
 
-结果：worker build通过，83项测试通过，0失败、0跳过；diff检查通过。domain/contracts/API依赖沿用本分支前序构建产物。
+表格修复分支结果：worker build通过，83项测试通过，0失败、0跳过；diff检查通过。domain/contracts/API依赖沿用该分支前序构建产物。合并助手和完整链路后的最终计数见[集成验收记录](m3-implementation-2026-10-02.md)。
 
 新增回归在 `review-record-context.test.ts` 中用临时合成 XLSX/DOCX 调用真实原生 parser，不调用模型供应商：
 
