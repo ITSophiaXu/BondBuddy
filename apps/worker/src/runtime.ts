@@ -8,7 +8,7 @@ import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
-import { reconcilePausedCall, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
+import { reconcilePausedCall, recoverUnifiedTimeout, releaseLease, pausedRuns, resumePausedRun, type Lease } from '@bondbuddy/api/queue';
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
@@ -244,7 +244,7 @@ export class WorkerRuntime {
       this.emit({ kind: 'reconcile', run_id: runId, logical_call_id: attempt.logical_call_id, attempt_no: attempt.attempt_no, reconciler: this.o.reconciler.name, outcome: answer.outcome });
       if (answer.outcome === 'confirmed_not_sent') await reconcilePausedCall(pool, owner, runId, attempt.logical_call_id, attempt.attempt_no, 'confirmed_not_sent');
       else if (answer.outcome === 'completed') await reconcilePausedProviderCall(pool, this.o.blobs, answer.observation, answer.validate);
-      else return false;
+      else return recoverUnifiedTimeout(pool, owner, runId, jobId);
     }
     return resumePausedRun(pool, owner, runId, 'provider_reconciled');
   }

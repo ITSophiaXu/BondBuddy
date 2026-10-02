@@ -71,6 +71,8 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function readinessMessage(reason: string): string {
+  if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
+  if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务因原稿信息缺失暂停。原稿信息现为选填，请联系支持恢复此任务；无需补齐或重复提交。';
   if (reason === 'authoring_issuer_materials_required') return '请补充目标发行人的材料；其他企业的参考稿不能代替目标企业事实。保存后停止本次任务，再以新输入重新编制。';
@@ -279,7 +281,7 @@ export class ProjectExecution {
         : !needsAttention && this.reason === 'trial_limit_cleared' ? runtimeMessage(this.reason)
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'
-          : run.stage === 'provider_reconcile' ? '正在核对先前模型调用，请联系支持处理。'
+          : run.stage === 'provider_reconcile' ? '正在核对编制服务响应；已保存材料会保留，无需重新上传。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
     this.host.querySelector('#execution-progress')!.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div><h2>任务状态：${esc(states[run.state] ?? '等待处理')}</h2><p class="muted">使用材料版本 ${run.input_revision} · ${esc(date(run.updated_at))}</p>${run.stage && stages[run.stage] ? `<h3>${esc(stages[run.stage])}</h3>` : ''}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${this.events.slice(-6).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}

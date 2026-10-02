@@ -517,6 +517,62 @@ export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number]
 }
 
 export type OperatorReconcileDecision = 'retry_unknown_usage' | 'fail_run';
+
+/** M1 authoring can retry a locally terminated timeout, never an unobserved/crashed call.
+ * The original supplier usage stays unknown. Row locks bound retries across worker sweeps.
+ * Completed results and any contradictory evidence always go through reconciliation.
+ */
+export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,jobId:string) {
+  return transaction(pool,async client=>{
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+    if(!r || r.state!=='paused' || r.stage!=='provider_reconcile')return false;
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
+    if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until)return false;
+    const input=await client.query(`SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2
+      AND revision=$3 AND input_hash=$4 AND manifest->'update_details'->>'authoring_mode'='unified_v1'`,
+      [owner,r.project_id,r.input_revision,r.input_hash]);
+    if(!input.rowCount)return false;
+    const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,t.error_code,t.exit_code,t.exit_signal,t.tool_attempts
+      FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
+      LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+      WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
+    if(unresolved.rows.length!==1)return false;
+    const a=unresolved.rows[0];
+    if(a.status!=='pending_reconcile' || !/^unified-v3-(read_\d+_\d+|update_\d+|outline|draft_\d+)$/.test(a.logical_call_id) ||
+      a.observed_usage!=='unknown' || a.error_code!=='MODEL_TIMEOUT' || a.tool_attempts!==0 ||
+      !(a.exit_code!==null || ['SIGTERM','SIGKILL'].includes(a.exit_signal)))return false;
+    const evidence=await client.query(`SELECT
+      EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$1) AS has_result,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND outcome='pending_reconcile'
+        AND error_code='MODEL_TIMEOUT' AND usage_status='unknown' AND result_id IS NULL) AS timeout_observed,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND
+        (outcome<>'pending_reconcile' OR error_code IS DISTINCT FROM 'MODEL_TIMEOUT' OR usage_status<>'unknown' OR result_id IS NOT NULL)) AS conflicting,
+      EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$2 AND logical_call_id=$3 AND attempt_no>$4) AS newer`,
+      [a.id,jobId,a.logical_call_id,a.attempt_no]);
+    const e=evidence.rows[0];
+    if(e.has_result || !e.timeout_observed || e.conflicting || e.newer)return false;
+    const history=Object.values(j.checkpoint?.operator_reconciliations ?? {}) as {reason_code?:string;logical_call_id?:string}[];
+    const retries=history.filter(h=>h.reason_code==='terminated_timeout_auto_retry');
+    const exhausted=retries.length>=6 || retries.filter(h=>h.logical_call_id===a.logical_call_id).length>=2;
+    const audit={actor:'worker_timeout_recovery',reason_code:exhausted?'terminated_timeout_retries_exhausted':'terminated_timeout_auto_retry',
+      attempt_id:a.id,logical_call_id:a.logical_call_id,decision:exhausted?'fail_run':'retry_unknown_usage'};
+    // Reuse the durable retry disposition understood by claim/latestProviderAttempt;
+    // no observation or usage is rewritten into a fabricated successful/not-sent call.
+    await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',
+      COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true),updated_at=now() WHERE id=$1`,
+      [jobId,a.id,JSON.stringify(audit)]);
+    if(exhausted){
+      await client.query("UPDATE bb_jobs SET state='failed',stage='failed' WHERE id=$1",[jobId]);
+      await recordRunFailure(client,r,jobId,'MODEL_TIMEOUT','provider_reconcile');
+      await event(client,r,'failed','failed','provider_timeout_retries_exhausted','MODEL_TIMEOUT','run.state_changed',audit);
+    }else{
+      await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
+      await client.query("UPDATE bb_jobs SET state='queued',stage='queued' WHERE id=$1",[jobId]);
+      await event(client,r,'queued','queued','provider_timeout_retry_scheduled',undefined,'run.state_changed',audit);
+    }
+    return true;
+  });
+}
 const operatorField = /^[A-Za-z0-9_.@-]{1,128}$/;
 const operatorReason = /^[a-z][a-z0-9_]{1,63}$/;
 
