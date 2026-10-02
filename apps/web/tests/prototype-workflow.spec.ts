@@ -44,7 +44,7 @@ async function setup(page: Page) {
   return {projects,writes,routes,messages};
 }
 
-test('prototype dashboard leads through creation to materials with persistent right-side requirements',async({page})=>{
+test('prototype dashboard leads through creation to materials with persistent material-footer requirements',async({page})=>{
   const errors: string[]=[]; page.on('pageerror',e=>errors.push(e.message));
   const state=await setup(page);
   await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
@@ -65,21 +65,21 @@ test('prototype dashboard leads through creation to materials with persistent ri
   await expect(page.locator('.step.current')).toContainText('创建项目');
   await page.getByLabel('项目名称').fill('合成设计验收 · 募集书更新');
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
-  await page.locator('[name=has_historical][value=yes]').check();
+  await expect(page.locator('[name=has_historical]')).toHaveCount(0);
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');
-  await page.getByLabel('补充说明与写作要求').fill('补充授信证明后核对时点。');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveCount(0);
   await page.evaluate(()=>{ document.activeElement instanceof HTMLElement && document.activeElement.blur(); scrollTo(0,0); });
   await page.screenshot({path:join(tmpdir(),'bb361-create-desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
   await expect(page.locator('.step.current')).toContainText('材料与要求');
   await expect(page.locator('#draft-form')).toBeHidden();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
-  await expect(page.getByLabel('补充说明与写作要求')).toHaveValue('补充授信证明后核对时点。');
-  await page.getByRole('button',{name:'发送并保存'}).click();
+  await page.getByLabel('补充募集书更新说明').fill('补充授信证明后核对时点。');
+  await page.locator('#send-project-message').click();
   await expect(page.locator('.cowork-message')).toContainText('补充授信证明后核对时点。');
-  await page.getByLabel('补充说明与写作要求').fill('材料阶段也可保存下一轮说明。');
-  await page.getByRole('button',{name:'发送并保存'}).click();
+  await page.getByLabel('补充募集书更新说明').fill('材料阶段也可保存下一轮说明。');
+  await page.locator('#send-project-message').click();
   await expect.poll(()=>state.messages.map(m=>m.body)).toEqual(['补充授信证明后核对时点。','材料阶段也可保存下一轮说明。']);
   await page.reload(); await expect(page.locator('.step.current')).toContainText('材料与要求');
   await expect(page.locator('.cowork-message')).toHaveCount(2);
@@ -97,9 +97,10 @@ test('prototype dashboard leads through creation to materials with persistent ri
 
 test('unavailable modules retain original navigation but never create demo work',async({page})=>{
   const state=await setup(page);
-  for(const route of ['review','generate','qa','billing']) {
+  for(const route of ['generate','qa','billing']) {
     await page.goto(`/#${route}`); await expect(page.getByRole('heading',{name:'这项功能尚未开放'})).toBeVisible();
   }
+  await page.goto('/#review'); await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();
   expect(state.writes).toEqual([]);
   await page.goto('/#tasks'); await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
   await page.goto('/'); await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
